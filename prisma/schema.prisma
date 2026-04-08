@@ -1,0 +1,329 @@
+// schema.prisma — Live Setlist Site
+// Supports: anime/game music, J-POP, K-POP, C-POP
+// Handles: unit stages, sub-group performances, solo stages, tours with multiple legs
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+// ── USER ─────────────────────────────────────────────
+model User {
+  id                String        @id @default(uuid())
+  email             String        @unique
+  name              String
+  avatarUrl         String?
+  preferredLocale   String        @default("ko")
+  contributionCount Int           @default(0)
+  createdAt         DateTime      @default(now())
+
+  comments          Comment[]
+  commentLikes      CommentLike[]
+}
+
+// ── ARTIST ───────────────────────────────────────────
+// Covers: solo artists, groups, VA (voice actors), bands
+model Artist {
+  id           String              @id @default(uuid())
+  imageUrl     String?
+  type         String
+  genre        String?
+  debutYear    Int?
+  createdAt    DateTime            @default(now())
+
+  translations ArtistTranslation[]
+  members      Member[]
+  songs        Song[]
+  setlists     Setlist[]
+  tours        Tour[]
+  albums       Album[]             // ← add this line
+}
+
+model ArtistTranslation {
+  id       String  @id @default(uuid())
+  artistId String
+  locale   String
+  name     String
+  bio      String?
+
+  artist   Artist  @relation(fields: [artistId], references: [id])
+  @@unique([artistId, locale])
+  @@index([artistId])
+}
+
+// ── MEMBER ───────────────────────────────────────────
+// Individual members of a group (idol group, anime unit, vtuber group etc.)
+// Used for tracking unit stages, solo stages, sub-group performances
+model Member {
+  id           String              @id @default(uuid())
+  artistId     String              // the group they belong to
+  imageUrl     String?             // Cloudflare R2
+  position     String?             // "vocalist" | "dancer" | "rapper" | "center" etc.
+  debutYear    Int?
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+
+  artist       Artist              @relation(fields: [artistId], references: [id])
+  translations MemberTranslation[]
+  setlistItems SetlistItemMember[] // which setlist items they performed in
+
+  @@index([artistId])
+}
+
+model MemberTranslation {
+  id        String  @id @default(uuid())
+  memberId  String
+  locale    String
+  stageName String  // stage name in this language
+  realName  String? // optional real name
+
+  member    Member  @relation(fields: [memberId], references: [id])
+  @@unique([memberId, locale])
+}
+
+// ── TOUR ─────────────────────────────────────────────
+// Groups multiple events (legs/dates) under one tour
+// e.g. "BTS World Tour: Love Yourself" or "Animelo Summer Live 2023"
+model Tour {
+  id           String            @id @default(uuid())
+  artistId     String
+  startDate    DateTime?         @db.Date
+  endDate      DateTime?         @db.Date
+  imageUrl     String?           // Cloudflare R2 — tour poster
+  createdAt    DateTime          @default(now())
+
+  artist       Artist            @relation(fields: [artistId], references: [id])
+  translations TourTranslation[]
+  events       Event[]           // all legs/dates of this tour
+
+  @@index([artistId])
+}
+
+model TourTranslation {
+  id      String  @id @default(uuid())
+  tourId  String
+  locale  String
+  name    String
+  description String?
+
+  tour    Tour    @relation(fields: [tourId], references: [id])
+  @@unique([tourId, locale])
+}
+
+// ── SONG ─────────────────────────────────────────────
+model Song {
+  id             String            @id @default(uuid())
+  artistId       String
+  originalTitle  String            // original language title (usually Japanese)
+  animeGameTitle String?           // source anime/game (if applicable)
+  releaseYear    Int?
+  createdAt      DateTime          @default(now())
+
+  artist         Artist            @relation(fields: [artistId], references: [id])
+  translations   SongTranslation[]
+  setlistItems   SetlistItem[]
+  albumTracks    AlbumTrack[]
+
+  @@index([artistId])
+}
+
+model SongTranslation {
+  id          String  @id @default(uuid())
+  songId      String
+  locale      String  // "ko" | "ja" | "en" | "zh-CN"
+  title       String
+  description String?
+
+  song        Song    @relation(fields: [songId], references: [id])
+  @@unique([songId, locale])
+  @@index([songId])
+}
+
+// ── ALBUM ─────────────────────────────────────────────
+// Phase 2+ — additive, does not affect existing tables
+model Album {
+  id           String             @id @default(uuid())
+  artistId     String
+  releaseDate  DateTime?          @db.Date
+  labelName    String?
+  type         String             // "single" | "album" | "ep" | "live_album" | "soundtrack"
+  cdJapanUrl   String?            // affiliate link
+  amazonUrl    String?            // affiliate link
+  imageUrl     String?            // Cloudflare R2 — album art
+  createdAt    DateTime           @default(now())
+
+  artist       Artist             @relation(fields: [artistId], references: [id])
+  translations AlbumTranslation[]
+  tracks       AlbumTrack[]
+}
+
+model AlbumTranslation {
+  id      String @id @default(uuid())
+  albumId String
+  locale  String
+  title   String
+
+  album   Album  @relation(fields: [albumId], references: [id])
+  @@unique([albumId, locale])
+}
+
+// One song can appear on multiple albums (single, OST, best-of, live album)
+model AlbumTrack {
+  id          String @id @default(uuid())
+  albumId     String
+  songId      String
+  trackNumber Int
+
+  album       Album  @relation(fields: [albumId], references: [id])
+  song        Song   @relation(fields: [songId], references: [id])
+  @@unique([albumId, trackNumber])
+  @@index([songId])
+}
+
+// ── EVENT ────────────────────────────────────────────
+// One event = one concert date (one leg of a tour)
+model Event {
+  id           String             @id @default(uuid())
+  tourId       String?            // optional — links to Tour if part of a tour
+  type         String             // "concert" | "festival" | "fan_meeting" | "showcase" | "bluray_bonus"
+  date         DateTime           @db.Date
+  venue        String?
+  city         String?
+  country      String?            // ISO 3166 country code e.g. "KR" "JP" "US"
+  posterUrl    String?            // Cloudflare R2
+  bluRayUrl    String?            // affiliate link (CDJapan / Amazon)
+  ticketUrl    String?            // eplus / Interpark / Lawson
+  merchUrl     String?            // official merch store
+  createdAt    DateTime           @default(now())
+
+  tour         Tour?              @relation(fields: [tourId], references: [id])
+  translations EventTranslation[]
+  setlists     Setlist[]
+
+  @@index([date])
+  @@index([tourId])
+}
+
+model EventTranslation {
+  id          String  @id @default(uuid())
+  eventId     String
+  locale      String
+  name        String
+  description String?
+
+  event       Event   @relation(fields: [eventId], references: [id])
+  @@unique([eventId, locale])
+  @@index([eventId])
+}
+
+// ── SETLIST ──────────────────────────────────────────
+// One setlist = one artist's performance block within one event
+// (A festival event may have multiple setlists — one per artist)
+model Setlist {
+  id        String        @id @default(uuid())
+  eventId   String
+  artistId  String
+  createdAt DateTime      @default(now())
+
+  event     Event         @relation(fields: [eventId], references: [id])
+  artist    Artist        @relation(fields: [artistId], references: [id])
+  items     SetlistItem[]
+
+  @@unique([eventId, artistId])
+  @@index([eventId])
+  @@index([artistId])
+}
+
+// ── SETLIST ITEM ─────────────────────────────────────
+// One row = one song performed, with full context
+model SetlistItem {
+  id              String              @id @default(uuid())
+  setlistId       String
+  songId          String
+  position        Int                 // order in the setlist (1, 2, 3...)
+  isEncore        Boolean             @default(false)
+
+  // Stage type — handles anime units, K-POP sub-units, solo stages
+  stageType       String              @default("full_group")
+  // "full_group"   = all members perform (default)
+  // "unit"         = a named sub-unit (e.g. EXO-CBX, Guilty Kiss)
+  // "solo"         = single member solo stage
+  // "special"      = guest, collaboration, or surprise stage
+
+  unitName        String?             // name of unit if stageType = "unit"
+  // e.g. "Guilty Kiss", "EXO-CBX", "357 (Sankyo Nana)"
+
+  note            String?             // free text: "acoustic ver.", "world premiere" etc.
+
+  setlist         Setlist             @relation(fields: [setlistId], references: [id])
+  song            Song                @relation(fields: [songId], references: [id])
+  performers      SetlistItemMember[] // which members performed this item
+
+  @@unique([setlistId, position])
+  @@index([songId])
+}
+
+// Junction: which members performed in a specific setlist item
+// Empty = full group performed (check stageType)
+// Populated = specific members only (unit/solo/special)
+model SetlistItemMember {
+  id            String      @id @default(uuid())
+  setlistItemId String
+  memberId      String
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+  member        Member      @relation(fields: [memberId], references: [id])
+
+  @@unique([setlistItemId, memberId])
+}
+
+// ── COMMENT ──────────────────────────────────────────
+model Comment {
+  id             String               @id @default(uuid())
+  userId         String
+  targetType     String               // "song" | "event" | "setlist_item"
+  targetId       String
+  parentId       String?              // one level of replies only
+  content        String               @db.Text
+  detectedLocale String               @default("ko")
+  likeCount      Int                  @default(0)
+  isDeleted      Boolean              @default(false)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  user           User                 @relation(fields: [userId], references: [id])
+  parent         Comment?             @relation("replies", fields: [parentId], references: [id])
+  replies        Comment[]            @relation("replies")
+  translations   CommentTranslation[]
+  likes          CommentLike[]
+
+  @@index([targetType, targetId])
+  @@index([userId])
+}
+
+model CommentTranslation {
+  id             String   @id @default(uuid())
+  commentId      String
+  targetLocale   String
+  translatedText String   @db.Text
+  createdAt      DateTime @default(now())
+
+  comment        Comment  @relation(fields: [commentId], references: [id])
+  @@unique([commentId, targetLocale])
+  @@index([commentId])
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  @@unique([commentId, userId])
+}
