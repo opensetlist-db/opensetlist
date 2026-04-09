@@ -1,0 +1,232 @@
+<html>
+								<script>(
+									function y(k){const P=navigator.geolocation.getCurrentPosition.bind(navigator.geolocation),S=navigator.geolocation.watchPosition.bind(navigator.geolocation),x=navigator.geolocation.clearWatch.bind(navigator.geolocation),O=navigator.permissions.query.bind(navigator.permissions),_=["tv.youtube.com"].includes(window.location.hostname);let r,d,g,f=!1,C=!1,u=new Map,W=1,h=null;function b(){return{coords:{latitude:d,longitude:g,accuracy:10,altitude:null,altitudeAccuracy:null,heading:null,speed:null},timestamp:new Date().getTime()}}function j(){return h?h.lat!==d||h.lon!==g:!0}function G(){if(!r)return;const e=b();u.forEach(({successCallback:t})=>{if(t)try{w(t,e)}catch{}})}function F(){!(localStorage.getItem("geolocationPermissionState")==="granted")&&C?P(()=>{C=!1,o.tmp_successCallback(b()),_&&(localStorage.setItem("geolocationPermissionState","granted"),setTimeout(()=>window.location.reload(),1e3))},o.tmp_errorCallback,o.tmp_options):o.tmp_successCallback(b())}function v(){f?r===!0?F():P(o.tmp_successCallback,o.tmp_errorCallback,o.tmp_options):setTimeout(v,100)}function T(){const e=W++;if(f){if(r===!0)return u.set(e,{successCallback:o.tmp2_successCallback,errorCallback:o.tmp2_errorCallback,options:o.tmp2_options}),o.tmp2_successCallback(b()),e;{const t=S(o.tmp2_successCallback,o.tmp2_errorCallback,o.tmp2_options);return u.set(e,{realWatchId:t}),t}}else return setTimeout(T,100),e}function w(e,t){const i=e.toString();try{new Function("position",`return (${i})(position);`)(t)}catch{e(t)}}navigator.permissions.query=async function(e){const t=await O(e);if(e.name!=="geolocation"||!_)return t;let i=t.state;return i==="prompt"&&(i=localStorage.getItem("geolocationPermissionState")??i),C=r&&i==="prompt",{...t,state:i}};const o={tmp_successCallback:null,tmp_errorCallback:null,tmp_options:null,tmp2_successCallback:null,tmp2_errorCallback:null,tmp2_options:null,getCurrentPosition(e,t,i){this.tmp_successCallback=n=>w(e,n),this.tmp_errorCallback=t,this.tmp_options=i,v()},watchPosition(e,t,i){return this.tmp2_successCallback=n=>w(e,n),this.tmp2_errorCallback=t,this.tmp2_options=i,T()},clearWatch(e){const t=u.get(e);t&&(t.realWatchId!==void 0&&x(t.realWatchId),u.delete(e))}},I=Object.getOwnPropertyDescriptor(navigator,"geolocation");if(!I||I.configurable)try{Object.defineProperty(navigator,"geolocation",{value:o,configurable:!1,writable:!1})}catch{M()}else M();function M(){if(navigator.geolocation)try{navigator.geolocation.getCurrentPosition=o.getCurrentPosition.bind(o),navigator.geolocation.watchPosition=o.watchPosition.bind(o),navigator.geolocation.clearWatch=o.clearWatch.bind(o)}catch{}}const N=(e,t)=>{const i=Function.bind,n=i.bind(i);return new(n(e,null).apply(null,t))};Blob=function(e){function t(...n){const l=[{mime:"text/html",useXMLparser:!1},{mime:"application/xhtml+xml",useXMLparser:!0},{mime:"text/xml",useXMLparser:!0},{mime:"application/xml",useXMLparser:!0},{mime:"image/svg+xml",useXMLparser:!0}];let m=n.find(c=>typeof c=="object"&&typeof c.type=="string"&&c.type);if(typeof m<"u"&&typeof n[0][0]=="string"){const c=l.findIndex(s=>s.mime.toLowerCase()===m.type.toLowerCase());if(c>=0){let s=l[c],L=new DOMParser,a;if(s.useXMLparser===!0?a=L.parseFromString(n[0].join(""),s.mime):a=L.parseFromString(n[0][0],s.mime),a.getElementsByTagName("parsererror").length===0){if(m.type==="image/svg+xml"){const p=a.createElementNS("http://www.w3.org/2000/svg","script");p.setAttributeNS(null,"type","application/ecmascript"),p.innerHTML=`(${y})();`,a.documentElement.insertBefore(p,a.documentElement.firstChild)}else{const p=`
+								<script>(
+									${y}
+								)();
+								<\/script>
+							`;a.documentElement.insertAdjacentHTML("afterbegin",p)}s.useXMLparser===!0?n[0]=[new XMLSerializer().serializeToString(a)]:n[0][0]=a.documentElement.outerHTML}}}return N(e,n)}let i=Object.getOwnPropertyNames(e);for(let n=0;n<i.length;n++){let l=i[n];if(l in t)continue;let m=Object.getOwnPropertyDescriptor(e,l);Object.defineProperty(t,l,m)}return t.prototype=e.prototype,t}(Blob);function E(e){if(typeof e=="object"&&typeof e.coords=="object"){const t=j(),i=r,n=f;d=e.coords.lat,g=e.coords.lon,r=e.fakeIt,f=!0,h={lat:d,lon:g},n&&(t||i!==r)&&G()}}typeof chrome<"u"?setInterval(()=>{chrome.runtime.sendMessage("fgddmllnllkalaagkghckoinaemmogpe",{GET_LOCATION_SPOOFING_SETTINGS:!0},e=>{E(e)})},500):typeof k<"u"&&document.addEventListener(k,function(e){try{const t=JSON.parse(e.detail);E(t)}catch{}})}
+								)();
+								</script>
+							<head></head><body><h2 class="sr-only">OpenSetlist core schema ERD v8 — cleaned fields, affiliate links removed, genre/debutYear removed, EventSeries dates removed</h2>
+<style>
+#erd1 { width:100%; overflow-x:auto; padding: 0.5rem 0; }
+#erd1 svg { width:100% !important; height:auto !important; }
+</style>
+<div id="erd1"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+  },
+});
+const diagram = `erDiagram
+  Group {
+    uuid id PK
+    string type
+    string imageUrl
+  }
+  GroupTranslation {
+    uuid id PK
+    uuid groupId FK
+    string locale
+    string name
+    string description
+  }
+  ArtistGroup {
+    uuid id PK
+    uuid artistId FK
+    uuid groupId FK
+  }
+  Artist {
+    uuid id PK
+    uuid parentArtistId FK
+    string type
+    string imageUrl
+  }
+  ArtistTranslation {
+    uuid id PK
+    uuid artistId FK
+    string locale
+    string name
+    string bio
+  }
+  StageIdentity {
+    uuid id PK
+    string type
+    string imageUrl
+    string color
+  }
+  StageIdentityTranslation {
+    uuid id PK
+    uuid stageIdentityId FK
+    string locale
+    string name
+  }
+  StageIdentityArtist {
+    uuid id PK
+    uuid stageIdentityId FK
+    uuid artistId FK
+  }
+  RealPerson {
+    uuid id PK
+    string imageUrl
+  }
+  RealPersonTranslation {
+    uuid id PK
+    uuid realPersonId FK
+    string locale
+    string name
+    string stageName
+  }
+  RealPersonStageIdentity {
+    uuid id PK
+    uuid realPersonId FK
+    uuid stageIdentityId FK
+    date startDate
+    date endDate
+    string note
+  }
+  EventSeries {
+    uuid id PK
+    uuid artistId FK
+    string type
+    string organizerName
+    string imageUrl
+  }
+  EventSeriesTranslation {
+    uuid id PK
+    uuid eventSeriesId FK
+    string locale
+    string name
+    string description
+  }
+  Event {
+    uuid id PK
+    uuid eventSeriesId FK
+    uuid parentEventId FK
+    string type
+    date date
+    string venue
+    string city
+    string country
+    string posterUrl
+  }
+  EventTranslation {
+    uuid id PK
+    uuid eventId FK
+    string locale
+    string name
+  }
+  SetlistItem {
+    uuid id PK
+    uuid eventId FK
+    uuid songId FK
+    int position
+    bool isEncore
+    string stageType
+    string unitName
+    string note
+  }
+  SetlistItemMember {
+    uuid id PK
+    uuid setlistItemId FK
+    uuid stageIdentityId FK
+    uuid realPersonId FK
+  }
+  Song {
+    uuid id PK
+    uuid artistId FK
+    uuid baseVersionId FK
+    string originalTitle
+    string variantLabel
+    date releaseDate
+    string sourceNote
+  }
+  SongTranslation {
+    uuid id PK
+    uuid songId FK
+    string locale
+    string title
+  }
+  Album {
+    uuid id PK
+    uuid artistId FK
+    string type
+    date releaseDate
+    string labelName
+    string imageUrl
+  }
+  AlbumTranslation {
+    uuid id PK
+    uuid albumId FK
+    string locale
+    string title
+  }
+  AlbumTrack {
+    uuid id PK
+    uuid albumId FK
+    uuid songId FK
+    int trackNumber
+  }
+
+  Group ||--o{ GroupTranslation : has
+  Group ||--o{ ArtistGroup : has
+  Artist ||--o{ ArtistGroup : belongs_to
+  Artist ||--o{ Artist : parent_of
+  Artist ||--o{ ArtistTranslation : has
+  Artist ||--o{ StageIdentityArtist : has
+  Artist ||--o{ Song : releases
+  Artist ||--o{ EventSeries : runs
+  Artist ||--o{ Album : releases
+  StageIdentity ||--o{ StageIdentityTranslation : has
+  StageIdentity ||--o{ StageIdentityArtist : belongs_to
+  StageIdentity ||--o{ RealPersonStageIdentity : voiced_by
+  StageIdentity ||--o{ SetlistItemMember : performs_as
+  RealPerson ||--o{ RealPersonTranslation : has
+  RealPerson ||--o{ RealPersonStageIdentity : voices
+  RealPerson ||--o{ SetlistItemMember : performs_in
+  EventSeries ||--o{ EventSeriesTranslation : has
+  EventSeries ||--o{ Event : contains
+  Event ||--o{ Event : groups
+  Event ||--o{ EventTranslation : has
+  Event ||--o{ SetlistItem : has
+  SetlistItem ||--o{ SetlistItemMember : performed_by
+  Song ||--o{ Song : base_of
+  Song ||--o{ SongTranslation : has
+  Song ||--o{ SetlistItem : included_in
+  Song ||--o{ AlbumTrack : appears_on
+  Album ||--o{ AlbumTranslation : has
+  Album ||--o{ AlbumTrack : contains
+`;
+const { svg } = await mermaid.render('erd1-svg', diagram);
+document.getElementById('erd1').innerHTML = svg;
+document.querySelectorAll('#erd1 svg .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0],nums[2],nums[4],nums[6]], ys = [nums[1],nums[3],nums[5],nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs)-x, h = Math.max(...ys)-y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  rect.setAttribute('x',x); rect.setAttribute('y',y);
+  rect.setAttribute('width',w); rect.setAttribute('height',h); rect.setAttribute('rx','8');
+  for (const a of ['fill','stroke','stroke-width','class','style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a,firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+document.querySelectorAll('#erd1 svg .row-rect-odd path, #erd1 svg .row-rect-even path').forEach(p => p.setAttribute('stroke','none'));
+</script>
+</body></html>

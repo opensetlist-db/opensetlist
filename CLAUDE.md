@@ -82,32 +82,116 @@ model SongTranslation {
 
 ---
 
-## Core DB Schema (Prisma)
+## Core DB Schema (Prisma) — Final v9 + Community v4
 
-### Tables
+The complete schema is in `prisma/schema.prisma` (520 lines).
+See also: the ERD diagrams discussed with Claude.
+
+### Design Principles
+- All translatable entities have a `*Translation` table — new locales = new rows, no schema change
+- No affiliate/external URL fields in MVP — added later when monetization strategy is clear
+- Image URLs point to Cloudflare R2 only — no external image dependencies
+- `hasBoard` flag on `Group`, `Artist`, `EventSeries` — admin-controlled, prevents unbounded board creation
+
+---
+
+### Core Tables
+
+#### Group layer (above Artist)
+| Table | Purpose |
+|---|---|
+| `Group` | Flat tagging — franchises, labels, agencies, series. `hasBoard` admin-controlled. `category`: "anime"\|"kpop"\|"jpop"\|"game" |
+| `GroupTranslation` | Multilingual group names |
+| `ArtistGroup` | N:N between Artist and Group — one artist can belong to multiple groups |
+
+#### Artist layer
+| Table | Purpose |
+|---|---|
+| `Artist` | Performing entity. `parentArtistId` self-references for sub-units. `type`: "solo"\|"group"\|"unit"\|"band". `hasBoard` default true |
+| `ArtistTranslation` | Multilingual artist names |
+
+#### Performer layer
+| Table | Purpose |
+|---|---|
+| `StageIdentity` | The name fans identify performers by. `type`: "character" (anime) \| "persona" (K-POP). Has `color` for personal colors |
+| `StageIdentityTranslation` | Multilingual character/member names |
+| `StageIdentityArtist` | N:N — one StageIdentity can belong to multiple Artists (Megumi → 蓮ノ空, Mira-Cra Park!, KahoMegu♡Gelato) |
+| `RealPerson` | The actual human performer — VA for anime, same as persona for K-POP |
+| `RealPersonTranslation` | Multilingual real person names |
+| `RealPersonStageIdentity` | Time-aware N:N — handles VA changes (`startDate`/`endDate`), one-day covers (`note`) |
+
+#### Event layer
+| Table | Purpose |
+|---|---|
+| `EventSeries` | Groups related events. `artistId` null for multi-artist festivals. `parentSeriesId` self-references for nested series. `hasBoard` admin-controlled |
+| `EventSeriesTranslation` | Multilingual series names |
+| `Event` | One concert date or leg-group container. `status`: "upcoming"\|"ongoing"\|"completed"\|"cancelled". `parentEventId` for leg grouping. `date` null for containers |
+| `EventTranslation` | Multilingual event names |
+
+#### Setlist layer
+| Table | Purpose |
+|---|---|
+| `SetlistItem` | One performance slot. `stageType`: "full_group"\|"unit"\|"solo"\|"special". `status`: "rumoured"\|"live"\|"confirmed". `unitName` free text |
+| `SetlistItemSong` | N:N — one item can contain multiple songs (medley support). Has `order` field |
+| `SetlistItemMember` | Who performed — always has `stageIdentityId`, optional `realPersonId` (null if unknown) |
+
+#### Music layer
+| Table | Purpose |
+|---|---|
+| `Song` | No `artistId` — credits via `SongArtist`. `baseVersionId` self-references for variants. `variantLabel`: "SAKURA Ver." etc. `sourceNote` free text for edge cases |
+| `SongArtist` | N:N — one song can be credited to multiple artists (collaboration). `role`: "primary"\|"featured"\|"cover" |
+| `SongTranslation` | Multilingual song titles |
+| `Album` | `type`: "single"\|"album"\|"ep"\|"live_album"\|"soundtrack". Has `labelName` (per-release label may differ) |
+| `AlbumTranslation` | Multilingual album titles |
+| `AlbumTrack` | N:N — one song can appear on multiple albums |
+
+---
+
+### Community Tables
 
 | Table | Purpose |
 |---|---|
-| `User` | User accounts, preferred locale |
-| `Artist` | Artists, voice actors, groups |
-| `ArtistTranslation` | Multilingual artist names and bios |
-| `Song` | Songs (original title, source anime/game) |
-| `SongTranslation` | Multilingual song titles |
-| `Event` | Live events (includes `bluRayUrl`, `ticketUrl`, `merchUrl` for affiliate links) |
-| `EventTranslation` | Multilingual event names |
-| `Setlist` | Event × Artist combination |
-| `SetlistItem` | Songs within a setlist (`position`, `isEncore`) |
-| `Comment` | Comments on song/event pages (with replies) |
-| `CommentTranslation` | Cached comment translations |
-| `CommentLike` | Comment likes |
+| `User` | `preferredLocale` drives auto-translation display. `contributionCount` denormalized cache |
+| `Comment` | See comment system design below |
+| `CommentTranslation` | Cached auto-translation per `targetLocale`. `@@unique([commentId, targetLocale])` |
+| `CommentLike` | Simple junction — `@@unique([commentId, userId])` |
+| `CommentEdit` | Append-only audit trail — every content change logged here |
+
+---
 
 ### Key Design Decisions
-- `SetlistItem.position` — records exact performance order
-- `SetlistItem.isEncore` — distinguishes encore songs
-- `Comment.targetType` + `Comment.targetId` — single table handles both song and event comments
-- `Comment.parentId` — supports one level of replies
-- `CommentTranslation.@@unique([commentId, targetLocale])` — acts as translation cache, prevents duplicate API calls
-- `Event.bluRayUrl` / `Event.ticketUrl` / `Event.merchUrl` — affiliate link fields added to Event model
+
+**Sub-units as Artists:**
+Cerise Bouquet, DOLLCHESTRA, Mira-Cra Park! are all `Artist` entries with `parentArtistId → 蓮ノ空`.
+Sub-unit membership is implicit from which songs they perform together via `SetlistItemMember`.
+
+**Song variants:**
+"Dream Believers (SAKURA Ver.)" has `baseVersionId → "Dream Believers"` and `variantLabel: "SAKURA Ver."`.
+
+**Medleys:**
+`SetlistItemSong` junction table with `order` field. `SetlistItem` has no direct `songId`.
+
+**Collaborations:**
+`SongArtist` junction with `role`. "Link to the FUTURE" → three SongArtist rows.
+
+**Guest performers:**
+Guests (e.g. Miyake Miu before joining as member) get a `Member`/`StageIdentity` row from day one.
+Their 4th Live appearance is a normal `SetlistItemMember` row. No special guest handling needed.
+
+**Multi-artist events:**
+이차원 페스 gets an `EventSeries` with `artistId: null` and `organizerName: "Bandai Namco / Lantis"`.
+Each performing artist gets their own `SetlistItem` rows under the same `Event`.
+
+**EventSeries nesting:**
+`EventSeries.parentSeriesId` self-references. "Animelo 2023" → parent: "Animelo Summer Live" brand.
+
+**Event leg grouping:**
+`Event.parentEventId` self-references. "Kobe Day 1" + "Kobe Day 2" share `parentEventId → "Kobe leg"`.
+Leg container events have `date: null`.
+
+**VA changes:**
+`RealPersonStageIdentity` has `startDate`/`endDate` for time-aware VA tracking.
+`SetlistItemMember.realPersonId` is always explicit — never inferred from dates.
 
 ---
 
@@ -556,6 +640,91 @@ covers this.
 ---
 
 *Generated from Claude conversation — 2026-04-07*
+
+---
+
+
+---
+
+## Comment System Design
+
+### Comment Boards (where comments can be posted)
+```
+✅ SetlistItem   — specific song performance
+✅ Song          — all performances of a song
+✅ Event         — a specific concert date
+✅ EventSeries   — an entire tour/festival series
+✅ Artist        — artist discussion board
+✅ Group         — franchise/label discussion (hasBoard=true only)
+❌ StageIdentity — excluded (covered by Artist board)
+❌ RealPerson    — excluded (real-person boards are a safety concern)
+❌ Album         — excluded (discussion happens on Song pages)
+```
+
+### Roll-up Ancestry
+A comment posted at the most specific level automatically appears at all parent levels.
+All ancestry fields are server-computed at write time and immutable after creation.
+Client NEVER sends ancestry fields — server resolves them from DB.
+
+```
+6 roll-up arrays (PostgreSQL native arrays, GIN-indexed):
+  rollupSongIds[]        songs of setlist item (medley: multiple songs)
+  rollupEventIds[]       leaf event + all ancestor events (any depth)
+  rollupEventSeriesIds[] direct series + all ancestor series (any depth)
+  rollupArtistIds[]      direct artists + all parent artists (any depth)
+  rollupGroupIds[]       hasBoard=true groups only — admin-governed
+  rollupCategories[]     ["anime"] | ["kpop"] | ["jpop"] etc.
+```
+
+Example: comment on "Hanamusubi" SetlistItem at 4th Live Kobe Day 2 appears on:
+```
+SetlistItem:    Hanamusubi @ Kobe Day 2
+Song:           Hanamusubi
+Event:          Kobe Day 2
+Event:          Kobe leg (parent event)
+EventSeries:    4th Live Dream ~Bloom~
+Artist:         Cerise Bouquet
+Artist:         蓮ノ空 (parent artist)
+Group:          Love Live! series (hasBoard=true)
+Category:       anime
+```
+
+### Board Governance
+- `Group.hasBoard` — admin-only toggle. Prevents unbounded board creation from crowdsourced group additions.
+- `Artist.hasBoard` — default true for most artists.
+- `EventSeries.hasBoard` — default false, admin enables for major series.
+- `rollupGroupIds` only includes groups where `hasBoard=true` at write time.
+- If `hasBoard` is later enabled, a reindex job can backfill existing comments.
+
+### Comment Integrity Rules
+- **Target fields immutable** — users can never move a comment to a different entity.
+- **Ancestry immutable** — computed once at write, never updated (except admin reindex).
+- **Content editable** — by owner only, every change logged in `CommentEdit`.
+- **Soft delete only** — `isDeleted=true`, content replaced with "[deleted]", row kept for reply thread integrity.
+- **No hard deletes** — ensures roll-up queries always return consistent counts.
+
+### Auto-translation
+- Language detected at write time via `tinyld` library → stored in `detectedLocale`.
+- Translation cached in `CommentTranslation` (`@@unique([commentId, targetLocale])`).
+- First viewer triggers API call (Papago for ko↔ja, DeepL for others) → cached for all subsequent viewers.
+- UI shows translated text by default + "Show original" toggle.
+
+### Live Event Support (Use Case 3)
+- `Event.status = "ongoing"` activates real-time mode in UI.
+- `SetlistItem.status = "live"` marks song currently being performed.
+- `SetlistItem.status = "rumoured"` for pre-event fan predictions.
+- `Comment.mentionedSongId` — optional song tag for event-level comments during live viewing
+  (before the SetlistItem row exists in DB).
+- Supabase Realtime subscriptions on `SetlistItem` and `Comment` for live updates (Phase 3).
+
+### CommentEdit — Audit Trail
+Append-only table. Every content edit creates a new row:
+```
+CommentEdit: { oldContent, newContent, editedAt, userId }
+```
+- `Comment.content` always reflects current content.
+- `CommentEdit` is the full immutable history.
+- Moderators can view edit history to detect abuse.
 
 ---
 
