@@ -16,6 +16,7 @@ export function slugify(text: string): string {
 /**
  * Serialize BigInt values to numbers for JSON compatibility.
  * Prisma returns BigInt for @id @default(autoincrement()) fields.
+ * At runtime, bigint fields become numbers after JSON round-trip.
  */
 export function serializeBigInt<T>(obj: T): T {
   return JSON.parse(
