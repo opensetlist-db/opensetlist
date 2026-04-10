@@ -8,7 +8,7 @@ export async function verifyAdmin() {
   const cookieStore = await cookies();
   const session = cookieStore.get(COOKIE_NAME);
   if (session?.value !== SESSION_TOKEN) {
-    redirect("/admin/login");
+    redirect("/admin-login");
   }
 }
 
