@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import DeleteButton from "../DeleteButton";
 
 export default async function GroupsListPage() {
   const groups = await prisma.group.findMany({
@@ -39,13 +40,14 @@ export default async function GroupsListPage() {
                 <td className="py-2">{group.type ?? "—"}</td>
                 <td className="py-2">{group.category ?? "—"}</td>
                 <td className="py-2">{group.hasBoard ? "O" : "X"}</td>
-                <td className="py-2">
+                <td className="py-2 space-x-2">
                   <Link
                     href={`/admin/groups/${group.id}/edit`}
                     className="text-blue-600 hover:underline"
                   >
                     편집
                   </Link>
+                  <DeleteButton url={`/api/admin/groups/${group.id}`} />
                 </td>
               </tr>
             );

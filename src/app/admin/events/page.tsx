@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, formatDate } from "@/lib/utils";
+import DeleteButton from "../DeleteButton";
 
 export default async function EventsListPage() {
   const events = await prisma.event.findMany({
@@ -73,6 +74,7 @@ export default async function EventsListPage() {
                   >
                     편집
                   </Link>
+                  <DeleteButton url={`/api/admin/events/${event.id}`} />
                 </td>
               </tr>
             );

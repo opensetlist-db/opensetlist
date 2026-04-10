@@ -12,11 +12,42 @@ export default async function EditArtistPage({ params }: Props) {
     include: {
       translations: true,
       groupLinks: true,
+      stageLinks: {
+        include: {
+          stageIdentity: {
+            include: {
+              translations: true,
+              voicedBy: {
+                where: { endDate: null },
+                include: {
+                  realPerson: { include: { translations: true } },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
   if (!artist) notFound();
 
   const data = serializeBigInt(artist);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existingStageIdentities = data.stageLinks.map((sl: any) => {
+    const siTranslations = sl.stageIdentity.translations as { locale: string; name: string }[];
+    const siTr = siTranslations.find((t) => t.locale === "ko") ?? siTranslations[0];
+    const va = sl.stageIdentity.voicedBy[0];
+    const vaTranslations = va?.realPerson?.translations as { locale: string; name: string; stageName?: string }[] | undefined;
+    const vaTr = vaTranslations?.find((t) => t.locale === "ko") ?? vaTranslations?.[0];
+    return {
+      id: sl.stageIdentity.id as string,
+      type: sl.stageIdentity.type as string,
+      color: sl.stageIdentity.color as string | null,
+      name: siTr?.name ?? "Unknown",
+      vaName: vaTr ? (vaTr.stageName ?? vaTr.name) : null,
+    };
+  });
 
   return (
     <div>
@@ -25,7 +56,9 @@ export default async function EditArtistPage({ params }: Props) {
         initialData={{
           id: Number(data.id),
           type: data.type,
-          parentArtistId: data.parentArtistId ? Number(data.parentArtistId) : null,
+          parentArtistId: data.parentArtistId
+            ? Number(data.parentArtistId)
+            : null,
           hasBoard: data.hasBoard,
           translations: data.translations.map((t) => ({
             locale: t.locale,
@@ -35,6 +68,7 @@ export default async function EditArtistPage({ params }: Props) {
           groupIds: data.groupLinks.map(
             (gl: { groupId: string }) => gl.groupId
           ),
+          existingStageIdentities,
         }}
       />
     </div>

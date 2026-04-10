@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import DeleteButton from "../DeleteButton";
 
 export default async function SongsListPage() {
   const songs = await prisma.song.findMany({
@@ -59,13 +60,14 @@ export default async function SongsListPage() {
                 </td>
                 <td className="py-2 text-zinc-500">{song.originalTitle}</td>
                 <td className="py-2 text-zinc-500">{artistNames || "—"}</td>
-                <td className="py-2">
+                <td className="py-2 space-x-2">
                   <Link
                     href={`/admin/songs/${song.id}/edit`}
                     className="text-blue-600 hover:underline"
                   >
                     편집
                   </Link>
+                  <DeleteButton url={`/api/admin/songs/${song.id}`} />
                 </td>
               </tr>
             );

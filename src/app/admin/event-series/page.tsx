@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import DeleteButton from "../DeleteButton";
 
 export default async function EventSeriesListPage() {
   const series = await prisma.eventSeries.findMany({
@@ -48,13 +49,14 @@ export default async function EventSeriesListPage() {
                 <td className="py-2 text-zinc-500">
                   {artistTr?.name ?? s.organizerName ?? "—"}
                 </td>
-                <td className="py-2">
+                <td className="py-2 space-x-2">
                   <Link
                     href={`/admin/event-series/${s.id}/edit`}
                     className="text-blue-600 hover:underline"
                   >
                     편집
                   </Link>
+                  <DeleteButton url={`/api/admin/event-series/${s.id}`} />
                 </td>
               </tr>
             );
