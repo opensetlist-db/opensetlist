@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { josa } from "es-hangul";
 
 type Translation = { locale: string; name: string; bio: string };
 type StageIdentityInput = {
@@ -551,7 +552,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!confirm(`"${si.name}"을(를) 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) return;
+                          if (!confirm(`${josa(si.name, "을/를")} 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) return;
                           const res = await fetch(`/api/admin/stage-identities/${si.id}`, {
                             method: "DELETE",
                           });
