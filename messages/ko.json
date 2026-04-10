@@ -1,6 +1,87 @@
 {
   "Home": {
     "title": "오픈셋리스트",
-    "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스"
+    "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
+    "recentEvents": "최근 이벤트",
+    "upcomingEvents": "예정된 이벤트",
+    "noEvents": "등록된 이벤트가 없습니다.",
+    "viewAll": "전체 보기"
+  },
+  "Common": {
+    "notFound": "페이지를 찾을 수 없습니다.",
+    "backToHome": "홈으로 돌아가기",
+    "noData": "데이터가 없습니다.",
+    "event": "이벤트",
+    "events": "이벤트",
+    "artist": "아티스트",
+    "artists": "아티스트",
+    "song": "곡",
+    "songs": "곡",
+    "series": "시리즈",
+    "setlist": "세트리스트",
+    "encore": "앙코르",
+    "date": "날짜",
+    "venue": "장소",
+    "status": "상태"
+  },
+  "Artist": {
+    "title": "아티스트",
+    "type": {
+      "solo": "솔로",
+      "group": "그룹",
+      "unit": "유닛",
+      "band": "밴드"
+    },
+    "subUnits": "유닛",
+    "members": "멤버",
+    "groups": "소속 그룹",
+    "eventHistory": "이벤트 참여 이력",
+    "songs": "곡 목록",
+    "noEvents": "참여한 이벤트가 없습니다.",
+    "noSongs": "등록된 곡이 없습니다."
+  },
+  "Song": {
+    "title": "곡",
+    "originalTitle": "원제",
+    "releaseDate": "발매일",
+    "artists": "아티스트",
+    "variants": "버전",
+    "performanceHistory": "공연 이력",
+    "noPerformances": "공연 기록이 없습니다.",
+    "role": {
+      "primary": "메인",
+      "featured": "피처링",
+      "cover": "커버"
+    }
+  },
+  "Event": {
+    "title": "이벤트",
+    "setlist": "세트리스트",
+    "noSetlist": "세트리스트가 등록되지 않았습니다.",
+    "performers": "출연진",
+    "status": {
+      "upcoming": "예정",
+      "ongoing": "진행 중",
+      "completed": "종료",
+      "cancelled": "취소"
+    },
+    "stageType": {
+      "full_group": "전체",
+      "unit": "유닛",
+      "solo": "솔로",
+      "special": "스페셜"
+    }
+  },
+  "EventSeries": {
+    "title": "시리즈",
+    "type": {
+      "concert_tour": "콘서트 투어",
+      "festival": "페스티벌",
+      "fan_meeting": "팬미팅",
+      "one_time": "단독 공연"
+    },
+    "organizer": "주최",
+    "events": "이벤트 목록",
+    "noEvents": "등록된 이벤트가 없습니다."
   }
 }
