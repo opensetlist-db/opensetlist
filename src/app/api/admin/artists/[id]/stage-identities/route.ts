@@ -8,8 +8,20 @@ export async function POST(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
   const body = await request.json();
-  const { type, color, translations, realPerson } = body;
+  const { existingStageIdentityId, type, color, translations, realPerson } = body;
 
+  // Link existing stage identity to this artist
+  if (existingStageIdentityId) {
+    const link = await prisma.stageIdentityArtist.create({
+      data: {
+        stageIdentityId: existingStageIdentityId,
+        artistId,
+      },
+    });
+    return NextResponse.json(serializeBigInt(link), { status: 201 });
+  }
+
+  // Create new stage identity
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
       type,

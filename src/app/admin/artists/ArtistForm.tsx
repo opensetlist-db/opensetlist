@@ -21,6 +21,12 @@ type ExistingStageIdentity = {
   vaName: string | null;
 };
 
+type AllStageIdentityOption = {
+  id: string;
+  name: string;
+  artistName: string;
+};
+
 type ArtistFormProps = {
   initialData?: {
     id: number;
@@ -56,13 +62,23 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     []
   );
 
-  // Available groups and artists for selectors
+  const [editingSI, setEditingSI] = useState<string | null>(null);
+  const [editSIType, setEditSIType] = useState("character");
+  const [editSIColor, setEditSIColor] = useState("");
+  const [editSIName, setEditSIName] = useState("");
+  const [showLinkSI, setShowLinkSI] = useState(false);
+  const [existingSIs, setExistingSIs] = useState(
+    initialData?.existingStageIdentities ?? []
+  );
+
+  // Available groups, artists, and all stage identities for selectors
   const [groups, setGroups] = useState<
     { id: string; translations: { locale: string; name: string }[] }[]
   >([]);
   const [artists, setArtists] = useState<
     { id: number; translations: { locale: string; name: string }[] }[]
   >([]);
+  const [allSIOptions, setAllSIOptions] = useState<AllStageIdentityOption[]>([]);
 
   useEffect(() => {
     fetch("/api/admin/groups")
@@ -71,7 +87,27 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     fetch("/api/admin/artists")
       .then((r) => r.json())
       .then(setArtists);
-  }, []);
+    if (initialData) {
+      fetch("/api/admin/stage-identities")
+        .then((r) => r.json())
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then((data: any[]) =>
+          setAllSIOptions(
+            data.map((si) => ({
+              id: si.id,
+              name:
+                si.translations.find((t: { locale: string }) => t.locale === "ko")?.name ??
+                si.translations[0]?.name ??
+                "Unknown",
+              artistName:
+                si.artistLinks?.[0]?.artist?.translations?.find(
+                  (t: { locale: string }) => t.locale === "ko"
+                )?.name ?? "",
+            }))
+          )
+        );
+    }
+  }, [initialData]);
 
   function updateTranslation(
     index: number,
@@ -395,28 +431,167 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         </div>
 
         {/* Existing stage identities (edit mode) */}
-        {initialData?.existingStageIdentities && initialData.existingStageIdentities.length > 0 && (
+        {existingSIs.length > 0 && (
           <div className="mb-3 space-y-2">
-            {initialData.existingStageIdentities.map((si) => (
-              <div
-                key={si.id}
-                className="flex items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3"
-              >
-                {si.color && (
-                  <span
-                    className="inline-block h-3 w-3 rounded-full"
-                    style={{ backgroundColor: si.color }}
-                  />
-                )}
-                <span className="font-medium">{si.name}</span>
-                <span className="text-xs text-zinc-400">{si.type}</span>
-                {si.vaName && (
-                  <span className="text-sm text-zinc-500">
-                    (CV: {si.vaName})
-                  </span>
+            {existingSIs.map((si) => (
+              <div key={si.id}>
+                {editingSI === si.id ? (
+                  <div className="rounded border border-blue-200 bg-blue-50 p-3 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <select
+                        value={editSIType}
+                        onChange={(e) => setEditSIType(e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                      >
+                        <option value="character">캐릭터</option>
+                        <option value="persona">페르소나</option>
+                      </select>
+                      <input
+                        placeholder="컬러 (#FF69B4)"
+                        value={editSIColor}
+                        onChange={(e) => setEditSIColor(e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                      />
+                      <input
+                        placeholder="이름"
+                        value={editSIName}
+                        onChange={(e) => setEditSIName(e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const res = await fetch(`/api/admin/stage-identities/${si.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              type: editSIType,
+                              color: editSIColor || null,
+                              translations: [{ locale: "ko", name: editSIName }],
+                            }),
+                          });
+                          if (res.ok) {
+                            setExistingSIs((prev) =>
+                              prev.map((s) =>
+                                s.id === si.id
+                                  ? { ...s, type: editSIType, color: editSIColor || null, name: editSIName }
+                                  : s
+                              )
+                            );
+                            setEditingSI(null);
+                          } else {
+                            alert("저장에 실패했습니다.");
+                          }
+                        }}
+                        className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSI(null)}
+                        className="rounded border border-zinc-300 px-3 py-1 text-xs hover:bg-zinc-50"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded border border-zinc-200 bg-zinc-50 p-3">
+                    {si.color && (
+                      <span
+                        className="inline-block h-3 w-3 rounded-full"
+                        style={{ backgroundColor: si.color }}
+                      />
+                    )}
+                    <span className="font-medium">{si.name}</span>
+                    <span className="text-xs text-zinc-400">{si.type}</span>
+                    {si.vaName && (
+                      <span className="text-sm text-zinc-500">
+                        (CV: {si.vaName})
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSI(si.id);
+                        setEditSIType(si.type);
+                        setEditSIColor(si.color ?? "");
+                        setEditSIName(si.name);
+                      }}
+                      className="ml-auto text-sm text-blue-600 hover:underline"
+                    >
+                      편집
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Link existing stage identity */}
+        {initialData && (
+          <div className="mb-3">
+            {showLinkSI ? (
+              <div className="rounded border border-zinc-200 bg-white p-3 space-y-2">
+                <label className="block text-xs font-medium">기존 멤버 연결</label>
+                <select
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  defaultValue=""
+                  onChange={async (e) => {
+                    const siId = e.target.value;
+                    if (!siId) return;
+                    const res = await fetch(
+                      `/api/admin/artists/${initialData.id}/stage-identities`,
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ existingStageIdentityId: siId }),
+                      }
+                    );
+                    if (res.ok) {
+                      const linked = allSIOptions.find((s) => s.id === siId);
+                      if (linked) {
+                        setExistingSIs((prev) => [
+                          ...prev,
+                          { id: linked.id, type: "character", color: null, name: linked.name, vaName: null },
+                        ]);
+                      }
+                      setShowLinkSI(false);
+                    } else {
+                      alert("이미 연결되어 있거나 오류가 발생했습니다.");
+                    }
+                  }}
+                >
+                  <option value="">선택...</option>
+                  {allSIOptions
+                    .filter((si) => !existingSIs.some((e) => e.id === si.id))
+                    .map((si) => (
+                      <option key={si.id} value={si.id}>
+                        {si.name} {si.artistName ? `(${si.artistName})` : ""}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowLinkSI(false)}
+                  className="text-sm text-zinc-500 hover:underline"
+                >
+                  취소
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowLinkSI(true)}
+                className="text-sm text-zinc-500 hover:underline"
+              >
+                기존 멤버 연결
+              </button>
+            )}
           </div>
         )}
 
