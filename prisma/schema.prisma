@@ -1,6 +1,21 @@
 // schema.prisma — OpenSetlist
 // Supports: anime/game music, J-POP, K-POP, C-POP
 // Core v9 + Community v4
+//
+// Prisma 7 notes:
+//   - datasource url/directUrl are in prisma.config.ts, NOT here
+//   - generator uses provider = "prisma-client" (Prisma 7 style)
+//   - PrismaClient initialized with PrismaPg adapter in src/lib/prisma.ts
+//
+// ID strategy:
+//   BigInt @default(autoincrement()) — public-facing tables (appear in URLs)
+//     Artist, Song, Event, EventSeries, SetlistItem
+//   String @default(uuid())         — all other tables (junction, translation, community)
+//
+// Soft delete:
+//   isDeleted + deletedAt on content tables: Artist, Song, Event, EventSeries,
+//   SetlistItem, User. Junction/translation tables are hard-deleted when parent
+//   is soft-deleted.
 
 generator client {
   provider = "prisma-client"
@@ -9,6 +24,84 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // url and directUrl live in prisma.config.ts — do not add them here
+}
+
+// ── ENUMS ─────────────────────────────────────────────
+
+enum GroupType {
+  franchise
+  label
+  agency
+  series
+}
+
+enum GroupCategory {
+  anime
+  kpop
+  jpop
+  cpop
+  game
+}
+
+enum ArtistType {
+  solo
+  group
+  unit
+  band
+}
+
+enum StageIdentityType {
+  character  // fictional anime/game character voiced by a VA
+  persona    // real person performing as themselves (K-POP, J-POP)
+}
+
+enum EventSeriesType {
+  concert_tour
+  festival
+  fan_meeting
+  one_time
+}
+
+enum EventType {
+  concert
+  festival
+  fan_meeting
+  showcase
+}
+
+enum EventStatus {
+  upcoming
+  ongoing
+  completed
+  cancelled
+}
+
+enum SetlistItemStageType {
+  full_group
+  unit
+  solo
+  special
+}
+
+enum SetlistItemStatus {
+  rumoured   // fan prediction before event
+  live       // currently being performed (real-time)
+  confirmed  // verified after performance
+}
+
+enum SongArtistRole {
+  primary
+  featured
+  cover
+}
+
+enum AlbumType {
+  single
+  album
+  ep
+  live_album
+  soundtrack
 }
 
 // ── GROUP ─────────────────────────────────────────────
@@ -16,10 +109,11 @@ datasource db {
 // Represents franchises, labels, agencies, series.
 // hasBoard: admin-controlled — only true groups become discussion boards.
 // rollupGroupIds on Comment only includes groups where hasBoard = true.
+// UUID: groups don't appear directly in public URLs.
 model Group {
   id           String             @id @default(uuid())
-  type         String?            // "franchise" | "label" | "agency" | "series"
-  category     String?            // "anime" | "kpop" | "jpop" | "cpop" | "game"
+  type         GroupType?
+  category     GroupCategory?
   hasBoard     Boolean            @default(false)
   imageUrl     String?
   createdAt    DateTime           @default(now())
@@ -44,12 +138,15 @@ model GroupTranslation {
 // Performing entity — a group, unit, solo artist, or band.
 // parentArtistId handles sub-units (Cerise Bouquet → 蓮ノ空).
 // hasBoard: most artists get a board by default.
+// BigInt: appears in public URLs e.g. /artists/42
 model Artist {
-  id             String              @id @default(uuid())
-  parentArtistId String?
-  type           String              // "solo" | "group" | "unit" | "band"
+  id             BigInt              @id @default(autoincrement())
+  parentArtistId BigInt?
+  type           ArtistType
   hasBoard       Boolean             @default(true)
   imageUrl       String?
+  isDeleted      Boolean             @default(false)
+  deletedAt      DateTime?
   createdAt      DateTime            @default(now())
 
   parentArtist   Artist?             @relation("ArtistChildren", fields: [parentArtistId], references: [id])
@@ -62,11 +159,12 @@ model Artist {
   albums         Album[]
 
   @@index([parentArtistId])
+  @@index([isDeleted])
 }
 
 model ArtistTranslation {
   id       String  @id @default(uuid())
-  artistId String
+  artistId BigInt
   locale   String
   name     String
   bio      String?
@@ -79,7 +177,7 @@ model ArtistTranslation {
 // N:N between Artist and Group
 model ArtistGroup {
   id       String @id @default(uuid())
-  artistId String
+  artistId BigInt
   groupId  String
 
   artist   Artist @relation(fields: [artistId], references: [id])
@@ -93,12 +191,13 @@ model ArtistGroup {
 // The name/persona fans identify performers by.
 // type: "character" for anime idols (Kozue), "persona" for K-POP (Jin).
 // A StageIdentity belongs to one or more Artists via StageIdentityArtist.
+// UUID: not a primary search entity, referenced via Artist pages.
 model StageIdentity {
-  id           String                  @id @default(uuid())
-  type         String                  // "character" | "persona"
+  id           String                     @id @default(uuid())
+  type         StageIdentityType
   imageUrl     String?
-  color        String?                 // personal color e.g. "#FF69B4" — nullable for K-POP
-  createdAt    DateTime                @default(now())
+  color        String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
+  createdAt    DateTime                   @default(now())
 
   translations StageIdentityTranslation[]
   artistLinks  StageIdentityArtist[]
@@ -110,7 +209,7 @@ model StageIdentityTranslation {
   id              String        @id @default(uuid())
   stageIdentityId String
   locale          String
-  name            String        // character/member name in this language
+  name            String
 
   stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
   @@unique([stageIdentityId, locale])
@@ -122,7 +221,7 @@ model StageIdentityTranslation {
 model StageIdentityArtist {
   id              String        @id @default(uuid())
   stageIdentityId String
-  artistId        String
+  artistId        BigInt
 
   stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
   artist          Artist        @relation(fields: [artistId], references: [id])
@@ -135,6 +234,7 @@ model StageIdentityArtist {
 // The actual human performer.
 // For K-POP: linked 1:1 to their StageIdentity.
 // For anime: linked to the character they voice via RealPersonStageIdentity.
+// UUID: referenced via StageIdentity, not a primary URL entity.
 model RealPerson {
   id              String                    @id @default(uuid())
   imageUrl        String?
@@ -149,7 +249,7 @@ model RealPersonTranslation {
   id           String     @id @default(uuid())
   realPersonId String
   locale       String
-  name         String     // real name in this language
+  name         String
   stageName    String?    // stage name if different from real name
 
   realPerson   RealPerson @relation(fields: [realPersonId], references: [id])
@@ -175,18 +275,20 @@ model RealPersonStageIdentity {
 
 // ── EVENT SERIES ──────────────────────────────────────
 // Groups related events under a named series.
-// Covers: concert tours, annual festivals, one-time events.
 // artistId: null for multi-artist festival series (Animelo, 이차원 페스).
 // parentSeriesId: self-referencing for nested series (Animelo 2023 → Animelo brand).
 // hasBoard: admin-controlled board visibility.
+// BigInt: appears in public URLs e.g. /series/7
 model EventSeries {
-  id             String                   @id @default(uuid())
-  artistId       String?
-  parentSeriesId String?
-  type           String                   // "concert_tour" | "festival" | "fan_meeting" | "one_time"
-  organizerName  String?                  // free text for festival organizers
+  id             BigInt                   @id @default(autoincrement())
+  artistId       BigInt?
+  parentSeriesId BigInt?
+  type           EventSeriesType
+  organizerName  String?
   hasBoard       Boolean                  @default(false)
   imageUrl       String?
+  isDeleted      Boolean                  @default(false)
+  deletedAt      DateTime?
   createdAt      DateTime                 @default(now())
 
   artist         Artist?                  @relation(fields: [artistId], references: [id])
@@ -197,11 +299,12 @@ model EventSeries {
 
   @@index([artistId])
   @@index([parentSeriesId])
+  @@index([isDeleted])
 }
 
 model EventSeriesTranslation {
   id            String      @id @default(uuid())
-  eventSeriesId String
+  eventSeriesId BigInt
   locale        String
   name          String
   description   String?
@@ -215,21 +318,22 @@ model EventSeriesTranslation {
 // One event = one concert date OR a leg/group container.
 // eventSeriesId: optional — null for truly standalone events.
 // parentEventId: optional — for leg/day grouping within a series.
-//   e.g. "Kobe leg" groups "Kobe Day 1" and "Kobe Day 2".
-// date: null for leg-group container events (no specific date).
-// status: drives UI mode (upcoming/ongoing/completed/cancelled).
+// date: null for leg-group container events.
+// status: drives UI mode.
+// BigInt: appears in public URLs e.g. /events/123
 model Event {
-  id            String             @id @default(uuid())
-  eventSeriesId String?
-  parentEventId String?
-  type          String             // "concert" | "festival" | "fan_meeting" | "showcase"
-  status        String             @default("upcoming")
-                                   // "upcoming" | "ongoing" | "completed" | "cancelled"
-  date          DateTime?          @db.Date  // null for leg-group containers
+  id            BigInt             @id @default(autoincrement())
+  eventSeriesId BigInt?
+  parentEventId BigInt?
+  type          EventType
+  status        EventStatus        @default(upcoming)
+  date          DateTime?          @db.Date
   venue         String?
   city          String?
   country       String?            // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl     String?
+  isDeleted     Boolean            @default(false)
+  deletedAt     DateTime?
   createdAt     DateTime           @default(now())
 
   eventSeries   EventSeries?       @relation(fields: [eventSeriesId], references: [id])
@@ -240,12 +344,13 @@ model Event {
 
   @@index([eventSeriesId])
   @@index([parentEventId])
-  @@index([date])
+  @@index([date, status])
+  @@index([isDeleted])
 }
 
 model EventTranslation {
   id      String @id @default(uuid())
-  eventId String
+  eventId BigInt
   locale  String
   name    String
 
@@ -258,35 +363,35 @@ model EventTranslation {
 // One row = one performance slot in a concert.
 // Songs linked via SetlistItemSong (supports medleys).
 // Performers linked via SetlistItemMember.
-// stageType: drives who performed ("full_group" | "unit" | "solo" | "special").
-// status: "rumoured" for pre-event predictions, "live" during event, "confirmed" after.
+// BigInt: appears in public URLs e.g. /events/123#item-456
 model SetlistItem {
-  id          String              @id @default(uuid())
-  eventId     String
-  position    Int                 // performance order (1, 2, 3...)
-  isEncore    Boolean             @default(false)
-  stageType   String              @default("full_group")
-                                  // "full_group" | "unit" | "solo" | "special"
-  unitName    String?             // e.g. "102nd Class" | "Guilty Kiss" | "EXO-CBX"
-  note        String?             // "acoustic ver." | "world premiere" | "live debut"
-  status      String              @default("confirmed")
-                                  // "rumoured" | "live" | "confirmed"
-  createdAt   DateTime            @default(now())
+  id          BigInt               @id @default(autoincrement())
+  eventId     BigInt
+  position    Int
+  isEncore    Boolean              @default(false)
+  stageType   SetlistItemStageType @default(full_group)
+  unitName    String?
+  note        String?
+  status      SetlistItemStatus    @default(confirmed)
+  isDeleted   Boolean              @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime             @default(now())
 
-  event       Event               @relation(fields: [eventId], references: [id])
+  event       Event                @relation(fields: [eventId], references: [id])
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
 
   @@unique([eventId, position])
   @@index([eventId])
+  @@index([isDeleted])
 }
 
 // N:N between SetlistItem and Song — supports medleys
 model SetlistItemSong {
   id            String      @id @default(uuid())
-  setlistItemId String
-  songId        String
-  order         Int?        // order within medley (null if not a medley)
+  setlistItemId BigInt
+  songId        BigInt
+  order         Int?
 
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
   song          Song        @relation(fields: [songId], references: [id])
@@ -299,9 +404,9 @@ model SetlistItemSong {
 // realPersonId: explicit performer — null only if genuinely unknown.
 model SetlistItemMember {
   id              String        @id @default(uuid())
-  setlistItemId   String
+  setlistItemId   BigInt
   stageIdentityId String
-  realPersonId    String?       // null if unknown (e.g. masked artist)
+  realPersonId    String?
 
   setlistItem     SetlistItem   @relation(fields: [setlistItemId], references: [id])
   stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
@@ -314,14 +419,17 @@ model SetlistItemMember {
 // Artists linked via SongArtist (supports collaborations).
 // baseVersionId: self-referencing for variants.
 // variantLabel: "SAKURA Ver." | "104th Class Ver." | "acoustic ver."
-// sourceNote: free text for edge cases ("이차원 페스 event original"). Null for 99%.
+// sourceNote: free text for edge cases. Null for 99%.
+// BigInt: appears in public URLs e.g. /songs/789
 model Song {
-  id            String            @id @default(uuid())
-  baseVersionId String?
+  id            BigInt            @id @default(autoincrement())
+  baseVersionId BigInt?
   originalTitle String
   variantLabel  String?
   releaseDate   DateTime?         @db.Date
   sourceNote    String?
+  isDeleted     Boolean           @default(false)
+  deletedAt     DateTime?
   createdAt     DateTime          @default(now())
 
   baseVersion   Song?             @relation("SongVariants", fields: [baseVersionId], references: [id])
@@ -332,24 +440,25 @@ model Song {
   albumTracks   AlbumTrack[]
 
   @@index([baseVersionId])
+  @@index([isDeleted])
 }
 
 // N:N between Song and Artist — supports collaborations
 model SongArtist {
-  id       String @id @default(uuid())
-  songId   String
-  artistId String
-  role     String @default("primary")  // "primary" | "featured" | "cover"
+  id       String         @id @default(uuid())
+  songId   BigInt
+  artistId BigInt
+  role     SongArtistRole @default(primary)
 
-  song     Song   @relation(fields: [songId], references: [id])
-  artist   Artist @relation(fields: [artistId], references: [id])
+  song     Song           @relation(fields: [songId], references: [id])
+  artist   Artist         @relation(fields: [artistId], references: [id])
   @@unique([songId, artistId])
   @@index([artistId])
 }
 
 model SongTranslation {
   id      String @id @default(uuid())
-  songId  String
+  songId  BigInt
   locale  String
   title   String
 
@@ -359,10 +468,11 @@ model SongTranslation {
 }
 
 // ── ALBUM ─────────────────────────────────────────────
+// UUID: album pages are secondary — accessed via song or artist pages.
 model Album {
   id           String             @id @default(uuid())
-  artistId     String
-  type         String             // "single" | "album" | "ep" | "live_album" | "soundtrack"
+  artistId     BigInt
+  type         AlbumType
   releaseDate  DateTime?          @db.Date
   labelName    String?
   imageUrl     String?
@@ -390,7 +500,7 @@ model AlbumTranslation {
 model AlbumTrack {
   id          String @id @default(uuid())
   albumId     String
-  songId      String
+  songId      BigInt
   trackNumber Int
 
   album       Album  @relation(fields: [albumId], references: [id])
@@ -400,6 +510,7 @@ model AlbumTrack {
 }
 
 // ── USER ──────────────────────────────────────────────
+// UUID: user IDs should not be guessable or sequential.
 model User {
   id                String        @id @default(uuid())
   email             String        @unique
@@ -407,6 +518,8 @@ model User {
   avatarUrl         String?
   preferredLocale   String        @default("ko")
   contributionCount Int           @default(0)
+  isDeleted         Boolean       @default(false)
+  deletedAt         DateTime?
   createdAt         DateTime      @default(now())
 
   comments          Comment[]
@@ -427,8 +540,8 @@ model User {
 //   rollupGroupIds[]       — hasBoard=true groups only (admin-governed)
 //   rollupCategories[]     — e.g. ["anime"] ["kpop"]
 //
-// mentionedSongId: optional song tag for live-viewing event comments
-//   posted before SetlistItem exists.
+// All roll-up array fields use GIN indexes for efficient ANY() queries.
+// BigInt IDs stored as strings in arrays (PostgreSQL TEXT[]).
 //
 // Governance rules:
 //   - target fields are immutable after creation
@@ -438,9 +551,9 @@ model User {
 model Comment {
   id            String               @id @default(uuid())
   userId        String
-  parentId      String?              // one level of replies only
+  parentId      String?
 
-  // posted at (exactly one set)
+  // posted at (exactly one set) — stored as strings for BigInt FK compatibility
   setlistItemId String?
   songId        String?
   eventId       String?
@@ -456,8 +569,8 @@ model Comment {
   rollupEventIds        String[]
   rollupEventSeriesIds  String[]
   rollupArtistIds       String[]
-  rollupGroupIds        String[]     // hasBoard=true only
-  rollupCategories      String[]     // ["anime"] ["kpop"] etc.
+  rollupGroupIds        String[]
+  rollupCategories      String[]
 
   content        String              @db.Text
   detectedLocale String              @default("ko")
@@ -473,15 +586,16 @@ model Comment {
   likes          CommentLike[]
   edits          CommentEdit[]
 
-  @@index([userId])
-  @@index([rollupSongIds])
-  @@index([rollupEventIds])
-  @@index([rollupEventSeriesIds])
-  @@index([rollupArtistIds])
-  @@index([rollupGroupIds])
+  @@index([userId, createdAt])
+  @@index([createdAt, isDeleted])
+  @@index([rollupSongIds], type: Gin)
+  @@index([rollupEventIds], type: Gin)
+  @@index([rollupEventSeriesIds], type: Gin)
+  @@index([rollupArtistIds], type: Gin)
+  @@index([rollupGroupIds], type: Gin)
+  @@index([rollupCategories], type: Gin)
 }
 
-// Cached auto-translation per target locale
 model CommentTranslation {
   id             String   @id @default(uuid())
   commentId      String
