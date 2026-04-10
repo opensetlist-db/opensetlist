@@ -20,7 +20,7 @@ type EventFormProps = {
   };
 };
 
-const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase"];
+const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase", "virtual_live"];
 const EVENT_STATUSES = ["upcoming", "ongoing", "completed", "cancelled"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 

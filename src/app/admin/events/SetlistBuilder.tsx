@@ -25,6 +25,8 @@ type SetlistItemData = {
   unitName: string | null;
   note: string | null;
   status: string;
+  performanceType: string;
+  type: string;
   songs: {
     song: {
       id: number;
@@ -42,6 +44,8 @@ type SetlistItemData = {
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
+const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"];
+const ITEM_TYPES = ["song", "mc", "video", "interval"];
 
 function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
   return (
@@ -78,6 +82,8 @@ export default function SetlistBuilder({
   const [formUnitName, setFormUnitName] = useState("");
   const [formNote, setFormNote] = useState("");
   const [formStatus, setFormStatus] = useState("confirmed");
+  const [formPerformanceType, setFormPerformanceType] = useState("live_performance");
+  const [formType, setFormType] = useState("song");
   const [formSongIds, setFormSongIds] = useState<number[]>([]);
   const [formPerformerIds, setFormPerformerIds] = useState<string[]>([]);
 
@@ -98,6 +104,8 @@ export default function SetlistBuilder({
     setFormUnitName("");
     setFormNote("");
     setFormStatus("confirmed");
+    setFormPerformanceType("live_performance");
+    setFormType("song");
     setFormSongIds([]);
     setFormPerformerIds([]);
   }
@@ -110,6 +118,8 @@ export default function SetlistBuilder({
     setFormUnitName(item.unitName ?? "");
     setFormNote(item.note ?? "");
     setFormStatus(item.status);
+    setFormPerformanceType(item.performanceType ?? "live_performance");
+    setFormType(item.type ?? "song");
     setFormSongIds(item.songs.map((s) => s.song.id));
     setFormPerformerIds(item.performers.map((p) => p.stageIdentity.id));
     setShowForm(true);
@@ -125,7 +135,9 @@ export default function SetlistBuilder({
       unitName: formUnitName || null,
       note: formNote || null,
       status: formStatus,
-      songIds: formSongIds,
+      performanceType: formPerformanceType,
+      type: formType,
+      songIds: formType === "song" ? formSongIds : [],
       performerIds: formPerformerIds,
     };
 
@@ -200,6 +212,21 @@ export default function SetlistBuilder({
                       앙코르
                     </span>
                   )}
+                  {item.type && item.type !== "song" && (
+                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
+                      {item.type.toUpperCase()}
+                    </span>
+                  )}
+                  {item.performanceType === "virtual_live" && (
+                    <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-xs text-cyan-700">
+                      3D
+                    </span>
+                  )}
+                  {item.performanceType === "video_playback" && (
+                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600">
+                      영상
+                    </span>
+                  )}
                   {item.songs.map((s, i) => (
                     <span key={s.song.id}>
                       {i > 0 && <span className="text-zinc-400"> + </span>}
@@ -208,8 +235,11 @@ export default function SetlistBuilder({
                       </span>
                     </span>
                   ))}
-                  {item.songs.length === 0 && (
+                  {item.songs.length === 0 && (!item.type || item.type === "song") && (
                     <span className="text-zinc-400">곡 미지정</span>
+                  )}
+                  {item.songs.length === 0 && item.type && item.type !== "song" && item.note && (
+                    <span className="text-zinc-500">{item.note}</span>
                   )}
                 </div>
                 <div className="mt-1 text-sm text-zinc-500">
@@ -315,6 +345,37 @@ export default function SetlistBuilder({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <label className="mb-1 block text-xs font-medium">항목 유형</label>
+              <select
+                value={formType}
+                onChange={(e) => setFormType(e.target.value)}
+                className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+              >
+                {ITEM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium">공연 유형</label>
+              <select
+                value={formPerformanceType}
+                onChange={(e) => setFormPerformanceType(e.target.value)}
+                className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+              >
+                {PERFORMANCE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <label className="mb-1 block text-xs font-medium">
                 유닛명 (선택)
               </label>
@@ -338,8 +399,8 @@ export default function SetlistBuilder({
             </div>
           </div>
 
-          {/* Song selector */}
-          <div>
+          {/* Song selector — only for song type */}
+          {formType === "song" && <div>
             <label className="mb-1 block text-xs font-medium">
               곡 (복수 선택 = 메들리)
             </label>
@@ -363,7 +424,7 @@ export default function SetlistBuilder({
                 </p>
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Performer selector */}
           <div>

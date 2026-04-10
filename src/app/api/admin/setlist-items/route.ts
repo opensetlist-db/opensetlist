@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
     unitName,
     note,
     status,
+    performanceType,
+    type,
     songIds,
     performerIds,
   } = body;
@@ -25,6 +27,8 @@ export async function POST(request: NextRequest) {
       unitName: unitName || null,
       note: note || null,
       status: status ?? "confirmed",
+      performanceType: performanceType ?? "live_performance",
+      type: type ?? "song",
       songs: songIds?.length
         ? {
             create: songIds.map((songId: number, i: number) => ({

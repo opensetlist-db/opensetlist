@@ -68,6 +68,7 @@ enum EventType {
   festival
   fan_meeting
   showcase
+  virtual_live
 }
 
 enum EventStatus {
@@ -88,6 +89,19 @@ enum SetlistItemStatus {
   rumoured   // fan prediction before event
   live       // currently being performed (real-time)
   confirmed  // verified after performance
+}
+
+enum SetlistItemPerformanceType {
+  live_performance  // VA physically performs on stage
+  virtual_live      // 3DCG character performs (Fes×LIVE)
+  video_playback    // pre-recorded video played on screen
+}
+
+enum SetlistItemType {
+  song      // normal song performance
+  mc        // talk/MC segment
+  video     // video playback (opening VTR etc.)
+  interval  // intermission, costume change
 }
 
 enum SongArtistRole {
@@ -372,8 +386,10 @@ model SetlistItem {
   stageType   SetlistItemStageType @default(full_group)
   unitName    String?
   note        String?
-  status      SetlistItemStatus    @default(confirmed)
-  isDeleted   Boolean              @default(false)
+  status          SetlistItemStatus           @default(confirmed)
+  performanceType SetlistItemPerformanceType  @default(live_performance)
+  type            SetlistItemType             @default(song)
+  isDeleted       Boolean                     @default(false)
   deletedAt   DateTime?
   createdAt   DateTime             @default(now())
 
