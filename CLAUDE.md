@@ -78,10 +78,12 @@ GroupCategory      anime | kpop | jpop | cpop | game
 ArtistType         solo | group | unit | band
 StageIdentityType  character | persona
 EventSeriesType    concert_tour | festival | fan_meeting | one_time
-EventType          concert | festival | fan_meeting | showcase
+EventType          concert | festival | fan_meeting | showcase | virtual_live
 EventStatus        upcoming | ongoing | completed | cancelled
 SetlistItemStageType  full_group | unit | solo | special
 SetlistItemStatus  rumoured | live | confirmed
+SetlistItemPerformanceType  live_performance | virtual_live | video_playback
+SetlistItemType    song | mc | video | interval
 SongArtistRole     primary | featured | cover
 AlbumType          single | album | ep | live_album | soundtrack
 ```
