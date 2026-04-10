@@ -29,3 +29,17 @@ export async function PUT(request: NextRequest, { params }: Props) {
   });
   return NextResponse.json(serializeBigInt(si));
 }
+
+export async function DELETE(_request: NextRequest, { params }: Props) {
+  const { id } = await params;
+
+  await prisma.$transaction([
+    prisma.realPersonStageIdentity.deleteMany({ where: { stageIdentityId: id } }),
+    prisma.stageIdentityTranslation.deleteMany({ where: { stageIdentityId: id } }),
+    prisma.stageIdentityArtist.deleteMany({ where: { stageIdentityId: id } }),
+    prisma.setlistItemMember.deleteMany({ where: { stageIdentityId: id } }),
+    prisma.stageIdentity.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true });
+}

@@ -65,3 +65,15 @@ export async function POST(request: NextRequest, { params }: Props) {
 
   return NextResponse.json(serializeBigInt(stageIdentity), { status: 201 });
 }
+
+export async function DELETE(request: NextRequest, { params }: Props) {
+  const { id } = await params;
+  const artistId = BigInt(id);
+  const { stageIdentityId } = await request.json();
+
+  await prisma.stageIdentityArtist.deleteMany({
+    where: { stageIdentityId, artistId },
+  });
+
+  return NextResponse.json({ ok: true });
+}

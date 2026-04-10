@@ -513,18 +513,59 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         (CV: {si.vaName})
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingSI(si.id);
-                        setEditSIType(si.type);
-                        setEditSIColor(si.color ?? "");
-                        setEditSIName(si.name);
-                      }}
-                      className="ml-auto text-sm text-blue-600 hover:underline"
-                    >
-                      편집
-                    </button>
+                    <div className="ml-auto flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSI(si.id);
+                          setEditSIType(si.type);
+                          setEditSIColor(si.color ?? "");
+                          setEditSIName(si.name);
+                        }}
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        편집
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm(`"${si.name}" 연결을 해제하시겠습니까?`)) return;
+                          const res = await fetch(
+                            `/api/admin/artists/${initialData!.id}/stage-identities`,
+                            {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ stageIdentityId: si.id }),
+                            }
+                          );
+                          if (res.ok) {
+                            setExistingSIs((prev) => prev.filter((s) => s.id !== si.id));
+                          } else {
+                            alert("연결 해제에 실패했습니다.");
+                          }
+                        }}
+                        className="text-sm text-zinc-500 hover:underline"
+                      >
+                        연결 해제
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm(`"${si.name}"을(를) 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) return;
+                          const res = await fetch(`/api/admin/stage-identities/${si.id}`, {
+                            method: "DELETE",
+                          });
+                          if (res.ok) {
+                            setExistingSIs((prev) => prev.filter((s) => s.id !== si.id));
+                          } else {
+                            alert("삭제에 실패했습니다.");
+                          }
+                        }}
+                        className="text-sm text-red-500 hover:underline"
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
