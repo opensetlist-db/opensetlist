@@ -44,8 +44,6 @@ export async function PUT(request: NextRequest, { params }: Props) {
     eventSeriesId,
     parentEventId,
     date,
-    venue,
-    city,
     country,
     translations,
   } = body;
@@ -60,8 +58,6 @@ export async function PUT(request: NextRequest, { params }: Props) {
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
-      venue: venue || null,
-      city: city || null,
       country: country || null,
       translations: {
         create: translations.map(

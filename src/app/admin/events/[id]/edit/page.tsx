@@ -47,8 +47,6 @@ export default async function EditEventPage({ params }: Props) {
             date: data.date
               ? new Date(data.date).toISOString().split("T")[0]
               : null,
-            venue: data.venue,
-            city: data.city,
             country: data.country,
             translations: data.translations.map((t) => ({
               locale: t.locale,

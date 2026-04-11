@@ -308,8 +308,6 @@ async function importEvents(rows: Record<string, string>[]) {
           type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || undefined,
           eventSeriesId: seriesId,
           date: row.date ? new Date(row.date) : null,
-          venue: row.venue || null,
-          city: row.city || null,
           country: row.country || null,
         },
       });
@@ -329,8 +327,6 @@ async function importEvents(rows: Record<string, string>[]) {
           status: "upcoming",
           eventSeriesId: seriesId,
           date: row.date ? new Date(row.date) : null,
-          venue: row.venue || null,
-          city: row.city || null,
           country: row.country || null,
           translations: translations.length ? { create: translations } : undefined,
         },

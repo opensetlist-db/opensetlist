@@ -187,10 +187,10 @@ export default async function EventSeriesPage({ params }: Props) {
                       {evT(`status.${event.status}`)}
                     </span>
                   </div>
-                  {event.venue && (
+                  {evTr?.venue && (
                     <p className="ml-9 text-sm text-zinc-500">
-                      {event.venue}
-                      {event.city && `, ${event.city}`}
+                      {evTr.venue}
+                      {evTr.city && `, ${evTr.city}`}
                     </p>
                   )}
                   {/* Nested child events (days) */}

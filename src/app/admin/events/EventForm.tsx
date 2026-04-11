@@ -13,8 +13,6 @@ type EventFormProps = {
     eventSeriesId: number | null;
     parentEventId: number | null;
     date: string | null;
-    venue: string | null;
-    city: string | null;
     country: string | null;
     translations: Translation[];
   };
@@ -36,8 +34,6 @@ export default function EventForm({ initialData }: EventFormProps) {
     initialData?.parentEventId?.toString() ?? ""
   );
   const [date, setDate] = useState(initialData?.date ?? "");
-  const [venue, setVenue] = useState(initialData?.venue ?? "");
-  const [city, setCity] = useState(initialData?.city ?? "");
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
@@ -89,8 +85,6 @@ export default function EventForm({ initialData }: EventFormProps) {
       eventSeriesId: eventSeriesId || null,
       parentEventId: parentEventId || null,
       date: date || null,
-      venue: venue || null,
-      city: city || null,
       country: country || null,
       translations: translations.filter((t) => t.name.trim()),
     };
@@ -197,7 +191,7 @@ export default function EventForm({ initialData }: EventFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="mb-1 block text-sm font-medium">날짜</label>
           <input
@@ -208,34 +202,15 @@ export default function EventForm({ initialData }: EventFormProps) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">장소</label>
+          <label className="mb-1 block text-sm font-medium">국가 코드</label>
           <input
-            placeholder="Kobe World Memorial Hall"
-            value={venue}
-            onChange={(e) => setVenue(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
+            placeholder="JP"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-32 rounded border border-zinc-300 px-3 py-2"
+            maxLength={2}
           />
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">도시</label>
-          <input
-            placeholder="고베"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm font-medium">국가 코드</label>
-        <input
-          placeholder="JP"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-          className="w-32 rounded border border-zinc-300 px-3 py-2"
-          maxLength={2}
-        />
       </div>
 
       {/* Translations */}

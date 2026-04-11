@@ -23,8 +23,8 @@ const IMPORT_TYPES = [
   {
     value: "events",
     label: "4. 이벤트 (Events)",
-    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "venue", "city", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "artist_slug"],
-    note: "ja_name 또는 ko_name 최소 1개 필수 · venue/city: 원문(Event)은 일본어, 번역은 EventTranslation",
+    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "artist_slug"],
+    note: "ja_name 또는 ko_name 최소 1개 필수 · city/venue는 각 locale 번역에만 존재 (ja_city, ja_venue, ko_city, ko_venue)",
   },
   {
     value: "setlistitems",

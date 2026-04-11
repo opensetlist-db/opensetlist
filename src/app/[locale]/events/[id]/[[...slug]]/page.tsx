@@ -154,10 +154,10 @@ export default async function EventPage({ params }: Props) {
               {ct("date")}: {formatDate(event.date, locale)}
             </span>
           )}
-          {event.venue && (
+          {tr?.venue && (
             <span>
-              {ct("venue")}: {event.venue}
-              {event.city && `, ${event.city}`}
+              {ct("venue")}: {tr.venue}
+              {tr.city && `, ${tr.city}`}
             </span>
           )}
         </div>

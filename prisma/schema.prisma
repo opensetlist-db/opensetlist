@@ -402,8 +402,6 @@ model Event {
   type          EventType
   status        EventStatus        @default(upcoming)
   date          DateTime?          @db.Date
-  venue         String?
-  city          String?
   country       String?            // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl     String?
   isDeleted     Boolean            @default(false)

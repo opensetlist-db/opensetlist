@@ -24,8 +24,6 @@ export async function POST(request: NextRequest) {
     eventSeriesId,
     parentEventId,
     date,
-    venue,
-    city,
     country,
     translations,
   } = body;
@@ -40,8 +38,6 @@ export async function POST(request: NextRequest) {
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
-      venue: venue || null,
-      city: city || null,
       country: country || null,
       translations: {
         create: translations.map(
