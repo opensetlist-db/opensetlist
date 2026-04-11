@@ -3,11 +3,35 @@
 import { useState } from "react";
 
 const IMPORT_TYPES = [
-  { value: "artists", label: "1. 아티스트 (Artists)", description: "slug, type, parentArtist_slug, ja_name, ko_name" },
-  { value: "members", label: "2. 멤버 (Members)", description: "character_slug, character_type, ja_name, ko_name, color, artist_slugs, va_ja_name, va_ko_name" },
-  { value: "songs", label: "3. 곡 (Songs)", description: "slug, originalTitle, artist_slug, releaseDate, ja_title, ko_title" },
-  { value: "events", label: "4. 이벤트 (Events)", description: "series_slug, series_ja_name, series_ko_name, event_slug, event_type, date, venue, city, country, ja_name, ko_name" },
-  { value: "setlistitems", label: "5. 셋리스트 (SetlistItems)", description: "event_slug, position, song_slug, isEncore, itemType, performanceType, stageType, performers" },
+  {
+    value: "artists",
+    label: "1. 아티스트 (Artists)",
+    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName"],
+    note: "ja_name 또는 ko_name 최소 1개 필수",
+  },
+  {
+    value: "members",
+    label: "2. 멤버 (Members)",
+    columns: ["character_slug*", "character_type", "ja_name", "ko_name", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "startDate", "endDate"],
+    note: "ja_name 또는 ko_name 최소 1개 필수 · artist_slugs: 공백 구분",
+  },
+  {
+    value: "songs",
+    label: "3. 곡 (Songs)",
+    columns: ["slug*", "originalTitle*", "artist_slug", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote"],
+  },
+  {
+    value: "events",
+    label: "4. 이벤트 (Events)",
+    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "venue", "city", "country", "ja_name", "ja_shortName", "ko_name", "ko_shortName"],
+    note: "ja_name 또는 ko_name 최소 1개 필수",
+  },
+  {
+    value: "setlistitems",
+    label: "5. 셋리스트 (SetlistItems)",
+    columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "unitName", "note", "status", "performers"],
+    note: "performers: 공백 구분 character_slug",
+  },
 ];
 
 export default function ImportPage() {
@@ -84,9 +108,23 @@ export default function ImportPage() {
           ))}
         </select>
         {currentType && (
-          <p className="mt-1 text-xs text-zinc-500">
-            컬럼: {currentType.description}
-          </p>
+          <div className="mt-2 text-xs">
+            <p className="mb-1 font-mono text-zinc-600">
+              {currentType.columns.map((col, i) => (
+                <span key={col}>
+                  {i > 0 && ", "}
+                  {col.endsWith("*") ? (
+                    <span className="font-semibold text-zinc-900">{col.slice(0, -1)}<span className="text-red-500">*</span></span>
+                  ) : (
+                    <span className="text-zinc-400">{col}</span>
+                  )}
+                </span>
+              ))}
+            </p>
+            {"note" in currentType && currentType.note && (
+              <p className="text-zinc-500">{currentType.note}</p>
+            )}
+          </div>
         )}
       </div>
 
