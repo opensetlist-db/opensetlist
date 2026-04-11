@@ -114,8 +114,8 @@ async function importMembers(rows: Record<string, string>[]) {
     if (!charSlug) continue;
 
     const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name });
+    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
+    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
     if (translations.length === 0) continue;
 
     // Look up artists by slug
@@ -146,16 +146,17 @@ async function importMembers(rows: Record<string, string>[]) {
         color: row.color || null,
         translations: { create: translations },
         artistLinks: artistIds.length
-          ? { create: artistIds.map((aid) => ({ artistId: aid })) }
-          : undefined,
-        voicedBy: realPersonId
           ? {
-              create: {
-                realPersonId,
+              create: artistIds.map((aid) => ({
+                artistId: aid,
                 startDate: row.startDate ? new Date(row.startDate) : null,
                 endDate: row.endDate ? new Date(row.endDate) : null,
-              },
+                note: row.note || null,
+              })),
             }
+          : undefined,
+        voicedBy: realPersonId
+          ? { create: { realPersonId } }
           : undefined,
       },
     });

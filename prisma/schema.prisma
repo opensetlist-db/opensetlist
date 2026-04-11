@@ -276,6 +276,7 @@ model StageIdentityTranslation {
   stageIdentityId String
   locale          String
   name            String
+  shortName       String?
 
   stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
   @@unique([stageIdentityId, locale])
@@ -288,6 +289,10 @@ model StageIdentityArtist {
   id              String        @id @default(uuid())
   stageIdentityId String
   artistId        BigInt
+
+  startDate       DateTime?     @db.Date
+  endDate         DateTime?     @db.Date
+  note            String?
 
   stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
   artist          Artist        @relation(fields: [artistId], references: [id])

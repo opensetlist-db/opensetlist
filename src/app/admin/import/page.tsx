@@ -12,8 +12,8 @@ const IMPORT_TYPES = [
   {
     value: "members",
     label: "2. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ko_name", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "startDate", "endDate"],
-    note: "ja_name 또는 ko_name 최소 1개 필수 · artist_slugs: 공백 구분",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "startDate", "endDate", "note"],
+    note: "ja/ko_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등",
   },
   {
     value: "songs",
