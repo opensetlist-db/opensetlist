@@ -40,7 +40,7 @@ type ArtistFormProps = {
   };
 };
 
-const ARTIST_TYPES = ["solo", "group", "unit", "band"];
+const ARTIST_TYPES = ["solo", "group", "unit"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 
 export default function ArtistForm({ initialData }: ArtistFormProps) {

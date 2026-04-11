@@ -48,7 +48,6 @@ enum ArtistType {
   solo
   group
   unit
-  band
 }
 
 enum StageIdentityType {

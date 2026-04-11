@@ -65,7 +65,7 @@ async function importArtists(rows: Record<string, string>[]) {
       await prisma.artist.update({
         where: { slug },
         data: {
-          type: (row.type as "solo" | "group" | "unit" | "band") || undefined,
+          type: (row.type as "solo" | "group" | "unit") || undefined,
         },
       });
       // Upsert translations
@@ -81,7 +81,7 @@ async function importArtists(rows: Record<string, string>[]) {
       const artist = await prisma.artist.create({
         data: {
           slug,
-          type: (row.type as "solo" | "group" | "unit" | "band") || "group",
+          type: (row.type as "solo" | "group" | "unit") || "group",
           hasBoard: true,
           translations: { create: translations },
         },
