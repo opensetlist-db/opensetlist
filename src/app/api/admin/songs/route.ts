@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { generateSlug } from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -39,8 +40,11 @@ export async function POST(request: NextRequest) {
     artistCredits,
   } = body;
 
+  const slug = body.slug || generateSlug(originalTitle || `song-${Date.now()}`);
+
   const song = await prisma.song.create({
     data: {
+      slug,
       originalTitle,
       variantLabel: variantLabel || null,
       releaseDate: releaseDate ? new Date(releaseDate) : null,

@@ -205,6 +205,7 @@ model GroupTranslation {
 // BigInt: appears in public URLs e.g. /artists/42
 model Artist {
   id             BigInt              @id @default(autoincrement())
+  slug           String              @unique
   parentArtistId BigInt?
   type           ArtistType
   hasBoard       Boolean             @default(true)
@@ -346,6 +347,7 @@ model RealPersonStageIdentity {
 // BigInt: appears in public URLs e.g. /series/7
 model EventSeries {
   id             BigInt                   @id @default(autoincrement())
+  slug           String                   @unique
   artistId       BigInt?
   parentSeriesId BigInt?
   type           EventSeriesType
@@ -389,6 +391,7 @@ model EventSeriesTranslation {
 // BigInt: appears in public URLs e.g. /events/123
 model Event {
   id            BigInt             @id @default(autoincrement())
+  slug          String             @unique
   eventSeriesId BigInt?
   parentEventId BigInt?
   type          EventType
@@ -492,6 +495,7 @@ model SetlistItemMember {
 // BigInt: appears in public URLs e.g. /songs/789
 model Song {
   id            BigInt            @id @default(autoincrement())
+  slug          String            @unique
   baseVersionId BigInt?
   originalTitle String
   variantLabel  String?

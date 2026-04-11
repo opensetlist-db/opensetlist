@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { generateSlug } from "@/lib/slug";
 
 export async function GET() {
   const series = await prisma.eventSeries.findMany({
@@ -25,8 +26,11 @@ export async function POST(request: NextRequest) {
     translations,
   } = body;
 
+  const slug = body.slug || generateSlug(translations[0]?.name || `series-${Date.now()}`);
+
   const series = await prisma.eventSeries.create({
     data: {
+      slug,
       type,
       artistId: artistId ? BigInt(artistId) : null,
       parentSeriesId: parentSeriesId ? BigInt(parentSeriesId) : null,

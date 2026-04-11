@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { generateSlug } from "@/lib/slug";
 
 export async function GET() {
   const events = await prisma.event.findMany({
@@ -29,8 +30,11 @@ export async function POST(request: NextRequest) {
     translations,
   } = body;
 
+  const slug = body.slug || generateSlug(translations[0]?.name || `event-${Date.now()}`);
+
   const event = await prisma.event.create({
     data: {
+      slug,
       type,
       status: status ?? "upcoming",
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,

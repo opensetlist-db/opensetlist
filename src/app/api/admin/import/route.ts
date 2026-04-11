@@ -46,67 +46,67 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-// Slug → DB ID maps built during import
-type SlugMap = Map<string, string | bigint>;
-
 async function importArtists(rows: Record<string, string>[]) {
-  const slugMap: SlugMap = new Map();
   const results: string[] = [];
 
-  // First pass: create artists without parentArtistId
+  // First pass: upsert artists without parentArtistId
   for (const row of rows) {
     const slug = row.slug;
     if (!slug) continue;
 
-    const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
+    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null } : null;
+    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
     if (translations.length === 0) continue;
 
-    const artist = await prisma.artist.create({
-      data: {
-        type: (row.type as "solo" | "group" | "unit" | "band") || "group",
-        hasBoard: true,
-        translations: { create: translations },
-      },
-    });
-    slugMap.set(slug, artist.id);
-    results.push(`Artist: ${slug} → ${artist.id}`);
+    const existing = await prisma.artist.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.artist.update({
+        where: { slug },
+        data: {
+          type: (row.type as "solo" | "group" | "unit" | "band") || undefined,
+        },
+      });
+      // Upsert translations
+      for (const t of translations) {
+        await prisma.artistTranslation.upsert({
+          where: { artistId_locale: { artistId: existing.id, locale: t.locale } },
+          create: { artistId: existing.id, ...t },
+          update: { name: t.name, shortName: t.shortName },
+        });
+      }
+      results.push(`UPDATED: ${slug} → ${existing.id}`);
+    } else {
+      const artist = await prisma.artist.create({
+        data: {
+          slug,
+          type: (row.type as "solo" | "group" | "unit" | "band") || "group",
+          hasBoard: true,
+          translations: { create: translations },
+        },
+      });
+      results.push(`CREATED: ${slug} → ${artist.id}`);
+    }
   }
 
-  // Second pass: set parentArtistId
+  // Second pass: set parentArtistId by slug
   for (const row of rows) {
     if (!row.parentArtist_slug || !row.slug) continue;
-    const artistId = slugMap.get(row.slug);
-    const parentId = slugMap.get(row.parentArtist_slug);
-    if (artistId && parentId) {
+    const artist = await prisma.artist.findUnique({ where: { slug: row.slug } });
+    const parent = await prisma.artist.findUnique({ where: { slug: row.parentArtist_slug } });
+    if (artist && parent) {
       await prisma.artist.update({
-        where: { id: artistId as bigint },
-        data: { parentArtistId: parentId as bigint },
+        where: { id: artist.id },
+        data: { parentArtistId: parent.id },
       });
     }
   }
 
-  return { count: results.length, slugMap: Object.fromEntries(slugMap.entries()), log: results };
+  return { count: results.length, log: results };
 }
 
 async function importMembers(rows: Record<string, string>[]) {
-  // Need to look up artist IDs by name (from translations)
-  const allArtists = await prisma.artist.findMany({
-    where: { isDeleted: false },
-    include: { translations: true },
-  });
-
-  function findArtistId(slug: string): bigint | null {
-    // Match by translation name (slug is used as a matching key)
-    const a = allArtists.find((a) =>
-      a.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
-      )
-    );
-    return a?.id ?? null;
-  }
-
   const results: string[] = [];
 
   for (const row of rows) {
@@ -118,8 +118,13 @@ async function importMembers(rows: Record<string, string>[]) {
     if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name });
     if (translations.length === 0) continue;
 
+    // Look up artists by slug
     const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
-    const artistIds = artistSlugs.map(findArtistId).filter((id): id is bigint => id !== null);
+    const artistIds: bigint[] = [];
+    for (const s of artistSlugs) {
+      const a = await prisma.artist.findUnique({ where: { slug: s } });
+      if (a) artistIds.push(a.id);
+    }
 
     // Create RealPerson if VA info provided
     let realPersonId: string | undefined;
@@ -162,145 +167,186 @@ async function importMembers(rows: Record<string, string>[]) {
 }
 
 async function importSongs(rows: Record<string, string>[]) {
-  const allArtists = await prisma.artist.findMany({
-    where: { isDeleted: false },
-    include: { translations: true },
-  });
-
-  function findArtistId(slug: string): bigint | null {
-    const a = allArtists.find((a) =>
-      a.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
-      )
-    );
-    return a?.id ?? null;
-  }
-
-  // First pass: create songs, track slug → id
-  const slugMap: SlugMap = new Map();
   const results: string[] = [];
 
+  // First pass: upsert songs
   for (const row of rows) {
     const slug = row.slug;
     if (!slug || !row.originalTitle) continue;
 
-    const translations = [];
-    if (row.ja_title) translations.push({ locale: "ja", title: row.ja_title });
-    if (row.ko_title) translations.push({ locale: "ko", title: row.ko_title });
+    const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title } : null;
+    const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string }[];
 
-    const artistId = row.artist_slug ? findArtistId(row.artist_slug) : null;
+    // Look up artist by slug
+    const artistId = row.artist_slug
+      ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
+      : null;
 
-    const song = await prisma.song.create({
-      data: {
-        originalTitle: row.originalTitle,
-        variantLabel: row.variantLabel || null,
-        releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
-        sourceNote: row.sourceNote || null,
-        translations: translations.length ? { create: translations } : undefined,
-        artists: artistId
-          ? { create: { artistId, role: "primary" } }
-          : undefined,
-      },
-    });
-    slugMap.set(slug, song.id);
-    results.push(`Song: ${slug} → ${song.id}`);
+    const existing = await prisma.song.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.song.update({
+        where: { slug },
+        data: {
+          originalTitle: row.originalTitle,
+          variantLabel: row.variantLabel || null,
+          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+          sourceNote: row.sourceNote || null,
+        },
+      });
+      for (const t of translations) {
+        await prisma.songTranslation.upsert({
+          where: { songId_locale: { songId: existing.id, locale: t.locale } },
+          create: { songId: existing.id, ...t },
+          update: { title: t.title },
+        });
+      }
+      results.push(`UPDATED: ${slug} → ${existing.id}`);
+    } else {
+      const song = await prisma.song.create({
+        data: {
+          slug,
+          originalTitle: row.originalTitle,
+          variantLabel: row.variantLabel || null,
+          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+          sourceNote: row.sourceNote || null,
+          translations: translations.length ? { create: translations } : undefined,
+          artists: artistId
+            ? { create: { artistId, role: "primary" } }
+            : undefined,
+        },
+      });
+      results.push(`CREATED: ${slug} → ${song.id}`);
+    }
   }
 
-  // Second pass: set baseVersionId
+  // Second pass: set baseVersionId by slug
   for (const row of rows) {
     if (!row.baseVersion_slug || !row.slug) continue;
-    const songId = slugMap.get(row.slug);
-    const baseId = slugMap.get(row.baseVersion_slug);
-    if (songId && baseId) {
+    const song = await prisma.song.findUnique({ where: { slug: row.slug } });
+    const base = await prisma.song.findUnique({ where: { slug: row.baseVersion_slug } });
+    if (song && base) {
       await prisma.song.update({
-        where: { id: songId as bigint },
-        data: { baseVersionId: baseId as bigint },
+        where: { id: song.id },
+        data: { baseVersionId: base.id },
       });
     }
   }
 
-  return { count: results.length, slugMap: Object.fromEntries(slugMap.entries()), log: results };
+  return { count: results.length, log: results };
 }
 
 async function importEvents(rows: Record<string, string>[]) {
-  // Track series and event slugs
-  const seriesSlugMap: SlugMap = new Map();
-  const eventSlugMap: SlugMap = new Map();
-
-  const allArtists = await prisma.artist.findMany({
-    where: { isDeleted: false },
-    include: { translations: true },
-  });
-
-  function findArtistId(slug: string): bigint | null {
-    const a = allArtists.find((a) =>
-      a.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
-      )
-    );
-    return a?.id ?? null;
-  }
-
   const results: string[] = [];
 
-  // Create series first (dedup by series_slug)
+  // Upsert series first (dedup by series_slug)
   const seriesSlugs = new Set(rows.map((r) => r.series_slug).filter(Boolean));
   for (const slug of seriesSlugs) {
     const row = rows.find((r) => r.series_slug === slug)!;
-    const translations = [];
-    if (row.series_ja_name) translations.push({ locale: "ja", name: row.series_ja_name, shortName: row.series_ja_shortName || null });
-    if (row.series_ko_name) translations.push({ locale: "ko", name: row.series_ko_name, shortName: row.series_ko_shortName || null });
 
-    const artistId = row.artist_slug ? findArtistId(row.artist_slug) : null;
+    const jaTranslation = row.series_ja_name ? { locale: "ja", name: row.series_ja_name, shortName: row.series_ja_shortName || null } : null;
+    const koTranslation = row.series_ko_name ? { locale: "ko", name: row.series_ko_name, shortName: row.series_ko_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
 
-    const series = await prisma.eventSeries.create({
-      data: {
-        type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "one_time") || "concert_tour",
-        artistId: artistId,
-        hasBoard: true,
-        translations: translations.length ? { create: translations } : undefined,
-      },
-    });
-    seriesSlugMap.set(slug, series.id);
-    results.push(`Series: ${slug} → ${series.id}`);
+    const artistId = row.artist_slug
+      ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
+      : null;
+
+    const existing = await prisma.eventSeries.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.eventSeries.update({
+        where: { slug },
+        data: {
+          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "one_time") || undefined,
+          artistId,
+        },
+      });
+      for (const t of translations) {
+        await prisma.eventSeriesTranslation.upsert({
+          where: { eventSeriesId_locale: { eventSeriesId: existing.id, locale: t.locale } },
+          create: { eventSeriesId: existing.id, ...t },
+          update: { name: t.name, shortName: t.shortName },
+        });
+      }
+      results.push(`UPDATED Series: ${slug} → ${existing.id}`);
+    } else {
+      const series = await prisma.eventSeries.create({
+        data: {
+          slug,
+          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "one_time") || "concert_tour",
+          artistId,
+          hasBoard: true,
+          translations: translations.length ? { create: translations } : undefined,
+        },
+      });
+      results.push(`CREATED Series: ${slug} → ${series.id}`);
+    }
   }
 
-  // First pass: create events without parentEventId
+  // Upsert events
   for (const row of rows) {
     const slug = row.event_slug;
     if (!slug) continue;
 
-    const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
+    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null } : null;
+    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
 
-    const seriesId = row.series_slug ? seriesSlugMap.get(row.series_slug) : null;
+    const seriesId = row.series_slug
+      ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
+      : null;
 
-    const event = await prisma.event.create({
-      data: {
-        type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || "concert",
-        status: "upcoming",
-        eventSeriesId: seriesId ? (seriesId as bigint) : null,
-        date: row.date ? new Date(row.date) : null,
-        venue: row.venue || null,
-        city: row.city || null,
-        country: row.country || null,
-        translations: translations.length ? { create: translations } : undefined,
-      },
-    });
-    eventSlugMap.set(slug, event.id);
-    results.push(`Event: ${slug} → ${event.id}`);
+    const existing = await prisma.event.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.event.update({
+        where: { slug },
+        data: {
+          type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || undefined,
+          eventSeriesId: seriesId,
+          date: row.date ? new Date(row.date) : null,
+          venue: row.venue || null,
+          city: row.city || null,
+          country: row.country || null,
+        },
+      });
+      for (const t of translations) {
+        await prisma.eventTranslation.upsert({
+          where: { eventId_locale: { eventId: existing.id, locale: t.locale } },
+          create: { eventId: existing.id, ...t },
+          update: { name: t.name, shortName: t.shortName },
+        });
+      }
+      results.push(`UPDATED: ${slug} → ${existing.id}`);
+    } else {
+      const event = await prisma.event.create({
+        data: {
+          slug,
+          type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || "concert",
+          status: "upcoming",
+          eventSeriesId: seriesId,
+          date: row.date ? new Date(row.date) : null,
+          venue: row.venue || null,
+          city: row.city || null,
+          country: row.country || null,
+          translations: translations.length ? { create: translations } : undefined,
+        },
+      });
+      results.push(`CREATED: ${slug} → ${event.id}`);
+    }
   }
 
-  // Second pass: set parentEventId
+  // Second pass: set parentEventId by slug
   for (const row of rows) {
     if (!row.parentEvent_slug || !row.event_slug) continue;
-    const eventId = eventSlugMap.get(row.event_slug);
-    const parentId = eventSlugMap.get(row.parentEvent_slug);
-    if (eventId && parentId) {
+    const event = await prisma.event.findUnique({ where: { slug: row.event_slug } });
+    const parent = await prisma.event.findUnique({ where: { slug: row.parentEvent_slug } });
+    if (event && parent) {
       await prisma.event.update({
-        where: { id: eventId as bigint },
-        data: { parentEventId: parentId as bigint },
+        where: { id: event.id },
+        data: { parentEventId: parent.id },
       });
     }
   }
@@ -309,53 +355,28 @@ async function importEvents(rows: Record<string, string>[]) {
 }
 
 async function importSetlistItems(rows: Record<string, string>[]) {
-  // Look up events and songs by slug (matching translations)
-  const allEvents = await prisma.event.findMany({
-    where: { isDeleted: false },
-    include: { translations: true },
-  });
-  const allSongs = await prisma.song.findMany({
-    where: { isDeleted: false },
-    include: { translations: true },
-  });
+  const results: string[] = [];
+
+  // Look up SIs by translation name (no slug on StageIdentity)
   const allSIs = await prisma.stageIdentity.findMany({
     include: { translations: true },
   });
 
-  function findEventId(slug: string): bigint | null {
-    const e = allEvents.find((e) =>
-      e.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
-      )
-    );
-    return e?.id ?? null;
-  }
-
-  function findSongId(slug: string): bigint | null {
-    const s = allSongs.find((s) =>
-      s.originalTitle === slug ||
-      s.originalTitle.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase() ||
-      s.translations.some(
-        (t) => t.title === slug || t.title.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
-      )
-    );
-    return s?.id ?? null;
-  }
-
-  function findSIId(slug: string): string | null {
+  function findSIId(name: string): string | null {
     const si = allSIs.find((si) =>
       si.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "_") === slug.toLowerCase()
+        (t) => t.name === name || t.name.toLowerCase().replace(/\s+/g, "-") === name.toLowerCase()
       )
     );
     return si?.id ?? null;
   }
 
-  const results: string[] = [];
-
   for (const row of rows) {
-    const eventId = row.event_slug ? findEventId(row.event_slug) : null;
-    if (!eventId) {
+    // Look up event by slug
+    const event = row.event_slug
+      ? await prisma.event.findUnique({ where: { slug: row.event_slug } })
+      : null;
+    if (!event) {
       results.push(`SKIP: event not found for "${row.event_slug}"`);
       continue;
     }
@@ -363,15 +384,17 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     const position = parseInt(row.position);
     if (isNaN(position)) continue;
 
-    const songSlug = row.song_slug;
-    const songId = songSlug ? findSongId(songSlug) : null;
+    // Look up song by slug
+    const song = row.song_slug
+      ? await prisma.song.findUnique({ where: { slug: row.song_slug } })
+      : null;
 
     const performerSlugs = (row.performers || "").split(/\s+/).filter(Boolean);
     const performerIds = performerSlugs.map(findSIId).filter((id): id is string => id !== null);
 
     const item = await prisma.setlistItem.create({
       data: {
-        eventId,
+        eventId: event.id,
         position,
         isEncore: row.isEncore === "true" || row.isEncore === "1",
         type: (row.itemType as "song" | "mc" | "video" | "interval") || "song",
@@ -380,7 +403,7 @@ async function importSetlistItems(rows: Record<string, string>[]) {
         unitName: row.unitName || null,
         note: row.note || null,
         status: (row.status as "confirmed" | "live" | "rumoured") || "confirmed",
-        songs: songId ? { create: { songId, order: 0 } } : undefined,
+        songs: song ? { create: { songId: song.id, order: 0 } } : undefined,
         performers: performerIds.length
           ? { create: performerIds.map((siId) => ({ stageIdentityId: siId })) }
           : undefined,

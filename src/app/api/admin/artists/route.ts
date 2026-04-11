@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { generateSlug } from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -37,8 +38,11 @@ export async function POST(request: NextRequest) {
     stageIdentities,
   } = body;
 
+  const slug = body.slug || generateSlug(translations[0]?.name || `artist-${Date.now()}`);
+
   const artist = await prisma.artist.create({
     data: {
+      slug,
       type,
       parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
       hasBoard: hasBoard ?? true,
