@@ -190,6 +190,7 @@ model GroupTranslation {
   groupId     String
   locale      String  // "ko" | "ja" | "en" | "zh-CN"
   name        String
+  shortName   String?
   description String?
 
   group       Group   @relation(fields: [groupId], references: [id])
@@ -230,6 +231,7 @@ model ArtistTranslation {
   artistId BigInt
   locale   String
   name     String
+  shortName String?
   bio      String?
 
   artist   Artist  @relation(fields: [artistId], references: [id])
@@ -370,6 +372,7 @@ model EventSeriesTranslation {
   eventSeriesId BigInt
   locale        String
   name          String
+  shortName     String?
   description   String?
 
   eventSeries   EventSeries @relation(fields: [eventSeriesId], references: [id])
@@ -414,10 +417,11 @@ model Event {
 model EventTranslation {
   id      String @id @default(uuid())
   eventId BigInt
-  locale  String
-  name    String
+  locale    String
+  name      String
+  shortName String?
 
-  event   Event  @relation(fields: [eventId], references: [id])
+  event     Event  @relation(fields: [eventId], references: [id])
   @@unique([eventId, locale])
   @@index([eventId])
 }
