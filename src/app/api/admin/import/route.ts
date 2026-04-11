@@ -59,8 +59,8 @@ async function importArtists(rows: Record<string, string>[]) {
     if (!slug) continue;
 
     const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name });
+    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
+    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
     if (translations.length === 0) continue;
 
     const artist = await prisma.artist.create({
@@ -248,8 +248,8 @@ async function importEvents(rows: Record<string, string>[]) {
   for (const slug of seriesSlugs) {
     const row = rows.find((r) => r.series_slug === slug)!;
     const translations = [];
-    if (row.series_ja_name) translations.push({ locale: "ja", name: row.series_ja_name });
-    if (row.series_ko_name) translations.push({ locale: "ko", name: row.series_ko_name });
+    if (row.series_ja_name) translations.push({ locale: "ja", name: row.series_ja_name, shortName: row.series_ja_shortName || null });
+    if (row.series_ko_name) translations.push({ locale: "ko", name: row.series_ko_name, shortName: row.series_ko_shortName || null });
 
     const artistId = row.artist_slug ? findArtistId(row.artist_slug) : null;
 
@@ -271,8 +271,8 @@ async function importEvents(rows: Record<string, string>[]) {
     if (!slug) continue;
 
     const translations = [];
-    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name });
-    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name });
+    if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
+    if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
 
     const seriesId = row.series_slug ? seriesSlugMap.get(row.series_slug) : null;
 
