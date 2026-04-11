@@ -123,6 +123,50 @@ enum CommentType {
   comment  // Inline reaction — no title, written on Song/Event/SetlistItem page
 }
 
+enum DictCategory {
+  character_name   // 캐릭터명: 코즈에, 스페셜위크
+  song_title       // 곡 제목: 하나무스비, Birdcage
+  event_name       // 이벤트명: 블루파, 이차원 페스
+  fandom_term      // 팬덤 용어: 직관, 최애, 성우
+  abbreviation     // 약칭: 링크라, 하스노소라
+  meme             // 밈/유행어: 뇨호호
+  preserve         // do not translate — keep as-is
+}
+
+enum ReportTarget {
+  comment      // Comment (type=comment or type=post)
+  dict_entry   // TranslationDictionary entry
+}
+
+enum ReportReason {
+  hate_speech     // 혐오 발언 (nationality, language, race discrimination)
+  harassment      // 특정 유저 괴롭힘
+  spam            // 스팸/광고
+  misinformation  // 오정보 (잘못된 셋리스트 데이터 포함)
+  copyright       // 저작권 침해
+  bad_translation // 의도적 오번역 (dict_entry only)
+  other
+}
+
+enum ReportStatus {
+  pending    // 검토 대기
+  reviewed   // 검토 완료, 조치 없음
+  actioned   // 조치 완료 (content hidden / dict entry revoked)
+  dismissed  // 기각 (허위 신고)
+}
+
+enum RoleType {
+  superadmin  // site owner — all permissions
+  admin       // global admin — can handle all reports, ban users
+  board_mod   // local moderator — specific Artist or Group board only
+  trusted     // trusted contributor — can approve dictionary entries
+}
+
+enum ScopeType {
+  artist  // scoped to a specific Artist (and its sub-units)
+  group   // scoped to a specific Group (and all its Artists)
+}
+
 // ── GROUP ─────────────────────────────────────────────
 // Flat tagging layer above Artist.
 // Represents franchises, labels, agencies, series.
@@ -538,6 +582,8 @@ model User {
   name              String
   avatarUrl         String?
   preferredLocale   String        @default("ko")
+  knownLocales      String[]      @default(["ko"])
+  autoTranslate     Boolean       @default(false)
   contributionCount Int           @default(0)
   isDeleted         Boolean       @default(false)
   deletedAt         DateTime?
@@ -546,6 +592,8 @@ model User {
   comments          Comment[]
   commentLikes      CommentLike[]
   commentEdits      CommentEdit[]
+  roles             UserRole[]
+  reports           Report[]
 }
 
 // ── COMMENT ───────────────────────────────────────────
@@ -659,4 +707,84 @@ model CommentEdit {
   comment    Comment  @relation(fields: [commentId], references: [id])
   user       User     @relation(fields: [userId], references: [id])
   @@index([commentId])
+}
+
+// ── USER ROLES ────────────────────────────────────────
+// scopeType + scopeId = null → global role (superadmin, admin)
+// scopeType = artist, scopeId = "42" → board_mod for that Artist only
+// scopeType = group, scopeId = "uuid" → board_mod for all that Group's boards
+model UserRole {
+  id          String     @id @default(uuid())
+  userId      String
+
+  role        RoleType
+
+  scopeType   ScopeType?
+  scopeId     String?
+  // Artist.id stored as String (BigInt serialized)
+  // Group.id stored as String (UUID)
+  // null for global roles (superadmin, admin)
+
+  grantedBy   String     // userId of admin who granted this role
+  grantedAt   DateTime   @default(now())
+  expiresAt   DateTime?  // null = permanent
+  note        String?    // e.g. "蓮ノ空 volunteer moderator"
+
+  user        User       @relation(fields: [userId], references: [id])
+
+  @@unique([userId, role, scopeType, scopeId])
+  @@index([userId])
+  @@index([scopeType, scopeId])
+  @@index([role])
+}
+
+// ── TRANSLATION DICTIONARY ────────────────────────────
+// Community-maintained overrides for translation API.
+// Applied as pre-translation substitutions before calling Papago/DeepL.
+model TranslationDictionary {
+  id          String       @id @default(uuid())
+  sourceText  String
+  sourceLang  String
+  targetText  String
+  targetLang  String
+
+  category    DictCategory
+
+  isApproved  Boolean  @default(false)
+  createdBy   String       // userId
+  approvedBy  String?      // admin/trusted userId
+  useCount    Int          @default(0)
+  createdAt   DateTime     @default(now())
+
+  @@unique([sourceText, sourceLang, targetLang])
+  @@index([sourceLang, isApproved])
+  @@index([createdBy])
+}
+
+// ── REPORT ────────────────────────────────────────────
+model Report {
+  id          String       @id @default(uuid())
+  reporterId  String
+
+  targetType  ReportTarget
+  targetId    String
+
+  reason      ReportReason
+  detail      String?      @db.Text
+
+  status      ReportStatus @default(pending)
+
+  assignedScope      String?    // scopeId of assigned board_mod
+  assignedScopeType  ScopeType?
+
+  resolvedBy  String?      // userId of admin/mod who handled it
+  resolvedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  reporter    User         @relation(fields: [reporterId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@index([reporterId])
+  @@index([assignedScope, status])
 }
