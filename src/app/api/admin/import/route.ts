@@ -418,6 +418,53 @@ async function importEvents(rows: Record<string, string>[]) {
     }
   }
 
+  // Third pass: create EventPerformer rows
+  const allSIs = await prisma.stageIdentity.findMany({
+    include: { translations: true },
+  });
+
+  function findSIIdBySlug(slug: string): string | null {
+    const si = allSIs.find((si) =>
+      si.translations.some(
+        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
+      )
+    );
+    return si?.id ?? null;
+  }
+
+  for (const row of rows) {
+    if (!row.event_slug) continue;
+    const performerSlugs = (row.event_performer_slugs || "").split(/\s+/).filter(Boolean);
+    const guestSlugs = (row.event_guest_slugs || "").split(/\s+/).filter(Boolean);
+    if (performerSlugs.length === 0 && guestSlugs.length === 0) continue;
+
+    const event = await prisma.event.findUnique({ where: { slug: row.event_slug } });
+    if (!event) continue;
+
+    // Delete existing EventPerformers for this event (re-import)
+    await prisma.eventPerformer.deleteMany({ where: { eventId: event.id } });
+
+    for (const slug of performerSlugs) {
+      const siId = findSIIdBySlug(slug);
+      if (siId) {
+        await prisma.eventPerformer.create({
+          data: { eventId: event.id, stageIdentityId: siId, isGuest: false },
+        });
+      }
+    }
+
+    for (const slug of guestSlugs) {
+      const siId = findSIIdBySlug(slug);
+      if (siId) {
+        await prisma.eventPerformer.create({
+          data: { eventId: event.id, stageIdentityId: siId, isGuest: true },
+        });
+      }
+    }
+
+    results.push(`EventPerformers: ${row.event_slug} → ${performerSlugs.length} regular + ${guestSlugs.length} guests`);
+  }
+
   return { count: results.length, log: results };
 }
 

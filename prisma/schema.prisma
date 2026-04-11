@@ -265,10 +265,11 @@ model StageIdentity {
   color        String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
   createdAt    DateTime                   @default(now())
 
-  translations StageIdentityTranslation[]
-  artistLinks  StageIdentityArtist[]
-  voicedBy     RealPersonStageIdentity[]
-  performances SetlistItemMember[]
+  translations    StageIdentityTranslation[]
+  artistLinks     StageIdentityArtist[]
+  voicedBy        RealPersonStageIdentity[]
+  performances    SetlistItemMember[]
+  eventPerformers EventPerformer[]
 }
 
 model StageIdentityTranslation {
@@ -413,6 +414,7 @@ model Event {
   childEvents   Event[]            @relation("EventChildren")
   translations  EventTranslation[]
   setlistItems  SetlistItem[]
+  performers    EventPerformer[]
 
   @@index([eventSeriesId])
   @@index([parentEventId])
@@ -432,6 +434,25 @@ model EventTranslation {
   event     Event  @relation(fields: [eventId], references: [id])
   @@unique([eventId, locale])
   @@index([eventId])
+}
+
+// Records all performers for an event — both regular and guests.
+// Used as fallback for full group SetlistItems where performer_slugs is empty.
+// isGuest=false → included in full group fallback
+// isGuest=true  → excluded from fallback, explicit only
+model EventPerformer {
+  id              String        @id @default(uuid())
+  eventId         BigInt
+  stageIdentityId String
+
+  isGuest         Boolean       @default(false)
+
+  event           Event         @relation(fields: [eventId], references: [id])
+  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
+
+  @@unique([eventId, stageIdentityId])
+  @@index([eventId])
+  @@index([stageIdentityId])
 }
 
 // ── SETLIST ITEM ──────────────────────────────────────

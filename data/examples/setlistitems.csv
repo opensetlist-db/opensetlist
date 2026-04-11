@@ -1,13 +1,10 @@
 event_slug,position,song_slug,isEncore,itemType,performanceType,stageType,artist_slugs,unitName,performer_slugs,note,status
-hasunosora-6th-fukuoka-day1,1,hasunosora-dream-believers,,song,live_performance,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,,confirmed
-hasunosora-6th-fukuoka-day1,2,hasunosora-link-to-the-future,,song,live_performance,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,,confirmed
-hasunosora-6th-fukuoka-day1,3,hasunosora-unknock,,song,live_performance,unit,cerise-bouquet,Cerise Bouquet,otomune-kozue osawa-rurino,,confirmed
-hasunosora-6th-fukuoka-day1,4,hasunosora-holiday-holiday,,song,live_performance,unit,dollchestra,DOLLCHESTRA,murano-sayaka hinoshita-kaho,,confirmed
-hasunosora-6th-fukuoka-day1,5,hasunosora-miracle-cra-party,,song,live_performance,unit,mira-cra-park,Mira-Cra Park!,momose-ginko yugiri-tsuzuri,,confirmed
-hasunosora-6th-fukuoka-day1,6,,,,mc,,hasunosora,,,,confirmed
-hasunosora-6th-fukuoka-day1,7,hasunosora-cool-beat-vibration,,song,live_performance,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,,confirmed
-hasunosora-6th-fukuoka-day1,8,hasunosora-yuu-no-kagami,,song,live_performance,solo,hasunosora,,otomune-kozue,,confirmed
-hasunosora-6th-fukuoka-day1,9,hasunosora-memory-of-flowers,,song,virtual_live,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,バーチャルライブ映像,confirmed
-hasunosora-6th-fukuoka-day1,10,,,,interval,,,,,幕間映像,confirmed
-hasunosora-6th-fukuoka-day1,11,hasunosora-bloom-bloom-bloom,,song,live_performance,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,,confirmed
-hasunosora-6th-fukuoka-day1,12,hasunosora-dream-believers,true,song,live_performance,full_group,hasunosora,,otomune-kozue osawa-rurino murano-sayaka hinoshita-kaho momose-ginko yugiri-tsuzuri,アンコール,confirmed
+hasunosora-6th-fukuoka-day1,1,hasunosora-dream-believers,,song,live_performance,full_group,hasunosora,,,,confirmed
+hasunosora-6th-fukuoka-day1,2,cerise-bouquet-suisai-sekai,,song,live_performance,unit,cerise-bouquet,スリーズブーケ,hinoshita-kaho momose-ginko,,confirmed
+hasunosora-6th-fukuoka-day1,3,dollchestra-awoke,,song,live_performance,unit,dollchestra,DOLLCHESTRA,murano-sayaka kachimachi-kosuzu,,confirmed
+hasunosora-6th-fukuoka-day1,4,mira-cra-park-do-do-do,,song,live_performance,unit,mira-cra-park,みらくらぱーく！,osawa-rurino anyoji-hime,,confirmed
+hasunosora-6th-fukuoka-day1,5,,,,mc,,,,,,confirmed
+hasunosora-6th-fukuoka-day1,6,hasunosora-on-your-mark,,song,live_performance,full_group,hasunosora,,,,confirmed
+hasunosora-6th-fukuoka-day1,7,,,,interval,,,,,幕間映像,confirmed
+hasunosora-6th-fukuoka-day1,8,hasunosora-eien-no-euporia,,song,live_performance,full_group,hasunosora,,,,confirmed
+hasunosora-6th-fukuoka-day1,9,hasunosora-dream-believers,true,song,live_performance,full_group,hasunosora,,,,confirmed
