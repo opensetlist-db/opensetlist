@@ -221,6 +221,7 @@ model Artist {
   songCredits    SongArtist[]
   eventSeries    EventSeries[]
   albums         Album[]
+  setlistItems   SetlistItemArtist[]
 
   @@index([parentArtistId])
   @@index([isDeleted])
@@ -417,11 +418,13 @@ model Event {
 }
 
 model EventTranslation {
-  id      String @id @default(uuid())
-  eventId BigInt
+  id        String @id @default(uuid())
+  eventId   BigInt
   locale    String
   name      String
   shortName String?
+  city      String?
+  venue     String?
 
   event     Event  @relation(fields: [eventId], references: [id])
   @@unique([eventId, locale])
@@ -449,12 +452,27 @@ model SetlistItem {
   createdAt   DateTime             @default(now())
 
   event       Event                @relation(fields: [eventId], references: [id])
+  artists     SetlistItemArtist[]
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
 
   @@unique([eventId, position])
   @@index([eventId])
   @@index([isDeleted])
+}
+
+// N:N between SetlistItem and Artist — direct performing unit link
+model SetlistItemArtist {
+  id            String      @id @default(uuid())
+  setlistItemId BigInt
+  artistId      BigInt
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+  artist        Artist      @relation(fields: [artistId], references: [id])
+
+  @@unique([setlistItemId, artistId])
+  @@index([setlistItemId])
+  @@index([artistId])
 }
 
 // N:N between SetlistItem and Song — supports medleys

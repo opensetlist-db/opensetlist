@@ -23,14 +23,14 @@ const IMPORT_TYPES = [
   {
     value: "events",
     label: "4. 이벤트 (Events)",
-    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "venue", "city", "country", "ja_name", "ja_shortName", "ko_name", "ko_shortName"],
-    note: "ja_name 또는 ko_name 최소 1개 필수",
+    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "venue", "city", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "artist_slug"],
+    note: "ja_name 또는 ko_name 최소 1개 필수 · venue/city: 원문(Event)은 일본어, 번역은 EventTranslation",
   },
   {
     value: "setlistitems",
     label: "5. 셋리스트 (SetlistItems)",
-    columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "unitName", "note", "status", "performers"],
-    note: "performers: 공백 구분 character_slug",
+    columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "artist_slugs", "unitName", "performer_slugs", "note", "status"],
+    note: "artist_slugs: 공백 구분 artist slug · performer_slugs: 공백 구분 character slug (SI name 매칭)",
   },
 ];
 

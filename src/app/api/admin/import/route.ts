@@ -290,9 +290,9 @@ async function importEvents(rows: Record<string, string>[]) {
     const slug = row.event_slug;
     if (!slug) continue;
 
-    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null } : null;
-    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
+    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null, city: row.ja_city || null, venue: row.ja_venue || null } : null;
+    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null, city: row.ko_city || null, venue: row.ko_venue || null } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null; city: string | null; venue: string | null }[];
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
@@ -316,7 +316,7 @@ async function importEvents(rows: Record<string, string>[]) {
         await prisma.eventTranslation.upsert({
           where: { eventId_locale: { eventId: existing.id, locale: t.locale } },
           create: { eventId: existing.id, ...t },
-          update: { name: t.name, shortName: t.shortName },
+          update: { name: t.name, shortName: t.shortName, city: t.city, venue: t.venue },
         });
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
@@ -389,7 +389,15 @@ async function importSetlistItems(rows: Record<string, string>[]) {
       ? await prisma.song.findUnique({ where: { slug: row.song_slug } })
       : null;
 
-    const performerSlugs = (row.performers || "").split(/\s+/).filter(Boolean);
+    // Look up artists by slug
+    const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
+    const artistIds: bigint[] = [];
+    for (const s of artistSlugs) {
+      const a = await prisma.artist.findUnique({ where: { slug: s } });
+      if (a) artistIds.push(a.id);
+    }
+
+    const performerSlugs = (row.performer_slugs || "").split(/\s+/).filter(Boolean);
     const performerIds = performerSlugs.map(findSIId).filter((id): id is string => id !== null);
 
     const item = await prisma.setlistItem.create({
@@ -403,6 +411,9 @@ async function importSetlistItems(rows: Record<string, string>[]) {
         unitName: row.unitName || null,
         note: row.note || null,
         status: (row.status as "confirmed" | "live" | "rumoured") || "confirmed",
+        artists: artistIds.length
+          ? { create: artistIds.map((aid) => ({ artistId: aid })) }
+          : undefined,
         songs: song ? { create: { songId: song.id, order: 0 } } : undefined,
         performers: performerIds.length
           ? { create: performerIds.map((siId) => ({ stageIdentityId: siId })) }
