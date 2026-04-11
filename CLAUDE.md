@@ -86,6 +86,7 @@ SetlistItemPerformanceType  live_performance | virtual_live | video_playback
 SetlistItemType    song | mc | video | interval
 SongArtistRole     primary | featured | cover
 AlbumType          single | album | ep | live_album | soundtrack
+CommentType        post | comment
 ```
 
 ### GIN Indexes
