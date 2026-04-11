@@ -167,6 +167,59 @@ async function importMembers(rows: Record<string, string>[]) {
   return { count: results.length, log: results };
 }
 
+async function importAlbums(rows: Record<string, string>[]) {
+  const results: string[] = [];
+
+  for (const row of rows) {
+    const slug = row.slug;
+    if (!slug) continue;
+
+    const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title, shortName: row.ja_shortName || null } : null;
+    const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title, shortName: row.ko_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string; shortName: string | null }[];
+
+    const artistId = row.artist_slug
+      ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
+      : null;
+
+    const existing = await prisma.album.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.album.update({
+        where: { slug },
+        data: {
+          type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || undefined,
+          artistId,
+          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+          labelName: row.labelName || null,
+        },
+      });
+      for (const t of translations) {
+        await prisma.albumTranslation.upsert({
+          where: { albumId_locale: { albumId: existing.id, locale: t.locale } },
+          create: { albumId: existing.id, ...t },
+          update: { title: t.title, shortName: t.shortName },
+        });
+      }
+      results.push(`UPDATED: ${slug} → ${existing.id}`);
+    } else {
+      const album = await prisma.album.create({
+        data: {
+          slug,
+          type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || "ep",
+          artistId,
+          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+          labelName: row.labelName || null,
+          translations: translations.length ? { create: translations } : undefined,
+        },
+      });
+      results.push(`CREATED: ${slug} → ${album.id}`);
+    }
+  }
+
+  return { count: results.length, log: results };
+}
+
 async function importSongs(rows: Record<string, string>[]) {
   const results: string[] = [];
 
@@ -232,6 +285,23 @@ async function importSongs(rows: Record<string, string>[]) {
         where: { id: song.id },
         data: { baseVersionId: base.id },
       });
+    }
+  }
+
+  // Third pass: create AlbumTrack links
+  for (const row of rows) {
+    if (!row.album_slug || !row.track_number || !row.slug) continue;
+    const song = await prisma.song.findUnique({ where: { slug: row.slug } });
+    const album = await prisma.album.findUnique({ where: { slug: row.album_slug } });
+    if (song && album) {
+      const trackNumber = parseInt(row.track_number);
+      if (!isNaN(trackNumber)) {
+        await prisma.albumTrack.upsert({
+          where: { albumId_trackNumber: { albumId: album.id, trackNumber } },
+          create: { albumId: album.id, songId: song.id, trackNumber },
+          update: { songId: song.id },
+        });
+      }
     }
   }
 
@@ -439,6 +509,9 @@ export async function POST(request: NextRequest) {
       break;
     case "members":
       result = await importMembers(rows);
+      break;
+    case "albums":
+      result = await importAlbums(rows);
       break;
     case "songs":
       result = await importSongs(rows);

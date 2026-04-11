@@ -564,14 +564,15 @@ model SongTranslation {
 // UUID: album pages are secondary — accessed via song or artist pages.
 model Album {
   id           String             @id @default(uuid())
-  artistId     BigInt
+  slug         String             @unique
+  artistId     BigInt?
   type         AlbumType
   releaseDate  DateTime?          @db.Date
   labelName    String?
   imageUrl     String?
   createdAt    DateTime           @default(now())
 
-  artist       Artist             @relation(fields: [artistId], references: [id])
+  artist       Artist?            @relation(fields: [artistId], references: [id])
   translations AlbumTranslation[]
   tracks       AlbumTrack[]
 
@@ -579,12 +580,13 @@ model Album {
 }
 
 model AlbumTranslation {
-  id      String @id @default(uuid())
-  albumId String
-  locale  String
-  title   String
+  id        String  @id @default(uuid())
+  albumId   String
+  locale    String
+  title     String
+  shortName String?
 
-  album   Album  @relation(fields: [albumId], references: [id])
+  album     Album   @relation(fields: [albumId], references: [id])
   @@unique([albumId, locale])
   @@index([albumId])
 }

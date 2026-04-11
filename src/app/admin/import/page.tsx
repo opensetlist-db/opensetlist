@@ -16,19 +16,26 @@ const IMPORT_TYPES = [
     note: "ja/ko_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등",
   },
   {
+    value: "albums",
+    label: "3. 앨범 (Albums)",
+    columns: ["slug*", "type*", "artist_slug", "releaseDate", "ja_title*", "ja_shortName", "ko_title", "ko_shortName", "labelName"],
+    note: "ja_title 또는 ko_title 최소 1개 필수 · type: single, album, ep, live_album, soundtrack · artist_slug: 스플릿 싱글은 비워두기",
+  },
+  {
     value: "songs",
-    label: "3. 곡 (Songs)",
-    columns: ["slug*", "originalTitle*", "artist_slug", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote"],
+    label: "4. 곡 (Songs)",
+    columns: ["slug*", "originalTitle*", "artist_slug", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote", "album_slug", "track_number"],
+    note: "album_slug + track_number: 앨범 트랙 연결 (albums 먼저 가져오기)",
   },
   {
     value: "events",
-    label: "4. 이벤트 (Events)",
+    label: "5. 이벤트 (Events)",
     columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "artist_slug"],
     note: "ja_name 또는 ko_name 최소 1개 필수 · city/venue는 각 locale 번역에만 존재 (ja_city, ja_venue, ko_city, ko_venue)",
   },
   {
     value: "setlistitems",
-    label: "5. 셋리스트 (SetlistItems)",
+    label: "6. 셋리스트 (SetlistItems)",
     columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "artist_slugs", "unitName", "performer_slugs", "note", "status"],
     note: "artist_slugs: 공백 구분 artist slug · performer_slugs: 공백 구분 character slug (SI name 매칭)",
   },
@@ -86,7 +93,7 @@ export default function ImportPage() {
       <h1 className="mb-6 text-2xl font-bold">CSV 가져오기</h1>
 
       <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 곡 → 이벤트 → 셋리스트
+        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 셋리스트
       </div>
 
       {/* Type selector */}
