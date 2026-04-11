@@ -485,6 +485,27 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     return si?.id ?? null;
   }
 
+  // Pre-pass: delete existing setlist items for events being imported (re-import support)
+  const eventSlugs = new Set(rows.map((r) => r.event_slug).filter(Boolean));
+  for (const slug of eventSlugs) {
+    const event = await prisma.event.findUnique({ where: { slug } });
+    if (event) {
+      // Delete related junction rows first, then setlist items
+      const existingItems = await prisma.setlistItem.findMany({
+        where: { eventId: event.id },
+        select: { id: true },
+      });
+      const itemIds = existingItems.map((i) => i.id);
+      if (itemIds.length > 0) {
+        await prisma.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+        await prisma.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+        await prisma.setlistItemArtist.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+        await prisma.setlistItem.deleteMany({ where: { id: { in: itemIds } } });
+        results.push(`CLEARED: ${slug} — ${itemIds.length} existing items deleted`);
+      }
+    }
+  }
+
   for (const row of rows) {
     // Look up event by slug
     const event = row.event_slug
@@ -518,7 +539,7 @@ async function importSetlistItems(rows: Record<string, string>[]) {
       data: {
         eventId: event.id,
         position,
-        isEncore: row.isEncore === "true" || row.isEncore === "1",
+        isEncore: row.isEncore?.toLowerCase() === "true" || row.isEncore === "1",
         type: (row.itemType as "song" | "mc" | "video" | "interval") || "song",
         performanceType: (row.performanceType as "live_performance" | "virtual_live" | "video_playback") || "live_performance",
         stageType: (row.stageType as "full_group" | "unit" | "solo" | "special") || "full_group",
