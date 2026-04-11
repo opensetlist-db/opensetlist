@@ -580,13 +580,12 @@ model Album {
 }
 
 model AlbumTranslation {
-  id        String  @id @default(uuid())
-  albumId   String
-  locale    String
-  title     String
-  shortName String?
+  id      String @id @default(uuid())
+  albumId String
+  locale  String
+  title   String
 
-  album     Album   @relation(fields: [albumId], references: [id])
+  album   Album  @relation(fields: [albumId], references: [id])
   @@unique([albumId, locale])
   @@index([albumId])
 }

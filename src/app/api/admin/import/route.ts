@@ -174,9 +174,9 @@ async function importAlbums(rows: Record<string, string>[]) {
     const slug = row.slug;
     if (!slug) continue;
 
-    const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title, shortName: row.ja_shortName || null } : null;
-    const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title, shortName: row.ko_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string; shortName: string | null }[];
+    const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title } : null;
+    const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title } : null;
+    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string }[];
 
     const artistId = row.artist_slug
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
@@ -198,7 +198,7 @@ async function importAlbums(rows: Record<string, string>[]) {
         await prisma.albumTranslation.upsert({
           where: { albumId_locale: { albumId: existing.id, locale: t.locale } },
           create: { albumId: existing.id, ...t },
-          update: { title: t.title, shortName: t.shortName },
+          update: { title: t.title },
         });
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);

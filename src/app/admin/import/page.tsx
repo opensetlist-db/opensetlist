@@ -18,7 +18,7 @@ const IMPORT_TYPES = [
   {
     value: "albums",
     label: "3. 앨범 (Albums)",
-    columns: ["slug*", "type*", "artist_slug", "releaseDate", "ja_title*", "ja_shortName", "ko_title", "ko_shortName", "labelName"],
+    columns: ["slug*", "type*", "artist_slug", "releaseDate", "ja_title*", "ko_title", "labelName"],
     note: "ja_title 또는 ko_title 최소 1개 필수 · type: single, album, ep, live_album, soundtrack · artist_slug: 스플릿 싱글은 비워두기",
   },
   {
