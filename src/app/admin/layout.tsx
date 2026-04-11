@@ -9,6 +9,7 @@ const navItems = [
   { href: "/admin/songs", label: "곡" },
   { href: "/admin/event-series", label: "시리즈" },
   { href: "/admin/events", label: "이벤트" },
+  { href: "/admin/import", label: "CSV 가져오기" },
 ];
 
 export default async function AdminLayout({
