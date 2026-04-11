@@ -589,6 +589,9 @@ model Comment {
   taggedEventId String?
   taggedSongId  String?
 
+  // optional song tag for live-viewing comments
+  mentionedSongId String?
+
   // roll-up ancestry — server-computed, immutable after creation
   rollupSongIds         String[]
   rollupEventIds        String[]
