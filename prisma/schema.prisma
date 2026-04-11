@@ -118,6 +118,11 @@ enum AlbumType {
   soundtrack
 }
 
+enum CommentType {
+  post     // BBS-style post — has title, written on Artist/Group/EventSeries board
+  comment  // Inline reaction — no title, written on Song/Event/SetlistItem page
+}
+
 // ── GROUP ─────────────────────────────────────────────
 // Flat tagging layer above Artist.
 // Represents franchises, labels, agencies, series.
@@ -569,6 +574,9 @@ model Comment {
   userId        String
   parentId      String?
 
+  type          CommentType          @default(comment)
+  title         String?              // type=post only
+
   // posted at (exactly one set) — stored as strings for BigInt FK compatibility
   setlistItemId String?
   songId        String?
@@ -577,8 +585,9 @@ model Comment {
   artistId      String?
   groupId       String?
 
-  // optional song tag for live-viewing comments
-  mentionedSongId String?
+  // user-selected tags for type=post (optional, enables rollup to tagged entities)
+  taggedEventId String?
+  taggedSongId  String?
 
   // roll-up ancestry — server-computed, immutable after creation
   rollupSongIds         String[]
