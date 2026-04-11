@@ -745,24 +745,63 @@ model UserRole {
 // ── TRANSLATION DICTIONARY ────────────────────────────
 // Community-maintained overrides for translation API.
 // Applied as pre-translation substitutions before calling Papago/DeepL.
-model TranslationDictionary {
-  id          String       @id @default(uuid())
-  sourceText  String
-  sourceLang  String
-  targetText  String
-  targetLang  String
+model DictionaryTerm {
+  id            String       @id @default(uuid())
 
-  category    DictCategory
+  canonicalText String
+  // Text sent to translation API after substitution.
+  // For preserve=true: value doesn't matter (API not called).
 
-  isApproved  Boolean  @default(false)
-  createdBy   String       // userId
-  approvedBy  String?      // admin/trusted userId
-  useCount    Int          @default(0)
-  createdAt   DateTime     @default(now())
+  preserve      Boolean      @default(false)
+  // true  → skip translation API, keep original text as-is
+  // false → substitute canonicalText, then send to API
 
-  @@unique([sourceText, sourceLang, targetLang])
-  @@index([sourceLang, isApproved])
-  @@index([createdBy])
+  category      DictCategory
+
+  isApproved    Boolean      @default(false)
+  // false → applied only for submitting user (trial period)
+  // true  → applied for all users globally
+
+  createdBy     String       // userId
+  approvedBy    String?      // admin or trusted userId
+  useCount      Int          @default(0)
+  createdAt     DateTime     @default(now())
+
+  surfaces      DictionaryTermSurface[]
+  overrides     DictionaryOverride[]
+}
+
+model DictionaryTermSurface {
+  id      String @id @default(uuid())
+  termId  String
+  locale  String
+  // "ko" | "ja" | "en" | "zh-CN" | "zh-TW" | "*"
+
+  text    String
+  // The surface form in this locale.
+
+  term    DictionaryTerm @relation(fields: [termId], references: [id])
+
+  @@unique([termId, locale, text])
+  @@index([text, locale])
+  @@index([termId])
+}
+
+model DictionaryOverride {
+  id           String @id @default(uuid())
+  termId       String
+  sourceLang   String
+  targetLang   String
+  overrideText String
+  // Used instead of DictionaryTerm.canonicalText for this specific pair.
+
+  createdBy    String
+  createdAt    DateTime @default(now())
+
+  term         DictionaryTerm @relation(fields: [termId], references: [id])
+
+  @@unique([termId, sourceLang, targetLang])
+  @@index([termId])
 }
 
 // ── REPORT ────────────────────────────────────────────
