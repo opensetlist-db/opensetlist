@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { validateEncoreOrder } from "@/lib/validation";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -24,20 +25,12 @@ export async function POST(request: NextRequest) {
     where: { eventId: BigInt(eventId), isDeleted: false },
     select: { position: true, isEncore: true },
   });
-  const allItems = [...existingItems, { position, isEncore: isEncore ?? false }];
-  const minEncorePos = Math.min(
-    ...allItems.filter((i) => i.isEncore).map((i) => i.position),
-    Infinity
-  );
-  const maxNonEncorePos = Math.max(
-    ...allItems.filter((i) => !i.isEncore).map((i) => i.position),
-    -Infinity
-  );
-  if (minEncorePos <= maxNonEncorePos) {
-    return NextResponse.json(
-      { error: "앙코르 항목은 모든 일반 항목 뒤에 위치해야 합니다." },
-      { status: 400 }
-    );
+  const encoreError = validateEncoreOrder([
+    ...existingItems,
+    { position, isEncore: isEncore ?? false },
+  ]);
+  if (encoreError) {
+    return NextResponse.json({ error: encoreError }, { status: 400 });
   }
 
   const item = await prisma.setlistItem.create({

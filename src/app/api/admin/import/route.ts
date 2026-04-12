@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { validateEncoreOrder } from "@/lib/validation";
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
@@ -516,21 +517,16 @@ async function importSetlistItems(rows: Record<string, string>[]) {
   }
   const skippedEvents = new Set<string>();
   for (const [slug, eventRows] of rowsByEvent) {
-    const encorePositions = eventRows
-      .filter((r) => r.isEncore?.toLowerCase() === "true" || r.isEncore === "1")
-      .map((r) => parseInt(r.position))
-      .filter((p) => !isNaN(p));
-    const nonEncorePositions = eventRows
-      .filter((r) => r.isEncore?.toLowerCase() !== "true" && r.isEncore !== "1")
-      .map((r) => parseInt(r.position))
-      .filter((p) => !isNaN(p));
-    if (encorePositions.length > 0 && nonEncorePositions.length > 0) {
-      const minEncore = Math.min(...encorePositions);
-      const maxNonEncore = Math.max(...nonEncorePositions);
-      if (minEncore <= maxNonEncore) {
-        results.push(`ERROR: ${slug} — 앙코르 항목(position ${minEncore})이 일반 항목(position ${maxNonEncore}) 앞에 있습니다. 이 이벤트를 건너뜁니다.`);
-        skippedEvents.add(slug);
-      }
+    const items = eventRows
+      .map((r) => ({
+        position: parseInt(r.position),
+        isEncore: r.isEncore?.toLowerCase() === "true" || r.isEncore === "1",
+      }))
+      .filter((i) => !isNaN(i.position));
+    const encoreError = validateEncoreOrder(items);
+    if (encoreError) {
+      results.push(`ERROR: ${slug} — ${encoreError} 이 이벤트를 건너뜁니다.`);
+      skippedEvents.add(slug);
     }
   }
 
