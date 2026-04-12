@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { BASE_URL } from "@/lib/config";
 import "@fontsource-variable/noto-sans-kr";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://opensetlist.com"),
+  metadataBase: new URL(BASE_URL),
   title: "OpenSetlist",
   description: "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
 };
