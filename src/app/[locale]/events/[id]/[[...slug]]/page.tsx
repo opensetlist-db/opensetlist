@@ -355,7 +355,7 @@ function SetlistTable({
                     <span>{performers.join(", ")}</span>
                   )}
                 </div>
-                {item.type === "song" && item.note && (
+                {item.type === "song" && !item.isEncore && item.note && (
                   <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
                 )}
               </div>
