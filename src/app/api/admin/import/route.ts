@@ -179,18 +179,14 @@ async function importAlbums(rows: Record<string, string>[]) {
     const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title } : null;
     const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string }[];
 
-    const artistId = row.artist_slug
-      ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
-      : null;
-
     const existing = await prisma.album.findUnique({ where: { slug } });
 
+    let albumId: string;
     if (existing) {
       await prisma.album.update({
         where: { slug },
         data: {
           type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || undefined,
-          artistId,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           labelName: row.labelName || null,
         },
@@ -202,19 +198,37 @@ async function importAlbums(rows: Record<string, string>[]) {
           update: { title: t.title },
         });
       }
-      results.push(`UPDATED: ${slug} → ${existing.id}`);
+      albumId = existing.id;
+      results.push(`UPDATED: ${slug} → ${albumId}`);
     } else {
       const album = await prisma.album.create({
         data: {
           slug,
           type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || "ep",
-          artistId,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           labelName: row.labelName || null,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
-      results.push(`CREATED: ${slug} → ${album.id}`);
+      albumId = album.id;
+      results.push(`CREATED: ${slug} → ${albumId}`);
+    }
+
+    // Upsert AlbumArtist rows from space-separated artist_slugs
+    if (row.artist_slugs) {
+      const slugs = row.artist_slugs.trim().split(/\s+/).filter(Boolean);
+      for (const artistSlug of slugs) {
+        const artist = await prisma.artist.findUnique({ where: { slug: artistSlug } });
+        if (!artist) {
+          results.push(`WARN: artist not found: ${artistSlug}`);
+          continue;
+        }
+        await prisma.albumArtist.upsert({
+          where: { albumId_artistId: { albumId, artistId: artist.id } },
+          create: { albumId, artistId: artist.id },
+          update: {},
+        });
+      }
     }
   }
 

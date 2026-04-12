@@ -220,7 +220,7 @@ model Artist {
   stageLinks     StageIdentityArtist[]
   songCredits    SongArtist[]
   eventSeries    EventSeries[]
-  albums         Album[]
+  albums         AlbumArtist[]
   setlistItems   SetlistItemArtist[]
 
   @@index([parentArtistId])
@@ -586,17 +586,26 @@ model SongTranslation {
 model Album {
   id           String             @id @default(uuid())
   slug         String             @unique
-  artistId     BigInt?
   type         AlbumType
   releaseDate  DateTime?          @db.Date
   labelName    String?
   imageUrl     String?
   createdAt    DateTime           @default(now())
 
-  artist       Artist?            @relation(fields: [artistId], references: [id])
   translations AlbumTranslation[]
   tracks       AlbumTrack[]
+  artists      AlbumArtist[]
+}
 
+model AlbumArtist {
+  albumId  String
+  artistId BigInt
+
+  album    Album  @relation(fields: [albumId], references: [id])
+  artist   Artist @relation(fields: [artistId], references: [id])
+
+  @@unique([albumId, artistId])
+  @@index([albumId])
   @@index([artistId])
 }
 
