@@ -277,9 +277,13 @@ function SetlistTable({
       {items.map((item, index) => {
         const songNames = item.songs.map((s) => {
           const sTr = pickTranslation(s.song.translations, locale);
+          const localizedTitle = sTr?.title;
+          // Show localized title only when user's locale differs from original language
+          const showLocalized = s.song.originalLanguage !== locale && !!localizedTitle;
           return {
             id: s.song.id,
-            title: sTr?.title ?? s.song.originalTitle,
+            originalTitle: s.song.originalTitle,
+            localizedTitle: showLocalized ? localizedTitle : null,
             variantLabel: s.song.variantLabel,
             artists: s.song.artists,
           };
@@ -316,11 +320,16 @@ function SetlistTable({
                           <span className="mx-1 text-zinc-400">+</span>
                         )}
                         <Link
-                          href={`/${locale}/songs/${song.id}/${slugify(song.title)}`}
+                          href={`/${locale}/songs/${song.id}/${slugify(song.originalTitle)}`}
                           className="font-medium text-blue-600 hover:underline"
                         >
-                          {song.title}
+                          {song.originalTitle}
                         </Link>
+                        {song.localizedTitle && (
+                          <span className="ml-1 text-sm text-zinc-400">
+                            {song.localizedTitle}
+                          </span>
+                        )}
                         {song.variantLabel && (
                           <span className="ml-1 text-xs text-zinc-500">
                             ({song.variantLabel})
