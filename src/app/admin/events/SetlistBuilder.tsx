@@ -285,8 +285,8 @@ export default function SetlistBuilder({
         artistLinks: [],
       }))
     );
-    setFormArtistIds(item.artists.map((a) => a.artist.id));
-    setSelectedArtists(item.artists.map((a) => a.artist));
+    setFormArtistIds(item.artists?.map((a) => a.artist.id) ?? []);
+    setSelectedArtists(item.artists?.map((a) => a.artist) ?? []);
     setShowForm(true);
   }
 
