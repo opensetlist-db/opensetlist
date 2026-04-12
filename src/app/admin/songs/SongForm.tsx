@@ -10,7 +10,9 @@ type SongFormProps = {
   initialData?: {
     id: number;
     originalTitle: string;
+    originalLanguage: string;
     variantLabel: string | null;
+    sourceNote: string | null;
     releaseDate: string | null;
     baseVersionId: number | null;
     translations: Translation[];
@@ -19,6 +21,12 @@ type SongFormProps = {
 };
 
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+const LANGUAGES = [
+  { value: "ja", label: "일본어 (ja)" },
+  { value: "en", label: "영어 (en)" },
+  { value: "ko", label: "한국어 (ko)" },
+  { value: "zh", label: "중국어 (zh)" },
+];
 const ROLES = ["primary", "featured", "cover"];
 
 export default function SongForm({ initialData }: SongFormProps) {
@@ -27,8 +35,14 @@ export default function SongForm({ initialData }: SongFormProps) {
   const [originalTitle, setOriginalTitle] = useState(
     initialData?.originalTitle ?? ""
   );
+  const [originalLanguage, setOriginalLanguage] = useState(
+    initialData?.originalLanguage ?? "ja"
+  );
   const [variantLabel, setVariantLabel] = useState(
     initialData?.variantLabel ?? ""
+  );
+  const [sourceNote, setSourceNote] = useState(
+    initialData?.sourceNote ?? ""
   );
   const [releaseDate, setReleaseDate] = useState(
     initialData?.releaseDate ?? ""
@@ -88,7 +102,9 @@ export default function SongForm({ initialData }: SongFormProps) {
 
     const payload = {
       originalTitle,
+      originalLanguage,
       variantLabel: variantLabel || null,
+      sourceNote: sourceNote || null,
       releaseDate: releaseDate || null,
       baseVersionId: baseVersionId || null,
       translations: translations.filter((t) => t.title.trim()),
@@ -117,14 +133,28 @@ export default function SongForm({ initialData }: SongFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-      <div>
-        <label className="mb-1 block text-sm font-medium">원제</label>
-        <input
-          value={originalTitle}
-          onChange={(e) => setOriginalTitle(e.target.value)}
-          className="w-full rounded border border-zinc-300 px-3 py-2"
-          required
-        />
+      <div className="grid grid-cols-[1fr_auto] gap-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium">원제</label>
+          <input
+            value={originalTitle}
+            onChange={(e) => setOriginalTitle(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+            required
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">원어</label>
+          <select
+            value={originalLanguage}
+            onChange={(e) => setOriginalLanguage(e.target.value)}
+            className="rounded border border-zinc-300 px-3 py-2"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -152,16 +182,29 @@ export default function SongForm({ initialData }: SongFormProps) {
         </div>
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium">
-          원곡 ID (버전인 경우)
-        </label>
-        <input
-          placeholder="원곡 Song ID"
-          value={baseVersionId}
-          onChange={(e) => setBaseVersionId(e.target.value)}
-          className="w-full rounded border border-zinc-300 px-3 py-2"
-        />
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium">
+            원곡 ID (버전인 경우)
+          </label>
+          <input
+            placeholder="원곡 Song ID"
+            value={baseVersionId}
+            onChange={(e) => setBaseVersionId(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">
+            출처 (선택)
+          </label>
+          <input
+            placeholder="예: 러브라이브! 하스노소라 여학원 스쿨 아이돌 클럽"
+            value={sourceNote}
+            onChange={(e) => setSourceNote(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+          />
+        </div>
       </div>
 
       {/* Translations */}

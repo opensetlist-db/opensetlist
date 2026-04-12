@@ -26,9 +26,10 @@ export default async function EditEventSeriesPage({ params }: Props) {
           parentSeriesId: data.parentSeriesId ? Number(data.parentSeriesId) : null,
           organizerName: data.organizerName,
           hasBoard: data.hasBoard,
-          translations: data.translations.map((t) => ({
+          translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; description?: string | null }) => ({
             locale: t.locale,
             name: t.name,
+            shortName: t.shortName ?? "",
             description: t.description ?? "",
           })),
         }}

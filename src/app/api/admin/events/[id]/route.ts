@@ -50,6 +50,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     parentEventId,
     date,
     country,
+    posterUrl,
     translations,
   } = body;
 
@@ -64,11 +65,13 @@ export async function PUT(request: NextRequest, { params }: Props) {
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
       country: country || null,
+      posterUrl: posterUrl || null,
       translations: {
         create: translations.map(
-          (t: { locale: string; name: string }) => ({
+          (t: { locale: string; name: string; shortName?: string | null }) => ({
             locale: t.locale,
             name: t.name,
+            shortName: t.shortName || null,
           })
         ),
       },

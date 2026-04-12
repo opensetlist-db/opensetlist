@@ -10,7 +10,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const body = await request.json();
   const {
     originalTitle,
+    originalLanguage,
     variantLabel,
+    sourceNote,
     releaseDate,
     baseVersionId,
     translations,
@@ -24,7 +26,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
     where: { id: songId },
     data: {
       originalTitle,
+      originalLanguage: originalLanguage || undefined,
       variantLabel: variantLabel || null,
+      sourceNote: sourceNote || null,
       releaseDate: releaseDate ? new Date(releaseDate) : null,
       baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
       translations: {

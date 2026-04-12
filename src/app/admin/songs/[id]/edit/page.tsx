@@ -27,7 +27,9 @@ export default async function EditSongPage({ params }: Props) {
         initialData={{
           id: Number(data.id),
           originalTitle: data.originalTitle,
+          originalLanguage: data.originalLanguage ?? "ja",
           variantLabel: data.variantLabel,
+          sourceNote: data.sourceNote,
           releaseDate: data.releaseDate
             ? new Date(data.releaseDate).toISOString().split("T")[0]
             : null,

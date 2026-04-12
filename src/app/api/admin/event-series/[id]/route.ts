@@ -22,9 +22,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
       hasBoard: hasBoard ?? false,
       translations: {
         create: translations.map(
-          (t: { locale: string; name: string; description?: string }) => ({
+          (t: { locale: string; name: string; shortName?: string | null; description?: string }) => ({
             locale: t.locale,
             name: t.name,
+            shortName: t.shortName || null,
             description: t.description || null,
           })
         ),

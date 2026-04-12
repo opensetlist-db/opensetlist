@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-type Translation = { locale: string; name: string; description: string };
+type Translation = { locale: string; name: string; shortName: string; description: string };
 
 type EventSeriesFormProps = {
   initialData?: {
@@ -37,7 +37,7 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "", description: "" }]
+      : [{ locale: "ko", name: "", shortName: "", description: "" }]
   );
 
   const [artists, setArtists] = useState<
@@ -72,7 +72,7 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
     if (next) {
       setTranslations((prev) => [
         ...prev,
-        { locale: next, name: "", description: "" },
+        { locale: next, name: "", shortName: "", description: "" },
       ]);
     }
   }
@@ -87,7 +87,9 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
       parentSeriesId: parentSeriesId || null,
       organizerName: organizerName || null,
       hasBoard,
-      translations: translations.filter((t) => t.name.trim()),
+      translations: translations
+        .filter((t) => t.name.trim())
+        .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null, description: t.description || null })),
     };
 
     const url = initialData
@@ -245,12 +247,20 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
                   </button>
                 )}
               </div>
-              <input
-                placeholder="이름"
-                value={tr.name}
-                onChange={(e) => updateTranslation(i, "name", e.target.value)}
-                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
+              <div className="mb-2 flex gap-2">
+                <input
+                  placeholder="이름"
+                  value={tr.name}
+                  onChange={(e) => updateTranslation(i, "name", e.target.value)}
+                  className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="약칭"
+                  value={tr.shortName}
+                  onChange={(e) => updateTranslation(i, "shortName", e.target.value)}
+                  className="w-28 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
               <textarea
                 placeholder="설명 (선택)"
                 value={tr.description}

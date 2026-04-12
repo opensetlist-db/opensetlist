@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-type Translation = { locale: string; name: string };
+type Translation = { locale: string; name: string; shortName: string };
 
 type EventFormProps = {
   initialData?: {
@@ -14,6 +14,7 @@ type EventFormProps = {
     parentEventId: number | null;
     date: string | null;
     country: string | null;
+    posterUrl: string | null;
     translations: Translation[];
   };
 };
@@ -35,10 +36,11 @@ export default function EventForm({ initialData }: EventFormProps) {
   );
   const [date, setDate] = useState(initialData?.date ?? "");
   const [country, setCountry] = useState(initialData?.country ?? "");
+  const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "" }]
+      : [{ locale: "ko", name: "", shortName: "" }]
   );
 
   const [seriesList, setSeriesList] = useState<
@@ -71,7 +73,7 @@ export default function EventForm({ initialData }: EventFormProps) {
     const usedLocales = translations.map((t) => t.locale);
     const next = LOCALES.find((l) => !usedLocales.includes(l));
     if (next) {
-      setTranslations((prev) => [...prev, { locale: next, name: "" }]);
+      setTranslations((prev) => [...prev, { locale: next, name: "", shortName: "" }]);
     }
   }
 
@@ -86,7 +88,10 @@ export default function EventForm({ initialData }: EventFormProps) {
       parentEventId: parentEventId || null,
       date: date || null,
       country: country || null,
-      translations: translations.filter((t) => t.name.trim()),
+      posterUrl: posterUrl || null,
+      translations: translations
+        .filter((t) => t.name.trim())
+        .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null })),
     };
 
     const url = initialData
@@ -213,6 +218,16 @@ export default function EventForm({ initialData }: EventFormProps) {
         </div>
       </div>
 
+      <div>
+        <label className="mb-1 block text-sm font-medium">포스터 URL (선택)</label>
+        <input
+          placeholder="https://..."
+          value={posterUrl}
+          onChange={(e) => setPosterUrl(e.target.value)}
+          className="w-full rounded border border-zinc-300 px-3 py-2"
+        />
+      </div>
+
       {/* Translations */}
       <div>
         <div className="mb-2 flex items-center justify-between">
@@ -251,6 +266,12 @@ export default function EventForm({ initialData }: EventFormProps) {
                 value={tr.name}
                 onChange={(e) => updateTranslation(i, "name", e.target.value)}
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="약칭"
+                value={tr.shortName}
+                onChange={(e) => updateTranslation(i, "shortName", e.target.value)}
+                className="w-28 rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               {translations.length > 1 && (
                 <button
