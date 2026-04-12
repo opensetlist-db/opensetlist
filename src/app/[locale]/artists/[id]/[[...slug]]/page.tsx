@@ -8,6 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
+import { displayName } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -94,9 +95,33 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const artist = await getArtist(artistId, locale);
   if (!artist) return { title: "Not Found" };
   const t = pickTranslation(artist.translations, locale);
+  if (!t) return { title: "OpenSetlist" };
+
+  const title = `${displayName(t, "full")} | OpenSetlist`;
+  const description = `${displayName(t)} 공연 셋리스트 데이터베이스`;
+
+  const ogImage = `/api/og/artist/${id}`;
+  const pageUrl = `/${locale}/artists/${id}/${artist.slug}`;
+
   return {
-    title: t?.name ? `${t.name} | OpenSetlist` : "OpenSetlist",
-    description: t?.bio ?? undefined,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: pageUrl,
+      siteName: "OpenSetlist",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      locale,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+      site: "@opensetlistdb",
+    },
   };
 }
 

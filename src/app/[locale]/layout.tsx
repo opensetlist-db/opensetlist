@@ -6,6 +6,7 @@ import "@fontsource-variable/noto-sans-kr";
 import "../globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://opensetlist.com"),
   title: "OpenSetlist",
   description: "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
 };

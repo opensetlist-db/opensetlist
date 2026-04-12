@@ -8,6 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
+import { displayName } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -71,9 +72,38 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const song = await getSong(BigInt(id), locale);
   if (!song) return { title: "Not Found" };
   const tr = pickTranslation(song.translations, locale);
-  const title = tr?.title ?? song.originalTitle;
+  const artistTr = song.artists[0]
+    ? pickTranslation(song.artists[0].artist.translations, locale)
+    : null;
+
+  const songTitle = tr?.title ?? song.originalTitle;
+  const title = `${songTitle}${song.variantLabel ? ` (${song.variantLabel})` : ""} | OpenSetlist`;
+  const description = artistTr
+    ? `${displayName(artistTr)} · 공연 이력 및 셋리스트`
+    : "공연 이력 및 셋리스트";
+
+  const ogImage = `/api/og/song/${id}`;
+  const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
+
   return {
-    title: `${title}${song.variantLabel ? ` (${song.variantLabel})` : ""} | OpenSetlist`,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: pageUrl,
+      siteName: "OpenSetlist",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      locale,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+      site: "@opensetlistdb",
+    },
   };
 }
 

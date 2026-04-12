@@ -74,8 +74,50 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const event = await getEvent(BigInt(id), locale);
   if (!event) return { title: "Not Found" };
   const tr = pickTranslation(event.translations, locale);
+  const seriesTr = event.eventSeries
+    ? pickTranslation(event.eventSeries.translations, locale)
+    : null;
+
+  const title = tr?.name
+    ? `${displayName(tr)} 셋리스트 | OpenSetlist`
+    : "OpenSetlist";
+  const description = [
+    event.date
+      ? new Date(event.date).toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "",
+    tr?.city,
+    tr?.venue,
+    seriesTr ? displayName(seriesTr) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const ogImage = `/api/og/event/${id}`;
+  const pageUrl = `/${locale}/events/${id}/${event.slug}`;
+
   return {
-    title: tr?.name ? `${tr.name} | OpenSetlist` : "OpenSetlist",
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: pageUrl,
+      siteName: "OpenSetlist",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
+      locale,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+      site: "@opensetlistdb",
+    },
   };
 }
 
