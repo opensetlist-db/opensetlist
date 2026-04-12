@@ -65,6 +65,11 @@
       "completed": "종료",
       "cancelled": "취소"
     },
+    "itemType": {
+      "mc": "MC",
+      "video": "영상",
+      "interval": "막간영상"
+    },
     "stageType": {
       "full_group": "전체",
       "unit": "유닛",

@@ -506,7 +506,37 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     }
   }
 
+  // Validate encore ordering per event
+  const rowsByEvent = new Map<string, Record<string, string>[]>();
   for (const row of rows) {
+    const slug = row.event_slug;
+    if (!slug) continue;
+    if (!rowsByEvent.has(slug)) rowsByEvent.set(slug, []);
+    rowsByEvent.get(slug)!.push(row);
+  }
+  const skippedEvents = new Set<string>();
+  for (const [slug, eventRows] of rowsByEvent) {
+    const encorePositions = eventRows
+      .filter((r) => r.isEncore?.toLowerCase() === "true" || r.isEncore === "1")
+      .map((r) => parseInt(r.position))
+      .filter((p) => !isNaN(p));
+    const nonEncorePositions = eventRows
+      .filter((r) => r.isEncore?.toLowerCase() !== "true" && r.isEncore !== "1")
+      .map((r) => parseInt(r.position))
+      .filter((p) => !isNaN(p));
+    if (encorePositions.length > 0 && nonEncorePositions.length > 0) {
+      const minEncore = Math.min(...encorePositions);
+      const maxNonEncore = Math.max(...nonEncorePositions);
+      if (minEncore <= maxNonEncore) {
+        results.push(`ERROR: ${slug} — 앙코르 항목(position ${minEncore})이 일반 항목(position ${maxNonEncore}) 앞에 있습니다. 이 이벤트를 건너뜁니다.`);
+        skippedEvents.add(slug);
+      }
+    }
+  }
+
+  for (const row of rows) {
+    if (skippedEvents.has(row.event_slug)) continue;
+
     // Look up event by slug
     const event = row.event_slug
       ? await prisma.event.findUnique({ where: { slug: row.event_slug } })

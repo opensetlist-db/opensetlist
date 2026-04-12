@@ -18,6 +18,11 @@ type StageIdentityOption = {
   }[];
 };
 
+type ArtistOption = {
+  id: number;
+  translations: { locale: string; name: string }[];
+};
+
 type SetlistItemData = {
   id: number;
   position: number;
@@ -41,6 +46,12 @@ type SetlistItemData = {
       translations: { locale: string; name: string }[];
     };
   }[];
+  artists: {
+    artist: {
+      id: number;
+      translations: { locale: string; name: string }[];
+    };
+  }[];
 };
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
@@ -57,6 +68,10 @@ function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
 
 function getSIName(si: { translations: { locale: string; name: string }[] }) {
   return si.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
+}
+
+function getArtistName(a: { translations: { locale: string; name: string }[] }) {
+  return a.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
 }
 
 export default function SetlistBuilder({
@@ -87,6 +102,7 @@ export default function SetlistBuilder({
   const [formType, setFormType] = useState("song");
   const [formSongIds, setFormSongIds] = useState<number[]>([]);
   const [formPerformerIds, setFormPerformerIds] = useState<string[]>([]);
+  const [formArtistIds, setFormArtistIds] = useState<number[]>([]);
 
   // Search-based selectors
   const [songSearch, setSongSearch] = useState("");
@@ -101,6 +117,14 @@ export default function SetlistBuilder({
   const [performerDropdownOpen, setPerformerDropdownOpen] = useState(false);
   const [selectedPerformers, setSelectedPerformers] = useState<StageIdentityOption[]>([]);
   const performerSearchRef = useRef<HTMLDivElement>(null);
+
+  const [artistSearch, setArtistSearch] = useState("");
+  const [artistSearchResults, setArtistSearchResults] = useState<ArtistOption[]>([]);
+  const [artistSearchLoading, setArtistSearchLoading] = useState(false);
+  const [artistDropdownOpen, setArtistDropdownOpen] = useState(false);
+  const [selectedArtists, setSelectedArtists] = useState<ArtistOption[]>([]);
+  const artistSearchRef = useRef<HTMLDivElement>(null);
+  const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/songs")
@@ -119,6 +143,9 @@ export default function SetlistBuilder({
       }
       if (performerSearchRef.current && !performerSearchRef.current.contains(e.target as Node)) {
         setPerformerDropdownOpen(false);
+      }
+      if (artistSearchRef.current && !artistSearchRef.current.contains(e.target as Node)) {
+        setArtistDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -179,6 +206,42 @@ export default function SetlistBuilder({
     setSelectedPerformers((prev) => prev.filter((p) => p.id !== siId));
   }
 
+  const searchArtists = useCallback((query: string) => {
+    if (artistSearchTimerRef.current) clearTimeout(artistSearchTimerRef.current);
+    if (!query.trim()) {
+      setArtistSearchResults([]);
+      setArtistSearchLoading(false);
+      return;
+    }
+    setArtistSearchLoading(true);
+    artistSearchTimerRef.current = setTimeout(async () => {
+      const res = await fetch(`/api/admin/artists?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setArtistSearchResults(data);
+      setArtistSearchLoading(false);
+    }, 300);
+  }, []);
+
+  function handleArtistSearchChange(value: string) {
+    setArtistSearch(value);
+    setArtistDropdownOpen(true);
+    searchArtists(value);
+  }
+
+  function selectArtist(artist: ArtistOption) {
+    if (!formArtistIds.includes(artist.id)) {
+      setFormArtistIds((prev) => [...prev, artist.id]);
+      setSelectedArtists((prev) => [...prev, artist]);
+    }
+    setArtistSearch("");
+    setArtistSearchResults([]);
+  }
+
+  function removeArtist(artistId: number) {
+    setFormArtistIds((prev) => prev.filter((id) => id !== artistId));
+    setSelectedArtists((prev) => prev.filter((a) => a.id !== artistId));
+  }
+
   function resetForm() {
     setEditingId(null);
     setFormPosition(items.length + 1);
@@ -196,6 +259,10 @@ export default function SetlistBuilder({
     setSelectedSongs([]);
     setPerformerSearch("");
     setSelectedPerformers([]);
+    setFormArtistIds([]);
+    setArtistSearch("");
+    setArtistSearchResults([]);
+    setSelectedArtists([]);
   }
 
   function startEdit(item: SetlistItemData) {
@@ -218,6 +285,8 @@ export default function SetlistBuilder({
         artistLinks: [],
       }))
     );
+    setFormArtistIds(item.artists.map((a) => a.artist.id));
+    setSelectedArtists(item.artists.map((a) => a.artist));
     setShowForm(true);
   }
 
@@ -235,6 +304,7 @@ export default function SetlistBuilder({
       type: formType,
       songIds: formType === "song" ? formSongIds : [],
       performerIds: formPerformerIds,
+      artistIds: formArtistIds,
     };
 
     const url = editingId
@@ -257,7 +327,8 @@ export default function SetlistBuilder({
       const eventData = await eventRes.json();
       setItems(eventData.setlistItems);
     } else {
-      alert("저장에 실패했습니다.");
+      const errData = await res.json().catch(() => null);
+      alert(errData?.error || "저장에 실패했습니다.");
     }
     setLoading(false);
   }
@@ -477,6 +548,66 @@ export default function SetlistBuilder({
                 onChange={(e) => setFormNote(e.target.value)}
                 className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
               />
+            </div>
+          </div>
+
+          {/* Artist selector */}
+          <div ref={artistSearchRef}>
+            <label className="mb-1 block text-xs font-medium">
+              아티스트 (유닛/솔로)
+            </label>
+            {selectedArtists.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {selectedArtists.map((artist) => (
+                  <span
+                    key={artist.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-xs font-medium text-purple-800"
+                  >
+                    {getArtistName(artist)}
+                    <button
+                      type="button"
+                      onClick={() => removeArtist(artist.id)}
+                      className="ml-0.5 text-purple-500 hover:text-purple-700"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="relative">
+              <input
+                type="text"
+                value={artistSearch}
+                onChange={(e) => handleArtistSearchChange(e.target.value)}
+                onFocus={() => { if (artistSearch.trim()) setArtistDropdownOpen(true); }}
+                placeholder="아티스트 검색..."
+                className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+              />
+              {artistSearchLoading && (
+                <span className="absolute right-2 top-1.5 text-xs text-zinc-400">검색 중...</span>
+              )}
+              {artistDropdownOpen && artistSearch.trim() && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
+                  {artistSearchResults.map((artist) => {
+                    const isSelected = formArtistIds.includes(artist.id);
+                    return (
+                      <button
+                        key={artist.id}
+                        type="button"
+                        onClick={() => selectArtist(artist)}
+                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                      >
+                        {isSelected && <span className="mr-1">✓</span>}
+                        {getArtistName(artist)}
+                      </button>
+                    );
+                  })}
+                  {!artistSearchLoading && artistSearchResults.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-zinc-400">일치하는 아티스트가 없습니다</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

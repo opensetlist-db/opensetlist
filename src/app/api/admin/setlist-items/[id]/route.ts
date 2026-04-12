@@ -19,11 +19,42 @@ export async function PUT(request: NextRequest, { params }: Props) {
     type,
     songIds,
     performerIds,
+    artistIds,
   } = body;
+
+  // Validate encore ordering
+  const currentItem = await prisma.setlistItem.findUnique({
+    where: { id: itemId },
+    select: { eventId: true },
+  });
+  if (currentItem) {
+    const existingItems = await prisma.setlistItem.findMany({
+      where: { eventId: currentItem.eventId, isDeleted: false, id: { not: itemId } },
+      select: { position: true, isEncore: true },
+    });
+    const allItems = [...existingItems, { position, isEncore: isEncore ?? false }];
+    const minEncorePos = Math.min(
+      ...allItems.filter((i) => i.isEncore).map((i) => i.position),
+      Infinity
+    );
+    const maxNonEncorePos = Math.max(
+      ...allItems.filter((i) => !i.isEncore).map((i) => i.position),
+      -Infinity
+    );
+    if (minEncorePos <= maxNonEncorePos) {
+      return NextResponse.json(
+        { error: "앙코르 항목은 모든 일반 항목 뒤에 위치해야 합니다." },
+        { status: 400 }
+      );
+    }
+  }
 
   // Clear existing links
   await prisma.setlistItemSong.deleteMany({ where: { setlistItemId: itemId } });
   await prisma.setlistItemMember.deleteMany({
+    where: { setlistItemId: itemId },
+  });
+  await prisma.setlistItemArtist.deleteMany({
     where: { setlistItemId: itemId },
   });
 
@@ -53,6 +84,13 @@ export async function PUT(request: NextRequest, { params }: Props) {
             })),
           }
         : undefined,
+      artists: artistIds?.length
+        ? {
+            create: artistIds.map((artistId: number) => ({
+              artistId: BigInt(artistId),
+            })),
+          }
+        : undefined,
     },
     include: {
       songs: {
@@ -62,6 +100,11 @@ export async function PUT(request: NextRequest, { params }: Props) {
       performers: {
         include: {
           stageIdentity: { include: { translations: true } },
+        },
+      },
+      artists: {
+        include: {
+          artist: { include: { translations: true } },
         },
       },
     },

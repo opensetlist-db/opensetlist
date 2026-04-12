@@ -16,7 +16,29 @@ export async function POST(request: NextRequest) {
     type,
     songIds,
     performerIds,
+    artistIds,
   } = body;
+
+  // Validate encore ordering: non-encore items must come before encore items
+  const existingItems = await prisma.setlistItem.findMany({
+    where: { eventId: BigInt(eventId), isDeleted: false },
+    select: { position: true, isEncore: true },
+  });
+  const allItems = [...existingItems, { position, isEncore: isEncore ?? false }];
+  const minEncorePos = Math.min(
+    ...allItems.filter((i) => i.isEncore).map((i) => i.position),
+    Infinity
+  );
+  const maxNonEncorePos = Math.max(
+    ...allItems.filter((i) => !i.isEncore).map((i) => i.position),
+    -Infinity
+  );
+  if (minEncorePos <= maxNonEncorePos) {
+    return NextResponse.json(
+      { error: "앙코르 항목은 모든 일반 항목 뒤에 위치해야 합니다." },
+      { status: 400 }
+    );
+  }
 
   const item = await prisma.setlistItem.create({
     data: {
@@ -44,6 +66,13 @@ export async function POST(request: NextRequest) {
             })),
           }
         : undefined,
+      artists: artistIds?.length
+        ? {
+            create: artistIds.map((artistId: number) => ({
+              artistId: BigInt(artistId),
+            })),
+          }
+        : undefined,
     },
     include: {
       songs: {
@@ -53,6 +82,11 @@ export async function POST(request: NextRequest) {
       performers: {
         include: {
           stageIdentity: { include: { translations: true } },
+        },
+      },
+      artists: {
+        include: {
+          artist: { include: { translations: true } },
         },
       },
     },

@@ -23,6 +23,11 @@ export async function GET(_request: NextRequest, { params }: Props) {
               stageIdentity: { include: { translations: true } },
             },
           },
+          artists: {
+            include: {
+              artist: { include: { translations: true } },
+            },
+          },
         },
         orderBy: { position: "asc" },
       },

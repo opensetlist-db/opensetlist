@@ -8,6 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
+import { displayName } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -52,6 +53,11 @@ async function getEvent(id: bigint, locale: string) {
             include: {
               stageIdentity: { include: { translations: true } },
               realPerson: { include: { translations: true } },
+            },
+          },
+          artists: {
+            include: {
+              artist: { include: { translations: true } },
             },
           },
         },
@@ -115,7 +121,7 @@ export default async function EventPage({ params }: Props) {
               href={`/${locale}/series/${event.eventSeries.id}/${slugify(seriesTr.name)}`}
               className="hover:underline"
             >
-              {seriesTr.name}
+              {displayName(seriesTr)}
             </Link>
           </>
         )}
@@ -126,7 +132,7 @@ export default async function EventPage({ params }: Props) {
               href={`/${locale}/events/${event.parentEvent.id}/${slugify(parentTr.name)}`}
               className="hover:underline"
             >
-              {parentTr.name}
+              {displayName(parentTr)}
             </Link>
           </>
         )}
@@ -135,30 +141,30 @@ export default async function EventPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">{tr?.name ?? "Unknown Event"}</h1>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm text-zinc-600">
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-              event.status === "completed"
-                ? "bg-zinc-100 text-zinc-600"
-                : event.status === "upcoming"
-                  ? "bg-blue-100 text-blue-700"
-                  : event.status === "ongoing"
-                    ? "bg-green-100 text-green-700"
-                    : "bg-red-100 text-red-700"
-            }`}
-          >
-            {t(`status.${event.status}`)}
-          </span>
-          {event.date && (
-            <span>
-              {ct("date")}: {formatDate(event.date, locale)}
+        <div className="mt-2 space-y-1 text-sm text-zinc-600">
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                event.status === "completed"
+                  ? "bg-zinc-100 text-zinc-600"
+                  : event.status === "upcoming"
+                    ? "bg-blue-100 text-blue-700"
+                    : event.status === "ongoing"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700"
+              }`}
+            >
+              {t(`status.${event.status}`)}
             </span>
-          )}
+            {event.date && (
+              <span>{formatDate(event.date, locale)}</span>
+            )}
+          </div>
           {tr?.venue && (
-            <span>
-              {ct("venue")}: {tr.venue}
+            <div>
+              {tr.venue}
               {tr.city && `, ${tr.city}`}
-            </span>
+            </div>
           )}
         </div>
       </header>
@@ -195,13 +201,13 @@ export default async function EventPage({ params }: Props) {
           <p className="text-zinc-500">{t("noSetlist")}</p>
         ) : (
           <>
-            <SetlistTable items={mainItems} locale={locale} />
+            <SetlistTable items={mainItems} locale={locale} t={t} />
             {encoreItems.length > 0 && (
               <>
                 <h3 className="mb-2 mt-6 text-lg font-semibold text-zinc-600">
                   {ct("encore")}
                 </h3>
-                <SetlistTable items={encoreItems} locale={locale} />
+                <SetlistTable items={encoreItems} locale={locale} t={t} />
               </>
             )}
           </>
@@ -214,6 +220,7 @@ export default async function EventPage({ params }: Props) {
 function SetlistTable({
   items,
   locale,
+  t,
 }: {
   items: Awaited<ReturnType<typeof getEvent>> extends infer E
     ? E extends { setlistItems: infer S }
@@ -221,10 +228,11 @@ function SetlistTable({
       : never
     : never;
   locale: string;
+  t: Awaited<ReturnType<typeof getTranslations<"Event">>>;
 }) {
   return (
     <ol className="space-y-3">
-      {items.map((item) => {
+      {items.map((item, index) => {
         const songNames = item.songs.map((s) => {
           const sTr = pickTranslation(s.song.translations, locale);
           return {
@@ -243,44 +251,69 @@ function SetlistTable({
           return siTr?.name ?? "Unknown";
         });
 
+        // Resolve unit artist for display (#6)
+        const unitArtist = item.stageType !== "full_group" && item.artists?.[0]
+          ? item.artists[0]
+          : null;
+        const unitArtistTr = unitArtist
+          ? pickTranslation(unitArtist.artist.translations, locale)
+          : null;
+
         return (
           <li key={item.id} className="border-b border-zinc-100 pb-2">
             <div className="flex items-start gap-3">
               <span className="mt-0.5 w-6 shrink-0 text-right text-sm font-mono text-zinc-400">
-                {item.position}
+                {index + 1}
               </span>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-1">
-                  {songNames.map((song, i) => (
-                    <span key={song.id}>
-                      {i > 0 && (
-                        <span className="mx-1 text-zinc-400">+</span>
-                      )}
-                      <Link
-                        href={`/${locale}/songs/${song.id}/${slugify(song.title)}`}
-                        className="font-medium text-blue-600 hover:underline"
-                      >
-                        {song.title}
-                      </Link>
-                      {song.variantLabel && (
-                        <span className="ml-1 text-xs text-zinc-500">
-                          ({song.variantLabel})
-                        </span>
-                      )}
+                  {songNames.length > 0 ? (
+                    songNames.map((song, i) => (
+                      <span key={song.id}>
+                        {i > 0 && (
+                          <span className="mx-1 text-zinc-400">+</span>
+                        )}
+                        <Link
+                          href={`/${locale}/songs/${song.id}/${slugify(song.title)}`}
+                          className="font-medium text-blue-600 hover:underline"
+                        >
+                          {song.title}
+                        </Link>
+                        {song.variantLabel && (
+                          <span className="ml-1 text-xs text-zinc-500">
+                            ({song.variantLabel})
+                          </span>
+                        )}
+                      </span>
+                    ))
+                  ) : item.type !== "song" ? (
+                    <span className="font-medium text-zinc-500">
+                      {t(`itemType.${item.type}`)}
                     </span>
-                  ))}
+                  ) : (
+                    <span className="text-zinc-400">곡 미지정</span>
+                  )}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2 text-sm text-zinc-500">
                   {item.stageType !== "full_group" && (
-                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
-                      {item.unitName ?? item.stageType}
-                    </span>
+                    unitArtistTr ? (
+                      <Link
+                        href={`/${locale}/artists/${unitArtist!.artist.id}/${slugify(unitArtistTr.name)}`}
+                        className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs hover:underline"
+                      >
+                        {unitArtistTr.name}
+                      </Link>
+                    ) : (
+                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
+                        {item.unitName ?? item.stageType}
+                      </span>
+                    )
                   )}
                   {performers.length > 0 && (
                     <span>{performers.join(", ")}</span>
                   )}
                 </div>
-                {item.note && (
+                {item.type === "song" && item.note && (
                   <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
                 )}
               </div>
