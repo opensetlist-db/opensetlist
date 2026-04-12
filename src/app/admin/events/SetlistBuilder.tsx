@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { matchesIdentitySearch } from "@/lib/search";
 
 type SongOption = {
   id: number;
@@ -87,6 +88,20 @@ export default function SetlistBuilder({
   const [formSongIds, setFormSongIds] = useState<number[]>([]);
   const [formPerformerIds, setFormPerformerIds] = useState<string[]>([]);
 
+  // Search-based selectors
+  const [songSearch, setSongSearch] = useState("");
+  const [songSearchResults, setSongSearchResults] = useState<SongOption[]>([]);
+  const [songSearchLoading, setSongSearchLoading] = useState(false);
+  const [songDropdownOpen, setSongDropdownOpen] = useState(false);
+  const [selectedSongs, setSelectedSongs] = useState<SongOption[]>([]);
+  const songSearchRef = useRef<HTMLDivElement>(null);
+  const songSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [performerSearch, setPerformerSearch] = useState("");
+  const [performerDropdownOpen, setPerformerDropdownOpen] = useState(false);
+  const [selectedPerformers, setSelectedPerformers] = useState<StageIdentityOption[]>([]);
+  const performerSearchRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     fetch("/api/admin/songs")
       .then((r) => r.json())
@@ -95,6 +110,74 @@ export default function SetlistBuilder({
       .then((r) => r.json())
       .then(setStageIdentities);
   }, []);
+
+  // Click-outside handlers for dropdowns
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (songSearchRef.current && !songSearchRef.current.contains(e.target as Node)) {
+        setSongDropdownOpen(false);
+      }
+      if (performerSearchRef.current && !performerSearchRef.current.contains(e.target as Node)) {
+        setPerformerDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const searchSongs = useCallback((query: string) => {
+    if (songSearchTimerRef.current) clearTimeout(songSearchTimerRef.current);
+    if (!query.trim()) {
+      setSongSearchResults([]);
+      setSongSearchLoading(false);
+      return;
+    }
+    setSongSearchLoading(true);
+    songSearchTimerRef.current = setTimeout(async () => {
+      const res = await fetch(`/api/admin/songs?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setSongSearchResults(data);
+      setSongSearchLoading(false);
+    }, 300);
+  }, []);
+
+  function handleSongSearchChange(value: string) {
+    setSongSearch(value);
+    setSongDropdownOpen(true);
+    searchSongs(value);
+  }
+
+  function selectSong(song: SongOption) {
+    if (!formSongIds.includes(song.id)) {
+      setFormSongIds((prev) => [...prev, song.id]);
+      setSelectedSongs((prev) => [...prev, song]);
+    }
+    setSongSearch("");
+    setSongSearchResults([]);
+  }
+
+  function removeSong(songId: number) {
+    setFormSongIds((prev) => prev.filter((id) => id !== songId));
+    setSelectedSongs((prev) => prev.filter((s) => s.id !== songId));
+  }
+
+  function getFilteredPerformers() {
+    if (!performerSearch.trim()) return stageIdentities;
+    return stageIdentities.filter((si) => matchesIdentitySearch(si, performerSearch));
+  }
+
+  function selectPerformer(si: StageIdentityOption) {
+    if (!formPerformerIds.includes(si.id)) {
+      setFormPerformerIds((prev) => [...prev, si.id]);
+      setSelectedPerformers((prev) => [...prev, si]);
+    }
+    setPerformerSearch("");
+  }
+
+  function removePerformer(siId: string) {
+    setFormPerformerIds((prev) => prev.filter((id) => id !== siId));
+    setSelectedPerformers((prev) => prev.filter((p) => p.id !== siId));
+  }
 
   function resetForm() {
     setEditingId(null);
@@ -108,6 +191,11 @@ export default function SetlistBuilder({
     setFormType("song");
     setFormSongIds([]);
     setFormPerformerIds([]);
+    setSongSearch("");
+    setSongSearchResults([]);
+    setSelectedSongs([]);
+    setPerformerSearch("");
+    setSelectedPerformers([]);
   }
 
   function startEdit(item: SetlistItemData) {
@@ -121,7 +209,15 @@ export default function SetlistBuilder({
     setFormPerformanceType(item.performanceType ?? "live_performance");
     setFormType(item.type ?? "song");
     setFormSongIds(item.songs.map((s) => s.song.id));
+    setSelectedSongs(item.songs.map((s) => s.song));
     setFormPerformerIds(item.performers.map((p) => p.stageIdentity.id));
+    setSelectedPerformers(
+      item.performers.map((p) => ({
+        id: p.stageIdentity.id,
+        translations: p.stageIdentity.translations,
+        artistLinks: [],
+      }))
+    );
     setShowForm(true);
   }
 
@@ -176,21 +272,6 @@ export default function SetlistBuilder({
     }
   }
 
-  function toggleSong(songId: number) {
-    setFormSongIds((prev) =>
-      prev.includes(songId)
-        ? prev.filter((id) => id !== songId)
-        : [...prev, songId]
-    );
-  }
-
-  function togglePerformer(siId: string) {
-    setFormPerformerIds((prev) =>
-      prev.includes(siId)
-        ? prev.filter((id) => id !== siId)
-        : [...prev, siId]
-    );
-  }
 
   return (
     <div>
@@ -400,65 +481,140 @@ export default function SetlistBuilder({
           </div>
 
           {/* Song selector — only for song type */}
-          {formType === "song" && <div>
+          {formType === "song" && <div ref={songSearchRef}>
             <label className="mb-1 block text-xs font-medium">
               곡 (복수 선택 = 메들리)
             </label>
-            <div className="max-h-40 overflow-y-auto rounded border border-zinc-200 p-2">
-              {songs.map((song) => (
-                <label
-                  key={song.id}
-                  className="flex items-center gap-2 py-0.5 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={formSongIds.includes(song.id)}
-                    onChange={() => toggleSong(song.id)}
-                  />
-                  {getSongName(song)}
-                </label>
-              ))}
-              {songs.length === 0 && (
-                <p className="text-xs text-zinc-400">
-                  곡을 먼저 등록해주세요.
-                </p>
+            {/* Selected song tags */}
+            {selectedSongs.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {selectedSongs.map((song) => (
+                  <span
+                    key={song.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-800"
+                  >
+                    {getSongName(song)}
+                    <button
+                      type="button"
+                      onClick={() => removeSong(song.id)}
+                      className="ml-0.5 text-blue-500 hover:text-blue-700"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Search input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={songSearch}
+                onChange={(e) => handleSongSearchChange(e.target.value)}
+                onFocus={() => { if (songSearch.trim()) setSongDropdownOpen(true); }}
+                placeholder="곡 검색..."
+                className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+              />
+              {songSearchLoading && (
+                <span className="absolute right-2 top-1.5 text-xs text-zinc-400">검색 중...</span>
+              )}
+              {/* Dropdown */}
+              {songDropdownOpen && songSearch.trim() && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
+                  {songSearchResults.map((song) => {
+                    const isSelected = formSongIds.includes(song.id);
+                    return (
+                      <button
+                        key={song.id}
+                        type="button"
+                        onClick={() => selectSong(song)}
+                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-blue-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                      >
+                        {isSelected && <span className="mr-1">✓</span>}
+                        {getSongName(song)}
+                      </button>
+                    );
+                  })}
+                  {!songSearchLoading && songSearchResults.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-zinc-400">일치하는 곡이 없습니다</div>
+                  )}
+                  {songSearch.trim() && !songSearchLoading && (
+                    <a
+                      href="/admin/songs/new"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block border-t border-zinc-100 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
+                    >
+                      + &quot;{songSearch}&quot; 새 곡 추가
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           </div>}
 
           {/* Performer selector */}
-          <div>
+          <div ref={performerSearchRef}>
             <label className="mb-1 block text-xs font-medium">출연진</label>
-            <div className="max-h-40 overflow-y-auto rounded border border-zinc-200 p-2">
-              {stageIdentities.map((si) => {
-                const artistName = si.artistLinks[0]
-                  ? (si.artistLinks[0].artist.translations.find(
-                      (t) => t.locale === "ko"
-                    )?.name ?? "")
-                  : "";
-                return (
-                  <label
+            {/* Selected performer tags */}
+            {selectedPerformers.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {selectedPerformers.map((si) => (
+                  <span
                     key={si.id}
-                    className="flex items-center gap-2 py-0.5 text-sm"
+                    className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800"
                   >
-                    <input
-                      type="checkbox"
-                      checked={formPerformerIds.includes(si.id)}
-                      onChange={() => togglePerformer(si.id)}
-                    />
                     {getSIName(si)}
-                    {artistName && (
-                      <span className="text-xs text-zinc-400">
-                        ({artistName})
-                      </span>
-                    )}
-                  </label>
-                );
-              })}
-              {stageIdentities.length === 0 && (
-                <p className="text-xs text-zinc-400">
-                  아티스트에 멤버를 먼저 등록해주세요.
-                </p>
+                    <button
+                      type="button"
+                      onClick={() => removePerformer(si.id)}
+                      className="ml-0.5 text-green-500 hover:text-green-700"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Search input */}
+            <div className="relative">
+              <input
+                type="text"
+                value={performerSearch}
+                onChange={(e) => { setPerformerSearch(e.target.value); setPerformerDropdownOpen(true); }}
+                onFocus={() => setPerformerDropdownOpen(true)}
+                placeholder="출연진 검색..."
+                className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+              />
+              {/* Dropdown */}
+              {performerDropdownOpen && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
+                  {getFilteredPerformers().map((si) => {
+                    const isSelected = formPerformerIds.includes(si.id);
+                    const artistName = si.artistLinks[0]
+                      ? (si.artistLinks[0].artist.translations.find(
+                          (t) => t.locale === "ko"
+                        )?.name ?? "")
+                      : "";
+                    return (
+                      <button
+                        key={si.id}
+                        type="button"
+                        onClick={() => selectPerformer(si)}
+                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-green-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                      >
+                        {isSelected && <span className="mr-1">✓</span>}
+                        {getSIName(si)}
+                        {artistName && (
+                          <span className="ml-1 text-xs text-zinc-400">({artistName})</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {getFilteredPerformers().length === 0 && (
+                    <div className="px-3 py-2 text-xs text-zinc-400">일치하는 출연진이 없습니다</div>
+                  )}
+                </div>
               )}
             </div>
           </div>
