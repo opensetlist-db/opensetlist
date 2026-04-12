@@ -278,8 +278,8 @@ function SetlistTable({
         const songNames = item.songs.map((s) => {
           const sTr = pickTranslation(s.song.translations, locale);
           const localizedTitle = sTr?.title;
-          // Show localized title only when user's locale differs from original language
-          const showLocalized = s.song.originalLanguage !== locale && !!localizedTitle;
+          // Show localized title when locale differs from original language AND text differs
+          const showLocalized = s.song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== s.song.originalTitle;
           return {
             id: s.song.id,
             originalTitle: s.song.originalTitle,

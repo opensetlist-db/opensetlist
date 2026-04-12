@@ -267,15 +267,21 @@ export default async function ArtistPage({ params }: Props) {
           <ul className="space-y-1">
             {artist.songCredits.map((sc) => {
               const songTr = pickTranslation(sc.song.translations, locale);
-              const title = songTr?.title ?? sc.song.originalTitle;
+              const localizedTitle = songTr?.title;
+              const showLocalized = sc.song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== sc.song.originalTitle;
               return (
                 <li key={sc.id}>
                   <Link
-                    href={`/${locale}/songs/${sc.song.id}/${slugify(title)}`}
+                    href={`/${locale}/songs/${sc.song.id}/${slugify(sc.song.originalTitle)}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {title}
+                    {sc.song.originalTitle}
                   </Link>
+                  {showLocalized && (
+                    <span className="ml-1 text-sm text-zinc-400">
+                      {localizedTitle}
+                    </span>
+                  )}
                   {sc.song.variantLabel && (
                     <span className="ml-1 text-sm text-zinc-500">
                       ({sc.song.variantLabel})

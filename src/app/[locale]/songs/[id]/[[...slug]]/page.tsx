@@ -128,7 +128,8 @@ export default async function SongPage({ params }: Props) {
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
   const tr = pickTranslation(song.translations, locale);
-  const title = tr?.title ?? song.originalTitle;
+  const localizedTitle = tr?.title;
+  const showLocalized = song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== song.originalTitle;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -142,16 +143,16 @@ export default async function SongPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          {title}
+          {song.originalTitle}
           {song.variantLabel && (
             <span className="ml-2 text-xl font-normal text-zinc-500">
               ({song.variantLabel})
             </span>
           )}
         </h1>
-        {tr?.title && tr.title !== song.originalTitle && (
-          <p className="mt-1 text-zinc-500">
-            {t("originalTitle")}: {song.originalTitle}
+        {showLocalized && (
+          <p className="mt-1 text-lg text-zinc-500">
+            {localizedTitle}
           </p>
         )}
         {song.releaseDate && (
