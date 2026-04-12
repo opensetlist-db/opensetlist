@@ -538,8 +538,9 @@ model Song {
   id            BigInt            @id @default(autoincrement())
   slug          String            @unique
   baseVersionId BigInt?
-  originalTitle String
-  variantLabel  String?
+  originalTitle    String
+  originalLanguage String            @default("ja")
+  variantLabel     String?
   releaseDate   DateTime?         @db.Date
   sourceNote    String?
   isDeleted     Boolean           @default(false)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
+import { parseArtistSlugs, resolveOriginalLanguage } from "@/lib/csv-parse";
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
@@ -215,8 +216,9 @@ async function importAlbums(rows: Record<string, string>[]) {
     }
 
     // Upsert AlbumArtist rows from space-separated artist_slugs
-    if (row.artist_slugs) {
-      const slugs = row.artist_slugs.trim().split(/\s+/).filter(Boolean);
+    const artistSlugsForAlbum = parseArtistSlugs(row.artist_slugs);
+    if (artistSlugsForAlbum.length > 0) {
+      const slugs = artistSlugsForAlbum;
       for (const artistSlug of slugs) {
         const artist = await prisma.artist.findUnique({ where: { slug: artistSlug } });
         if (!artist) {
@@ -259,6 +261,7 @@ async function importSongs(rows: Record<string, string>[]) {
         where: { slug },
         data: {
           originalTitle: row.originalTitle,
+          originalLanguage: row.originalLanguage ? resolveOriginalLanguage(row.originalLanguage) : undefined,
           variantLabel: row.variantLabel || null,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           sourceNote: row.sourceNote || null,
@@ -277,6 +280,7 @@ async function importSongs(rows: Record<string, string>[]) {
         data: {
           slug,
           originalTitle: row.originalTitle,
+          originalLanguage: resolveOriginalLanguage(row.originalLanguage),
           variantLabel: row.variantLabel || null,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           sourceNote: row.sourceNote || null,

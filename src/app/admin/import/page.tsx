@@ -24,8 +24,8 @@ const IMPORT_TYPES = [
   {
     value: "songs",
     label: "4. 곡 (Songs)",
-    columns: ["slug*", "originalTitle*", "artist_slug", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote", "album_slug", "track_number"],
-    note: "album_slug + track_number: 앨범 트랙 연결 (albums 먼저 가져오기)",
+    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slug", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote", "album_slug", "track_number"],
+    note: "originalLanguage: ja(기본값), en, ko, zh 등 · album_slug + track_number: 앨범 트랙 연결 (albums 먼저 가져오기)",
   },
   {
     value: "events",
