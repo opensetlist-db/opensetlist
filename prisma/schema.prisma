@@ -574,12 +574,13 @@ model SongArtist {
 }
 
 model SongTranslation {
-  id      String @id @default(uuid())
-  songId  BigInt
-  locale  String
-  title   String
+  id           String  @id @default(uuid())
+  songId       BigInt
+  locale       String
+  title        String
+  variantLabel String?
 
-  song    Song   @relation(fields: [songId], references: [id])
+  song         Song    @relation(fields: [songId], references: [id])
   @@unique([songId, locale])
   @@index([songId])
 }

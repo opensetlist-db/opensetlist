@@ -323,10 +323,10 @@ async function importSongs(rows: Record<string, string>[]) {
     if (!slug || !row.originalTitle) continue;
 
     const translations = [
-      row.ja_title ? { locale: "ja", title: row.ja_title } : null,
-      row.ko_title ? { locale: "ko", title: row.ko_title } : null,
-      row.en_title ? { locale: "en", title: row.en_title } : null,
-    ].filter(Boolean) as { locale: string; title: string }[];
+      row.ja_title ? { locale: "ja", title: row.ja_title, variantLabel: row.ja_variantLabel || null } : null,
+      row.ko_title ? { locale: "ko", title: row.ko_title, variantLabel: row.ko_variantLabel || null } : null,
+      row.en_title ? { locale: "en", title: row.en_title, variantLabel: row.en_variantLabel || null } : null,
+    ].filter(Boolean) as { locale: string; title: string; variantLabel: string | null }[];
 
     // Upsert Song
     const song = await prisma.song.upsert({
@@ -354,11 +354,19 @@ async function importSongs(rows: Record<string, string>[]) {
     }
 
     // Upsert translations
-    for (const t of translations) {
+    // Also create translation rows for locales that only have variantLabel (no title)
+    const localesWithVariantOnly = [
+      !row.ja_title && row.ja_variantLabel ? { locale: "ja", title: "", variantLabel: row.ja_variantLabel } : null,
+      !row.ko_title && row.ko_variantLabel ? { locale: "ko", title: "", variantLabel: row.ko_variantLabel } : null,
+      !row.en_title && row.en_variantLabel ? { locale: "en", title: "", variantLabel: row.en_variantLabel } : null,
+    ].filter(Boolean) as { locale: string; title: string; variantLabel: string }[];
+    const allTranslations = [...translations, ...localesWithVariantOnly];
+
+    for (const t of allTranslations) {
       await prisma.songTranslation.upsert({
         where: { songId_locale: { songId: song.id, locale: t.locale } },
-        create: { songId: song.id, ...t },
-        update: { title: t.title },
+        create: { songId: song.id, locale: t.locale, title: t.title, variantLabel: t.variantLabel || null },
+        update: { title: t.title || undefined, variantLabel: t.variantLabel || undefined },
       });
     }
 

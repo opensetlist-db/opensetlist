@@ -24,7 +24,7 @@ const IMPORT_TYPES = [
   {
     value: "songs",
     label: "4. 곡 (Songs)",
-    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "en_title", "sourceNote", "album_slug", "disc_number", "track_number"],
+    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ja_variantLabel", "ko_title", "ko_variantLabel", "en_title", "en_variantLabel", "sourceNote", "album_slug", "disc_number", "track_number"],
     note: "originalLanguage: ja(기본값), en, ko, zh 등 · artist_slugs: 공백 구분 (콜라보곡: 여러 아티스트) · album_slug + track_number: 앨범 트랙 연결 · disc_number: 멀티디스크 앨범용 (기본값 1)",
   },
   {

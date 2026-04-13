@@ -267,7 +267,7 @@ export default async function ArtistPage({ params }: Props) {
           <ul className="space-y-1">
             {artist.songCredits.map((sc) => {
               const songTr = pickTranslation(sc.song.translations, locale);
-              const { main, sub } = displayOriginalTitle(sc.song, songTr ?? null, locale);
+              const { main, sub, variant } = displayOriginalTitle(sc.song, songTr ?? null, locale);
               return (
                 <li key={sc.id}>
                   <Link
@@ -281,9 +281,9 @@ export default async function ArtistPage({ params }: Props) {
                       {sub}
                     </span>
                   )}
-                  {sc.song.variantLabel && (
+                  {variant && (
                     <span className="ml-1 text-sm text-zinc-500">
-                      ({sc.song.variantLabel})
+                      ({variant})
                     </span>
                   )}
                 </li>

@@ -48,7 +48,7 @@ describe("displayOriginalTitle", () => {
       { title: "현요야행" },
       "ko"
     );
-    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행" });
+    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행", variant: null });
   });
 
   it("shows no sub when ko song viewed by ko user", () => {
@@ -57,7 +57,7 @@ describe("displayOriginalTitle", () => {
       { title: "사랑의 노래" },
       "ko"
     );
-    expect(result).toEqual({ main: "사랑의 노래", sub: null });
+    expect(result).toEqual({ main: "사랑의 노래", sub: null, variant: null });
   });
 
   it("shows no sub when translation is same as original", () => {
@@ -66,7 +66,7 @@ describe("displayOriginalTitle", () => {
       { title: "Dream Believers" },
       "ko"
     );
-    expect(result).toEqual({ main: "Dream Believers", sub: null });
+    expect(result).toEqual({ main: "Dream Believers", sub: null, variant: null });
   });
 
   it("shows no sub when no translation exists", () => {
@@ -75,7 +75,7 @@ describe("displayOriginalTitle", () => {
       null,
       "ko"
     );
-    expect(result).toEqual({ main: "ハナムスビ", sub: null });
+    expect(result).toEqual({ main: "ハナムスビ", sub: null, variant: null });
   });
 
   it("shows no sub when originalLanguage matches displayLocale", () => {
@@ -84,7 +84,7 @@ describe("displayOriginalTitle", () => {
       { title: "다른 제목" },
       "ko"
     );
-    expect(result).toEqual({ main: "사랑의 노래", sub: null });
+    expect(result).toEqual({ main: "사랑의 노래", sub: null, variant: null });
   });
 
   it("shows sub for en song with ko translation", () => {
@@ -93,7 +93,7 @@ describe("displayOriginalTitle", () => {
       { title: "스파클리 스팟" },
       "ko"
     );
-    expect(result).toEqual({ main: "Sparkly Spot", sub: "스파클리 스팟" });
+    expect(result).toEqual({ main: "Sparkly Spot", sub: "스파클리 스팟", variant: null });
   });
 
   it("defaults displayLocale to ko", () => {
@@ -101,7 +101,7 @@ describe("displayOriginalTitle", () => {
       { originalTitle: "眩耀夜行", originalLanguage: "ja" },
       { title: "현요야행" }
     );
-    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행" });
+    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행", variant: null });
   });
 
   it("shows sub for ja user viewing en song with ja translation", () => {
@@ -110,6 +110,33 @@ describe("displayOriginalTitle", () => {
       { title: "ドリームビリーバーズ" },
       "ja"
     );
-    expect(result).toEqual({ main: "Dream Believers", sub: "ドリームビリーバーズ" });
+    expect(result).toEqual({ main: "Dream Believers", sub: "ドリームビリーバーズ", variant: null });
+  });
+
+  it("uses localized variantLabel from translation", () => {
+    const result = displayOriginalTitle(
+      { originalTitle: "Dream Believers", originalLanguage: "ja", variantLabel: "104期 Ver." },
+      { title: "Dream Believers", variantLabel: "104기 Ver." },
+      "ko"
+    );
+    expect(result).toEqual({ main: "Dream Believers", sub: null, variant: "104기 Ver." });
+  });
+
+  it("falls back to original variantLabel when translation has none", () => {
+    const result = displayOriginalTitle(
+      { originalTitle: "Dream Believers", originalLanguage: "ja", variantLabel: "104期 Ver." },
+      { title: "Dream Believers" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "Dream Believers", sub: null, variant: "104期 Ver." });
+  });
+
+  it("returns null variant when neither original nor translation has it", () => {
+    const result = displayOriginalTitle(
+      { originalTitle: "DEEPNESS", originalLanguage: "ja" },
+      { title: "DEEPNESS" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "DEEPNESS", sub: null, variant: null });
   });
 });

@@ -8,7 +8,7 @@ type SongOption = {
   id: number;
   originalTitle: string;
   variantLabel?: string | null;
-  translations: { locale: string; title: string }[];
+  translations: { locale: string; title: string; variantLabel?: string | null }[];
   artists?: {
     artist: {
       translations: { locale: string; name: string; shortName?: string | null }[];
@@ -43,7 +43,7 @@ type SetlistItemData = {
     song: {
       id: number;
       originalTitle: string;
-      translations: { locale: string; title: string }[];
+      translations: { locale: string; title: string; variantLabel?: string | null }[];
     };
   }[];
   performers: {
@@ -69,7 +69,9 @@ function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
   const title =
     song.translations.find((t) => t.locale === "ko")?.title ??
     song.originalTitle;
-  const variant = "variantLabel" in song && song.variantLabel ? ` (${song.variantLabel})` : "";
+  const koVariant = song.translations.find((t) => t.locale === "ko")?.variantLabel;
+  const resolvedVariant = koVariant || ("variantLabel" in song ? song.variantLabel : null);
+  const variant = resolvedVariant ? ` (${resolvedVariant})` : "";
   const artist =
     "artists" in song && song.artists?.[0]
       ? song.artists[0].artist.translations.find((t) => t.locale === "ko")?.shortName ??

@@ -77,7 +77,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     : null;
 
   const songTitle = tr?.title ?? song.originalTitle;
-  const title = `${songTitle}${song.variantLabel ? ` (${song.variantLabel})` : ""} | OpenSetlist`;
+  const metaVariant = tr?.variantLabel || song.variantLabel;
+  const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
   const description = artistTr
     ? `${displayName(artistTr)} · 공연 이력 및 셋리스트`
     : "공연 이력 및 셋리스트";
@@ -128,7 +129,7 @@ export default async function SongPage({ params }: Props) {
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
   const tr = pickTranslation(song.translations, locale);
-  const { main, sub } = displayOriginalTitle(song, tr ?? null, locale);
+  const { main, sub, variant } = displayOriginalTitle(song, tr ?? null, locale);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -143,9 +144,9 @@ export default async function SongPage({ params }: Props) {
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
           {main}
-          {song.variantLabel && (
+          {variant && (
             <span className="ml-2 text-xl font-normal text-zinc-500">
-              ({song.variantLabel})
+              ({variant})
             </span>
           )}
         </h1>
@@ -215,6 +216,7 @@ export default async function SongPage({ params }: Props) {
             {song.variants.map((v) => {
               const vTr = pickTranslation(v.translations, locale);
               const vTitle = vTr?.title ?? v.originalTitle;
+              const vVariant = vTr?.variantLabel || v.variantLabel;
               return (
                 <li key={v.id}>
                   <Link
@@ -222,9 +224,9 @@ export default async function SongPage({ params }: Props) {
                     className="text-blue-600 hover:underline"
                   >
                     {vTitle}
-                    {v.variantLabel && (
+                    {vVariant && (
                       <span className="ml-1 text-sm text-zinc-500">
-                        ({v.variantLabel})
+                        ({vVariant})
                       </span>
                     )}
                   </Link>
