@@ -577,15 +577,16 @@ async function importEvents(rows: Record<string, string>[]) {
 async function importSetlistItems(rows: Record<string, string>[]) {
   const results: string[] = [];
 
-  // Look up SIs by translation name (no slug on StageIdentity)
+  // Look up SIs by slug
   const allSIs = await prisma.stageIdentity.findMany({
     include: { translations: true },
   });
 
-  function findSIId(name: string): string | null {
+  function findSIId(slug: string): string | null {
     const si = allSIs.find((si) =>
+      si.slug === slug ||
       si.translations.some(
-        (t) => t.name === name || t.name.toLowerCase().replace(/\s+/g, "-") === name.toLowerCase()
+        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
       )
     );
     return si?.id ?? null;
