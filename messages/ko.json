@@ -39,7 +39,8 @@
     "eventHistory": "이벤트 참여 이력",
     "songs": "곡 목록",
     "noEvents": "참여한 이벤트가 없습니다.",
-    "noSongs": "등록된 곡이 없습니다."
+    "noSongs": "등록된 곡이 없습니다.",
+    "graduated": "졸업"
   },
   "Song": {
     "title": "곡",

@@ -49,6 +49,7 @@ async function getArtist(id: bigint, locale: string) {
         },
       },
       songCredits: {
+        where: { song: { baseVersionId: null, isDeleted: false } },
         include: {
           song: {
             include: { translations: true },
@@ -203,44 +204,50 @@ export default async function ArtistPage({ params }: Props) {
       )}
 
       {/* Members (Stage Identities) */}
-      {artist.stageLinks.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">{t("members")}</h2>
-          <ul className="space-y-2">
-            {artist.stageLinks.map((sl) => {
-              const siTr = pickTranslation(
-                sl.stageIdentity.translations,
-                locale
-              );
-              const va = sl.stageIdentity.voicedBy[0];
-              const vaTr = va
-                ? pickTranslation(va.realPerson.translations, locale)
-                : null;
-              return (
-                <li key={sl.id} className="flex items-center gap-2">
-                  {sl.stageIdentity.color && (
-                    <span
-                      className="inline-block h-3 w-3 rounded-full"
-                      style={{ backgroundColor: sl.stageIdentity.color }}
-                    />
-                  )}
-                  <Link
-                    href={`/${locale}/members/${sl.stageIdentity.id}/${slugify(siTr?.name ?? "")}`}
-                    className="font-medium text-blue-600 hover:underline"
-                  >
-                    {siTr?.name ?? "Unknown"}
-                  </Link>
-                  {vaTr && (
-                    <span className="text-sm text-zinc-500">
-                      (CV: {vaTr.stageName ?? vaTr.name})
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      {artist.stageLinks.length > 0 && (() => {
+        const current = artist.stageLinks.filter((sl) => !sl.endDate);
+        const graduated = artist.stageLinks.filter((sl) => sl.endDate);
+        const renderMember = (sl: (typeof artist.stageLinks)[0], showGrad?: boolean) => {
+          const siTr = pickTranslation(sl.stageIdentity.translations, locale);
+          const va = sl.stageIdentity.voicedBy[0];
+          const vaTr = va ? pickTranslation(va.realPerson.translations, locale) : null;
+          return (
+            <li key={sl.id} className="flex items-center gap-2">
+              {sl.stageIdentity.color && (
+                <span
+                  className="inline-block h-3 w-3 rounded-full"
+                  style={{ backgroundColor: sl.stageIdentity.color }}
+                />
+              )}
+              <Link
+                href={`/${locale}/members/${sl.stageIdentity.id}/${slugify(siTr?.name ?? "")}`}
+                className="font-medium text-blue-600 hover:underline"
+              >
+                {siTr?.name ?? "Unknown"}
+              </Link>
+              {vaTr && (
+                <span className="text-sm text-zinc-500">
+                  (CV: {vaTr.stageName ?? vaTr.name})
+                </span>
+              )}
+              {showGrad && (
+                <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-500">
+                  {t("graduated")}
+                </span>
+              )}
+            </li>
+          );
+        };
+        return (
+          <section className="mb-8">
+            <h2 className="mb-3 text-xl font-semibold">{t("members")}</h2>
+            <ul className="space-y-2">
+              {current.map((sl) => renderMember(sl))}
+              {graduated.map((sl) => renderMember(sl, true))}
+            </ul>
+          </section>
+        );
+      })()}
 
       {/* Units */}
       {artist.subArtists.filter((s) => s.type === "unit").length > 0 && (
