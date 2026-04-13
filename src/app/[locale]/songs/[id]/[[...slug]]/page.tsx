@@ -150,6 +150,11 @@ export default async function SongPage({ params }: Props) {
             </span>
           )}
         </h1>
+        {!song.baseVersionId && song.variants.length > 0 && (
+          <span className="mt-1 inline-block rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+            원곡
+          </span>
+        )}
         {sub && (
           <p className="mt-1 text-lg text-zinc-500">
             {sub}
@@ -211,7 +216,7 @@ export default async function SongPage({ params }: Props) {
       {/* Variants */}
       {song.variants.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">{t("variants")}</h2>
+          <h2 className="mb-3 text-xl font-semibold">다른 버전</h2>
           <ul className="space-y-1">
             {song.variants.map((v) => {
               const vTr = pickTranslation(v.translations, locale);
