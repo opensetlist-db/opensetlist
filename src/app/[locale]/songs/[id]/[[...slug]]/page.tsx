@@ -264,24 +264,26 @@ export default async function SongPage({ params }: Props) {
                 albumTr ?? null,
                 locale
               );
+              const trackInfo = [
+                at.discNumber >= 2 ? t("discN", { disc: at.discNumber }) : null,
+                t("trackN", { track: at.trackNumber }),
+              ].filter(Boolean).join(" ");
               return (
-                <li key={at.id} className="flex items-baseline gap-3 border-b border-zinc-100 pb-2">
-                  <div className="flex-1">
-                    <span className="font-medium">{albumName}</span>
-                    {albumSub && (
-                      <span className="ml-2 text-sm text-zinc-500">{albumSub}</span>
+                <li key={at.id} className="border-b border-zinc-100 pb-2">
+                  <div className="flex items-baseline gap-3">
+                    <div className="flex-1">
+                      <span className="font-medium">{albumName}</span>
+                      <span className="mx-1 text-zinc-300">·</span>
+                      <span className="text-sm text-zinc-400">{trackInfo}</span>
+                    </div>
+                    {album.releaseDate && (
+                      <span className="shrink-0 text-sm text-zinc-400">
+                        {formatDate(album.releaseDate, locale)}
+                      </span>
                     )}
-                    <span className="ml-2 text-sm text-zinc-400">
-                      {at.discNumber >= 2 && (
-                        <>{t("discN", { disc: at.discNumber })} </>
-                      )}
-                      {t("trackN", { track: at.trackNumber })}
-                    </span>
                   </div>
-                  {album.releaseDate && (
-                    <span className="shrink-0 text-sm text-zinc-400">
-                      {formatDate(album.releaseDate, locale)}
-                    </span>
+                  {albumSub && (
+                    <p className="mt-0.5 text-sm text-zinc-500">{albumSub}</p>
                   )}
                 </li>
               );

@@ -362,11 +362,21 @@ async function importSongs(rows: Record<string, string>[]) {
     ].filter(Boolean) as { locale: string; title: string; variantLabel: string }[];
     const allTranslations = [...translations, ...localesWithVariantOnly];
 
+    // Delete translations for locales no longer in CSV
+    const presentLocales = allTranslations.map((t) => t.locale);
+    const allLocales = ["ja", "ko", "en"];
+    const removedLocales = allLocales.filter((l) => !presentLocales.includes(l));
+    if (removedLocales.length > 0) {
+      await prisma.songTranslation.deleteMany({
+        where: { songId: song.id, locale: { in: removedLocales } },
+      });
+    }
+
     for (const t of allTranslations) {
       await prisma.songTranslation.upsert({
         where: { songId_locale: { songId: song.id, locale: t.locale } },
         create: { songId: song.id, locale: t.locale, title: t.title, variantLabel: t.variantLabel || null },
-        update: { title: t.title || undefined, variantLabel: t.variantLabel || undefined },
+        update: { title: t.title, variantLabel: t.variantLabel || null },
       });
     }
 
