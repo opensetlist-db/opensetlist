@@ -286,8 +286,8 @@ async function importSongs(rows: Record<string, string>[]) {
     }
 
     // Upsert SongArtist links
-    if (row.artist_slug) {
-      const artistSlugs = parseArtistSlugs(row.artist_slug);
+    if (row.artist_slugs) {
+      const artistSlugs = parseArtistSlugs(row.artist_slugs);
       for (const artistSlug of artistSlugs) {
         const artist = await prisma.artist.findUnique({ where: { slug: artistSlug } });
         if (!artist) {
