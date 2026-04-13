@@ -7,7 +7,13 @@ import { matchesIdentitySearch } from "@/lib/search";
 type SongOption = {
   id: number;
   originalTitle: string;
+  variantLabel?: string | null;
   translations: { locale: string; title: string }[];
+  artists?: {
+    artist: {
+      translations: { locale: string; name: string; shortName?: string | null }[];
+    };
+  }[];
 };
 
 type StageIdentityOption = {
@@ -60,10 +66,19 @@ const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"]
 const ITEM_TYPES = ["song", "mc", "video", "interval"];
 
 function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
-  return (
+  const title =
     song.translations.find((t) => t.locale === "ko")?.title ??
-    song.originalTitle
-  );
+    song.originalTitle;
+  const variant = "variantLabel" in song && song.variantLabel ? ` (${song.variantLabel})` : "";
+  const artist =
+    "artists" in song && song.artists?.[0]
+      ? song.artists[0].artist.translations.find((t) => t.locale === "ko")?.shortName ??
+        song.artists[0].artist.translations.find((t) => t.locale === "ko")?.name ??
+        song.artists[0].artist.translations[0]?.shortName ??
+        song.artists[0].artist.translations[0]?.name
+      : null;
+  const artistSuffix = artist ? ` — ${artist}` : "";
+  return `${title}${variant}${artistSuffix}`;
 }
 
 function getSIName(si: { translations: { locale: string; name: string }[] }) {
