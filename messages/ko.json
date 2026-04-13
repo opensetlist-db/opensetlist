@@ -46,6 +46,9 @@
     "releaseDate": "발매일",
     "artists": "아티스트",
     "variants": "버전",
+    "albumTracks": "수록 앨범",
+    "discN": "Disc {disc}",
+    "trackN": "Track {track}",
     "performanceHistory": "공연 이력",
     "noPerformances": "공연 기록이 없습니다.",
     "role": {

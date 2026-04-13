@@ -38,6 +38,19 @@ async function getSong(id: bigint, locale: string) {
   return serializeBigInt(song);
 }
 
+async function getSongAlbums(songId: bigint) {
+  const tracks = await prisma.albumTrack.findMany({
+    where: { songId },
+    include: {
+      album: {
+        include: { translations: true },
+      },
+    },
+    orderBy: { album: { releaseDate: "asc" } },
+  });
+  return serializeBigInt(tracks);
+}
+
 async function getSongPerformances(songId: bigint) {
   const performances = await prisma.setlistItemSong.findMany({
     where: {
@@ -118,8 +131,9 @@ export default async function SongPage({ params }: Props) {
     notFound();
   }
 
-  const [song, performances] = await Promise.all([
+  const [song, albumTracks, performances] = await Promise.all([
     getSong(songId, locale),
+    getSongAlbums(songId),
     getSongPerformances(songId),
   ]);
 
@@ -230,6 +244,45 @@ export default async function SongPage({ params }: Props) {
                       </span>
                     )}
                   </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* Album Tracks */}
+      {albumTracks.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold">{t("albumTracks")}</h2>
+          <ul className="space-y-2">
+            {albumTracks.map((at) => {
+              const album = at.album;
+              const albumTr = pickTranslation(album.translations, locale);
+              const { main: albumName, sub: albumSub } = displayOriginalTitle(
+                album,
+                albumTr ?? null,
+                locale
+              );
+              return (
+                <li key={at.id} className="flex items-baseline gap-3 border-b border-zinc-100 pb-2">
+                  <div className="flex-1">
+                    <span className="font-medium">{albumName}</span>
+                    {albumSub && (
+                      <span className="ml-2 text-sm text-zinc-500">{albumSub}</span>
+                    )}
+                    <span className="ml-2 text-sm text-zinc-400">
+                      {at.discNumber >= 2 && (
+                        <>{t("discN", { disc: at.discNumber })} </>
+                      )}
+                      {t("trackN", { track: at.trackNumber })}
+                    </span>
+                  </div>
+                  {album.releaseDate && (
+                    <span className="shrink-0 text-sm text-zinc-400">
+                      {formatDate(album.releaseDate, locale)}
+                    </span>
+                  )}
                 </li>
               );
             })}
