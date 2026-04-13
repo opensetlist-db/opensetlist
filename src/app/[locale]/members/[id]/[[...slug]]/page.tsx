@@ -151,34 +151,60 @@ export default async function MemberPage({ params }: Props) {
         )}
       </header>
 
-      {/* Artist affiliations */}
-      {member.artistLinks.length > 0 && (
+      {/* Artist affiliations — units */}
+      {member.artistLinks.filter((l) => l.artist.type === "unit").length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">{t("affiliations")}</h2>
+          <h2 className="mb-3 text-xl font-semibold">{t("units")}</h2>
           <ul className="space-y-2">
-            {member.artistLinks.map((link) => {
-              const aTr = pickTranslation(link.artist.translations, locale);
-              const period = [
-                link.startDate ? formatDate(link.startDate, locale) : null,
-                link.endDate ? formatDate(link.endDate, locale) : t("present"),
-              ];
-              const periodStr = link.startDate
-                ? `${period[0]} ~ ${period[1]}`
-                : null;
-              return (
-                <li key={link.id} className="flex items-baseline gap-2">
-                  <Link
-                    href={`/${locale}/artists/${link.artist.id}/${slugify(aTr?.name ?? "")}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {aTr?.name ?? "Unknown"}
-                  </Link>
-                  {periodStr && (
-                    <span className="text-sm text-zinc-400">{periodStr}</span>
-                  )}
-                </li>
-              );
-            })}
+            {member.artistLinks
+              .filter((l) => l.artist.type === "unit")
+              .map((link) => {
+                const aTr = pickTranslation(link.artist.translations, locale);
+                const period = [
+                  link.startDate ? formatDate(link.startDate, locale) : null,
+                  link.endDate ? formatDate(link.endDate, locale) : t("present"),
+                ];
+                const periodStr = link.startDate
+                  ? `${period[0]} ~ ${period[1]}`
+                  : null;
+                return (
+                  <li key={link.id} className="flex items-baseline gap-2">
+                    <Link
+                      href={`/${locale}/artists/${link.artist.id}/${slugify(aTr?.name ?? "")}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {aTr?.name ?? "Unknown"}
+                    </Link>
+                    {periodStr && (
+                      <span className="text-sm text-zinc-400">{periodStr}</span>
+                    )}
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      )}
+
+      {/* Artist affiliations — solos */}
+      {member.artistLinks.filter((l) => l.artist.type === "solo").length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold">{t("solos")}</h2>
+          <ul className="space-y-2">
+            {member.artistLinks
+              .filter((l) => l.artist.type === "solo")
+              .map((link) => {
+                const aTr = pickTranslation(link.artist.translations, locale);
+                return (
+                  <li key={link.id}>
+                    <Link
+                      href={`/${locale}/artists/${link.artist.id}/${slugify(aTr?.name ?? "")}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {aTr?.name ?? "Unknown"}
+                    </Link>
+                  </li>
+                );
+              })}
           </ul>
         </section>
       )}

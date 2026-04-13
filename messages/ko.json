@@ -61,6 +61,8 @@
   },
   "Member": {
     "affiliations": "소속",
+    "units": "소속 유닛",
+    "solos": "솔로",
     "present": "현재",
     "performanceHistory": "공연 이력",
     "noPerformances": "공연 기록이 없습니다."
