@@ -224,9 +224,12 @@ export default async function ArtistPage({ params }: Props) {
                       style={{ backgroundColor: sl.stageIdentity.color }}
                     />
                   )}
-                  <span className="font-medium">
+                  <Link
+                    href={`/${locale}/members/${sl.stageIdentity.id}/${slugify(siTr?.name ?? "")}`}
+                    className="font-medium text-blue-600 hover:underline"
+                  >
                     {siTr?.name ?? "Unknown"}
-                  </span>
+                  </Link>
                   {vaTr && (
                     <span className="text-sm text-zinc-500">
                       (CV: {vaTr.stageName ?? vaTr.name})
