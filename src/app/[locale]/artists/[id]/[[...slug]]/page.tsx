@@ -55,6 +55,11 @@ async function getArtist(id: bigint, locale: string) {
             include: {
               translations: true,
               baseVersion: { include: { translations: true } },
+              artists: {
+                include: {
+                  artist: { include: { translations: true } },
+                },
+              },
               variants: {
                 where: {
                   isDeleted: false,
@@ -309,6 +314,15 @@ export default async function ArtistPage({ params }: Props) {
 
       {/* Songs */}
       {artist.songCredits.length > 0 && (() => {
+        // Co-artists: other artists credited on the same song (excluding current artist)
+        const getCoArtists = (song: (typeof artist.songCredits)[0]["song"]) => {
+          return song.artists
+            .filter((sa) => String(sa.artist.id) !== String(artist.id))
+            .map((sa) => {
+              const aTr = pickTranslation(sa.artist.translations, locale);
+              return displayName(aTr ?? { name: "Unknown" });
+            });
+        };
         // Separate originals and standalone variants
         const originals = artist.songCredits.filter((sc) => !sc.song.baseVersionId);
         const variantIds = new Set(originals.flatMap((sc) => sc.song.variants.map((v) => String(v.id))));
@@ -333,6 +347,14 @@ export default async function ArtistPage({ params }: Props) {
                     {sub && (
                       <span className="ml-1 text-sm text-zinc-400">{sub}</span>
                     )}
+                    {(() => {
+                      const co = getCoArtists(sc.song);
+                      return co.length > 0 ? (
+                        <span className="ml-1 text-sm text-zinc-400">
+                          with {co.join(", ")}
+                        </span>
+                      ) : null;
+                    })()}
                     {sc.song.variants.length > 0 && (
                       <ul className="ml-5 mt-0.5 space-y-0.5">
                         {sc.song.variants.map((v) => {
@@ -377,6 +399,14 @@ export default async function ArtistPage({ params }: Props) {
                     {baseName && (
                       <span className="ml-1 text-sm text-zinc-400">— {baseName}</span>
                     )}
+                    {(() => {
+                      const co = getCoArtists(sc.song);
+                      return co.length > 0 ? (
+                        <span className="ml-1 text-sm text-zinc-400">
+                          with {co.join(", ")}
+                        </span>
+                      ) : null;
+                    })()}
                   </li>
                 );
               })}
