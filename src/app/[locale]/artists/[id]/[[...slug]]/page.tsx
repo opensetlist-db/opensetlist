@@ -49,13 +49,23 @@ async function getArtist(id: bigint, locale: string) {
         },
       },
       songCredits: {
-        where: { song: { baseVersionId: null, isDeleted: false } },
+        where: { song: { isDeleted: false } },
         include: {
           song: {
-            include: { translations: true },
+            include: {
+              translations: true,
+              baseVersion: { include: { translations: true } },
+              variants: {
+                where: {
+                  isDeleted: false,
+                  artists: { some: { artistId: id } },
+                },
+                include: { translations: true },
+              },
+            },
           },
         },
-        take: 50,
+        take: 100,
       },
     },
   });
@@ -298,37 +308,82 @@ export default async function ArtistPage({ params }: Props) {
       )}
 
       {/* Songs */}
-      {artist.songCredits.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">{t("songs")}</h2>
-          <ul className="space-y-1">
-            {artist.songCredits.map((sc) => {
-              const songTr = pickTranslation(sc.song.translations, locale);
-              const { main, sub, variant } = displayOriginalTitle(sc.song, songTr ?? null, locale);
-              return (
-                <li key={sc.id}>
-                  <Link
-                    href={`/${locale}/songs/${sc.song.id}/${slugify(main)}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {main}
-                  </Link>
-                  {sub && (
-                    <span className="ml-1 text-sm text-zinc-400">
-                      {sub}
-                    </span>
-                  )}
-                  {variant && (
-                    <span className="ml-1 text-sm text-zinc-500">
-                      ({variant})
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
+      {artist.songCredits.length > 0 && (() => {
+        // Separate originals and standalone variants
+        const originals = artist.songCredits.filter((sc) => !sc.song.baseVersionId);
+        const variantIds = new Set(originals.flatMap((sc) => sc.song.variants.map((v) => String(v.id))));
+        const standaloneVariants = artist.songCredits.filter(
+          (sc) => sc.song.baseVersionId && !variantIds.has(String(sc.song.id))
+        );
+        return (
+          <section className="mb-8">
+            <h2 className="mb-3 text-xl font-semibold">{t("songs")}</h2>
+            <ul className="space-y-1">
+              {originals.map((sc) => {
+                const songTr = pickTranslation(sc.song.translations, locale);
+                const { main, sub } = displayOriginalTitle(sc.song, songTr ?? null, locale);
+                return (
+                  <li key={sc.id}>
+                    <Link
+                      href={`/${locale}/songs/${sc.song.id}/${slugify(main)}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {main}
+                    </Link>
+                    {sub && (
+                      <span className="ml-1 text-sm text-zinc-400">{sub}</span>
+                    )}
+                    {sc.song.variants.length > 0 && (
+                      <ul className="ml-5 mt-0.5 space-y-0.5">
+                        {sc.song.variants.map((v) => {
+                          const vTr = pickTranslation(v.translations, locale);
+                          const vVariant = vTr?.variantLabel || v.variantLabel;
+                          return (
+                            <li key={v.id} className="text-sm text-zinc-500">
+                              <span className="mr-1 text-zinc-300">└</span>
+                              <Link
+                                href={`/${locale}/songs/${v.id}/${slugify(v.originalTitle)}`}
+                                className="text-blue-500 hover:underline"
+                              >
+                                {vVariant ?? v.originalTitle}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+              {standaloneVariants.map((sc) => {
+                const songTr = pickTranslation(sc.song.translations, locale);
+                const { main } = displayOriginalTitle(sc.song, songTr ?? null, locale);
+                const vVariant = songTr?.variantLabel || sc.song.variantLabel;
+                const baseTr = sc.song.baseVersion
+                  ? pickTranslation(sc.song.baseVersion.translations, locale)
+                  : null;
+                const baseName = baseTr?.title ?? sc.song.baseVersion?.originalTitle;
+                return (
+                  <li key={sc.id}>
+                    <Link
+                      href={`/${locale}/songs/${sc.song.id}/${slugify(main)}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {main}
+                    </Link>
+                    {vVariant && (
+                      <span className="ml-1 text-sm text-zinc-500">({vVariant})</span>
+                    )}
+                    {baseName && (
+                      <span className="ml-1 text-sm text-zinc-400">— {baseName}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })()}
 
       {/* Event History */}
       <section className="mb-8">
