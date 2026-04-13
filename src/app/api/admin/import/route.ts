@@ -179,20 +179,21 @@ async function importMembers(rows: Record<string, string>[]) {
       }
       // Upsert artist links
       for (const aid of artistIds) {
-        const existing = await prisma.stageIdentityArtist.findFirst({
-          where: { stageIdentityId: existingSi.id, artistId: aid },
+        await prisma.stageIdentityArtist.upsert({
+          where: { stageIdentityId_artistId: { stageIdentityId: existingSi.id, artistId: aid } },
+          create: {
+            stageIdentityId: existingSi.id,
+            artistId: aid,
+            startDate: row.startDate ? new Date(row.startDate) : null,
+            endDate: row.endDate ? new Date(row.endDate) : null,
+            note: row.note || null,
+          },
+          update: {
+            startDate: row.startDate ? new Date(row.startDate) : null,
+            endDate: row.endDate ? new Date(row.endDate) : null,
+            note: row.note || null,
+          },
         });
-        if (!existing) {
-          await prisma.stageIdentityArtist.create({
-            data: {
-              stageIdentityId: existingSi.id,
-              artistId: aid,
-              startDate: row.startDate ? new Date(row.startDate) : null,
-              endDate: row.endDate ? new Date(row.endDate) : null,
-              note: row.note || null,
-            },
-          });
-        }
       }
       // Upsert voicedBy link
       if (realPersonId) {
