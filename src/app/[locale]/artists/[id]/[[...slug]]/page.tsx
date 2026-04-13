@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName, displaySongTitle } from "@/lib/display";
+import { displayName, displayOriginalTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -267,7 +267,7 @@ export default async function ArtistPage({ params }: Props) {
           <ul className="space-y-1">
             {artist.songCredits.map((sc) => {
               const songTr = pickTranslation(sc.song.translations, locale);
-              const { main, sub } = displaySongTitle(sc.song, songTr ?? null, locale);
+              const { main, sub } = displayOriginalTitle(sc.song, songTr ?? null, locale);
               return (
                 <li key={sc.id}>
                   <Link

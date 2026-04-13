@@ -6,25 +6,25 @@ const IMPORT_TYPES = [
   {
     value: "artists",
     label: "1. 아티스트 (Artists)",
-    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName"],
-    note: "ja_name 또는 ko_name 최소 1개 필수",
+    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName"],
+    note: "ja/ko/en_name 최소 1개 필수",
   },
   {
     value: "members",
     label: "2. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "startDate", "endDate", "note"],
-    note: "ja/ko_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "startDate", "endDate", "note"],
+    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등",
   },
   {
     value: "albums",
     label: "3. 앨범 (Albums)",
-    columns: ["slug*", "type*", "artist_slugs", "releaseDate", "ja_title*", "ko_title", "labelName"],
-    note: "ja_title 또는 ko_title 최소 1개 필수 · type: single, album, ep, live_album, soundtrack · artist_slugs: 공백 구분 (스플릿 싱글: 여러 아티스트, 컴필레이션: 비워두기)",
+    columns: ["slug*", "type*", "artist_slugs", "releaseDate", "originalTitle*", "originalLanguage", "ja_title", "ko_title", "en_title", "labelName"],
+    note: "originalLanguage: ja(기본값), en, ko, zh 등 · type: single, album, ep, live_album, soundtrack · artist_slugs: 공백 구분 (스플릿 싱글: 여러 아티스트, 컴필레이션: 비워두기)",
   },
   {
     value: "songs",
     label: "4. 곡 (Songs)",
-    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "sourceNote", "album_slug", "disc_number", "track_number"],
+    columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ko_title", "en_title", "sourceNote", "album_slug", "disc_number", "track_number"],
     note: "originalLanguage: ja(기본값), en, ko, zh 등 · artist_slugs: 공백 구분 (콜라보곡: 여러 아티스트) · album_slug + track_number: 앨범 트랙 연결 · disc_number: 멀티디스크 앨범용 (기본값 1)",
   },
   {

@@ -585,13 +585,15 @@ model SongTranslation {
 // ── ALBUM ─────────────────────────────────────────────
 // UUID: album pages are secondary — accessed via song or artist pages.
 model Album {
-  id           String             @id @default(uuid())
-  slug         String             @unique
-  type         AlbumType
-  releaseDate  DateTime?          @db.Date
-  labelName    String?
-  imageUrl     String?
-  createdAt    DateTime           @default(now())
+  id               String             @id @default(uuid())
+  slug             String             @unique
+  type             AlbumType
+  originalTitle    String
+  originalLanguage String             @default("ja")
+  releaseDate      DateTime?          @db.Date
+  labelName        String?
+  imageUrl         String?
+  createdAt        DateTime           @default(now())
 
   translations AlbumTranslation[]
   tracks       AlbumTrack[]

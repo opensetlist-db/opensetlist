@@ -58,7 +58,8 @@ async function importArtists(rows: Record<string, string>[]) {
 
     const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null } : null;
     const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
+    const enTranslation = row.en_name ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
     if (translations.length === 0) continue;
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
@@ -118,6 +119,7 @@ async function importMembers(rows: Record<string, string>[]) {
     const translations = [];
     if (row.ja_name) translations.push({ locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null });
     if (row.ko_name) translations.push({ locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null });
+    if (row.en_name) translations.push({ locale: "en", name: row.en_name, shortName: row.en_shortName || null });
     if (translations.length === 0) continue;
 
     // Look up artists by slug
@@ -130,10 +132,11 @@ async function importMembers(rows: Record<string, string>[]) {
 
     // Create RealPerson if VA info provided
     let realPersonId: string | undefined;
-    if (row.va_ja_name || row.va_ko_name) {
+    if (row.va_ja_name || row.va_ko_name || row.va_en_name) {
       const vaTranslations = [];
       if (row.va_ja_name) vaTranslations.push({ locale: "ja", name: row.va_ja_name, stageName: null as string | null });
       if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, stageName: null as string | null });
+      if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, stageName: null as string | null });
 
       const rp = await prisma.realPerson.create({
         data: { translations: { create: vaTranslations } },
@@ -178,7 +181,11 @@ async function importAlbums(rows: Record<string, string>[]) {
 
     const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title } : null;
     const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string }[];
+    const enTranslation = row.en_title ? { locale: "en", title: row.en_title } : null;
+    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; title: string }[];
+
+    const originalTitle = row.originalTitle || "";
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
 
     const existing = await prisma.album.findUnique({ where: { slug } });
 
@@ -188,6 +195,8 @@ async function importAlbums(rows: Record<string, string>[]) {
         where: { slug },
         data: {
           type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || undefined,
+          originalTitle,
+          originalLanguage,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           labelName: row.labelName || null,
         },
@@ -206,6 +215,8 @@ async function importAlbums(rows: Record<string, string>[]) {
         data: {
           slug,
           type: (row.type as "single" | "album" | "ep" | "live_album" | "soundtrack") || "ep",
+          originalTitle,
+          originalLanguage,
           releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
           labelName: row.labelName || null,
           translations: translations.length ? { create: translations } : undefined,
@@ -249,6 +260,7 @@ async function importSongs(rows: Record<string, string>[]) {
     const translations = [
       row.ja_title ? { locale: "ja", title: row.ja_title } : null,
       row.ko_title ? { locale: "ko", title: row.ko_title } : null,
+      row.en_title ? { locale: "en", title: row.en_title } : null,
     ].filter(Boolean) as { locale: string; title: string }[];
 
     // Upsert Song

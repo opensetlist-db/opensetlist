@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName, displaySongTitle } from "@/lib/display";
+import { displayName, displayOriginalTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -277,7 +277,7 @@ function SetlistTable({
       {items.map((item, index) => {
         const songNames = item.songs.map((s) => {
           const sTr = pickTranslation(s.song.translations, locale);
-          const { main, sub } = displaySongTitle(s.song, sTr ?? null, locale);
+          const { main, sub } = displayOriginalTitle(s.song, sTr ?? null, locale);
           return {
             id: s.song.id,
             main,

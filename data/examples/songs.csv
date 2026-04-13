@@ -1,13 +1,226 @@
-slug,originalTitle,originalLanguage,artist_slugs,releaseDate,variantLabel,baseVersion_slug,ja_title,ko_title,sourceNote,album_slug,disc_number,track_number
-hasunosora-dream-believers,Dream Believers,,hasunosora,2023-03-29,,,Dream Believers,Dream Believers,,hasunosora-dream-believers,,1
-hasunosora-on-your-mark,On your mark,,hasunosora,2023-03-29,,,On your mark,On your mark,,hasunosora-dream-believers,,2
-cerise-bouquet-suisai-sekai,水彩世界,,cerise-bouquet,2023-03-29,,,水彩世界,수채세계,,hasunosora-dream-believers,,3
-dollchestra-awoke,AWOKE,,dollchestra,2023-03-29,,,AWOKE,AWOKE,,hasunosora-dream-believers,,4
-mira-cra-park-do-do-do,ド！ド！ド！,,mira-cra-park,2023-03-29,,,ド！ド！ド！,도! 도! 도!,,hasunosora-dream-believers,,5
-hasunosora-eien-no-euporia,永遠のEuphoria,,hasunosora,2023-03-29,,,永遠のEuphoria,영원의 Euphoria,,hasunosora-dream-believers,,6
-cerise-bouquet-reflection-in-the-mirror,Reflection in the mirror,,cerise-bouquet,2023-04-26,,,Reflection in the mirror,Reflection in the mirror,,hasunosora-reflection-in-the-mirror,,1
-cerise-bouquet-fortune-movie,フォーチュンムービー,,cerise-bouquet,2023-04-26,,,フォーチュンムービー,포춘 무비,,hasunosora-reflection-in-the-mirror,,2
-cerise-bouquet-mix-shake,Mix shake!!,,cerise-bouquet,2023-04-26,,,Mix shake!!,Mix shake!!,,hasunosora-reflection-in-the-mirror,,3
-dollchestra-sparkly-spot,Sparkly Spot,,dollchestra,2023-04-26,,,Sparkly Spot,Sparkly Spot,,hasunosora-sparkly-spot,,1
-dollchestra-tsukimakase,ツキマカセ,,dollchestra,2023-04-26,,,ツキマカセ,츠키마카세,,hasunosora-sparkly-spot,,2
-dollchestra-kibouteki-prism,希望的プリズム,,dollchestra,2023-04-26,,,希望的プリズム,희망적프리즘,,hasunosora-sparkly-spot,,3
+slug,originalTitle,originalLanguage,artist_slugs,releaseDate,variantLabel,baseVersion_slug,ja_title,ko_title,en_title,sourceNote,album_slug,disc_number,track_number
+dream-believers,Dream Believers,ja,hasunosora,2023-03-29,,,,,,,dream-believers,,1
+on-your-mark,On your mark,ja,hasunosora,2023-03-29,,,,,,,dream-believers,,2
+suisai-sekai,水彩世界,ja,cerise-bouquet,2023-03-29,,,,수채세계,Suisai Sekai,,dream-believers,,3
+awoke,AWOKE,ja,dollchestra,2023-03-29,,,,,,,dream-believers,,4
+do-do-do,ド！ド！ド！,ja,mira-cra-park,2023-03-29,,,,도! 도! 도!,Do! Do! Do!,,dream-believers,,5
+eien-no-euporia,永遠のEuphoria,ja,hasunosora,2023-03-29,,,,영원의 Euphoria,Eien No Euporia,,dream-believers,,6
+reflection-in-the-mirror,Reflection in the mirror,ja,cerise-bouquet,2023-04-26,,,,,,,reflection-in-the-mirror,,1
+fortune-movie,フォーチュンムービー,ja,cerise-bouquet,2023-04-26,,,,포춘 무비,Fortune Movie,,reflection-in-the-mirror,,2
+mix-shake,Mix shake!!,ja,cerise-bouquet,2023-04-26,,,,,,,reflection-in-the-mirror,,3
+sparkly-spot,Sparkly Spot,ja,dollchestra,2023-04-26,,,,,,,sparkly-spot,,1
+tsukimakase,ツキマカセ,ja,dollchestra,2023-04-26,,,,츠키마카세,Tsukimakase,,sparkly-spot,,2
+kibouteki-prism,希望的プリズム,ja,dollchestra,2023-04-26,,,,희망적프리즘,Kibouteki Prism,,sparkly-spot,,3
+ouka-ranman,謳歌爛漫,ja,cerise-bouquet,2023-06-14,,,,구가난만,Ouka Ranman,,holiday-holiday-tragic-drops,,1
+scape-goat,スケイプゴート,ja,dollchestra,2023-06-14,,,,희생양,Scapegoat,,holiday-holiday-tragic-drops,,2
+holiday-holiday,Holiday∞Holiday,ja,cerise-bouquet,2023-06-14,,,,,,,holiday-holiday-tragic-drops,,3
+tragic-drops,Tragic Drops,ja,dollchestra,2023-06-14,,,,,,,holiday-holiday-tragic-drops,,4
+deepness,DEEPNESS,ja,hasunosora,2023-08-09,,,,,,,genyou-yakou,,1
+kawaii-no-susume,Kawaii no susume,ja,cerise-bouquet,2023-08-09,,,,,,,genyou-yakou,,2
+genyou-yakou,眩耀夜行,ja,cerise-bouquet,2023-08-09,,,,현요야행,Genyou Yakou,,genyou-yakou,,3
+deepness,DEEPNESS,ja,hasunosora,2023-08-09,,,,,,,mirage-voyage,,1
+jibun-diary,ジブンダイアリー,ja,dollchestra,2023-08-09,,,,자신 다이어리,JiBun Diary,,mirage-voyage,,2
+mirage-voyage,Mirage Voyage,ja,dollchestra,2023-08-09,,,,,,,mirage-voyage,,3
+natsumeki-pain,夏めきペイン,ja,hasunosora,2023-09-20,,,,나츠메키 페인,Natsumeki Pain,,natsumeki-pain,,1
+yup-yup-yup,Yup! Yup! Yup!,ja,hasunosora,2023-09-20,,,,,,,natsumeki-pain,,2
+kokon-touzai,ココン東西,ja,mira-cra-park,2023-09-20,,,,고금동서,Kokon Touzai,,natsumeki-pain,,3
+zanyou,残陽,ja,cerise-bouquet,2023-09-20,,,,잔양,Zanyou,,natsumeki-pain,,4
+seishun-no-rinkaku,青春の輪郭,ja,dollchestra,2023-09-20,,,,청춘의 윤곽,Seishun no Rinkaku,,natsumeki-pain,,5
+Hakuchuu-a-la-mode,ハクチューアラモード,ja,mira-cra-park,2023-09-20,,,,백중 아라모드,Hakuchuu à la Mode,,natsumeki-pain,,6
+dear-my-future,Dear my future,ja,cerise-bouquet,2023-09-20,,,,,,,natsumeki-pain,,7
+parallel-dancer,パラレルダンサー,ja,dollchestra,2023-09-20,,,,패러렐 댄서,Parallel Dancer,,natsumeki-pain,,8
+asu-no-sora-no-bokutachi-e,明日の空の僕たちへ,ja,hasunosora,2023-09-20,,,,내일의 하늘의 우리들에게,Asu no Sora no Bokutachi e,,natsumeki-pain,,9
+legato,Legato,ja,hasunosora,2023-09-20,,,,,,,natsumeki-pain,,10
+sugao-no-pixel,素顔のピクセル,ja,cerise-bouquet,2023-11-15,,,,맨얼굴의 픽셀,Sugao no Pixel,,sugao-no-pixel,,1
+sugar-melt,シュガーメルト,ja,cerise-bouquet,2023-11-15,,,,슈가 멜트,Sugar Melt,,sugao-no-pixel,,2
+senpen-banka,千変万華,ja,cerise-bouquet,2023-11-15,,,,천변만화,Senpen Banka,,sugao-no-pixel,,3
+take-it-over,Take It Over,ja,dollchestra,2023-11-22,,,,,,,take-it-over,,1
+ameiro,飴色,ja,dollchestra,2023-11-22,,,,아메이로,Ameiro,,take-it-over,,2
+knot,KNOT,ja,dollchestra,2023-11-22,,,,,,,take-it-over,,3
+identity,アイデンティティ,ja,mira-cra-park,2023-11-19,,,,아이덴티티,Identity,,identity,,1
+tensai-nano-kamo-shirenai,天才なのかもしれない,ja,mira-cra-park,2023-11-19,,,,천재일지도 몰라,Tensai Nano Kamo Shirenai,,identity,,2
+nonfiction-hero-show,ノンフィクションヒーローショー,ja,mira-cra-park,2023-11-19,,,,논픽션 히어로 쇼,Nonfiction Hero Show,,identity,,3
+trick-cute,Trick ＆ Cute,ja,hasunosora,2024-01-07,,,,,,,link-to-the-future,,1
+tsubasa-la-liberte,ツバサ・ラ・リベル,ja,hasunosora,2024-01-07,,,,츠바사 라 리베르테,Tsubasa La Liberte,,link-to-the-future,,2
+link-to-the-future,Link to the FUTURE,ja,cerise-bouquet dollchestra mira-cra-park,2024-01-07,,,,,,,link-to-the-future,,3
+special-thanks,Special Thanks,ja,cerise-bouquet,2024-02-14,,,,,,,special-thanks-ao-to-shabon-milk,,1
+ao-to-shabon,青とシャボン,ja,dollchestra,2024-02-14,,,,푸름과 비눗방울,Ao to Shabon,,special-thanks-ao-to-shabon-milk,,2
+milk,ミルク,ja,mira-cra-park,2024-02-14,,,,밀크,Milk,,special-thanks-ao-to-shabon-milk,,3
+colorfulness,Colorfulness,ja,rurino-to-yukai-na-tsuzuri-tachi,2024-03-20,,,,,,,colorfulness-happy-shijoushugi-pleasure-feather,,1
+happy-shijou-shugi,ハッピー至上主義！,ja,kaho-megu-gelato,2024-03-20,,,,해피지상주의!,Happy Shijou Shugi!,,colorfulness-happy-shijoushugi-pleasure-feather,,2
+pleasure-feather,Pleasure Feather,ja,hasuno-kyuujitsu,2024-03-20,,,,,,,colorfulness-happy-shijoushugi-pleasure-feather,,3
+ishin-denshin,以心☆電信,ja,mira-cra-park,2024-03-27,,,,이심☆전신,Ishin☆Denshin,,ishin-denshin,,1
+bang-you-gravity,BANG YOU グラビティ,ja,mira-cra-park,2024-03-27,,,,BANG YOU 그래비티,BANG YOU Gravity,,ishin-denshin,,2
+mahara-jamboree,マハラジャンボリー,ja,mira-cra-park,2024-03-27,,,,마하라 잼버리,Mahara Jamboree,,ishin-denshin,,3
+dakishimeru-hanabira,抱きしめる花びら,ja,hasunosora,2024-04-03,,,,끌어안아 주는 꽃잎,Dakishimeru Hanabira,,dakishimeru-hanabira,,1
+step-up,STEP UP !,ja,hasunosora,2024-04-03,,,,,,,dakishimeru-hanabira,,2
+dream-believers-104,Dream Believers（104期 Ver.）,ja,hasunosora,2024-04-17,,dream-believers,,Dream Believers (104기 Ver.),Dream Believers (104th Ver.),,dream-believers-104,,1
+on-your-mark-104,On your mark（104期 Ver.）,ja,hasunosora,2024-04-17,,on-your-mark,,On your mark (104기 Ver.),On your mark (104th Ver.),,dream-believers-104,,2
+aoku-haruka,アオクハルカ,ja,cerise-bouquet,2024-04-17,,,,파랗게 아득히,Aoku Haruka,,dream-believers-104,,3
+ladybug,レディバグ,ja,dollchestra,2024-04-17,,,,레이디버그,Ladybug,,dream-believers-104,,4
+miracreation,みらくりえーしょん,ja,mira-cra-park,2024-04-17,,,,미라크리에이션,Mira-Creation,,dream-believers-104,,5
+eien-no-euporia-104,永遠のEuphoria（104期 Ver.）,ja,hasunosora,2024-04-17,,eien-no-euporia,,영원의 Euphoria (104기 Ver.),Eien no Euphoria (104th Ver.),,dream-believers-104,,6
+bloom-the-smile-bloom-the-dream,"Bloom the smile, Bloom the dream!",ja,hasunosora,2024-07-17,,-,,,,,bloom-the-smile-bloom-the-dream,,1
+365-days,365 Days,ja,hasunosora,2024-07-17,,,,,,,bloom-the-smile-bloom-the-dream,,2
+tsukuyomi-kurage,月夜見海月,ja,cerise-bouquet,2024-09-04,,,,달밤을 보는 해파리,Tsukuyomi Kurage,,tsukuyomi-kurage,,1
+reflection-in-the-mirror-104,Reflection in the mirror（104期NEW Ver.）,ja,cerise-bouquet,2024-09-04,,reflection-in-the-mirror,,Reflection in the mirror (104기NEW Ver.),Reflection in the mirror (104th NEW Ver.),,tsukuyomi-kurage,,2
+proof,Proof,ja,dollchestra,2024-09-11,,,,,,,proof,,1
+sparkly-spot-104,Sparkly Spot（104期NEW Ver.）,ja,dollchestra,2024-09-11,,sparkly-spot,,Sparkly Spot (104기NEW Ver.),Sparkly Spot (104th NEW Ver.),,proof,,2
+fanfare,ファンファーレ！！！,ja,mira-cra-park,2024-10-02,,,,팡파레!!!,Fanfare!!!,,fanfare,,1
+identity-104,アイデンティティ（104期NEW Ver.）,ja,mira-cra-park,2024-10-02,,,,아이덴티티 (104기NEW Ver.),Identity (104th NEW Ver.),,fanfare,,2
+hanamusubi,ハナムスビ,ja,cerise-bouquet,2024-12-04,,,,하나무스비,Hanamusubi,,hanamusubi-baadcage-joushoukiryuu,,1
+birdcage,バアドケージ,ja,dollchestra,2024-12-04,,,,버드케이지,Birdcage,,hanamusubi-baadcage-joushoukiryuu,,2
+joushou-kiryuu,ジョーショーキリュー,ja,mira-cra-park,2024-12-04,,,,상승기류,Joushou Kiryuu,,hanamusubi-baadcage-joushoukiryuu,,3
+key-of-like,KEY of Like！,ja,cerise-bouquet dollchestra mira-cra-park,2025-02-04,,,,,,,key-of-like,,1
+now-or-never,Now or Never,ja,hasunosora,2025-02-04,,,,,,,key-of-like,,2
+aurora-flower,AURORA FLOWER,ja,cerise-bouquet dollchestra mira-cra-park,2025-02-26,,,,,,,aurora-flower,,1
+gekka-bijin,ゲッカビジン,ja,hasunosora,2025-02-26,,,,월하미인,Gekka Bijin,,aurora-flower,,2
+yume-wazurai,ユメワズライ,ja,cerise-bouquet,2025-03-19,,,,꿈 앓이,Yume Wazurai,,yumewazurai,,1
+chu-chocolate,Chu! Chocolate,ja,cerise-bouquet,2025-03-19,,,,,,,yumewazurai,,2
+compass,COMPASS,ja,dollchestra,2025-03-19,,,,,,,compass,,1
+rem,レム,ja,dollchestra,2025-03-19,,,,렘,Rem,,compass,,2
+zenhoui-kyun,全方位キュン♡,ja,mira-cra-park,2025-03-19,,,,전방위 두근♡,Zenhoui Kyun♡,,zenhouii-kyun,,1
+kakurenbo-shiyou,かくれんぼしよう,ja,mira-cra-park,2025-03-19,,,,숨바꼭질하자,Kakurenbo Shiyou,,zenhouii-kyun,,2
+oide-yo-ishikawa-daikankou,おいでよ！石川大観光,ja,hasunosora,2025-03-26,,,,어서 와! 이시카와 대관광,Oide yo! Ishikawa Daikankou,,oideyo-ishikawa,,1
+koigeshiki-shouwa-roman,恋景色昭和ロマン,ja,cerise-bouquet,2025-03-26,,,,사랑의 풍경 쇼와 낭만,Koigeshiki Shouwa Roman,,oideyo-ishikawa,,2
+veggie-love-roux,ベジ・ラブ・ルー,ja,dollchestra,2025-03-26,,,,베지・러브・루,Veggie・Love・Roux,,oideyo-ishikawa,,3
+mahara-jamboree-ii,マハラジャンボリーⅡ,ja,mira-cra-park,2025-03-26,,,,마하라 잼버리II,Mahara Jamboree II,,oideyo-ishikawa,,4
+haji-wa-jinsei-no-kakisute,恥は人生のかきすて,ja,ginko-solo kosuzu-solo hime-solo,2025-03-26,,,,부끄러움은 인생의 낭비,Haji wa Jinsei no Kakisute,,oideyo-ishikawa,,5
+love-it-wonderful-trip,Love it! Wonderful Trip!,ja,kaho-solo sayaka-solo rurino-solo,2025-03-26,,,,,,,oideyo-ishikawa,,6
+asterism,アステリズム,ja,kozue-solo tsuzuri-solo megumi-solo,2025-03-26,,,,아스테리즘,Asterism,,oideyo-ishikawa,,7
+itsudemo-itsumademo,いつでも、いつまでも,ja,hasunosora,2025-04-09,,,,"언제나, 어디까지나","Itsudemo, Itsumademo",,itsudemo-itsumademo,,1
+ittan,いったん,ja,hasunosora,2025-04-09,,,,일단,Ittan,,itsudemo-itsumademo,,2
+dream-believers-105,Dream Believers（105期 Ver.）,ja,hasunosora,2025-04-30,,dream-believers,,Dream Believers (105기 Ver.),Dream Believers (105th Ver.),,dream-believers-105,,1
+celebration,Celebration!,ja,cerise-bouquet,2025-04-30,,,,,,,dream-believers-105,,2
+ampere,アンペア,ja,dollchestra,2025-04-30,,,,암페어,Ampere,,dream-believers-105,,3
+wawo,WAWO!,ja,mira-cra-park,2025-04-30,,,,,,,dream-believers-105,,4
+edelied,Edelied,ja,edel-note,2025-04-30,,,,,,,dream-believers-105,,5
+hello-new-dream,"Hello, new dream!",ja,hasunosora,2025-04-30,,,,,,,dream-believers-105,,6
+deepness-rec,DEEPNESS（ReC Ver.）,ja,hasunosora,2025-05-20,,deepness,,,,,104th-collection,1,1
+natsumeki-pain-104,夏めきペイン（104期Ver.）,ja,hasunosora,2025-05-20,,natsumeki-pain,,나츠메키페인(104기 Ver.),Natsumeki Pain (104th Ver.),,104th-collection,1,2
+trick-cute-104,Trick ＆ Cute（104期Ver.）,ja,hasunosora,2025-05-20,,trick-cute,,Trick ＆ Cute (104기 Ver.),Trick ＆ Cute (104th Ver.),,104th-collection,1,3
+tsubasa-la-liberte-104,ツバサ・ラ・リベルテ（104期Ver.）,ja,hasunosora,2025-05-20,,tsubasa-la-liberte,,츠바사 라 리베르테 (104기 Ver.),Tsubasa La Liberte (104th Ver.),,104th-collection,1,4
+link-to-the-future-104,Link to the FUTURE（104期Ver.）,ja,cerise-bouquet dollchestra mira-cra-park,2025-05-20,,link-to-the-future,,Link to the FUTURE (104기 Ver.),Link to the FUTURE (104th Ver.),,104th-collection,1,5
+dream-belivers-sakura,Dream Believers（SAKURA Ver.）,ja,hasunosora,2025-05-20,,dream-belivers,,,,,104th-collection,1,6
+suisai-sekai-104,水彩世界（104期Ver.）,ja,cerise-bouquet,2025-05-20,,suisai-sekai,,수채세계 (104기 Ver.),Suisai Sekai (104th Ver.),,104th-collection,2,1
+mix-shake-104,Mix shake!!（104期Ver.）,ja,cerise-bouquet,2025-05-20,,mix-shake,,Mix shake!! (104기 Ver.),Mix shake!! (104th Ver.),,104th-collection,2,2
+holiday-holiday-104,Holiday∞Holiday（104期Ver.）,ja,cerise-bouquet,2025-05-20,,holiday-holiday,,Holiday∞Holiday (104기 Ver.),Holiday∞Holiday (104th Ver.),,104th-collection,2,3
+genyou-yakou-104,眩耀夜行（104期Ver.）,ja,cerise-bouquet,2025-05-20,,genyou-yakou,,현요야행 (104기 Ver.),Genyou Yakou (104th Ver.),,104th-collection,2,4
+sugao-no-pixel-104,素顔のピクセル（104期Ver.）,ja,cerise-bouquet,2025-05-20,,sugao-no-pixel,,맨얼굴의 픽셀 (104기 Ver.),Sugao no Pixel (104th Ver.),,104th-collection,2,5
+senpen-banka-104,千変万華（104期Ver.）,ja,cerise-bouquet,2025-05-20,,senpen-banka,,천변만화 (104기 Ver.),Senpen Banka (104th Ver.),,104th-collection,2,6
+sugar-melt-104,シュガーメルト（104期Ver.）,ja,cerise-bouquet,2025-05-20,,sugar-melt,,슈가 멜트 (104기 Ver.),Sugar Melt (104th Ver.),,104th-collection,2,7
+awoke-104,AWOKE（104期Ver.）,ja,dollchestra,2025-05-20,,awoke,,AWOKE (104기 Ver.),AWOKE (104th Ver.),,104th-collection,3,1
+kibouteki-prism-104,希望的プリズム（104期Ver.）,ja,dollchestra,2025-05-20,,kibouteki-prism,,희망적 프리즘 (104기 Ver.),Kibouteki Prism (104th Ver.),,104th-collection,3,2
+tragic-drops-104,Tragic Drops（104期Ver.）,ja,dollchestra,2025-05-20,,tragic-drops,,Tragic Drops (104기 Ver.),Tragic Drops (104th Ver.),,104th-collection,3,3
+mirage-voyage-104,Mirage Voyage（104期Ver.）,ja,dollchestra,2025-05-20,,mirage-voyage,,Mirage Voyage (104기 Ver.),Mirage Voyage (104th Ver.),,104th-collection,3,4
+take-it-over-104,Take It Over（104期Ver.）,ja,dollchestra,2025-05-20,,take-it-over,,Take It Over (104기 Ver.),Take It Over (104th Ver.),,104th-collection,3,5
+knot-104,KNOT（104期Ver.）,ja,dollchestra,2025-05-20,,knot,,KNOT (104기 Ver.),KNOT (104th Ver.),,104th-collection,3,6
+seishun-no-rinkaku-104,青春の輪郭（104期Ver.）,ja,dollchestra,2025-05-20,,seishun-no-rinkaku,,청춘의 윤곽 (104기 Ver.),Seishun no Rinkaku (104th Ver.),,104th-collection,3,7
+do-do-do-104,ド！ド！ド！（104期Ver.）,ja,mira-cra-park,2025-05-20,,do-do-do,,도! 도! 도! (104기 Ver.),Do! Do! Do! (104th Ver.),,104th-collection,4,1
+Hakuchuu-a-la-mode-104,ハクチューアラモード（104期Ver.）,ja,mira-cra-park,2025-05-20,,Hakuchuu-a-la-mode,,백중 아라모드 (104기 Ver.),Hakuchuu à la Mode (104th Ver.),,104th-collection,4,2
+kokon-touzai-104,ココン東西（104期Ver.）,ja,mira-cra-park,2025-05-20,,kokon-touzai,,고금동서 (104기 Ver.),Kokon Touzai (104th Ver.),,104th-collection,4,3
+nonfiction-hero-show-104,ノンフィクションヒーローショー（104期Ver.）,ja,mira-cra-park,2025-05-20,,nonfiction-hero-show,,논픽션 히어로 쇼 (104기 Ver.),Nonfiction Hero Show (104th Ver.),,104th-collection,4,4
+ishin-denshin-104,以心☆電信（104期Ver.）,ja,mira-cra-park,2025-05-20,,ishin-denshin,,이심☆전신 (104기 Ver.),Ishin☆Denshin (104th Ver.),,104th-collection,4,5
+mahara-jamboree-104,マハラジャンボリー（104期Ver.）,ja,mira-cra-park,2025-05-20,,mahara-jamboree,,마하라 잼버리 (104기 Ver.),Mahara Jamboree (104th Ver.),,104th-collection,4,6
+tensai-nano-kamo-shirenai-104,天才なのかもしれない（104期Ver.）,ja,mira-cra-park,2025-05-20,,tensai-nano-kamo-shirenai,,천재일지도 몰라 (104기 Ver.),Tensai Nano Kamo Shirenai (104th Ver.),,104th-collection,4,7
+retrofuture,Retrofuture,ja,edel-note,2025-05-21,,,,,,,retrofuture,,1
+tenchi-reimei,天地黎明,ja,edel-note,2025-05-21,,,,천지여명,Tenchi Reimei,,,,2
+chili-con-carne,チリコンカン,ja,edel-note,2025-05-21,,,,칠리 콘 카르네,Chili Con Carne,,,,3
+suisai-sekai-kozue,水彩世界,ja,kozue-solo,2025-06-04,,suisai-sekai,,수채세계,Suisai Sekai,,star-sign-memories-kozue,1,1
+ouka-ranman-kozue,謳歌爛漫,ja,kozue-solo,2025-06-04,,ouka-ranman,,구가난만,Ouka Ranman,,star-sign-memories-kozue,1,2
+reflection-in-the-mirror-kozue,Reflection in the mirror,ja,kozue-solo,2025-06-04,,reflection-in-the-mirror,,,,,star-sign-memories-kozue,1,3
+holiday-holiday-kozue,Holiday∞Holiday,ja,kozue-solo,2025-06-04,,holiday-holiday,,,,,star-sign-memories-kozue,1,4
+genyou-yakou-kozue,眩耀夜行,ja,kozue-solo,2025-06-04,,genyou-yakou,,현요야행,Genyou Yakou,,star-sign-memories-kozue,1,5
+sugao-no-pixel-kozue,素顔のピクセル,ja,kozue-solo,2025-06-04,,sugao-no-pixel,,맨얼굴의 픽셀,Sugao no Pixel,,star-sign-memories-kozue,1,6
+senpen-banka-kozue,千変万華,ja,kozue-solo,2025-06-04,,senpen-banka,,천변만화,Senpen Banka,,star-sign-memories-kozue,1,7
+special-thanks-kozue,Special Thanks,ja,kozue-solo,2025-06-04,,special-thanks,,,,,star-sign-memories-kozue,1,8
+aoku-haruka-kozue,アオクハルカ,ja,kozue-solo,2025-06-04,,aoku-haruka,,파랗게 아득히,Aoku Haruka,,star-sign-memories-kozue,2,1
+tsukuyomi-kurage-kozue,月夜見海月,ja,kozue-solo,2025-06-04,,tsukuyomi-kurage,,달밤을 보는 해파리,Tsukuyomi Kurage,,star-sign-memories-kozue,2,2
+hanamusubi-kozue,ハナムスビ,ja,kozue-solo,2025-06-04,,hanamusubi,,하나무스비,Hanamusubi,,star-sign-memories-kozue,2,3
+yume-wazurai-kozue,ユメワズライ,ja,kozue-solo,2025-06-04,,yume-wazurai,,꿈 앓이,Yume Wazurai,,star-sign-memories-kozue,2,4
+asu-no-sora-no-bokutachi-e-kozue,明日の空の僕たちへ,ja,kozue-solo,2025-06-04,,asu-no-sora-no-bokutachi-e,,내일 하늘의 우리에게,Asu no Sora no Bokutachi e,,star-sign-memories-kozue,2,5
+deepness-kozue,DEEPNESS,ja,kozue-solo,2025-06-04,,deepness,,,,,star-sign-memories-kozue,2,6
+dream-belivers-sakura-kozue,Dream Believers（SAKURA Ver.）,ja,kozue-solo,2025-06-04,,dream-belivers-sakura,,,,,star-sign-memories-kozue,2,7
+be-proud,be proud,ja,kozue-solo,2025-06-04,,,,,,,star-sign-memories-kozue,2,8
+awoke-tsuzuri,AWOKE,ja,tsuzuri-solo,2025-06-04,,awoke,,,,,star-sign-memories-tsuzuri,1,1
+scape-goat-tsuzuri,スケイプゴート,ja,tsuzuri-solo,2025-06-04,,scape-goat,,희생양,Scapegoat,,star-sign-memories-tsuzuri,1,2
+sparkly-spot-tsuzuri,Sparkly Spot,ja,tsuzuri-solo,2025-06-04,,sparkly-spot,,,,,star-sign-memories-tsuzuri,1,3
+tragic-drops-tsuzuri,Tragic Drops,ja,tsuzuri-solo,2025-06-04,,tragic-drops,,,,,star-sign-memories-tsuzuri,1,4
+mirage-voyage-tsuzuri,Mirage Voyage,ja,tsuzuri-solo,2025-06-04,,mirage-voyage,,,,,star-sign-memories-tsuzuri,1,5
+take-it-over-tsuzuri,Take It Over,ja,tsuzuri-solo,2025-06-04,,take-it-over,,,,,star-sign-memories-tsuzuri,1,6
+knot-tsuzuri,KNOT,ja,tsuzuri-solo,2025-06-04,,knot,,,,,star-sign-memories-tsuzuri,1,7
+ao-to-shabon-tsuzuri,青とシャボン,ja,tsuzuri-solo,2025-06-04,,ao-to-shabon,,푸름과 비눗방울,Ao to Shabon,,star-sign-memories-tsuzuri,1,8
+ladybug-tsuzuri,レディバグ,ja,tsuzuri-solo,2025-06-04,,ladybug,,레이디버그,Ladybug,,star-sign-memories-tsuzuri,2,1
+proof-tsuzuri,Proof,ja,tsuzuri-solo,2025-06-04,,proof,,,,,star-sign-memories-tsuzuri,2,2
+birdcage-tsuzuri,バアドケージ,ja,tsuzuri-solo,2025-06-04,,birdcage,,버드케이지,Birdcage,,star-sign-memories-tsuzuri,2,3
+compass-tsuzuri,COMPASS,ja,tsuzuri-solo,2025-06-04,,compass,,,,,star-sign-memories-tsuzuri,2,4
+tsubasa-la-liberte-tsuzuri,ツバサ・ラ・リベルテ,ja,tsuzuri-solo,2025-06-04,,tsubasa-la-liberte,,츠바사 라 리베르테,Tsubasa La Liberte,,star-sign-memories-tsuzuri,2,5
+deepness-tsuzuri,DEEPNESS,ja,tsuzuri-solo,2025-06-04,,deepness,,,,,star-sign-memories-tsuzuri,2,6
+dream-belivers-sakura-tsuzuri,Dream Believers(SAKURA Ver.),ja,tsuzuri-solo,2025-06-04,,dream-belivers-sakura,,,,,star-sign-memories-tsuzuri,2,7
+shiawase-no-ribbon,幸せのリボン,ja,tsuzuri-solo,2025-06-04,,,,행복의 리본,Shiawase no Ribbon,,star-sign-memories-tsuzuri,2,8
+do-do-do-megumi,ド！ド！ド！,ja,megumi-solo,2025-06-04,,do-do-do,,도! 도! 도!,Do! Do! Do!,,star-sign-memories-megumi,1,1
+Hakuchuu-a-la-mode-megumi,ハクチューアラモード,ja,megumi-solo,2025-06-04,,Hakuchuu-a-la-mode,,백중 아라모드,Hakuchuu à la Mode,,star-sign-memories-megumi,1,2
+kokon-touzai-megumi,ココン東西,ja,megumi-solo,2025-06-04,,kokon-touzai,,고금동서,Kokon Touzai,,star-sign-memories-megumi,1,3
+identity-megumi,アイデンティティ,ja,megumi-solo,2025-06-04,,identity,,아이덴티티,Identity,,star-sign-memories-megumi,1,4
+nonfiction-hero-show-megumi,ノンフィクションヒーローショー,ja,megumi-solo,2025-06-04,,nonfiction-hero-show,,논픽션 히어로 쇼,Nonfiction Hero Show,,star-sign-memories-megumi,1,5
+milk-megumi,ミルク,ja,megumi-solo,2025-06-04,,milk,,밀크,Milk,,star-sign-memories-megumi,1,6
+ishin-denshin-megumi,以心☆電信,ja,megumi-solo,2025-06-04,,ishin-denshin,,이심☆전신,Ishin☆Denshin,,star-sign-memories-megumi,1,7
+bang-you-gravity-megumi,BANG YOU グラビティ,ja,megumi-solo,2025-06-04,,bang-you-gravity,,BANG YOU 그래비티,BANG YOU Gravity,,star-sign-memories-megumi,1,8
+miracreation-megumi,みらくりえーしょん,ja,megumi-solo,2025-06-04,,miracreation,,미라크리에이션,Mira-Creation,,star-sign-memories-megumi,2,1
+fanfare-megumi,ファンファーレ！！！,ja,megumi-solo,2025-06-04,,fanfare,,팡파레!!!,Fanfare!!!,,star-sign-memories-megumi,2,2
+joushou-kiryuu-megumi,ジョーショーキリュー,ja,megumi-solo,2025-06-04,,joushou-kiryuu,,상승기류,Joushou Kiryuu,,star-sign-memories-megumi,2,3
+zenhoui-kyun-megumi,全方位キュン♡,ja,megumi-solo,2025-06-04,,zenhoui-kyun,,전방위 두근♡,Zenhoui Kyun♡,,star-sign-memories-megumi,2,4
+natsumeki-pain-megumi,夏めきペイン,ja,megumi-solo,2025-06-04,,natsumeki-pain,,나츠메키페인,Natsumeki Pain,,star-sign-memories-megumi,2,5
+deepness-megumi,DEEPNESS,ja,megumi-solo,2025-06-04,,deepness,,,,,star-sign-memories-megumi,2,6
+dream-belivers-sakura-megumi,Dream Believers(SAKURA Ver.),ja,megumi-solo,2025-06-04,,dream-belivers-sakura,,,,,star-sign-memories-megumi,2,7
+yappa-tenshi,やっぱ天使！,ja,megumi-solo,2025-06-04,,,,역시 천사!,Yappa Tenshi!,,star-sign-memories-megumi,2,8
+375-fantasy,37.5℃のファンタジー,ja,cerise-bouquet,2025-07-02,,,,37.5℃의 판타지,37.5℃ no Fantasy,,375-fantasy-aimaimeiday-blast-izayoi-serene,,1
+aimaimeiday,アイマイメーデー,ja,dollchestra,2025-07-02,,,,애매 메이데이,I My Mayday,,375-fantasy-aimaimeiday-blast-izayoi-serene,,2
+blast,BLAST!!,ja,mira-cra-park,2025-07-02,,,,,,,375-fantasy-aimaimeiday-blast-izayoi-serene,,3
+izayoi-serene,十六夜セレーネ,ja,edel-note,2025-07-02,,,,이자요이 셀레네,Izayou Selene,,375-fantasy-aimaimeiday-blast-izayoi-serene,,4
+i-do-me,アイドゥーミー！,ja,hasunosora,2025-07-09,,,,아이 두 미!,I Do Me!,,ido-me,,1
+tohyo-star,とーひょー☆スター！,ja,hasunosora,2025-07-09,,,,투표☆스타!,Tohyo☆Star!,,ido-me,,2
+fruit-punch,フルーツパンチ,ja,cerise-bouquet,2025-08-20,,,,후르츠 펀치,Fruit Punch,,fruits-punch,,1
+my-lucky-clover,My Lucky Clover,ja,cerise-bouquet,2025-08-20,,,,,,,fruits-punch,,2
+taiyou-de-are,太陽であれ！,ja,dollchestra,2025-08-20,,,,태양이어라!,Taiyou de Are!,,taiyou-de-are,,1
+diamondz,diamondz,ja,dollchestra,2025-08-20,,,,,,,taiyou-de-are,,2
+atarayo-hanabi,可惜夜花火,ja,cerise-bouquet,2025-09-03,,,,아타라요 하나비,Atarayo Hanabi,,atarayo-hanabi-blue-moment-very-very-coconatsu-fusion-crust,,1
+blue-moment,ブルウモーメント,ja,dollchestra,2025-09-03,,,,블루 모먼트,Blue Moment,,atarayo-hanabi-blue-moment-very-very-coconatsu-fusion-crust,,2
+very-very-coconatsu,Very! Very! COCO夏っ,ja,mira-cra-park,2025-09-03,,,,Very! Very! COCO넛,Very ! Very! COCO Natsu,,atarayo-hanabi-blue-moment-very-very-coconatsu-fusion-crust,,3
+fusion-crust,フュージョンクラスト,ja,edel-note,2025-09-03,,,,퓨전 크러스트,Fusion Crust,,atarayo-hanabi-blue-moment-very-very-coconatsu-fusion-crust,,4
+nyao-signyal,ニャオシグニャル,ja,mira-cra-park,2025-10-01,,,,냐오 시그냘,Nyao Signyal,,nyao-signyal,,1
+heart-ni-q,ハートにQ,ja,mira-cra-park,2025-10-01,,,,하트에 Q,Heart ni Q,,nyao-signyal,,2
+henyoku-no-toribaga,片翼のトリバガ,ja,edel-note,2025-10-01,,,,편익의 나방,Henyoku no Toribaga,,henyoku-no-toribaga,,1
+drive-spade-crazy,ドライブ・スペード・クレイジー,ja,edel-note,2025-10-01,,,,드라이브・스페이드・크레이지,Drive・Spade・Crazy,,henyoku-no-toribaga,,2
+cho-toutoi-love,ちょ、尊いLOVE,ja,ritorurito,2025-12-03,,,,"초, 고귀한 LOVE","Cho, Toutoi LOVE",,cho-toutoi-love-new-black,,1
+heisei-galz,平成ギャルズ!!!!,ja,ritorurito,2025-12-03,,,,헤이세이 갸루들!!!!,Heisei Galz!!!,,cho-toutoi-love-new-black,,2
+new-black,Nεw Black,ja,princess,2025-12-03,,,,,,,cho-toutoi-love-new-black,,3
+ichigo-milk-love,IcHiGo milK love,ja,princess,2025-12-03,,,,,,,cho-toutoi-love-new-black,,4
+otome-anthology,乙女詞華集,ja,cerise-bouquet,2025-12-10,,,,오토메 앤솔로지,Otome Anthology,,otome-anthology-garando-flash-vital-sign-theater-ikizama,,1
+garando-flash,ガランドFlash,ja,dollchestra,2025-12-10,,,,개런드 Flash,Garando Flash,,otome-anthology-garando-flash-vital-sign-theater-ikizama,,2
+vital-sign,バイタルサイン,ja,mira-cra-park,2025-12-10,,,,바이탈 사인,Vital Sign,,otome-anthology-garando-flash-vital-sign-theater-ikizama,,3
+theater-ikizama,シアター生き様,ja,edel-note,2025-12-10,,,,시어터 삶의 길,Theater Ikizama,,otome-anthology-garando-flash-vital-sign-theater-ikizama,,4
+hajimari-no-hane-oto,はじまりの羽音,ja,hasunosora,2025-12-10,,,,시작의 날갯소리,Hajimari no Hane Oto,,hajimari-no-hane-oto,,1
+charming-na-hanataba-o,チャーミングな花束を！,ja,hasunosora,2025-12-10,,,,차밍한 꽃다발을!,Charming na Hanataba o!,,hajimari-no-hane-oto,,2
+runway,Runway,ja,sayaka-solo,2025-12-24,,,,,,,hajimari-no-hane-oto,,3
+echoes-beyond,Echoes Beyond,ja,hasunosora,2026-01-28,,,,,,,echoes-beyond,,1
+joker,JOKER.,ja,hasunosora,2026-01-28,,,,,,,echoes-beyond,,2
+sayo-shigure,Sayo-Shigure,ja,cerise-bouquet,2026-02-18,,,,,,,sayo-shigure-reboot-hip-hip-hooray-reijou-mob,,1
+reboot,リブウト,ja,dollchestra,2026-02-18,,,,리부트,Reboot,,sayo-shigure-reboot-hip-hip-hooray-reijou-mob,,2
+hip-hop-hooray,"Hip, hip, hooray!",ja,mira-cra-park,2026-02-18,,,,,,,sayo-shigure-reboot-hip-hip-hooray-reijou-mob,,3
+reijou-mob,令嬢モブ！,ja,edel-note,2026-02-18,,,,영애모브!,Reijou Mob!,,sayo-shigure-reboot-hip-hip-hooray-reijou-mob,,4
+fushigi-to-kimi-to-library,不思議と君とライブラリー,ja,cerise-bouquet,2026-04-08,,,,불가사의와 너와 라이브러리,Fushigi to Kimi to Library,,fushigi-to-kimi-to-library,,1
+fushigi-to-kimi-to-library-bgp,不思議と君とライブラリー（B. G. P. Ver.）,ja,cerise-bouquet,2026-04-08,,fushigi-to-kimi-to-library,,불가사의와 너와 라이브러리 (B.G.P. Ver.),Fushigi to Kimi to Library  (B.G.P. Ver.),,fushigi-to-kimi-to-library,,2
+kanazawa-one-side-love,金沢片恋慕,ja,cerise-bouquet,2026-04-08,,,,카나자와 원사이드 러브,Kanazawa One-Side Love,,fushigi-to-kimi-to-library,,3
+aishii,アイシイ,ja,dollchestra,2026-04-08,,,,아이시이,Icy,,aishii,,1
+aishii-bgp,アイシイ（B. G. P. Ver.）,ja,dollchestra,2026-04-08,,aishii,,아이시이 (B.G.P. Ver.),Icy (B.G.P. Ver.),,aishii,,2
+umbrella,アンブレラ,ja,dollchestra,2026-04-08,,,,엄브렐라,Umbrella,,aishii,,3
+tomodachi-ni-nareru-basho,トモダチになれる場所,ja,mira-cra-park,2026-04-08,,,,친구가 될 수 있는 장소,Tomodachi ni Nereru Basho,,tomodachi-ni-nareru-basho,,1
+tomodachi-ni-nareru-basho-bgp,トモダチになれる場所（B. G. P. Ver.）,ja,mira-cra-park,2026-04-08,,tomodachi-ni-nareru-basho,,친구가 될 수 있는 장소 (B.G.P. Ver.),Tomodachi ni Nereru Basho (B.G.P. Ver.),,tomodachi-ni-nareru-basho,,2
+senpai,センパイ,ja,mira-cra-park,2026-04-08,,,,선배,Senpai,,tomodachi-ni-nareru-basho,,3
+edelinien,EdelinieN,ja,edel-note,2026-04-08,,,,,,,edelinien,,1
+meu-amore-meerkat,ミアモーレ・ミーアキャット,ja,edel-note,2026-04-08,,edelinien,,미 아모레・미어캣,Meu Amoré・Meerkat,,edelinien,,2
+a-deru-note,A出るノート,ja,edel-note,2026-04-08,,,,A가 나오는 노트,A Deru Note,,edelinien,,3
+hitoyo-ni-yume-ga-saku-you-ni,一生に夢が咲くように,ja,hasunosora,2026-04-15,,,,일생에 꿈이 피어나기를,Hitoyo ni Yume ga Saku You ni,,ima-kako-mirai-no-sangenshoku,,1
+yuki-mau-sora-to-nibyou-no-eien,雪舞う空と二秒の永遠,ja,hasunosora,2026-04-15,,,,눈 흩날리는 하늘과 이 초의 영원,Yuki Mau Sora to Nibyou no Eien,,ima-kako-mirai-no-sangenshoku,,2
+ima-kako-mirai-no-sangenshoku,今、過去、未来の三原色,ja,hasunosora,2026-04-15,,,,"지금, 과거, 미래의 삼원색","Ima, Kako, Mirai no Sangenshoku",,ima-kako-mirai-no-sangenshoku,,3

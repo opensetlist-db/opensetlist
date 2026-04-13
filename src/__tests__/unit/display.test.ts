@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { displayName, displaySongTitle } from "@/lib/display";
+import { displayName, displayOriginalTitle } from "@/lib/display";
 
 describe("displayName", () => {
   it("returns shortName when available", () => {
@@ -41,9 +41,9 @@ describe("displayName", () => {
   });
 });
 
-describe("displaySongTitle", () => {
+describe("displayOriginalTitle", () => {
   it("shows sub when ja song has different ko translation", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "眩耀夜行", originalLanguage: "ja" },
       { title: "현요야행" },
       "ko"
@@ -52,7 +52,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows no sub when ko song viewed by ko user", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "사랑의 노래", originalLanguage: "ko" },
       { title: "사랑의 노래" },
       "ko"
@@ -61,7 +61,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows no sub when translation is same as original", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "Dream Believers", originalLanguage: "en" },
       { title: "Dream Believers" },
       "ko"
@@ -70,7 +70,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows no sub when no translation exists", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "ハナムスビ", originalLanguage: "ja" },
       null,
       "ko"
@@ -79,7 +79,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows no sub when originalLanguage matches displayLocale", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "사랑의 노래", originalLanguage: "ko" },
       { title: "다른 제목" },
       "ko"
@@ -88,7 +88,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows sub for en song with ko translation", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "Sparkly Spot", originalLanguage: "en" },
       { title: "스파클리 스팟" },
       "ko"
@@ -97,7 +97,7 @@ describe("displaySongTitle", () => {
   });
 
   it("defaults displayLocale to ko", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "眩耀夜行", originalLanguage: "ja" },
       { title: "현요야행" }
     );
@@ -105,7 +105,7 @@ describe("displaySongTitle", () => {
   });
 
   it("shows sub for ja user viewing en song with ja translation", () => {
-    const result = displaySongTitle(
+    const result = displayOriginalTitle(
       { originalTitle: "Dream Believers", originalLanguage: "en" },
       { title: "ドリームビリーバーズ" },
       "ja"

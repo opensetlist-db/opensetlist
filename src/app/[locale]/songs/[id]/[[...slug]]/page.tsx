@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName, displaySongTitle } from "@/lib/display";
+import { displayName, displayOriginalTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -128,7 +128,7 @@ export default async function SongPage({ params }: Props) {
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
   const tr = pickTranslation(song.translations, locale);
-  const { main, sub } = displaySongTitle(song, tr ?? null, locale);
+  const { main, sub } = displayOriginalTitle(song, tr ?? null, locale);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
