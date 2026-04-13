@@ -411,12 +411,18 @@ async function importSongs(rows: Record<string, string>[]) {
     if (!row.baseVersion_slug || !row.slug) continue;
     const song = await prisma.song.findUnique({ where: { slug: row.slug } });
     const base = await prisma.song.findUnique({ where: { slug: row.baseVersion_slug } });
-    if (song && base) {
-      await prisma.song.update({
-        where: { id: song.id },
-        data: { baseVersionId: base.id },
-      });
+    if (!song) {
+      results.push(`WARN: song not found: ${row.slug}`);
+      continue;
     }
+    if (!base) {
+      results.push(`WARN: baseVersion not found: ${row.baseVersion_slug} (for ${row.slug})`);
+      continue;
+    }
+    await prisma.song.update({
+      where: { id: song.id },
+      data: { baseVersionId: base.id },
+    });
   }
 
   return { count: results.length, log: results };
