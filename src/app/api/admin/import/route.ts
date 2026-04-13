@@ -130,43 +130,108 @@ async function importMembers(rows: Record<string, string>[]) {
       if (a) artistIds.push(a.id);
     }
 
-    // Create RealPerson if VA info provided
+    // Upsert RealPerson if VA info provided
     let realPersonId: string | undefined;
+    const vaSlug = `va-${charSlug}`;
     if (row.va_ja_name || row.va_ko_name || row.va_en_name) {
       const vaTranslations = [];
       if (row.va_ja_name) vaTranslations.push({ locale: "ja", name: row.va_ja_name, stageName: null as string | null });
       if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, stageName: null as string | null });
       if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, stageName: null as string | null });
 
-      const rp = await prisma.realPerson.create({
-        data: { translations: { create: vaTranslations } },
-      });
-      realPersonId = rp.id;
+      const existingRp = await prisma.realPerson.findUnique({ where: { slug: vaSlug } });
+      if (existingRp) {
+        for (const t of vaTranslations) {
+          await prisma.realPersonTranslation.upsert({
+            where: { realPersonId_locale: { realPersonId: existingRp.id, locale: t.locale } },
+            create: { realPersonId: existingRp.id, ...t },
+            update: { name: t.name, stageName: t.stageName },
+          });
+        }
+        realPersonId = existingRp.id;
+      } else {
+        const rp = await prisma.realPerson.create({
+          data: { slug: vaSlug, translations: { create: vaTranslations } },
+        });
+        realPersonId = rp.id;
+      }
     }
 
-    // Create StageIdentity
-    const si = await prisma.stageIdentity.create({
-      data: {
-        type: (row.character_type as "character" | "persona") || "character",
-        color: row.color || null,
-        translations: { create: translations },
-        artistLinks: artistIds.length
-          ? {
-              create: artistIds.map((aid) => ({
-                artistId: aid,
-                startDate: row.startDate ? new Date(row.startDate) : null,
-                endDate: row.endDate ? new Date(row.endDate) : null,
-                note: row.note || null,
-              })),
-            }
-          : undefined,
-        voicedBy: realPersonId
-          ? { create: { realPersonId } }
-          : undefined,
-      },
-    });
+    // Upsert StageIdentity
+    const existingSi = await prisma.stageIdentity.findUnique({ where: { slug: charSlug } });
 
-    results.push(`Member: ${charSlug} → ${si.id}`);
+    let siId: string;
+    if (existingSi) {
+      await prisma.stageIdentity.update({
+        where: { slug: charSlug },
+        data: {
+          type: (row.character_type as "character" | "persona") || "character",
+          color: row.color || null,
+        },
+      });
+      // Upsert translations
+      for (const t of translations) {
+        await prisma.stageIdentityTranslation.upsert({
+          where: { stageIdentityId_locale: { stageIdentityId: existingSi.id, locale: t.locale } },
+          create: { stageIdentityId: existingSi.id, ...t },
+          update: { name: t.name, shortName: t.shortName },
+        });
+      }
+      // Upsert artist links
+      for (const aid of artistIds) {
+        const existing = await prisma.stageIdentityArtist.findFirst({
+          where: { stageIdentityId: existingSi.id, artistId: aid },
+        });
+        if (!existing) {
+          await prisma.stageIdentityArtist.create({
+            data: {
+              stageIdentityId: existingSi.id,
+              artistId: aid,
+              startDate: row.startDate ? new Date(row.startDate) : null,
+              endDate: row.endDate ? new Date(row.endDate) : null,
+              note: row.note || null,
+            },
+          });
+        }
+      }
+      // Upsert voicedBy link
+      if (realPersonId) {
+        const existingVb = await prisma.realPersonStageIdentity.findFirst({
+          where: { stageIdentityId: existingSi.id, realPersonId },
+        });
+        if (!existingVb) {
+          await prisma.realPersonStageIdentity.create({
+            data: { stageIdentityId: existingSi.id, realPersonId },
+          });
+        }
+      }
+      siId = existingSi.id;
+      results.push(`UPDATED: ${charSlug} → ${siId}`);
+    } else {
+      const si = await prisma.stageIdentity.create({
+        data: {
+          slug: charSlug,
+          type: (row.character_type as "character" | "persona") || "character",
+          color: row.color || null,
+          translations: { create: translations },
+          artistLinks: artistIds.length
+            ? {
+                create: artistIds.map((aid) => ({
+                  artistId: aid,
+                  startDate: row.startDate ? new Date(row.startDate) : null,
+                  endDate: row.endDate ? new Date(row.endDate) : null,
+                  note: row.note || null,
+                })),
+              }
+            : undefined,
+          voicedBy: realPersonId
+            ? { create: { realPersonId } }
+            : undefined,
+        },
+      });
+      siId = si.id;
+      results.push(`CREATED: ${charSlug} → ${siId}`);
+    }
   }
 
   return { count: results.length, log: results };

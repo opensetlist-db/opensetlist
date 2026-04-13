@@ -260,6 +260,7 @@ model ArtistGroup {
 // UUID: not a primary search entity, referenced via Artist pages.
 model StageIdentity {
   id           String                     @id @default(uuid())
+  slug         String                     @unique
   type         StageIdentityType
   imageUrl     String?
   color        String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
@@ -309,6 +310,7 @@ model StageIdentityArtist {
 // UUID: referenced via StageIdentity, not a primary URL entity.
 model RealPerson {
   id              String                    @id @default(uuid())
+  slug            String                    @unique
   imageUrl        String?
   createdAt       DateTime                  @default(now())
 

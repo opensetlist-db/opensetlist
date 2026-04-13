@@ -75,8 +75,10 @@ export async function POST(request: NextRequest) {
                   };
                 }) => {
                   // Create StageIdentity first
+                  const siSlug = generateSlug(si.translations[0]?.name || "identity");
                   const stageIdentity = await prisma.stageIdentity.create({
                     data: {
+                      slug: siSlug,
                       type: si.type as "character" | "persona",
                       color: si.color || null,
                       translations: {
@@ -90,6 +92,7 @@ export async function POST(request: NextRequest) {
                             create: {
                               realPerson: {
                                 create: {
+                                  slug: `va-${siSlug}`,
                                   translations: {
                                     create: si.realPerson.translations.map(
                                       (t) => ({

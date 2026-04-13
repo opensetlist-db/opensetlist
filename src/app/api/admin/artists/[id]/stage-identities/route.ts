@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { generateSlug } from "@/lib/slug";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,8 +23,10 @@ export async function POST(request: NextRequest, { params }: Props) {
   }
 
   // Create new stage identity
+  const siSlug = body.slug || generateSlug(translations?.[0]?.name || "identity");
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
+      slug: siSlug,
       type,
       color: color || null,
       translations: {
@@ -40,6 +43,7 @@ export async function POST(request: NextRequest, { params }: Props) {
             create: {
               realPerson: {
                 create: {
+                  slug: `va-${siSlug}`,
                   translations: {
                     create: realPerson.translations.map(
                       (t: { locale: string; name: string; stageName?: string }) => ({
