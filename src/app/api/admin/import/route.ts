@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
-import { parseArtistSlugs, resolveOriginalLanguage } from "@/lib/csv-parse";
+import { parseArtistSlugs, resolveOriginalLanguage, resolveSongTranslations } from "@/lib/csv-parse";
 
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
@@ -322,11 +322,7 @@ async function importSongs(rows: Record<string, string>[]) {
     const slug = row.slug;
     if (!slug || !row.originalTitle) continue;
 
-    const translations = [
-      row.ja_title ? { locale: "ja", title: row.ja_title, variantLabel: row.ja_variantLabel || null } : null,
-      row.ko_title ? { locale: "ko", title: row.ko_title, variantLabel: row.ko_variantLabel || null } : null,
-      row.en_title ? { locale: "en", title: row.en_title, variantLabel: row.en_variantLabel || null } : null,
-    ].filter(Boolean) as { locale: string; title: string; variantLabel: string | null }[];
+    const { translations: allTranslations, removedLocales } = resolveSongTranslations(row);
 
     // Upsert Song
     const song = await prisma.song.upsert({
@@ -353,19 +349,7 @@ async function importSongs(rows: Record<string, string>[]) {
       results.push(`UPSERT: ${slug} → ${song.id}`);
     }
 
-    // Upsert translations
-    // Also create translation rows for locales that only have variantLabel (no title)
-    const localesWithVariantOnly = [
-      !row.ja_title && row.ja_variantLabel ? { locale: "ja", title: "", variantLabel: row.ja_variantLabel } : null,
-      !row.ko_title && row.ko_variantLabel ? { locale: "ko", title: "", variantLabel: row.ko_variantLabel } : null,
-      !row.en_title && row.en_variantLabel ? { locale: "en", title: "", variantLabel: row.en_variantLabel } : null,
-    ].filter(Boolean) as { locale: string; title: string; variantLabel: string }[];
-    const allTranslations = [...translations, ...localesWithVariantOnly];
-
     // Delete translations for locales no longer in CSV
-    const presentLocales = allTranslations.map((t) => t.locale);
-    const allLocales = ["ja", "ko", "en"];
-    const removedLocales = allLocales.filter((l) => !presentLocales.includes(l));
     if (removedLocales.length > 0) {
       await prisma.songTranslation.deleteMany({
         where: { songId: song.id, locale: { in: removedLocales } },
