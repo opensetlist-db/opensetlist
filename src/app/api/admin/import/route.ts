@@ -239,62 +239,89 @@ async function importAlbums(rows: Record<string, string>[]) {
 
 async function importSongs(rows: Record<string, string>[]) {
   const results: string[] = [];
+  const seenSlugs = new Set<string>();
 
-  // First pass: upsert songs
+  // First pass: upsert songs, translations, artists, album tracks
   for (const row of rows) {
     const slug = row.slug;
     if (!slug || !row.originalTitle) continue;
 
-    const jaTranslation = row.ja_title ? { locale: "ja", title: row.ja_title } : null;
-    const koTranslation = row.ko_title ? { locale: "ko", title: row.ko_title } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; title: string }[];
+    const translations = [
+      row.ja_title ? { locale: "ja", title: row.ja_title } : null,
+      row.ko_title ? { locale: "ko", title: row.ko_title } : null,
+    ].filter(Boolean) as { locale: string; title: string }[];
 
-    // Look up artist by slug
-    const artistId = row.artist_slug
-      ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
-      : null;
+    // Upsert Song
+    const song = await prisma.song.upsert({
+      where: { slug },
+      create: {
+        slug,
+        originalTitle: row.originalTitle,
+        originalLanguage: resolveOriginalLanguage(row.originalLanguage),
+        variantLabel: row.variantLabel || null,
+        releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+        sourceNote: row.sourceNote || null,
+      },
+      update: {
+        originalTitle: row.originalTitle,
+        originalLanguage: row.originalLanguage ? resolveOriginalLanguage(row.originalLanguage) : undefined,
+        variantLabel: row.variantLabel || null,
+        releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
+        sourceNote: row.sourceNote || null,
+      },
+    });
 
-    const existing = await prisma.song.findUnique({ where: { slug } });
+    if (!seenSlugs.has(slug)) {
+      seenSlugs.add(slug);
+      results.push(`UPSERT: ${slug} → ${song.id}`);
+    }
 
-    if (existing) {
-      await prisma.song.update({
-        where: { slug },
-        data: {
-          originalTitle: row.originalTitle,
-          originalLanguage: row.originalLanguage ? resolveOriginalLanguage(row.originalLanguage) : undefined,
-          variantLabel: row.variantLabel || null,
-          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
-          sourceNote: row.sourceNote || null,
-        },
+    // Upsert translations
+    for (const t of translations) {
+      await prisma.songTranslation.upsert({
+        where: { songId_locale: { songId: song.id, locale: t.locale } },
+        create: { songId: song.id, ...t },
+        update: { title: t.title },
       });
-      for (const t of translations) {
-        await prisma.songTranslation.upsert({
-          where: { songId_locale: { songId: existing.id, locale: t.locale } },
-          create: { songId: existing.id, ...t },
-          update: { title: t.title },
+    }
+
+    // Upsert SongArtist links
+    if (row.artist_slug) {
+      const artistSlugs = parseArtistSlugs(row.artist_slug);
+      for (const artistSlug of artistSlugs) {
+        const artist = await prisma.artist.findUnique({ where: { slug: artistSlug } });
+        if (!artist) {
+          results.push(`WARN: artist not found: ${artistSlug}`);
+          continue;
+        }
+        await prisma.songArtist.upsert({
+          where: { songId_artistId: { songId: song.id, artistId: artist.id } },
+          create: { songId: song.id, artistId: artist.id, role: "primary" },
+          update: {},
         });
       }
-      results.push(`UPDATED: ${slug} → ${existing.id}`);
-    } else {
-      const song = await prisma.song.create({
-        data: {
-          slug,
-          originalTitle: row.originalTitle,
-          originalLanguage: resolveOriginalLanguage(row.originalLanguage),
-          variantLabel: row.variantLabel || null,
-          releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
-          sourceNote: row.sourceNote || null,
-          translations: translations.length ? { create: translations } : undefined,
-          artists: artistId
-            ? { create: { artistId, role: "primary" } }
-            : undefined,
-        },
-      });
-      results.push(`CREATED: ${slug} → ${song.id}`);
+    }
+
+    // Upsert AlbumTrack — each row can link song to a different album
+    if (row.album_slug && row.track_number) {
+      const album = await prisma.album.findUnique({ where: { slug: row.album_slug } });
+      if (!album) {
+        results.push(`WARN: album not found: ${row.album_slug}`);
+      } else {
+        const discNumber = row.disc_number ? parseInt(row.disc_number) : 1;
+        const trackNumber = parseInt(row.track_number);
+        if (!isNaN(trackNumber) && !isNaN(discNumber)) {
+          await prisma.albumTrack.upsert({
+            where: { albumId_discNumber_trackNumber: { albumId: album.id, discNumber, trackNumber } },
+            create: { albumId: album.id, songId: song.id, discNumber, trackNumber },
+            update: { songId: song.id },
+          });
+        }
+      }
     }
   }
 
-  // Second pass: set baseVersionId by slug
+  // Second pass: set baseVersionId by slug (needs all songs created first)
   for (const row of rows) {
     if (!row.baseVersion_slug || !row.slug) continue;
     const song = await prisma.song.findUnique({ where: { slug: row.slug } });
@@ -304,24 +331,6 @@ async function importSongs(rows: Record<string, string>[]) {
         where: { id: song.id },
         data: { baseVersionId: base.id },
       });
-    }
-  }
-
-  // Third pass: create AlbumTrack links
-  for (const row of rows) {
-    if (!row.album_slug || !row.track_number || !row.slug) continue;
-    const song = await prisma.song.findUnique({ where: { slug: row.slug } });
-    const album = await prisma.album.findUnique({ where: { slug: row.album_slug } });
-    if (song && album) {
-      const trackNumber = parseInt(row.track_number);
-      const discNumber = row.disc_number ? parseInt(row.disc_number) : 1;
-      if (!isNaN(trackNumber) && !isNaN(discNumber)) {
-        await prisma.albumTrack.upsert({
-          where: { albumId_discNumber_trackNumber: { albumId: album.id, discNumber, trackNumber } },
-          create: { albumId: album.id, songId: song.id, discNumber, trackNumber },
-          update: { songId: song.id },
-        });
-      }
     }
   }
 
