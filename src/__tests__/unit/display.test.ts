@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { displayName } from "@/lib/display";
+import { displayName, displaySongTitle } from "@/lib/display";
 
 describe("displayName", () => {
   it("returns shortName when available", () => {
@@ -38,5 +38,78 @@ describe("displayName", () => {
         "full"
       )
     ).toBe("蓮ノ空女学院スクールアイドルクラブ");
+  });
+});
+
+describe("displaySongTitle", () => {
+  it("shows sub when ja song has different ko translation", () => {
+    const result = displaySongTitle(
+      { originalTitle: "眩耀夜行", originalLanguage: "ja" },
+      { title: "현요야행" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행" });
+  });
+
+  it("shows no sub when ko song viewed by ko user", () => {
+    const result = displaySongTitle(
+      { originalTitle: "사랑의 노래", originalLanguage: "ko" },
+      { title: "사랑의 노래" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "사랑의 노래", sub: null });
+  });
+
+  it("shows no sub when translation is same as original", () => {
+    const result = displaySongTitle(
+      { originalTitle: "Dream Believers", originalLanguage: "en" },
+      { title: "Dream Believers" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "Dream Believers", sub: null });
+  });
+
+  it("shows no sub when no translation exists", () => {
+    const result = displaySongTitle(
+      { originalTitle: "ハナムスビ", originalLanguage: "ja" },
+      null,
+      "ko"
+    );
+    expect(result).toEqual({ main: "ハナムスビ", sub: null });
+  });
+
+  it("shows no sub when originalLanguage matches displayLocale", () => {
+    const result = displaySongTitle(
+      { originalTitle: "사랑의 노래", originalLanguage: "ko" },
+      { title: "다른 제목" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "사랑의 노래", sub: null });
+  });
+
+  it("shows sub for en song with ko translation", () => {
+    const result = displaySongTitle(
+      { originalTitle: "Sparkly Spot", originalLanguage: "en" },
+      { title: "스파클리 스팟" },
+      "ko"
+    );
+    expect(result).toEqual({ main: "Sparkly Spot", sub: "스파클리 스팟" });
+  });
+
+  it("defaults displayLocale to ko", () => {
+    const result = displaySongTitle(
+      { originalTitle: "眩耀夜行", originalLanguage: "ja" },
+      { title: "현요야행" }
+    );
+    expect(result).toEqual({ main: "眩耀夜行", sub: "현요야행" });
+  });
+
+  it("shows sub for ja user viewing en song with ja translation", () => {
+    const result = displaySongTitle(
+      { originalTitle: "Dream Believers", originalLanguage: "en" },
+      { title: "ドリームビリーバーズ" },
+      "ja"
+    );
+    expect(result).toEqual({ main: "Dream Believers", sub: "ドリームビリーバーズ" });
   });
 });

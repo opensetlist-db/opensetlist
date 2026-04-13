@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { displayName, displaySongTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -267,19 +267,18 @@ export default async function ArtistPage({ params }: Props) {
           <ul className="space-y-1">
             {artist.songCredits.map((sc) => {
               const songTr = pickTranslation(sc.song.translations, locale);
-              const localizedTitle = songTr?.title;
-              const showLocalized = sc.song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== sc.song.originalTitle;
+              const { main, sub } = displaySongTitle(sc.song, songTr ?? null, locale);
               return (
                 <li key={sc.id}>
                   <Link
-                    href={`/${locale}/songs/${sc.song.id}/${slugify(sc.song.originalTitle)}`}
+                    href={`/${locale}/songs/${sc.song.id}/${slugify(main)}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {sc.song.originalTitle}
+                    {main}
                   </Link>
-                  {showLocalized && (
+                  {sub && (
                     <span className="ml-1 text-sm text-zinc-400">
-                      {localizedTitle}
+                      {sub}
                     </span>
                   )}
                   {sc.song.variantLabel && (

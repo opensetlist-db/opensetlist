@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { displayName, displaySongTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -128,8 +128,7 @@ export default async function SongPage({ params }: Props) {
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
   const tr = pickTranslation(song.translations, locale);
-  const localizedTitle = tr?.title;
-  const showLocalized = song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== song.originalTitle;
+  const { main, sub } = displaySongTitle(song, tr ?? null, locale);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -143,16 +142,16 @@ export default async function SongPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          {song.originalTitle}
+          {main}
           {song.variantLabel && (
             <span className="ml-2 text-xl font-normal text-zinc-500">
               ({song.variantLabel})
             </span>
           )}
         </h1>
-        {showLocalized && (
+        {sub && (
           <p className="mt-1 text-lg text-zinc-500">
-            {localizedTitle}
+            {sub}
           </p>
         )}
         {song.releaseDate && (

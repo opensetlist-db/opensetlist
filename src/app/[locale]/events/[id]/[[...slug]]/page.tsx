@@ -8,7 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { displayName, displaySongTitle } from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -277,13 +277,11 @@ function SetlistTable({
       {items.map((item, index) => {
         const songNames = item.songs.map((s) => {
           const sTr = pickTranslation(s.song.translations, locale);
-          const localizedTitle = sTr?.title;
-          // Show localized title when locale differs from original language AND text differs
-          const showLocalized = s.song.originalLanguage !== locale && !!localizedTitle && localizedTitle !== s.song.originalTitle;
+          const { main, sub } = displaySongTitle(s.song, sTr ?? null, locale);
           return {
             id: s.song.id,
-            originalTitle: s.song.originalTitle,
-            localizedTitle: showLocalized ? localizedTitle : null,
+            main,
+            sub,
             variantLabel: s.song.variantLabel,
             artists: s.song.artists,
           };
@@ -320,14 +318,14 @@ function SetlistTable({
                           <span className="mx-1 text-zinc-400">+</span>
                         )}
                         <Link
-                          href={`/${locale}/songs/${song.id}/${slugify(song.originalTitle)}`}
+                          href={`/${locale}/songs/${song.id}/${slugify(song.main)}`}
                           className="font-medium text-blue-600 hover:underline"
                         >
-                          {song.originalTitle}
+                          {song.main}
                         </Link>
-                        {song.localizedTitle && (
+                        {song.sub && (
                           <span className="ml-1 text-sm text-zinc-400">
-                            {song.localizedTitle}
+                            {song.sub}
                           </span>
                         )}
                         {song.variantLabel && (
