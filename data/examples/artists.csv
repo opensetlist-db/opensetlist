@@ -1,6 +1,6 @@
-slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,imageUrl
-hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라 여학원 스쿨 아이돌 클럽,하스노소라,
-cerise-bouquet,unit,hasunosora,スリーズブーケ,スリブ,스리즈 부케,스리부,
-dollchestra,unit,hasunosora,DOLLCHESTRA,ドルケ,DOLLCHESTRA,돌케,
-mira-cra-park,unit,hasunosora,みらくらぱーく！,みらぱ,미라쿠라파크!,미라파,
-edel-note,unit,hasunosora,Edel Note,Edel Note,Edel Note,Edel Note,
+slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName
+hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라 여학원 스쿨 아이돌 클럽,하스노소라
+cerise-bouquet,unit,hasunosora,スリーズブーケ,スリブ,스리즈 부케,스리부
+dollchestra,unit,hasunosora,DOLLCHESTRA,ドルケ,DOLLCHESTRA,돌케
+mira-cra-park,unit,hasunosora,みらくらぱーく！,みらぱ,미라쿠라파크!,미라파
+edel-note,unit,hasunosora,Edel Note,Edel Note,Edel Note,Edel Note

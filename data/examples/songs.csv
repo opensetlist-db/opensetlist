@@ -1,13 +1,13 @@
-slug,originalTitle,artist_slug,releaseDate,variantLabel,baseVersion_slug,ja_title,ko_title,sourceNote,album_slug,track_number
-hasunosora-dream-believers,Dream Believers,hasunosora,2023-03-29,,,Dream Believers,Dream Believers,,hasunosora-dream-believers,1
-hasunosora-on-your-mark,On your mark,hasunosora,2023-03-29,,,On your mark,On your mark,,hasunosora-dream-believers,2
-cerise-bouquet-suisai-sekai,水彩世界,cerise-bouquet,2023-03-29,,,水彩世界,수채세계,,hasunosora-dream-believers,3
-dollchestra-awoke,AWOKE,dollchestra,2023-03-29,,,AWOKE,AWOKE,,hasunosora-dream-believers,4
-mira-cra-park-do-do-do,ド！ド！ド！,mira-cra-park,2023-03-29,,,ド！ド！ド！,도! 도! 도!,,hasunosora-dream-believers,5
-hasunosora-eien-no-euporia,永遠のEuphoria,hasunosora,2023-03-29,,,永遠のEuphoria,영원의 Euphoria,,hasunosora-dream-believers,6
-cerise-bouquet-reflection-in-the-mirror,Reflection in the mirror,cerise-bouquet,2023-04-26,,,Reflection in the mirror,Reflection in the mirror,,hasunosora-reflection-in-the-mirror,1
-cerise-bouquet-fortune-movie,フォーチュンムービー,cerise-bouquet,2023-04-26,,,フォーチュンムービー,포춘 무비,,hasunosora-reflection-in-the-mirror,2
-cerise-bouquet-mix-shake,Mix shake!!,cerise-bouquet,2023-04-26,,,Mix shake!!,Mix shake!!,,hasunosora-reflection-in-the-mirror,3
-dollchestra-sparkly-spot,Sparkly Spot,dollchestra,2023-04-26,,,Sparkly Spot,Sparkly Spot,,hasunosora-sparkly-spot,1
-dollchestra-tsukimakase,ツキマカセ,dollchestra,2023-04-26,,,ツキマカセ,츠키마카세,,hasunosora-sparkly-spot,2
-dollchestra-kibouteki-prism,希望的プリズム,dollchestra,2023-04-26,,,希望的プリズム,희망적프리즘,,hasunosora-sparkly-spot,3
+slug,originalTitle,originalLanguage,artist_slug,releaseDate,variantLabel,baseVersion_slug,ja_title,ko_title,sourceNote,album_slug,disc_number,track_number
+hasunosora-dream-believers,Dream Believers,,hasunosora,2023-03-29,,,Dream Believers,Dream Believers,,hasunosora-dream-believers,,1
+hasunosora-on-your-mark,On your mark,,hasunosora,2023-03-29,,,On your mark,On your mark,,hasunosora-dream-believers,,2
+cerise-bouquet-suisai-sekai,水彩世界,,cerise-bouquet,2023-03-29,,,水彩世界,수채세계,,hasunosora-dream-believers,,3
+dollchestra-awoke,AWOKE,,dollchestra,2023-03-29,,,AWOKE,AWOKE,,hasunosora-dream-believers,,4
+mira-cra-park-do-do-do,ド！ド！ド！,,mira-cra-park,2023-03-29,,,ド！ド！ド！,도! 도! 도!,,hasunosora-dream-believers,,5
+hasunosora-eien-no-euporia,永遠のEuphoria,,hasunosora,2023-03-29,,,永遠のEuphoria,영원의 Euphoria,,hasunosora-dream-believers,,6
+cerise-bouquet-reflection-in-the-mirror,Reflection in the mirror,,cerise-bouquet,2023-04-26,,,Reflection in the mirror,Reflection in the mirror,,hasunosora-reflection-in-the-mirror,,1
+cerise-bouquet-fortune-movie,フォーチュンムービー,,cerise-bouquet,2023-04-26,,,フォーチュンムービー,포춘 무비,,hasunosora-reflection-in-the-mirror,,2
+cerise-bouquet-mix-shake,Mix shake!!,,cerise-bouquet,2023-04-26,,,Mix shake!!,Mix shake!!,,hasunosora-reflection-in-the-mirror,,3
+dollchestra-sparkly-spot,Sparkly Spot,,dollchestra,2023-04-26,,,Sparkly Spot,Sparkly Spot,,hasunosora-sparkly-spot,,1
+dollchestra-tsukimakase,ツキマカセ,,dollchestra,2023-04-26,,,ツキマカセ,츠키마카세,,hasunosora-sparkly-spot,,2
+dollchestra-kibouteki-prism,希望的プリズム,,dollchestra,2023-04-26,,,希望的プリズム,희망적프리즘,,hasunosora-sparkly-spot,,3
