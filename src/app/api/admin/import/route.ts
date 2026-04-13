@@ -314,10 +314,11 @@ async function importSongs(rows: Record<string, string>[]) {
     const album = await prisma.album.findUnique({ where: { slug: row.album_slug } });
     if (song && album) {
       const trackNumber = parseInt(row.track_number);
-      if (!isNaN(trackNumber)) {
+      const discNumber = row.disc_number ? parseInt(row.disc_number) : 1;
+      if (!isNaN(trackNumber) && !isNaN(discNumber)) {
         await prisma.albumTrack.upsert({
-          where: { albumId_trackNumber: { albumId: album.id, trackNumber } },
-          create: { albumId: album.id, songId: song.id, trackNumber },
+          where: { albumId_discNumber_trackNumber: { albumId: album.id, discNumber, trackNumber } },
+          create: { albumId: album.id, songId: song.id, discNumber, trackNumber },
           update: { songId: song.id },
         });
       }

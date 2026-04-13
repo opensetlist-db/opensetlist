@@ -626,11 +626,12 @@ model AlbumTrack {
   id          String @id @default(uuid())
   albumId     String
   songId      BigInt
+  discNumber  Int    @default(1)
   trackNumber Int
 
   album       Album  @relation(fields: [albumId], references: [id])
   song        Song   @relation(fields: [songId], references: [id])
-  @@unique([albumId, trackNumber])
+  @@unique([albumId, discNumber, trackNumber])
   @@index([songId])
 }
 
