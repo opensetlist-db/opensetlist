@@ -23,6 +23,7 @@ async function getArtist(id: bigint, locale: string) {
       subArtists: {
         where: { isDeleted: false },
         include: { translations: true },
+        orderBy: { id: "asc" },
       },
       parentArtist: {
         include: { translations: true },
@@ -238,24 +239,50 @@ export default async function ArtistPage({ params }: Props) {
         </section>
       )}
 
-      {/* Sub-units */}
-      {artist.subArtists.length > 0 && (
+      {/* Units */}
+      {artist.subArtists.filter((s) => s.type === "unit").length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-xl font-semibold">{t("subUnits")}</h2>
           <ul className="space-y-1">
-            {artist.subArtists.map((sub) => {
-              const subTr = pickTranslation(sub.translations, locale);
-              return (
-                <li key={sub.id}>
-                  <Link
-                    href={`/${locale}/artists/${sub.id}/${slugify(subTr?.name ?? "")}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {subTr?.name ?? "Unknown"}
-                  </Link>
-                </li>
-              );
-            })}
+            {artist.subArtists
+              .filter((s) => s.type === "unit")
+              .map((sub) => {
+                const subTr = pickTranslation(sub.translations, locale);
+                return (
+                  <li key={sub.id}>
+                    <Link
+                      href={`/${locale}/artists/${sub.id}/${slugify(subTr?.name ?? "")}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {subTr?.name ?? "Unknown"}
+                    </Link>
+                  </li>
+                );
+              })}
+          </ul>
+        </section>
+      )}
+
+      {/* Solos */}
+      {artist.subArtists.filter((s) => s.type === "solo").length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold">{t("solos")}</h2>
+          <ul className="space-y-1">
+            {artist.subArtists
+              .filter((s) => s.type === "solo")
+              .map((sub) => {
+                const subTr = pickTranslation(sub.translations, locale);
+                return (
+                  <li key={sub.id}>
+                    <Link
+                      href={`/${locale}/artists/${sub.id}/${slugify(subTr?.name ?? "")}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {subTr?.name ?? "Unknown"}
+                    </Link>
+                  </li>
+                );
+              })}
           </ul>
         </section>
       )}
