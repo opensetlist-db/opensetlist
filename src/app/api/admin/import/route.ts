@@ -433,7 +433,8 @@ async function importEvents(rows: Record<string, string>[]) {
 
     const jaTranslation = row.series_ja_name ? { locale: "ja", name: row.series_ja_name, shortName: row.series_ja_shortName || null } : null;
     const koTranslation = row.series_ko_name ? { locale: "ko", name: row.series_ko_name, shortName: row.series_ko_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
+    const enTranslation = row.series_en_name ? { locale: "en", name: row.series_en_name, shortName: row.series_en_shortName || null } : null;
+    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
 
     const artistId = row.artist_slug
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
@@ -478,7 +479,8 @@ async function importEvents(rows: Record<string, string>[]) {
 
     const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null, city: row.ja_city || null, venue: row.ja_venue || null } : null;
     const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null, city: row.ko_city || null, venue: row.ko_venue || null } : null;
-    const translations = [jaTranslation, koTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null; city: string | null; venue: string | null }[];
+    const enTranslation = row.en_name ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null, city: row.en_city || null, venue: row.en_venue || null } : null;
+    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null; city: string | null; venue: string | null }[];
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
