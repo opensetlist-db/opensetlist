@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: "OpenSetlist",
   description: "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
+  verification: {
+    other: {
+      "naver-site-verification": "ba0a8cbcd0d75b35340f288a129a4e0d8dbc71c9",
+    },
+  },
 };
 
 export function generateStaticParams() {
