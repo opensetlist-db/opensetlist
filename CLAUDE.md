@@ -224,4 +224,4 @@ session memory files. Claude Code loads these automatically. For manual referenc
 - Legal & operations → `memory/legal_ops.md`
 - Current progress → `memory/project_progress.md`
 
-Memory paths are relative to: `C:\Users\cheon\.claude\projects\F--work-ClaudeCode-opensetlist\memory\`
+Memory paths are relative to the Claude Code project memory directory.
