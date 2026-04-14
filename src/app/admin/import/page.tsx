@@ -31,7 +31,7 @@ const IMPORT_TYPES = [
     value: "events",
     label: "5. 이벤트 (Events)",
     columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_type", "event_slug*", "parentEvent_slug", "event_type", "date", "startTime", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "artist_slug", "event_performer_slugs", "event_guest_slugs"],
-    note: "ja_name 또는 ko_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트",
+    note: "ja/ko/en_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트",
   },
   {
     value: "setlistitems",
