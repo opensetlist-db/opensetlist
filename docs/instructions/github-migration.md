@@ -1,6 +1,6 @@
 # github-migration.md — GitHub Repository Migration
 
-> Move repository from Chpark/opensetlist to opensetlistdb/opensetlist.
+> Move repository from opensetlist-db/opensetlist to opensetlistdb/opensetlist.
 > Make repository public for CodeRabbit free plan.
 > Update all local git settings and remote URLs.
 
@@ -9,7 +9,7 @@
 ## Overview
 
 ```
-Before: github.com/Chpark/opensetlist (private)
+Before: github.com/opensetlist-db/opensetlist (private)
 After:  github.com/opensetlistdb/opensetlist (public)
 ```
 
@@ -49,7 +49,7 @@ If nothing shows up → safe to continue ✅
 ## Step 3 — Transfer Repository
 
 ```
-1. github.com/Chpark/opensetlist 접속
+1. github.com/opensetlist-db/opensetlist 접속
 2. Settings 탭
 3. 하단 Danger Zone → Transfer repository
 4. Type repository name: opensetlist
@@ -57,7 +57,7 @@ If nothing shows up → safe to continue ✅
 6. 확인 → Transfer 완료
 
 결과:
-  github.com/Chpark/opensetlist
+  github.com/opensetlist-db/opensetlist
   → github.com/opensetlistdb/opensetlist 으로 이전
   (기존 URL은 자동 리다이렉트)
 ```

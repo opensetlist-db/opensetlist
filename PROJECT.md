@@ -355,9 +355,8 @@ Twitter @opensetlistdb:
 
 ### Background
 
-- Operator: Chonhyon, California, USA
-- Embedded C++ professional, JavaScript experience, Next.js App Router first project
 - Solo developer
+- Embedded C++ professional, JavaScript experience, Next.js App Router first project
 - Using Claude Code for implementation
 
 ### Development pace
@@ -453,7 +452,7 @@ Phase 4+ — Global:
 Legal:
   [ ] Privacy Policy (termly.io or iubenda — CCPA + GDPR + PIPA)
       → Required before AdSense
-  [ ] EIN retrieval (IRS 1-800-829-4933, 7am–9am PT Tue–Thu)
+  [ ] EIN retrieval
       → Required for CDJapan, Amazon, AdSense affiliates
 
 Monetization (after EIN):

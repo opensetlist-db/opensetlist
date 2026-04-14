@@ -19,7 +19,7 @@ Manual:   can trigger anytime from GitHub Actions tab
 
 ## Step 1 — Add secret to GitHub repository
 
-Go to: github.com/Chpark/opensetlist → Settings → Secrets and variables → Actions → New repository secret
+Go to: github.com/opensetlist-db/opensetlist → Settings → Secrets and variables → Actions → New repository secret
 
 Add:
 ```
@@ -79,7 +79,7 @@ jobs:
 
 ## Step 3 — Verify it works
 
-1. Go to github.com/Chpark/opensetlist → Actions tab
+1. Go to github.com/opensetlist-db/opensetlist → Actions tab
 2. Select "Daily Database Backup" workflow
 3. Click "Run workflow" → Run workflow (manual trigger)
 4. Wait for it to complete (should take ~1 min)

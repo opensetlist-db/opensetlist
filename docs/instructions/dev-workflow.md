@@ -95,7 +95,7 @@ Development (local):
 ### GitHub Secrets
 
 ```
-Go to: github.com/Chpark/opensetlist → Settings → Secrets → Actions
+Go to: github.com/opensetlist-db/opensetlist → Settings → Secrets → Actions
 
 Add:
   PROD_DATABASE_URL          = [Production Supabase transaction pooler]
