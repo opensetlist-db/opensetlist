@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     date,
     country,
     posterUrl,
+    startTime,
     translations,
   } = body;
 
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
+      startTime: startTime ? new Date(startTime) : null,
       country: country || null,
       posterUrl: posterUrl || null,
       translations: {

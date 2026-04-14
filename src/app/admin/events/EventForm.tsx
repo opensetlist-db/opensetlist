@@ -15,6 +15,7 @@ type EventFormProps = {
     date: string | null;
     country: string | null;
     posterUrl: string | null;
+    startTime: string | null;
     translations: Translation[];
   };
 };
@@ -37,6 +38,7 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [date, setDate] = useState(initialData?.date ?? "");
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
+  const [startTime, setStartTime] = useState(initialData?.startTime ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
@@ -89,6 +91,7 @@ export default function EventForm({ initialData }: EventFormProps) {
       date: date || null,
       country: country || null,
       posterUrl: posterUrl || null,
+      startTime: startTime || null,
       translations: translations
         .filter((t) => t.name.trim())
         .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null })),
@@ -196,13 +199,22 @@ export default function EventForm({ initialData }: EventFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="mb-1 block text-sm font-medium">날짜</label>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">시작 시각 (UTC)</label>
+          <input
+            type="datetime-local"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
             className="w-full rounded border border-zinc-300 px-3 py-2"
           />
         </div>
