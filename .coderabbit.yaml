@@ -6,6 +6,9 @@ reviews:
   review_status: true
   auto_review:
     enabled: true
+    base_branches:
+      - "main"
+      - "dev"
     drafts: false
     ignore_title_keywords:
       - "WIP"
