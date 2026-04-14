@@ -170,6 +170,40 @@ See `memory/schema_design.md` for the intended directory tree.
 
 ---
 
+## Development Workflow
+
+```
+Repo: github.com/opensetlist-db/opensetlist (public)
+
+Branches:
+  main     — production (opensetlist.com). Direct commits FORBIDDEN.
+  dev      — staging. Auto-deploys to Vercel Preview with dev DB.
+  feature/* — one branch per feature, merged into dev via PR.
+  hotfix/* — emergency fixes, merged into main + dev.
+
+Release flow:
+  feature/* → PR → dev → test on Preview → PR → main → git tag v*.*.* → production deploy
+
+Environments:
+  Production (main):  Prod Supabase (DATABASE_URL, DATABASE_URL_UNPOOLED)
+  Preview (dev):      Dev Supabase (same env var names, different values in Vercel)
+  Local:              Dev Supabase (.env + .env.local)
+
+GitHub Actions:
+  migrate-dev.yml    — prisma db push on dev DB (push to dev)
+  migrate-prod.yml   — prisma db push on prod DB (on tag v*)
+  backup.yml         — daily pg_dump of prod DB
+
+Version tags: vMAJOR.MINOR.PATCH (e.g. v1.0.0)
+```
+
+Hard rules:
+- NEVER commit directly to main — always PR from dev or hotfix/*
+- NEVER use production DB locally — .env must point to dev DB
+- Always create a version tag for production releases
+
+---
+
 ## Environment Variables
 
 See `memory/prisma_config.md` for full env var reference.
