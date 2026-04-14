@@ -21,7 +21,7 @@ jobs:
 
       - name: Run pg_dump
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_UNPOOLED }}
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
         run: |
           /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" \
             --no-owner \
