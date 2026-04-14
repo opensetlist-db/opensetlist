@@ -95,7 +95,7 @@ Development (local):
 ### GitHub Secrets
 
 ```
-Go to: github.com/Chpark/opensetlist → Settings → Secrets → Actions
+Go to: github.com/opensetlist-db/opensetlist → Settings → Secrets → Actions
 
 Add:
   PROD_DATABASE_URL          = [Production Supabase transaction pooler]
@@ -128,13 +128,12 @@ Add:
 4. Test on dev branch Preview URL
    Verify everything works with dev DB
 
-5. When ready to release: PR dev → main
-   git checkout main
-   git merge dev
-   git push origin main
+5. When ready to release: Create PR dev → main
+   → Merge via PR UI after reviews/CI pass
    → Do NOT deploy yet (no tag)
 
 6. Create release tag
+   git pull origin main
    git tag v1.1.0
    git push origin v1.1.0
    → GitHub Actions triggered
@@ -151,17 +150,15 @@ Add:
 
 2. Fix + test
 
-3. Merge into main + tag
-   git checkout main
-   git merge hotfix/setlist-display-bug
+3. Create PR hotfix/setlist-display-bug → main
+   → Merge via PR UI after reviews/CI pass
+   git pull origin main
    git tag v1.1.1
-   git push origin main --tags
+   git push origin v1.1.1
    → Production deploy triggered ✅
 
-4. Also merge into dev (keep in sync)
-   git checkout dev
-   git merge hotfix/setlist-display-bug
-   git push origin dev
+4. Also create PR hotfix/setlist-display-bug → dev (keep in sync)
+   → Merge via PR UI
 ```
 
 ---
@@ -299,6 +296,9 @@ reviews:
   review_status: true
   auto_review:
     enabled: true
+    base_branches:
+      - "main"
+      - "dev"
     drafts: false
     ignore_title_keywords:
       - "WIP"
