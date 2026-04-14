@@ -1,0 +1,39 @@
+language: "ko-KR"
+
+reviews:
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "chore"
+      - "docs"
+
+  path_filters:
+    - "!.next/**"
+    - "!node_modules/**"
+    - "!prisma/migrations/**"
+    - "!public/**"
+    - "!*.md"
+
+  instructions: |
+    This is a Next.js 14 (App Router) + TypeScript + Prisma 7 + Supabase project.
+    It is a setlist database for Japanese anime/game live events targeting Korean users.
+
+    Focus on:
+    - Null checks on Prisma query results (findUnique/findFirst can return null)
+    - N+1 query patterns in loops
+    - Missing error handling in API routes and server actions
+    - Hardcoded values that should be environment variables
+    - Type safety issues (avoid any)
+    - Missing loading/error states in React components
+    - BigInt handling (IDs are BigInt in Prisma schema)
+    - Locale handling in i18n (next-intl)
+
+    Skip:
+    - Stylistic preferences already handled by ESLint
+    - Comments about adding more tests (no test suite yet)
+    - Suggestions to add logging
