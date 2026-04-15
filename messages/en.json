@@ -1,0 +1,115 @@
+{
+  "Home": {
+    "title": "OpenSetlist",
+    "description": "Setlist database for anime & game live events",
+    "recentEvents": "Recent Events",
+    "upcomingEvents": "Upcoming Events",
+    "noEvents": "No events registered.",
+    "viewAll": "View All"
+  },
+  "Common": {
+    "notFound": "Page not found.",
+    "backToHome": "Back to Home",
+    "noData": "No data available.",
+    "event": "Event",
+    "events": "Events",
+    "artist": "Artist",
+    "artists": "Artists",
+    "song": "Song",
+    "songs": "Songs",
+    "series": "Series",
+    "setlist": "Setlist",
+    "encore": "Encore",
+    "date": "Date",
+    "venue": "Venue",
+    "status": "Status"
+  },
+  "Artist": {
+    "title": "Artists",
+    "type": {
+      "solo": "Solo",
+      "group": "Group",
+      "unit": "Unit",
+      "band": "Band"
+    },
+    "subUnits": "Units",
+    "solos": "Solo",
+    "members": "Members",
+    "groups": "Groups",
+    "eventHistory": "Event History",
+    "songs": "Songs",
+    "noEvents": "No events found.",
+    "noSongs": "No songs registered.",
+    "graduated": "Graduated",
+    "cv": "CV",
+    "with": "with"
+  },
+  "Song": {
+    "title": "Songs",
+    "originalTitle": "Original Title",
+    "releaseDate": "Release Date",
+    "artists": "Artists",
+    "variants": "Versions",
+    "baseVersion": "Original",
+    "otherVersions": "Other Versions",
+    "albumTracks": "Albums",
+    "discN": "Disc {disc}",
+    "trackN": "Track {track}",
+    "performanceHistory": "Performance History",
+    "noPerformances": "No performance records.",
+    "role": {
+      "primary": "Primary",
+      "featured": "Featured",
+      "cover": "Cover"
+    }
+  },
+  "Member": {
+    "affiliations": "Affiliations",
+    "units": "Units",
+    "solos": "Solo",
+    "present": "Present",
+    "performanceHistory": "Performance History",
+    "noPerformances": "No performance records."
+  },
+  "Event": {
+    "title": "Events",
+    "setlist": "Setlist",
+    "noSetlist": "No setlist registered.",
+    "noSongAssigned": "No song assigned",
+    "performers": "Performers",
+    "status": {
+      "upcoming": "Upcoming",
+      "ongoing": "Ongoing",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "itemType": {
+      "mc": "MC",
+      "video": "Video",
+      "interval": "Interlude"
+    },
+    "stageType": {
+      "full_group": "Full Group",
+      "unit": "Unit",
+      "solo": "Solo",
+      "special": "Special"
+    }
+  },
+  "EventSeries": {
+    "title": "Series",
+    "type": {
+      "concert_tour": "Concert Tour",
+      "festival": "Festival",
+      "fan_meeting": "Fan Meeting",
+      "one_time": "One-Time"
+    },
+    "organizer": "Organizer",
+    "events": "Events",
+    "noEvents": "No events registered."
+  },
+  "Meta": {
+    "description": "Setlist database for anime & game live events",
+    "setlistDb": "setlist database",
+    "performanceHistory": "performance history & setlist"
+  }
+}

@@ -92,9 +92,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const songTitle = tr?.title ?? song.originalTitle;
   const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
+  const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = artistTr
-    ? `${displayName(artistTr)} · 공연 이력 및 셋리스트`
-    : "공연 이력 및 셋리스트";
+    ? `${displayName(artistTr)} · ${mt("performanceHistory")}`
+    : mt("performanceHistory");
 
   const ogImage = `/api/og/song/${id}`;
   const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
@@ -207,7 +208,7 @@ export default async function SongPage({ params }: Props) {
       {song.baseVersion && (
         <section className="mb-8">
           <p className="text-sm text-zinc-500">
-            원곡:{" "}
+            {t("baseVersion")}:{" "}
             <Link
               href={`/${locale}/songs/${song.baseVersion.id}/${slugify(
                 pickTranslation(song.baseVersion.translations, locale)?.title ??
@@ -225,7 +226,7 @@ export default async function SongPage({ params }: Props) {
       {/* Variants */}
       {song.variants.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">다른 버전</h2>
+          <h2 className="mb-3 text-xl font-semibold">{t("otherVersions")}</h2>
           <ul className="space-y-1">
             {song.variants.map((v) => {
               const vTr = pickTranslation(v.translations, locale);
