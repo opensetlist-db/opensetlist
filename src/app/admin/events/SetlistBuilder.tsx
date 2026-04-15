@@ -285,8 +285,11 @@ export default function SetlistBuilder({
 
   async function reloadItems() {
     const eventRes = await fetch(`/api/admin/events/${eventId}`);
+    if (!eventRes.ok) return;
     const eventData = await eventRes.json();
-    setItems(eventData.setlistItems);
+    if (Array.isArray(eventData.setlistItems)) {
+      setItems(eventData.setlistItems);
+    }
   }
 
   function startEdit(item: SetlistItemData) {
@@ -373,7 +376,6 @@ export default function SetlistBuilder({
         body: JSON.stringify({ itemIdA: itemA.id, itemIdB: itemB.id }),
       });
       if (res.ok) {
-        // Optimistic UI update: swap positions locally
         setItems((prev) => {
           const next = prev.map((item) => {
             if (item.id === itemA.id) return { ...item, position: itemB.position };
@@ -382,6 +384,9 @@ export default function SetlistBuilder({
           });
           return next.sort((a, b) => a.position - b.position);
         });
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "순서 변경에 실패했습니다.");
       }
     } finally {
       setReorderLoading(false);
@@ -400,6 +405,9 @@ export default function SetlistBuilder({
         const newItem = await res.json();
         await reloadItems();
         startEdit(newItem);
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "삽입에 실패했습니다.");
       }
     } finally {
       setReorderLoading(false);
@@ -472,6 +480,7 @@ export default function SetlistBuilder({
                     disabled={idx === 0 || reorderLoading}
                     className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent"
                     title="위로 이동"
+                    aria-label="Move item up"
                   >
                     ▲
                   </button>
@@ -481,6 +490,7 @@ export default function SetlistBuilder({
                     disabled={idx === items.length - 1 || reorderLoading}
                     className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent"
                     title="아래로 이동"
+                    aria-label="Move item down"
                   >
                     ▼
                   </button>
