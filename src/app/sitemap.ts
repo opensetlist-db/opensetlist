@@ -3,14 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { BASE_URL } from "@/lib/config";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const staticPages: MetadataRoute.Sitemap = [
+  const locales = ["ko", "ja", "en"];
+
+  const staticPages: MetadataRoute.Sitemap = locales.flatMap((locale) => [
     {
-      url: `${BASE_URL}/ko`,
+      url: `${BASE_URL}/${locale}`,
       lastModified: new Date(),
-      changeFrequency: "daily",
+      changeFrequency: "daily" as const,
       priority: 1.0,
     },
-  ];
+    {
+      url: `${BASE_URL}/${locale}/privacy`,
+      lastModified: new Date("2026-05-02"),
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    },
+    {
+      url: `${BASE_URL}/${locale}/terms`,
+      lastModified: new Date("2026-05-02"),
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    },
+  ]);
 
   const events = await prisma.event.findMany({
     where: { isDeleted: false },
