@@ -69,7 +69,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const name = tr?.name ?? "Unknown";
 
   const title = `${name} | OpenSetlist`;
-  const description = `${name} 공연 이력 및 셋리스트`;
+  const mt = await getTranslations("Meta");
+  const description = `${name} ${mt("performanceHistory")}`;
   const pageUrl = `/${locale}/members/${id}/${member.slug}`;
 
   return {

@@ -1,22 +1,33 @@
 import type { Metadata } from "next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
+import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { BASE_URL } from "@/lib/config";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import "@fontsource-variable/noto-sans-kr";
 import "../globals.css";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
-  title: "OpenSetlist",
-  description: "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
-  verification: {
-    other: {
-      "naver-site-verification": "ba0a8cbcd0d75b35340f288a129a4e0d8dbc71c9",
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const mt = await getTranslations("Meta");
+
+  return {
+    metadataBase: new URL(BASE_URL),
+    title: "OpenSetlist",
+    description: mt("description"),
+    verification: {
+      other: {
+        "naver-site-verification": "ba0a8cbcd0d75b35340f288a129a4e0d8dbc71c9",
+      },
     },
-  },
-};
+  };
+}
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -38,6 +49,9 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
+        <header className="flex justify-end px-4 py-2">
+          <LanguageSwitcher />
+        </header>
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
