@@ -105,6 +105,7 @@ export default function SetlistBuilder({
     StageIdentityOption[]
   >([]);
   const [loading, setLoading] = useState(false);
+  const [reorderLoading, setReorderLoading] = useState(false);
 
   // New item form state
   const [showForm, setShowForm] = useState(false);
@@ -282,6 +283,12 @@ export default function SetlistBuilder({
     setSelectedArtists([]);
   }
 
+  async function reloadItems() {
+    const eventRes = await fetch(`/api/admin/events/${eventId}`);
+    const eventData = await eventRes.json();
+    setItems(eventData.setlistItems);
+  }
+
   function startEdit(item: SetlistItemData) {
     setEditingId(item.id);
     setFormPosition(item.position);
@@ -339,10 +346,7 @@ export default function SetlistBuilder({
       resetForm();
       setShowForm(false);
       router.refresh();
-      // Reload items
-      const eventRes = await fetch(`/api/admin/events/${eventId}`);
-      const eventData = await eventRes.json();
-      setItems(eventData.setlistItems);
+      await reloadItems();
     } else {
       const errData = await res.json().catch(() => null);
       alert(errData?.error || "저장에 실패했습니다.");
@@ -351,7 +355,7 @@ export default function SetlistBuilder({
   }
 
   async function handleDelete(itemId: number) {
-    if (!confirm("삭제하시겠습니까?")) return;
+    if (!confirm("삭제하시겠습니까? (소프트 삭제 — 복구 가능)")) return;
     const res = await fetch(`/api/admin/setlist-items/${itemId}`, {
       method: "DELETE",
     });
@@ -360,80 +364,145 @@ export default function SetlistBuilder({
     }
   }
 
+  async function handleSwap(itemA: SetlistItemData, itemB: SetlistItemData) {
+    setReorderLoading(true);
+    const res = await fetch("/api/admin/setlist-items/swap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemIdA: itemA.id, itemIdB: itemB.id }),
+    });
+    if (res.ok) {
+      // Optimistic UI update: swap positions locally
+      setItems((prev) => {
+        const next = prev.map((item) => {
+          if (item.id === itemA.id) return { ...item, position: itemB.position };
+          if (item.id === itemB.id) return { ...item, position: itemA.position };
+          return item;
+        });
+        return next.sort((a, b) => a.position - b.position);
+      });
+    }
+    setReorderLoading(false);
+  }
+
+  async function handleInsertAfter(afterPosition: number) {
+    setReorderLoading(true);
+    const res = await fetch("/api/admin/setlist-items/insert-after", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId, afterPosition }),
+    });
+    if (res.ok) {
+      const newItem = await res.json();
+      await reloadItems();
+      // Auto-open edit form for the new item
+      startEdit(newItem);
+    }
+    setReorderLoading(false);
+  }
 
   return (
     <div>
       {/* Existing items */}
       {items.length > 0 && (
-        <ol className="mb-6 space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-start gap-3 rounded border border-zinc-200 bg-white p-3"
-            >
-              <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-sm text-zinc-400">
-                {item.position}
-              </span>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  {item.isEncore && (
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
-                      앙코르
-                    </span>
-                  )}
-                  {item.type && item.type !== "song" && (
-                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
-                      {item.type.toUpperCase()}
-                    </span>
-                  )}
-                  {item.performanceType === "virtual_live" && (
-                    <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-xs text-cyan-700">
-                      3D
-                    </span>
-                  )}
-                  {item.performanceType === "video_playback" && (
-                    <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600">
-                      영상
-                    </span>
-                  )}
-                  {item.songs.map((s, i) => (
-                    <span key={s.song.id}>
-                      {i > 0 && <span className="text-zinc-400"> + </span>}
-                      <span className="font-medium">
-                        {getSongName(s.song)}
+        <ol className="mb-6 space-y-1">
+          {items.map((item, idx) => (
+            <li key={item.id}>
+              <div className="flex items-start gap-3 rounded border border-zinc-200 bg-white p-3">
+                <span className="mt-0.5 w-6 shrink-0 text-right font-mono text-sm text-zinc-400">
+                  {item.position}
+                </span>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    {item.isEncore && (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                        앙코르
                       </span>
-                    </span>
-                  ))}
-                  {item.songs.length === 0 && (!item.type || item.type === "song") && (
-                    <span className="text-zinc-400">곡 미지정</span>
-                  )}
-                  {item.songs.length === 0 && item.type && item.type !== "song" && item.note && (
-                    <span className="text-zinc-500">{item.note}</span>
-                  )}
+                    )}
+                    {item.type && item.type !== "song" && (
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
+                        {item.type.toUpperCase()}
+                      </span>
+                    )}
+                    {item.performanceType === "virtual_live" && (
+                      <span className="rounded bg-cyan-100 px-1.5 py-0.5 text-xs text-cyan-700">
+                        3D
+                      </span>
+                    )}
+                    {item.performanceType === "video_playback" && (
+                      <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600">
+                        영상
+                      </span>
+                    )}
+                    {item.songs.map((s, i) => (
+                      <span key={s.song.id}>
+                        {i > 0 && <span className="text-zinc-400"> + </span>}
+                        <span className="font-medium">
+                          {getSongName(s.song)}
+                        </span>
+                      </span>
+                    ))}
+                    {item.songs.length === 0 && (!item.type || item.type === "song") && (
+                      <span className="text-zinc-400">곡 미지정</span>
+                    )}
+                    {item.songs.length === 0 && item.type && item.type !== "song" && item.note && (
+                      <span className="text-zinc-500">{item.note}</span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-500">
+                    {item.stageType !== "full_group" && (
+                      <span className="mr-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
+                        {item.unitName ?? item.stageType}
+                      </span>
+                    )}
+                    {item.performers
+                      .map((p) => getSIName(p.stageIdentity))
+                      .join(", ")}
+                  </div>
                 </div>
-                <div className="mt-1 text-sm text-zinc-500">
-                  {item.stageType !== "full_group" && (
-                    <span className="mr-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
-                      {item.unitName ?? item.stageType}
-                    </span>
-                  )}
-                  {item.performers
-                    .map((p) => getSIName(p.stageIdentity))
-                    .join(", ")}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => idx > 0 && handleSwap(item, items[idx - 1])}
+                    disabled={idx === 0 || reorderLoading}
+                    className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="위로 이동"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => idx < items.length - 1 && handleSwap(item, items[idx + 1])}
+                    disabled={idx === items.length - 1 || reorderLoading}
+                    className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="아래로 이동"
+                  >
+                    ▼
+                  </button>
+                  <button
+                    onClick={() => startEdit(item)}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    편집
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="text-sm text-red-500 hover:underline"
+                  >
+                    삭제
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-2">
+              {/* Insert after button */}
+              <div className="flex justify-center py-0.5">
                 <button
-                  onClick={() => startEdit(item)}
-                  className="text-sm text-blue-600 hover:underline"
+                  type="button"
+                  onClick={() => handleInsertAfter(item.position)}
+                  disabled={reorderLoading}
+                  className="text-xs text-zinc-300 hover:text-blue-500 disabled:opacity-30"
+                  title={`${item.position}번 다음에 삽입`}
                 >
-                  편집
-                </button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="text-sm text-red-500 hover:underline"
-                >
-                  삭제
+                  + 여기에 삽입
                 </button>
               </div>
             </li>
