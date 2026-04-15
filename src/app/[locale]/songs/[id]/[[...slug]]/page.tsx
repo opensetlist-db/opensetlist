@@ -92,7 +92,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const songTitle = tr?.title ?? song.originalTitle;
   const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
-  const mt = await getTranslations("Meta");
+  const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = artistTr
     ? `${displayName(artistTr)} · ${mt("performanceHistory")}`
     : mt("performanceHistory");

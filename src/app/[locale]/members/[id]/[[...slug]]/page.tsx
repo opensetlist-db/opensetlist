@@ -69,7 +69,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const name = tr?.name ?? "Unknown";
 
   const title = `${name} | OpenSetlist`;
-  const mt = await getTranslations("Meta");
+  const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = `${name} ${mt("performanceHistory")}`;
   const pageUrl = `/${locale}/members/${id}/${member.slug}`;
 

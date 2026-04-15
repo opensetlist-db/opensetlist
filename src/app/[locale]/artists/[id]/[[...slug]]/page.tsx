@@ -115,7 +115,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!t) return { title: "OpenSetlist" };
 
   const title = `${displayName(t, "full")} | OpenSetlist`;
-  const mt = await getTranslations("Meta");
+  const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = `${displayName(t)} ${mt("setlistDb")}`;
 
   const ogImage = `/api/og/artist/${id}`;
