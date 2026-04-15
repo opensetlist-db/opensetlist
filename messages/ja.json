@@ -1,0 +1,115 @@
+{
+  "Home": {
+    "title": "OpenSetlist",
+    "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
+    "recentEvents": "最近のイベント",
+    "upcomingEvents": "今後のイベント",
+    "noEvents": "登録されたイベントがありません。",
+    "viewAll": "すべて見る"
+  },
+  "Common": {
+    "notFound": "ページが見つかりません。",
+    "backToHome": "ホームに戻る",
+    "noData": "データがありません。",
+    "event": "イベント",
+    "events": "イベント",
+    "artist": "アーティスト",
+    "artists": "アーティスト",
+    "song": "楽曲",
+    "songs": "楽曲",
+    "series": "シリーズ",
+    "setlist": "セットリスト",
+    "encore": "アンコール",
+    "date": "日付",
+    "venue": "会場",
+    "status": "ステータス"
+  },
+  "Artist": {
+    "title": "アーティスト",
+    "type": {
+      "solo": "ソロ",
+      "group": "グループ",
+      "unit": "ユニット",
+      "band": "バンド"
+    },
+    "subUnits": "ユニット",
+    "solos": "ソロ",
+    "members": "メンバー",
+    "groups": "所属グループ",
+    "eventHistory": "イベント参加履歴",
+    "songs": "楽曲一覧",
+    "noEvents": "参加したイベントがありません。",
+    "noSongs": "登録された楽曲がありません。",
+    "graduated": "卒業",
+    "cv": "CV",
+    "with": "with"
+  },
+  "Song": {
+    "title": "楽曲",
+    "originalTitle": "原題",
+    "releaseDate": "発売日",
+    "artists": "アーティスト",
+    "variants": "バージョン",
+    "baseVersion": "原曲",
+    "otherVersions": "他のバージョン",
+    "albumTracks": "収録アルバム",
+    "discN": "Disc {disc}",
+    "trackN": "Track {track}",
+    "performanceHistory": "公演履歴",
+    "noPerformances": "公演記録がありません。",
+    "role": {
+      "primary": "メイン",
+      "featured": "フィーチャリング",
+      "cover": "カバー"
+    }
+  },
+  "Member": {
+    "affiliations": "所属",
+    "units": "所属ユニット",
+    "solos": "ソロ",
+    "present": "現在",
+    "performanceHistory": "公演履歴",
+    "noPerformances": "公演記録がありません。"
+  },
+  "Event": {
+    "title": "イベント",
+    "setlist": "セットリスト",
+    "noSetlist": "セットリストが登録されていません。",
+    "noSongAssigned": "楽曲未指定",
+    "performers": "出演者",
+    "status": {
+      "upcoming": "予定",
+      "ongoing": "進行中",
+      "completed": "終了",
+      "cancelled": "中止"
+    },
+    "itemType": {
+      "mc": "MC",
+      "video": "映像",
+      "interval": "幕間映像"
+    },
+    "stageType": {
+      "full_group": "全体",
+      "unit": "ユニット",
+      "solo": "ソロ",
+      "special": "スペシャル"
+    }
+  },
+  "EventSeries": {
+    "title": "シリーズ",
+    "type": {
+      "concert_tour": "コンサートツアー",
+      "festival": "フェスティバル",
+      "fan_meeting": "ファンミーティング",
+      "one_time": "単独公演"
+    },
+    "organizer": "主催",
+    "events": "イベント一覧",
+    "noEvents": "登録されたイベントがありません。"
+  },
+  "Meta": {
+    "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
+    "setlistDb": "公演セットリストデータベース",
+    "performanceHistory": "公演履歴・セットリスト"
+  }
+}

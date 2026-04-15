@@ -340,7 +340,7 @@ function SetlistTable({
                       {t(`itemType.${item.type}`)}
                     </span>
                   ) : (
-                    <span className="text-zinc-400">곡 미지정</span>
+                    <span className="text-zinc-400">{t("noSongAssigned")}</span>
                   )}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2 text-sm text-zinc-500">

@@ -40,7 +40,9 @@
     "songs": "곡 목록",
     "noEvents": "참여한 이벤트가 없습니다.",
     "noSongs": "등록된 곡이 없습니다.",
-    "graduated": "졸업"
+    "graduated": "졸업",
+    "cv": "CV",
+    "with": "with"
   },
   "Song": {
     "title": "곡",
@@ -51,6 +53,8 @@
     "albumTracks": "수록 앨범",
     "discN": "Disc {disc}",
     "trackN": "Track {track}",
+    "baseVersion": "원곡",
+    "otherVersions": "다른 버전",
     "performanceHistory": "공연 이력",
     "noPerformances": "공연 기록이 없습니다.",
     "role": {
@@ -71,6 +75,7 @@
     "title": "이벤트",
     "setlist": "세트리스트",
     "noSetlist": "세트리스트가 등록되지 않았습니다.",
+    "noSongAssigned": "곡 미지정",
     "performers": "출연진",
     "status": {
       "upcoming": "예정",
@@ -101,5 +106,10 @@
     "organizer": "주최",
     "events": "이벤트 목록",
     "noEvents": "등록된 이벤트가 없습니다."
+  },
+  "Meta": {
+    "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
+    "setlistDb": "공연 셋리스트 데이터베이스",
+    "performanceHistory": "공연 이력 및 셋리스트"
   }
 }

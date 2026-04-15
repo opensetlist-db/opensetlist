@@ -115,7 +115,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!t) return { title: "OpenSetlist" };
 
   const title = `${displayName(t, "full")} | OpenSetlist`;
-  const description = `${displayName(t)} 공연 셋리스트 데이터베이스`;
+  const mt = await getTranslations({ locale, namespace: "Meta" });
+  const description = `${displayName(t)} ${mt("setlistDb")}`;
 
   const ogImage = `/api/og/artist/${id}`;
   const pageUrl = `/${locale}/artists/${id}/${artist.slug}`;
@@ -242,7 +243,7 @@ export default async function ArtistPage({ params }: Props) {
               </Link>
               {vaTr && (
                 <span className="text-sm text-zinc-500">
-                  (CV: {vaTr.stageName ?? vaTr.name})
+                  ({t("cv")}: {vaTr.stageName ?? vaTr.name})
                 </span>
               )}
               {showGrad && (
@@ -351,7 +352,7 @@ export default async function ArtistPage({ params }: Props) {
                       const co = getCoArtists(sc.song);
                       return co.length > 0 ? (
                         <span className="ml-1 text-sm text-zinc-400">
-                          with {co.join(", ")}
+                          {t("with")} {co.join(", ")}
                         </span>
                       ) : null;
                     })()}
@@ -403,7 +404,7 @@ export default async function ArtistPage({ params }: Props) {
                       const co = getCoArtists(sc.song);
                       return co.length > 0 ? (
                         <span className="ml-1 text-sm text-zinc-400">
-                          with {co.join(", ")}
+                          {t("with")} {co.join(", ")}
                         </span>
                       ) : null;
                     })()}
