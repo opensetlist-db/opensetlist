@@ -419,6 +419,16 @@ export default function SetlistBuilder({
       {/* Existing items */}
       {items.length > 0 && (
         <ol className="mb-6 space-y-1">
+          <div className="flex justify-center py-0.5">
+            <button
+              type="button"
+              onClick={() => handleInsertAfter(0)}
+              disabled={reorderLoading}
+              className="text-xs text-zinc-300 hover:text-blue-500 disabled:opacity-30"
+            >
+              + 맨 앞에 삽입
+            </button>
+          </div>
           {items.map((item, idx) => (
             <li key={item.id}>
               <div className="flex items-start gap-3 rounded border border-zinc-200 bg-white p-3">
