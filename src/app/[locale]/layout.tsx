@@ -49,10 +49,12 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <header className="flex justify-end px-4 py-2">
-          <LanguageSwitcher />
-        </header>
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider>
+          <header className="flex justify-end px-4 py-2">
+            <LanguageSwitcher />
+          </header>
+          {children}
+        </NextIntlClientProvider>
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
         <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />

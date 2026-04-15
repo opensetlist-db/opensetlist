@@ -20,6 +20,7 @@ export function LanguageSwitcher() {
       {routing.locales.map((l) => (
         <button
           key={l}
+          type="button"
           onClick={() => router.replace(pathname, { locale: l })}
           className={`rounded px-2 py-1 ${
             l === locale
