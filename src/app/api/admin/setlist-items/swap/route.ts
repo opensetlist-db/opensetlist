@@ -7,16 +7,23 @@ export async function POST(request: NextRequest) {
   const [itemA, itemB] = await Promise.all([
     prisma.setlistItem.findUnique({
       where: { id: BigInt(itemIdA) },
-      select: { id: true, position: true },
+      select: { id: true, eventId: true, position: true },
     }),
     prisma.setlistItem.findUnique({
       where: { id: BigInt(itemIdB) },
-      select: { id: true, position: true },
+      select: { id: true, eventId: true, position: true },
     }),
   ]);
 
   if (!itemA || !itemB) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  if (itemA.eventId !== itemB.eventId) {
+    return NextResponse.json(
+      { error: "Items must belong to the same event" },
+      { status: 400 }
+    );
   }
 
   // Swap positions using temp value to avoid unique constraint conflicts

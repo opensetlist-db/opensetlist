@@ -366,39 +366,44 @@ export default function SetlistBuilder({
 
   async function handleSwap(itemA: SetlistItemData, itemB: SetlistItemData) {
     setReorderLoading(true);
-    const res = await fetch("/api/admin/setlist-items/swap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemIdA: itemA.id, itemIdB: itemB.id }),
-    });
-    if (res.ok) {
-      // Optimistic UI update: swap positions locally
-      setItems((prev) => {
-        const next = prev.map((item) => {
-          if (item.id === itemA.id) return { ...item, position: itemB.position };
-          if (item.id === itemB.id) return { ...item, position: itemA.position };
-          return item;
-        });
-        return next.sort((a, b) => a.position - b.position);
+    try {
+      const res = await fetch("/api/admin/setlist-items/swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemIdA: itemA.id, itemIdB: itemB.id }),
       });
+      if (res.ok) {
+        // Optimistic UI update: swap positions locally
+        setItems((prev) => {
+          const next = prev.map((item) => {
+            if (item.id === itemA.id) return { ...item, position: itemB.position };
+            if (item.id === itemB.id) return { ...item, position: itemA.position };
+            return item;
+          });
+          return next.sort((a, b) => a.position - b.position);
+        });
+      }
+    } finally {
+      setReorderLoading(false);
     }
-    setReorderLoading(false);
   }
 
   async function handleInsertAfter(afterPosition: number) {
     setReorderLoading(true);
-    const res = await fetch("/api/admin/setlist-items/insert-after", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId, afterPosition }),
-    });
-    if (res.ok) {
-      const newItem = await res.json();
-      await reloadItems();
-      // Auto-open edit form for the new item
-      startEdit(newItem);
+    try {
+      const res = await fetch("/api/admin/setlist-items/insert-after", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId, afterPosition }),
+      });
+      if (res.ok) {
+        const newItem = await res.json();
+        await reloadItems();
+        startEdit(newItem);
+      }
+    } finally {
+      setReorderLoading(false);
     }
-    setReorderLoading(false);
   }
 
   return (
