@@ -15,17 +15,25 @@ export async function POST(request: NextRequest) {
   const eid = BigInt(eventId);
   const newPosition = afterPosition + 1;
 
-  // Wrap shift + create in a transaction for atomicity
   const item = await prisma.$transaction(async (tx) => {
-    // Shift all items at newPosition and beyond up by 1
-    await tx.setlistItem.updateMany({
+    // Find items that need to shift, ordered by position DESC
+    // to avoid unique constraint violations on [eventId, position]
+    const itemsToShift = await tx.setlistItem.findMany({
       where: {
         eventId: eid,
         position: { gte: newPosition },
-        isDeleted: false,
       },
-      data: { position: { increment: 1 } },
+      orderBy: { position: "desc" },
+      select: { id: true, position: true },
     });
+
+    // Shift each one individually from highest to lowest
+    for (const item of itemsToShift) {
+      await tx.setlistItem.update({
+        where: { id: item.id },
+        data: { position: item.position + 1 },
+      });
+    }
 
     // Create a blank item at the new position
     return tx.setlistItem.create({
