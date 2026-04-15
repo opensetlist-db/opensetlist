@@ -473,6 +473,18 @@ export default function SetlistBuilder({
                     )}
                   </div>
                   <div className="mt-1 text-sm text-zinc-500">
+                    {item.artists.length > 0 && (
+                      <span className="mr-2">
+                        {item.artists.map((a, i) => (
+                          <span key={a.artist.id}>
+                            {i > 0 && ", "}
+                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
+                              {getArtistName(a.artist)}
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
                     {item.stageType !== "full_group" && (
                       <span className="mr-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
                         {item.unitName ?? item.stageType}
