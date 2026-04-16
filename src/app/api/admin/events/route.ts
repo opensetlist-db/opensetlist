@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     data: {
       slug,
       type,
-      status: status ?? "upcoming",
+      status: status ?? "scheduled",
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,

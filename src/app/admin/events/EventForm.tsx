@@ -21,14 +21,15 @@ type EventFormProps = {
 };
 
 const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase", "virtual_live"];
-const EVENT_STATUSES = ["upcoming", "ongoing", "completed", "cancelled"];
+// "upcoming" kept for legacy rows until the follow-up PR drops it from the enum.
+const EVENT_STATUSES = ["scheduled", "ongoing", "completed", "cancelled", "upcoming"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 
 export default function EventForm({ initialData }: EventFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [type, setType] = useState(initialData?.type ?? "concert");
-  const [status, setStatus] = useState(initialData?.status ?? "upcoming");
+  const [status, setStatus] = useState(initialData?.status ?? "scheduled");
   const [eventSeriesId, setEventSeriesId] = useState(
     initialData?.eventSeriesId?.toString() ?? ""
   );

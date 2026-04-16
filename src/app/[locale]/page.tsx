@@ -3,14 +3,24 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
+import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+
+// Event.date is stored in UTC, so the day-boundary must also be UTC —
+// otherwise recent/upcoming classification drifts by the server's timezone.
+function startOfTodayUTC() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+}
 
 async function getRecentEvents(limit: number) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      status: "completed",
-      date: { not: null },
       parentEventId: null,
+      date: { not: null, lt: startOfTodayUTC() },
+      status: { not: "cancelled" },
     },
     include: {
       translations: true,
@@ -23,21 +33,26 @@ async function getRecentEvents(limit: number) {
 }
 
 async function getUpcomingEvents(limit: number) {
+  // Over-fetch so the post-filter (dropping today's events that are already
+  // past their 12h ongoing buffer) still leaves a full page of results.
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      status: { in: ["upcoming", "ongoing"] },
-      date: { not: null },
       parentEventId: null,
+      date: { not: null, gte: startOfTodayUTC() },
+      status: { notIn: ["cancelled", "completed"] },
     },
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
     },
     orderBy: { date: "asc" },
-    take: limit,
+    take: limit * 2,
   });
-  return serializeBigInt(events);
+  const upcoming = events
+    .filter((e) => getEventStatus(e) !== "completed")
+    .slice(0, limit);
+  return serializeBigInt(upcoming);
 }
 
 export default async function HomePage({
@@ -101,6 +116,7 @@ function EventList({
         const seriesTr = event.eventSeries
           ? pickTranslation(event.eventSeries.translations, locale)
           : null;
+        const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
         return (
           <li
             key={event.id}
@@ -134,15 +150,9 @@ function EventList({
               )}
             </div>
             <span
-              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${
-                event.status === "completed"
-                  ? "bg-[#E1F5FE] text-[#0277BD]"
-                  : event.status === "upcoming"
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-green-100 text-green-700"
-              }`}
+              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${badge.color}`}
             >
-              {evT(`status.${event.status}`)}
+              {evT(badge.labelKey)}
             </span>
           </li>
         );
