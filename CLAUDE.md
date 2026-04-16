@@ -201,6 +201,32 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - Always create a version tag for production releases
+- Always include release notes when creating a tag (use `git tag -a` with annotation)
+
+---
+
+## Release Notes
+
+### v0.3.0 (2026-04-15)
+- 3-language UI support (Korean / Japanese / English) with LanguageSwitcher
+- Privacy policy and terms of service pages (ko/ja/en)
+- Footer component with privacy, terms, contact links
+- Admin setlist builder: reorder (move up/down), insert-after, insert-at-beginning
+- Admin setlist builder: artist names displayed in item rows
+- Input validation on insert-after and swap API routes
+
+### v0.2.0 (2026-04-14)
+- English event translations
+- Google Analytics 4 integration
+- Personal info cleanup from public docs
+- CodeRabbit automated review config
+
+### v0.1.0 (2026-04-14)
+- Initial production release
+- Core read-only pages: Artist, Song, Event, EventSeries
+- Admin UI with CSV import and setlist builder
+- OG cards, SEO, sitemap
+- Hasunosora seed data (224 songs)
 
 ---
 
