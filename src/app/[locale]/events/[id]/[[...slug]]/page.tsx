@@ -9,6 +9,7 @@ import {
   formatDate,
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
+import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { ReactionButtons } from "@/components/ReactionButtons";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import type { Metadata } from "next";
@@ -294,19 +295,16 @@ export default async function EventPage({ params }: Props) {
         )}
         <div className="mt-2 space-y-1 text-sm text-zinc-600">
           <div className="flex items-center gap-2">
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                event.status === "completed"
-                  ? "bg-zinc-100 text-zinc-600"
-                  : event.status === "upcoming"
-                    ? "bg-blue-100 text-blue-700"
-                    : event.status === "ongoing"
-                      ? "bg-green-100 text-green-700"
-                      : "bg-red-100 text-red-700"
-              }`}
-            >
-              {t(`status.${event.status}`)}
-            </span>
+            {(() => {
+              const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+              return (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}
+                >
+                  {t(badge.labelKey)}
+                </span>
+              );
+            })()}
             {event.date && (
               <span>{formatDate(event.date, locale)}</span>
             )}

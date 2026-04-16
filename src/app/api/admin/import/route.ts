@@ -524,7 +524,7 @@ async function importEvents(rows: Record<string, string>[]) {
         data: {
           slug,
           type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || "concert",
-          status: "upcoming",
+          status: "scheduled",
           eventSeriesId: seriesId,
           date: row.date ? new Date(row.date) : null,
           startTime: row.startTime ? new Date(row.startTime) : null,

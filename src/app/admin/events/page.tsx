@@ -57,7 +57,7 @@ export default async function EventsListPage() {
                     className={`rounded-full px-2 py-0.5 text-xs ${
                       event.status === "completed"
                         ? "bg-zinc-100 text-zinc-600"
-                        : event.status === "upcoming"
+                        : event.status === "scheduled" || event.status === "upcoming"
                           ? "bg-blue-100 text-blue-700"
                           : event.status === "ongoing"
                             ? "bg-green-100 text-green-700"

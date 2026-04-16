@@ -8,6 +8,7 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
+import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import type { Metadata } from "next";
 
 type Props = {
@@ -173,19 +174,16 @@ export default async function EventSeriesPage({ params }: Props) {
                     >
                       {evTr?.name ?? "Unknown Event"}
                     </Link>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        event.status === "completed"
-                          ? "bg-zinc-100 text-zinc-600"
-                          : event.status === "upcoming"
-                            ? "bg-blue-100 text-blue-700"
-                            : event.status === "ongoing"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {evT(`status.${event.status}`)}
-                    </span>
+                    {(() => {
+                      const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+                      return (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}
+                        >
+                          {evT(badge.labelKey)}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {evTr?.venue && (
                     <p className="ml-9 text-sm text-zinc-500">

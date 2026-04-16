@@ -61,7 +61,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     where: { id: eventId },
     data: {
       type,
-      status: status ?? "upcoming",
+      status: status ?? "scheduled",
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
