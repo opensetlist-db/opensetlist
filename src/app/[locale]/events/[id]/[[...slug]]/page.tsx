@@ -75,13 +75,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const event = await getEvent(BigInt(id), locale);
   if (!event) return { title: "Not Found" };
+  const t = await getTranslations({ locale, namespace: "Event" });
   const tr = pickTranslation(event.translations, locale);
   const seriesTr = event.eventSeries
     ? pickTranslation(event.eventSeries.translations, locale)
     : null;
 
-  const title = tr?.name
-    ? `${displayName(tr)} 셋리스트 | OpenSetlist`
+  const headlineName = seriesTr
+    ? displayName(seriesTr, "full")
+    : tr?.name
+      ? displayName(tr, "full")
+      : null;
+  const title = headlineName
+    ? `${headlineName} ${t("setlist")} | OpenSetlist`
     : "OpenSetlist";
   const description = [
     event.date
@@ -278,7 +284,14 @@ export default async function EventPage({ params }: Props) {
 
       {/* Header */}
       <header className="mb-8">
-        <h1 className="text-3xl font-bold">{tr?.name ?? "Unknown Event"}</h1>
+        <h1 className="text-3xl font-bold">
+          {seriesTr
+            ? displayName(seriesTr, "full")
+            : tr?.name ?? t("unknownEvent")}
+        </h1>
+        {seriesTr && tr?.name && (
+          <p className="mt-1 text-lg text-zinc-600">{tr.name}</p>
+        )}
         <div className="mt-2 space-y-1 text-sm text-zinc-600">
           <div className="flex items-center gap-2">
             <span
