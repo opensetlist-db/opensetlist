@@ -33,13 +33,16 @@ export async function HomeHero() {
           <input
             type="search"
             placeholder={t("searchPlaceholder")}
-            readOnly
+            disabled
+            aria-disabled="true"
             className="font-dm-sans flex-1 bg-transparent px-3 py-2 text-[13px] outline-none"
             style={{ color: "#1a1a1a" }}
           />
           <button
             type="button"
             aria-label={t("searchPlaceholder")}
+            aria-disabled="true"
+            tabIndex={-1}
             className="font-dm-sans flex items-center justify-center px-4 py-2 text-white cursor-default"
             style={{
               fontSize: "12px",

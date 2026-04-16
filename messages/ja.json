@@ -76,6 +76,7 @@
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
+    "unknownEvent": "不明なイベント",
     "performers": "出演者",
     "status": {
       "upcoming": "予定",
