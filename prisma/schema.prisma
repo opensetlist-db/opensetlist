@@ -502,7 +502,7 @@ model SetlistItemReaction {
   reactionType  ReactionType
   createdAt     DateTime @default(now())
 
-  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
 
   @@index([setlistItemId, reactionType])
 }
