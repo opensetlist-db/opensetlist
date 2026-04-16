@@ -497,7 +497,7 @@ model SetlistItem {
 }
 
 model SetlistItemReaction {
-  id            BigInt   @id @default(autoincrement())
+  id            String   @id @default(uuid())
   setlistItemId BigInt
   reactionType  ReactionType
   createdAt     DateTime @default(now())

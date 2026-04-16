@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   const counts = await getReactionCounts(siId);
   return NextResponse.json({
-    reactionId: reaction.id.toString(),
+    reactionId: reaction.id,
     counts,
   });
 }
@@ -93,22 +93,12 @@ export async function DELETE(req: NextRequest) {
 
   const { reactionId } = body;
 
-  if (!reactionId) {
+  if (!reactionId || typeof reactionId !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  let rid: bigint;
-  try {
-    rid = BigInt(reactionId);
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid reactionId" },
-      { status: 400 }
-    );
-  }
-
   await prisma.setlistItemReaction.deleteMany({
-    where: { id: rid },
+    where: { id: reactionId },
   });
 
   return NextResponse.json({ ok: true });
