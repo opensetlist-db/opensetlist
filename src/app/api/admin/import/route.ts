@@ -446,7 +446,7 @@ async function importEvents(rows: Record<string, string>[]) {
       await prisma.eventSeries.update({
         where: { slug },
         data: {
-          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "one_time") || undefined,
+          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "standalone") || undefined,
           artistId,
         },
       });
@@ -462,7 +462,7 @@ async function importEvents(rows: Record<string, string>[]) {
       const series = await prisma.eventSeries.create({
         data: {
           slug,
-          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "one_time") || "concert_tour",
+          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "standalone") || "concert_tour",
           artistId,
           hasBoard: true,
           translations: translations.length ? { create: translations } : undefined,
@@ -715,29 +715,34 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "CSV is empty or invalid" }, { status: 400 });
   }
 
-  let result;
-  switch (type) {
-    case "artists":
-      result = await importArtists(rows);
-      break;
-    case "members":
-      result = await importMembers(rows);
-      break;
-    case "albums":
-      result = await importAlbums(rows);
-      break;
-    case "songs":
-      result = await importSongs(rows);
-      break;
-    case "events":
-      result = await importEvents(rows);
-      break;
-    case "setlistitems":
-      result = await importSetlistItems(rows);
-      break;
-    default:
-      return NextResponse.json({ error: `Unknown type: ${type}` }, { status: 400 });
-  }
+  try {
+    let result;
+    switch (type) {
+      case "artists":
+        result = await importArtists(rows);
+        break;
+      case "members":
+        result = await importMembers(rows);
+        break;
+      case "albums":
+        result = await importAlbums(rows);
+        break;
+      case "songs":
+        result = await importSongs(rows);
+        break;
+      case "events":
+        result = await importEvents(rows);
+        break;
+      case "setlistitems":
+        result = await importSetlistItems(rows);
+        break;
+      default:
+        return NextResponse.json({ error: `Unknown type: ${type}` }, { status: 400 });
+    }
 
-  return NextResponse.json(serializeBigInt(result));
+    return NextResponse.json(serializeBigInt(result));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Import failed: ${message}` }, { status: 500 });
+  }
 }

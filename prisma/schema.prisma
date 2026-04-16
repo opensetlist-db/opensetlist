@@ -59,7 +59,7 @@ enum EventSeriesType {
   concert_tour
   festival
   fan_meeting
-  one_time
+  standalone
 }
 
 enum EventType {

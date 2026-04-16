@@ -17,7 +17,7 @@ type EventSeriesFormProps = {
   };
 };
 
-const SERIES_TYPES = ["concert_tour", "festival", "fan_meeting", "one_time"];
+const SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 
 export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
