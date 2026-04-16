@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { BASE_URL } from "@/lib/config";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Footer } from "@/components/Footer";
 import "@fontsource-variable/noto-sans-kr";
 import "../globals.css";
 
@@ -54,6 +55,7 @@ export default async function LocaleLayout({
             <LanguageSwitcher />
           </header>
           {children}
+          <Footer />
         </NextIntlClientProvider>
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
