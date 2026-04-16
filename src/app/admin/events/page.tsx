@@ -1,9 +1,22 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, formatDate } from "@/lib/utils";
-import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import {
+  getEventStatus,
+  EVENT_STATUS_BADGE,
+  type ResolvedEventStatus,
+} from "@/lib/eventStatus";
 import DeleteButton from "../DeleteButton";
+
+// Admin UI is Korean-only and lives outside /[locale]/, so we can't use
+// next-intl's getTranslations() here. Local labels match the rest of the
+// admin surface (e.g. "이벤트 관리", "새 이벤트").
+const STATUS_LABEL_KO: Record<ResolvedEventStatus, string> = {
+  upcoming: "예정",
+  ongoing: "진행 중",
+  completed: "종료",
+  cancelled: "취소",
+};
 
 export default async function EventsListPage() {
   const events = await prisma.event.findMany({
@@ -15,7 +28,6 @@ export default async function EventsListPage() {
     orderBy: { date: "desc" },
   });
   const data = serializeBigInt(events);
-  const evT = await getTranslations("Event");
 
   return (
     <div>
@@ -45,7 +57,8 @@ export default async function EventsListPage() {
             const seriesTr = event.eventSeries
               ? pickTranslation(event.eventSeries.translations, "ko")
               : null;
-            const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+            const resolved = getEventStatus(event);
+            const badge = EVENT_STATUS_BADGE[resolved];
             return (
               <tr key={event.id} className="border-b border-zinc-100">
                 <td className="py-2 text-zinc-400">{event.id}</td>
@@ -58,7 +71,7 @@ export default async function EventsListPage() {
                 </td>
                 <td className="py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}>
-                    {evT(badge.labelKey)}
+                    {STATUS_LABEL_KO[resolved]}
                   </span>
                   <span className="ml-2 text-xs text-zinc-400">({event.status})</span>
                 </td>

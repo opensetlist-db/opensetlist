@@ -33,6 +33,8 @@ async function getRecentEvents(limit: number) {
 }
 
 async function getUpcomingEvents(limit: number) {
+  // Over-fetch so the post-filter (dropping today's events that are already
+  // past their 12h ongoing buffer) still leaves a full page of results.
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
@@ -45,9 +47,12 @@ async function getUpcomingEvents(limit: number) {
       eventSeries: { include: { translations: true } },
     },
     orderBy: { date: "asc" },
-    take: limit,
+    take: limit * 2,
   });
-  return serializeBigInt(events);
+  const upcoming = events
+    .filter((e) => getEventStatus(e) !== "completed")
+    .slice(0, limit);
+  return serializeBigInt(upcoming);
 }
 
 export default async function HomePage({
