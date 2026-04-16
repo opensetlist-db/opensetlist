@@ -117,6 +117,13 @@ enum AlbumType {
   soundtrack
 }
 
+enum ReactionType {
+  waiting
+  best
+  surprise
+  moved
+}
+
 enum CommentType {
   post     // BBS-style post — has title, written on Artist/Group/EventSeries board
   comment  // Inline reaction — no title, written on Song/Event/SetlistItem page
@@ -482,10 +489,22 @@ model SetlistItem {
   artists     SetlistItemArtist[]
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
+  reactions   SetlistItemReaction[]
 
   @@unique([eventId, position])
   @@index([eventId])
   @@index([isDeleted])
+}
+
+model SetlistItemReaction {
+  id            String   @id @default(uuid())
+  setlistItemId BigInt
+  reactionType  ReactionType
+  createdAt     DateTime @default(now())
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
+
+  @@index([setlistItemId, reactionType])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link
