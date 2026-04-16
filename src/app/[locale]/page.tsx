@@ -14,12 +14,12 @@ function startOfTodayUTC() {
   );
 }
 
-async function getRecentEvents(limit: number) {
+async function getRecentEvents(limit: number, todayStartUtc: Date) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
       parentEventId: null,
-      date: { not: null, lt: startOfTodayUTC() },
+      date: { not: null, lt: todayStartUtc },
       status: { not: "cancelled" },
     },
     include: {
@@ -32,14 +32,14 @@ async function getRecentEvents(limit: number) {
   return serializeBigInt(events);
 }
 
-async function getUpcomingEvents(limit: number) {
+async function getUpcomingEvents(limit: number, todayStartUtc: Date) {
   // Over-fetch so the post-filter (dropping today's events that are already
   // past their 12h ongoing buffer) still leaves a full page of results.
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
       parentEventId: null,
-      date: { not: null, gte: startOfTodayUTC() },
+      date: { not: null, gte: todayStartUtc },
       status: { notIn: ["cancelled", "completed"] },
     },
     include: {
@@ -65,9 +65,12 @@ export default async function HomePage({
   const ct = await getTranslations("Common");
   const evT = await getTranslations("Event");
 
+  // Compute the UTC day boundary once so both queries agree even if the
+  // request straddles 00:00 UTC.
+  const todayStartUtc = startOfTodayUTC();
   const [recentEvents, upcomingEvents] = await Promise.all([
-    getRecentEvents(10),
-    getUpcomingEvents(10),
+    getRecentEvents(10, todayStartUtc),
+    getUpcomingEvents(10, todayStartUtc),
   ]);
 
   return (

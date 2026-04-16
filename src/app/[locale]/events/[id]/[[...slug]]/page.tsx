@@ -91,13 +91,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? `${headlineName} ${t("setlist")} | OpenSetlist`
     : "OpenSetlist";
   const description = [
-    event.date
-      ? new Date(event.date).toLocaleDateString("ko-KR", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })
-      : "",
+    event.date ? formatDate(event.date, locale) : "",
     tr?.city,
     tr?.venue,
     seriesTr ? displayName(seriesTr) : "",
