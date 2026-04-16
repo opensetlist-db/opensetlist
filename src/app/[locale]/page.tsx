@@ -122,14 +122,14 @@ function EventList({
                 className="font-dm-sans block truncate text-[12px] hover:underline"
                 style={{ color: "#1a1a1a", fontWeight: 500 }}
               >
-                {evTr?.name ?? evT("unknownEvent")}
+                {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
               </Link>
-              {seriesTr && (
+              {seriesTr && evTr?.name && (
                 <span
                   className="font-dm-sans block truncate text-[11px]"
                   style={{ color: "#999999" }}
                 >
-                  {seriesTr.name}
+                  {evTr.name}
                 </span>
               )}
             </div>

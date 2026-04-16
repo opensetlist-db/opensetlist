@@ -437,11 +437,11 @@ export default async function ArtistPage({ params }: Props) {
                     href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {evTr?.name ?? "Unknown Event"}
+                    {seriesTr?.name ?? evTr?.name ?? "Unknown Event"}
                   </Link>
-                  {seriesTr && (
+                  {seriesTr && evTr?.name && (
                     <span className="text-sm text-zinc-500">
-                      ({seriesTr.name})
+                      ({evTr.name})
                     </span>
                   )}
                 </li>
