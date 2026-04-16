@@ -426,11 +426,13 @@ async function importSongs(rows: Record<string, string>[]) {
 const VALID_SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"] as const;
 type EventSeriesTypeImport = (typeof VALID_SERIES_TYPES)[number];
 
+class ImportValidationError extends Error {}
+
 function normalizeSeriesType(raw: string | undefined): EventSeriesTypeImport | undefined {
   if (!raw) return undefined;
   if (raw === "one_time") return "standalone";
   if (VALID_SERIES_TYPES.includes(raw as EventSeriesTypeImport)) return raw as EventSeriesTypeImport;
-  throw new Error(`Invalid series_type: ${raw}`);
+  throw new ImportValidationError(`Invalid series_type: ${raw}`);
 }
 
 async function importEvents(rows: Record<string, string>[]) {
@@ -724,6 +726,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body: expected an object" }, { status: 400 });
+  }
+
   const { type, csv } = body as { type?: unknown; csv?: unknown };
   if (typeof type !== "string" || typeof csv !== "string") {
     return NextResponse.json({ error: "Invalid request body: type and csv are required strings" }, { status: 400 });
@@ -762,6 +768,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(serializeBigInt(result));
   } catch (err) {
     console.error("Import error:", err);
+    if (err instanceof ImportValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
 }

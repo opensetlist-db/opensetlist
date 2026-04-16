@@ -155,7 +155,7 @@ async function getTrendingSongs(
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId"],
     where: {
-      setlistItem: { eventId, isDeleted: false },
+      setlistItem: { eventId, isDeleted: false, songs: { some: {} } },
     },
     _count: { id: true },
     orderBy: { _count: { id: "desc" } },
