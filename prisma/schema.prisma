@@ -117,6 +117,13 @@ enum AlbumType {
   soundtrack
 }
 
+enum ReactionType {
+  waiting
+  best
+  surprise
+  moved
+}
+
 enum CommentType {
   post     // BBS-style post — has title, written on Artist/Group/EventSeries board
   comment  // Inline reaction — no title, written on Song/Event/SetlistItem page
@@ -492,7 +499,7 @@ model SetlistItem {
 model SetlistItemReaction {
   id            BigInt   @id @default(autoincrement())
   setlistItemId BigInt
-  reactionType  String   // "waiting" | "best" | "surprise" | "moved"
+  reactionType  ReactionType
   createdAt     DateTime @default(now())
 
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])

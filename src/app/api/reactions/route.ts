@@ -35,7 +35,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { setlistItemId, reactionType } = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { setlistItemId, reactionType } = body;
 
   if (!setlistItemId || !VALID_TYPES.includes(reactionType)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -48,6 +55,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Invalid setlistItemId" },
       { status: 400 }
+    );
+  }
+
+  const item = await prisma.setlistItem.findFirst({
+    where: { id: siId, isDeleted: false },
+    select: { id: true },
+  });
+  if (!item) {
+    return NextResponse.json(
+      { error: "SetlistItem not found" },
+      { status: 404 }
     );
   }
 
@@ -66,7 +84,14 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { reactionId } = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { reactionId } = body;
 
   if (!reactionId) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -82,13 +107,9 @@ export async function DELETE(req: NextRequest) {
     );
   }
 
-  try {
-    await prisma.setlistItemReaction.delete({
-      where: { id: rid },
-    });
-  } catch {
-    // Already deleted or doesn't exist — idempotent
-  }
+  await prisma.setlistItemReaction.deleteMany({
+    where: { id: rid },
+  });
 
   return NextResponse.json({ ok: true });
 }

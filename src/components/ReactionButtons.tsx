@@ -50,11 +50,12 @@ export function ReactionButtons({ setlistItemId, initialCounts }: Props) {
       const existingId = myReactions[reactionType];
 
       if (existingId) {
-        await fetch("/api/reactions", {
+        const res = await fetch("/api/reactions", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reactionId: existingId }),
         });
+        if (!res.ok) return;
         const next = { ...myReactions };
         delete next[reactionType];
         setMyReactions(next);
@@ -69,12 +70,15 @@ export function ReactionButtons({ setlistItemId, initialCounts }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ setlistItemId, reactionType }),
         });
+        if (!res.ok) return;
         const { reactionId, counts: newCounts } = await res.json();
         const next = { ...myReactions, [reactionType]: reactionId };
         setMyReactions(next);
         persistReactions(next);
         setCounts(newCounts);
       }
+    } catch {
+      // Network error — silently ignore
     } finally {
       setLoading(null);
     }
@@ -90,7 +94,7 @@ export function ReactionButtons({ setlistItemId, initialCounts }: Props) {
             key={type}
             type="button"
             onClick={() => handleToggle(type)}
-            disabled={loading === type}
+            disabled={loading !== null}
             className={`rounded-full px-2 py-0.5 text-xs transition-opacity ${
               isActive
                 ? "bg-zinc-100 opacity-100"
