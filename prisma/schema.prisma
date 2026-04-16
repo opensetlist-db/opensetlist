@@ -75,7 +75,6 @@ enum EventStatus {
   ongoing // 관리자 override 또는 자동 (startTime ~ +12h)
   completed // 관리자 override 또는 자동 (startTime +12h 이후)
   cancelled // 관리자 override 전용
-  upcoming // deprecated — 데이터 마이그레이션 후 제거 예정 (follow-up PR)
 }
 
 enum SetlistItemStageType {
