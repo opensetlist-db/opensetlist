@@ -101,7 +101,7 @@
       "concert_tour": "콘서트 투어",
       "festival": "페스티벌",
       "fan_meeting": "팬미팅",
-      "one_time": "단독 공연"
+      "standalone": "단독 공연"
     },
     "organizer": "주최",
     "events": "이벤트 목록",

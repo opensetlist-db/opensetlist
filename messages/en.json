@@ -101,7 +101,7 @@
       "concert_tour": "Concert Tour",
       "festival": "Festival",
       "fan_meeting": "Fan Meeting",
-      "one_time": "One-Time"
+      "standalone": "Standalone"
     },
     "organizer": "Organizer",
     "events": "Events",
