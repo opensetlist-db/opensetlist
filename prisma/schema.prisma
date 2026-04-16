@@ -60,7 +60,6 @@ enum EventSeriesType {
   standalone
   festival
   fan_meeting
-  one_time // deprecated — kept temporarily for prod data migration, remove after migrating rows
 }
 
 enum EventType {
