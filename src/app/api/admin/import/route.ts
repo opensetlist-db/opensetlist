@@ -423,6 +423,16 @@ async function importSongs(rows: Record<string, string>[]) {
   return { count: results.length, log: results };
 }
 
+const VALID_SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"] as const;
+type EventSeriesTypeImport = (typeof VALID_SERIES_TYPES)[number];
+
+function normalizeSeriesType(raw: string | undefined): EventSeriesTypeImport | undefined {
+  if (!raw) return undefined;
+  if (raw === "one_time") return "standalone";
+  if (VALID_SERIES_TYPES.includes(raw as EventSeriesTypeImport)) return raw as EventSeriesTypeImport;
+  throw new Error(`Invalid series_type: ${raw}`);
+}
+
 async function importEvents(rows: Record<string, string>[]) {
   const results: string[] = [];
 
@@ -446,7 +456,7 @@ async function importEvents(rows: Record<string, string>[]) {
       await prisma.eventSeries.update({
         where: { slug },
         data: {
-          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "standalone") || undefined,
+          type: normalizeSeriesType(row.series_type),
           artistId,
         },
       });
@@ -462,7 +472,7 @@ async function importEvents(rows: Record<string, string>[]) {
       const series = await prisma.eventSeries.create({
         data: {
           slug,
-          type: (row.series_type as "concert_tour" | "festival" | "fan_meeting" | "standalone") || "concert_tour",
+          type: normalizeSeriesType(row.series_type) ?? "concert_tour",
           artistId,
           hasBoard: true,
           translations: translations.length ? { create: translations } : undefined,
@@ -707,15 +717,24 @@ async function importSetlistItems(rows: Record<string, string>[]) {
 }
 
 export async function POST(request: NextRequest) {
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { type, csv } = body as { type: string; csv: string };
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
-    const rows = parseCSV(csv);
-    if (rows.length === 0) {
-      return NextResponse.json({ error: "CSV is empty or invalid" }, { status: 400 });
-    }
+  const { type, csv } = body as { type?: unknown; csv?: unknown };
+  if (typeof type !== "string" || typeof csv !== "string") {
+    return NextResponse.json({ error: "Invalid request body: type and csv are required strings" }, { status: 400 });
+  }
 
+  const rows = parseCSV(csv);
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "CSV is empty or invalid" }, { status: 400 });
+  }
+
+  try {
     let result;
     switch (type) {
       case "artists":
@@ -742,12 +761,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(serializeBigInt(result));
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Import error:", message);
-    const isJsonParseError = /json/i.test(message);
-    return NextResponse.json(
-      { error: isJsonParseError ? "Invalid JSON body" : "Import failed" },
-      { status: isJsonParseError ? 400 : 500 }
-    );
+    console.error("Import error:", err);
+    return NextResponse.json({ error: "Import failed" }, { status: 500 });
   }
 }
