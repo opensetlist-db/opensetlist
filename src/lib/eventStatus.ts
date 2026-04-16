@@ -26,6 +26,10 @@ export function getEventStatus(event: EventStatusInput): ResolvedEventStatus {
     event.startTime instanceof Date
       ? event.startTime
       : new Date(event.startTime);
+  // Malformed startTime — fall back to "upcoming" rather than silently
+  // reporting "completed" from an Invalid Date comparison.
+  if (Number.isNaN(start.getTime())) return "upcoming";
+
   const now = new Date();
   const ongoingEnd = new Date(start.getTime() + ONGOING_BUFFER_MS);
 

@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, formatDate } from "@/lib/utils";
+import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import DeleteButton from "../DeleteButton";
 
 export default async function EventsListPage() {
@@ -13,6 +15,7 @@ export default async function EventsListPage() {
     orderBy: { date: "desc" },
   });
   const data = serializeBigInt(events);
+  const evT = await getTranslations("Event");
 
   return (
     <div>
@@ -42,6 +45,7 @@ export default async function EventsListPage() {
             const seriesTr = event.eventSeries
               ? pickTranslation(event.eventSeries.translations, "ko")
               : null;
+            const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
             return (
               <tr key={event.id} className="border-b border-zinc-100">
                 <td className="py-2 text-zinc-400">{event.id}</td>
@@ -53,19 +57,10 @@ export default async function EventsListPage() {
                   {seriesTr?.name ?? "—"}
                 </td>
                 <td className="py-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs ${
-                      event.status === "completed"
-                        ? "bg-zinc-100 text-zinc-600"
-                        : event.status === "scheduled" || event.status === "upcoming"
-                          ? "bg-blue-100 text-blue-700"
-                          : event.status === "ongoing"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {event.status}
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}>
+                    {evT(badge.labelKey)}
                   </span>
+                  <span className="ml-2 text-xs text-zinc-400">({event.status})</span>
                 </td>
                 <td className="py-2 space-x-2">
                   <Link

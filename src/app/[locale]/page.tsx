@@ -5,10 +5,13 @@ import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/uti
 import { HomeHero } from "@/components/HomeHero";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+// Event.date is stored in UTC, so the day-boundary must also be UTC —
+// otherwise recent/upcoming classification drifts by the server's timezone.
+function startOfTodayUTC() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
 }
 
 async function getRecentEvents(limit: number) {
@@ -16,7 +19,7 @@ async function getRecentEvents(limit: number) {
     where: {
       isDeleted: false,
       parentEventId: null,
-      date: { not: null, lt: startOfToday() },
+      date: { not: null, lt: startOfTodayUTC() },
       status: { not: "cancelled" },
     },
     include: {
@@ -34,7 +37,7 @@ async function getUpcomingEvents(limit: number) {
     where: {
       isDeleted: false,
       parentEventId: null,
-      date: { not: null, gte: startOfToday() },
+      date: { not: null, gte: startOfTodayUTC() },
       status: { notIn: ["cancelled", "completed"] },
     },
     include: {
