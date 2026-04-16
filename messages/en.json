@@ -101,11 +101,18 @@
       "concert_tour": "Concert Tour",
       "festival": "Festival",
       "fan_meeting": "Fan Meeting",
-      "one_time": "One-Time"
+      "standalone": "Standalone"
     },
     "organizer": "Organizer",
     "events": "Events",
     "noEvents": "No events registered."
+  },
+  "Reaction": {
+    "waiting": "Finally!",
+    "best": "Amazing",
+    "surprise": "Surprise",
+    "moved": "Emotional",
+    "trending": "Trending songs"
   },
   "Footer": {
     "privacy": "Privacy Policy",

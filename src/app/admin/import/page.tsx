@@ -70,19 +70,24 @@ export default function ImportPage() {
     setError("");
     setResult(null);
 
-    const res = await fetch("/api/admin/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: selectedType, csv: csvText }),
-    });
+    try {
+      const res = await fetch("/api/admin/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: selectedType, csv: csvText }),
+      });
 
-    const data = await res.json();
-    setLoading(false);
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error || "가져오기에 실패했습니다.");
-    } else {
-      setResult(data);
+      if (!res.ok) {
+        setError(data.error || "가져오기에 실패했습니다.");
+      } else {
+        setResult(data);
+      }
+    } catch (err) {
+      setError(`요청 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoading(false);
     }
   }
 

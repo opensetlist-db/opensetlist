@@ -57,9 +57,10 @@ enum StageIdentityType {
 
 enum EventSeriesType {
   concert_tour
+  standalone
   festival
   fan_meeting
-  one_time
+  one_time // deprecated — kept temporarily for prod data migration, remove after migrating rows
 }
 
 enum EventType {
@@ -115,6 +116,13 @@ enum AlbumType {
   ep
   live_album
   soundtrack
+}
+
+enum ReactionType {
+  waiting
+  best
+  surprise
+  moved
 }
 
 enum CommentType {
@@ -482,10 +490,22 @@ model SetlistItem {
   artists     SetlistItemArtist[]
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
+  reactions   SetlistItemReaction[]
 
   @@unique([eventId, position])
   @@index([eventId])
   @@index([isDeleted])
+}
+
+model SetlistItemReaction {
+  id            String   @id @default(uuid())
+  setlistItemId BigInt
+  reactionType  ReactionType
+  createdAt     DateTime @default(now())
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
+
+  @@index([setlistItemId, reactionType])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link

@@ -101,11 +101,18 @@
       "concert_tour": "콘서트 투어",
       "festival": "페스티벌",
       "fan_meeting": "팬미팅",
-      "one_time": "단독 공연"
+      "standalone": "단독 공연"
     },
     "organizer": "주최",
     "events": "이벤트 목록",
     "noEvents": "등록된 이벤트가 없습니다."
+  },
+  "Reaction": {
+    "waiting": "기다렸어",
+    "best": "최고",
+    "surprise": "깜짝",
+    "moved": "감동",
+    "trending": "이번 공연 화제의 곡"
   },
   "Footer": {
     "privacy": "개인정보처리방침",

@@ -17,13 +17,17 @@ type EventSeriesFormProps = {
   };
 };
 
-const SERIES_TYPES = ["concert_tour", "festival", "fan_meeting", "one_time"];
+const SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+
+function normalizeSeriesType(value?: string) {
+  return value === "one_time" ? "standalone" : value;
+}
 
 export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [type, setType] = useState(initialData?.type ?? "concert_tour");
+  const [type, setType] = useState(normalizeSeriesType(initialData?.type) ?? "concert_tour");
   const [artistId, setArtistId] = useState(
     initialData?.artistId?.toString() ?? ""
   );

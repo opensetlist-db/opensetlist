@@ -9,6 +9,8 @@ import {
   formatDate,
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
+import { ReactionButtons } from "@/components/ReactionButtons";
+import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import type { Metadata } from "next";
 
 type Props = {
@@ -121,6 +123,95 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+const EMOJI_MAP: Record<string, string> = {
+  waiting: "😭",
+  best: "🔥",
+  surprise: "😱",
+  moved: "🩷",
+};
+
+async function getReactionCounts(eventId: bigint) {
+  const groups = await prisma.setlistItemReaction.groupBy({
+    by: ["setlistItemId", "reactionType"],
+    where: {
+      setlistItem: { eventId, isDeleted: false },
+    },
+    _count: true,
+  });
+
+  const result: Record<string, Record<string, number>> = {};
+  for (const g of groups) {
+    const key = g.setlistItemId.toString();
+    if (!result[key]) result[key] = {};
+    result[key][g.reactionType] = g._count;
+  }
+  return result;
+}
+
+async function getTrendingSongs(
+  eventId: bigint,
+  locale: string
+): Promise<TrendingSong[]> {
+  const groups = await prisma.setlistItemReaction.groupBy({
+    by: ["setlistItemId"],
+    where: {
+      setlistItem: { eventId, isDeleted: false, songs: { some: {} } },
+    },
+    _count: { id: true },
+    orderBy: { _count: { id: "desc" } },
+    take: 3,
+  });
+
+  if (groups.length === 0) return [];
+
+  const itemIds = groups.map((g) => g.setlistItemId);
+
+  const items = await prisma.setlistItem.findMany({
+    where: { id: { in: itemIds } },
+    include: {
+      songs: {
+        include: {
+          song: { include: { translations: true } },
+        },
+        orderBy: { order: "asc" },
+        take: 1,
+      },
+    },
+  });
+
+  const typeBreakdown = await prisma.setlistItemReaction.groupBy({
+    by: ["setlistItemId", "reactionType"],
+    where: { setlistItemId: { in: itemIds } },
+    _count: true,
+  });
+
+  const typeMap: Record<string, Record<string, number>> = {};
+  for (const g of typeBreakdown) {
+    const key = g.setlistItemId.toString();
+    if (!typeMap[key]) typeMap[key] = {};
+    typeMap[key][g.reactionType] = g._count;
+  }
+
+  return groups.map((g) => {
+    const item = items.find((i) => i.id === g.setlistItemId);
+    const song = item?.songs[0]?.song;
+    const sTr = song ? pickTranslation(song.translations, locale) : null;
+    const songTitle = sTr?.title ?? song?.originalTitle ?? "Unknown";
+
+    const types = typeMap[g.setlistItemId.toString()] ?? {};
+    const topType = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      setlistItemId: g.setlistItemId.toString(),
+      songTitle,
+      totalReactions: g._count.id,
+      topReaction: topType
+        ? { type: topType[0], emoji: EMOJI_MAP[topType[0]] ?? "", count: topType[1] }
+        : { type: "best", emoji: "🔥", count: 0 },
+    };
+  });
+}
+
 export default async function EventPage({ params }: Props) {
   const { locale, id } = await params;
 
@@ -134,8 +225,13 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const t = await getTranslations("Event");
-  const ct = await getTranslations("Common");
+  const [t, ct, reactionCounts, trendingSongs] = await Promise.all([
+    getTranslations("Event"),
+    getTranslations("Common"),
+    getReactionCounts(eventId),
+    getTrendingSongs(eventId, locale),
+  ]);
+
   const tr = pickTranslation(event.translations, locale);
 
   const seriesTr = event.eventSeries
@@ -236,6 +332,9 @@ export default async function EventPage({ params }: Props) {
         </section>
       )}
 
+      {/* Trending Songs */}
+      <TrendingSongs songs={trendingSongs} />
+
       {/* Setlist */}
       <section className="mb-8">
         <h2 className="mb-3 text-xl font-semibold">{t("setlist")}</h2>
@@ -243,13 +342,13 @@ export default async function EventPage({ params }: Props) {
           <p className="text-zinc-500">{t("noSetlist")}</p>
         ) : (
           <>
-            <SetlistTable items={mainItems} locale={locale} t={t} />
+            <SetlistTable items={mainItems} locale={locale} t={t} reactionCounts={reactionCounts} />
             {encoreItems.length > 0 && (
               <>
                 <h3 className="mb-2 mt-6 text-lg font-semibold text-zinc-600">
                   {ct("encore")}
                 </h3>
-                <SetlistTable items={encoreItems} locale={locale} t={t} />
+                <SetlistTable items={encoreItems} locale={locale} t={t} reactionCounts={reactionCounts} />
               </>
             )}
           </>
@@ -263,6 +362,7 @@ function SetlistTable({
   items,
   locale,
   t,
+  reactionCounts,
 }: {
   items: Awaited<ReturnType<typeof getEvent>> extends infer E
     ? E extends { setlistItems: infer S }
@@ -271,6 +371,7 @@ function SetlistTable({
     : never;
   locale: string;
   t: Awaited<ReturnType<typeof getTranslations<"Event">>>;
+  reactionCounts: Record<string, Record<string, number>>;
 }) {
   return (
     <ol className="space-y-3">
@@ -365,6 +466,10 @@ function SetlistTable({
                 {item.type === "song" && !item.isEncore && item.note && (
                   <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
                 )}
+                <ReactionButtons
+                  setlistItemId={String(item.id)}
+                  initialCounts={reactionCounts[String(item.id)] ?? {}}
+                />
               </div>
             </div>
           </li>

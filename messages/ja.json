@@ -101,11 +101,18 @@
       "concert_tour": "コンサートツアー",
       "festival": "フェスティバル",
       "fan_meeting": "ファンミーティング",
-      "one_time": "単独公演"
+      "standalone": "単独公演"
     },
     "organizer": "主催",
     "events": "イベント一覧",
     "noEvents": "登録されたイベントがありません。"
+  },
+  "Reaction": {
+    "waiting": "待ってた",
+    "best": "最高",
+    "surprise": "サプライズ",
+    "moved": "感動",
+    "trending": "この公演の話題曲"
   },
   "Footer": {
     "privacy": "プライバシーポリシー",
