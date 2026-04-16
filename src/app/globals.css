@@ -9,6 +9,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: 'Noto Sans KR Variable', sans-serif;
+  --font-josefin: 'Josefin Sans', 'Noto Sans KR Variable', sans-serif;
+  --font-dm-sans: 'DM Sans', 'Noto Sans KR Variable', sans-serif;
 }
 
 

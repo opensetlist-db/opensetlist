@@ -1,0 +1,35 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7"/>
+      <stop offset="100%" stop-color="#0277BD"/>
+    </linearGradient>
+  </defs>
+  <!-- background -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- subtle top highlight -->
+  <rect width="128" height="64" rx="28" fill="white" fill-opacity="0.06"/>
+
+  <!-- row 1: check circle + line -->
+  <circle cx="34" cy="44" r="10" fill="white"/>
+  <path d="M28 44 L32.5 49.5 L41 38" fill="none" stroke="#0277BD" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="51" y1="44" x2="104" y2="44" stroke="white" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- row 2: dot + line -->
+  <circle cx="34" cy="66" r="5.5" fill="white" fill-opacity="0.75"/>
+  <line x1="44" y1="66" x2="102" y2="66" stroke="white" stroke-width="6" stroke-linecap="round" fill-opacity="0.85"/>
+
+  <!-- row 3: dot + line -->
+  <circle cx="34" cy="88" r="5.5" fill="white" fill-opacity="0.75"/>
+  <line x1="44" y1="88" x2="96" y2="88" stroke="white" stroke-width="6" stroke-linecap="round" fill-opacity="0.85"/>
+
+  <!-- row 4: dot + line + music note -->
+  <circle cx="34" cy="110" r="5.5" fill="white" fill-opacity="0.75"/>
+  <line x1="44" y1="110" x2="88" y2="110" stroke="white" stroke-width="6" stroke-linecap="round"/>
+  <!-- note stem -->
+  <line x1="100" y1="96" x2="100" y2="114" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  <!-- note flag -->
+  <path d="M100 96 Q116 103 112 114" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- note head -->
+  <ellipse cx="93" cy="115" rx="9.5" ry="6.5" fill="white" transform="rotate(-18 93 115)"/>
+</svg>

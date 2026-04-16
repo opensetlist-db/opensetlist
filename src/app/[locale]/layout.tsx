@@ -5,9 +5,12 @@ import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { BASE_URL } from "@/lib/config";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import "@fontsource-variable/noto-sans-kr";
+import "@fontsource/josefin-sans/400.css";
+import "@fontsource/dm-sans/400.css";
+import "@fontsource/dm-sans/500.css";
 import "../globals.css";
 
 export async function generateMetadata({
@@ -51,9 +54,7 @@ export default async function LocaleLayout({
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
-          <header className="flex justify-end px-4 py-2">
-            <LanguageSwitcher />
-          </header>
+          <Header />
           {children}
           <Footer />
         </NextIntlClientProvider>

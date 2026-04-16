@@ -76,6 +76,7 @@
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
+    "unknownEvent": "不明なイベント",
     "performers": "出演者",
     "status": {
       "upcoming": "予定",
@@ -113,6 +114,20 @@
     "surprise": "サプライズ",
     "moved": "感動",
     "trending": "この公演の話題曲"
+  },
+  "Header": {
+    "home": "ホーム",
+    "artists": "アーティスト",
+    "events": "イベント",
+    "tours": "ツアー",
+    "signIn": "ログイン",
+    "openMenu": "メニューを開く",
+    "closeMenu": "メニューを閉じる"
+  },
+  "Hero": {
+    "heading": "ライブの記録のすべて",
+    "subtext": "好きなアーティストのセットリストを探し、記録し、共有しよう",
+    "searchPlaceholder": "アーティスト、イベント、曲を検索..."
   },
   "Footer": {
     "privacy": "プライバシーポリシー",
