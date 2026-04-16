@@ -71,10 +71,10 @@ enum EventType {
 }
 
 enum EventStatus {
-  upcoming
-  ongoing
-  completed
-  cancelled
+  scheduled // DB 기본값 — startTime 기반 자동 계산 대상
+  ongoing // 관리자 override 또는 자동 (startTime ~ +12h)
+  completed // 관리자 override 또는 자동 (startTime +12h 이후)
+  cancelled // 관리자 override 전용
 }
 
 enum SetlistItemStageType {
@@ -410,7 +410,7 @@ model Event {
   eventSeriesId BigInt?
   parentEventId BigInt?
   type          EventType
-  status        EventStatus        @default(upcoming)
+  status        EventStatus        @default(scheduled)
   date          DateTime?          @db.Date
   startTime     DateTime?          // UTC; used as lock time for wishlist
   country       String?            // ISO 3166 e.g. "KR" "JP" "US"

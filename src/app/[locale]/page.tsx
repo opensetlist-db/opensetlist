@@ -3,14 +3,24 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
+import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
-async function getRecentEvents(limit: number) {
+// Event.date is stored in UTC, so the day-boundary must also be UTC —
+// otherwise recent/upcoming classification drifts by the server's timezone.
+function startOfTodayUTC() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+}
+
+async function getRecentEvents(limit: number, todayStartUtc: Date) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      status: "completed",
-      date: { not: null },
       parentEventId: null,
+      date: { not: null, lt: todayStartUtc },
+      status: { not: "cancelled" },
     },
     include: {
       translations: true,
@@ -22,22 +32,27 @@ async function getRecentEvents(limit: number) {
   return serializeBigInt(events);
 }
 
-async function getUpcomingEvents(limit: number) {
+async function getUpcomingEvents(limit: number, todayStartUtc: Date) {
+  // Over-fetch so the post-filter (dropping today's events that are already
+  // past their 12h ongoing buffer) still leaves a full page of results.
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      status: { in: ["upcoming", "ongoing"] },
-      date: { not: null },
       parentEventId: null,
+      date: { not: null, gte: todayStartUtc },
+      status: { notIn: ["cancelled", "completed"] },
     },
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
     },
     orderBy: { date: "asc" },
-    take: limit,
+    take: limit * 2,
   });
-  return serializeBigInt(events);
+  const upcoming = events
+    .filter((e) => getEventStatus(e) !== "completed")
+    .slice(0, limit);
+  return serializeBigInt(upcoming);
 }
 
 export default async function HomePage({
@@ -50,9 +65,12 @@ export default async function HomePage({
   const ct = await getTranslations("Common");
   const evT = await getTranslations("Event");
 
+  // Compute the UTC day boundary once so both queries agree even if the
+  // request straddles 00:00 UTC.
+  const todayStartUtc = startOfTodayUTC();
   const [recentEvents, upcomingEvents] = await Promise.all([
-    getRecentEvents(10),
-    getUpcomingEvents(10),
+    getRecentEvents(10, todayStartUtc),
+    getUpcomingEvents(10, todayStartUtc),
   ]);
 
   return (
@@ -101,6 +119,7 @@ function EventList({
         const seriesTr = event.eventSeries
           ? pickTranslation(event.eventSeries.translations, locale)
           : null;
+        const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
         return (
           <li
             key={event.id}
@@ -122,27 +141,21 @@ function EventList({
                 className="font-dm-sans block truncate text-[12px] hover:underline"
                 style={{ color: "#1a1a1a", fontWeight: 500 }}
               >
-                {evTr?.name ?? evT("unknownEvent")}
+                {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
               </Link>
-              {seriesTr && (
+              {seriesTr && evTr?.name && (
                 <span
                   className="font-dm-sans block truncate text-[11px]"
                   style={{ color: "#999999" }}
                 >
-                  {seriesTr.name}
+                  {evTr.name}
                 </span>
               )}
             </div>
             <span
-              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${
-                event.status === "completed"
-                  ? "bg-[#E1F5FE] text-[#0277BD]"
-                  : event.status === "upcoming"
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-green-100 text-green-700"
-              }`}
+              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${badge.color}`}
             >
-              {evT(`status.${event.status}`)}
+              {evT(badge.labelKey)}
             </span>
           </li>
         );

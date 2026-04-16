@@ -79,7 +79,7 @@ ArtistType         solo | group | unit
 StageIdentityType  character | persona
 EventSeriesType    concert_tour | standalone | festival | fan_meeting
 EventType          concert | festival | fan_meeting | showcase | virtual_live
-EventStatus        upcoming | ongoing | completed | cancelled
+EventStatus        scheduled | ongoing | completed | cancelled
 SetlistItemStageType  full_group | unit | solo | special
 SetlistItemStatus  rumoured | live | confirmed
 SetlistItemPerformanceType  live_performance | virtual_live | video_playback
@@ -152,6 +152,49 @@ Hard rules:
 - Store dates/times in UTC, convert on display
 - Use Noto Sans self-hosted (supports all 4 languages) — never load from Google Fonts (China firewall)
 - `lang` attribute on `<html>` must match locale
+
+---
+
+## Date & Time — UTC is the only correct default
+
+All `Event.date`, `Event.startTime`, and every timestamp column we persist
+is **stored in UTC**. Every comparison, bucket, and filter that runs on the
+server MUST also be computed in UTC — the server's local timezone is an
+accident of where the process happens to run (Vercel edge/region,
+developer laptop, CI) and using it produces results that silently drift
+by hours depending on region. **Never use server-local day boundaries for
+anything that classifies stored dates.**
+
+### Required patterns
+
+```ts
+// ✅ Correct — day boundary in UTC, matches how the data is stored
+function startOfTodayUTC() {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+}
+
+// ❌ Wrong — silently depends on the server's TZ
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0); // uses LOCAL midnight, not UTC
+  return d;
+}
+```
+
+- `setHours`, `getHours`, `getFullYear`, `getMonth`, `getDate` — all **local-time**. Do not call them for comparisons with stored dates.
+- Use `Date.UTC(...)` for constructing boundaries, and `getUTC*` getters when you need to inspect parts of a stored date.
+- `new Date()` (current moment) is fine to compare against a stored UTC `Date` — both sides are absolute instants.
+- Only convert to the user's locale/timezone at the **display layer** (`formatDate`, `toLocaleString`, etc.) — never inside a filter, `where` clause, or bucketing helper.
+
+### Display-layer conversion
+
+User-visible dates should be formatted with the viewer's locale via
+`formatDate(date, locale)` in `src/lib/utils.ts`. That helper is the
+single conversion point from UTC-stored → locale-rendered. Do not
+reinvent it inline.
 
 ---
 

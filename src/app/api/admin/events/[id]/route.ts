@@ -61,7 +61,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
     where: { id: eventId },
     data: {
       type,
-      status: status ?? "upcoming",
+      // Only overwrite status when the payload explicitly carries one —
+      // otherwise existing admin overrides (cancelled/ongoing/completed)
+      // would be silently reset to "scheduled" on any unrelated edit.
+      ...(status !== undefined ? { status } : {}),
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
       parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
