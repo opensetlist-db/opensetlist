@@ -107,6 +107,13 @@
     "events": "Events",
     "noEvents": "No events registered."
   },
+  "Reaction": {
+    "waiting": "Finally!",
+    "best": "Amazing",
+    "surprise": "Surprise",
+    "moved": "Emotional",
+    "trending": "Trending songs"
+  },
   "Footer": {
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",

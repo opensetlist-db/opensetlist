@@ -482,10 +482,22 @@ model SetlistItem {
   artists     SetlistItemArtist[]
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
+  reactions   SetlistItemReaction[]
 
   @@unique([eventId, position])
   @@index([eventId])
   @@index([isDeleted])
+}
+
+model SetlistItemReaction {
+  id            BigInt   @id @default(autoincrement())
+  setlistItemId BigInt
+  reactionType  String   // "waiting" | "best" | "surprise" | "moved"
+  createdAt     DateTime @default(now())
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+
+  @@index([setlistItemId, reactionType])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link

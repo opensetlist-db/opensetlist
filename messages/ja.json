@@ -107,6 +107,13 @@
     "events": "イベント一覧",
     "noEvents": "登録されたイベントがありません。"
   },
+  "Reaction": {
+    "waiting": "待ってた",
+    "best": "最高",
+    "surprise": "サプライズ",
+    "moved": "感動",
+    "trending": "この公演の話題曲"
+  },
   "Footer": {
     "privacy": "プライバシーポリシー",
     "terms": "利用規約",
