@@ -73,7 +73,11 @@ export default async function EventsListPage() {
                   <span className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}>
                     {STATUS_LABEL_KO[resolved]}
                   </span>
-                  <span className="ml-2 text-xs text-zinc-400">({event.status})</span>
+                  {event.status !== resolved && (
+                    <span className="ml-2 text-xs text-zinc-400">
+                      (DB: {event.status})
+                    </span>
+                  )}
                 </td>
                 <td className="py-2 space-x-2">
                   <Link
