@@ -305,6 +305,9 @@ export default async function SongPage({ params }: Props) {
             {performances.map((p) => {
               const event = p.setlistItem.event;
               const evTr = pickTranslation(event.translations, locale);
+              const seriesTr = event.eventSeries
+                ? pickTranslation(event.eventSeries.translations, locale)
+                : null;
               const performers = p.setlistItem.performers
                 .map(
                   (perf) =>
@@ -322,8 +325,13 @@ export default async function SongPage({ params }: Props) {
                       href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {evTr?.name ?? "Unknown Event"}
+                      {seriesTr?.name ?? evTr?.name ?? et("unknownEvent")}
                     </Link>
+                    {seriesTr && evTr?.name && (
+                      <span className="text-sm text-zinc-500">
+                        ({evTr.name})
+                      </span>
+                    )}
                   </div>
                   {performers.length > 0 && (
                     <p className="mt-1 text-sm text-zinc-500">
