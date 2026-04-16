@@ -707,15 +707,15 @@ async function importSetlistItems(rows: Record<string, string>[]) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { type, csv } = body as { type: string; csv: string };
-
-  const rows = parseCSV(csv);
-  if (rows.length === 0) {
-    return NextResponse.json({ error: "CSV is empty or invalid" }, { status: 400 });
-  }
-
   try {
+    const body = await request.json();
+    const { type, csv } = body as { type: string; csv: string };
+
+    const rows = parseCSV(csv);
+    if (rows.length === 0) {
+      return NextResponse.json({ error: "CSV is empty or invalid" }, { status: 400 });
+    }
+
     let result;
     switch (type) {
       case "artists":
@@ -743,6 +743,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(serializeBigInt(result));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Import failed: ${message}` }, { status: 500 });
+    console.error("Import error:", message);
+    const isJsonParseError = /json/i.test(message);
+    return NextResponse.json(
+      { error: isJsonParseError ? "Invalid JSON body" : "Import failed" },
+      { status: isJsonParseError ? 400 : 500 }
+    );
   }
 }

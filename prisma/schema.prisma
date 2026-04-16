@@ -57,9 +57,10 @@ enum StageIdentityType {
 
 enum EventSeriesType {
   concert_tour
+  standalone
   festival
   fan_meeting
-  standalone
+  one_time // deprecated — kept temporarily for prod data migration, remove after migrating rows
 }
 
 enum EventType {
