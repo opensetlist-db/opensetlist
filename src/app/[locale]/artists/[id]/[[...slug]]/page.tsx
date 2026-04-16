@@ -162,6 +162,7 @@ export default async function ArtistPage({ params }: Props) {
 
   const t = await getTranslations("Artist");
   const ct = await getTranslations("Common");
+  const evT = await getTranslations("Event");
   const tr = pickTranslation(artist.translations, locale);
   const parentTr = artist.parentArtist
     ? pickTranslation(artist.parentArtist.translations, locale)
@@ -437,7 +438,7 @@ export default async function ArtistPage({ params }: Props) {
                     href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {seriesTr?.name ?? evTr?.name ?? "Unknown Event"}
+                    {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
                   </Link>
                   {seriesTr && evTr?.name && (
                     <span className="text-sm text-zinc-500">
