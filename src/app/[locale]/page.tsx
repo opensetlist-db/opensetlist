@@ -58,7 +58,7 @@ export default async function HomePage({
   return (
     <>
       <HomeHero />
-      <main className="mx-auto max-w-3xl px-4 py-8">
+      <main className="mx-auto max-w-3xl px-4 pt-6 pb-8">
         {/* Upcoming Events */}
         {upcomingEvents.length > 0 && (
           <section className="mb-10">

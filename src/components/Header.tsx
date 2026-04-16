@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -22,72 +23,158 @@ function isActive(pathname: string, href: string) {
 export function Header() {
   const t = useTranslations("Header");
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   return (
-    <header
-      className="flex h-[60px] items-center justify-between border-b border-[#e8e8e8] bg-white px-4 md:px-8"
-      style={{ borderBottomWidth: "0.5px" }}
-    >
-      <Link href="/" className="flex items-center gap-2.5">
-        <span
-          className="inline-flex h-[34px] w-[34px] overflow-hidden rounded-lg"
-          style={{ borderRadius: "8px" }}
-        >
-          <Image
-            src="/images/opensetlist-symbol-40.svg"
-            alt=""
-            width={34}
-            height={34}
-            priority
-          />
-        </span>
-        <span
-          className="font-josefin text-[17px] uppercase"
-          style={{ color: "#1a1a1a", letterSpacing: 0 }}
-        >
-          OpenSetlist
-        </span>
-      </Link>
+    <div ref={menuRef} className="relative">
+      <header
+        className="flex h-[60px] items-center justify-between border-b border-[#e8e8e8] bg-white px-4 lg:px-8"
+        style={{ borderBottomWidth: "0.5px" }}
+      >
+        <Link href="/" className="flex items-center gap-2.5">
+          <span
+            className="inline-flex h-[34px] w-[34px] overflow-hidden"
+            style={{ borderRadius: "8px" }}
+          >
+            <Image
+              src="/images/opensetlist-symbol-40.svg"
+              alt=""
+              width={34}
+              height={34}
+              priority
+            />
+          </span>
+          <span
+            className="font-josefin text-[17px] uppercase"
+            style={{ color: "#1a1a1a", letterSpacing: 0 }}
+          >
+            OPENSETLIST
+          </span>
+        </Link>
 
-      <div className="flex items-center gap-4 md:gap-7">
-        <nav className="hidden md:flex items-center gap-7">
-          {NAV_ITEMS.map((item) => {
-            const active = isActive(pathname, item.href);
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                className="font-dm-sans text-[13px]"
-                style={{
-                  color: active ? "#0288D1" : "#555555",
-                  fontWeight: active ? 500 : 400,
-                }}
-              >
-                {t(item.key)}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Desktop right side */}
+        <div className="hidden lg:flex items-center gap-7">
+          <nav className="flex items-center gap-7">
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  className="font-dm-sans text-[13px]"
+                  style={{
+                    color: active ? "#0288D1" : "#555555",
+                    fontWeight: active ? 500 : 400,
+                  }}
+                >
+                  {t(item.key)}
+                </Link>
+              );
+            })}
+          </nav>
 
-        <LanguageSwitcher />
+          <LanguageSwitcher />
 
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            title={t("signIn")}
+            className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
+            style={{
+              fontSize: "12px",
+              fontWeight: 500,
+              padding: "7px 16px",
+              borderRadius: "6px",
+              background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+            }}
+          >
+            {t("signIn")}
+          </button>
+        </div>
+
+        {/* Mobile / tablet hamburger */}
         <button
           type="button"
-          disabled
-          aria-disabled="true"
-          title={t("signIn")}
-          className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
-          style={{
-            fontSize: "12px",
-            fontWeight: 500,
-            padding: "7px 16px",
-            borderRadius: "6px",
-            background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
-          }}
+          className="lg:hidden flex flex-col justify-center items-center w-9 h-9 gap-1.5"
+          onClick={() => setMenuOpen((prev) => !prev)}
+          aria-label={menuOpen ? t("closeMenu") : t("openMenu")}
+          aria-expanded={menuOpen}
         >
-          {t("signIn")}
+          <span
+            className="block w-5 h-0.5 bg-[#555] transition-transform duration-200"
+            style={{ transform: menuOpen ? "translateY(8px) rotate(45deg)" : "none" }}
+          />
+          <span
+            className="block w-5 h-0.5 bg-[#555] transition-opacity duration-200"
+            style={{ opacity: menuOpen ? 0 : 1 }}
+          />
+          <span
+            className="block w-5 h-0.5 bg-[#555] transition-transform duration-200"
+            style={{ transform: menuOpen ? "translateY(-8px) rotate(-45deg)" : "none" }}
+          />
         </button>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile / tablet dropdown */}
+      {menuOpen && (
+        <div className="lg:hidden absolute top-full left-0 right-0 z-50 bg-white border-b border-[#e8e8e8] shadow-sm">
+          <nav className="flex flex-col px-4 py-2">
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  className="font-dm-sans text-[15px] py-3 border-b border-[#f0f0f0]"
+                  style={{
+                    color: active ? "#0288D1" : "#333333",
+                    fontWeight: active ? 500 : 400,
+                  }}
+                >
+                  {t(item.key)}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center justify-between px-4 py-4">
+            <LanguageSwitcher />
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title={t("signIn")}
+              className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
+              style={{
+                fontSize: "13px",
+                fontWeight: 500,
+                padding: "8px 20px",
+                borderRadius: "6px",
+                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+              }}
+            >
+              {t("signIn")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

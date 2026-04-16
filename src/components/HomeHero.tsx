@@ -5,7 +5,7 @@ export async function HomeHero() {
 
   return (
     <section
-      className="px-4 py-12 md:py-16"
+      className="px-4 py-8 md:py-10"
       style={{ background: "#f8f9fa" }}
     >
       <div className="mx-auto max-w-3xl text-center">
@@ -33,14 +33,14 @@ export async function HomeHero() {
           <input
             type="search"
             placeholder={t("searchPlaceholder")}
-            disabled
+            readOnly
             className="font-dm-sans flex-1 bg-transparent px-3 py-2 text-[13px] outline-none"
             style={{ color: "#1a1a1a" }}
           />
           <button
             type="button"
-            disabled
-            className="font-dm-sans px-4 py-2 text-white"
+            aria-label={t("searchPlaceholder")}
+            className="font-dm-sans flex items-center justify-center px-4 py-2 text-white cursor-default"
             style={{
               fontSize: "12px",
               fontWeight: 500,

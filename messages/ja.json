@@ -119,7 +119,9 @@
     "artists": "アーティスト",
     "events": "イベント",
     "tours": "ツアー",
-    "signIn": "ログイン"
+    "signIn": "ログイン",
+    "openMenu": "メニューを開く",
+    "closeMenu": "メニューを閉じる"
   },
   "Hero": {
     "heading": "ライブの記録のすべて",

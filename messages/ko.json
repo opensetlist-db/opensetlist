@@ -119,7 +119,9 @@
     "artists": "아티스트",
     "events": "이벤트",
     "tours": "투어",
-    "signIn": "로그인"
+    "signIn": "로그인",
+    "openMenu": "메뉴 열기",
+    "closeMenu": "메뉴 닫기"
   },
   "Hero": {
     "heading": "공연 기록의 모든 것",

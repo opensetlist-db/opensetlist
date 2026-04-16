@@ -119,7 +119,9 @@
     "artists": "Artists",
     "events": "Events",
     "tours": "Tours",
-    "signIn": "Sign in"
+    "signIn": "Sign in",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
   },
   "Hero": {
     "heading": "Everything about live setlists",
