@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      accept_data_loss:
+        description: 'Allow destructive schema changes (drops enum values, columns, etc.)'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   migrate:
@@ -17,7 +24,13 @@ jobs:
       - name: Push schema to production DB
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
-        run: npx prisma db push
+        run: |
+          if [ "${{ inputs.accept_data_loss }}" = "true" ]; then
+            echo "Running with --accept-data-loss (manual dispatch)"
+            npx prisma db push --accept-data-loss
+          else
+            npx prisma db push
+          fi
       - name: Verify migration
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
