@@ -4,6 +4,7 @@
     "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
     "recentEvents": "최근 이벤트",
     "upcomingEvents": "예정된 이벤트",
+    "ongoingEvents": "지금 공연 중",
     "noEvents": "등록된 이벤트가 없습니다.",
     "viewAll": "전체 보기"
   },

@@ -3,99 +3,181 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
+import { Pagination } from "@/components/Pagination";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
-// Event.date is stored in UTC, so the day-boundary must also be UTC —
-// otherwise recent/upcoming classification drifts by the server's timezone.
-function startOfTodayUTC() {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-}
+const PAGE_SIZE = 10;
+const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 
-async function getRecentEvents(limit: number, todayStartUtc: Date) {
+async function getOngoingEvents() {
+  const now = new Date();
+  const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
+
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
       parentEventId: null,
-      date: { not: null, lt: todayStartUtc },
-      status: { not: "cancelled" },
+      OR: [
+        { status: "ongoing" },
+        {
+          status: "scheduled",
+          startTime: { gte: ongoingStart, lte: now },
+        },
+      ],
     },
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
     },
-    orderBy: { date: "desc" },
-    take: limit,
+    orderBy: { startTime: "asc" },
   });
   return serializeBigInt(events);
 }
 
-async function getUpcomingEvents(limit: number, todayStartUtc: Date) {
-  // Over-fetch so the post-filter (dropping today's events that are already
-  // past their 12h ongoing buffer) still leaves a full page of results.
-  const events = await prisma.event.findMany({
-    where: {
-      isDeleted: false,
-      parentEventId: null,
-      date: { not: null, gte: todayStartUtc },
-      status: { notIn: ["cancelled", "completed"] },
-    },
-    include: {
-      translations: true,
-      eventSeries: { include: { translations: true } },
-    },
-    orderBy: { date: "asc" },
-    take: limit * 2,
-  });
-  const upcoming = events
-    .filter((e) => getEventStatus(e) !== "completed")
-    .slice(0, limit);
-  return serializeBigInt(upcoming);
+async function getUpcomingEvents(page: number, pageSize: number) {
+  const now = new Date();
+  const skip = (page - 1) * pageSize;
+
+  const where = {
+    isDeleted: false,
+    parentEventId: null,
+    status: "scheduled" as const,
+    startTime: { gt: now },
+  };
+
+  const [events, total] = await Promise.all([
+    prisma.event.findMany({
+      where,
+      include: {
+        translations: true,
+        eventSeries: { include: { translations: true } },
+      },
+      orderBy: { startTime: "asc" },
+      skip,
+      take: pageSize,
+    }),
+    prisma.event.count({ where }),
+  ]);
+
+  return { events: serializeBigInt(events), total };
+}
+
+async function getCompletedEvents(page: number, pageSize: number) {
+  const now = new Date();
+  const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
+  const skip = (page - 1) * pageSize;
+
+  const where = {
+    isDeleted: false,
+    parentEventId: null,
+    OR: [
+      { status: "completed" as const },
+      {
+        status: "scheduled" as const,
+        startTime: { lt: completedCutoff },
+      },
+    ],
+  };
+
+  const [events, total] = await Promise.all([
+    prisma.event.findMany({
+      where,
+      include: {
+        translations: true,
+        eventSeries: { include: { translations: true } },
+      },
+      orderBy: { startTime: "desc" },
+      skip,
+      take: pageSize,
+    }),
+    prisma.event.count({ where }),
+  ]);
+
+  return { events: serializeBigInt(events), total };
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = parseInt(raw ?? "1", 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 export default async function HomePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ upcomingPage?: string; completedPage?: string }>;
 }) {
   const { locale } = await params;
+  const { upcomingPage, completedPage } = await searchParams;
+
+  const upcomingPageNum = parsePage(upcomingPage);
+  const completedPageNum = parsePage(completedPage);
+
   const t = await getTranslations("Home");
-  const ct = await getTranslations("Common");
   const evT = await getTranslations("Event");
 
-  // Compute the UTC day boundary once so both queries agree even if the
-  // request straddles 00:00 UTC.
-  const todayStartUtc = startOfTodayUTC();
-  const [recentEvents, upcomingEvents] = await Promise.all([
-    getRecentEvents(10, todayStartUtc),
-    getUpcomingEvents(10, todayStartUtc),
+  const [ongoingEvents, upcomingData, completedData] = await Promise.all([
+    getOngoingEvents(),
+    getUpcomingEvents(upcomingPageNum, PAGE_SIZE),
+    getCompletedEvents(completedPageNum, PAGE_SIZE),
   ]);
+
+  const upcomingTotalPages = Math.ceil(upcomingData.total / PAGE_SIZE);
+  const completedTotalPages = Math.ceil(completedData.total / PAGE_SIZE);
 
   return (
     <>
       <HomeHero />
       <main className="mx-auto max-w-3xl px-4 pt-6 pb-8">
-        {/* Upcoming Events */}
-        {upcomingEvents.length > 0 && (
+        {ongoingEvents.length > 0 && (
+          <section className="mb-10">
+            <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
+              {t("ongoingEvents")}
+            </h2>
+            <EventList events={ongoingEvents} locale={locale} evT={evT} />
+          </section>
+        )}
+
+        {upcomingData.events.length > 0 && (
           <section className="mb-10">
             <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
               {t("upcomingEvents")}
             </h2>
-            <EventList events={upcomingEvents} locale={locale} evT={evT} />
+            <EventList
+              events={upcomingData.events}
+              locale={locale}
+              evT={evT}
+            />
+            <Pagination
+              currentPage={upcomingPageNum}
+              totalPages={upcomingTotalPages}
+              pageParamKey="upcomingPage"
+              otherParams={{ completedPage: String(completedPageNum) }}
+            />
           </section>
         )}
 
-        {/* Recent Events */}
         <section className="mb-10">
           <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
             {t("recentEvents")}
           </h2>
-          {recentEvents.length === 0 ? (
+          {completedData.events.length === 0 ? (
             <p className="text-zinc-500">{t("noEvents")}</p>
           ) : (
-            <EventList events={recentEvents} locale={locale} evT={evT} />
+            <>
+              <EventList
+                events={completedData.events}
+                locale={locale}
+                evT={evT}
+              />
+              <Pagination
+                currentPage={completedPageNum}
+                totalPages={completedTotalPages}
+                pageParamKey="completedPage"
+                otherParams={{ upcomingPage: String(upcomingPageNum) }}
+              />
+            </>
           )}
         </section>
       </main>
@@ -108,7 +190,7 @@ function EventList({
   locale,
   evT,
 }: {
-  events: Awaited<ReturnType<typeof getRecentEvents>>;
+  events: Awaited<ReturnType<typeof getOngoingEvents>>;
   locale: string;
   evT: Awaited<ReturnType<typeof getTranslations<"Event">>>;
 }) {
