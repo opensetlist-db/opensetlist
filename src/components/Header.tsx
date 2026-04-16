@@ -73,7 +73,10 @@ export function Header() {
 
         <button
           type="button"
-          className="font-dm-sans rounded-md text-white"
+          disabled
+          aria-disabled="true"
+          title={t("signIn")}
+          className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
           style={{
             fontSize: "12px",
             fontWeight: 500,
