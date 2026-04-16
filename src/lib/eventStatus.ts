@@ -13,8 +13,6 @@ type EventStatusInput = {
   startTime: Date | string | null;
 };
 
-// "upcoming" (legacy) is treated the same as "scheduled" until data is fully
-// backfilled and the enum value is dropped in a follow-up PR.
 export function getEventStatus(event: EventStatusInput): ResolvedEventStatus {
   if (event.status === "cancelled") return "cancelled";
   if (event.status === "ongoing") return "ongoing";

@@ -79,7 +79,7 @@ ArtistType         solo | group | unit
 StageIdentityType  character | persona
 EventSeriesType    concert_tour | standalone | festival | fan_meeting
 EventType          concert | festival | fan_meeting | showcase | virtual_live
-EventStatus        upcoming | ongoing | completed | cancelled
+EventStatus        scheduled | ongoing | completed | cancelled
 SetlistItemStageType  full_group | unit | solo | special
 SetlistItemStatus  rumoured | live | confirmed
 SetlistItemPerformanceType  live_performance | virtual_live | video_playback
