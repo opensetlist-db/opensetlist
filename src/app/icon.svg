@@ -1,0 +1,30 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4FC3F7"/>
+      <stop offset="100%" stop-color="#0277BD"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <rect width="64" height="32" rx="14" fill="white" fill-opacity="0.06"/>
+
+  <!-- row 1: check -->
+  <circle cx="17" cy="22" r="5" fill="white"/>
+  <path d="M13.5 22 L16.5 25.5 L21.5 18.5" fill="none" stroke="#0277BD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="25" y1="22" x2="52" y2="22" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+
+  <!-- row 2: dot + line -->
+  <circle cx="17" cy="33" r="2.8" fill="white" fill-opacity="0.75"/>
+  <line x1="22" y1="33" x2="51" y2="33" stroke="white" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- row 3: dot + line -->
+  <circle cx="17" cy="44" r="2.8" fill="white" fill-opacity="0.75"/>
+  <line x1="22" y1="44" x2="48" y2="44" stroke="white" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- row 4: dot + line + note -->
+  <circle cx="17" cy="55" r="2.8" fill="white" fill-opacity="0.75"/>
+  <line x1="22" y1="55" x2="44" y2="55" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <line x1="50" y1="48" x2="50" y2="57" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M50 48 Q58 52 56 58" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="46" cy="58" rx="5" ry="3.4" fill="white" transform="rotate(-18 46 58)"/>
+</svg>
