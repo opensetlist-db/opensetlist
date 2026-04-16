@@ -5,6 +5,13 @@ import { serializeBigInt } from "@/lib/utils";
 export async function POST(request: NextRequest) {
   const { eventId, afterPosition } = await request.json();
 
+  if (!eventId) {
+    return NextResponse.json(
+      { error: "Invalid event ID" },
+      { status: 400 }
+    );
+  }
+
   if (!Number.isInteger(afterPosition) || afterPosition < 0) {
     return NextResponse.json(
       { error: "Invalid insert position" },
@@ -12,7 +19,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const eid = BigInt(eventId);
+  let eid: bigint;
+  try {
+    eid = BigInt(eventId);
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid event ID" },
+      { status: 400 }
+    );
+  }
   const newPosition = afterPosition + 1;
 
   const item = await prisma.$transaction(async (tx) => {

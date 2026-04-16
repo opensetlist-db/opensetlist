@@ -15,7 +15,7 @@ function KoContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">이용약관</h1>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 5월 2일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 15일</p>
 
       <Section title="1. 서비스 소개">
         <p className="text-zinc-600">
@@ -65,7 +65,7 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Terms of Service</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: May 2, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 15, 2026</p>
 
       <Section title="1. About the Service">
         <p className="text-zinc-600">
@@ -121,7 +121,7 @@ function JaContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">利用規約</h1>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年5月2日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月15日</p>
 
       <Section title="1. サービス紹介">
         <p className="text-zinc-600">

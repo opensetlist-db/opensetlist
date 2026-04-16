@@ -4,13 +4,32 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   const { itemIdA, itemIdB } = await request.json();
 
+  if (!itemIdA || !itemIdB) {
+    return NextResponse.json(
+      { error: "Both item IDs are required" },
+      { status: 400 }
+    );
+  }
+
+  let idA: bigint;
+  let idB: bigint;
+  try {
+    idA = BigInt(itemIdA);
+    idB = BigInt(itemIdB);
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid item ID" },
+      { status: 400 }
+    );
+  }
+
   const [itemA, itemB] = await Promise.all([
     prisma.setlistItem.findUnique({
-      where: { id: BigInt(itemIdA) },
+      where: { id: idA },
       select: { id: true, eventId: true, position: true },
     }),
     prisma.setlistItem.findUnique({
-      where: { id: BigInt(itemIdB) },
+      where: { id: idB },
       select: { id: true, eventId: true, position: true },
     }),
   ]);

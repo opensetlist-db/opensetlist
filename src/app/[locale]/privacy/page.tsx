@@ -20,7 +20,7 @@ function KoContent() {
         OpenSetlist(이하 &quot;서비스&quot;)는 이용자의 개인정보를 중요시하며,
         「개인정보 보호법」을 준수합니다.
       </p>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 5월 2일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 15일</p>
 
       <Section title="1. 수집하는 개인정보">
         <p className="mb-2 font-medium">자동 수집 정보</p>
@@ -110,7 +110,7 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Privacy Policy</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: May 2, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 15, 2026</p>
 
       <Section title="Information We Collect">
         <p className="mb-2 font-medium">Automatically collected:</p>
@@ -155,6 +155,26 @@ function EnContent() {
         </ul>
       </Section>
 
+      <Section title="Data Retention">
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Retained during service usage</li>
+          <li>Deleted immediately upon account deletion</li>
+          <li>Retained as required by law</li>
+        </ul>
+      </Section>
+
+      <Section title="Your Rights">
+        <p className="mb-2 text-zinc-600">
+          You may exercise the following rights at any time:
+        </p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Request access to your personal data</li>
+          <li>Request correction of your personal data</li>
+          <li>Request deletion of your personal data</li>
+          <li>Request to stop processing your personal data</li>
+        </ul>
+      </Section>
+
       <Section title="Contact">
         <p className="text-zinc-600">
           <a
@@ -178,7 +198,7 @@ function JaContent() {
         OpenSetlist（以下「本サービス」）は、ユーザーの個人情報を重視し、
         個人情報保護法を遵守します。
       </p>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年5月2日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月15日</p>
 
       <Section title="1. 収集する個人情報">
         <p className="mb-2 font-medium">自動収集情報</p>

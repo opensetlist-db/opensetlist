@@ -14,13 +14,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     {
       url: `${BASE_URL}/${locale}/privacy`,
-      lastModified: new Date("2026-05-02"),
+      lastModified: new Date("2026-04-15"),
       changeFrequency: "yearly" as const,
       priority: 0.3,
     },
     {
       url: `${BASE_URL}/${locale}/terms`,
-      lastModified: new Date("2026-05-02"),
+      lastModified: new Date("2026-04-15"),
       changeFrequency: "yearly" as const,
       priority: 0.3,
     },

@@ -107,6 +107,11 @@
     "events": "이벤트 목록",
     "noEvents": "등록된 이벤트가 없습니다."
   },
+  "Footer": {
+    "privacy": "개인정보처리방침",
+    "terms": "이용약관",
+    "contact": "문의"
+  },
   "Meta": {
     "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
     "setlistDb": "공연 셋리스트 데이터베이스",

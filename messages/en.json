@@ -107,6 +107,11 @@
     "events": "Events",
     "noEvents": "No events registered."
   },
+  "Footer": {
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "contact": "Contact"
+  },
   "Meta": {
     "description": "Setlist database for anime & game live events",
     "setlistDb": "setlist database",
