@@ -1,7 +1,6 @@
 import { getLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-
-const CONTACT_EMAIL = "help@opensetlist.com";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 export async function generateMetadata() {
   const locale = await getLocale();
