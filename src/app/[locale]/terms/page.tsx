@@ -1,5 +1,6 @@
 import { getLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 export async function generateMetadata() {
   const locale = await getLocale();
@@ -15,12 +16,12 @@ function KoContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">이용약관</h1>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 15일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 17일</p>
 
       <Section title="1. 서비스 소개">
         <p className="text-zinc-600">
-          OpenSetlist는 애니메이션/게임 라이브 공연의 셋리스트 정보를 제공하는
-          커뮤니티 데이터베이스입니다.
+          OpenSetlist는 라이브 공연의 셋리스트 정보를 제공하는 커뮤니티
+          데이터베이스입니다.
         </p>
       </Section>
 
@@ -50,10 +51,10 @@ function KoContent() {
       <Section title="5. 문의">
         <p className="text-zinc-600">
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -65,12 +66,12 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Terms of Service</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: April 15, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 17, 2026</p>
 
       <Section title="1. About the Service">
         <p className="text-zinc-600">
           OpenSetlist is a community database providing setlist information for
-          anime and game live events.
+          live events.
         </p>
       </Section>
 
@@ -106,10 +107,10 @@ function EnContent() {
       <Section title="5. Contact">
         <p className="text-zinc-600">
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -121,12 +122,12 @@ function JaContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">利用規約</h1>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月15日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月17日</p>
 
       <Section title="1. サービス紹介">
         <p className="text-zinc-600">
-          OpenSetlistは、アニメ・ゲームのライブ公演のセットリスト情報を提供する
-          コミュニティデータベースです。
+          OpenSetlistは、ライブ公演のセットリスト情報を提供するコミュニティ
+          データベースです。
         </p>
       </Section>
 
@@ -156,10 +157,10 @@ function JaContent() {
       <Section title="5. お問い合わせ">
         <p className="text-zinc-600">
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>

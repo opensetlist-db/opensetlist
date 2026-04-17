@@ -1,5 +1,6 @@
 import { getLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 export async function generateMetadata() {
   const locale = await getLocale();
@@ -20,12 +21,17 @@ function KoContent() {
         OpenSetlist(이하 &quot;서비스&quot;)는 이용자의 개인정보를 중요시하며,
         「개인정보 보호법」을 준수합니다.
       </p>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 15일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 17일</p>
 
       <Section title="1. 수집하는 개인정보">
-        <p className="mb-2 font-medium">자동 수집 정보</p>
+        <p className="mb-2 font-medium">자동 수집 정보 (제3자 처리자)</p>
+        <p className="mb-2 text-zinc-600">
+          아래 정보는 웹 서비스 제공 과정에서 호스팅·분석·CDN 제공자(Vercel,
+          Google Analytics, Cloudflare)에 의해 수집됩니다. OpenSetlist는 이러한
+          정보를 자체 데이터베이스에 저장하지 않습니다:
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>방문 기록, IP 주소, 쿠키</li>
+          <li>IP 주소, 방문 기록, 쿠키</li>
           <li>브라우저 종류, 운영체제</li>
           <li>방문 페이지, 체류 시간</li>
         </ul>
@@ -61,13 +67,19 @@ function KoContent() {
 
       <Section title="4. 제3자 제공">
         <p className="mb-2 text-zinc-600">
-          수집한 개인정보는 원칙적으로 제3자에게 제공하지 않습니다. 단, 아래의
-          경우는 예외입니다:
+          수집한 정보는 아래의 처리자 및 광고 파트너 외에는 제3자에게 제공하지
+          않습니다:
         </p>
-        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+        <p className="mb-1 mt-2 font-medium">호스팅·분석·CDN 처리자</p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel (호스팅)</li>
           <li>Google Analytics (방문자 분석)</li>
-          <li>Google AdSense (광고 서비스)</li>
-          <li>Kakao AdFit (광고 서비스)</li>
+          <li>Cloudflare (CDN)</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">광고 파트너</p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Google AdSense</li>
+          <li>Kakao AdFit</li>
         </ul>
       </Section>
 
@@ -95,10 +107,10 @@ function KoContent() {
         <p className="text-zinc-600">
           개인정보 관련 문의:{" "}
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -110,12 +122,20 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Privacy Policy</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: April 15, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 17, 2026</p>
 
       <Section title="Information We Collect">
-        <p className="mb-2 font-medium">Automatically collected:</p>
+        <p className="mb-2 font-medium">
+          Automatically collected (by third-party processors):
+        </p>
+        <p className="mb-2 text-zinc-600">
+          The following is collected by our hosting, analytics, and CDN
+          providers (Vercel, Google Analytics, Cloudflare) as a necessary
+          part of serving the website. OpenSetlist does not store this data
+          in its own database:
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>Visit logs, IP address, cookies</li>
+          <li>IP address, visit logs, cookies</li>
           <li>Browser type, operating system</li>
           <li>Pages visited, time spent</li>
         </ul>
@@ -147,9 +167,20 @@ function EnContent() {
       </Section>
 
       <Section title="Third Parties">
-        <p className="mb-2 text-zinc-600">We share data with:</p>
+        <p className="mb-2 text-zinc-600">
+          We share data only with the processors and advertising partners
+          listed below:
+        </p>
+        <p className="mb-1 mt-2 font-medium">
+          Hosting / Analytics / CDN processors
+        </p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel (hosting)</li>
+          <li>Google Analytics (visitor analytics)</li>
+          <li>Cloudflare (CDN)</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">Advertising partners</p>
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
-          <li>Google Analytics</li>
           <li>Google AdSense</li>
           <li>Kakao AdFit</li>
         </ul>
@@ -178,10 +209,10 @@ function EnContent() {
       <Section title="Contact">
         <p className="text-zinc-600">
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -198,12 +229,17 @@ function JaContent() {
         OpenSetlist（以下「本サービス」）は、ユーザーの個人情報を重視し、
         個人情報保護法を遵守します。
       </p>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月15日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月17日</p>
 
       <Section title="1. 収集する個人情報">
-        <p className="mb-2 font-medium">自動収集情報</p>
+        <p className="mb-2 font-medium">自動収集情報（第三者処理者による）</p>
+        <p className="mb-2 text-zinc-600">
+          以下の情報は、ウェブサービスを提供する過程でホスティング・分析・CDN提供者（Vercel、Google
+          Analytics、Cloudflare）によって収集されます。OpenSetlist
+          自身のデータベースには保存されません：
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>訪問履歴、IPアドレス、Cookie</li>
+          <li>IPアドレス、訪問履歴、Cookie</li>
           <li>ブラウザの種類、OS</li>
           <li>閲覧ページ、滞在時間</li>
         </ul>
@@ -238,12 +274,18 @@ function JaContent() {
 
       <Section title="4. 第三者への提供">
         <p className="mb-2 text-zinc-600">
-          収集した個人情報は原則として第三者に提供しません。ただし、以下の場合は例外です：
+          収集した情報は、以下の処理者および広告パートナー以外の第三者には提供しません：
         </p>
-        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+        <p className="mb-1 mt-2 font-medium">ホスティング・分析・CDN処理者</p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel（ホスティング）</li>
           <li>Google Analytics（訪問者分析）</li>
-          <li>Google AdSense（広告サービス）</li>
-          <li>Kakao AdFit（広告サービス）</li>
+          <li>Cloudflare（CDN）</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">広告パートナー</p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Google AdSense</li>
+          <li>Kakao AdFit</li>
         </ul>
       </Section>
 
@@ -271,10 +313,10 @@ function JaContent() {
         <p className="text-zinc-600">
           個人情報に関するお問い合わせ：{" "}
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>

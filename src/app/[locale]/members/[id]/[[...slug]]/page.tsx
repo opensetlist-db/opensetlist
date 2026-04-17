@@ -46,7 +46,12 @@ async function getMemberPerformances(stageIdentityId: string) {
     include: {
       setlistItem: {
         include: {
-          event: { include: { translations: true } },
+          event: {
+            include: {
+              translations: true,
+              eventSeries: { include: { translations: true } },
+            },
+          },
           songs: {
             include: {
               song: { include: { translations: true } },
@@ -105,6 +110,7 @@ export default async function MemberPage({ params }: Props) {
 
   const t = await getTranslations("Member");
   const ct = await getTranslations("Common");
+  const et = await getTranslations("Event");
   const tr = pickTranslation(member.translations, locale);
   const name = tr?.name ?? "Unknown";
   const shortName = tr?.shortName ?? null;
@@ -220,6 +226,11 @@ export default async function MemberPage({ params }: Props) {
             {performances.map((p) => {
               const event = p.setlistItem.event;
               const evTr = pickTranslation(event.translations, locale);
+              const seriesTr = event.eventSeries
+                ? pickTranslation(event.eventSeries.translations, locale)
+                : null;
+              const linkLabel =
+                seriesTr?.name ?? evTr?.name ?? et("unknownEvent");
               const songNames = p.setlistItem.songs
                 .map((s) => {
                   const sTr = pickTranslation(s.song.translations, locale);
@@ -234,11 +245,16 @@ export default async function MemberPage({ params }: Props) {
                       {formatDate(event.date, locale)}
                     </span>
                     <Link
-                      href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
+                      href={`/${locale}/events/${event.id}/${event.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {evTr?.name ?? "Unknown Event"}
+                      {linkLabel}
                     </Link>
+                    {seriesTr?.name && evTr?.name && seriesTr.name !== evTr.name && (
+                      <span className="text-sm text-zinc-500">
+                        ({evTr.name})
+                      </span>
+                    )}
                   </div>
                   {songNames.length > 0 && (
                     <p className="mt-1 text-sm text-zinc-500">

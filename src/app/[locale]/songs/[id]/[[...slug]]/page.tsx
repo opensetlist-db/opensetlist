@@ -324,12 +324,12 @@ export default async function SongPage({ params }: Props) {
                       {formatDate(event.date, locale)}
                     </span>
                     <Link
-                      href={`/${locale}/events/${event.id}/${slugify(linkLabel)}`}
+                      href={`/${locale}/events/${event.id}/${event.slug}`}
                       className="text-blue-600 hover:underline"
                     >
                       {linkLabel}
                     </Link>
-                    {seriesTr && evTr?.name && (
+                    {seriesTr?.name && evTr?.name && seriesTr.name !== evTr.name && (
                       <span className="text-sm text-zinc-500">
                         ({evTr.name})
                       </span>
