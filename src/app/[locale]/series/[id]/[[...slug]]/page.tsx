@@ -30,7 +30,7 @@ async function getEventSeries(id: bigint, locale: string) {
       events: {
         where: { isDeleted: false },
         include: { translations: true },
-        orderBy: { date: "asc" },
+        orderBy: [{ date: "asc" }, { startTime: "asc" }],
       },
     },
   });

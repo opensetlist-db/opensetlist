@@ -86,7 +86,7 @@ export default function EventForm({ initialData }: EventFormProps) {
       date: date || null,
       country: country || null,
       posterUrl: posterUrl || null,
-      startTime,
+      startTime: `${startTime}Z`,
       translations: translations
         .filter((t) => t.name.trim())
         .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null })),
