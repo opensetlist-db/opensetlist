@@ -128,9 +128,10 @@
     "report": "Report",
     "reported": "Reported",
     "hidden": "Hidden by reports",
-    "count": "{count} impressions",
+    "count": "{count, plural, =0 {No impressions} one {# impression} other {# impressions}}",
     "empty": "No impressions yet. Be the first to share!",
-    "charLimit": "{current}/200"
+    "charLimit": "{current}/200",
+    "submitError": "Couldn't post your impression. Please try again."
   },
   "Header": {
     "home": "Home",

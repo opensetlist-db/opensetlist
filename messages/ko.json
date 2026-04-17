@@ -128,9 +128,10 @@
     "report": "신고",
     "reported": "신고함",
     "hidden": "신고로 숨김",
-    "count": "{count}개의 한줄평",
+    "count": "{count, plural, =0 {한줄평 없음} other {#개의 한줄평}}",
     "empty": "아직 등록된 한줄평이 없습니다. 첫 한줄평을 남겨보세요!",
-    "charLimit": "{current}/200"
+    "charLimit": "{current}/200",
+    "submitError": "한줄평을 등록하지 못했어요. 다시 시도해 주세요."
   },
   "Header": {
     "home": "홈",

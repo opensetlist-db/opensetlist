@@ -34,6 +34,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [reported, setReported] = useState<Record<string, boolean>>({});
 
   const savedKey = `impression-${eventId}`;
@@ -63,6 +64,14 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     setReported(map);
   }, [impressions]);
 
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setTimeout(() => {
+      setCooldownSeconds((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [cooldownSeconds]);
+
   const persistSaved = useCallback(
     (value: SavedImpression | null) => {
       if (value) {
@@ -87,13 +96,17 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     if (submitting) return;
     setSubmitting(true);
     setCooldownSeconds(0);
+    setError(null);
     try {
       const res = await fetch("/api/impressions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId, content: trimmed, locale }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError(t("submitError"));
+        return;
+      }
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
       const next: SavedImpression = {
@@ -105,6 +118,8 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
       persistSaved(next);
       setDraft("");
       setMode("submitted");
+    } catch {
+      setError(t("submitError"));
     } finally {
       setSubmitting(false);
     }
@@ -116,6 +131,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     if (trimmed.length < 1 || trimmed.length > IMPRESSION_MAX_CHARS) return;
     if (submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
       const res = await fetch(`/api/impressions/${saved.id}`, {
         method: "PUT",
@@ -127,7 +143,10 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
         setCooldownSeconds(body.remainingSeconds ?? 0);
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError(t("submitError"));
+        return;
+      }
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
       const next: SavedImpression = {
@@ -140,6 +159,8 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
       setDraft("");
       setMode("submitted");
       setCooldownSeconds(0);
+    } catch {
+      setError(t("submitError"));
     } finally {
       setSubmitting(false);
     }
@@ -168,12 +189,14 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     setDraft(saved.content);
     setMode("editing");
     setCooldownSeconds(0);
+    setError(null);
   };
 
   const cancelEditing = () => {
     setDraft("");
     setMode("submitted");
     setCooldownSeconds(0);
+    setError(null);
   };
 
   const charCount = draft.length;
@@ -198,6 +221,11 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
             rows={2}
             className="w-full resize-none rounded border border-zinc-200 p-2 text-sm outline-none focus:border-zinc-400"
           />
+          {error && (
+            <div className="mt-2 text-xs text-red-600" role="alert">
+              {error}
+            </div>
+          )}
           <div className="mt-2 flex items-center justify-between text-xs">
             <span className={overLimit ? "text-red-600" : "text-zinc-500"}>
               {t("charLimit", { current: charCount })}
@@ -243,6 +271,11 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
           {cooldownSeconds > 0 && (
             <div className="mt-2 text-xs text-amber-600">
               {t("editCooldown", { seconds: cooldownSeconds })}
+            </div>
+          )}
+          {error && (
+            <div className="mt-2 text-xs text-red-600" role="alert">
+              {error}
             </div>
           )}
           <div className="mt-2 flex items-center justify-between text-xs">
