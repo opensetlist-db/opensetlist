@@ -1,6 +1,8 @@
 import { getLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 
+const CONTACT_EMAIL = "help@opensetlist.com";
+
 export async function generateMetadata() {
   const locale = await getLocale();
   const titles: Record<string, string> = {
@@ -66,13 +68,19 @@ function KoContent() {
 
       <Section title="4. 제3자 제공">
         <p className="mb-2 text-zinc-600">
-          수집한 개인정보는 원칙적으로 제3자에게 제공하지 않습니다. 단, 아래의
-          경우는 예외입니다:
+          수집한 정보는 아래의 처리자 및 광고 파트너 외에는 제3자에게 제공하지
+          않습니다:
         </p>
-        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+        <p className="mb-1 mt-2 font-medium">호스팅·분석·CDN 처리자</p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel (호스팅)</li>
           <li>Google Analytics (방문자 분석)</li>
-          <li>Google AdSense (광고 서비스)</li>
-          <li>Kakao AdFit (광고 서비스)</li>
+          <li>Cloudflare (CDN)</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">광고 파트너</p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Google AdSense</li>
+          <li>Kakao AdFit</li>
         </ul>
       </Section>
 
@@ -100,10 +108,10 @@ function KoContent() {
         <p className="text-zinc-600">
           개인정보 관련 문의:{" "}
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -160,9 +168,20 @@ function EnContent() {
       </Section>
 
       <Section title="Third Parties">
-        <p className="mb-2 text-zinc-600">We share data with:</p>
+        <p className="mb-2 text-zinc-600">
+          We share data only with the processors and advertising partners
+          listed below:
+        </p>
+        <p className="mb-1 mt-2 font-medium">
+          Hosting / Analytics / CDN processors
+        </p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel (hosting)</li>
+          <li>Google Analytics (visitor analytics)</li>
+          <li>Cloudflare (CDN)</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">Advertising partners</p>
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
-          <li>Google Analytics</li>
           <li>Google AdSense</li>
           <li>Kakao AdFit</li>
         </ul>
@@ -191,10 +210,10 @@ function EnContent() {
       <Section title="Contact">
         <p className="text-zinc-600">
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -256,12 +275,18 @@ function JaContent() {
 
       <Section title="4. 第三者への提供">
         <p className="mb-2 text-zinc-600">
-          収集した個人情報は原則として第三者に提供しません。ただし、以下の場合は例外です：
+          収集した情報は、以下の処理者および広告パートナー以外の第三者には提供しません：
         </p>
-        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+        <p className="mb-1 mt-2 font-medium">ホスティング・分析・CDN処理者</p>
+        <ul className="mb-3 list-inside list-disc space-y-1 text-zinc-600">
+          <li>Vercel（ホスティング）</li>
           <li>Google Analytics（訪問者分析）</li>
-          <li>Google AdSense（広告サービス）</li>
-          <li>Kakao AdFit（広告サービス）</li>
+          <li>Cloudflare（CDN）</li>
+        </ul>
+        <p className="mb-1 mt-2 font-medium">広告パートナー</p>
+        <ul className="list-inside list-disc space-y-1 text-zinc-600">
+          <li>Google AdSense</li>
+          <li>Kakao AdFit</li>
         </ul>
       </Section>
 
@@ -289,10 +314,10 @@ function JaContent() {
         <p className="text-zinc-600">
           個人情報に関するお問い合わせ：{" "}
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
