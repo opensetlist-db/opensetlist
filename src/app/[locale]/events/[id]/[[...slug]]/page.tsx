@@ -26,14 +26,6 @@ async function getEvent(id: bigint, locale: string) {
       eventSeries: {
         include: { translations: true },
       },
-      parentEvent: {
-        include: { translations: true },
-      },
-      childEvents: {
-        where: { isDeleted: false },
-        include: { translations: true },
-        orderBy: { date: "asc" },
-      },
       setlistItems: {
         where: { isDeleted: false },
         include: {
@@ -238,9 +230,6 @@ export default async function EventPage({ params }: Props) {
   const seriesTr = event.eventSeries
     ? pickTranslation(event.eventSeries.translations, locale)
     : null;
-  const parentTr = event.parentEvent
-    ? pickTranslation(event.parentEvent.translations, locale)
-    : null;
 
   // Split setlist into main and encore
   const mainItems = event.setlistItems.filter((item) => !item.isEncore);
@@ -261,17 +250,6 @@ export default async function EventPage({ params }: Props) {
               className="hover:underline"
             >
               {displayName(seriesTr)}
-            </Link>
-          </>
-        )}
-        {event.parentEvent && parentTr && (
-          <>
-            {" / "}
-            <Link
-              href={`/${locale}/events/${event.parentEvent.id}/${slugify(parentTr.name)}`}
-              className="hover:underline"
-            >
-              {displayName(parentTr)}
             </Link>
           </>
         )}
@@ -311,31 +289,6 @@ export default async function EventPage({ params }: Props) {
           )}
         </div>
       </header>
-
-      {/* Child Events (legs/days) */}
-      {event.childEvents.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">{ct("events")}</h2>
-          <ul className="space-y-2">
-            {event.childEvents.map((child) => {
-              const childTr = pickTranslation(child.translations, locale);
-              return (
-                <li key={child.id} className="flex items-baseline gap-3">
-                  <span className="shrink-0 text-sm text-zinc-400">
-                    {formatDate(child.date, locale)}
-                  </span>
-                  <Link
-                    href={`/${locale}/events/${child.id}/${slugify(childTr?.name ?? "")}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {childTr?.name ?? "Unknown"}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
 
       {/* Trending Songs */}
       <TrendingSongs songs={trendingSongs} />

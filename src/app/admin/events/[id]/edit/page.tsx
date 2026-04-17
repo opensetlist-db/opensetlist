@@ -43,15 +43,12 @@ export default async function EditEventPage({ params }: Props) {
             type: data.type,
             status: data.status,
             eventSeriesId: data.eventSeriesId ? Number(data.eventSeriesId) : null,
-            parentEventId: data.parentEventId ? Number(data.parentEventId) : null,
             date: data.date
               ? new Date(data.date).toISOString().split("T")[0]
               : null,
             country: data.country,
             posterUrl: data.posterUrl,
-            startTime: data.startTime
-              ? new Date(data.startTime).toISOString().slice(0, 16)
-              : null,
+            startTime: new Date(data.startTime).toISOString().slice(0, 16),
             translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null }) => ({
               locale: t.locale,
               name: t.name,

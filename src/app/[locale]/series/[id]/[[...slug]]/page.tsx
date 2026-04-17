@@ -29,14 +29,7 @@ async function getEventSeries(id: bigint, locale: string) {
       },
       events: {
         where: { isDeleted: false },
-        include: {
-          translations: true,
-          childEvents: {
-            where: { isDeleted: false },
-            include: { translations: true },
-            orderBy: { date: "asc" },
-          },
-        },
+        include: { translations: true },
         orderBy: { date: "asc" },
       },
     },
@@ -79,9 +72,6 @@ export default async function EventSeriesPage({ params }: Props) {
   const parentTr = series.parentSeries
     ? pickTranslation(series.parentSeries.translations, locale)
     : null;
-
-  // Separate top-level events (no parentEventId) from leg containers
-  const topLevelEvents = series.events.filter((e) => !e.parentEventId);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -152,14 +142,12 @@ export default async function EventSeriesPage({ params }: Props) {
       {/* Events */}
       <section className="mb-8">
         <h2 className="mb-3 text-xl font-semibold">{t("events")}</h2>
-        {topLevelEvents.length === 0 ? (
+        {series.events.length === 0 ? (
           <p className="text-zinc-500">{t("noEvents")}</p>
         ) : (
           <ul className="space-y-4">
-            {topLevelEvents.map((event) => {
+            {series.events.map((event) => {
               const evTr = pickTranslation(event.translations, locale);
-              const isLegContainer = event.childEvents.length > 0;
-
               return (
                 <li key={event.id}>
                   <div className="flex items-baseline gap-3">
@@ -172,7 +160,7 @@ export default async function EventSeriesPage({ params }: Props) {
                       href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
                       className="font-medium text-blue-600 hover:underline"
                     >
-                      {evTr?.name ?? "Unknown Event"}
+                      {evTr?.name ?? evT("unknownEvent")}
                     </Link>
                     {(() => {
                       const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
@@ -190,33 +178,6 @@ export default async function EventSeriesPage({ params }: Props) {
                       {evTr.venue}
                       {evTr.city && `, ${evTr.city}`}
                     </p>
-                  )}
-                  {/* Nested child events (days) */}
-                  {isLegContainer && (
-                    <ul className="ml-9 mt-2 space-y-1 border-l-2 border-zinc-100 pl-3">
-                      {event.childEvents.map((child) => {
-                        const childTr = pickTranslation(
-                          child.translations,
-                          locale
-                        );
-                        return (
-                          <li
-                            key={child.id}
-                            className="flex items-baseline gap-3"
-                          >
-                            <span className="shrink-0 text-sm text-zinc-400">
-                              {formatDate(child.date, locale)}
-                            </span>
-                            <Link
-                              href={`/${locale}/events/${child.id}/${slugify(childTr?.name ?? "")}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              {childTr?.name ?? "Unknown"}
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
                   )}
                 </li>
               );

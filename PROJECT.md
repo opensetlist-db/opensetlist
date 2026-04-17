@@ -202,7 +202,7 @@ Tab 3: Songs
 
 Tab 4: Events
   series_slug | series_ja_name | series_ja_shortName | series_ko_name | series_ko_shortName
-  | series_type | event_slug | parentEvent_slug | event_type | date
+  | series_type | event_slug | event_type | date
   | venue | city | country | ja_name | ja_shortName | ko_name | ko_shortName
 
 Tab 5: SetlistItems
