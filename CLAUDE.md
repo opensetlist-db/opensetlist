@@ -207,7 +207,7 @@ See `memory/schema_design.md` for the intended directory tree.
 ## Domain & Brand
 
 - **Domain:** opensetlist.com (Namecheap, WHOIS privacy ON)
-- **Email:** hello.opensetlist@gmail.com
+- **Email:** help@opensetlist.com
 - **"Open"** signals: free to access, open to contributions, community-built
 - **Genre-neutral:** works for K-POP/J-POP expansion without rebrand
 
