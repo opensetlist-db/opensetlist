@@ -23,7 +23,11 @@ async function getOngoingEvents(now: Date) {
         { status: "ongoing" },
         {
           status: "scheduled",
-          startTime: { gte: ongoingStart, lte: now },
+          // Boundaries mirror `getEventStatus`: an event with
+          // startTime === now - 12h has ongoingEnd === now, which the
+          // badge classifies as "completed" — so exclude it here
+          // (`gt`) and include it in the completed query below (`lte`).
+          startTime: { gt: ongoingStart, lte: now },
         },
       ],
     },
@@ -82,7 +86,7 @@ async function getCompletedEvents(
       { status: "completed" as const },
       {
         status: "scheduled" as const,
-        startTime: { lt: completedCutoff },
+        startTime: { lte: completedCutoff },
       },
     ],
   };
