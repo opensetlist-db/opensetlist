@@ -146,7 +146,12 @@ export default async function HomePage({
             <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
               {t("ongoingEvents")}
             </h2>
-            <EventList events={ongoingEvents} locale={locale} evT={evT} />
+            <EventList
+              events={ongoingEvents}
+              locale={locale}
+              evT={evT}
+              referenceNow={now}
+            />
           </section>
         )}
 
@@ -159,6 +164,7 @@ export default async function HomePage({
               events={upcomingData.events}
               locale={locale}
               evT={evT}
+              referenceNow={now}
             />
             <Pagination
               currentPage={upcomingData.page}
@@ -181,6 +187,7 @@ export default async function HomePage({
                 events={completedData.events}
                 locale={locale}
                 evT={evT}
+                referenceNow={now}
               />
               <Pagination
                 currentPage={completedData.page}
@@ -200,10 +207,12 @@ function EventList({
   events,
   locale,
   evT,
+  referenceNow,
 }: {
   events: Awaited<ReturnType<typeof getOngoingEvents>>;
   locale: string;
   evT: Awaited<ReturnType<typeof getTranslations<"Event">>>;
+  referenceNow: Date;
 }) {
   return (
     <ul className="space-y-2">
@@ -212,7 +221,7 @@ function EventList({
         const seriesTr = event.eventSeries
           ? pickTranslation(event.eventSeries.translations, locale)
           : null;
-        const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+        const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
         return (
           <li
             key={event.id}

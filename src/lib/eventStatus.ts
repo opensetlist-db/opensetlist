@@ -13,7 +13,10 @@ type EventStatusInput = {
   startTime: Date | string | null;
 };
 
-export function getEventStatus(event: EventStatusInput): ResolvedEventStatus {
+export function getEventStatus(
+  event: EventStatusInput,
+  referenceNow?: Date
+): ResolvedEventStatus {
   if (event.status === "cancelled") return "cancelled";
   if (event.status === "ongoing") return "ongoing";
   if (event.status === "completed") return "completed";
@@ -28,7 +31,7 @@ export function getEventStatus(event: EventStatusInput): ResolvedEventStatus {
   // reporting "completed" from an Invalid Date comparison.
   if (Number.isNaN(start.getTime())) return "upcoming";
 
-  const now = new Date();
+  const now = referenceNow ?? new Date();
   const ongoingEnd = new Date(start.getTime() + ONGOING_BUFFER_MS);
 
   if (now < start) return "upcoming";
