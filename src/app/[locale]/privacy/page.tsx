@@ -20,12 +20,17 @@ function KoContent() {
         OpenSetlist(이하 &quot;서비스&quot;)는 이용자의 개인정보를 중요시하며,
         「개인정보 보호법」을 준수합니다.
       </p>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 15일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 17일</p>
 
       <Section title="1. 수집하는 개인정보">
-        <p className="mb-2 font-medium">자동 수집 정보</p>
+        <p className="mb-2 font-medium">자동 수집 정보 (제3자 처리자)</p>
+        <p className="mb-2 text-zinc-600">
+          아래 정보는 웹 서비스 제공 과정에서 호스팅·분석·CDN 제공자(Vercel,
+          Google Analytics, Cloudflare)에 의해 수집됩니다. OpenSetlist는 이러한
+          정보를 자체 데이터베이스에 저장하지 않습니다:
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>방문 기록, IP 주소, 쿠키</li>
+          <li>IP 주소, 방문 기록, 쿠키</li>
           <li>브라우저 종류, 운영체제</li>
           <li>방문 페이지, 체류 시간</li>
         </ul>
@@ -95,10 +100,10 @@ function KoContent() {
         <p className="text-zinc-600">
           개인정보 관련 문의:{" "}
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href="mailto:help@opensetlist.com"
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            help@opensetlist.com
           </a>
         </p>
       </Section>
@@ -110,12 +115,20 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Privacy Policy</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: April 15, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 17, 2026</p>
 
       <Section title="Information We Collect">
-        <p className="mb-2 font-medium">Automatically collected:</p>
+        <p className="mb-2 font-medium">
+          Automatically collected (by third-party processors):
+        </p>
+        <p className="mb-2 text-zinc-600">
+          The following is collected by our hosting, analytics, and CDN
+          providers (Vercel, Google Analytics, Cloudflare) as a necessary
+          part of serving the website. OpenSetlist does not store this data
+          in its own database:
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>Visit logs, IP address, cookies</li>
+          <li>IP address, visit logs, cookies</li>
           <li>Browser type, operating system</li>
           <li>Pages visited, time spent</li>
         </ul>
@@ -178,10 +191,10 @@ function EnContent() {
       <Section title="Contact">
         <p className="text-zinc-600">
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href="mailto:help@opensetlist.com"
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            help@opensetlist.com
           </a>
         </p>
       </Section>
@@ -198,12 +211,17 @@ function JaContent() {
         OpenSetlist（以下「本サービス」）は、ユーザーの個人情報を重視し、
         個人情報保護法を遵守します。
       </p>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月15日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月17日</p>
 
       <Section title="1. 収集する個人情報">
-        <p className="mb-2 font-medium">自動収集情報</p>
+        <p className="mb-2 font-medium">自動収集情報（第三者処理者による）</p>
+        <p className="mb-2 text-zinc-600">
+          以下の情報は、ウェブサービスを提供する過程でホスティング・分析・CDN提供者（Vercel、Google
+          Analytics、Cloudflare）によって収集されます。OpenSetlist
+          自身のデータベースには保存されません：
+        </p>
         <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
-          <li>訪問履歴、IPアドレス、Cookie</li>
+          <li>IPアドレス、訪問履歴、Cookie</li>
           <li>ブラウザの種類、OS</li>
           <li>閲覧ページ、滞在時間</li>
         </ul>
@@ -271,10 +289,10 @@ function JaContent() {
         <p className="text-zinc-600">
           個人情報に関するお問い合わせ：{" "}
           <a
-            href="mailto:hello.opensetlist@gmail.com"
+            href="mailto:help@opensetlist.com"
             className="text-blue-600 hover:underline"
           >
-            hello.opensetlist@gmail.com
+            help@opensetlist.com
           </a>
         </p>
       </Section>

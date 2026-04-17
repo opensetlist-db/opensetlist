@@ -18,7 +18,7 @@ export function Footer() {
         </Link>
         <span>&middot;</span>
         <a
-          href="mailto:hello.opensetlist@gmail.com"
+          href="mailto:help@opensetlist.com"
           className="hover:text-zinc-600"
         >
           {t("contact")}

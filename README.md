@@ -14,4 +14,4 @@
 
 ## Contact
 
-hello.opensetlist@gmail.com
+help@opensetlist.com
