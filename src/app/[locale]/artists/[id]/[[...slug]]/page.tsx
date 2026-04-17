@@ -429,16 +429,18 @@ export default async function ArtistPage({ params }: Props) {
               const seriesTr = event.eventSeries
                 ? pickTranslation(event.eventSeries.translations, locale)
                 : null;
+              const linkLabel =
+                seriesTr?.name ?? evTr?.name ?? evT("unknownEvent");
               return (
                 <li key={event.id} className="flex items-baseline gap-3">
                   <span className="shrink-0 text-sm text-zinc-400">
                     {formatDate(event.date, locale)}
                   </span>
                   <Link
-                    href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
+                    href={`/${locale}/events/${event.id}/${slugify(linkLabel)}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
+                    {linkLabel}
                   </Link>
                   {seriesTr && evTr?.name && (
                     <span className="text-sm text-zinc-500">

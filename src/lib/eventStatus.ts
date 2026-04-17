@@ -10,25 +10,22 @@ const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // 12h — conservative upper bou
 
 type EventStatusInput = {
   status: EventStatus;
-  startTime: Date | string | null;
+  startTime: Date | string;
 };
 
-export function getEventStatus(event: EventStatusInput): ResolvedEventStatus {
+export function getEventStatus(
+  event: EventStatusInput,
+  referenceNow?: Date
+): ResolvedEventStatus {
   if (event.status === "cancelled") return "cancelled";
   if (event.status === "ongoing") return "ongoing";
   if (event.status === "completed") return "completed";
-
-  if (!event.startTime) return "upcoming";
 
   const start =
     event.startTime instanceof Date
       ? event.startTime
       : new Date(event.startTime);
-  // Malformed startTime — fall back to "upcoming" rather than silently
-  // reporting "completed" from an Invalid Date comparison.
-  if (Number.isNaN(start.getTime())) return "upcoming";
-
-  const now = new Date();
+  const now = referenceNow ?? new Date();
   const ongoingEnd = new Date(start.getTime() + ONGOING_BUFFER_MS);
 
   if (now < start) return "upcoming";

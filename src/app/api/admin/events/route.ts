@@ -22,13 +22,19 @@ export async function POST(request: NextRequest) {
     type,
     status,
     eventSeriesId,
-    parentEventId,
     date,
     country,
     posterUrl,
     startTime,
     translations,
   } = body;
+
+  if (!startTime) {
+    return NextResponse.json(
+      { error: "startTime is required" },
+      { status: 400 }
+    );
+  }
 
   const slug = body.slug || generateSlug(translations[0]?.name || `event-${Date.now()}`);
 
@@ -38,9 +44,8 @@ export async function POST(request: NextRequest) {
       type,
       status: status ?? "scheduled",
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
-      parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
-      startTime: startTime ? new Date(startTime) : null,
+      startTime: new Date(startTime),
       country: country || null,
       posterUrl: posterUrl || null,
       translations: {

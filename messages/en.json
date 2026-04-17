@@ -4,6 +4,7 @@
     "description": "Setlist database for anime & game live events",
     "recentEvents": "Recent Events",
     "upcomingEvents": "Upcoming Events",
+    "ongoingEvents": "Live Now",
     "noEvents": "No events registered.",
     "viewAll": "View All"
   },
