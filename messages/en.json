@@ -116,6 +116,22 @@
     "moved": "Emotional",
     "trending": "Trending songs"
   },
+  "Impression": {
+    "title": "One-line impressions",
+    "placeholder": "How was the show? (up to 200 chars)",
+    "submit": "Post",
+    "submitted": "Your impression",
+    "edit": "Edit",
+    "editing": "Editing your impression",
+    "editCooldown": "You can edit again in {seconds}s.",
+    "cancel": "Cancel",
+    "report": "Report",
+    "reported": "Reported",
+    "hidden": "Hidden by reports",
+    "count": "{count} impressions",
+    "empty": "No impressions yet. Be the first to share!",
+    "charLimit": "{current}/200"
+  },
   "Header": {
     "home": "Home",
     "artists": "Artists",
