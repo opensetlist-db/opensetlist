@@ -4,6 +4,7 @@
     "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
     "recentEvents": "最近のイベント",
     "upcomingEvents": "今後のイベント",
+    "ongoingEvents": "開催中のイベント",
     "noEvents": "登録されたイベントがありません。",
     "viewAll": "すべて見る"
   },
