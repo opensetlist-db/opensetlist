@@ -1,5 +1,6 @@
 import { getLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 export async function generateMetadata() {
   const locale = await getLocale();
@@ -50,10 +51,10 @@ function KoContent() {
       <Section title="5. 문의">
         <p className="text-zinc-600">
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -106,10 +107,10 @@ function EnContent() {
       <Section title="5. Contact">
         <p className="text-zinc-600">
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
@@ -156,10 +157,10 @@ function JaContent() {
       <Section title="5. お問い合わせ">
         <p className="text-zinc-600">
           <a
-            href="mailto:help@opensetlist.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-blue-600 hover:underline"
           >
-            help@opensetlist.com
+            {CONTACT_EMAIL}
           </a>
         </p>
       </Section>
