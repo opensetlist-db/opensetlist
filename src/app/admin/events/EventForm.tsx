@@ -11,11 +11,10 @@ type EventFormProps = {
     type: string;
     status: string;
     eventSeriesId: number | null;
-    parentEventId: number | null;
     date: string | null;
     country: string | null;
     posterUrl: string | null;
-    startTime: string | null;
+    startTime: string;
     translations: Translation[];
   };
 };
@@ -32,9 +31,6 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [eventSeriesId, setEventSeriesId] = useState(
     initialData?.eventSeriesId?.toString() ?? ""
   );
-  const [parentEventId, setParentEventId] = useState(
-    initialData?.parentEventId?.toString() ?? ""
-  );
   const [date, setDate] = useState(initialData?.date ?? "");
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
@@ -48,17 +44,11 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [seriesList, setSeriesList] = useState<
     { id: number; translations: { locale: string; name: string }[] }[]
   >([]);
-  const [eventsList, setEventsList] = useState<
-    { id: number; translations: { locale: string; name: string }[] }[]
-  >([]);
 
   useEffect(() => {
     fetch("/api/admin/event-series")
       .then((r) => r.json())
       .then(setSeriesList);
-    fetch("/api/admin/events")
-      .then((r) => r.json())
-      .then(setEventsList);
   }, []);
 
   function updateTranslation(
@@ -81,17 +71,22 @@ export default function EventForm({ initialData }: EventFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!startTime) {
+      alert("시작 시각은 필수입니다.");
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
       type,
       status,
       eventSeriesId: eventSeriesId || null,
-      parentEventId: parentEventId || null,
       date: date || null,
       country: country || null,
       posterUrl: posterUrl || null,
-      startTime: startTime || null,
+      startTime: `${startTime}Z`,
       translations: translations
         .filter((t) => t.name.trim())
         .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null })),
@@ -150,53 +145,26 @@ export default function EventForm({ initialData }: EventFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">시리즈</label>
-          <select
-            value={eventSeriesId}
-            onChange={(e) => setEventSeriesId(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          >
-            <option value="">없음</option>
-            {seriesList.map((s) => {
-              const name =
-                s.translations.find((t) => t.locale === "ko")?.name ??
-                s.translations[0]?.name ??
-                `ID: ${s.id}`;
-              return (
-                <option key={s.id} value={s.id}>
-                  {name}
-                </option>
-              );
-            })}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            상위 이벤트 (레그/데이)
-          </label>
-          <select
-            value={parentEventId}
-            onChange={(e) => setParentEventId(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
-          >
-            <option value="">없음</option>
-            {eventsList
-              .filter((ev) => ev.id !== initialData?.id)
-              .map((ev) => {
-                const name =
-                  ev.translations.find((t) => t.locale === "ko")?.name ??
-                  ev.translations[0]?.name ??
-                  `ID: ${ev.id}`;
-                return (
-                  <option key={ev.id} value={ev.id}>
-                    {name}
-                  </option>
-                );
-              })}
-          </select>
-        </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">시리즈</label>
+        <select
+          value={eventSeriesId}
+          onChange={(e) => setEventSeriesId(e.target.value)}
+          className="w-full rounded border border-zinc-300 px-3 py-2"
+        >
+          <option value="">없음</option>
+          {seriesList.map((s) => {
+            const name =
+              s.translations.find((t) => t.locale === "ko")?.name ??
+              s.translations[0]?.name ??
+              `ID: ${s.id}`;
+            return (
+              <option key={s.id} value={s.id}>
+                {name}
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -210,11 +178,12 @@ export default function EventForm({ initialData }: EventFormProps) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">시작 시각 (UTC)</label>
+          <label className="mb-1 block text-sm font-medium">시작 시각 (UTC) *</label>
           <input
             type="datetime-local"
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
+            required
             className="w-full rounded border border-zinc-300 px-3 py-2"
           />
         </div>

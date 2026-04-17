@@ -15,10 +15,6 @@ async function getOngoingEvents(now: Date) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      parentEventId: null,
-      // Events without a startTime can't be auto-classified, so they
-      // shouldn't sneak into ongoing/completed via the override branches.
-      startTime: { not: null },
       OR: [
         { status: "ongoing" },
         {
@@ -47,7 +43,6 @@ async function getUpcomingEvents(
 ) {
   const where = {
     isDeleted: false,
-    parentEventId: null,
     status: "scheduled" as const,
     startTime: { gt: now },
   };
@@ -80,8 +75,6 @@ async function getCompletedEvents(
 
   const where = {
     isDeleted: false,
-    parentEventId: null,
-    startTime: { not: null },
     OR: [
       { status: "completed" as const },
       {

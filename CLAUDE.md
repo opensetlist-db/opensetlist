@@ -116,7 +116,7 @@ See `memory/schema_design.md` for full table overview, or read `prisma/schema.pr
 
 **Multi-artist events** — 이차원 페스 gets `EventSeries` with `artistId: null`, `organizerName: "Bandai Namco / Lantis"`.
 
-**Event leg grouping** — `Event.parentEventId` self-ref. "Kobe Day 1" + "Kobe Day 2" share `parentEventId → "Kobe leg"`. Leg containers have `date: null`.
+**Multi-day shows** — one `Event` row per day, all sharing the same `EventSeries`. No leg/container event in between.
 
 **VA changes** — `RealPersonStageIdentity` `startDate`/`endDate`. `SetlistItemMember.realPersonId` always explicit, never inferred from dates.
 

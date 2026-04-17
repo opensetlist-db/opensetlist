@@ -398,21 +398,19 @@ model EventSeriesTranslation {
 }
 
 // ── EVENT ─────────────────────────────────────────────
-// One event = one concert date OR a leg/group container.
+// One event = one concert date. Multi-day shows are modeled as
+// one Event per day sharing the same EventSeries.
 // eventSeriesId: optional — null for truly standalone events.
-// parentEventId: optional — for leg/day grouping within a series.
-// date: null for leg-group container events.
 // status: drives UI mode.
 // BigInt: appears in public URLs e.g. /events/123
 model Event {
   id            BigInt             @id @default(autoincrement())
   slug          String             @unique
   eventSeriesId BigInt?
-  parentEventId BigInt?
   type          EventType
   status        EventStatus        @default(scheduled)
   date          DateTime?          @db.Date
-  startTime     DateTime?          // UTC; used as lock time for wishlist
+  startTime     DateTime           // UTC; used as lock time for wishlist
   country       String?            // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl     String?
   isDeleted     Boolean            @default(false)
@@ -420,14 +418,11 @@ model Event {
   createdAt     DateTime           @default(now())
 
   eventSeries   EventSeries?       @relation(fields: [eventSeriesId], references: [id])
-  parentEvent   Event?             @relation("EventChildren", fields: [parentEventId], references: [id])
-  childEvents   Event[]            @relation("EventChildren")
   translations  EventTranslation[]
   setlistItems  SetlistItem[]
   performers    EventPerformer[]
 
   @@index([eventSeriesId])
-  @@index([parentEventId])
   @@index([date, status])
   @@index([isDeleted])
 }

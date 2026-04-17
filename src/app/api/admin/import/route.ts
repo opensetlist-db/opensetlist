@@ -507,7 +507,10 @@ async function importEvents(rows: Record<string, string>[]) {
           type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || undefined,
           eventSeriesId: seriesId,
           date: row.date ? new Date(row.date) : null,
-          startTime: row.startTime ? new Date(row.startTime) : null,
+          // startTime is NOT NULL in the schema, so only overwrite when
+          // the CSV row actually carries a value — missing/blank means
+          // "keep the existing value", not "clear it".
+          ...(row.startTime ? { startTime: new Date(row.startTime) } : {}),
           country: row.country || null,
         },
       });
@@ -520,6 +523,10 @@ async function importEvents(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
+      if (!row.startTime) {
+        results.push(`SKIPPED: ${slug} (startTime required for new events)`);
+        continue;
+      }
       const event = await prisma.event.create({
         data: {
           slug,
@@ -527,7 +534,7 @@ async function importEvents(rows: Record<string, string>[]) {
           status: "scheduled",
           eventSeriesId: seriesId,
           date: row.date ? new Date(row.date) : null,
-          startTime: row.startTime ? new Date(row.startTime) : null,
+          startTime: new Date(row.startTime),
           country: row.country || null,
           translations: translations.length ? { create: translations } : undefined,
         },
@@ -536,20 +543,7 @@ async function importEvents(rows: Record<string, string>[]) {
     }
   }
 
-  // Second pass: set parentEventId by slug
-  for (const row of rows) {
-    if (!row.parentEvent_slug || !row.event_slug) continue;
-    const event = await prisma.event.findUnique({ where: { slug: row.event_slug } });
-    const parent = await prisma.event.findUnique({ where: { slug: row.parentEvent_slug } });
-    if (event && parent) {
-      await prisma.event.update({
-        where: { id: event.id },
-        data: { parentEventId: parent.id },
-      });
-    }
-  }
-
-  // Third pass: create EventPerformer rows
+  // Second pass: create EventPerformer rows
   const allSIs = await prisma.stageIdentity.findMany({
     include: { translations: true },
   });

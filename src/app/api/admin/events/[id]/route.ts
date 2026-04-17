@@ -47,13 +47,19 @@ export async function PUT(request: NextRequest, { params }: Props) {
     type,
     status,
     eventSeriesId,
-    parentEventId,
     date,
     country,
     posterUrl,
     startTime,
     translations,
   } = body;
+
+  if (!startTime) {
+    return NextResponse.json(
+      { error: "startTime is required" },
+      { status: 400 }
+    );
+  }
 
   await prisma.eventTranslation.deleteMany({ where: { eventId } });
 
@@ -66,9 +72,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
       // would be silently reset to "scheduled" on any unrelated edit.
       ...(status !== undefined ? { status } : {}),
       eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
-      parentEventId: parentEventId ? BigInt(parentEventId) : null,
       date: date ? new Date(date) : null,
-      startTime: startTime ? new Date(startTime) : null,
+      startTime: new Date(startTime),
       country: country || null,
       posterUrl: posterUrl || null,
       translations: {
