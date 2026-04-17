@@ -8,10 +8,10 @@ import {
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName, displayOriginalTitle } from "@/lib/display";
+import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
-import { ReactionButtons } from "@/components/ReactionButtons";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
+import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Metadata } from "next";
 
 type Props = {
@@ -231,9 +231,7 @@ export default async function EventPage({ params }: Props) {
     ? pickTranslation(event.eventSeries.translations, locale)
     : null;
 
-  // Split setlist into main and encore
-  const mainItems = event.setlistItems.filter((item) => !item.isEncore);
-  const encoreItems = event.setlistItems.filter((item) => item.isEncore);
+  const isOngoing = getEventStatus(event) === "ongoing";
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -294,145 +292,19 @@ export default async function EventPage({ params }: Props) {
       <TrendingSongs songs={trendingSongs} />
 
       {/* Setlist */}
-      <section className="mb-8">
-        <h2 className="mb-3 text-xl font-semibold">{t("setlist")}</h2>
-        {event.setlistItems.length === 0 ? (
-          <p className="text-zinc-500">{t("noSetlist")}</p>
-        ) : (
-          <>
-            <SetlistTable items={mainItems} locale={locale} t={t} reactionCounts={reactionCounts} />
-            {encoreItems.length > 0 && (
-              <>
-                <h3 className="mb-2 mt-6 text-lg font-semibold text-zinc-600">
-                  {ct("encore")}
-                </h3>
-                <SetlistTable items={encoreItems} locale={locale} t={t} reactionCounts={reactionCounts} />
-              </>
-            )}
-          </>
-        )}
-      </section>
+      {/*
+        serializeBigInt() converts BigInt → Number at runtime, but its generic
+        signature preserves the input's TS types, so `setlistItems` still reports
+        bigint ids. Cast at the boundary — LiveSetlistItem mirrors the runtime
+        (Number) shape.
+      */}
+      <LiveSetlist
+        eventId={id}
+        initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
+        initialReactionCounts={reactionCounts}
+        isOngoing={isOngoing}
+        locale={locale}
+      />
     </main>
-  );
-}
-
-function SetlistTable({
-  items,
-  locale,
-  t,
-  reactionCounts,
-}: {
-  items: Awaited<ReturnType<typeof getEvent>> extends infer E
-    ? E extends { setlistItems: infer S }
-      ? S
-      : never
-    : never;
-  locale: string;
-  t: Awaited<ReturnType<typeof getTranslations<"Event">>>;
-  reactionCounts: Record<string, Record<string, number>>;
-}) {
-  return (
-    <ol className="space-y-3">
-      {items.map((item, index) => {
-        const songNames = item.songs.map((s) => {
-          const sTr = pickTranslation(s.song.translations, locale);
-          const { main, sub, variant } = displayOriginalTitle(s.song, sTr ?? null, locale);
-          return {
-            id: s.song.id,
-            main,
-            sub,
-            variantLabel: variant,
-            artists: s.song.artists,
-          };
-        });
-
-        const performers = item.performers.map((p) => {
-          const siTr = pickTranslation(
-            p.stageIdentity.translations,
-            locale
-          );
-          return siTr?.name ?? "Unknown";
-        });
-
-        // Resolve unit artist for display (#6)
-        const unitArtist = item.stageType !== "full_group" && item.artists?.[0]
-          ? item.artists[0]
-          : null;
-        const unitArtistTr = unitArtist
-          ? pickTranslation(unitArtist.artist.translations, locale)
-          : null;
-
-        return (
-          <li key={item.id} className="border-b border-zinc-100 pb-2">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 w-6 shrink-0 text-right text-sm font-mono text-zinc-400">
-                {index + 1}
-              </span>
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-1">
-                  {songNames.length > 0 ? (
-                    songNames.map((song, i) => (
-                      <span key={song.id}>
-                        {i > 0 && (
-                          <span className="mx-1 text-zinc-400">+</span>
-                        )}
-                        <Link
-                          href={`/${locale}/songs/${song.id}/${slugify(song.main)}`}
-                          className="font-medium text-blue-600 hover:underline"
-                        >
-                          {song.main}
-                        </Link>
-                        {song.sub && (
-                          <span className="ml-1 text-sm text-zinc-400">
-                            {song.sub}
-                          </span>
-                        )}
-                        {song.variantLabel && (
-                          <span className="ml-1 text-xs text-zinc-500">
-                            ({song.variantLabel})
-                          </span>
-                        )}
-                      </span>
-                    ))
-                  ) : item.type !== "song" ? (
-                    <span className="font-medium text-zinc-500">
-                      {t(`itemType.${item.type}`)}
-                    </span>
-                  ) : (
-                    <span className="text-zinc-400">{t("noSongAssigned")}</span>
-                  )}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-2 text-sm text-zinc-500">
-                  {item.stageType !== "full_group" && (
-                    unitArtistTr ? (
-                      <Link
-                        href={`/${locale}/artists/${unitArtist!.artist.id}/${slugify(unitArtistTr.name)}`}
-                        className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs hover:underline"
-                      >
-                        {unitArtistTr.name}
-                      </Link>
-                    ) : (
-                      <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
-                        {item.unitName ?? item.stageType}
-                      </span>
-                    )
-                  )}
-                  {performers.length > 0 && (
-                    <span>{performers.join(", ")}</span>
-                  )}
-                </div>
-                {item.type === "song" && !item.isEncore && item.note && (
-                  <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
-                )}
-                <ReactionButtons
-                  setlistItemId={String(item.id)}
-                  initialCounts={reactionCounts[String(item.id)] ?? {}}
-                />
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
