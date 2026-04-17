@@ -7,35 +7,33 @@ type RouteProps = { params: Promise<{ id: string }> };
 export async function POST(_req: NextRequest, { params }: RouteProps) {
   const { id } = await params;
 
-  let iid: bigint;
-  try {
-    iid = BigInt(id);
-  } catch {
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-  }
-
-  const existing = await prisma.eventImpression.findFirst({
-    where: { id: iid, isDeleted: false },
-    select: { id: true, reportCount: true },
+  const incremented = await prisma.eventImpression.updateMany({
+    where: { id, isDeleted: false },
+    data: { reportCount: { increment: 1 } },
   });
-  if (!existing) {
+  if (incremented.count === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const nextCount = existing.reportCount + 1;
-  const shouldHide = nextCount >= REPORT_HIDE_THRESHOLD;
-
-  const updated = await prisma.eventImpression.update({
-    where: { id: iid },
-    data: {
-      reportCount: nextCount,
-      isHidden: shouldHide ? true : undefined,
-    },
+  const row = await prisma.eventImpression.findUnique({
+    where: { id },
     select: { reportCount: true, isHidden: true },
   });
+  if (!row) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  let isHidden = row.isHidden;
+  if (row.reportCount >= REPORT_HIDE_THRESHOLD && !row.isHidden) {
+    await prisma.eventImpression.updateMany({
+      where: { id, isHidden: false },
+      data: { isHidden: true },
+    });
+    isHidden = true;
+  }
 
   return NextResponse.json({
-    reportCount: updated.reportCount,
-    isHidden: updated.isHidden,
+    reportCount: row.reportCount,
+    isHidden,
   });
 }

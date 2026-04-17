@@ -10,15 +10,8 @@ export async function DELETE(_req: NextRequest, { params }: RouteProps) {
 
   const { id } = await params;
 
-  let iid: bigint;
-  try {
-    iid = BigInt(id);
-  } catch {
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-  }
-
   const existing = await prisma.eventImpression.findUnique({
-    where: { id: iid },
+    where: { id },
     select: { id: true },
   });
   if (!existing) {
@@ -26,7 +19,7 @@ export async function DELETE(_req: NextRequest, { params }: RouteProps) {
   }
 
   await prisma.eventImpression.update({
-    where: { id: iid },
+    where: { id },
     data: {
       isDeleted: true,
       deletedAt: new Date(),
@@ -42,15 +35,8 @@ export async function PATCH(_req: NextRequest, { params }: RouteProps) {
 
   const { id } = await params;
 
-  let iid: bigint;
-  try {
-    iid = BigInt(id);
-  } catch {
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-  }
-
   const existing = await prisma.eventImpression.findUnique({
-    where: { id: iid },
+    where: { id },
     select: { id: true },
   });
   if (!existing) {
@@ -58,7 +44,7 @@ export async function PATCH(_req: NextRequest, { params }: RouteProps) {
   }
 
   await prisma.eventImpression.update({
-    where: { id: iid },
+    where: { id },
     data: {
       isDeleted: false,
       deletedAt: null,

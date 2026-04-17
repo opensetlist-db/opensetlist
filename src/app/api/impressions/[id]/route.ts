@@ -28,15 +28,8 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     );
   }
 
-  let iid: bigint;
-  try {
-    iid = BigInt(id);
-  } catch {
-    return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-  }
-
   const existing = await prisma.eventImpression.findFirst({
-    where: { id: iid, isDeleted: false },
+    where: { id, isDeleted: false },
   });
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -51,13 +44,13 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
   }
 
   const updated = await prisma.eventImpression.update({
-    where: { id: iid },
+    where: { id },
     data: { content: trimmed },
   });
 
   return NextResponse.json({
     impression: {
-      id: updated.id.toString(),
+      id: updated.id,
       eventId: updated.eventId.toString(),
       content: updated.content,
       locale: updated.locale,

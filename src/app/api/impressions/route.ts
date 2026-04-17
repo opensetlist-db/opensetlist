@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   });
 
   const impressions = rows.map((r) => ({
-    id: r.id.toString(),
+    id: r.id,
     eventId: r.eventId.toString(),
     content: r.content,
     locale: r.locale,
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     impression: {
-      id: created.id.toString(),
+      id: created.id,
       eventId: created.eventId.toString(),
       content: created.content,
       locale: created.locale,

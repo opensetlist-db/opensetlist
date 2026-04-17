@@ -508,7 +508,7 @@ model SetlistItemReaction {
 // reportCount reaching REPORT_HIDE_THRESHOLD auto-sets isHidden.
 // Soft delete via isDeleted/deletedAt; moderators can restore.
 model EventImpression {
-  id          BigInt    @id @default(autoincrement())
+  id          String    @id @default(uuid())
   eventId     BigInt
   content     String    @db.VarChar(200)
   locale      String    @default("ko")

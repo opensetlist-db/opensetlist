@@ -149,7 +149,7 @@ async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
     take: 50,
   });
   return rows.map((r) => ({
-    id: r.id.toString(),
+    id: r.id,
     eventId: r.eventId.toString(),
     content: r.content,
     locale: r.locale,
