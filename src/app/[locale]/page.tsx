@@ -9,14 +9,16 @@ import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 
-async function getOngoingEvents() {
-  const now = new Date();
+async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
 
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
       parentEventId: null,
+      // Events without a startTime can't be auto-classified, so they
+      // shouldn't sneak into ongoing/completed via the override branches.
+      startTime: { not: null },
       OR: [
         { status: "ongoing" },
         {
@@ -34,10 +36,11 @@ async function getOngoingEvents() {
   return serializeBigInt(events);
 }
 
-async function getUpcomingEvents(page: number, pageSize: number) {
-  const now = new Date();
-  const skip = (page - 1) * pageSize;
-
+async function getUpcomingEvents(
+  now: Date,
+  requestedPage: number,
+  pageSize: number
+) {
   const where = {
     isDeleted: false,
     parentEventId: null,
@@ -45,31 +48,36 @@ async function getUpcomingEvents(page: number, pageSize: number) {
     startTime: { gt: now },
   };
 
-  const [events, total] = await Promise.all([
-    prisma.event.findMany({
-      where,
-      include: {
-        translations: true,
-        eventSeries: { include: { translations: true } },
-      },
-      orderBy: { startTime: "asc" },
-      skip,
-      take: pageSize,
-    }),
-    prisma.event.count({ where }),
-  ]);
+  const total = await prisma.event.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const skip = (page - 1) * pageSize;
 
-  return { events: serializeBigInt(events), total };
+  const events = await prisma.event.findMany({
+    where,
+    include: {
+      translations: true,
+      eventSeries: { include: { translations: true } },
+    },
+    orderBy: { startTime: "asc" },
+    skip,
+    take: pageSize,
+  });
+
+  return { events: serializeBigInt(events), total, totalPages, page };
 }
 
-async function getCompletedEvents(page: number, pageSize: number) {
-  const now = new Date();
+async function getCompletedEvents(
+  now: Date,
+  requestedPage: number,
+  pageSize: number
+) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
-  const skip = (page - 1) * pageSize;
 
   const where = {
     isDeleted: false,
     parentEventId: null,
+    startTime: { not: null },
     OR: [
       { status: "completed" as const },
       {
@@ -79,21 +87,23 @@ async function getCompletedEvents(page: number, pageSize: number) {
     ],
   };
 
-  const [events, total] = await Promise.all([
-    prisma.event.findMany({
-      where,
-      include: {
-        translations: true,
-        eventSeries: { include: { translations: true } },
-      },
-      orderBy: { startTime: "desc" },
-      skip,
-      take: pageSize,
-    }),
-    prisma.event.count({ where }),
-  ]);
+  const total = await prisma.event.count({ where });
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const skip = (page - 1) * pageSize;
 
-  return { events: serializeBigInt(events), total };
+  const events = await prisma.event.findMany({
+    where,
+    include: {
+      translations: true,
+      eventSeries: { include: { translations: true } },
+    },
+    orderBy: { startTime: "desc" },
+    skip,
+    take: pageSize,
+  });
+
+  return { events: serializeBigInt(events), total, totalPages, page };
 }
 
 function parsePage(raw: string | undefined): number {
@@ -111,20 +121,21 @@ export default async function HomePage({
   const { locale } = await params;
   const { upcomingPage, completedPage } = await searchParams;
 
-  const upcomingPageNum = parsePage(upcomingPage);
-  const completedPageNum = parsePage(completedPage);
+  const requestedUpcomingPage = parsePage(upcomingPage);
+  const requestedCompletedPage = parsePage(completedPage);
 
   const t = await getTranslations("Home");
   const evT = await getTranslations("Event");
 
-  const [ongoingEvents, upcomingData, completedData] = await Promise.all([
-    getOngoingEvents(),
-    getUpcomingEvents(upcomingPageNum, PAGE_SIZE),
-    getCompletedEvents(completedPageNum, PAGE_SIZE),
-  ]);
+  // Single `now` shared across all three queries so an event near a
+  // bucket boundary can't get classified inconsistently between sections.
+  const now = new Date();
 
-  const upcomingTotalPages = Math.ceil(upcomingData.total / PAGE_SIZE);
-  const completedTotalPages = Math.ceil(completedData.total / PAGE_SIZE);
+  const [ongoingEvents, upcomingData, completedData] = await Promise.all([
+    getOngoingEvents(now),
+    getUpcomingEvents(now, requestedUpcomingPage, PAGE_SIZE),
+    getCompletedEvents(now, requestedCompletedPage, PAGE_SIZE),
+  ]);
 
   return (
     <>
@@ -139,7 +150,7 @@ export default async function HomePage({
           </section>
         )}
 
-        {upcomingData.events.length > 0 && (
+        {upcomingData.total > 0 && (
           <section className="mb-10">
             <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
               {t("upcomingEvents")}
@@ -150,10 +161,10 @@ export default async function HomePage({
               evT={evT}
             />
             <Pagination
-              currentPage={upcomingPageNum}
-              totalPages={upcomingTotalPages}
+              currentPage={upcomingData.page}
+              totalPages={upcomingData.totalPages}
               pageParamKey="upcomingPage"
-              otherParams={{ completedPage: String(completedPageNum) }}
+              otherParams={{ completedPage: String(completedData.page) }}
             />
           </section>
         )}
@@ -162,7 +173,7 @@ export default async function HomePage({
           <h2 className="font-dm-sans mb-4 text-2xl font-semibold">
             {t("recentEvents")}
           </h2>
-          {completedData.events.length === 0 ? (
+          {completedData.total === 0 ? (
             <p className="text-zinc-500">{t("noEvents")}</p>
           ) : (
             <>
@@ -172,10 +183,10 @@ export default async function HomePage({
                 evT={evT}
               />
               <Pagination
-                currentPage={completedPageNum}
-                totalPages={completedTotalPages}
+                currentPage={completedData.page}
+                totalPages={completedData.totalPages}
                 pageParamKey="completedPage"
-                otherParams={{ upcomingPage: String(upcomingPageNum) }}
+                otherParams={{ upcomingPage: String(upcomingData.page) }}
               />
             </>
           )}
