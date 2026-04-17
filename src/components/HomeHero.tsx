@@ -15,12 +15,6 @@ export async function HomeHero() {
         >
           {t("heading")}
         </h1>
-        <p
-          className="font-dm-sans mt-3 text-[14px]"
-          style={{ color: "#777777" }}
-        >
-          {t("subtext")}
-        </p>
 
         {/* TODO: wire up search in Phase 1C */}
         <div
