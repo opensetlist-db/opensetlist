@@ -126,8 +126,7 @@
     "closeMenu": "메뉴 닫기"
   },
   "Hero": {
-    "heading": "공연 기록의 모든 것",
-    "subtext": "좋아하는 아티스트의 셋리스트를 찾고, 기록하고, 공유하세요",
+    "heading": "모두가 이어가는 공연의 이야기",
     "searchPlaceholder": "아티스트, 이벤트, 곡 검색..."
   },
   "Footer": {

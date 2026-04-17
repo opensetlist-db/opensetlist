@@ -243,6 +243,7 @@ Version tags: vMAJOR.MINOR.PATCH (e.g. v1.0.0)
 Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
+- NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
 - Always create a version tag for production releases
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
