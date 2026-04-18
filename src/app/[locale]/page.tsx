@@ -223,19 +223,19 @@ function EventList({
         return (
           <li
             key={event.id}
-            className="flex items-center gap-3 rounded-lg bg-white px-4 py-3"
+            className="flex items-start gap-3 rounded-lg bg-white px-4 py-3"
             style={{
               border: "0.5px solid #e8e8e8",
               borderRadius: "8px",
             }}
           >
-            <EventDateTime
-              date={event.date}
-              startTime={event.startTime}
-              variant="inline"
-              className="font-dm-sans text-[11px] text-[#999999]"
-            />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+              <EventDateTime
+                date={event.date}
+                startTime={event.startTime}
+                variant="inline"
+                className="font-dm-sans text-[11px] text-[#999999]"
+              />
               <Link
                 href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
                 className="font-dm-sans block truncate text-[12px] hover:underline"
