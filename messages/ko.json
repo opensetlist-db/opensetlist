@@ -74,7 +74,7 @@
   },
   "Event": {
     "title": "이벤트",
-    "allEvents": "공연 목록",
+    "allEvents": "이벤트 목록",
     "ongoing": "지금 공연 중",
     "upcoming": "예정된 이벤트",
     "past": "지난 이벤트",

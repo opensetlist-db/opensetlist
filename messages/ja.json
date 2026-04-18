@@ -74,7 +74,7 @@
   },
   "Event": {
     "title": "イベント",
-    "allEvents": "ライブ一覧",
+    "allEvents": "イベント一覧",
     "ongoing": "開催中",
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
