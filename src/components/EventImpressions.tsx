@@ -55,13 +55,18 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   }, [savedKey]);
 
   useEffect(() => {
-    const map: Record<string, boolean> = {};
-    for (const imp of impressions) {
-      if (localStorage.getItem(`impression-report-${imp.id}`) === "true") {
-        map[imp.id] = true;
+    setReported((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const imp of impressions) {
+        if (imp.id in next) continue;
+        if (localStorage.getItem(`impression-report-${imp.id}`) === "true") {
+          next[imp.id] = true;
+          changed = true;
+        }
       }
-    }
-    setReported(map);
+      return changed ? next : prev;
+    });
   }, [impressions]);
 
   useEffect(() => {
