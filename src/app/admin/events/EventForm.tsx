@@ -141,7 +141,11 @@ export default function EventForm({ initialData }: EventFormProps) {
     return stageIdentities.filter((si) => matchesIdentitySearch(si, search));
   }
 
+  // Adding to one picker removes from the other — EventPerformer has
+  // @@unique([eventId, stageIdentityId]), so the same identity can't be
+  // both a performer and a guest on the same event.
   function selectPerformer(si: StageIdentityOption) {
+    setSelectedGuests((prev) => prev.filter((g) => g.id !== si.id));
     setSelectedPerformers((prev) =>
       prev.some((p) => p.id === si.id) ? prev : [...prev, si]
     );
@@ -151,6 +155,7 @@ export default function EventForm({ initialData }: EventFormProps) {
     setSelectedPerformers((prev) => prev.filter((p) => p.id !== id));
   }
   function selectGuest(si: StageIdentityOption) {
+    setSelectedPerformers((prev) => prev.filter((p) => p.id !== si.id));
     setSelectedGuests((prev) =>
       prev.some((p) => p.id === si.id) ? prev : [...prev, si]
     );
@@ -419,11 +424,16 @@ export default function EventForm({ initialData }: EventFormProps) {
                   }
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
-                  {LOCALES.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
+                  {LOCALES.map((l) => {
+                    const usedByOther = translations.some(
+                      (t, j) => j !== i && t.locale === l
+                    );
+                    return (
+                      <option key={l} value={l} disabled={usedByOther}>
+                        {l}
+                      </option>
+                    );
+                  })}
                 </select>
                 <input
                   placeholder="이벤트명"
