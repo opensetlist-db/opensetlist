@@ -147,6 +147,7 @@
     "submitError": "感想を投稿できませんでした。もう一度お試しください。"
   },
   "Header": {
+    "brandName": "OpenSetlist",
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",

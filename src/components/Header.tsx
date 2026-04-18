@@ -64,7 +64,7 @@ export function Header() {
             className="font-josefin text-[17px] uppercase"
             style={{ color: "#1a1a1a", letterSpacing: 0 }}
           >
-            OpenSetlist
+            {t("brandName")}
           </span>
         </Link>
 
