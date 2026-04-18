@@ -74,6 +74,12 @@
   },
   "Event": {
     "title": "イベント",
+    "allEvents": "ライブ一覧",
+    "ongoing": "開催中",
+    "upcoming": "開催予定",
+    "past": "過去のライブ",
+    "ungrouped": "その他のライブ",
+    "noEvents": "表示できるライブはありません",
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
@@ -139,7 +145,6 @@
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",
-    "tours": "ツアー",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる"
