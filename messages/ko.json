@@ -74,6 +74,12 @@
   },
   "Event": {
     "title": "이벤트",
+    "allEvents": "이벤트 목록",
+    "ongoing": "지금 공연 중",
+    "upcoming": "예정된 이벤트",
+    "past": "지난 이벤트",
+    "ungrouped": "기타 이벤트",
+    "noEvents": "표시할 이벤트가 없습니다",
     "setlist": "세트리스트",
     "noSetlist": "세트리스트가 등록되지 않았습니다.",
     "noSongAssigned": "곡 미지정",
@@ -139,7 +145,6 @@
     "home": "홈",
     "artists": "아티스트",
     "events": "이벤트",
-    "tours": "투어",
     "signIn": "로그인",
     "openMenu": "메뉴 열기",
     "closeMenu": "메뉴 닫기"

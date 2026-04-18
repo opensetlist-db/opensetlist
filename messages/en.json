@@ -74,6 +74,12 @@
   },
   "Event": {
     "title": "Events",
+    "allEvents": "All Events",
+    "ongoing": "Live Now",
+    "upcoming": "Upcoming Events",
+    "past": "Past Events",
+    "ungrouped": "Other events",
+    "noEvents": "No events to show",
     "setlist": "Setlist",
     "noSetlist": "No setlist registered.",
     "noSongAssigned": "No song assigned",
@@ -139,7 +145,6 @@
     "home": "Home",
     "artists": "Artists",
     "events": "Events",
-    "tours": "Tours",
     "signIn": "Sign in",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
