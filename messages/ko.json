@@ -107,6 +107,9 @@
       "special": "스페셜"
     }
   },
+  "EventDateTime": {
+    "localTime": "현지 시각"
+  },
   "EventSeries": {
     "title": "시리즈",
     "type": {

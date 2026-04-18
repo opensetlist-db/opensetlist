@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/utils";
+import { serializeBigInt, pickTranslation, slugify } from "@/lib/utils";
+import { EventDateTime } from "@/components/EventDateTime";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
@@ -228,12 +229,12 @@ function EventList({
               borderRadius: "8px",
             }}
           >
-            <span
-              className="font-dm-sans shrink-0 text-[11px]"
-              style={{ color: "#999999" }}
-            >
-              {formatDate(event.date, locale)}
-            </span>
+            <EventDateTime
+              date={event.date}
+              startTime={event.startTime}
+              variant="inline"
+              className="font-dm-sans shrink-0 text-[11px] text-[#999999]"
+            />
             <div className="flex-1 min-w-0">
               <Link
                 href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}

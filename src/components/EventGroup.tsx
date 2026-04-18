@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { pickTranslation, slugify, formatDate } from "@/lib/utils";
+import { pickTranslation, slugify } from "@/lib/utils";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { EventDateTime } from "@/components/EventDateTime";
 import type { EventForList } from "@/lib/events";
 
 interface Props {
@@ -41,12 +42,12 @@ export async function EventGroup({
                 borderRadius: "8px",
               }}
             >
-              <span
-                className="font-dm-sans shrink-0 text-[11px]"
-                style={{ color: "#999999" }}
-              >
-                {formatDate(event.date, locale)}
-              </span>
+              <EventDateTime
+                date={event.date}
+                startTime={event.startTime}
+                variant="inline"
+                className="font-dm-sans shrink-0 text-[11px] text-[#999999]"
+              />
               <div className="flex-1 min-w-0">
                 <Link
                   href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
