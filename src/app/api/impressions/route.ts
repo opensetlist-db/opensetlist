@@ -36,7 +36,14 @@ export async function GET(req: NextRequest) {
     updatedAt: r.updatedAt.toISOString(),
   }));
 
-  return NextResponse.json({ impressions });
+  return NextResponse.json(
+    { impressions },
+    {
+      headers: {
+        "Cache-Control": "public, s-maxage=3, stale-while-revalidate=5",
+      },
+    },
+  );
 }
 
 export async function POST(req: NextRequest) {

@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/utils";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
+import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 
 export interface Impression {
   id: string;
@@ -24,12 +25,22 @@ interface SavedImpression {
 interface Props {
   eventId: string;
   initialImpressions: Impression[];
+  isOngoing: boolean;
 }
 
-export function EventImpressions({ eventId, initialImpressions }: Props) {
+export function EventImpressions({
+  eventId,
+  initialImpressions,
+  isOngoing,
+}: Props) {
   const t = useTranslations("Impression");
   const locale = useLocale();
   const [impressions, setImpressions] = useState<Impression[]>(initialImpressions);
+
+  const { impressions: polled } = useImpressionPolling({
+    eventId,
+    enabled: isOngoing,
+  });
   const [saved, setSaved] = useState<SavedImpression | null>(null);
   const [mode, setMode] = useState<"new" | "submitted" | "editing">("new");
   const [draft, setDraft] = useState("");
@@ -44,6 +55,11 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     setImpressions(initialImpressions);
     setReported({});
   }, [eventId, initialImpressions]);
+
+  useEffect(() => {
+    if (!polled) return;
+    setImpressions(polled);
+  }, [polled]);
 
   useEffect(() => {
     setSaved(null);
@@ -242,7 +258,15 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   return (
     <section className="mt-10">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">{t("title")}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">{t("title")}</h2>
+          {isOngoing && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+              LIVE
+            </span>
+          )}
+        </div>
         <span className="text-xs text-zinc-500">
           {t("count", { count: impressions.length })}
         </span>
