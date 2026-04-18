@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     posterUrl,
     startTime,
     translations,
+    performerIds = [],
+    guestIds = [],
   } = body;
 
   if (!startTime) {
@@ -50,15 +52,43 @@ export async function POST(request: NextRequest) {
       posterUrl: posterUrl || null,
       translations: {
         create: translations.map(
-          (t: { locale: string; name: string; shortName?: string | null }) => ({
+          (t: {
+            locale: string;
+            name: string;
+            shortName?: string | null;
+            city?: string | null;
+            venue?: string | null;
+          }) => ({
             locale: t.locale,
             name: t.name,
             shortName: t.shortName || null,
+            city: t.city || null,
+            venue: t.venue || null,
           })
         ),
       },
     },
     include: { translations: true },
   });
+
+  const performerRows = [
+    ...(performerIds as string[]).map((id) => ({
+      eventId: event.id,
+      stageIdentityId: id,
+      isGuest: false,
+    })),
+    ...(guestIds as string[]).map((id) => ({
+      eventId: event.id,
+      stageIdentityId: id,
+      isGuest: true,
+    })),
+  ];
+  if (performerRows.length > 0) {
+    await prisma.eventPerformer.createMany({
+      data: performerRows,
+      skipDuplicates: true,
+    });
+  }
+
   return NextResponse.json(serializeBigInt(event), { status: 201 });
 }

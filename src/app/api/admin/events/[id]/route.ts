@@ -11,6 +11,18 @@ export async function GET(_request: NextRequest, { params }: Props) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
+      performers: {
+        include: {
+          stageIdentity: {
+            include: {
+              translations: true,
+              artistLinks: {
+                include: { artist: { include: { translations: true } } },
+              },
+            },
+          },
+        },
+      },
       setlistItems: {
         where: { isDeleted: false },
         include: {
@@ -52,6 +64,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
     posterUrl,
     startTime,
     translations,
+    performerIds,
+    guestIds,
   } = body;
 
   if (!startTime) {
@@ -78,16 +92,49 @@ export async function PUT(request: NextRequest, { params }: Props) {
       posterUrl: posterUrl || null,
       translations: {
         create: translations.map(
-          (t: { locale: string; name: string; shortName?: string | null }) => ({
+          (t: {
+            locale: string;
+            name: string;
+            shortName?: string | null;
+            city?: string | null;
+            venue?: string | null;
+          }) => ({
             locale: t.locale,
             name: t.name,
             shortName: t.shortName || null,
+            city: t.city || null,
+            venue: t.venue || null,
           })
         ),
       },
     },
     include: { translations: true },
   });
+
+  // Only replace performer rows when the payload explicitly includes them —
+  // same preservation rationale as `status` above.
+  if (Array.isArray(performerIds) || Array.isArray(guestIds)) {
+    await prisma.eventPerformer.deleteMany({ where: { eventId } });
+    const rows = [
+      ...((performerIds as string[] | undefined) ?? []).map((id) => ({
+        eventId,
+        stageIdentityId: id,
+        isGuest: false,
+      })),
+      ...((guestIds as string[] | undefined) ?? []).map((id) => ({
+        eventId,
+        stageIdentityId: id,
+        isGuest: true,
+      })),
+    ];
+    if (rows.length > 0) {
+      await prisma.eventPerformer.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+    }
+  }
+
   return NextResponse.json(serializeBigInt(event));
 }
 

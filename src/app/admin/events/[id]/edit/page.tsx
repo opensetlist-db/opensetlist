@@ -12,6 +12,18 @@ export default async function EditEventPage({ params }: Props) {
     where: { id: BigInt(id), isDeleted: false },
     include: {
       translations: true,
+      performers: {
+        include: {
+          stageIdentity: {
+            include: {
+              translations: true,
+              artistLinks: {
+                include: { artist: { include: { translations: true } } },
+              },
+            },
+          },
+        },
+      },
       setlistItems: {
         where: { isDeleted: false },
         include: {
@@ -54,10 +66,27 @@ export default async function EditEventPage({ params }: Props) {
             country: data.country,
             posterUrl: data.posterUrl,
             startTime: new Date(data.startTime).toISOString().slice(0, 16),
-            translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null }) => ({
+            translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; city?: string | null; venue?: string | null }) => ({
               locale: t.locale,
               name: t.name,
               shortName: t.shortName ?? "",
+              city: t.city ?? "",
+              venue: t.venue ?? "",
+            })),
+            performers: (data.performers ?? []).map((p: {
+              isGuest: boolean;
+              stageIdentity: {
+                id: string;
+                translations: { locale: string; name: string }[];
+                artistLinks: { artist: { translations: { locale: string; name: string }[] } }[];
+              };
+            }) => ({
+              isGuest: p.isGuest,
+              stageIdentity: {
+                id: p.stageIdentity.id,
+                translations: p.stageIdentity.translations,
+                artistLinks: p.stageIdentity.artistLinks,
+              },
             })),
           }}
         />
