@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { prisma } from "@/lib/prisma";
 import { pickTranslation } from "@/lib/utils";
+import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 
 type Props = { params: Promise<{ id: string }> };
@@ -24,13 +25,10 @@ export async function GET(_req: Request, { params }: Props) {
     "ko"
   );
 
-  const dateStr = event.date
-    ? new Date(event.date).toLocaleDateString("ko-KR", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "";
+  // OG card renders server-side with no viewer browser TZ; show the pinned
+  // venue calendar date only. No `venueTimezone` column exists, so a
+  // "venue-local start time" row is deferred to a later task.
+  const dateStr = formatVenueDate(event.date, "ko");
 
   const subtitle = [dateStr, t?.city, t?.venue].filter(Boolean).join(" · ");
 

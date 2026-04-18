@@ -107,6 +107,9 @@
       "special": "Special"
     }
   },
+  "EventDateTime": {
+    "localTime": "local time"
+  },
   "EventSeries": {
     "title": "Series",
     "type": {

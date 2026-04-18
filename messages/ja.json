@@ -107,6 +107,9 @@
       "special": "スペシャル"
     }
   },
+  "EventDateTime": {
+    "localTime": "現地時刻"
+  },
   "EventSeries": {
     "title": "シリーズ",
     "type": {
