@@ -33,7 +33,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ locale: string }>;
 }) {
-  await params;
-  const t = await getTranslations("Artist");
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "Artist" });
   return { title: t("title") };
 }

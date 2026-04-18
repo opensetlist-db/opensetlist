@@ -71,6 +71,10 @@ export function formatEventDateTime(input: EventDateTimeInput): EventDateTimeOut
       ? new Date(input.startTime)
       : input.startTime;
 
+  if (Number.isNaN(instant.getTime())) {
+    return { venueDateLabel, viewerTimeLabel: null, viewerDateParens: null };
+  }
+
   const timeParts = new Intl.DateTimeFormat(input.locale, {
     hour: "2-digit",
     minute: "2-digit",

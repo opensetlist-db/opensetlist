@@ -134,28 +134,23 @@ export async function PUT(request: NextRequest, { params }: Props) {
       include: { translations: true },
     });
 
-    // Only replace performer rows when the payload explicitly includes them —
-    // same preservation rationale as `status` above.
-    if (performerIds !== undefined || guestIds !== undefined) {
-      await tx.eventPerformer.deleteMany({ where: { eventId } });
-      const rows = [
-        ...(performerIds ?? []).map((sid) => ({
-          eventId,
-          stageIdentityId: sid,
-          isGuest: false,
-        })),
-        ...(guestIds ?? []).map((sid) => ({
-          eventId,
-          stageIdentityId: sid,
-          isGuest: true,
-        })),
-      ];
-      if (rows.length > 0) {
-        await tx.eventPerformer.createMany({
-          data: rows,
-          skipDuplicates: true,
-        });
-      }
+    // Only replace rows for the side(s) the payload explicitly includes —
+    // an update to performers alone must not wipe existing guests, and vice
+    // versa. Same preservation rationale as `status` above.
+    async function replaceEventPerformers(ids: string[], isGuest: boolean) {
+      await tx.eventPerformer.deleteMany({ where: { eventId, isGuest } });
+      if (ids.length === 0) return;
+      await tx.eventPerformer.createMany({
+        data: ids.map((sid) => ({ eventId, stageIdentityId: sid, isGuest })),
+        skipDuplicates: true,
+      });
+    }
+
+    if (performerIds !== undefined) {
+      await replaceEventPerformers(performerIds, false);
+    }
+    if (guestIds !== undefined) {
+      await replaceEventPerformers(guestIds, true);
     }
 
     return updated;
