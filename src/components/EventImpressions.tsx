@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/utils";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
+import { getEditCooldownRemaining } from "@/lib/impression";
 
 export interface Impression {
   id: string;
@@ -58,6 +59,13 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
       if (parsed?.id && parsed.content) {
         setSaved(parsed);
         setMode("submitted");
+        if (parsed.updatedAt) {
+          const remaining = getEditCooldownRemaining(
+            new Date(parsed.updatedAt),
+            new Date(),
+          );
+          if (remaining > 0) setCooldownSeconds(remaining);
+        }
       }
     } catch {
       localStorage.removeItem(savedKey);
@@ -227,7 +235,9 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   };
 
   const charCount = draft.length;
+  const trimmedLength = draft.trim().length;
   const overLimit = charCount > IMPRESSION_MAX_CHARS;
+  const isEmptyTrimmed = trimmedLength < 1;
 
   return (
     <section className="mt-10">
@@ -260,7 +270,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || charCount < 1 || overLimit}
+              disabled={submitting || isEmptyTrimmed || overLimit}
               className="rounded bg-zinc-900 px-3 py-1 text-white disabled:opacity-40"
             >
               {t("submit")}
@@ -320,7 +330,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
               <button
                 type="button"
                 onClick={handleEdit}
-                disabled={submitting || cooldownSeconds > 0 || charCount < 1 || overLimit}
+                disabled={submitting || cooldownSeconds > 0 || isEmptyTrimmed || overLimit}
                 className="rounded bg-zinc-900 px-3 py-1 text-white disabled:opacity-40"
               >
                 {t("submit")}
