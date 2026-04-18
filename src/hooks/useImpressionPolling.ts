@@ -38,6 +38,13 @@ export function useImpressionPolling({
   }, [eventId]);
 
   useEffect(() => {
+    // Drop any prior event's snapshot so it can't overwrite a fresh SSR list
+    // after navigating to a different event.
+    setImpressions(null);
+    setLastUpdated(null);
+  }, [eventId]);
+
+  useEffect(() => {
     if (!enabled) return;
     intervalRef.current = setInterval(fetchImpressions, intervalMs);
     return () => {
