@@ -9,6 +9,7 @@ import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
+const HOME_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
@@ -42,10 +43,12 @@ async function getUpcomingEvents(
   requestedPage: number,
   pageSize: number
 ) {
+  const upcomingCutoff = new Date(now.getTime() + HOME_WINDOW_MS);
+
   const where = {
     isDeleted: false,
     status: "scheduled" as const,
-    startTime: { gt: now },
+    startTime: { gt: now, lte: upcomingCutoff },
   };
 
   const total = await prisma.event.count({ where });
@@ -73,9 +76,11 @@ async function getCompletedEvents(
   pageSize: number
 ) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
+  const windowStart = new Date(now.getTime() - HOME_WINDOW_MS);
 
   const where = {
     isDeleted: false,
+    startTime: { gte: windowStart },
     OR: [
       { status: "completed" as const },
       {
