@@ -40,17 +40,22 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   const savedKey = `impression-${eventId}`;
 
   useEffect(() => {
+    setSaved(null);
+    setMode("new");
+    setDraft("");
+    setCooldownSeconds(0);
+    setError(null);
+
     const raw = localStorage.getItem(savedKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as SavedImpression;
-        if (parsed?.id && parsed.content) {
-          setSaved(parsed);
-          setMode("submitted");
-        }
-      } catch {
-        // ignore corrupt data
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as SavedImpression;
+      if (parsed?.id && parsed.content) {
+        setSaved(parsed);
+        setMode("submitted");
       }
+    } catch {
+      localStorage.removeItem(savedKey);
     }
   }, [savedKey]);
 
@@ -132,6 +137,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
 
   const handleEdit = async () => {
     if (!saved) return;
+    if (cooldownSeconds > 0) return;
     const trimmed = draft.trim();
     if (trimmed.length < 1 || trimmed.length > IMPRESSION_MAX_CHARS) return;
     if (submitting) return;
@@ -173,19 +179,32 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
 
   const handleReport = async (impressionId: string) => {
     if (reported[impressionId]) return;
+    setReported((prev) => ({ ...prev, [impressionId]: true }));
+    localStorage.setItem(`impression-report-${impressionId}`, "true");
+
+    const rollback = () => {
+      setReported((prev) => {
+        const next = { ...prev };
+        delete next[impressionId];
+        return next;
+      });
+      localStorage.removeItem(`impression-report-${impressionId}`);
+    };
+
     try {
       const res = await fetch(`/api/impressions/${impressionId}/report`, {
         method: "POST",
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        rollback();
+        return;
+      }
       const body = (await res.json()) as { isHidden?: boolean };
-      localStorage.setItem(`impression-report-${impressionId}`, "true");
-      setReported((prev) => ({ ...prev, [impressionId]: true }));
       if (body.isHidden) {
         setImpressions((prev) => prev.filter((p) => p.id !== impressionId));
       }
     } catch {
-      // ignore network error
+      rollback();
     }
   };
 
@@ -298,7 +317,7 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
               <button
                 type="button"
                 onClick={handleEdit}
-                disabled={submitting || charCount < 1 || overLimit}
+                disabled={submitting || cooldownSeconds > 0 || charCount < 1 || overLimit}
                 className="rounded bg-zinc-900 px-3 py-1 text-white disabled:opacity-40"
               >
                 {t("submit")}
