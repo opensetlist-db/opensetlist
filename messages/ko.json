@@ -75,9 +75,9 @@
   "Event": {
     "title": "이벤트",
     "allEvents": "공연 목록",
-    "ongoing": "진행 중",
-    "upcoming": "예정된 공연",
-    "past": "지난 공연",
+    "ongoing": "지금 공연 중",
+    "upcoming": "예정된 이벤트",
+    "past": "지난 이벤트",
     "ungrouped": "기타 공연",
     "noEvents": "표시할 공연이 없습니다",
     "setlist": "세트리스트",

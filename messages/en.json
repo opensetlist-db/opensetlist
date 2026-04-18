@@ -75,9 +75,9 @@
   "Event": {
     "title": "Events",
     "allEvents": "All Events",
-    "ongoing": "Live now",
-    "upcoming": "Upcoming",
-    "past": "Past",
+    "ongoing": "Live Now",
+    "upcoming": "Upcoming Events",
+    "past": "Past Events",
     "ungrouped": "Other events",
     "noEvents": "No events to show",
     "setlist": "Setlist",
