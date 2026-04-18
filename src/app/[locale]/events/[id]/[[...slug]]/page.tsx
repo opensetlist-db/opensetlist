@@ -6,13 +6,14 @@ import {
   serializeBigInt,
   pickTranslation,
   slugify,
-  formatDate,
 } from "@/lib/utils";
+import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
+import { EventDateTime } from "@/components/EventDateTime";
 import type { Metadata } from "next";
 
 type Props = {
@@ -84,7 +85,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? `${headlineName} ${t("setlist")} | OpenSetlist`
     : "OpenSetlist";
   const description = [
-    event.date ? formatDate(event.date, locale) : "",
+    event.date ? formatVenueDate(event.date, locale) : "",
     tr?.city,
     tr?.venue,
     seriesTr ? displayName(seriesTr) : "",
@@ -294,7 +295,11 @@ export default async function EventPage({ params }: Props) {
               );
             })()}
             {event.date && (
-              <span>{formatDate(event.date, locale)}</span>
+              <EventDateTime
+                date={event.date ?? null}
+                startTime={event.startTime ?? null}
+                variant="inline"
+              />
             )}
           </div>
           {tr?.venue && (

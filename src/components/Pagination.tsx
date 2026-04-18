@@ -29,7 +29,7 @@ export function Pagination({
   const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
   return (
-    <div className="mt-4 flex items-center justify-center gap-1">
+    <div className="mt-4 flex flex-wrap items-center justify-center gap-1">
       {currentPage > 1 ? (
         <Link
           href={buildHref(currentPage - 1)}

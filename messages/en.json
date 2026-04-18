@@ -27,6 +27,8 @@
   },
   "Artist": {
     "title": "Artists",
+    "noArtists": "No artists to show",
+    "unknown": "Unknown Artist",
     "type": {
       "solo": "Solo",
       "group": "Group",
@@ -74,6 +76,12 @@
   },
   "Event": {
     "title": "Events",
+    "allEvents": "All Events",
+    "ongoing": "Live Now",
+    "upcoming": "Upcoming Events",
+    "past": "Past Events",
+    "ungrouped": "Other events",
+    "noEvents": "No events to show",
     "setlist": "Setlist",
     "noSetlist": "No setlist registered.",
     "noSongAssigned": "No song assigned",
@@ -98,6 +106,9 @@
       "solo": "Solo",
       "special": "Special"
     }
+  },
+  "EventDateTime": {
+    "localTime": "local time"
   },
   "EventSeries": {
     "title": "Series",
@@ -136,10 +147,10 @@
     "submitError": "Couldn't post your impression. Please try again."
   },
   "Header": {
+    "brandName": "OpenSetlist",
     "home": "Home",
     "artists": "Artists",
     "events": "Events",
-    "tours": "Tours",
     "signIn": "Sign in",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"

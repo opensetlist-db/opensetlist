@@ -27,6 +27,8 @@
   },
   "Artist": {
     "title": "アーティスト",
+    "noArtists": "表示できるアーティストはありません",
+    "unknown": "不明なアーティスト",
     "type": {
       "solo": "ソロ",
       "group": "グループ",
@@ -74,6 +76,12 @@
   },
   "Event": {
     "title": "イベント",
+    "allEvents": "イベント一覧",
+    "ongoing": "開催中",
+    "upcoming": "今後のイベント",
+    "past": "過去のイベント",
+    "ungrouped": "その他のイベント",
+    "noEvents": "表示できるイベントはありません",
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
@@ -98,6 +106,9 @@
       "solo": "ソロ",
       "special": "スペシャル"
     }
+  },
+  "EventDateTime": {
+    "localTime": "現地時刻"
   },
   "EventSeries": {
     "title": "シリーズ",
@@ -136,10 +147,10 @@
     "submitError": "感想を投稿できませんでした。もう一度お試しください。"
   },
   "Header": {
+    "brandName": "OpenSetlist",
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",
-    "tours": "ツアー",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる"

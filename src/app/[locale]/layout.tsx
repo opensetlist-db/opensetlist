@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
@@ -12,6 +12,11 @@ import "@fontsource/josefin-sans/400.css";
 import "@fontsource/dm-sans/400.css";
 import "@fontsource/dm-sans/500.css";
 import "../globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 export async function generateMetadata({
   params,
