@@ -40,6 +40,11 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
   const savedKey = `impression-${eventId}`;
 
   useEffect(() => {
+    setImpressions(initialImpressions);
+    setReported({});
+  }, [eventId, initialImpressions]);
+
+  useEffect(() => {
     setSaved(null);
     setMode("new");
     setDraft("");
@@ -212,14 +217,12 @@ export function EventImpressions({ eventId, initialImpressions }: Props) {
     if (!saved) return;
     setDraft(saved.content);
     setMode("editing");
-    setCooldownSeconds(0);
     setError(null);
   };
 
   const cancelEditing = () => {
     setDraft("");
     setMode("submitted");
-    setCooldownSeconds(0);
     setError(null);
   };
 
