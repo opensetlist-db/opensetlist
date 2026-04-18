@@ -78,6 +78,8 @@
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
     "unknownEvent": "不明なイベント",
+    "live": "LIVE",
+    "unknownPerformer": "不明",
     "performers": "出演者",
     "status": {
       "upcoming": "予定",
@@ -115,6 +117,23 @@
     "surprise": "サプライズ",
     "moved": "感動",
     "trending": "この公演の話題曲"
+  },
+  "Impression": {
+    "title": "一言感想",
+    "placeholder": "ライブはどうでしたか？ (200文字以内)",
+    "submit": "投稿",
+    "submitted": "あなたの感想",
+    "edit": "編集",
+    "editing": "感想を編集中",
+    "editCooldown": "{seconds}秒後に再編集できます。",
+    "cancel": "キャンセル",
+    "report": "通報",
+    "reported": "通報済み",
+    "hidden": "通報により非表示",
+    "count": "{count, plural, =0 {感想なし} other {#件の感想}}",
+    "empty": "まだ感想がありません。最初の感想を残しましょう！",
+    "charLimit": "{current}/200",
+    "submitError": "感想を投稿できませんでした。もう一度お試しください。"
   },
   "Header": {
     "home": "ホーム",
