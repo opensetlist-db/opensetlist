@@ -147,6 +147,7 @@
     "submitError": "Couldn't post your impression. Please try again."
   },
   "Header": {
+    "brandName": "OpenSetlist",
     "home": "Home",
     "artists": "Artists",
     "events": "Events",

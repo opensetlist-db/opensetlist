@@ -147,6 +147,7 @@
     "submitError": "한줄평을 등록하지 못했어요. 다시 시도해 주세요."
   },
   "Header": {
+    "brandName": "OpenSetlist",
     "home": "홈",
     "artists": "아티스트",
     "events": "이벤트",

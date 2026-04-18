@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 
 type NavItem = { key: "home" | "artists" | "events"; href: string };
 
@@ -63,7 +64,7 @@ export function Header() {
             className="font-josefin text-[17px] uppercase"
             style={{ color: "#1a1a1a", letterSpacing: 0 }}
           >
-            OPENSETLIST
+            {t("brandName")}
           </span>
         </Link>
 
@@ -90,22 +91,24 @@ export function Header() {
 
           <LanguageSwitcher />
 
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={t("signIn")}
-            className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
-            style={{
-              fontSize: "12px",
-              fontWeight: 500,
-              padding: "7px 16px",
-              borderRadius: "6px",
-              background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
-            }}
-          >
-            {t("signIn")}
-          </button>
+          {LAUNCH_FLAGS.showSignIn && (
+            <button
+              type="button"
+              disabled
+              aria-disabled="true"
+              title={t("signIn")}
+              className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
+              style={{
+                fontSize: "12px",
+                fontWeight: 500,
+                padding: "7px 16px",
+                borderRadius: "6px",
+                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+              }}
+            >
+              {t("signIn")}
+            </button>
+          )}
         </div>
 
         {/* Mobile / tablet hamburger */}
@@ -155,22 +158,24 @@ export function Header() {
 
           <div className="flex items-center justify-between px-4 py-4">
             <LanguageSwitcher />
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title={t("signIn")}
-              className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
-              style={{
-                fontSize: "13px",
-                fontWeight: 500,
-                padding: "8px 20px",
-                borderRadius: "6px",
-                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
-              }}
-            >
-              {t("signIn")}
-            </button>
+            {LAUNCH_FLAGS.showSignIn && (
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                title={t("signIn")}
+                className="font-dm-sans rounded-md text-white opacity-60 cursor-not-allowed"
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                }}
+              >
+                {t("signIn")}
+              </button>
+            )}
           </div>
         </div>
       )}
