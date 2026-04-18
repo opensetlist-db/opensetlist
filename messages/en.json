@@ -78,6 +78,8 @@
     "noSetlist": "No setlist registered.",
     "noSongAssigned": "No song assigned",
     "unknownEvent": "Unknown Event",
+    "live": "LIVE",
+    "unknownPerformer": "Unknown",
     "performers": "Performers",
     "status": {
       "upcoming": "Upcoming",

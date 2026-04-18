@@ -31,6 +31,12 @@ export function useSetlistPolling<T>({
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    setItems(initialItems);
+    setReactionCounts(initialReactionCounts);
+    setLastUpdated(null);
+  }, [eventId, initialItems, initialReactionCounts]);
+
   const fetchSetlist = useCallback(async () => {
     try {
       const res = await fetch(

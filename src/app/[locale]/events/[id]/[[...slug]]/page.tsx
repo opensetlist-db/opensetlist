@@ -325,7 +325,7 @@ export default async function EventPage({ params }: Props) {
       />
 
       <EventImpressions
-        eventId={String(event.id)}
+        eventId={id}
         initialImpressions={impressions}
       />
     </main>
