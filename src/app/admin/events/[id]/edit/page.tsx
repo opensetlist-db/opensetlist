@@ -24,6 +24,11 @@ export default async function EditEventPage({ params }: Props) {
               stageIdentity: { include: { translations: true } },
             },
           },
+          artists: {
+            include: {
+              artist: { include: { translations: true } },
+            },
+          },
         },
         orderBy: { position: "asc" },
       },
