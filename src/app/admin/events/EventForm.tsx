@@ -1,9 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { matchesIdentitySearch } from "@/lib/search";
 
-type Translation = { locale: string; name: string; shortName: string };
+type Translation = {
+  locale: string;
+  name: string;
+  shortName: string;
+  city: string;
+  venue: string;
+};
+
+type StageIdentityOption = {
+  id: string;
+  translations: { locale: string; name: string }[];
+  artistLinks: {
+    artist: { translations: { locale: string; name: string }[] };
+  }[];
+};
+
+type InitialPerformer = {
+  isGuest: boolean;
+  stageIdentity: StageIdentityOption;
+};
 
 type EventFormProps = {
   initialData?: {
@@ -16,12 +36,21 @@ type EventFormProps = {
     posterUrl: string | null;
     startTime: string;
     translations: Translation[];
+    performers: InitialPerformer[];
   };
 };
 
 const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase", "virtual_live"];
 const EVENT_STATUSES = ["scheduled", "ongoing", "completed", "cancelled"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+
+function emptyTranslation(locale: string): Translation {
+  return { locale, name: "", shortName: "", city: "", venue: "" };
+}
+
+function getSIName(si: StageIdentityOption) {
+  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? "Unknown";
+}
 
 export default function EventForm({ initialData }: EventFormProps) {
   const router = useRouter();
@@ -38,17 +67,55 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "", shortName: "" }]
+      : [emptyTranslation("ko")]
   );
 
   const [seriesList, setSeriesList] = useState<
     { id: number; translations: { locale: string; name: string }[] }[]
   >([]);
 
+  const [stageIdentities, setStageIdentities] = useState<StageIdentityOption[]>([]);
+
+  const initialPerformers = (initialData?.performers ?? [])
+    .filter((p) => !p.isGuest)
+    .map((p) => p.stageIdentity);
+  const initialGuests = (initialData?.performers ?? [])
+    .filter((p) => p.isGuest)
+    .map((p) => p.stageIdentity);
+
+  const [selectedPerformers, setSelectedPerformers] =
+    useState<StageIdentityOption[]>(initialPerformers);
+  const [selectedGuests, setSelectedGuests] =
+    useState<StageIdentityOption[]>(initialGuests);
+
+  const [performerSearch, setPerformerSearch] = useState("");
+  const [performerDropdownOpen, setPerformerDropdownOpen] = useState(false);
+  const performerRef = useRef<HTMLDivElement>(null);
+
+  const [guestSearch, setGuestSearch] = useState("");
+  const [guestDropdownOpen, setGuestDropdownOpen] = useState(false);
+  const guestRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     fetch("/api/admin/event-series")
       .then((r) => r.json())
       .then(setSeriesList);
+    fetch("/api/admin/stage-identities")
+      .then((r) => r.json())
+      .then(setStageIdentities);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (performerRef.current && !performerRef.current.contains(e.target as Node)) {
+        setPerformerDropdownOpen(false);
+      }
+      if (guestRef.current && !guestRef.current.contains(e.target as Node)) {
+        setGuestDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   function updateTranslation(
@@ -65,8 +132,37 @@ export default function EventForm({ initialData }: EventFormProps) {
     const usedLocales = translations.map((t) => t.locale);
     const next = LOCALES.find((l) => !usedLocales.includes(l));
     if (next) {
-      setTranslations((prev) => [...prev, { locale: next, name: "", shortName: "" }]);
+      setTranslations((prev) => [...prev, emptyTranslation(next)]);
     }
+  }
+
+  function filteredFor(search: string) {
+    if (!search.trim()) return stageIdentities;
+    return stageIdentities.filter((si) => matchesIdentitySearch(si, search));
+  }
+
+  // Adding to one picker removes from the other — EventPerformer has
+  // @@unique([eventId, stageIdentityId]), so the same identity can't be
+  // both a performer and a guest on the same event.
+  function selectPerformer(si: StageIdentityOption) {
+    setSelectedGuests((prev) => prev.filter((g) => g.id !== si.id));
+    setSelectedPerformers((prev) =>
+      prev.some((p) => p.id === si.id) ? prev : [...prev, si]
+    );
+    setPerformerSearch("");
+  }
+  function removePerformer(id: string) {
+    setSelectedPerformers((prev) => prev.filter((p) => p.id !== id));
+  }
+  function selectGuest(si: StageIdentityOption) {
+    setSelectedPerformers((prev) => prev.filter((p) => p.id !== si.id));
+    setSelectedGuests((prev) =>
+      prev.some((p) => p.id === si.id) ? prev : [...prev, si]
+    );
+    setGuestSearch("");
+  }
+  function removeGuest(id: string) {
+    setSelectedGuests((prev) => prev.filter((p) => p.id !== id));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -89,7 +185,15 @@ export default function EventForm({ initialData }: EventFormProps) {
       startTime: `${startTime}Z`,
       translations: translations
         .filter((t) => t.name.trim())
-        .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null })),
+        .map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          shortName: t.shortName || null,
+          city: t.city || null,
+          venue: t.venue || null,
+        })),
+      performerIds: selectedPerformers.map((p) => p.id),
+      guestIds: selectedGuests.map((g) => g.id),
     };
 
     const url = initialData
@@ -110,6 +214,89 @@ export default function EventForm({ initialData }: EventFormProps) {
       alert("저장에 실패했습니다.");
       setLoading(false);
     }
+  }
+
+  function renderPicker(opts: {
+    label: string;
+    selected: StageIdentityOption[];
+    search: string;
+    setSearch: (v: string) => void;
+    open: boolean;
+    setOpen: (v: boolean) => void;
+    containerRef: React.RefObject<HTMLDivElement | null>;
+    onSelect: (si: StageIdentityOption) => void;
+    onRemove: (id: string) => void;
+    placeholder: string;
+    tagClassName: string;
+    tagRemoveClassName: string;
+    hoverClassName: string;
+  }) {
+    return (
+      <div ref={opts.containerRef}>
+        <label className="mb-1 block text-sm font-medium">{opts.label}</label>
+        {opts.selected.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {opts.selected.map((si) => (
+              <span
+                key={si.id}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${opts.tagClassName}`}
+              >
+                {getSIName(si)}
+                <button
+                  type="button"
+                  onClick={() => opts.onRemove(si.id)}
+                  className={`ml-0.5 ${opts.tagRemoveClassName}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="relative">
+          <input
+            type="text"
+            value={opts.search}
+            onChange={(e) => {
+              opts.setSearch(e.target.value);
+              opts.setOpen(true);
+            }}
+            onFocus={() => opts.setOpen(true)}
+            placeholder={opts.placeholder}
+            className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+          />
+          {opts.open && (
+            <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
+              {filteredFor(opts.search).map((si) => {
+                const isSelected = opts.selected.some((p) => p.id === si.id);
+                const artistName = si.artistLinks[0]
+                  ? (si.artistLinks[0].artist.translations.find(
+                      (t) => t.locale === "ko"
+                    )?.name ?? "")
+                  : "";
+                return (
+                  <button
+                    key={si.id}
+                    type="button"
+                    onClick={() => opts.onSelect(si)}
+                    className={`block w-full px-3 py-1.5 text-left text-sm ${opts.hoverClassName} ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                  >
+                    {isSelected && <span className="mr-1">✓</span>}
+                    {getSIName(si)}
+                    {artistName && (
+                      <span className="ml-1 text-xs text-zinc-400">({artistName})</span>
+                    )}
+                  </button>
+                );
+              })}
+              {filteredFor(opts.search).length === 0 && (
+                <div className="px-3 py-2 text-xs text-zinc-400">일치하는 항목이 없습니다</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -227,50 +414,105 @@ export default function EventForm({ initialData }: EventFormProps) {
           {translations.map((tr, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 rounded border border-zinc-200 bg-white p-3"
+              className="space-y-2 rounded border border-zinc-200 bg-white p-3"
             >
-              <select
-                value={tr.locale}
-                onChange={(e) =>
-                  updateTranslation(i, "locale", e.target.value)
-                }
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
-              >
-                {LOCALES.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="이벤트명"
-                value={tr.name}
-                onChange={(e) => updateTranslation(i, "name", e.target.value)}
-                className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="약칭"
-                value={tr.shortName}
-                onChange={(e) => updateTranslation(i, "shortName", e.target.value)}
-                className="w-28 rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
-              {translations.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setTranslations((prev) =>
-                      prev.filter((_, j) => j !== i)
-                    )
+              <div className="flex items-center gap-2">
+                <select
+                  value={tr.locale}
+                  onChange={(e) =>
+                    updateTranslation(i, "locale", e.target.value)
                   }
-                  className="text-sm text-red-500"
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
-                  삭제
-                </button>
-              )}
+                  {LOCALES.map((l) => {
+                    const usedByOther = translations.some(
+                      (t, j) => j !== i && t.locale === l
+                    );
+                    return (
+                      <option key={l} value={l} disabled={usedByOther}>
+                        {l}
+                      </option>
+                    );
+                  })}
+                </select>
+                <input
+                  placeholder="이벤트명"
+                  value={tr.name}
+                  onChange={(e) => updateTranslation(i, "name", e.target.value)}
+                  className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="약칭"
+                  value={tr.shortName}
+                  onChange={(e) => updateTranslation(i, "shortName", e.target.value)}
+                  className="w-28 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {translations.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTranslations((prev) =>
+                        prev.filter((_, j) => j !== i)
+                      )
+                    }
+                    className="text-sm text-red-500"
+                  >
+                    삭제
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  placeholder="도시 (예: 도쿄)"
+                  value={tr.city}
+                  onChange={(e) => updateTranslation(i, "city", e.target.value)}
+                  className="w-40 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="공연장 (예: 도쿄돔)"
+                  value={tr.venue}
+                  onChange={(e) => updateTranslation(i, "venue", e.target.value)}
+                  className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Performers */}
+      {renderPicker({
+        label: "공연자",
+        selected: selectedPerformers,
+        search: performerSearch,
+        setSearch: setPerformerSearch,
+        open: performerDropdownOpen,
+        setOpen: setPerformerDropdownOpen,
+        containerRef: performerRef,
+        onSelect: selectPerformer,
+        onRemove: removePerformer,
+        placeholder: "공연자 검색...",
+        tagClassName: "bg-green-100 text-green-800",
+        tagRemoveClassName: "text-green-500 hover:text-green-700",
+        hoverClassName: "hover:bg-green-50",
+      })}
+
+      {/* Guests */}
+      {renderPicker({
+        label: "게스트",
+        selected: selectedGuests,
+        search: guestSearch,
+        setSearch: setGuestSearch,
+        open: guestDropdownOpen,
+        setOpen: setGuestDropdownOpen,
+        containerRef: guestRef,
+        onSelect: selectGuest,
+        onRemove: removeGuest,
+        placeholder: "게스트 검색...",
+        tagClassName: "bg-amber-100 text-amber-800",
+        tagRemoveClassName: "text-amber-500 hover:text-amber-700",
+        hoverClassName: "hover:bg-amber-50",
+      })}
 
       <button
         type="submit"

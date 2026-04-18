@@ -11,6 +11,18 @@ export async function GET(_request: NextRequest, { params }: Props) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
+      performers: {
+        include: {
+          stageIdentity: {
+            include: {
+              translations: true,
+              artistLinks: {
+                include: { artist: { include: { translations: true } } },
+              },
+            },
+          },
+        },
+      },
       setlistItems: {
         where: { isDeleted: false },
         include: {
@@ -39,6 +51,23 @@ export async function GET(_request: NextRequest, { params }: Props) {
   return NextResponse.json(serializeBigInt(event));
 }
 
+function validateOptionalIdArray(
+  value: unknown,
+  field: string
+): { ok: true; value: string[] | undefined } | { ok: false; response: NextResponse } {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: `${field} must be an array of strings` },
+        { status: 400 }
+      ),
+    };
+  }
+  return { ok: true, value: value as string[] };
+}
+
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
@@ -61,33 +90,77 @@ export async function PUT(request: NextRequest, { params }: Props) {
     );
   }
 
-  await prisma.eventTranslation.deleteMany({ where: { eventId } });
+  const performerCheck = validateOptionalIdArray(body.performerIds, "performerIds");
+  if (!performerCheck.ok) return performerCheck.response;
+  const guestCheck = validateOptionalIdArray(body.guestIds, "guestIds");
+  if (!guestCheck.ok) return guestCheck.response;
+  const performerIds = performerCheck.value;
+  const guestIds = guestCheck.value;
 
-  const event = await prisma.event.update({
-    where: { id: eventId },
-    data: {
-      type,
-      // Only overwrite status when the payload explicitly carries one —
-      // otherwise existing admin overrides (cancelled/ongoing/completed)
-      // would be silently reset to "scheduled" on any unrelated edit.
-      ...(status !== undefined ? { status } : {}),
-      eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
-      date: date ? new Date(date) : null,
-      startTime: new Date(startTime),
-      country: country || null,
-      posterUrl: posterUrl || null,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; shortName?: string | null }) => ({
-            locale: t.locale,
-            name: t.name,
-            shortName: t.shortName || null,
-          })
-        ),
+  const event = await prisma.$transaction(async (tx) => {
+    await tx.eventTranslation.deleteMany({ where: { eventId } });
+
+    const updated = await tx.event.update({
+      where: { id: eventId },
+      data: {
+        type,
+        // Only overwrite status when the payload explicitly carries one —
+        // otherwise existing admin overrides (cancelled/ongoing/completed)
+        // would be silently reset to "scheduled" on any unrelated edit.
+        ...(status !== undefined ? { status } : {}),
+        eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
+        date: date ? new Date(date) : null,
+        startTime: new Date(startTime),
+        country: country || null,
+        posterUrl: posterUrl || null,
+        translations: {
+          create: translations.map(
+            (t: {
+              locale: string;
+              name: string;
+              shortName?: string | null;
+              city?: string | null;
+              venue?: string | null;
+            }) => ({
+              locale: t.locale,
+              name: t.name,
+              shortName: t.shortName || null,
+              city: t.city || null,
+              venue: t.venue || null,
+            })
+          ),
+        },
       },
-    },
-    include: { translations: true },
+      include: { translations: true },
+    });
+
+    // Only replace performer rows when the payload explicitly includes them —
+    // same preservation rationale as `status` above.
+    if (performerIds !== undefined || guestIds !== undefined) {
+      await tx.eventPerformer.deleteMany({ where: { eventId } });
+      const rows = [
+        ...(performerIds ?? []).map((sid) => ({
+          eventId,
+          stageIdentityId: sid,
+          isGuest: false,
+        })),
+        ...(guestIds ?? []).map((sid) => ({
+          eventId,
+          stageIdentityId: sid,
+          isGuest: true,
+        })),
+      ];
+      if (rows.length > 0) {
+        await tx.eventPerformer.createMany({
+          data: rows,
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    return updated;
   });
+
   return NextResponse.json(serializeBigInt(event));
 }
 
