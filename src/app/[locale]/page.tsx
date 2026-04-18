@@ -233,7 +233,7 @@ function EventList({
               date={event.date}
               startTime={event.startTime}
               variant="inline"
-              className="font-dm-sans shrink-0 text-[11px] text-[#999999]"
+              className="font-dm-sans text-[11px] text-[#999999]"
             />
             <div className="flex-1 min-w-0">
               <Link
