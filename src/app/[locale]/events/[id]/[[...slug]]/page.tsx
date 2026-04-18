@@ -327,6 +327,7 @@ export default async function EventPage({ params }: Props) {
       <EventImpressions
         eventId={id}
         initialImpressions={impressions}
+        isOngoing={isOngoing}
       />
     </main>
   );
