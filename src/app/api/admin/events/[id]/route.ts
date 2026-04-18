@@ -137,35 +137,20 @@ export async function PUT(request: NextRequest, { params }: Props) {
     // Only replace rows for the side(s) the payload explicitly includes —
     // an update to performers alone must not wipe existing guests, and vice
     // versa. Same preservation rationale as `status` above.
-    if (performerIds !== undefined) {
-      await tx.eventPerformer.deleteMany({
-        where: { eventId, isGuest: false },
+    async function replaceEventPerformers(ids: string[], isGuest: boolean) {
+      await tx.eventPerformer.deleteMany({ where: { eventId, isGuest } });
+      if (ids.length === 0) return;
+      await tx.eventPerformer.createMany({
+        data: ids.map((sid) => ({ eventId, stageIdentityId: sid, isGuest })),
+        skipDuplicates: true,
       });
-      if (performerIds.length > 0) {
-        await tx.eventPerformer.createMany({
-          data: performerIds.map((sid) => ({
-            eventId,
-            stageIdentityId: sid,
-            isGuest: false,
-          })),
-          skipDuplicates: true,
-        });
-      }
+    }
+
+    if (performerIds !== undefined) {
+      await replaceEventPerformers(performerIds, false);
     }
     if (guestIds !== undefined) {
-      await tx.eventPerformer.deleteMany({
-        where: { eventId, isGuest: true },
-      });
-      if (guestIds.length > 0) {
-        await tx.eventPerformer.createMany({
-          data: guestIds.map((sid) => ({
-            eventId,
-            stageIdentityId: sid,
-            isGuest: true,
-          })),
-          skipDuplicates: true,
-        });
-      }
+      await replaceEventPerformers(guestIds, true);
     }
 
     return updated;
