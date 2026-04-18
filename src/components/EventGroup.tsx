@@ -50,7 +50,11 @@ export async function EventGroup({
                   className="font-dm-sans text-[11px] text-[#999999]"
                 />
                 <Link
-                  href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
+                  href={
+                    evTr?.name
+                      ? `/${locale}/events/${event.id}/${slugify(evTr.name)}`
+                      : `/${locale}/events/${event.id}`
+                  }
                   className="font-dm-sans block truncate text-[12px] hover:underline"
                   style={{ color: "#1a1a1a", fontWeight: 500 }}
                 >
