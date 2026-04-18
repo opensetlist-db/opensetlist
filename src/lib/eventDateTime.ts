@@ -86,13 +86,21 @@ export function formatEventDateTime(input: EventDateTimeInput): EventDateTimeOut
   const venueYMD = extractVenueYMD(input.date);
   let viewerDateParens: string | null = null;
   if (venueYMD) {
-    const viewerDateStr = new Intl.DateTimeFormat("en-CA", {
+    const viewerDateParts = new Intl.DateTimeFormat("en-CA", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       timeZone: tz,
-    }).format(instant);
-    const [vy, vm, vd] = viewerDateStr.split("-").map(Number);
+    }).formatToParts(instant);
+    const vy = Number(
+      viewerDateParts.find((p) => p.type === "year")?.value ?? 0,
+    );
+    const vm = Number(
+      viewerDateParts.find((p) => p.type === "month")?.value ?? 0,
+    );
+    const vd = Number(
+      viewerDateParts.find((p) => p.type === "day")?.value ?? 0,
+    );
     if (vy !== venueYMD.y || vm !== venueYMD.m || vd !== venueYMD.d) {
       if (input.locale === "en") {
         viewerDateParens = `(${formatMonthName(vy, vm, vd, "short")} ${vd})`;
