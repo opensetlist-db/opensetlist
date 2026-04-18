@@ -6,13 +6,12 @@ import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
-type NavItem = { key: "home" | "artists" | "events" | "tours"; href: string };
+type NavItem = { key: "home" | "artists" | "events"; href: string };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "home", href: "/" },
   { key: "artists", href: "/artists" },
   { key: "events", href: "/events" },
-  { key: "tours", href: "/series" },
 ];
 
 function isActive(pathname: string, href: string) {
