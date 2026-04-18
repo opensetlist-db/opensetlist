@@ -421,6 +421,7 @@ model Event {
   translations  EventTranslation[]
   setlistItems  SetlistItem[]
   performers    EventPerformer[]
+  impressions   EventImpression[]
 
   @@index([eventSeriesId])
   @@index([date, status])
@@ -500,6 +501,27 @@ model SetlistItemReaction {
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
 
   @@index([setlistItemId, reactionType])
+}
+
+// Post-show one-line impressions ("한줄평") per event.
+// No login; dedup is client-side via localStorage only.
+// reportCount reaching REPORT_HIDE_THRESHOLD auto-sets isHidden.
+// Soft delete via isDeleted/deletedAt; moderators can restore.
+model EventImpression {
+  id          String    @id @default(uuid())
+  eventId     BigInt
+  content     String    @db.VarChar(200)
+  locale      String    @default("ko")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  reportCount Int       @default(0)
+  isHidden    Boolean   @default(false)
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+
+  event       Event     @relation(fields: [eventId], references: [id])
+
+  @@index([eventId, updatedAt])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link

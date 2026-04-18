@@ -12,6 +12,7 @@ import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
+import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import type { Metadata } from "next";
 
 type Props = {
@@ -141,6 +142,22 @@ async function getReactionCounts(eventId: bigint) {
   return result;
 }
 
+async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
+  const rows = await prisma.eventImpression.findMany({
+    where: { eventId, isDeleted: false, isHidden: false },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    eventId: r.eventId.toString(),
+    content: r.content,
+    locale: r.locale,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
 async function getTrendingSongs(
   eventId: bigint,
   locale: string
@@ -218,11 +235,12 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const [t, ct, reactionCounts, trendingSongs] = await Promise.all([
+  const [t, ct, reactionCounts, trendingSongs, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
     getReactionCounts(eventId),
     getTrendingSongs(eventId, locale),
+    getEventImpressions(eventId),
   ]);
 
   const tr = pickTranslation(event.translations, locale);
@@ -304,6 +322,11 @@ export default async function EventPage({ params }: Props) {
         initialReactionCounts={reactionCounts}
         isOngoing={isOngoing}
         locale={locale}
+      />
+
+      <EventImpressions
+        eventId={String(event.id)}
+        initialImpressions={impressions}
       />
     </main>
   );
