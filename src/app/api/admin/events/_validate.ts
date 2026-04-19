@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 
 export function validatePerformerGuestIds(
   performerIds: string[] | undefined,
@@ -33,22 +33,115 @@ export function validatePerformerGuestIds(
   return null;
 }
 
+/**
+ * Thrown from inside a transaction when one or more stageIdentity ids don't
+ * resolve. Caught at the route boundary and converted to a 400 response.
+ */
+export class StageIdentityNotFoundError extends Error {
+  readonly missingIds: string[];
+  constructor(missingIds: string[]) {
+    super(`Unknown stageIdentityId(s): ${missingIds.join(", ")}`);
+    this.name = "StageIdentityNotFoundError";
+    this.missingIds = missingIds;
+  }
+}
+
 export async function ensureStageIdentitiesExist(
+  tx: Prisma.TransactionClient,
   ids: string[]
-): Promise<NextResponse | null> {
-  if (ids.length === 0) return null;
+): Promise<void> {
+  if (ids.length === 0) return;
   const unique = Array.from(new Set(ids));
-  const found = await prisma.stageIdentity.findMany({
+  const found = await tx.stageIdentity.findMany({
     where: { id: { in: unique } },
     select: { id: true },
   });
   const foundSet = new Set(found.map((r) => r.id));
   const missing = unique.filter((id) => !foundSet.has(id));
-  if (missing.length === 0) return null;
+  if (missing.length > 0) {
+    throw new StageIdentityNotFoundError(missing);
+  }
+}
+
+export function stageIdentityNotFoundResponse(
+  err: StageIdentityNotFoundError
+): NextResponse {
   return NextResponse.json(
-    { error: "Unknown stageIdentityId(s)", missingIds: missing },
+    { error: "Unknown stageIdentityId(s)", missingIds: err.missingIds },
     { status: 400 }
   );
+}
+
+/**
+ * Parse an optional `eventSeriesId` body field. Strings must be digits-only
+ * so `BigInt(...)` can't throw a SyntaxError (e.g. on `"abc"` or `"1.5"`).
+ */
+export function validateEventSeriesId(
+  value: unknown
+):
+  | { ok: true; value: bigint | null }
+  | { ok: false; response: NextResponse } {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return { ok: true, value: BigInt(value) };
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return { ok: true, value: BigInt(value) };
+  }
+  return {
+    ok: false,
+    response: NextResponse.json(
+      { error: "eventSeriesId must be a non-negative integer or digit string" },
+      { status: 400 }
+    ),
+  };
+}
+
+/**
+ * Parse a required ISO date/datetime string into a Date, rejecting
+ * anything `new Date(...)` would coerce to Invalid Date.
+ */
+export function validateDateInput(
+  value: unknown,
+  field: string,
+  required: boolean
+):
+  | { ok: true; value: Date | null }
+  | { ok: false; response: NextResponse } {
+  if (value === undefined || value === null || value === "") {
+    if (required) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: `${field} is required` },
+          { status: 400 }
+        ),
+      };
+    }
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string" && !(value instanceof Date)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: `${field} must be a date string or Date` },
+        { status: 400 }
+      ),
+    };
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: `${field} is not a valid date` },
+        { status: 400 }
+      ),
+    };
+  }
+  return { ok: true, value: parsed };
 }
 
 export type EventTranslationInput = {
