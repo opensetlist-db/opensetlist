@@ -34,8 +34,11 @@ export function EventRow({
   badgeLabel,
 }: Props) {
   const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
-  const href = slugSource
-    ? `/${locale}/events/${event.id}/${slugify(slugSource)}`
+  // slugSource may be all-punctuation (`!!!`, `***`); slugify strips it to ""
+  // and we'd emit `/events/{id}/`. Branch on the slug, not the source.
+  const slug = slugSource ? slugify(slugSource) : "";
+  const href = slug
+    ? `/${locale}/events/${event.id}/${slug}`
     : `/${locale}/events/${event.id}`;
   return (
     <li
