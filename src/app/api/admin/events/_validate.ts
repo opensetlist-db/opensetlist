@@ -1,6 +1,38 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export function validatePerformerGuestIds(
+  performerIds: string[] | undefined,
+  guestIds: string[] | undefined
+): NextResponse | null {
+  if (performerIds && new Set(performerIds).size !== performerIds.length) {
+    return NextResponse.json(
+      { error: "performerIds contains duplicates" },
+      { status: 400 }
+    );
+  }
+  if (guestIds && new Set(guestIds).size !== guestIds.length) {
+    return NextResponse.json(
+      { error: "guestIds contains duplicates" },
+      { status: 400 }
+    );
+  }
+  if (performerIds && guestIds) {
+    const guestSet = new Set(guestIds);
+    const overlap = performerIds.filter((id) => guestSet.has(id));
+    if (overlap.length > 0) {
+      return NextResponse.json(
+        {
+          error: "stageIdentityId(s) cannot be both performer and guest",
+          ids: overlap,
+        },
+        { status: 400 }
+      );
+    }
+  }
+  return null;
+}
+
 export async function ensureStageIdentitiesExist(
   ids: string[]
 ): Promise<NextResponse | null> {

@@ -5,6 +5,7 @@ import { generateSlug } from "@/lib/slug";
 import {
   ensureStageIdentitiesExist,
   validateEventTranslations,
+  validatePerformerGuestIds,
 } from "./_validate";
 
 export async function GET() {
@@ -58,6 +59,9 @@ export async function POST(request: NextRequest) {
   if (performerIds instanceof NextResponse) return performerIds;
   const guestIds = validateIdArray(body.guestIds, "guestIds");
   if (guestIds instanceof NextResponse) return guestIds;
+
+  const dupErr = validatePerformerGuestIds(performerIds, guestIds);
+  if (dupErr) return dupErr;
 
   const existenceErr = await ensureStageIdentitiesExist([
     ...performerIds,
