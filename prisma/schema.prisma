@@ -513,7 +513,7 @@ model EventImpression {
   content     String    @db.VarChar(200)
   locale      String    @default("ko")
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime  @default(now()) @updatedAt
   reportCount Int       @default(0)
   isHidden    Boolean   @default(false)
   isDeleted   Boolean   @default(false)
