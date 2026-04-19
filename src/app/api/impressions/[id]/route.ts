@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
-import { getEditCooldownRemaining } from "@/lib/impression";
+import {
+  getEditCooldownRemaining,
+  ImpressionCooldownError,
+  ImpressionNotFoundError,
+  ImpressionStaleEditError,
+} from "@/lib/impression";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -89,13 +94,3 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     throw err;
   }
 }
-
-class ImpressionNotFoundError extends Error {}
-class ImpressionCooldownError extends Error {
-  readonly remainingSeconds: number;
-  constructor(remainingSeconds: number) {
-    super("cooldown");
-    this.remainingSeconds = remainingSeconds;
-  }
-}
-class ImpressionStaleEditError extends Error {}

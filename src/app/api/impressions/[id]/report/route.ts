@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { REPORT_HIDE_THRESHOLD } from "@/lib/config";
+import { ImpressionNotFoundError } from "@/lib/impression";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -37,5 +38,3 @@ export async function POST(_req: NextRequest, { params }: RouteProps) {
     throw err;
   }
 }
-
-class ImpressionNotFoundError extends Error {}
