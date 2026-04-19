@@ -4,6 +4,7 @@ import { serializeBigInt } from "@/lib/utils";
 import {
   ensureStageIdentitiesExist,
   validateEventTranslations,
+  validatePerformerGuestIds,
 } from "../_validate";
 
 type Props = { params: Promise<{ id: string }> };
@@ -103,6 +104,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!guestCheck.ok) return guestCheck.response;
   const performerIds = performerCheck.value;
   const guestIds = guestCheck.value;
+
+  const dupErr = validatePerformerGuestIds(performerIds, guestIds);
+  if (dupErr) return dupErr;
 
   const existenceErr = await ensureStageIdentitiesExist([
     ...(performerIds ?? []),

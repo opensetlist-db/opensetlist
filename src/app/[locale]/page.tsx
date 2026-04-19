@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import { serializeBigInt, pickTranslation, nonBlank } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { EventRow } from "@/components/EventRow";
@@ -223,15 +223,17 @@ function EventList({
         const seriesTr = event.eventSeries
           ? pickTranslation(event.eventSeries.translations, locale)
           : null;
+        const eventName = nonBlank(evTr?.name);
+        const seriesName = nonBlank(seriesTr?.name);
         const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
         return (
           <EventRow
             key={event.id}
             event={event}
             locale={locale}
-            title={seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
-            subtitle={seriesTr && evTr?.name ? evTr.name : null}
-            slugSource={evTr?.name ?? null}
+            title={seriesName ?? eventName ?? evT("unknownEvent")}
+            subtitle={seriesName && eventName ? eventName : null}
+            slugSource={eventName}
             badgeLabel={evT(badge.labelKey)}
             badgeColor={badge.color}
           />
