@@ -110,19 +110,19 @@ async function getArtistEvents(artistId: bigint, locale: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  if (!/^\d+$/.test(id)) return { title: "Not Found" };
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const artistId = BigInt(id);
   const [artist, palette] = await Promise.all([
     getArtist(artistId, locale),
     deriveOgPaletteFromArtist(artistId),
   ]);
-  if (!artist) return { title: "Not Found" };
+  if (!artist) return { title: metaT("notFound") };
   const t = pickTranslation(artist.translations, locale);
   if (!t) return { title: "OpenSetlist" };
 
   const title = `${displayName(t, "full")} | OpenSetlist`;
-  const mt = await getTranslations({ locale, namespace: "Meta" });
-  const description = `${displayName(t)} ${mt("setlistDb")}`;
+  const description = `${displayName(t)} ${metaT("setlistDb")}`;
 
   const ogImage = `/api/og/artist/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/artists/${id}/${artist.slug}`;

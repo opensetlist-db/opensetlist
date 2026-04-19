@@ -6,7 +6,7 @@ export type ResolvedEventStatus =
   | "completed"
   | "cancelled";
 
-const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // 12h — conservative upper bound for any live event
+export const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // 12h — conservative upper bound for any live event
 
 type EventStatusInput = {
   status: EventStatus;

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { pickTranslation } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
-import { getEventStatus } from "@/lib/eventStatus";
+import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
@@ -17,31 +17,39 @@ type Props = { params: Promise<{ id: string }> };
 
 const DEFAULT_MAX_AGE = 3600; // 1h — ceiling for all paths
 const MIN_MAX_AGE = 60; // 1m — floor so CDN doesn't get hammered at the boundary
-const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // mirrors eventStatus.ts
 
 // The status pill is derived from `new Date()` at render time, so a static 1h
 // Cache-Control can serve a stale status right across the upcoming→ongoing or
 // ongoing→completed boundary. Cap max-age at the seconds remaining until the
-// next transition for time-sensitive states, and keep the full hour for
-// terminal states (completed/cancelled).
+// next transition for time-sensitive states, and drop SWR so the CDN doesn't
+// keep serving a stale pill past the transition. Terminal states
+// (completed/cancelled) keep the full hour + SWR since their pill won't change.
 function cacheHeadersForStatus(
   resolved: ReturnType<typeof getEventStatus>,
   startTime: Date,
   now: Date
 ): Record<string, string> {
-  let maxAge = DEFAULT_MAX_AGE;
   if (resolved === "upcoming") {
     const secondsToStart = Math.floor(
       (startTime.getTime() - now.getTime()) / 1000
     );
-    maxAge = Math.min(DEFAULT_MAX_AGE, Math.max(MIN_MAX_AGE, secondsToStart));
-  } else if (resolved === "ongoing") {
+    const maxAge = Math.min(
+      DEFAULT_MAX_AGE,
+      Math.max(MIN_MAX_AGE, secondsToStart)
+    );
+    return { "Cache-Control": `public, max-age=${maxAge}` };
+  }
+  if (resolved === "ongoing") {
     const ongoingEnd = startTime.getTime() + ONGOING_BUFFER_MS;
     const secondsToEnd = Math.floor((ongoingEnd - now.getTime()) / 1000);
-    maxAge = Math.min(DEFAULT_MAX_AGE, Math.max(MIN_MAX_AGE, secondsToEnd));
+    const maxAge = Math.min(
+      DEFAULT_MAX_AGE,
+      Math.max(MIN_MAX_AGE, secondsToEnd)
+    );
+    return { "Cache-Control": `public, max-age=${maxAge}` };
   }
   return {
-    "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=86400`,
+    "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=86400`,
   };
 }
 

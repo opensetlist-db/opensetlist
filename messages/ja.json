@@ -167,6 +167,7 @@
   "Meta": {
     "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
     "setlistDb": "公演セットリストデータベース",
-    "performanceHistory": "公演履歴・セットリスト"
+    "performanceHistory": "公演履歴・セットリスト",
+    "notFound": "見つかりません"
   }
 }
