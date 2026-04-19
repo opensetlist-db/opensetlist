@@ -50,6 +50,7 @@ export function validateEventTranslations(
     return reject("translations must be a non-empty array");
   }
   const out: EventTranslationInput[] = [];
+  const seenLocales = new Set<string>();
   for (let i = 0; i < raw.length; i++) {
     const item = raw[i];
     if (!item || typeof item !== "object") {
@@ -59,6 +60,10 @@ export function validateEventTranslations(
     if (typeof t.locale !== "string" || t.locale.length === 0) {
       return reject(`translations[${i}].locale must be a non-empty string`);
     }
+    if (seenLocales.has(t.locale)) {
+      return reject(`translations contains duplicate locale "${t.locale}"`);
+    }
+    seenLocales.add(t.locale);
     if (typeof t.name !== "string" || t.name.length === 0) {
       return reject(`translations[${i}].name must be a non-empty string`);
     }
