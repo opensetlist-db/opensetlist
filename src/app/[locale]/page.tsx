@@ -8,7 +8,17 @@ import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
-const HOME_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const HOME_WINDOW_DAYS = 30;
+
+// Calendar windows are anchored to UTC day boundaries (not `now ± 30d`
+// as a time offset). Otherwise the inclusion of an event that happens to
+// fall on the 30th day drifts by the server's running time-of-day, and
+// the edges of the window disagree between regions. See CLAUDE.md.
+function utcDayOffset(d: Date, days: number): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days)
+  );
+}
 
 async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
@@ -42,12 +52,14 @@ async function getUpcomingEvents(
   requestedPage: number,
   pageSize: number
 ) {
-  const upcomingCutoff = new Date(now.getTime() + HOME_WINDOW_MS);
+  // End-exclusive: "events scheduled before the start of day +31", i.e.
+  // all events up to and including the 30-days-from-today UTC day.
+  const upcomingCutoff = utcDayOffset(now, HOME_WINDOW_DAYS + 1);
 
   const where = {
     isDeleted: false,
     status: "scheduled" as const,
-    startTime: { gt: now, lte: upcomingCutoff },
+    startTime: { gt: now, lt: upcomingCutoff },
   };
 
   const total = await prisma.event.count({ where });
@@ -75,7 +87,9 @@ async function getCompletedEvents(
   pageSize: number
 ) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
-  const windowStart = new Date(now.getTime() - HOME_WINDOW_MS);
+  // Inclusive: events starting on or after the start of the UTC day
+  // that is `HOME_WINDOW_DAYS` days before today.
+  const windowStart = utcDayOffset(now, -HOME_WINDOW_DAYS);
 
   const where = {
     isDeleted: false,
