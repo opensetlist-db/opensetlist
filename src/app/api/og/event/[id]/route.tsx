@@ -7,6 +7,7 @@ import { getEventStatus } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
+  FALLBACK_TITLES,
   STATUS_LABELS,
   STATUS_DOT_COLOR,
   normalizeOgLocale,
@@ -34,16 +35,21 @@ export async function GET(req: Request, { params }: Props) {
   const url = new URL(req.url);
   const lang = normalizeOgLocale(url.searchParams.get("lang"));
 
+  if (!/^\d+$/.test(id)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const eventId = BigInt(id);
+
   try {
     const [event, palette, fonts] = await Promise.all([
       prisma.event.findFirst({
-        where: { id: BigInt(id), isDeleted: false },
+        where: { id: eventId, isDeleted: false },
         include: {
           translations: true,
           eventSeries: { include: { translations: true } },
         },
       }),
-      deriveOgPaletteFromEvent(BigInt(id)),
+      deriveOgPaletteFromEvent(eventId),
       loadOgFonts(),
     ]);
 
@@ -53,7 +59,7 @@ export async function GET(req: Request, { params }: Props) {
 
     const t = pickTranslation(event.translations, lang);
     const seriesT = pickTranslation(event.eventSeries?.translations ?? [], lang);
-    const title = t ? displayName(t) : "Event";
+    const title = t ? displayName(t) : FALLBACK_TITLES[lang].event;
     const subtitleParts = [
       seriesT ? displayName(seriesT) : null,
       t?.city,

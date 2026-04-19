@@ -44,6 +44,16 @@ export const SONG_PILL_LABEL: Record<OgLocale, string> = {
   en: "SONG",
 };
 
+export const FALLBACK_TITLES: Record<OgLocale, {
+  event: string;
+  song: string;
+  artist: string;
+}> = {
+  ko: { event: "이벤트", song: "곡", artist: "아티스트" },
+  ja: { event: "イベント", song: "曲", artist: "アーティスト" },
+  en: { event: "Event", song: "Song", artist: "Artist" },
+};
+
 export function formatMemberCount(count: number, lang: OgLocale): string {
   switch (lang) {
     case "ko":

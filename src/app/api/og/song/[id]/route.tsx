@@ -4,7 +4,11 @@ import { pickTranslation, formatDate } from "@/lib/utils";
 import { displayName } from "@/lib/display";
 import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
-import { SONG_PILL_LABEL, normalizeOgLocale } from "@/lib/ogLabels";
+import {
+  FALLBACK_TITLES,
+  SONG_PILL_LABEL,
+  normalizeOgLocale,
+} from "@/lib/ogLabels";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -28,10 +32,15 @@ export async function GET(req: Request, { params }: Props) {
   const url = new URL(req.url);
   const lang = normalizeOgLocale(url.searchParams.get("lang"));
 
+  if (!/^\d+$/.test(id)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const songId = BigInt(id);
+
   try {
     const [song, palette, fonts] = await Promise.all([
       prisma.song.findFirst({
-        where: { id: BigInt(id), isDeleted: false },
+        where: { id: songId, isDeleted: false },
         include: {
           translations: true,
           artists: {
@@ -39,7 +48,7 @@ export async function GET(req: Request, { params }: Props) {
           },
         },
       }),
-      deriveOgPaletteFromSong(BigInt(id)),
+      deriveOgPaletteFromSong(songId),
       loadOgFonts(),
     ]);
 
@@ -48,7 +57,7 @@ export async function GET(req: Request, { params }: Props) {
     }
 
     const t = pickTranslation(song.translations, lang);
-    const title = t?.title ?? song.originalTitle ?? "Song";
+    const title = t?.title ?? song.originalTitle ?? FALLBACK_TITLES[lang].song;
 
     const firstArtist = song.artists[0];
     const artistT = firstArtist

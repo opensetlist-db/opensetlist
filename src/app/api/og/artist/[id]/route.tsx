@@ -6,6 +6,7 @@ import { deriveOgPaletteFromArtist, buildMeshBackground } from "@/lib/ogPalette"
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
   ARTIST_TYPE_LABELS,
+  FALLBACK_TITLES,
   formatMemberCount,
   normalizeOgLocale,
 } from "@/lib/ogLabels";
@@ -32,17 +33,22 @@ export async function GET(req: Request, { params }: Props) {
   const url = new URL(req.url);
   const lang = normalizeOgLocale(url.searchParams.get("lang"));
 
+  if (!/^\d+$/.test(id)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const artistId = BigInt(id);
+
   try {
     const [artist, palette, fonts] = await Promise.all([
       prisma.artist.findFirst({
-        where: { id: BigInt(id), isDeleted: false },
+        where: { id: artistId, isDeleted: false },
         include: {
           translations: true,
           parentArtist: { include: { translations: true } },
           stageLinks: { select: { endDate: true } },
         },
       }),
-      deriveOgPaletteFromArtist(BigInt(id)),
+      deriveOgPaletteFromArtist(artistId),
       loadOgFonts(),
     ]);
 
@@ -51,7 +57,7 @@ export async function GET(req: Request, { params }: Props) {
     }
 
     const t = pickTranslation(artist.translations, lang);
-    const title = t ? displayName(t, "full") : "Artist";
+    const title = t ? displayName(t, "full") : FALLBACK_TITLES[lang].artist;
 
     let subtitle = "";
     if (artist.parentArtist) {
