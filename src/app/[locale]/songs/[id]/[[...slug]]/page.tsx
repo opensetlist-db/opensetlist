@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
 import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { Metadata } from "next";
 
 type Props = {
@@ -101,7 +102,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? `${displayName(artistTr)} · ${mt("performanceHistory")}`
     : mt("performanceHistory");
 
-  const ogImage = `/api/og/song/${id}?lang=${locale}&v=${palette.fingerprint}`;
+  const ogImage = `/api/og/song/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
 
   return {

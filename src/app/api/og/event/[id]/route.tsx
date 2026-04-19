@@ -18,6 +18,13 @@ const CACHE_HEADERS = {
   "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
 } as const;
 
+// Error fallback must not be cached — a transient Prisma / font-load / render
+// blip would otherwise poison CDN + crawler caches for hours with a generic
+// OPENSETLIST card even after the underlying cause is fixed.
+const ERROR_HEADERS = {
+  "Cache-Control": "no-store",
+} as const;
+
 const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
@@ -249,7 +256,7 @@ export async function GET(req: Request, { params }: Props) {
             OPENSETLIST
           </div>
         ),
-        { width: 1200, height: 630, fonts, headers: CACHE_HEADERS }
+        { width: 1200, height: 630, fonts, headers: ERROR_HEADERS }
       );
     } catch {
       return new Response("Not found", { status: 404 });

@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
 import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { Metadata } from "next";
 
 type Props = {
@@ -122,7 +123,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = `${displayName(t)} ${mt("setlistDb")}`;
 
-  const ogImage = `/api/og/artist/${id}?lang=${locale}&v=${palette.fingerprint}`;
+  const ogImage = `/api/og/artist/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/artists/${id}/${artist.slug}`;
 
   return {

@@ -11,6 +11,7 @@ import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
@@ -97,7 +98,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .filter(Boolean)
     .join(" · ");
 
-  const ogImage = `/api/og/event/${id}?lang=${locale}&v=${palette.fingerprint}`;
+  const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/events/${id}/${event.slug}`;
 
   return {
