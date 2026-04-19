@@ -15,9 +15,35 @@ import {
 
 type Props = { params: Promise<{ id: string }> };
 
-const CACHE_HEADERS = {
-  "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
-} as const;
+const DEFAULT_MAX_AGE = 3600; // 1h — ceiling for all paths
+const MIN_MAX_AGE = 60; // 1m — floor so CDN doesn't get hammered at the boundary
+const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // mirrors eventStatus.ts
+
+// The status pill is derived from `new Date()` at render time, so a static 1h
+// Cache-Control can serve a stale status right across the upcoming→ongoing or
+// ongoing→completed boundary. Cap max-age at the seconds remaining until the
+// next transition for time-sensitive states, and keep the full hour for
+// terminal states (completed/cancelled).
+function cacheHeadersForStatus(
+  resolved: ReturnType<typeof getEventStatus>,
+  startTime: Date,
+  now: Date
+): Record<string, string> {
+  let maxAge = DEFAULT_MAX_AGE;
+  if (resolved === "upcoming") {
+    const secondsToStart = Math.floor(
+      (startTime.getTime() - now.getTime()) / 1000
+    );
+    maxAge = Math.min(DEFAULT_MAX_AGE, Math.max(MIN_MAX_AGE, secondsToStart));
+  } else if (resolved === "ongoing") {
+    const ongoingEnd = startTime.getTime() + ONGOING_BUFFER_MS;
+    const secondsToEnd = Math.floor((ongoingEnd - now.getTime()) / 1000);
+    maxAge = Math.min(DEFAULT_MAX_AGE, Math.max(MIN_MAX_AGE, secondsToEnd));
+  }
+  return {
+    "Cache-Control": `public, max-age=${maxAge}, stale-while-revalidate=86400`,
+  };
+}
 
 // Error fallback must not be cached — a transient Prisma / font-load / render
 // blip would otherwise poison CDN + crawler caches for hours with a generic
@@ -68,9 +94,11 @@ export async function GET(req: Request, { params }: Props) {
     const subtitle = subtitleParts.join(" · ");
     const dateStr = formatVenueDate(event.date, lang);
 
-    const resolved = getEventStatus(event, new Date());
+    const now = new Date();
+    const resolved = getEventStatus(event, now);
     const statusLabel = STATUS_LABELS[lang][resolved];
     const dotColor = STATUS_DOT_COLOR[resolved];
+    const cacheHeaders = cacheHeadersForStatus(resolved, event.startTime, now);
 
     return new ImageResponse(
       (
@@ -226,7 +254,7 @@ export async function GET(req: Request, { params }: Props) {
         width: 1200,
         height: 630,
         fonts,
-        headers: CACHE_HEADERS,
+        headers: cacheHeaders,
       }
     );
   } catch (err) {

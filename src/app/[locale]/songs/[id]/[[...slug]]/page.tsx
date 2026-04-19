@@ -84,9 +84,11 @@ async function getSongPerformances(songId: bigint) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
+  if (!/^\d+$/.test(id)) return { title: "Not Found" };
+  const songId = BigInt(id);
   const [song, palette] = await Promise.all([
-    getSong(BigInt(id), locale),
-    deriveOgPaletteFromSong(BigInt(id)),
+    getSong(songId, locale),
+    deriveOgPaletteFromSong(songId),
   ]);
   if (!song) return { title: "Not Found" };
   const tr = pickTranslation(song.translations, locale);

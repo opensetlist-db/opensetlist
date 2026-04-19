@@ -110,6 +110,7 @@ async function getArtistEvents(artistId: bigint, locale: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
+  if (!/^\d+$/.test(id)) return { title: "Not Found" };
   const artistId = BigInt(id);
   const [artist, palette] = await Promise.all([
     getArtist(artistId, locale),
