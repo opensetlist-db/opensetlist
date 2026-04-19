@@ -4,6 +4,10 @@ import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
 import {
   ensureStageIdentitiesExist,
+  StageIdentityNotFoundError,
+  stageIdentityNotFoundResponse,
+  validateDateInput,
+  validateEventSeriesId,
   validateEventTranslations,
   validatePerformerGuestIds,
 } from "./_validate";
@@ -34,22 +38,19 @@ function validateIdArray(value: unknown, field: string): string[] | NextResponse
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const {
-    type,
-    status,
-    eventSeriesId,
-    date,
-    country,
-    posterUrl,
-    startTime,
-  } = body;
+  const { type, status, country, posterUrl } = body;
 
-  if (!startTime) {
-    return NextResponse.json(
-      { error: "startTime is required" },
-      { status: 400 }
-    );
-  }
+  const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
+  if (!startTimeCheck.ok) return startTimeCheck.response;
+  const startTime = startTimeCheck.value!;
+
+  const dateCheck = validateDateInput(body.date, "date", false);
+  if (!dateCheck.ok) return dateCheck.response;
+  const date = dateCheck.value;
+
+  const seriesCheck = validateEventSeriesId(body.eventSeriesId);
+  if (!seriesCheck.ok) return seriesCheck.response;
+  const eventSeriesId = seriesCheck.value;
 
   const translationsCheck = validateEventTranslations(body.translations);
   if (!translationsCheck.ok) return translationsCheck.response;
@@ -63,51 +64,54 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const existenceErr = await ensureStageIdentitiesExist([
-    ...performerIds,
-    ...guestIds,
-  ]);
-  if (existenceErr) return existenceErr;
-
   const slug = body.slug || generateSlug(translations[0].name || `event-${Date.now()}`);
 
-  const event = await prisma.$transaction(async (tx) => {
-    const created = await tx.event.create({
-      data: {
-        slug,
-        type,
-        status: status ?? "scheduled",
-        eventSeriesId: eventSeriesId ? BigInt(eventSeriesId) : null,
-        date: date ? new Date(date) : null,
-        startTime: new Date(startTime),
-        country: country || null,
-        posterUrl: posterUrl || null,
-        translations: { create: translations },
-      },
-      include: { translations: true },
+  try {
+    const event = await prisma.$transaction(async (tx) => {
+      await ensureStageIdentitiesExist(tx, [...performerIds, ...guestIds]);
+
+      const created = await tx.event.create({
+        data: {
+          slug,
+          type,
+          status: status ?? "scheduled",
+          eventSeriesId,
+          date,
+          startTime,
+          country: country || null,
+          posterUrl: posterUrl || null,
+          translations: { create: translations },
+        },
+        include: { translations: true },
+      });
+
+      const performerRows = [
+        ...performerIds.map((id) => ({
+          eventId: created.id,
+          stageIdentityId: id,
+          isGuest: false,
+        })),
+        ...guestIds.map((id) => ({
+          eventId: created.id,
+          stageIdentityId: id,
+          isGuest: true,
+        })),
+      ];
+      if (performerRows.length > 0) {
+        await tx.eventPerformer.createMany({
+          data: performerRows,
+          skipDuplicates: true,
+        });
+      }
+
+      return created;
     });
 
-    const performerRows = [
-      ...performerIds.map((id) => ({
-        eventId: created.id,
-        stageIdentityId: id,
-        isGuest: false,
-      })),
-      ...guestIds.map((id) => ({
-        eventId: created.id,
-        stageIdentityId: id,
-        isGuest: true,
-      })),
-    ];
-    if (performerRows.length > 0) {
-      await tx.eventPerformer.createMany({
-        data: performerRows,
-        skipDuplicates: true,
-      });
+    return NextResponse.json(serializeBigInt(event), { status: 201 });
+  } catch (err) {
+    if (err instanceof StageIdentityNotFoundError) {
+      return stageIdentityNotFoundResponse(err);
     }
-
-    return created;
-  });
-
-  return NextResponse.json(serializeBigInt(event), { status: 201 });
+    throw err;
+  }
 }
