@@ -10,8 +10,8 @@ import {
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
-import { deriveOgPalette } from "@/lib/ogPalette";
-import { normalizeOgLocale } from "@/lib/ogStatusLabels";
+import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
@@ -72,7 +72,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const [event, palette] = await Promise.all([
     getEvent(BigInt(id), locale),
-    deriveOgPalette(BigInt(id)),
+    deriveOgPaletteFromEvent(BigInt(id)),
   ]);
   if (!event) return { title: "Not Found" };
   const t = await getTranslations({ locale, namespace: "Event" });
