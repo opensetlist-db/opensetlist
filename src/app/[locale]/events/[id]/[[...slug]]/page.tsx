@@ -145,17 +145,17 @@ async function getReactionCounts(eventId: bigint) {
 
 async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
   const rows = await prisma.eventImpression.findMany({
-    where: { eventId, isDeleted: false, isHidden: false },
-    orderBy: { updatedAt: "desc" },
+    where: { eventId, supersededAt: null, isDeleted: false, isHidden: false },
+    orderBy: { createdAt: "desc" },
     take: 50,
   });
   return rows.map((r) => ({
     id: r.id,
+    rootImpressionId: r.rootImpressionId,
     eventId: r.eventId.toString(),
     content: r.content,
     locale: r.locale,
     createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
   }));
 }
 

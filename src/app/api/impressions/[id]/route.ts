@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
@@ -5,8 +6,10 @@ import { getEditCooldownRemaining } from "@/lib/impression";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
+// `[id]` is the chain id (rootImpressionId) so that share links and
+// localStorage references survive across edits.
 export async function PUT(req: NextRequest, { params }: RouteProps) {
-  const { id } = await params;
+  const { id: chainId } = await params;
 
   let body;
   try {
@@ -28,34 +31,71 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const existing = await prisma.eventImpression.findFirst({
-    where: { id, isDeleted: false },
-  });
-  if (!existing) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const current = await tx.eventImpression.findFirst({
+        where: { rootImpressionId: chainId, supersededAt: null, isDeleted: false },
+      });
+      if (!current) throw new ImpressionNotFoundError();
+
+      const remainingSeconds = getEditCooldownRemaining(current.createdAt, new Date());
+      if (remainingSeconds > 0) {
+        throw new ImpressionCooldownError(remainingSeconds);
+      }
+
+      // updateMany scoped to (id, supersededAt: null) — if a concurrent
+      // edit already superseded this row count === 0 and we 409.
+      const supersede = await tx.eventImpression.updateMany({
+        where: { id: current.id, supersededAt: null },
+        data: { supersededAt: new Date() },
+      });
+      if (supersede.count === 0) throw new ImpressionStaleEditError();
+
+      const newId = randomUUID();
+      return tx.eventImpression.create({
+        data: {
+          id: newId,
+          rootImpressionId: chainId,
+          eventId: current.eventId,
+          content: trimmed,
+          locale: current.locale,
+        },
+      });
+    });
+
+    return NextResponse.json({
+      impression: {
+        id: created.id,
+        rootImpressionId: created.rootImpressionId,
+        eventId: created.eventId.toString(),
+        content: created.content,
+        locale: created.locale,
+        createdAt: created.createdAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    if (err instanceof ImpressionNotFoundError) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    if (err instanceof ImpressionCooldownError) {
+      return NextResponse.json(
+        { error: "Edit cooldown", remainingSeconds: err.remainingSeconds },
+        { status: 429 }
+      );
+    }
+    if (err instanceof ImpressionStaleEditError) {
+      return NextResponse.json({ error: "Stale edit" }, { status: 409 });
+    }
+    throw err;
   }
-
-  const remainingSeconds = getEditCooldownRemaining(existing.updatedAt, new Date());
-  if (remainingSeconds > 0) {
-    return NextResponse.json(
-      { error: "Edit cooldown", remainingSeconds },
-      { status: 429 }
-    );
-  }
-
-  const updated = await prisma.eventImpression.update({
-    where: { id },
-    data: { content: trimmed },
-  });
-
-  return NextResponse.json({
-    impression: {
-      id: updated.id,
-      eventId: updated.eventId.toString(),
-      content: updated.content,
-      locale: updated.locale,
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
-    },
-  });
 }
+
+class ImpressionNotFoundError extends Error {}
+class ImpressionCooldownError extends Error {
+  readonly remainingSeconds: number;
+  constructor(remainingSeconds: number) {
+    super("cooldown");
+    this.remainingSeconds = remainingSeconds;
+  }
+}
+class ImpressionStaleEditError extends Error {}
