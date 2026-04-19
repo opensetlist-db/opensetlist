@@ -1,107 +1,309 @@
-import { ImageResponse } from "next/og";
+import { ImageResponse } from "@vercel/og";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { pickTranslation } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
+import { getEventStatus } from "@/lib/eventStatus";
+import { deriveOgPalette, type OgPalette } from "@/lib/ogPalette";
+import {
+  STATUS_LABELS,
+  STATUS_DOT_COLOR,
+  normalizeOgLocale,
+} from "@/lib/ogStatusLabels";
 
 type Props = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, { params }: Props) {
-  const { id } = await params;
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+} as const;
 
-  const event = await prisma.event.findFirst({
-    where: { id: BigInt(id), isDeleted: false },
-    include: {
-      translations: true,
-      eventSeries: { include: { translations: true } },
+const AIRPLANE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
+const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
+
+let cachedFonts: Array<{
+  name: string;
+  data: ArrayBuffer;
+  weight: 700;
+  style: "normal";
+}> | null = null;
+
+async function loadFonts() {
+  if (cachedFonts) return cachedFonts;
+  const read = (rel: string) =>
+    readFile(path.join(process.cwd(), "node_modules", rel));
+  const [dmSans, notoKr, notoJp] = await Promise.all([
+    read("@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff"),
+    read("@fontsource/noto-sans-kr/files/noto-sans-kr-korean-700-normal.woff"),
+    read("@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff"),
+  ]);
+  cachedFonts = [
+    {
+      name: "DMSans",
+      data: dmSans.buffer.slice(
+        dmSans.byteOffset,
+        dmSans.byteOffset + dmSans.byteLength
+      ) as ArrayBuffer,
+      weight: 700,
+      style: "normal",
     },
-  });
+    {
+      name: "NotoSansKR",
+      data: notoKr.buffer.slice(
+        notoKr.byteOffset,
+        notoKr.byteOffset + notoKr.byteLength
+      ) as ArrayBuffer,
+      weight: 700,
+      style: "normal",
+    },
+    {
+      name: "NotoSansJP",
+      data: notoJp.buffer.slice(
+        notoJp.byteOffset,
+        notoJp.byteOffset + notoJp.byteLength
+      ) as ArrayBuffer,
+      weight: 700,
+      style: "normal",
+    },
+  ];
+  return cachedFonts;
+}
 
-  if (!event) return new Response("Not found", { status: 404 });
+const FONT_STACK = '"DMSans", "NotoSansKR", "NotoSansJP", sans-serif';
 
-  const t = pickTranslation(event.translations, "ko");
-  const seriesT = pickTranslation(
-    event.eventSeries?.translations ?? [],
-    "ko"
-  );
+function buildMeshBackground(palette: OgPalette): string {
+  return [
+    `radial-gradient(circle at 20% 30%, ${palette.mesh[0]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 80% 20%, ${palette.mesh[1]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 60% 80%, ${palette.mesh[2]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 50% 50%, rgba(2, 119, 189, 0.15) 0%, transparent 60%)`,
+  ].join(", ");
+}
 
-  // OG card renders server-side with no viewer browser TZ; show the pinned
-  // venue calendar date only. No `venueTimezone` column exists, so a
-  // "venue-local start time" row is deferred to a later task.
-  const dateStr = formatVenueDate(event.date, "ko");
+export async function GET(req: Request, { params }: Props) {
+  const { id } = await params;
+  const url = new URL(req.url);
+  const lang = normalizeOgLocale(url.searchParams.get("lang"));
 
-  const subtitle = [dateStr, t?.city, t?.venue].filter(Boolean).join(" · ");
+  try {
+    const [event, palette, fonts] = await Promise.all([
+      prisma.event.findFirst({
+        where: { id: BigInt(id), isDeleted: false },
+        include: {
+          translations: true,
+          eventSeries: { include: { translations: true } },
+        },
+      }),
+      deriveOgPalette(BigInt(id)),
+      loadFonts(),
+    ]);
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "1200px",
-          height: "630px",
-          background:
-            "linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 60%, #2d1b4e 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: "70px 90px",
-          fontFamily: "sans-serif",
-          color: "white",
-          position: "relative",
-        }}
-      >
+    if (!event) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const t = pickTranslation(event.translations, lang);
+    const seriesT = pickTranslation(event.eventSeries?.translations ?? [], lang);
+    const title = t ? displayName(t) : "Event";
+    const subtitleParts = [
+      seriesT ? displayName(seriesT) : null,
+      t?.city,
+      t?.venue,
+    ].filter(Boolean) as string[];
+    const subtitle = subtitleParts.join(" · ");
+    const dateStr = formatVenueDate(event.date, lang);
+
+    const resolved = getEventStatus(event, new Date());
+    const statusLabel = STATUS_LABELS[lang][resolved];
+    const dotColor = STATUS_DOT_COLOR[resolved];
+
+    return new ImageResponse(
+      (
         <div
           style={{
-            position: "absolute",
-            left: "0",
-            top: "0",
-            bottom: "0",
-            width: "6px",
-            background:
-              "linear-gradient(180deg, #FB8A9B 0%, #9b8afb 100%)",
+            width: "1200px",
+            height: "630px",
+            display: "flex",
+            position: "relative",
+            fontFamily: FONT_STACK,
+            color: "#ffffff",
+            background: palette.base,
+            backgroundImage: buildMeshBackground(palette),
           }}
-        />
-        {seriesT && (
+        >
+          {/* Paper-airplane motifs */}
+          <img
+            src={AIRPLANE_URI}
+            width={120}
+            height={120}
+            style={{
+              position: "absolute",
+              top: 70,
+              right: 90,
+              opacity: 0.15,
+              transform: "rotate(25deg)",
+            }}
+            alt=""
+          />
+          <img
+            src={AIRPLANE_URI}
+            width={80}
+            height={80}
+            style={{
+              position: "absolute",
+              bottom: 90,
+              right: 180,
+              opacity: 0.1,
+              transform: "rotate(-15deg)",
+            }}
+            alt=""
+          />
+
+          {/* Glass card */}
           <div
             style={{
-              fontSize: "26px",
-              color: "#FB8A9B",
-              marginBottom: "20px",
-              letterSpacing: "0.03em",
+              display: "flex",
+              flexDirection: "column",
+              position: "absolute",
+              top: 95,
+              left: 80,
+              width: 700,
+              minHeight: 440,
+              padding: "48px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 24,
+              backdropFilter: "blur(20px)",
             }}
           >
-            {displayName(seriesT)}
+            {/* Status pill */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                alignSelf: "flex-start",
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: "rgba(0, 0, 0, 0.3)",
+                fontSize: 18,
+                letterSpacing: "0.02em",
+                marginBottom: 28,
+              }}
+            >
+              <div
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  background: dotColor,
+                }}
+              />
+              <div>{statusLabel}</div>
+            </div>
+
+            {/* Title */}
+            <div
+              style={{
+                display: "-webkit-box",
+                fontSize: 72,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: "#ffffff",
+                overflow: "hidden",
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {title}
+            </div>
+
+            {/* Subtitle */}
+            {subtitle && (
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 20,
+                  fontSize: 30,
+                  lineHeight: 1.3,
+                  color: "rgba(255, 255, 255, 0.8)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {subtitle}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flex: 1 }} />
+
+            {/* Metadata row */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: 32,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 24,
+                  color: "rgba(255, 255, 255, 0.7)",
+                }}
+              >
+                {dateStr}
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  letterSpacing: "0.12em",
+                  color: "rgba(255, 255, 255, 0.5)",
+                  textTransform: "uppercase",
+                }}
+              >
+                OPENSETLIST
+              </div>
+            </div>
           </div>
-        )}
-        <div
-          style={{
-            fontSize: "56px",
-            fontWeight: "bold",
-            marginBottom: "32px",
-            lineHeight: 1.2,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {t ? displayName(t) : "Event"}
         </div>
-        {subtitle && (
-          <div style={{ fontSize: "26px", color: "#9999bb" }}>
-            {subtitle}
+      ),
+      {
+        width: 1200,
+        height: 630,
+        fonts,
+        headers: CACHE_HEADERS,
+      }
+    );
+  } catch (err) {
+    console.error("[og/event] render failed, using bare fallback", err);
+    try {
+      const fonts = await loadFonts();
+      return new ImageResponse(
+        (
+          <div
+            style={{
+              width: "1200px",
+              height: "630px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: FONT_STACK,
+              color: "#ffffff",
+              background: "#0f172a",
+              fontSize: 56,
+              letterSpacing: "0.08em",
+            }}
+          >
+            OPENSETLIST
           </div>
-        )}
-        <div
-          style={{
-            position: "absolute",
-            bottom: "44px",
-            right: "90px",
-            fontSize: "22px",
-            color: "#444466",
-            letterSpacing: "0.05em",
-          }}
-        >
-          opensetlist.com
-        </div>
-      </div>
-    ),
-    { width: 1200, height: 630 }
-  );
+        ),
+        { width: 1200, height: 630, fonts, headers: CACHE_HEADERS }
+      );
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  }
 }
