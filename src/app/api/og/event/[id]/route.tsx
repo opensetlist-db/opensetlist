@@ -1,17 +1,16 @@
 import { ImageResponse } from "@vercel/og";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { pickTranslation } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
-import { deriveOgPalette, type OgPalette } from "@/lib/ogPalette";
+import { deriveOgPaletteFromEvent, type OgPalette } from "@/lib/ogPalette";
+import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
   STATUS_LABELS,
   STATUS_DOT_COLOR,
   normalizeOgLocale,
-} from "@/lib/ogStatusLabels";
+} from "@/lib/ogLabels";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,56 +21,6 @@ const CACHE_HEADERS = {
 const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
-
-let cachedFonts: Array<{
-  name: string;
-  data: ArrayBuffer;
-  weight: 700;
-  style: "normal";
-}> | null = null;
-
-async function loadFonts() {
-  if (cachedFonts) return cachedFonts;
-  const read = (rel: string) =>
-    readFile(path.join(process.cwd(), "node_modules", rel));
-  const [dmSans, notoKr, notoJp] = await Promise.all([
-    read("@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff"),
-    read("@fontsource/noto-sans-kr/files/noto-sans-kr-korean-700-normal.woff"),
-    read("@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff"),
-  ]);
-  cachedFonts = [
-    {
-      name: "DMSans",
-      data: dmSans.buffer.slice(
-        dmSans.byteOffset,
-        dmSans.byteOffset + dmSans.byteLength
-      ) as ArrayBuffer,
-      weight: 700,
-      style: "normal",
-    },
-    {
-      name: "NotoSansKR",
-      data: notoKr.buffer.slice(
-        notoKr.byteOffset,
-        notoKr.byteOffset + notoKr.byteLength
-      ) as ArrayBuffer,
-      weight: 700,
-      style: "normal",
-    },
-    {
-      name: "NotoSansJP",
-      data: notoJp.buffer.slice(
-        notoJp.byteOffset,
-        notoJp.byteOffset + notoJp.byteLength
-      ) as ArrayBuffer,
-      weight: 700,
-      style: "normal",
-    },
-  ];
-  return cachedFonts;
-}
-
-const FONT_STACK = '"DMSans", "NotoSansKR", "NotoSansJP", sans-serif';
 
 function buildMeshBackground(palette: OgPalette): string {
   return [
@@ -96,8 +45,8 @@ export async function GET(req: Request, { params }: Props) {
           eventSeries: { include: { translations: true } },
         },
       }),
-      deriveOgPalette(BigInt(id)),
-      loadFonts(),
+      deriveOgPaletteFromEvent(BigInt(id)),
+      loadOgFonts(),
     ]);
 
     if (!event) {
@@ -127,7 +76,7 @@ export async function GET(req: Request, { params }: Props) {
             height: "630px",
             display: "flex",
             position: "relative",
-            fontFamily: FONT_STACK,
+            fontFamily: OG_FONT_STACK,
             color: "#ffffff",
             background: palette.base,
             backgroundImage: buildMeshBackground(palette),
@@ -280,7 +229,7 @@ export async function GET(req: Request, { params }: Props) {
   } catch (err) {
     console.error("[og/event] render failed, using bare fallback", err);
     try {
-      const fonts = await loadFonts();
+      const fonts = await loadOgFonts();
       return new ImageResponse(
         (
           <div
@@ -290,7 +239,7 @@ export async function GET(req: Request, { params }: Props) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontFamily: FONT_STACK,
+              fontFamily: OG_FONT_STACK,
               color: "#ffffff",
               background: "#0f172a",
               fontSize: 56,

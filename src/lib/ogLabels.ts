@@ -1,4 +1,5 @@
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { ArtistType } from "@/generated/prisma/enums";
 
 export type OgLocale = "ko" | "ja" | "en";
 
@@ -35,4 +36,28 @@ export const STATUS_DOT_COLOR: Record<ResolvedEventStatus, string> = {
   upcoming: "#F59E0B",
   completed: "#6B7280",
   cancelled: "#6B7280",
+};
+
+export const SONG_PILL_LABEL: Record<OgLocale, string> = {
+  ko: "곡",
+  ja: "曲",
+  en: "SONG",
+};
+
+export const ARTIST_TYPE_LABELS: Record<OgLocale, Record<ArtistType, string>> = {
+  ko: {
+    solo: "솔로",
+    group: "그룹",
+    unit: "유닛",
+  },
+  ja: {
+    solo: "ソロ",
+    group: "グループ",
+    unit: "ユニット",
+  },
+  en: {
+    solo: "SOLO",
+    group: "GROUP",
+    unit: "UNIT",
+  },
 };

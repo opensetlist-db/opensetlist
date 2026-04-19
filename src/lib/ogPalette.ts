@@ -60,7 +60,90 @@ function rotateOklchHue(hex: string, degrees: number): string | null {
   }
 }
 
-async function collectSetlistColors(
+function pickTopColors(frequency: Map<string, number>): string[] {
+  return [...frequency.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([color]) => color);
+}
+
+function harmonize(realColors: readonly string[]): [string, string, string] {
+  const out: string[] = [...realColors];
+  const rotations = [30, -30, 60];
+  let i = 0;
+  while (out.length < 3) {
+    const seed = realColors[i % realColors.length];
+    const rotated = rotateOklchHue(seed, rotations[out.length - 1] ?? 30);
+    out.push(rotated ?? BRAND_FALLBACK[out.length]);
+    i++;
+    if (i > 10) break;
+  }
+  return [out[0], out[1], out[2]] as [string, string, string];
+}
+
+function paletteFromFrequency(frequency: Map<string, number>): OgPalette {
+  if (frequency.size === 0) return fallbackPalette();
+
+  const ordered = pickTopColors(frequency);
+
+  if (ordered.length >= 3) {
+    const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
+    return {
+      base: BASE_COLOR,
+      brandAnchor: "#0277BD",
+      mesh,
+      source: "faithful",
+      fingerprint: computeFingerprint("faithful", ordered),
+    };
+  }
+
+  const mesh = harmonize(ordered);
+  return {
+    base: BASE_COLOR,
+    brandAnchor: "#0277BD",
+    mesh,
+    source: "harmonized",
+    fingerprint: computeFingerprint("harmonized", ordered),
+  };
+}
+
+// Climbs the Artist.parentArtistId chain and returns the root ancestor id.
+async function findRootArtistId(seedId: bigint): Promise<bigint> {
+  const visited = new Set<string>();
+  let currentId: bigint | null = seedId;
+  let rootId: bigint = seedId;
+  while (currentId !== null && !visited.has(currentId.toString())) {
+    visited.add(currentId.toString());
+    rootId = currentId;
+    const artist: { parentArtistId: bigint | null } | null =
+      await prisma.artist.findUnique({
+        where: { id: currentId },
+        select: { parentArtistId: true },
+      });
+    currentId = artist?.parentArtistId ?? null;
+  }
+  return rootId;
+}
+
+async function collectRosterColorsByArtistId(
+  artistId: bigint
+): Promise<Map<string, number>> {
+  const links = await prisma.stageIdentityArtist.findMany({
+    where: { artistId },
+    select: { stageIdentity: { select: { color: true } } },
+  });
+
+  const frequency = new Map<string, number>();
+  for (const link of links) {
+    const color = link.stageIdentity.color;
+    if (isValidHex(color)) {
+      const key = color.toLowerCase();
+      frequency.set(key, (frequency.get(key) ?? 0) + 1);
+    }
+  }
+  return frequency;
+}
+
+async function collectEventSetlistColors(
   eventId: bigint
 ): Promise<Map<string, number>> {
   const items = await prisma.setlistItem.findMany({
@@ -87,7 +170,7 @@ async function collectSetlistColors(
   return frequency;
 }
 
-async function collectArtistRosterColors(
+async function collectEventArtistRosterColors(
   eventId: bigint
 ): Promise<Map<string, number>> {
   const event = await prisma.event.findUnique({
@@ -99,89 +182,110 @@ async function collectArtistRosterColors(
   const seedArtistId = event?.eventSeries?.artistId;
   if (!seedArtistId) return new Map();
 
-  const visited = new Set<string>();
-  let currentId: bigint | null = seedArtistId;
-  let rootId: bigint = seedArtistId;
-  while (currentId !== null && !visited.has(currentId.toString())) {
-    visited.add(currentId.toString());
-    rootId = currentId;
-    const artist: { parentArtistId: bigint | null } | null =
-      await prisma.artist.findUnique({
-        where: { id: currentId },
-        select: { parentArtistId: true },
-      });
-    currentId = artist?.parentArtistId ?? null;
-  }
+  const rootId = await findRootArtistId(seedArtistId);
+  return collectRosterColorsByArtistId(rootId);
+}
 
-  const links = await prisma.stageIdentityArtist.findMany({
-    where: { artistId: rootId },
-    select: { stageIdentity: { select: { color: true } } },
+async function collectSongPerformerColors(
+  songId: bigint
+): Promise<Map<string, number>> {
+  const rows = await prisma.setlistItemSong.findMany({
+    where: {
+      songId,
+      setlistItem: { isDeleted: false, event: { isDeleted: false } },
+    },
+    select: {
+      setlistItem: {
+        select: {
+          id: true,
+          performers: {
+            select: { stageIdentity: { select: { color: true } } },
+          },
+        },
+      },
+    },
   });
 
+  const seenItems = new Set<string>();
   const frequency = new Map<string, number>();
-  for (const link of links) {
-    const color = link.stageIdentity.color;
-    if (isValidHex(color)) {
-      const key = color.toLowerCase();
-      frequency.set(key, (frequency.get(key) ?? 0) + 1);
+  for (const row of rows) {
+    const itemKey = row.setlistItem.id.toString();
+    if (seenItems.has(itemKey)) continue;
+    seenItems.add(itemKey);
+    const perItem = new Set<string>();
+    for (const performer of row.setlistItem.performers) {
+      const color = performer.stageIdentity.color;
+      if (isValidHex(color)) perItem.add(color.toLowerCase());
+    }
+    for (const color of perItem) {
+      frequency.set(color, (frequency.get(color) ?? 0) + 1);
     }
   }
   return frequency;
 }
 
-function pickTopColors(frequency: Map<string, number>): string[] {
-  return [...frequency.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([color]) => color);
-}
+async function collectSongCreditedArtistColors(
+  songId: bigint
+): Promise<Map<string, number>> {
+  const rows = await prisma.songArtist.findMany({
+    where: { songId },
+    select: { artistId: true },
+  });
 
-function harmonize(realColors: readonly string[]): [string, string, string] {
-  const out: string[] = [...realColors];
-  const rotations = [30, -30, 60];
-  let i = 0;
-  while (out.length < 3) {
-    const seed = realColors[i % realColors.length];
-    const rotated = rotateOklchHue(seed, rotations[out.length - 1] ?? 30);
-    out.push(rotated ?? BRAND_FALLBACK[out.length]);
-    i++;
-    if (i > 10) break;
+  const frequency = new Map<string, number>();
+  for (const { artistId } of rows) {
+    const sub = await collectRosterColorsByArtistId(artistId);
+    for (const [color, count] of sub) {
+      frequency.set(color, (frequency.get(color) ?? 0) + count);
+    }
   }
-  return [out[0], out[1], out[2]] as [string, string, string];
+  return frequency;
 }
 
-export async function deriveOgPalette(eventId: bigint): Promise<OgPalette> {
+export async function deriveOgPaletteFromEvent(
+  eventId: bigint
+): Promise<OgPalette> {
   try {
-    let frequency = await collectSetlistColors(eventId);
+    let frequency = await collectEventSetlistColors(eventId);
     if (frequency.size === 0) {
-      frequency = await collectArtistRosterColors(eventId);
+      frequency = await collectEventArtistRosterColors(eventId);
     }
-
-    if (frequency.size === 0) return fallbackPalette();
-
-    const ordered = pickTopColors(frequency);
-
-    if (ordered.length >= 3) {
-      const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
-      return {
-        base: BASE_COLOR,
-        brandAnchor: "#0277BD",
-        mesh,
-        source: "faithful",
-        fingerprint: computeFingerprint("faithful", ordered),
-      };
-    }
-
-    const mesh = harmonize(ordered);
-    return {
-      base: BASE_COLOR,
-      brandAnchor: "#0277BD",
-      mesh,
-      source: "harmonized",
-      fingerprint: computeFingerprint("harmonized", ordered),
-    };
+    return paletteFromFrequency(frequency);
   } catch (err) {
-    console.error("[ogPalette] derivation failed, using fallback", err);
+    console.error("[ogPalette] event derivation failed, using fallback", err);
     return fallbackPalette();
   }
 }
 
+export async function deriveOgPaletteFromSong(
+  songId: bigint
+): Promise<OgPalette> {
+  try {
+    let frequency = await collectSongPerformerColors(songId);
+    if (frequency.size === 0) {
+      frequency = await collectSongCreditedArtistColors(songId);
+    }
+    return paletteFromFrequency(frequency);
+  } catch (err) {
+    console.error("[ogPalette] song derivation failed, using fallback", err);
+    return fallbackPalette();
+  }
+}
+
+export async function deriveOgPaletteFromArtist(
+  artistId: bigint
+): Promise<OgPalette> {
+  try {
+    let frequency = await collectRosterColorsByArtistId(artistId);
+    if (frequency.size === 0) {
+      const rootId = await findRootArtistId(artistId);
+      if (rootId !== artistId) {
+        frequency = await collectRosterColorsByArtistId(rootId);
+      }
+    }
+    return paletteFromFrequency(frequency);
+  } catch (err) {
+    console.error("[ogPalette] artist derivation failed, using fallback", err);
+    return fallbackPalette();
+  }
+}
