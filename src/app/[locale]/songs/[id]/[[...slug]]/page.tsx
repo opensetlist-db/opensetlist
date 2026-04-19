@@ -9,6 +9,7 @@ import {
   formatDate,
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
+import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
 import type { Metadata } from "next";
 
 type Props = {
@@ -82,7 +83,10 @@ async function getSongPerformances(songId: bigint) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  const song = await getSong(BigInt(id), locale);
+  const [song, palette] = await Promise.all([
+    getSong(BigInt(id), locale),
+    deriveOgPaletteFromSong(BigInt(id)),
+  ]);
   if (!song) return { title: "Not Found" };
   const tr = pickTranslation(song.translations, locale);
   const artistTr = song.artists[0]
@@ -97,7 +101,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? `${displayName(artistTr)} · ${mt("performanceHistory")}`
     : mt("performanceHistory");
 
-  const ogImage = `/api/og/song/${id}`;
+  const ogImage = `/api/og/song/${id}?lang=${locale}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
 
   return {
