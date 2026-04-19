@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
-import { ensureStageIdentitiesExist } from "./_validate";
+import {
+  ensureStageIdentitiesExist,
+  validateEventTranslations,
+} from "./_validate";
 
 export async function GET() {
   const events = await prisma.event.findMany({
@@ -38,7 +41,6 @@ export async function POST(request: NextRequest) {
     country,
     posterUrl,
     startTime,
-    translations,
   } = body;
 
   if (!startTime) {
@@ -47,6 +49,10 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  const translationsCheck = validateEventTranslations(body.translations);
+  if (!translationsCheck.ok) return translationsCheck.response;
+  const translations = translationsCheck.value;
 
   const performerIds = validateIdArray(body.performerIds, "performerIds");
   if (performerIds instanceof NextResponse) return performerIds;
@@ -59,7 +65,7 @@ export async function POST(request: NextRequest) {
   ]);
   if (existenceErr) return existenceErr;
 
-  const slug = body.slug || generateSlug(translations[0]?.name || `event-${Date.now()}`);
+  const slug = body.slug || generateSlug(translations[0].name || `event-${Date.now()}`);
 
   const event = await prisma.$transaction(async (tx) => {
     const created = await tx.event.create({
@@ -72,23 +78,7 @@ export async function POST(request: NextRequest) {
         startTime: new Date(startTime),
         country: country || null,
         posterUrl: posterUrl || null,
-        translations: {
-          create: translations.map(
-            (t: {
-              locale: string;
-              name: string;
-              shortName?: string | null;
-              city?: string | null;
-              venue?: string | null;
-            }) => ({
-              locale: t.locale,
-              name: t.name,
-              shortName: t.shortName || null,
-              city: t.city || null,
-              venue: t.venue || null,
-            })
-          ),
-        },
+        translations: { create: translations },
       },
       include: { translations: true },
     });
