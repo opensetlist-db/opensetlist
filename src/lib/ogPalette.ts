@@ -38,9 +38,12 @@ function computeFingerprint(
   source: OgPaletteSource,
   colors: readonly string[]
 ): string {
-  const sorted = [...new Set(colors.map((c) => c.toLowerCase()))].sort();
+  // Preserve order — mesh[0/1/2] map to fixed gradient stops, so reordering
+  // the same set of colors produces a visually different image and must
+  // invalidate the CDN cache.
+  const ordered = colors.map((c) => c.toLowerCase()).join(",");
   return createHash("sha256")
-    .update(`${source}:${sorted.join(",")}`)
+    .update(`${source}:${ordered}`)
     .digest("hex")
     .slice(0, 8);
 }
@@ -167,7 +170,7 @@ export async function deriveOgPalette(eventId: bigint): Promise<OgPalette> {
         brandAnchor: "#0277BD",
         mesh,
         source: "faithful",
-        fingerprint: computeFingerprint("faithful", ordered),
+        fingerprint: computeFingerprint("faithful", mesh),
       };
     }
 
@@ -177,7 +180,7 @@ export async function deriveOgPalette(eventId: bigint): Promise<OgPalette> {
       brandAnchor: "#0277BD",
       mesh,
       source: "harmonized",
-      fingerprint: computeFingerprint("harmonized", ordered),
+      fingerprint: computeFingerprint("harmonized", mesh),
     };
   } catch (err) {
     console.error("[ogPalette] derivation failed, using fallback", err);
