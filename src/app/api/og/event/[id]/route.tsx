@@ -182,7 +182,6 @@ export async function GET(req: Request, { params }: Props) {
               background: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
               borderRadius: 24,
-              backdropFilter: "blur(20px)",
             }}
           >
             {/* Status pill */}
