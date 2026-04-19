@@ -3,6 +3,12 @@
  * Handles Korean, Japanese, Chinese characters by keeping them as-is (percent-encoded by browser).
  * Latin characters are lowercased and spaces become hyphens.
  */
+export function nonBlank(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export function slugify(text: string): string {
   return text
     .trim()

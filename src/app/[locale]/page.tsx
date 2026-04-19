@@ -1,13 +1,24 @@
 import { getTranslations } from "next-intl/server";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation, slugify, formatDate } from "@/lib/utils";
+import { serializeBigInt, pickTranslation, nonBlank } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
+import { EventRow } from "@/components/EventRow";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
+const HOME_WINDOW_DAYS = 30;
+
+// Calendar windows are anchored to UTC day boundaries (not `now ± 30d`
+// as a time offset). Otherwise the inclusion of an event that happens to
+// fall on the 30th day drifts by the server's running time-of-day, and
+// the edges of the window disagree between regions. See CLAUDE.md.
+function utcDayOffset(d: Date, days: number): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days)
+  );
+}
 
 async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
@@ -41,10 +52,14 @@ async function getUpcomingEvents(
   requestedPage: number,
   pageSize: number
 ) {
+  // End-exclusive: "events scheduled before the start of day +31", i.e.
+  // all events up to and including the 30-days-from-today UTC day.
+  const upcomingCutoff = utcDayOffset(now, HOME_WINDOW_DAYS + 1);
+
   const where = {
     isDeleted: false,
     status: "scheduled" as const,
-    startTime: { gt: now },
+    startTime: { gt: now, lt: upcomingCutoff },
   };
 
   const total = await prisma.event.count({ where });
@@ -72,9 +87,13 @@ async function getCompletedEvents(
   pageSize: number
 ) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
+  // Inclusive: events starting on or after the start of the UTC day
+  // that is `HOME_WINDOW_DAYS` days before today.
+  const windowStart = utcDayOffset(now, -HOME_WINDOW_DAYS);
 
   const where = {
     isDeleted: false,
+    startTime: { gte: windowStart },
     OR: [
       { status: "completed" as const },
       {
@@ -218,45 +237,20 @@ function EventList({
         const seriesTr = event.eventSeries
           ? pickTranslation(event.eventSeries.translations, locale)
           : null;
+        const eventName = nonBlank(evTr?.name);
+        const seriesName = nonBlank(seriesTr?.name);
         const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
         return (
-          <li
+          <EventRow
             key={event.id}
-            className="flex items-center gap-3 rounded-lg bg-white px-4 py-3"
-            style={{
-              border: "0.5px solid #e8e8e8",
-              borderRadius: "8px",
-            }}
-          >
-            <span
-              className="font-dm-sans shrink-0 text-[11px]"
-              style={{ color: "#999999" }}
-            >
-              {formatDate(event.date, locale)}
-            </span>
-            <div className="flex-1 min-w-0">
-              <Link
-                href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
-                className="font-dm-sans block truncate text-[12px] hover:underline"
-                style={{ color: "#1a1a1a", fontWeight: 500 }}
-              >
-                {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
-              </Link>
-              {seriesTr && evTr?.name && (
-                <span
-                  className="font-dm-sans block truncate text-[11px]"
-                  style={{ color: "#999999" }}
-                >
-                  {evTr.name}
-                </span>
-              )}
-            </div>
-            <span
-              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${badge.color}`}
-            >
-              {evT(badge.labelKey)}
-            </span>
-          </li>
+            event={event}
+            locale={locale}
+            title={seriesName ?? eventName ?? evT("unknownEvent")}
+            subtitle={seriesName && eventName ? eventName : null}
+            slugSource={eventName}
+            badgeLabel={evT(badge.labelKey)}
+            badgeColor={badge.color}
+          />
         );
       })}
     </ul>
