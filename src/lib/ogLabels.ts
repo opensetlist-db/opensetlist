@@ -61,7 +61,7 @@ export function formatMemberCount(count: number, lang: OgLocale): string {
     case "ja":
       return `メンバー ${count}名`;
     case "en":
-      return `${count} members`;
+      return count === 1 ? "1 member" : `${count} members`;
   }
 }
 
