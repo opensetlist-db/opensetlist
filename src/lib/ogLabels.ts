@@ -44,6 +44,17 @@ export const SONG_PILL_LABEL: Record<OgLocale, string> = {
   en: "SONG",
 };
 
+export function formatMemberCount(count: number, lang: OgLocale): string {
+  switch (lang) {
+    case "ko":
+      return `멤버 ${count}명`;
+    case "ja":
+      return `メンバー ${count}名`;
+    case "en":
+      return `${count} members`;
+  }
+}
+
 export const ARTIST_TYPE_LABELS: Record<OgLocale, Record<ArtistType, string>> = {
   ko: {
     solo: "솔로",

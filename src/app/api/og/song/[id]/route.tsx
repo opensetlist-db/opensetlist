@@ -2,7 +2,7 @@ import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
 import { pickTranslation, formatDate } from "@/lib/utils";
 import { displayName } from "@/lib/display";
-import { deriveOgPaletteFromSong, type OgPalette } from "@/lib/ogPalette";
+import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import { SONG_PILL_LABEL, normalizeOgLocale } from "@/lib/ogLabels";
 
@@ -22,15 +22,6 @@ const ERROR_HEADERS = {
 const NOTE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>';
 const NOTE_URI = `data:image/svg+xml;utf8,${NOTE_SVG}`;
-
-function buildMeshBackground(palette: OgPalette): string {
-  return [
-    `radial-gradient(circle at 20% 30%, ${palette.mesh[0]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 80% 20%, ${palette.mesh[1]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 60% 80%, ${palette.mesh[2]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 50% 50%, rgba(2, 119, 189, 0.15) 0%, transparent 60%)`,
-  ].join(", ");
-}
 
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;

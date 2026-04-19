@@ -2,9 +2,13 @@ import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
 import { pickTranslation } from "@/lib/utils";
 import { displayName } from "@/lib/display";
-import { deriveOgPaletteFromArtist, type OgPalette } from "@/lib/ogPalette";
+import { deriveOgPaletteFromArtist, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
-import { ARTIST_TYPE_LABELS, normalizeOgLocale } from "@/lib/ogLabels";
+import {
+  ARTIST_TYPE_LABELS,
+  formatMemberCount,
+  normalizeOgLocale,
+} from "@/lib/ogLabels";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,15 +26,6 @@ const ERROR_HEADERS = {
 const STAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 2l2.4 7.4H22l-6.2 4.5L18.2 22 12 17.3 5.8 22l2.4-8.1L2 9.4h7.6z"/></svg>';
 const STAR_URI = `data:image/svg+xml;utf8,${STAR_SVG}`;
-
-function buildMeshBackground(palette: OgPalette): string {
-  return [
-    `radial-gradient(circle at 20% 30%, ${palette.mesh[0]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 80% 20%, ${palette.mesh[1]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 60% 80%, ${palette.mesh[2]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 50% 50%, rgba(2, 119, 189, 0.15) 0%, transparent 60%)`,
-  ].join(", ");
-}
 
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
@@ -66,12 +61,7 @@ export async function GET(req: Request, { params }: Props) {
     if (!subtitle) {
       const activeCount = artist.stageLinks.filter((s) => !s.endDate).length;
       if (activeCount > 0) {
-        subtitle =
-          lang === "ko"
-            ? `멤버 ${activeCount}명`
-            : lang === "ja"
-              ? `メンバー ${activeCount}名`
-              : `${activeCount} members`;
+        subtitle = formatMemberCount(activeCount, lang);
       }
     }
 

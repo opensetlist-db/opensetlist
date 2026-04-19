@@ -83,6 +83,15 @@ function harmonize(realColors: readonly string[]): [string, string, string] {
   return [out[0], out[1], out[2]] as [string, string, string];
 }
 
+export function buildMeshBackground(palette: OgPalette): string {
+  return [
+    `radial-gradient(circle at 20% 30%, ${palette.mesh[0]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 80% 20%, ${palette.mesh[1]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 60% 80%, ${palette.mesh[2]} 0%, transparent 50%)`,
+    `radial-gradient(circle at 50% 50%, rgba(2, 119, 189, 0.15) 0%, transparent 60%)`,
+  ].join(", ");
+}
+
 function paletteFromFrequency(frequency: Map<string, number>): OgPalette {
   if (frequency.size === 0) return fallbackPalette();
 
@@ -230,16 +239,17 @@ async function collectSongPerformerColors(
 async function collectSongCreditedArtistColors(
   songId: bigint
 ): Promise<Map<string, number>> {
-  const rows = await prisma.songArtist.findMany({
-    where: { songId },
-    select: { artistId: true },
+  const links = await prisma.stageIdentityArtist.findMany({
+    where: { artist: { songCredits: { some: { songId } } } },
+    select: { stageIdentity: { select: { color: true } } },
   });
 
   const frequency = new Map<string, number>();
-  for (const { artistId } of rows) {
-    const sub = await collectRosterColorsByArtistId(artistId);
-    for (const [color, count] of sub) {
-      frequency.set(color, (frequency.get(color) ?? 0) + count);
+  for (const link of links) {
+    const color = link.stageIdentity.color;
+    if (isValidHex(color)) {
+      const key = color.toLowerCase();
+      frequency.set(key, (frequency.get(key) ?? 0) + 1);
     }
   }
   return frequency;

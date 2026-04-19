@@ -4,7 +4,7 @@ import { pickTranslation } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
-import { deriveOgPaletteFromEvent, type OgPalette } from "@/lib/ogPalette";
+import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
   STATUS_LABELS,
@@ -28,15 +28,6 @@ const ERROR_HEADERS = {
 const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
-
-function buildMeshBackground(palette: OgPalette): string {
-  return [
-    `radial-gradient(circle at 20% 30%, ${palette.mesh[0]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 80% 20%, ${palette.mesh[1]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 60% 80%, ${palette.mesh[2]} 0%, transparent 50%)`,
-    `radial-gradient(circle at 50% 50%, rgba(2, 119, 189, 0.15) 0%, transparent 60%)`,
-  ].join(", ");
-}
 
 export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
