@@ -1,10 +1,9 @@
 import { getTranslations } from "next-intl/server";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation, slugify } from "@/lib/utils";
-import { EventDateTime } from "@/components/EventDateTime";
+import { serializeBigInt, pickTranslation } from "@/lib/utils";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
+import { EventRow } from "@/components/EventRow";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 
 const PAGE_SIZE = 10;
@@ -226,47 +225,16 @@ function EventList({
           : null;
         const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
         return (
-          <li
+          <EventRow
             key={event.id}
-            className="flex items-start gap-3 rounded-lg bg-white px-4 py-3"
-            style={{
-              border: "0.5px solid #e8e8e8",
-              borderRadius: "8px",
-            }}
-          >
-            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-              <EventDateTime
-                date={event.date}
-                startTime={event.startTime}
-                variant="inline"
-                className="font-dm-sans text-[11px] text-[#999999]"
-              />
-              <Link
-                href={
-                  evTr?.name
-                    ? `/${locale}/events/${event.id}/${slugify(evTr.name)}`
-                    : `/${locale}/events/${event.id}`
-                }
-                className="font-dm-sans block truncate text-[12px] hover:underline"
-                style={{ color: "#1a1a1a", fontWeight: 500 }}
-              >
-                {seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
-              </Link>
-              {seriesTr && evTr?.name && (
-                <span
-                  className="font-dm-sans block truncate text-[11px]"
-                  style={{ color: "#999999" }}
-                >
-                  {evTr.name}
-                </span>
-              )}
-            </div>
-            <span
-              className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${badge.color}`}
-            >
-              {evT(badge.labelKey)}
-            </span>
-          </li>
+            event={event}
+            locale={locale}
+            referenceNow={referenceNow}
+            title={seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
+            subtitle={seriesTr && evTr?.name ? evTr.name : null}
+            slugSource={evTr?.name ?? null}
+            badgeLabel={evT(badge.labelKey)}
+          />
         );
       })}
     </ul>
