@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
+import { ensureStageIdentitiesExist } from "./_validate";
 
 export async function GET() {
   const events = await prisma.event.findMany({
@@ -51,6 +52,12 @@ export async function POST(request: NextRequest) {
   if (performerIds instanceof NextResponse) return performerIds;
   const guestIds = validateIdArray(body.guestIds, "guestIds");
   if (guestIds instanceof NextResponse) return guestIds;
+
+  const existenceErr = await ensureStageIdentitiesExist([
+    ...performerIds,
+    ...guestIds,
+  ]);
+  if (existenceErr) return existenceErr;
 
   const slug = body.slug || generateSlug(translations[0]?.name || `event-${Date.now()}`);
 

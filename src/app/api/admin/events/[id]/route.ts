@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { ensureStageIdentitiesExist } from "../_validate";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -96,6 +97,12 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!guestCheck.ok) return guestCheck.response;
   const performerIds = performerCheck.value;
   const guestIds = guestCheck.value;
+
+  const existenceErr = await ensureStageIdentitiesExist([
+    ...(performerIds ?? []),
+    ...(guestIds ?? []),
+  ]);
+  if (existenceErr) return existenceErr;
 
   const event = await prisma.$transaction(async (tx) => {
     await tx.eventTranslation.deleteMany({ where: { eventId } });
