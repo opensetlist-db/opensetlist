@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { ensureStageIdentitiesExist } from "../_validate";
+import {
+  ensureStageIdentitiesExist,
+  validateEventTranslations,
+} from "../_validate";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -81,7 +84,6 @@ export async function PUT(request: NextRequest, { params }: Props) {
     country,
     posterUrl,
     startTime,
-    translations,
   } = body;
 
   if (!startTime) {
@@ -90,6 +92,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
       { status: 400 }
     );
   }
+
+  const translationsCheck = validateEventTranslations(body.translations);
+  if (!translationsCheck.ok) return translationsCheck.response;
+  const translations = translationsCheck.value;
 
   const performerCheck = validateOptionalIdArray(body.performerIds, "performerIds");
   if (!performerCheck.ok) return performerCheck.response;
@@ -120,23 +126,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
         startTime: new Date(startTime),
         country: country || null,
         posterUrl: posterUrl || null,
-        translations: {
-          create: translations.map(
-            (t: {
-              locale: string;
-              name: string;
-              shortName?: string | null;
-              city?: string | null;
-              venue?: string | null;
-            }) => ({
-              locale: t.locale,
-              name: t.name,
-              shortName: t.shortName || null,
-              city: t.city || null,
-              venue: t.venue || null,
-            })
-          ),
-        },
+        translations: { create: translations },
       },
       include: { translations: true },
     });

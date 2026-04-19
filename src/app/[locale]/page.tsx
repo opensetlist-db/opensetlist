@@ -229,11 +229,11 @@ function EventList({
             key={event.id}
             event={event}
             locale={locale}
-            referenceNow={referenceNow}
             title={seriesTr?.name ?? evTr?.name ?? evT("unknownEvent")}
             subtitle={seriesTr && evTr?.name ? evTr.name : null}
             slugSource={evTr?.name ?? null}
             badgeLabel={evT(badge.labelKey)}
+            badgeColor={badge.color}
           />
         );
       })}

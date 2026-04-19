@@ -37,10 +37,10 @@ export async function EventGroup({
               key={event.id}
               event={event}
               locale={locale}
-              referenceNow={referenceNow}
               title={evTr?.name ?? evT("unknownEvent")}
               slugSource={evTr?.name ?? null}
               badgeLabel={evT(badge.labelKey)}
+              badgeColor={badge.color}
             />
           );
         })}
