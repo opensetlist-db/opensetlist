@@ -69,7 +69,10 @@ async function getEvent(id: bigint, locale: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  const event = await getEvent(BigInt(id), locale);
+  const [event, palette] = await Promise.all([
+    getEvent(BigInt(id), locale),
+    deriveOgPalette(BigInt(id)),
+  ]);
   if (!event) return { title: "Not Found" };
   const t = await getTranslations({ locale, namespace: "Event" });
   const tr = pickTranslation(event.translations, locale);
@@ -94,7 +97,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .filter(Boolean)
     .join(" · ");
 
-  const palette = await deriveOgPalette(BigInt(id));
   const ogImage = `/api/og/event/${id}?lang=${locale}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/events/${id}/${event.slug}`;
 

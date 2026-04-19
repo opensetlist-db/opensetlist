@@ -5,12 +5,14 @@ import { prisma } from "@/lib/prisma";
 export type OgPaletteSource = "faithful" | "harmonized" | "fallback";
 
 export type OgPalette = {
-  base: "#0f172a" | "#020617";
+  base: "#0f172a";
   brandAnchor: "#0277BD";
   mesh: [string, string, string];
   source: OgPaletteSource;
   fingerprint: string;
 };
+
+const BASE_COLOR = "#0f172a" as const;
 
 const BRAND_FALLBACK: [string, string, string] = [
   "#4FC3F7",
@@ -24,7 +26,7 @@ const toRgb = converter("rgb");
 function fallbackPalette(): OgPalette {
   const mesh = BRAND_FALLBACK;
   return {
-    base: "#0f172a",
+    base: BASE_COLOR,
     brandAnchor: "#0277BD",
     mesh,
     source: "fallback",
@@ -56,25 +58,6 @@ function rotateOklchHue(hex: string, degrees: number): string | null {
   } catch {
     return null;
   }
-}
-
-function contrastRatio(hexA: string, hexB: string): number {
-  const lum = (hex: string) => {
-    const rgb = toRgb(parse(hex));
-    if (!rgb) return 0;
-    const chan = (c: number) =>
-      c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    return 0.2126 * chan(rgb.r) + 0.7152 * chan(rgb.g) + 0.0722 * chan(rgb.b);
-  };
-  const la = lum(hexA);
-  const lb = lum(hexB);
-  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-function pickBase(): "#0f172a" | "#020617" {
-  const target = "#0f172a";
-  return contrastRatio("#ffffff", target) >= 4.5 ? target : "#020617";
 }
 
 async function collectSetlistColors(
@@ -180,7 +163,7 @@ export async function deriveOgPalette(eventId: bigint): Promise<OgPalette> {
     if (ordered.length >= 3) {
       const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
       return {
-        base: pickBase(),
+        base: BASE_COLOR,
         brandAnchor: "#0277BD",
         mesh,
         source: "faithful",
@@ -190,7 +173,7 @@ export async function deriveOgPalette(eventId: bigint): Promise<OgPalette> {
 
     const mesh = harmonize(ordered);
     return {
-      base: pickBase(),
+      base: BASE_COLOR,
       brandAnchor: "#0277BD",
       mesh,
       source: "harmonized",
