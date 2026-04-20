@@ -49,6 +49,11 @@ describe("useSetlistPolling", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
+    // Guard the endpoint + eventId query string so refactors don't silently
+    // repoint the polling loop.
+    const expectedUrl = "/api/setlist?eventId=1";
+    expect(global.fetch).toHaveBeenNthCalledWith(1, expectedUrl);
+    expect(global.fetch).toHaveBeenNthCalledWith(2, expectedUrl);
   });
 
   it("does not poll when enabled=false", async () => {

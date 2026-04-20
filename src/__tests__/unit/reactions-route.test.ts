@@ -48,6 +48,14 @@ describe("POST /api/reactions", () => {
     ).mockResolvedValue([{ reactionType: "best", _count: 1 }]);
   });
 
+  // After each 400 we also assert no Prisma method ran — guards against a
+  // regression where validation gets moved below a DB call.
+  function expectNoPrismaCalls() {
+    expect(prisma.setlistItem.findFirst).not.toHaveBeenCalled();
+    expect(prisma.setlistItemReaction.create).not.toHaveBeenCalled();
+    expect(prisma.setlistItemReaction.groupBy).not.toHaveBeenCalled();
+  }
+
   it("rejects missing setlistItemId", async () => {
     const res = await POST(
       makeRequest({ reactionType: "best" }) as unknown as Parameters<
@@ -55,6 +63,7 @@ describe("POST /api/reactions", () => {
       >[0],
     );
     expect(res.status).toBe(400);
+    expectNoPrismaCalls();
   });
 
   it("rejects invalid reactionType (not in waiting/best/surprise/moved)", async () => {
@@ -65,6 +74,7 @@ describe("POST /api/reactions", () => {
       }) as unknown as Parameters<typeof POST>[0],
     );
     expect(res.status).toBe(400);
+    expectNoPrismaCalls();
   });
 
   it("rejects non-numeric setlistItemId", async () => {
@@ -75,6 +85,7 @@ describe("POST /api/reactions", () => {
       }) as unknown as Parameters<typeof POST>[0],
     );
     expect(res.status).toBe(400);
+    expectNoPrismaCalls();
   });
 
   it("returns 404 when setlist item is missing or soft-deleted", async () => {
