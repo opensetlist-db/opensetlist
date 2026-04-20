@@ -13,10 +13,12 @@ export default withNextIntl({
   //      which the Next file tracer can't resolve from a dynamic path string,
   //      so the font files get dropped from the Vercel function bundle.
   //
-  //   2. @vercel/og ships `resvg.wasm`, `yoga.wasm`, and `Geist-Regular.ttf`
-  //      inside its own dist/ dir and loads them at import time with a similar
-  //      dynamic path. Those three files are not traced either, so the function
-  //      crashes before the route code runs.
+  //   2. Turbopack rewrites `@vercel/og` imports to Next's internal compiled
+  //      copy at `node_modules/next/dist/compiled/@vercel/og/`, which ships
+  //      `resvg.wasm`, `yoga.wasm`, and `Geist-Regular.ttf` alongside the JS.
+  //      Those binaries are loaded with a dynamic path the tracer can't
+  //      follow, so the function crashes at cold start before the route's
+  //      try/catch can run.
   //
   // Include both sets explicitly for every /api/og/* function.
   outputFileTracingIncludes: {
@@ -24,9 +26,9 @@ export default withNextIntl({
       "./node_modules/@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff",
       "./node_modules/@fontsource/noto-sans-kr/files/noto-sans-kr-korean-700-normal.woff",
       "./node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff",
-      "./node_modules/@vercel/og/dist/resvg.wasm",
-      "./node_modules/@vercel/og/dist/yoga.wasm",
-      "./node_modules/@vercel/og/dist/Geist-Regular.ttf",
+      "./node_modules/next/dist/compiled/@vercel/og/resvg.wasm",
+      "./node_modules/next/dist/compiled/@vercel/og/yoga.wasm",
+      "./node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf",
     ],
   },
 });
