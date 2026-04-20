@@ -1,4 +1,5 @@
 import createNextIntlPlugin from "next-intl/plugin";
+import { OG_FONTS } from "./src/lib/ogFonts";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -23,9 +24,7 @@ export default withNextIntl({
   // Include both sets explicitly for every /api/og/* function.
   outputFileTracingIncludes: {
     "/api/og/**": [
-      "./node_modules/@fontsource/dm-sans/files/dm-sans-latin-700-normal.woff",
-      "./node_modules/@fontsource/noto-sans-kr/files/noto-sans-kr-korean-700-normal.woff",
-      "./node_modules/@fontsource/noto-sans-jp/files/noto-sans-jp-japanese-700-normal.woff",
+      ...OG_FONTS.map(({ file }) => `./node_modules/${file}`),
       "./node_modules/next/dist/compiled/@vercel/og/index.node.js",
       "./node_modules/next/dist/compiled/@vercel/og/package.json",
       "./node_modules/next/dist/compiled/@vercel/og/resvg.wasm",
