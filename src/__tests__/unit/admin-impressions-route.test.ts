@@ -21,6 +21,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { DELETE, PATCH } from "@/app/api/admin/impressions/[id]/route";
+import { prisma } from "@/lib/prisma";
 
 function makeRequest(method: string) {
   return new Request("http://localhost/api/admin/impressions/1", { method });
@@ -33,6 +34,9 @@ describe("Admin impression endpoints reject unauthenticated callers", () => {
       { params: Promise.resolve({ id: "1" }) },
     );
     expect(res.status).toBe(401);
+    // Route must short-circuit before reaching Prisma.
+    expect(prisma.eventImpression.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("PATCH without admin_session cookie returns 401", async () => {
@@ -41,5 +45,7 @@ describe("Admin impression endpoints reject unauthenticated callers", () => {
       { params: Promise.resolve({ id: "1" }) },
     );
     expect(res.status).toBe(401);
+    expect(prisma.eventImpression.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

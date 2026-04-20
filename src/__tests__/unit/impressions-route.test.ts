@@ -97,6 +97,23 @@ describe("POST /api/impressions", () => {
     expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
+  it("returns 404 when the event is missing or soft-deleted", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      null,
+    );
+
+    const res = await POST(
+      makeRequest({
+        eventId: "999",
+        content: "valid content",
+        locale: "ko",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    expect(res.status).toBe(404);
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
+  });
+
   it("accepts a valid payload at exactly 200 chars", async () => {
     const res = await POST(
       makeRequest({
