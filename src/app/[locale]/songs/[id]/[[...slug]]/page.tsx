@@ -9,6 +9,8 @@ import {
   formatDate,
 } from "@/lib/utils";
 import { displayName, displayOriginalTitle } from "@/lib/display";
+import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { Metadata } from "next";
 
 type Props = {
@@ -82,8 +84,14 @@ async function getSongPerformances(songId: bigint) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  const song = await getSong(BigInt(id), locale);
-  if (!song) return { title: "Not Found" };
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
+  const songId = BigInt(id);
+  const [song, palette] = await Promise.all([
+    getSong(songId, locale),
+    deriveOgPaletteFromSong(songId),
+  ]);
+  if (!song) return { title: metaT("notFound") };
   const tr = pickTranslation(song.translations, locale);
   const artistTr = song.artists[0]
     ? pickTranslation(song.artists[0].artist.translations, locale)
@@ -92,12 +100,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const songTitle = tr?.title ?? song.originalTitle;
   const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
-  const mt = await getTranslations({ locale, namespace: "Meta" });
   const description = artistTr
-    ? `${displayName(artistTr)} · ${mt("performanceHistory")}`
-    : mt("performanceHistory");
+    ? `${displayName(artistTr)} · ${metaT("performanceHistory")}`
+    : metaT("performanceHistory");
 
-  const ogImage = `/api/og/song/${id}`;
+  const ogImage = `/api/og/song/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
 
   return {

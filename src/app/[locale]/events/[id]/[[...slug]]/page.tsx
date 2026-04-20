@@ -10,6 +10,8 @@ import {
 import { formatVenueDate } from "@/lib/eventDateTime";
 import { displayName } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
@@ -68,8 +70,14 @@ async function getEvent(id: bigint, locale: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  const event = await getEvent(BigInt(id), locale);
-  if (!event) return { title: "Not Found" };
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
+  const eventId = BigInt(id);
+  const [event, palette] = await Promise.all([
+    getEvent(eventId, locale),
+    deriveOgPaletteFromEvent(eventId),
+  ]);
+  if (!event) return { title: metaT("notFound") };
   const t = await getTranslations({ locale, namespace: "Event" });
   const tr = pickTranslation(event.translations, locale);
   const seriesTr = event.eventSeries
@@ -93,7 +101,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .filter(Boolean)
     .join(" · ");
 
-  const ogImage = `/api/og/event/${id}`;
+  const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
   const pageUrl = `/${locale}/events/${id}/${event.slug}`;
 
   return {
@@ -145,17 +153,17 @@ async function getReactionCounts(eventId: bigint) {
 
 async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
   const rows = await prisma.eventImpression.findMany({
-    where: { eventId, isDeleted: false, isHidden: false },
-    orderBy: { updatedAt: "desc" },
+    where: { eventId, supersededAt: null, isDeleted: false, isHidden: false },
+    orderBy: { createdAt: "desc" },
     take: 50,
   });
   return rows.map((r) => ({
     id: r.id,
+    rootImpressionId: r.rootImpressionId,
     eventId: r.eventId.toString(),
     content: r.content,
     locale: r.locale,
     createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
   }));
 }
 

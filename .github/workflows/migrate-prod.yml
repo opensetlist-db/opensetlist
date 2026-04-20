@@ -31,6 +31,10 @@ jobs:
           else
             npx prisma db push
           fi
+      - name: Apply post-deploy SQL (idempotent partial indexes etc.)
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+        run: npx prisma db execute --file prisma/post-deploy.sql
       - name: Verify migration
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}

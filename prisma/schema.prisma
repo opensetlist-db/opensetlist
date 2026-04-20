@@ -504,24 +504,30 @@ model SetlistItemReaction {
 }
 
 // Post-show one-line impressions ("한줄평") per event.
-// No login; dedup is client-side via localStorage only.
-// reportCount reaching REPORT_HIDE_THRESHOLD auto-sets isHidden.
-// Soft delete via isDeleted/deletedAt; moderators can restore.
+// Append-only: edits supersede the prior row (supersededAt stamped) and
+// insert a new immutable row. All versions share rootImpressionId; the
+// head row sets rootImpressionId = id. supersededAt IS NULL identifies
+// the current row of a chain.
+// No login; dedup is client-side via localStorage, keyed by chain id.
+// reportCount reaching REPORT_HIDE_THRESHOLD auto-sets isHidden on the
+// current row only. Soft delete propagates across the whole chain.
 model EventImpression {
-  id          String    @id @default(uuid())
-  eventId     BigInt
-  content     String    @db.VarChar(200)
-  locale      String    @default("ko")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  reportCount Int       @default(0)
-  isHidden    Boolean   @default(false)
-  isDeleted   Boolean   @default(false)
-  deletedAt   DateTime?
+  id               String    @id @default(uuid())
+  eventId          BigInt
+  rootImpressionId String
+  content          String    @db.VarChar(200)
+  locale           String    @default("ko")
+  createdAt        DateTime  @default(now())
+  supersededAt     DateTime?
+  reportCount      Int       @default(0)
+  isHidden         Boolean   @default(false)
+  isDeleted        Boolean   @default(false)
+  deletedAt        DateTime?
 
-  event       Event     @relation(fields: [eventId], references: [id])
+  event            Event     @relation(fields: [eventId], references: [id])
 
-  @@index([eventId, updatedAt])
+  @@index([eventId, createdAt])
+  @@index([rootImpressionId])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link

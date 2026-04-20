@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
@@ -20,20 +21,21 @@ export async function GET(req: NextRequest) {
   const rows = await prisma.eventImpression.findMany({
     where: {
       eventId: eid,
+      supersededAt: null,
       isDeleted: false,
       isHidden: false,
     },
-    orderBy: { updatedAt: "desc" },
+    orderBy: { createdAt: "desc" },
     take: 50,
   });
 
   const impressions = rows.map((r) => ({
     id: r.id,
+    rootImpressionId: r.rootImpressionId,
     eventId: r.eventId.toString(),
     content: r.content,
     locale: r.locale,
     createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
   }));
 
   return NextResponse.json(
@@ -86,8 +88,13 @@ export async function POST(req: NextRequest) {
   const resolvedLocale =
     typeof locale === "string" && VALID_LOCALES.includes(locale) ? locale : "ko";
 
+  // Generate the id upfront so the head row can set
+  // rootImpressionId = id in a single insert (no two-step placeholder dance).
+  const newId = randomUUID();
   const created = await prisma.eventImpression.create({
     data: {
+      id: newId,
+      rootImpressionId: newId,
       eventId: eid,
       content: trimmed,
       locale: resolvedLocale,
@@ -97,11 +104,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     impression: {
       id: created.id,
+      rootImpressionId: created.rootImpressionId,
       eventId: created.eventId.toString(),
       content: created.content,
       locale: created.locale,
       createdAt: created.createdAt.toISOString(),
-      updatedAt: created.updatedAt.toISOString(),
     },
   });
 }

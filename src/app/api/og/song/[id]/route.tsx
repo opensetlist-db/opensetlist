@@ -1,100 +1,247 @@
-import { ImageResponse } from "next/og";
+import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import { pickTranslation } from "@/lib/utils";
+import { pickTranslation, formatDate } from "@/lib/utils";
 import { displayName } from "@/lib/display";
+import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
+import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
+import {
+  FALLBACK_TITLES,
+  SONG_PILL_LABEL,
+  normalizeOgLocale,
+} from "@/lib/ogLabels";
 
 type Props = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, { params }: Props) {
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+} as const;
+
+// Error fallback must not be cached — a transient Prisma / font-load / render
+// blip would otherwise poison CDN + crawler caches for hours with a generic
+// OPENSETLIST card even after the underlying cause is fixed.
+const ERROR_HEADERS = {
+  "Cache-Control": "no-store",
+} as const;
+
+const NOTE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg>';
+const NOTE_URI = `data:image/svg+xml;utf8,${NOTE_SVG}`;
+
+export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
+  const url = new URL(req.url);
+  const lang = normalizeOgLocale(url.searchParams.get("lang"));
 
-  const song = await prisma.song.findFirst({
-    where: { id: BigInt(id), isDeleted: false },
-    include: {
-      translations: true,
-      artists: {
-        include: { artist: { include: { translations: true } } },
-      },
-    },
-  });
+  if (!/^\d+$/.test(id)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const songId = BigInt(id);
 
-  if (!song) return new Response("Not found", { status: 404 });
+  try {
+    const [song, palette, fonts] = await Promise.all([
+      prisma.song.findFirst({
+        where: { id: songId, isDeleted: false },
+        include: {
+          translations: true,
+          artists: {
+            include: { artist: { include: { translations: true } } },
+          },
+        },
+      }),
+      deriveOgPaletteFromSong(songId),
+      loadOgFonts(),
+    ]);
 
-  const t = pickTranslation(song.translations, "ko");
-  const artistT = song.artists[0]
-    ? pickTranslation(song.artists[0].artist.translations, "ko")
-    : null;
+    if (!song) {
+      return new Response("Not found", { status: 404 });
+    }
 
-  const songTitle = t?.title ?? song.originalTitle;
-  const artistName = artistT ? displayName(artistT) : "";
+    const t = pickTranslation(song.translations, lang);
+    const title = t?.title ?? song.originalTitle ?? FALLBACK_TITLES[lang].song;
 
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "1200px",
-          height: "630px",
-          background:
-            "linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 60%, #2d1b4e 100%)",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: "70px 90px",
-          fontFamily: "sans-serif",
-          color: "white",
-          position: "relative",
-        }}
-      >
+    const firstArtist = song.artists[0];
+    const artistT = firstArtist
+      ? pickTranslation(firstArtist.artist.translations, lang)
+      : null;
+    const artistName = artistT ? displayName(artistT) : "";
+    const releaseYear = song.releaseDate
+      ? String(song.releaseDate.getUTCFullYear())
+      : "";
+    const subtitle = [artistName, releaseYear].filter(Boolean).join(" · ");
+
+    const dateStr = song.releaseDate ? formatDate(song.releaseDate, lang) : "";
+    const pillLabel = SONG_PILL_LABEL[lang];
+
+    return new ImageResponse(
+      (
         <div
           style={{
-            position: "absolute",
-            left: "0",
-            top: "0",
-            bottom: "0",
-            width: "6px",
-            background:
-              "linear-gradient(180deg, #FB8A9B 0%, #9b8afb 100%)",
-          }}
-        />
-        <div
-          style={{
-            fontSize: "24px",
-            color: "#FB8A9B",
-            marginBottom: "20px",
-            letterSpacing: "0.05em",
-          }}
-        >
-          SONG
-        </div>
-        <div
-          style={{
-            fontSize: "64px",
-            fontWeight: "bold",
-            marginBottom: "24px",
-            lineHeight: 1.15,
+            width: "1200px",
+            height: "630px",
+            display: "flex",
+            position: "relative",
+            fontFamily: OG_FONT_STACK,
+            color: "#ffffff",
+            background: palette.base,
+            backgroundImage: buildMeshBackground(palette),
           }}
         >
-          {songTitle}
-        </div>
-        {artistName && (
-          <div style={{ fontSize: "30px", color: "#9999bb" }}>
-            {artistName}
+          <img
+            src={NOTE_URI}
+            width={120}
+            height={120}
+            style={{
+              position: "absolute",
+              top: 70,
+              right: 90,
+              opacity: 0.15,
+              transform: "rotate(15deg)",
+            }}
+            alt=""
+          />
+          <img
+            src={NOTE_URI}
+            width={80}
+            height={80}
+            style={{
+              position: "absolute",
+              bottom: 90,
+              right: 180,
+              opacity: 0.1,
+              transform: "rotate(-10deg)",
+            }}
+            alt=""
+          />
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              position: "absolute",
+              top: 95,
+              left: 80,
+              width: 700,
+              minHeight: 440,
+              padding: "48px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 24,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                alignSelf: "flex-start",
+                padding: "6px 14px",
+                borderRadius: 999,
+                background: "rgba(0, 0, 0, 0.3)",
+                fontSize: 18,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 28,
+              }}
+            >
+              {pillLabel}
+            </div>
+
+            <div
+              style={{
+                display: "-webkit-box",
+                fontSize: 72,
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: "#ffffff",
+                overflow: "hidden",
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {title}
+            </div>
+
+            {subtitle && (
+              <div
+                style={{
+                  display: "flex",
+                  marginTop: 20,
+                  fontSize: 30,
+                  lineHeight: 1.3,
+                  color: "rgba(255, 255, 255, 0.8)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {subtitle}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flex: 1 }} />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: 32,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 24,
+                  color: "rgba(255, 255, 255, 0.7)",
+                }}
+              >
+                {dateStr}
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  letterSpacing: "0.12em",
+                  color: "rgba(255, 255, 255, 0.5)",
+                  textTransform: "uppercase",
+                }}
+              >
+                OPENSETLIST
+              </div>
+            </div>
           </div>
-        )}
-        <div
-          style={{
-            position: "absolute",
-            bottom: "44px",
-            right: "90px",
-            fontSize: "22px",
-            color: "#444466",
-            letterSpacing: "0.05em",
-          }}
-        >
-          opensetlist.com
         </div>
-      </div>
-    ),
-    { width: 1200, height: 630 }
-  );
+      ),
+      {
+        width: 1200,
+        height: 630,
+        fonts,
+        headers: CACHE_HEADERS,
+      }
+    );
+  } catch (err) {
+    console.error("[og/song] render failed, using bare fallback", err);
+    try {
+      const fonts = await loadOgFonts();
+      return new ImageResponse(
+        (
+          <div
+            style={{
+              width: "1200px",
+              height: "630px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: OG_FONT_STACK,
+              color: "#ffffff",
+              background: "#0f172a",
+              fontSize: 56,
+              letterSpacing: "0.08em",
+            }}
+          >
+            OPENSETLIST
+          </div>
+        ),
+        { width: 1200, height: 630, fonts, headers: ERROR_HEADERS }
+      );
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  }
 }

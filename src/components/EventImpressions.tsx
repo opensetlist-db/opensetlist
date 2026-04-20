@@ -9,17 +9,17 @@ import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 
 export interface Impression {
   id: string;
+  rootImpressionId: string;
   eventId: string;
   content: string;
   locale: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 interface SavedImpression {
-  id: string;
+  chainId: string;
   content: string;
-  updatedAt: string;
+  createdAt: string;
 }
 
 interface Props {
@@ -34,6 +34,7 @@ export function EventImpressions({
   isOngoing,
 }: Props) {
   const t = useTranslations("Impression");
+  const et = useTranslations("Event");
   const locale = useLocale();
   const [impressions, setImpressions] = useState<Impression[]>(initialImpressions);
 
@@ -47,6 +48,7 @@ export function EventImpressions({
   const [submitting, setSubmitting] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Keyed by rootImpressionId so a chain can't be reported twice across edits.
   const [reported, setReported] = useState<Record<string, boolean>>({});
 
   const savedKey = `impression-${eventId}`;
@@ -72,15 +74,15 @@ export function EventImpressions({
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as SavedImpression;
-      if (parsed?.id && parsed.content) {
+      if (parsed?.chainId && parsed.content) {
         setSaved(parsed);
         setMode("submitted");
-        if (parsed.updatedAt) {
-          const remaining = getEditCooldownRemaining(
-            new Date(parsed.updatedAt),
-            new Date(),
-          );
-          if (remaining > 0) setCooldownSeconds(remaining);
+        if (parsed.createdAt) {
+          const sinceDate = new Date(parsed.createdAt);
+          if (!Number.isNaN(sinceDate.getTime())) {
+            const remaining = getEditCooldownRemaining(sinceDate, new Date());
+            if (remaining > 0) setCooldownSeconds(remaining);
+          }
         }
       }
     } catch {
@@ -93,9 +95,12 @@ export function EventImpressions({
       const next = { ...prev };
       let changed = false;
       for (const imp of impressions) {
-        if (imp.id in next) continue;
-        if (localStorage.getItem(`impression-report-${imp.id}`) === "true") {
-          next[imp.id] = true;
+        if (imp.rootImpressionId in next) continue;
+        if (
+          localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
+          "true"
+        ) {
+          next[imp.rootImpressionId] = true;
           changed = true;
         }
       }
@@ -122,9 +127,14 @@ export function EventImpressions({
     [savedKey]
   );
 
+  // After an edit, the new row has a different `id` than the prior version,
+  // so dedup must be on the chain id — otherwise the old version would
+  // remain in the visible list.
   const mergeImpression = (imp: Impression) => {
     setImpressions((prev) => {
-      const without = prev.filter((p) => p.id !== imp.id);
+      const without = prev.filter(
+        (p) => p.rootImpressionId !== imp.rootImpressionId
+      );
       return [imp, ...without];
     });
   };
@@ -149,9 +159,9 @@ export function EventImpressions({
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
       const next: SavedImpression = {
-        id: impression.id,
+        chainId: impression.rootImpressionId,
         content: impression.content,
-        updatedAt: impression.updatedAt,
+        createdAt: impression.createdAt,
       };
       setSaved(next);
       persistSaved(next);
@@ -173,7 +183,7 @@ export function EventImpressions({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/impressions/${saved.id}`, {
+      const res = await fetch(`/api/impressions/${saved.chainId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: trimmed }),
@@ -190,9 +200,9 @@ export function EventImpressions({
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
       const next: SavedImpression = {
-        id: impression.id,
+        chainId: impression.rootImpressionId,
         content: impression.content,
-        updatedAt: impression.updatedAt,
+        createdAt: impression.createdAt,
       };
       setSaved(next);
       persistSaved(next);
@@ -206,22 +216,23 @@ export function EventImpressions({
     }
   };
 
-  const handleReport = async (impressionId: string) => {
-    if (reported[impressionId]) return;
-    setReported((prev) => ({ ...prev, [impressionId]: true }));
-    localStorage.setItem(`impression-report-${impressionId}`, "true");
+  const handleReport = async (imp: Impression) => {
+    const chainId = imp.rootImpressionId;
+    if (reported[chainId]) return;
+    setReported((prev) => ({ ...prev, [chainId]: true }));
+    localStorage.setItem(`impression-report-${chainId}`, "true");
 
     const rollback = () => {
       setReported((prev) => {
         const next = { ...prev };
-        delete next[impressionId];
+        delete next[chainId];
         return next;
       });
-      localStorage.removeItem(`impression-report-${impressionId}`);
+      localStorage.removeItem(`impression-report-${chainId}`);
     };
 
     try {
-      const res = await fetch(`/api/impressions/${impressionId}/report`, {
+      const res = await fetch(`/api/impressions/${chainId}/report`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -230,7 +241,9 @@ export function EventImpressions({
       }
       const body = (await res.json()) as { isHidden?: boolean };
       if (body.isHidden) {
-        setImpressions((prev) => prev.filter((p) => p.id !== impressionId));
+        setImpressions((prev) =>
+          prev.filter((p) => p.rootImpressionId !== chainId)
+        );
       }
     } catch {
       rollback();
@@ -263,7 +276,7 @@ export function EventImpressions({
           {isOngoing && (
             <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-              LIVE
+              {et("live")}
             </span>
           )}
         </div>
@@ -369,8 +382,8 @@ export function EventImpressions({
       ) : (
         <ul className="space-y-2">
           {impressions.map((imp) => {
-            const isOwn = saved?.id === imp.id;
-            const hasReported = reported[imp.id];
+            const isOwn = saved?.chainId === imp.rootImpressionId;
+            const hasReported = reported[imp.rootImpressionId];
             return (
               <li
                 key={imp.id}
@@ -378,11 +391,11 @@ export function EventImpressions({
               >
                 <div className="whitespace-pre-wrap">{imp.content}</div>
                 <div className="mt-1 flex items-center justify-between text-xs text-zinc-400">
-                  <span>{formatDate(imp.updatedAt, locale)}</span>
+                  <span>{formatDate(imp.createdAt, locale)}</span>
                   {!isOwn && (
                     <button
                       type="button"
-                      onClick={() => handleReport(imp.id)}
+                      onClick={() => handleReport(imp)}
                       disabled={!!hasReported}
                       className="text-zinc-400 hover:text-red-600 disabled:opacity-40"
                     >

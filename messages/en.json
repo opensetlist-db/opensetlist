@@ -167,6 +167,7 @@
   "Meta": {
     "description": "Setlist database for anime & game live events",
     "setlistDb": "setlist database",
-    "performanceHistory": "performance history & setlist"
+    "performanceHistory": "performance history & setlist",
+    "notFound": "Not Found"
   }
 }
