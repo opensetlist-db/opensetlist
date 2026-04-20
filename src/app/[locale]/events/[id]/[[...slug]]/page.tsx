@@ -70,11 +70,14 @@ async function getEvent(id: bigint, locale: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
+  const eventId = BigInt(id);
   const [event, palette] = await Promise.all([
-    getEvent(BigInt(id), locale),
-    deriveOgPaletteFromEvent(BigInt(id)),
+    getEvent(eventId, locale),
+    deriveOgPaletteFromEvent(eventId),
   ]);
-  if (!event) return { title: "Not Found" };
+  if (!event) return { title: metaT("notFound") };
   const t = await getTranslations({ locale, namespace: "Event" });
   const tr = pickTranslation(event.translations, locale);
   const seriesTr = event.eventSeries
