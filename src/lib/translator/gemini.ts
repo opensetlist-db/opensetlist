@@ -16,7 +16,7 @@ export class GeminiTranslator implements Translator {
   ): Promise<string> {
     const maxTokens = Math.max(1, Math.round((text.length / 4) * 1.5));
     const response = await this.client.models.generateContent({
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-3.1-flash-lite-preview",
       contents: `${sourceLocale}|${targetLocale}|${text}`,
       config: {
         systemInstruction: TRANSLATE_INSTRUCTIONS,
