@@ -11,18 +11,22 @@ const initialReactionCounts = {};
 describe("useSetlistPolling", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        items: [],
-        reactionCounts: {},
-        updatedAt: new Date().toISOString(),
-      }),
-    }) as unknown as typeof fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          items: [],
+          reactionCounts: {},
+          updatedAt: new Date().toISOString(),
+        }),
+      }) as unknown as typeof fetch,
+    );
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 

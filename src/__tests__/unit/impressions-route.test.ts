@@ -52,6 +52,8 @@ describe("POST /api/impressions", () => {
       }) as any,
     );
     expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
   it("rejects empty content after trim", async () => {
@@ -64,6 +66,8 @@ describe("POST /api/impressions", () => {
       }) as any,
     );
     expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
   it("rejects missing eventId", async () => {
@@ -75,6 +79,8 @@ describe("POST /api/impressions", () => {
       }) as any,
     );
     expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
   it("rejects non-numeric eventId", async () => {
@@ -87,6 +93,8 @@ describe("POST /api/impressions", () => {
       }) as any,
     );
     expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
   it("accepts a valid payload at exactly 200 chars", async () => {
