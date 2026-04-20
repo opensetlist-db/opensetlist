@@ -24,8 +24,9 @@ jobs:
       - name: Push schema to production DB
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL_UNPOOLED }}
+          ACCEPT_DATA_LOSS: ${{ inputs.accept_data_loss }}
         run: |
-          if [ "${{ inputs.accept_data_loss }}" = "true" ]; then
+          if [ "$ACCEPT_DATA_LOSS" = "true" ]; then
             echo "Running with --accept-data-loss (manual dispatch)"
             npx prisma db push --accept-data-loss
           else
