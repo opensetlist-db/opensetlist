@@ -78,11 +78,11 @@ export function EventImpressions({
         setSaved(parsed);
         setMode("submitted");
         if (parsed.createdAt) {
-          const remaining = getEditCooldownRemaining(
-            new Date(parsed.createdAt),
-            new Date(),
-          );
-          if (remaining > 0) setCooldownSeconds(remaining);
+          const sinceDate = new Date(parsed.createdAt);
+          if (!Number.isNaN(sinceDate.getTime())) {
+            const remaining = getEditCooldownRemaining(sinceDate, new Date());
+            if (remaining > 0) setCooldownSeconds(remaining);
+          }
         }
       }
     } catch {
