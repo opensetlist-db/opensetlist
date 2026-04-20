@@ -3,7 +3,10 @@ import { GeminiTranslator } from "./gemini";
 import type { Translator } from "./types";
 
 export function getTranslator(): Translator {
-  const env = process.env.NODE_ENV;
+  // Prefer VERCEL_ENV because NODE_ENV is "production" on Vercel *preview*
+  // deployments too, which would otherwise trick preview into using PROD keys.
+  const vercelEnv = process.env.VERCEL_ENV;
+  const env = vercelEnv ?? process.env.NODE_ENV;
   const provider = process.env.TRANSLATION_PROVIDER ?? "openai";
   const suffix = env === "production" ? "PROD" : "DEV";
 

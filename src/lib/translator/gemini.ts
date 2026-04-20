@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Translator } from "./types";
+import { TRANSLATE_INSTRUCTIONS } from "./prompt";
 
 export class GeminiTranslator implements Translator {
   private client: GoogleGenAI;
@@ -13,11 +14,14 @@ export class GeminiTranslator implements Translator {
     sourceLocale: string,
     targetLocale: string,
   ): Promise<string> {
-    const maxTokens = Math.round((text.length / 4) * 1.5);
+    const maxTokens = Math.max(1, Math.round((text.length / 4) * 1.5));
     const response = await this.client.models.generateContent({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-2.5-flash-lite",
       contents: `${sourceLocale}|${targetLocale}|${text}`,
-      config: { maxOutputTokens: maxTokens },
+      config: {
+        systemInstruction: TRANSLATE_INSTRUCTIONS,
+        maxOutputTokens: maxTokens,
+      },
     });
     const translated = response.text;
     if (!translated) throw new Error("Gemini returned empty translation");
