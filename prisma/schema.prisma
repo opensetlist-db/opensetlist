@@ -537,7 +537,7 @@ model EventImpression {
 // any target locale pays the translator call again. Old versions' cached
 // rows stay valid forever against the (now-superseded) source text.
 model ImpressionTranslation {
-  id             BigInt   @id @default(autoincrement())
+  id             String   @id @default(uuid())
   impressionId   String
   sourceLocale   String
   targetLocale   String
