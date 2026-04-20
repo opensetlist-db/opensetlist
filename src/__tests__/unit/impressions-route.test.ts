@@ -127,5 +127,21 @@ describe("POST /api/impressions", () => {
     const body = await res.json();
     expect(body.impression.content).toBe("a".repeat(200));
     expect(body.impression.id).toBe(body.impression.rootImpressionId);
+
+    // Pin the exact shape the route persists, so a regression that drops
+    // or mutates a field fails here even if the response still echoes the
+    // client-supplied input.
+    expect(prisma.eventImpression.create).toHaveBeenCalledTimes(1);
+    const createArgs = (
+      prisma.eventImpression.create as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(createArgs.data).toEqual({
+      id: expect.any(String),
+      rootImpressionId: expect.any(String),
+      eventId: BigInt(1),
+      content: "a".repeat(200),
+      locale: "ko",
+    });
+    expect(createArgs.data.id).toBe(createArgs.data.rootImpressionId);
   });
 });
