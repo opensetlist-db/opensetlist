@@ -1,0 +1,21 @@
+name: Semgrep
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  schedule:
+    # Weekly Monday 00:00 KST = 15:00 UTC Sunday — catches newly released rules.
+    - cron: "0 15 * * 0"
+
+jobs:
+  semgrep:
+    name: Semgrep Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep ci --config=p/default --config=p/secrets --config=p/typescript --config=p/owasp-top-ten
