@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
     (typeof body.slug === "string" && body.slug) ||
     generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
 
+  // Single nested create = one transaction; an artist-insert failure no longer leaves orphan StageIdentity/RealPerson rows.
   const artist = await prisma.artist.create({
     data: {
       slug,
@@ -89,13 +90,13 @@ export async function POST(request: NextRequest) {
         : undefined,
       stageLinks: stageIdentities.value.length
         ? {
-            create: await Promise.all(
-              stageIdentities.value.map(async (si) => {
-                const siSlug = generateSlug(
-                  si.translations[0]?.name || si.originalName || "identity"
-                );
-                const stageIdentity = await prisma.stageIdentity.create({
-                  data: {
+            create: stageIdentities.value.map((si) => {
+              const siSlug = generateSlug(
+                si.translations[0]?.name || si.originalName || "identity"
+              );
+              return {
+                stageIdentity: {
+                  create: {
                     slug: siSlug,
                     type: si.type,
                     color: si.color,
@@ -119,10 +120,9 @@ export async function POST(request: NextRequest) {
                         }
                       : undefined,
                   },
-                });
-                return { stageIdentityId: stageIdentity.id };
-              })
-            ),
+                },
+              };
+            }),
           }
         : undefined,
     },
