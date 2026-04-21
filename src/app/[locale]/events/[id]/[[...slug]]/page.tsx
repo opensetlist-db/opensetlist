@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickTranslation,
+  pickLocaleTranslation,
   slugify,
 } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
@@ -214,7 +215,7 @@ async function getTrendingSongs(
   return groups.map((g) => {
     const item = items.find((i) => i.id === g.setlistItemId);
     const song = item?.songs[0]?.song;
-    const sTr = song ? pickTranslation(song.translations, locale) : null;
+    const sTr = song ? pickLocaleTranslation(song.translations, locale) : null;
     const songTitle = sTr?.title ?? song?.originalTitle ?? "Unknown";
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickTranslation,
+  pickLocaleTranslation,
   slugify,
   formatDate,
 } from "@/lib/utils";
@@ -92,7 +93,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     deriveOgPaletteFromSong(songId),
   ]);
   if (!song) return { title: metaT("notFound") };
-  const tr = pickTranslation(song.translations, locale);
+  const tr = pickLocaleTranslation(song.translations, locale);
   const artistTr = song.artists[0]
     ? pickTranslation(song.artists[0].artist.translations, locale)
     : null;
@@ -150,8 +151,7 @@ export default async function SongPage({ params }: Props) {
   const t = await getTranslations("Song");
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
-  const tr = pickTranslation(song.translations, locale);
-  const { main, sub, variant } = displayOriginalTitle(song, tr ?? null, locale);
+  const { main, sub, variant } = displayOriginalTitle(song, song.translations, locale);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -216,16 +216,21 @@ export default async function SongPage({ params }: Props) {
         <section className="mb-8">
           <p className="text-sm text-zinc-500">
             {t("baseVersion")}:{" "}
-            <Link
-              href={`/${locale}/songs/${song.baseVersion.id}/${slugify(
-                pickTranslation(song.baseVersion.translations, locale)?.title ??
-                  song.baseVersion.originalTitle
-              )}`}
-              className="text-blue-600 hover:underline"
-            >
-              {pickTranslation(song.baseVersion.translations, locale)?.title ??
-                song.baseVersion.originalTitle}
-            </Link>
+            {(() => {
+              const baseTr = pickLocaleTranslation(
+                song.baseVersion.translations,
+                locale
+              );
+              const baseTitle = baseTr?.title ?? song.baseVersion.originalTitle;
+              return (
+                <Link
+                  href={`/${locale}/songs/${song.baseVersion.id}/${slugify(baseTitle)}`}
+                  className="text-blue-600 hover:underline"
+                >
+                  {baseTitle}
+                </Link>
+              );
+            })()}
           </p>
         </section>
       )}
@@ -236,7 +241,7 @@ export default async function SongPage({ params }: Props) {
           <h2 className="mb-3 text-xl font-semibold">{t("otherVersions")}</h2>
           <ul className="space-y-1">
             {song.variants.map((v) => {
-              const vTr = pickTranslation(v.translations, locale);
+              const vTr = pickLocaleTranslation(v.translations, locale);
               const vTitle = vTr?.title ?? v.originalTitle;
               const vVariant = vTr?.variantLabel || v.variantLabel;
               return (
@@ -266,10 +271,9 @@ export default async function SongPage({ params }: Props) {
           <ul className="space-y-2">
             {albumTracks.map((at) => {
               const album = at.album;
-              const albumTr = pickTranslation(album.translations, locale);
               const { main: albumName, sub: albumSub } = displayOriginalTitle(
                 album,
-                albumTr ?? null,
+                album.translations,
                 locale
               );
               const trackInfo = [

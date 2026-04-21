@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickTranslation,
+  pickLocaleTranslation,
   slugify,
   formatDate,
 } from "@/lib/utils";
@@ -342,8 +343,7 @@ export default async function ArtistPage({ params }: Props) {
             <h2 className="mb-3 text-xl font-semibold">{t("songs")}</h2>
             <ul className="space-y-1">
               {originals.map((sc) => {
-                const songTr = pickTranslation(sc.song.translations, locale);
-                const { main, sub } = displayOriginalTitle(sc.song, songTr ?? null, locale);
+                const { main, sub } = displayOriginalTitle(sc.song, sc.song.translations, locale);
                 return (
                   <li key={sc.id}>
                     <Link
@@ -366,7 +366,7 @@ export default async function ArtistPage({ params }: Props) {
                     {sc.song.variants.length > 0 && (
                       <ul className="ml-5 mt-0.5 space-y-0.5">
                         {sc.song.variants.map((v) => {
-                          const vTr = pickTranslation(v.translations, locale);
+                          const vTr = pickLocaleTranslation(v.translations, locale);
                           const vVariant = vTr?.variantLabel || v.variantLabel;
                           return (
                             <li key={v.id} className="text-sm text-zinc-500">
@@ -386,11 +386,11 @@ export default async function ArtistPage({ params }: Props) {
                 );
               })}
               {standaloneVariants.map((sc) => {
-                const songTr = pickTranslation(sc.song.translations, locale);
-                const { main } = displayOriginalTitle(sc.song, songTr ?? null, locale);
+                const { main } = displayOriginalTitle(sc.song, sc.song.translations, locale);
+                const songTr = pickLocaleTranslation(sc.song.translations, locale);
                 const vVariant = songTr?.variantLabel || sc.song.variantLabel;
                 const baseTr = sc.song.baseVersion
-                  ? pickTranslation(sc.song.baseVersion.translations, locale)
+                  ? pickLocaleTranslation(sc.song.baseVersion.translations, locale)
                   : null;
                 const baseName = baseTr?.title ?? sc.song.baseVersion?.originalTitle;
                 return (

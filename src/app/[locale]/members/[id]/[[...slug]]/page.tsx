@@ -233,8 +233,7 @@ export default async function MemberPage({ params }: Props) {
                 seriesTr?.name ?? evTr?.name ?? et("unknownEvent");
               const songNames = p.setlistItem.songs
                 .map((s) => {
-                  const sTr = pickTranslation(s.song.translations, locale);
-                  const { main } = displayOriginalTitle(s.song, sTr ?? null, locale);
+                  const { main } = displayOriginalTitle(s.song, s.song.translations, locale);
                   return main;
                 })
                 .filter(Boolean);

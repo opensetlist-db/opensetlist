@@ -24,13 +24,26 @@ interface TitleDisplay {
  *
  * main    = always originalTitle
  * sub     = localized title (when different from original and locale differs)
- * variant = resolved variant label (localized → original fallback)
+ * variant = resolved variant label (locale-exact translation → original fallback)
+ *
+ * Looks up the translation strictly by displayLocale. Unlike pickTranslation,
+ * there is NO fallback to ko/en — a missing locale row falls through to the
+ * parent's original fields, so a Japanese viewer never sees a Korean variant
+ * label bleed through for a Japanese song with only a ko translation.
  */
-export function displayOriginalTitle(
-  item: { originalTitle: string; originalLanguage: string; variantLabel?: string | null },
-  translation: { title: string; variantLabel?: string | null } | null,
+export function displayOriginalTitle<
+  T extends { locale: string; title: string; variantLabel?: string | null },
+>(
+  item: {
+    originalTitle: string;
+    originalLanguage: string;
+    variantLabel?: string | null;
+  },
+  translations: readonly T[],
   displayLocale: string = "ko"
 ): TitleDisplay {
+  const translation =
+    translations.find((t) => t.locale === displayLocale) ?? null;
   const main = item.originalTitle;
   const variant = translation?.variantLabel || item.variantLabel || null;
 
@@ -45,13 +58,4 @@ export function displayOriginalTitle(
   }
 
   return { main, sub: localeTitle, variant };
-}
-
-/** @deprecated Use displayOriginalTitle instead */
-export function displaySongTitle(
-  song: { originalTitle: string; originalLanguage: string; variantLabel?: string | null },
-  translation: { title: string; variantLabel?: string | null } | null,
-  displayLocale: string = "ko"
-): TitleDisplay {
-  return displayOriginalTitle(song, translation, displayLocale);
 }

@@ -49,6 +49,21 @@ export function pickTranslation<T extends { locale: string }>(
 }
 
 /**
+ * Strict locale lookup — no fallback chain.
+ * Use for fields that have an "original" on the parent record (Song.originalTitle,
+ * Song.variantLabel, Album.originalTitle). If the locale-specific row is missing,
+ * the caller should fall back to the parent's original field — NOT to another
+ * locale's translation, which would surface the wrong language (e.g. Korean
+ * variantLabel shown to a Japanese viewer).
+ */
+export function pickLocaleTranslation<T extends { locale: string }>(
+  translations: T[],
+  locale: string
+): T | undefined {
+  return translations.find((t) => t.locale === locale);
+}
+
+/**
  * Format a date for display. Returns locale-appropriate date string.
  */
 export function formatDate(

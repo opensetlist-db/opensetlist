@@ -1,6 +1,10 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import { pickTranslation, formatDate } from "@/lib/utils";
+import {
+  pickTranslation,
+  pickLocaleTranslation,
+  formatDate,
+} from "@/lib/utils";
 import { displayName } from "@/lib/display";
 import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
@@ -56,7 +60,7 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const t = pickTranslation(song.translations, lang);
+    const t = pickLocaleTranslation(song.translations, lang);
     const title = t?.title ?? song.originalTitle ?? FALLBACK_TITLES[lang].song;
 
     const firstArtist = song.artists[0];
