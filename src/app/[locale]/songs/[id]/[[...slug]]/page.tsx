@@ -159,6 +159,9 @@ export default async function SongPage({ params }: Props) {
   const baseTitle = baseVersion
     ? (baseTr?.title ?? baseVersion.originalTitle)
     : null;
+  const baseVariant = baseVersion
+    ? (baseTr?.variantLabel || baseVersion.variantLabel || null)
+    : null;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -228,6 +231,11 @@ export default async function SongPage({ params }: Props) {
               className="text-blue-600 hover:underline"
             >
               {baseTitle}
+              {baseVariant && (
+                <span className="ml-1 text-sm text-zinc-500">
+                  ({baseVariant})
+                </span>
+              )}
             </Link>
           </p>
         </section>
