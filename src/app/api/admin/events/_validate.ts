@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
+import { resolveOriginalLanguage } from "@/lib/csv-parse";
 
 export function validatePerformerGuestIds(
   performerIds: string[] | undefined,
@@ -207,4 +208,56 @@ export function validateEventTranslations(
     });
   }
   return { ok: true, value: out };
+}
+
+export type EventOriginalFields = {
+  originalName: string;
+  originalShortName: string | null;
+  originalCity: string | null;
+  originalVenue: string | null;
+  originalLanguage: string;
+};
+
+export function validateEventOriginals(
+  body: Record<string, unknown>
+):
+  | { ok: true; value: EventOriginalFields }
+  | { ok: false; response: NextResponse } {
+  const reject = (msg: string) => ({
+    ok: false as const,
+    response: NextResponse.json({ error: msg }, { status: 400 }),
+  });
+
+  const trimmedName =
+    typeof body.originalName === "string" ? body.originalName.trim() : "";
+  if (!trimmedName) {
+    return reject("originalName is required");
+  }
+
+  let resolvedLanguage: string;
+  try {
+    resolvedLanguage = resolveOriginalLanguage(
+      body.originalLanguage as string | undefined | null
+    );
+  } catch (err) {
+    return reject(err instanceof Error ? err.message : String(err));
+  }
+
+  const trimmedNullable = (key: string): string | null => {
+    const v = body[key];
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    return t.length > 0 ? t : null;
+  };
+
+  return {
+    ok: true,
+    value: {
+      originalName: trimmedName,
+      originalShortName: trimmedNullable("originalShortName"),
+      originalCity: trimmedNullable("originalCity"),
+      originalVenue: trimmedNullable("originalVenue"),
+      originalLanguage: resolvedLanguage,
+    },
+  };
 }

@@ -6,6 +6,7 @@ import {
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
   validateDateInput,
+  validateEventOriginals,
   validateEventSeriesId,
   validateEventTranslations,
   validatePerformerGuestIds,
@@ -99,6 +100,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!translationsCheck.ok) return translationsCheck.response;
   const translations = translationsCheck.value;
 
+  const originalsCheck = validateEventOriginals(body);
+  if (!originalsCheck.ok) return originalsCheck.response;
+  const originals = originalsCheck.value;
+
   const performerCheck = validateOptionalIdArray(body.performerIds, "performerIds");
   if (!performerCheck.ok) return performerCheck.response;
   const guestCheck = validateOptionalIdArray(body.guestIds, "guestIds");
@@ -131,6 +136,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
           startTime,
           country: country || null,
           posterUrl: posterUrl || null,
+          ...originals,
           translations: { create: translations },
         },
         include: { translations: true },

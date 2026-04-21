@@ -36,6 +36,11 @@ type EventFormProps = {
     country: string | null;
     posterUrl: string | null;
     startTime: string;
+    originalName: string;
+    originalShortName: string;
+    originalCity: string;
+    originalVenue: string;
+    originalLanguage: string;
     translations: Translation[];
     performers: InitialPerformer[];
   };
@@ -44,6 +49,7 @@ type EventFormProps = {
 const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase", "virtual_live"];
 const EVENT_STATUSES = ["scheduled", "ongoing", "completed", "cancelled"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 function emptyTranslation(locale: string): Translation {
   return { locale, name: "", shortName: "", city: "", venue: "" };
@@ -65,6 +71,15 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
   const [startTime, setStartTime] = useState(initialData?.startTime ?? "");
+  const [originalLanguage, setOriginalLanguage] = useState(
+    initialData?.originalLanguage ?? "ja"
+  );
+  const [originalName, setOriginalName] = useState(initialData?.originalName ?? "");
+  const [originalShortName, setOriginalShortName] = useState(
+    initialData?.originalShortName ?? ""
+  );
+  const [originalCity, setOriginalCity] = useState(initialData?.originalCity ?? "");
+  const [originalVenue, setOriginalVenue] = useState(initialData?.originalVenue ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
@@ -174,6 +189,11 @@ export default function EventForm({ initialData }: EventFormProps) {
       return;
     }
 
+    if (!originalName.trim()) {
+      alert("원본 이름(originalName)은 필수입니다.");
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
@@ -184,6 +204,11 @@ export default function EventForm({ initialData }: EventFormProps) {
       country: country || null,
       posterUrl: posterUrl || null,
       startTime: `${startTime}Z`,
+      originalName: originalName.trim(),
+      originalShortName: originalShortName.trim() || null,
+      originalCity: originalCity.trim() || null,
+      originalVenue: originalVenue.trim() || null,
+      originalLanguage,
       translations: translations
         .filter((t) => t.name.trim())
         .map((t) => ({
@@ -395,6 +420,55 @@ export default function EventForm({ initialData }: EventFormProps) {
           onChange={(e) => setPosterUrl(e.target.value)}
           className="w-full rounded border border-zinc-300 px-3 py-2"
         />
+      </div>
+
+      <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
+        <div className="mb-3 text-sm font-medium">
+          원본 (다른 언어 번역이 없을 때 표시)
+        </div>
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>
+          <select
+            value={originalLanguage}
+            onChange={(e) => setOriginalLanguage(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {ORIGINAL_LANGUAGES.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="mb-2 flex gap-2">
+          <input
+            placeholder="원본 이벤트명 (필수)"
+            value={originalName}
+            onChange={(e) => setOriginalName(e.target.value)}
+            className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+            required
+          />
+          <input
+            placeholder="원본 약칭 (선택)"
+            value={originalShortName}
+            onChange={(e) => setOriginalShortName(e.target.value)}
+            className="w-28 rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="flex gap-2">
+          <input
+            placeholder="원본 도시 (선택)"
+            value={originalCity}
+            onChange={(e) => setOriginalCity(e.target.value)}
+            className="w-40 rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="원본 공연장 (선택)"
+            value={originalVenue}
+            onChange={(e) => setOriginalVenue(e.target.value)}
+            className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
 
       {/* Translations */}
