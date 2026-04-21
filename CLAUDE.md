@@ -244,6 +244,7 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
+- NEVER commit automatically. Always stop and ask the owner before running `git commit`, even when the work is clearly complete, tests pass, and a commit feels like the obvious next step. Stage and show the diff, then wait for explicit approval. This applies regardless of branch, scope, or urgency — no exceptions.
 - Always create a version tag for production releases
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 

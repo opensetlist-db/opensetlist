@@ -154,6 +154,7 @@ export default async function SongPage({ params }: Props) {
   const t = await getTranslations("Song");
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
+  const at = await getTranslations("Artist");
   const { main, sub, variant } = displayOriginalTitle(song, song.translations, locale);
   const baseVersion = song.baseVersion;
   const baseTr = baseVersion
@@ -214,7 +215,7 @@ export default async function SongPage({ params }: Props) {
                     href={`/${locale}/artists/${sa.artist.id}/${sa.artist.slug}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {aName || "Unknown"}
+                    {aName || at("unknown")}
                   </Link>
                   {sa.role !== "primary" && (
                     <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs">

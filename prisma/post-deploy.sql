@@ -35,6 +35,13 @@ UPDATE "Album"
   SET "originalLanguage" = 'ja'
   WHERE "originalLanguage" = 'jp';
 
+UPDATE "Album" a SET
+  "originalTitle" = COALESCE(a."originalTitle", t.title)
+FROM "AlbumTranslation" t
+WHERE t."albumId" = a.id
+  AND t.locale = a."originalLanguage"
+  AND a."originalTitle" IS NULL;
+
 UPDATE "Artist" a SET
   "originalName"      = COALESCE(a."originalName",      t.name),
   "originalShortName" = COALESCE(a."originalShortName", t."shortName"),
@@ -112,21 +119,22 @@ WHERE t."realPersonId" = rp.id
   );
 
 -- Orphan guard — warn (don't fail) if any parent row is still missing its
--- originalName after backfill. PR B's NOT NULL tightening must wait until
--- this count is zero on prod.
+-- identity original* column (Album uses originalTitle; everyone else uses
+-- originalName). Any future NOT NULL tightening must wait until this is zero.
 DO $$
 DECLARE
   orphan_count BIGINT;
 BEGIN
   SELECT SUM(cnt) INTO orphan_count FROM (
-              SELECT COUNT(*) AS cnt FROM "Artist"        WHERE "originalName" IS NULL
-    UNION ALL SELECT COUNT(*)        FROM "Group"         WHERE "originalName" IS NULL
-    UNION ALL SELECT COUNT(*)        FROM "EventSeries"   WHERE "originalName" IS NULL
-    UNION ALL SELECT COUNT(*)        FROM "Event"         WHERE "originalName" IS NULL
-    UNION ALL SELECT COUNT(*)        FROM "StageIdentity" WHERE "originalName" IS NULL
-    UNION ALL SELECT COUNT(*)        FROM "RealPerson"    WHERE "originalName" IS NULL
+              SELECT COUNT(*) AS cnt FROM "Artist"        WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "Group"         WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "EventSeries"   WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "Event"         WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "StageIdentity" WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "RealPerson"    WHERE "originalName"  IS NULL
+    UNION ALL SELECT COUNT(*)        FROM "Album"         WHERE "originalTitle" IS NULL
   ) s;
   IF orphan_count > 0 THEN
-    RAISE WARNING 'original* backfill left % parent rows without originalName — PR B NOT NULL tightening must wait', orphan_count;
+    RAISE WARNING 'original* backfill left % parent rows with NULL identity — NOT NULL tightening must wait until orphan count is zero', orphan_count;
   END IF;
 END $$;

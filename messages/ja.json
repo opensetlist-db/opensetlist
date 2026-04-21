@@ -29,6 +29,8 @@
     "title": "アーティスト",
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
+    "unknownGroup": "名称未定のグループ",
+    "unknownMember": "名称未定のメンバー",
     "type": {
       "solo": "ソロ",
       "group": "グループ",
@@ -49,6 +51,7 @@
   },
   "Song": {
     "title": "楽曲",
+    "unknown": "名称未定の楽曲",
     "originalTitle": "原題",
     "releaseDate": "発売日",
     "artists": "アーティスト",
@@ -72,7 +75,8 @@
     "solos": "ソロ",
     "present": "現在",
     "performanceHistory": "公演履歴",
-    "noPerformances": "公演記録がありません。"
+    "noPerformances": "公演記録がありません。",
+    "unknown": "名称未定のメンバー"
   },
   "Event": {
     "title": "イベント",

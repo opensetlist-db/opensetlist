@@ -4,6 +4,8 @@ import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { parseArtistSlugs, resolveOriginalLanguage, resolveSongTranslations } from "@/lib/csv-parse";
 
+class ImportValidationError extends Error {}
+
 /**
  * Pick the translation whose locale matches `originalLanguage` — that row is
  * the source of truth for the parent's `original*` fields. Returns null when
@@ -15,6 +17,26 @@ function pickOriginalSource<T extends { locale: string }>(
   originalLanguage: string
 ): T | null {
   return translations.find((t) => t.locale === originalLanguage) ?? null;
+}
+
+/**
+ * Throw when an import row would create a new parent with no translation row
+ * matching its declared originalLanguage. Update branches can safely skip
+ * touching `original*` in that case (preserving existing values), but creates
+ * would persist NULL identity columns and reintroduce the locale-bleed state
+ * PR A exists to prevent.
+ */
+function requireOriginalSource(
+  source: unknown,
+  slug: string,
+  entity: string,
+  originalLanguage: string
+): asserts source {
+  if (!source) {
+    throw new ImportValidationError(
+      `${entity} "${slug}" declares originalLanguage=${originalLanguage} but has no ${originalLanguage}_* translation columns — cannot create with NULL original* fields. Provide the ${originalLanguage} translation or change originalLanguage to a locale present in the row.`
+    );
+  }
 }
 
 function parseCSV(text: string): Record<string, string>[] {
@@ -105,6 +127,7 @@ async function importArtists(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
+      requireOriginalSource(source, slug, "Artist", originalLanguage);
       const artist = await prisma.artist.create({
         data: {
           slug,
@@ -199,6 +222,7 @@ async function importMembers(rows: Record<string, string>[]) {
         }
         realPersonId = existingRp.id;
       } else {
+        requireOriginalSource(vaSource, vaSlug, "RealPerson", vaOriginalLanguage);
         const rp = await prisma.realPerson.create({
           data: { slug: vaSlug, ...vaOriginals, translations: { create: vaTranslations } },
         });
@@ -259,6 +283,7 @@ async function importMembers(rows: Record<string, string>[]) {
       siId = existingSi.id;
       results.push(`UPDATED: ${charSlug} → ${siId}`);
     } else {
+      requireOriginalSource(siSource, charSlug, "StageIdentity", siOriginalLanguage);
       const si = await prisma.stageIdentity.create({
         data: {
           slug: charSlug,
@@ -477,8 +502,6 @@ async function importSongs(rows: Record<string, string>[]) {
 const VALID_SERIES_TYPES = ["concert_tour", "standalone", "festival", "fan_meeting"] as const;
 type EventSeriesTypeImport = (typeof VALID_SERIES_TYPES)[number];
 
-class ImportValidationError extends Error {}
-
 function normalizeSeriesType(raw: string | undefined): EventSeriesTypeImport | undefined {
   if (!raw) return undefined;
   if (raw === "one_time") return "standalone";
@@ -533,6 +556,7 @@ async function importEvents(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED Series: ${slug} → ${existing.id}`);
     } else {
+      requireOriginalSource(seriesSource, slug, "EventSeries", seriesOriginalLanguage);
       const series = await prisma.eventSeries.create({
         data: {
           slug,
@@ -603,6 +627,7 @@ async function importEvents(rows: Record<string, string>[]) {
         results.push(`SKIPPED: ${slug} (startTime required for new events)`);
         continue;
       }
+      requireOriginalSource(eventSource, slug, "Event", eventOriginalLanguage);
       const event = await prisma.event.create({
         data: {
           slug,

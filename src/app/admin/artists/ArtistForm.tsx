@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { josa } from "es-hangul";
+import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 
 type Translation = { locale: string; name: string; bio: string };
 type StageIdentityInput = {
@@ -99,7 +100,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               name:
                 si.translations.find((t: { locale: string }) => t.locale === "ko")?.name ??
                 si.translations[0]?.name ??
-                "Unknown",
+                ADMIN_UNKNOWN_NAME,
               artistName:
                 si.artistLinks?.[0]?.artist?.translations?.find(
                   (t: { locale: string }) => t.locale === "ko"

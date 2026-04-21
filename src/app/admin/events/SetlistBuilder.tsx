@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
+import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 
 type SongOption = {
   id: number;
@@ -84,11 +85,11 @@ function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
 }
 
 function getSIName(si: { translations: { locale: string; name: string }[] }) {
-  return si.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
+  return si.translations.find((t) => t.locale === "ko")?.name ?? ADMIN_UNKNOWN_NAME;
 }
 
 function getArtistName(a: { translations: { locale: string; name: string }[] }) {
-  return a.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
+  return a.translations.find((t) => t.locale === "ko")?.name ?? ADMIN_UNKNOWN_NAME;
 }
 
 export default function SetlistBuilder({

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
+import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 
 type Translation = {
   locale: string;
@@ -49,7 +50,7 @@ function emptyTranslation(locale: string): Translation {
 }
 
 function getSIName(si: StageIdentityOption) {
-  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? "Unknown";
+  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? ADMIN_UNKNOWN_NAME;
 }
 
 export default function EventForm({ initialData }: EventFormProps) {
