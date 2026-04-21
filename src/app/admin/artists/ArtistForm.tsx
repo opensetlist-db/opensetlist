@@ -9,8 +9,14 @@ type Translation = { locale: string; name: string; bio: string };
 type StageIdentityInput = {
   type: "character" | "persona";
   color: string;
+  originalName: string;
+  originalShortName: string;
+  originalLanguage: string;
   translations: { locale: string; name: string }[];
   realPerson?: {
+    originalName: string;
+    originalStageName: string;
+    originalLanguage: string;
     translations: { locale: string; name: string; stageName: string }[];
   };
 };
@@ -35,6 +41,10 @@ type ArtistFormProps = {
     type: string;
     parentArtistId: number | null;
     hasBoard: boolean;
+    originalName: string;
+    originalShortName: string;
+    originalBio: string;
+    originalLanguage: string;
     translations: Translation[];
     groupIds: string[];
     existingStageIdentities?: ExistingStageIdentity[];
@@ -43,6 +53,7 @@ type ArtistFormProps = {
 
 const ARTIST_TYPES = ["solo", "group", "unit"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 export default function ArtistForm({ initialData }: ArtistFormProps) {
   const router = useRouter();
@@ -52,6 +63,14 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     initialData?.parentArtistId?.toString() ?? ""
   );
   const [hasBoard, setHasBoard] = useState(initialData?.hasBoard ?? true);
+  const [originalLanguage, setOriginalLanguage] = useState(
+    initialData?.originalLanguage ?? "ja"
+  );
+  const [originalName, setOriginalName] = useState(initialData?.originalName ?? "");
+  const [originalShortName, setOriginalShortName] = useState(
+    initialData?.originalShortName ?? ""
+  );
+  const [originalBio, setOriginalBio] = useState(initialData?.originalBio ?? "");
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
@@ -140,12 +159,45 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       {
         type: "character",
         color: "",
+        originalName: "",
+        originalShortName: "",
+        originalLanguage: "ja",
         translations: [{ locale: "ko", name: "" }],
         realPerson: {
+          originalName: "",
+          originalStageName: "",
+          originalLanguage: "ja",
           translations: [{ locale: "ko", name: "", stageName: "" }],
         },
       },
     ]);
+  }
+
+  function updateSIOriginal(
+    index: number,
+    field: "originalName" | "originalShortName" | "originalLanguage",
+    value: string
+  ) {
+    setStageIdentities((prev) =>
+      prev.map((si, i) => (i === index ? { ...si, [field]: value } : si))
+    );
+  }
+
+  function updateRPOriginal(
+    siIndex: number,
+    field: "originalName" | "originalStageName" | "originalLanguage",
+    value: string
+  ) {
+    setStageIdentities((prev) =>
+      prev.map((si, i) =>
+        i === siIndex && si.realPerson
+          ? {
+              ...si,
+              realPerson: { ...si.realPerson, [field]: value },
+            }
+          : si
+      )
+    );
   }
 
   function removeStageIdentity(index: number) {
@@ -192,6 +244,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           ? {
               ...si,
               realPerson: {
+                ...si.realPerson,
                 translations: si.realPerson.translations.map((t, j) =>
                   j === 0 ? { ...t, [field]: value } : t
                 ),
@@ -226,12 +279,32 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!originalName.trim()) {
+      alert("원본 이름(originalName)은 필수입니다.");
+      return;
+    }
+    for (const si of stageIdentities) {
+      if (!si.originalName.trim()) {
+        alert("새 멤버의 원본 이름(originalName)은 필수입니다.");
+        return;
+      }
+      if (si.realPerson && !si.realPerson.originalName.trim()) {
+        alert("새 멤버 본명의 원본 이름(originalName)은 필수입니다.");
+        return;
+      }
+    }
+
     setLoading(true);
 
     const payload = {
       type,
       parentArtistId: parentArtistId || null,
       hasBoard,
+      originalName: originalName.trim(),
+      originalShortName: originalShortName.trim() || null,
+      originalBio: originalBio.trim() || null,
+      originalLanguage,
       translations: translations.filter((t) => t.name.trim()),
       groupIds: selectedGroupIds,
       stageIdentities: stageIdentities.length ? stageIdentities : undefined,
@@ -355,6 +428,46 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           </div>
         </div>
       )}
+
+      <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
+        <div className="mb-3 text-sm font-medium">
+          원본 (다른 언어 번역이 없을 때 표시)
+        </div>
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-zinc-600">원본 언어</label>
+          <select
+            value={originalLanguage}
+            onChange={(e) => setOriginalLanguage(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {ORIGINAL_LANGUAGES.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+        <input
+          placeholder="원본 이름 (필수)"
+          value={originalName}
+          onChange={(e) => setOriginalName(e.target.value)}
+          className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          required
+        />
+        <input
+          placeholder="원본 짧은 이름 (선택)"
+          value={originalShortName}
+          onChange={(e) => setOriginalShortName(e.target.value)}
+          className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+        />
+        <textarea
+          placeholder="원본 소개 (선택)"
+          value={originalBio}
+          onChange={(e) => setOriginalBio(e.target.value)}
+          rows={2}
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+        />
+      </div>
 
       {/* Translations */}
       <div>
@@ -670,14 +783,50 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 />
               </div>
+              <div className="mb-2 rounded border border-zinc-200 bg-zinc-50 p-2">
+                <div className="mb-1 text-xs font-medium text-zinc-600">
+                  멤버 원본
+                </div>
+                <div className="mb-1 grid grid-cols-3 gap-1">
+                  <select
+                    value={si.originalLanguage}
+                    onChange={(e) =>
+                      updateSIOriginal(i, "originalLanguage", e.target.value)
+                    }
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                  >
+                    {ORIGINAL_LANGUAGES.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="원본 이름 (필수)"
+                    value={si.originalName}
+                    onChange={(e) =>
+                      updateSIOriginal(i, "originalName", e.target.value)
+                    }
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                  />
+                  <input
+                    placeholder="원본 짧은 이름"
+                    value={si.originalShortName}
+                    onChange={(e) =>
+                      updateSIOriginal(i, "originalShortName", e.target.value)
+                    }
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                  />
+                </div>
+              </div>
               <input
-                placeholder="캐릭터/페르소나 이름"
+                placeholder="캐릭터/페르소나 이름 (ko 번역)"
                 value={si.translations[0]?.name ?? ""}
                 onChange={(e) => updateSITranslation(i, "name", e.target.value)}
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               <input
-                placeholder="성우/본명"
+                placeholder="성우/본명 (ko 번역)"
                 value={si.realPerson?.translations[0]?.name ?? ""}
                 onChange={(e) => updateRPTranslation(i, "name", e.target.value)}
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
@@ -688,8 +837,46 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 onChange={(e) =>
                   updateRPTranslation(i, "stageName", e.target.value)
                 }
-                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              {si.realPerson && (
+                <div className="rounded border border-zinc-200 bg-zinc-50 p-2">
+                  <div className="mb-1 text-xs font-medium text-zinc-600">
+                    본명 원본
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <select
+                      value={si.realPerson.originalLanguage}
+                      onChange={(e) =>
+                        updateRPOriginal(i, "originalLanguage", e.target.value)
+                      }
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                    >
+                      {ORIGINAL_LANGUAGES.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="원본 이름 (필수)"
+                      value={si.realPerson.originalName}
+                      onChange={(e) =>
+                        updateRPOriginal(i, "originalName", e.target.value)
+                      }
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                    />
+                    <input
+                      placeholder="원본 예명"
+                      value={si.realPerson.originalStageName}
+                      onChange={(e) =>
+                        updateRPOriginal(i, "originalStageName", e.target.value)
+                      }
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
