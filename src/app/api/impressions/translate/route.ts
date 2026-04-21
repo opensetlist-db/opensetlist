@@ -115,8 +115,16 @@ export async function POST(req: NextRequest) {
       }
     }
     // Insert failed for some other reason — log and return the fresh
-    // translation anyway. The cache just won't stick this time.
-    console.warn("ImpressionTranslation insert failed", err);
+    // translation anyway. The cache just won't stick this time. Same
+    // redaction pattern as the translator catch above: log identifying
+    // metadata only, never the raw err.
+    console.warn("ImpressionTranslation insert failed", {
+      name: err instanceof Error ? err.name : typeof err,
+      code:
+        err instanceof Prisma.PrismaClientKnownRequestError
+          ? err.code
+          : undefined,
+    });
   }
 
   return NextResponse.json({ translatedText });
