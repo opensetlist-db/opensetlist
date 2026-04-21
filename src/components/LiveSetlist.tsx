@@ -191,7 +191,7 @@ function SetlistList({
                             trackEvent("setlist_item_click", {
                               song_id: String(song.id),
                               event_id: eventId,
-                              position: index + 1,
+                              position: item.position,
                             })
                           }
                           className="font-medium text-blue-600 hover:underline"

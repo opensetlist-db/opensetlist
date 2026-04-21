@@ -73,11 +73,13 @@ export function ReactionButtons({
           [reactionType]: Math.max(0, (prev[reactionType] ?? 0) - 1),
         }));
       } else {
-        trackEvent("emotion_tag_click", {
-          reaction_type: reactionType,
-          song_id: songId,
-          event_id: eventId,
-        });
+        if (songId) {
+          trackEvent("emotion_tag_click", {
+            reaction_type: reactionType,
+            song_id: songId,
+            event_id: eventId,
+          });
+        }
         const res = await fetch("/api/reactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
