@@ -6,6 +6,7 @@ import {
   badRequest,
   enumValue,
   nullableBigIntId,
+  nullableBoolean,
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
@@ -33,7 +34,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const organizerName = nullableString(body.organizerName, "organizerName");
   if (!organizerName.ok) return badRequest(organizerName.message);
 
-  const { hasBoard } = body as { hasBoard?: boolean };
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -59,7 +61,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
       artistId: artistIdCheck.value,
       parentSeriesId: parentSeriesIdCheck.value,
       organizerName: organizerName.value,
-      hasBoard: hasBoard ?? false,
+      hasBoard: hasBoardCheck.value ?? false,
       originalName: name.value,
       originalShortName: shortName.value,
       originalDescription: description.value,

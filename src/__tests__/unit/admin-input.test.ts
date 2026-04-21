@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   enumValue,
   nullableBigIntId,
+  nullableBoolean,
   nullableEnumValue,
   nullableStringArray,
   originalLanguage,
@@ -84,6 +85,31 @@ describe("nullableBigIntId", () => {
   it("rejects objects, arrays, booleans", () => {
     for (const v of [{}, [], true, 1.5, -1]) {
       const r = nullableBigIntId(v, "id");
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it("rejects unsafe-integer numbers — JSON.parse loses precision above 2^53-1", () => {
+    const r = nullableBigIntId(Number.MAX_SAFE_INTEGER + 1, "id");
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("nullableBoolean", () => {
+  it("returns null for undefined / null / empty", () => {
+    for (const v of [undefined, null, ""]) {
+      expect(nullableBoolean(v, "hasBoard")).toEqual({ ok: true, value: null });
+    }
+  });
+
+  it("accepts true and false", () => {
+    expect(nullableBoolean(true, "hasBoard")).toEqual({ ok: true, value: true });
+    expect(nullableBoolean(false, "hasBoard")).toEqual({ ok: true, value: false });
+  });
+
+  it("rejects truthy / falsy non-booleans — strings, numbers, objects", () => {
+    for (const v of ["true", "false", 1, 0, {}, []]) {
+      const r = nullableBoolean(v, "hasBoard");
       expect(r.ok).toBe(false);
     }
   });

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
+  nullableBoolean,
   nullableEnumValue,
   nullableString,
   originalLanguage as parseOriginalLanguage,
@@ -25,7 +26,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const categoryCheck = nullableEnumValue(body.category, "category", Object.values(GroupCategory));
   if (!categoryCheck.ok) return badRequest(categoryCheck.message);
 
-  const { hasBoard } = body as { hasBoard?: boolean };
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -49,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     data: {
       type: typeCheck.value,
       category: categoryCheck.value,
-      hasBoard: hasBoard ?? false,
+      hasBoard: hasBoardCheck.value ?? false,
       originalName: name.value,
       originalShortName: shortName.value,
       originalDescription: description.value,

@@ -6,6 +6,7 @@ import {
   badRequest,
   enumValue,
   nullableBigIntId,
+  nullableBoolean,
   nullableString,
   nullableStringArray,
   originalLanguage as parseOriginalLanguage,
@@ -63,7 +64,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const groupIdsCheck = nullableStringArray(body.groupIds, "groupIds");
   if (!groupIdsCheck.ok) return badRequest(groupIdsCheck.message);
 
-  const { hasBoard } = body as { hasBoard?: boolean };
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -88,7 +90,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     data: {
       type: typeCheck.value,
       parentArtistId: parentArtistIdCheck.value,
-      hasBoard: hasBoard ?? true,
+      hasBoard: hasBoardCheck.value ?? true,
       originalName: name.value,
       originalShortName: shortName.value,
       originalBio: bio.value,

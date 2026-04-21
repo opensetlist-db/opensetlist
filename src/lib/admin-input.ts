@@ -126,7 +126,9 @@ export function nullableEnumValue<T extends string>(
 }
 
 // Optional BigInt-coercible id. Bare `BigInt(value)` throws SyntaxError on "abc"
-// or TypeError on objects, both of which surface as 500s.
+// or TypeError on objects. `isSafeInteger` rejects values past 2^53-1 — JSON
+// numbers above that have already lost precision before reaching us, so they'd
+// silently bind to the wrong FK row.
 export function nullableBigIntId(
   value: unknown,
   field: string
@@ -134,7 +136,7 @@ export function nullableBigIntId(
   if (value === undefined || value === null || value === "") {
     return { ok: true, value: null };
   }
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return { ok: true, value: BigInt(value) };
   }
   if (typeof value === "string" && /^\d+$/.test(value)) {
@@ -144,6 +146,21 @@ export function nullableBigIntId(
     ok: false,
     message: `${field} must be a non-negative integer or digit string`,
   };
+}
+
+// Optional boolean. `body as { hasBoard?: boolean }` is compile-time only;
+// "false" or {} would otherwise reach Prisma.
+export function nullableBoolean(
+  value: unknown,
+  field: string
+): AdminFieldResult<boolean | null> {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value === "boolean") {
+    return { ok: true, value };
+  }
+  return { ok: false, message: `${field} must be a boolean` };
 }
 
 // Optional array of strings. Returns [] for undefined/null so callers can
