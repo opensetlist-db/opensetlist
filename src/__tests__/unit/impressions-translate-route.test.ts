@@ -99,6 +99,18 @@ describe("POST /api/impressions/translate", () => {
       }) as unknown as Parameters<typeof POST>[0],
     );
     expect(res.status).toBe(404);
+    // Pin the predicate so a regression that drops one of the visibility
+    // filters (isDeleted / isHidden / supersededAt) trips this test instead
+    // of silently translating moderated content.
+    expect(prisma.eventImpression.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "imp-1",
+        isDeleted: false,
+        isHidden: false,
+        supersededAt: null,
+      },
+      select: { id: true, content: true, locale: true },
+    });
     expect(translateMock).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.findUnique).not.toHaveBeenCalled();
   });
