@@ -224,10 +224,9 @@ export default async function EventSeriesPage({ params }: Props) {
                       );
                     })()}
                   </div>
-                  {venue && (
+                  {(venue || city) && (
                     <p className="ml-9 text-sm text-zinc-500">
-                      {venue}
-                      {city && `, ${city}`}
+                      {[venue, city].filter(Boolean).join(", ")}
                     </p>
                   )}
                 </li>
