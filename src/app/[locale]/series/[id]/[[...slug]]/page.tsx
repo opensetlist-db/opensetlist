@@ -162,7 +162,7 @@ export default async function EventSeriesPage({ params }: Props) {
                     href={`/${locale}/series/${child.id}/${child.slug}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {childName || "Unknown"}
+                    {childName || t("unknownSeries")}
                   </Link>
                 </li>
               );
