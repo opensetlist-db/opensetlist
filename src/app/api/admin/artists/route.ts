@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
@@ -6,6 +7,7 @@ import {
   badRequest,
   nullableString,
   originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
   requireString,
 } from "@/lib/admin-input";
 import {
@@ -38,8 +40,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { type, parentArtistId, hasBoard, groupIds } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const { type, parentArtistId, hasBoard, groupIds } = body as {
+    type?: ArtistType;
+    parentArtistId?: string | number | null;
+    hasBoard?: boolean;
+    groupIds?: string[];
+  };
+  if (!type) return badRequest("type is required");
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -59,7 +69,9 @@ export async function POST(request: NextRequest) {
   const stageIdentities = parseStageIdentities(body.stageIdentities);
   if (!stageIdentities.ok) return badRequest(stageIdentities.message);
 
-  const slug = body.slug || generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
+  const slug =
+    (typeof body.slug === "string" && body.slug) ||
+    generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
 
   const artist = await prisma.artist.create({
     data: {

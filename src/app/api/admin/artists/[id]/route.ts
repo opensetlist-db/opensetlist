@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
   nullableString,
   originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
   requireString,
 } from "@/lib/admin-input";
 import { parseArtistTranslations } from "../_validate";
@@ -46,8 +48,15 @@ export async function GET(_request: NextRequest, { params }: Props) {
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
-  const body = await request.json();
-  const { type, parentArtistId, hasBoard, groupIds } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const { type, parentArtistId, hasBoard, groupIds } = body as {
+    type?: ArtistType;
+    parentArtistId?: string | number | null;
+    hasBoard?: boolean;
+    groupIds?: string[];
+  };
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);

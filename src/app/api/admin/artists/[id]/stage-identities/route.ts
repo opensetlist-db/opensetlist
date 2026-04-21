@@ -6,6 +6,7 @@ import {
   badRequest,
   nullableString,
   originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
   requireString,
 } from "@/lib/admin-input";
 import {
@@ -19,8 +20,14 @@ type Props = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
-  const body = await request.json();
-  const { existingStageIdentityId, type, color } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const { existingStageIdentityId, type, color } = body as {
+    existingStageIdentityId?: string;
+    type?: string;
+    color?: string | null;
+  };
 
   // Link existing stage identity to this artist
   if (existingStageIdentityId) {
@@ -61,7 +68,9 @@ export async function POST(request: NextRequest, { params }: Props) {
     realPerson = parsed.value;
   }
 
-  const siSlug = body.slug || generateSlug(translations.value[0]?.name || name.value || "identity");
+  const siSlug =
+    (typeof body.slug === "string" && body.slug) ||
+    generateSlug(translations.value[0]?.name || name.value || "identity");
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
       slug: siSlug,
@@ -104,7 +113,12 @@ export async function POST(request: NextRequest, { params }: Props) {
 export async function DELETE(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
-  const { stageIdentityId } = await request.json();
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const { stageIdentityId } = parsed.body as { stageIdentityId?: string };
+  if (!stageIdentityId || typeof stageIdentityId !== "string") {
+    return badRequest("stageIdentityId is required");
+  }
 
   await prisma.stageIdentityArtist.deleteMany({
     where: { stageIdentityId, artistId },

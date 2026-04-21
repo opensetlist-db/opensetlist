@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { EventSeriesType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
@@ -6,6 +7,7 @@ import {
   badRequest,
   nullableString,
   originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
   parseLocalizedTranslations,
   requireString,
 } from "@/lib/admin-input";
@@ -23,8 +25,17 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { type, artistId, parentSeriesId, organizerName, hasBoard } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const { type, artistId, parentSeriesId, organizerName, hasBoard } = body as {
+    type?: EventSeriesType;
+    artistId?: string | number | null;
+    parentSeriesId?: string | number | null;
+    organizerName?: string | null;
+    hasBoard?: boolean;
+  };
+  if (!type) return badRequest("type is required");
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -41,7 +52,9 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  const slug = body.slug || generateSlug(translations.value[0]?.name || `series-${Date.now()}`);
+  const slug =
+    (typeof body.slug === "string" && body.slug) ||
+    generateSlug(translations.value[0]?.name || `series-${Date.now()}`);
 
   const series = await prisma.eventSeries.create({
     data: {

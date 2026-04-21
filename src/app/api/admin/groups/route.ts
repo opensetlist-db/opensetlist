@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { GroupType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
   nullableString,
   originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
   parseLocalizedTranslations,
   requireString,
 } from "@/lib/admin-input";
@@ -18,8 +20,14 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { type, category, hasBoard } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const { type, category, hasBoard } = body as {
+    type?: GroupType;
+    category?: GroupCategory;
+    hasBoard?: boolean;
+  };
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);

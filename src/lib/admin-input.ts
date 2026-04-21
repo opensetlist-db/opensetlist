@@ -9,6 +9,28 @@ export function badRequest(message: string): NextResponse {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+// Reject non-object payloads with 400 — destructuring null/array/unparseable throws 500.
+export async function parseJsonBody(
+  request: Request
+): Promise<
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; response: NextResponse }
+> {
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return { ok: false, response: badRequest("Request body must be valid JSON") };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      ok: false,
+      response: badRequest("Request body must be a JSON object"),
+    };
+  }
+  return { ok: true, body: raw as Record<string, unknown> };
+}
+
 export function requireString(
   value: unknown,
   field: string
@@ -37,8 +59,12 @@ export function nullableString(
   return { ok: true, value: t.length > 0 ? t : null };
 }
 
+// Required for admin writes; CSV import keeps the lenient `resolveOriginalLanguage` default.
 export function originalLanguage(value: unknown): AdminFieldResult<string> {
-  if (value !== undefined && value !== null && typeof value !== "string") {
+  if (value === undefined || value === null || value === "") {
+    return { ok: false, message: "originalLanguage is required" };
+  }
+  if (typeof value !== "string") {
     return { ok: false, message: "originalLanguage must be a string" };
   }
   try {
