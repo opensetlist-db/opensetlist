@@ -121,7 +121,7 @@ export default async function EventSeriesPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          {seriesMain || "Unknown Series"}
+          {seriesMain || t("unknownSeries")}
           {seriesSub && (
             <span className="ml-2 text-xl font-normal text-zinc-500">
               {seriesSub}

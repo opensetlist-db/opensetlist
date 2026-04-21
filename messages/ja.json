@@ -120,7 +120,8 @@
     },
     "organizer": "主催",
     "events": "イベント一覧",
-    "noEvents": "登録されたイベントがありません。"
+    "noEvents": "登録されたイベントがありません。",
+    "unknownSeries": "名称未定のシリーズ"
   },
   "Reaction": {
     "waiting": "待ってた",

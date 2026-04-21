@@ -120,7 +120,8 @@
     },
     "organizer": "Organizer",
     "events": "Events",
-    "noEvents": "No events registered."
+    "noEvents": "No events registered.",
+    "unknownSeries": "Untitled Series"
   },
   "Reaction": {
     "waiting": "Finally!",

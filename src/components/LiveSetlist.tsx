@@ -28,6 +28,7 @@ type SongTranslation = {
 
 type ArtistRef = {
   id: number;
+  slug: string;
   parentArtistId?: number | null;
   originalName: string | null;
   originalShortName: string | null;
@@ -252,7 +253,7 @@ function SetlistList({
                   {item.stageType !== "full_group" &&
                     (unitArtistName ? (
                       <Link
-                        href={`/${locale}/artists/${unitArtist!.artist.id}/${slugify(unitArtistName)}`}
+                        href={`/${locale}/artists/${unitArtist!.artist.id}/${unitArtist!.artist.slug}`}
                         className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs hover:underline"
                       >
                         {unitArtistName}
