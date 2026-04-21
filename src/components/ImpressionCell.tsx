@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 import type { Impression } from "./EventImpressions";
 
 interface Props {
   impression: Impression;
+  eventId: string;
   isOwn: boolean;
   hasReported: boolean;
   onReport: (impression: Impression) => void;
@@ -14,6 +16,7 @@ interface Props {
 
 export function ImpressionCell({
   impression,
+  eventId,
   isOwn,
   hasReported,
   onReport,
@@ -34,11 +37,21 @@ export function ImpressionCell({
       setShowing("original");
       return;
     }
+
+    const trackParams = {
+      event_id: eventId,
+      source_locale: impression.locale,
+      target_locale: locale,
+    };
+
     if (translated !== null) {
+      trackEvent("impression_translate_click", trackParams);
+      trackEvent("impression_translate_success", trackParams);
       setShowing("translated");
       return;
     }
 
+    trackEvent("impression_translate_click", trackParams);
     setLoading(true);
     try {
       const res = await fetch("/api/impressions/translate", {
@@ -56,6 +69,7 @@ export function ImpressionCell({
       const { translatedText } = await res.json();
       setTranslated(translatedText);
       setShowing("translated");
+      trackEvent("impression_translate_success", trackParams);
     } catch {
       setError(true);
     } finally {

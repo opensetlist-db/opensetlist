@@ -7,6 +7,7 @@ import { routing } from "@/i18n/routing";
 import { BASE_URL } from "@/lib/config";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import FirstVisitTracker from "@/components/FirstVisitTracker";
 import "@fontsource-variable/noto-sans-kr";
 import "@fontsource/josefin-sans/400.css";
 import "@fontsource/dm-sans/400.css";
@@ -59,6 +60,7 @@ export default async function LocaleLayout({
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
+          <FirstVisitTracker />
           <Header />
           {children}
           <Footer />

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { pickTranslation, slugify } from "@/lib/utils";
 import { displayOriginalTitle } from "@/lib/display";
+import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
 import {
   useSetlistPolling,
@@ -103,6 +104,7 @@ export function LiveSetlist({
             locale={locale}
             t={t}
             reactionCounts={reactionCounts}
+            eventId={eventId}
           />
           {encoreItems.length > 0 && (
             <>
@@ -114,6 +116,7 @@ export function LiveSetlist({
                 locale={locale}
                 t={t}
                 reactionCounts={reactionCounts}
+                eventId={eventId}
               />
             </>
           )}
@@ -128,11 +131,13 @@ function SetlistList({
   locale,
   t,
   reactionCounts,
+  eventId,
 }: {
   items: LiveSetlistItem[];
   locale: string;
   t: ReturnType<typeof useTranslations<"Event">>;
   reactionCounts: ReactionCountsMap;
+  eventId: string;
 }) {
   return (
     <ol className="space-y-3">
@@ -182,6 +187,13 @@ function SetlistList({
                         )}
                         <Link
                           href={`/${locale}/songs/${song.id}/${slugify(song.main)}`}
+                          onClick={() =>
+                            trackEvent("setlist_item_click", {
+                              song_id: String(song.id),
+                              event_id: eventId,
+                              position: item.position,
+                            })
+                          }
                           className="font-medium text-blue-600 hover:underline"
                         >
                           {song.main}
@@ -241,6 +253,8 @@ function SetlistList({
                 */}
                 <ReactionButtons
                   setlistItemId={String(item.id)}
+                  songId={String(item.songs[0]?.song.id ?? "")}
+                  eventId={eventId}
                   initialCounts={reactionCounts[String(item.id)] ?? {}}
                 />
               </div>

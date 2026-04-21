@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { trackEvent } from "@/lib/analytics";
 
 const REACTIONS = [
   { type: "waiting", emoji: "😭" },
@@ -12,10 +13,17 @@ const REACTIONS = [
 
 interface Props {
   setlistItemId: string;
+  songId: string;
+  eventId: string;
   initialCounts: Record<string, number>;
 }
 
-export function ReactionButtons({ setlistItemId, initialCounts }: Props) {
+export function ReactionButtons({
+  setlistItemId,
+  songId,
+  eventId,
+  initialCounts,
+}: Props) {
   const t = useTranslations("Reaction");
   const [counts, setCounts] = useState(initialCounts);
   const [myReactions, setMyReactions] = useState<Record<string, string>>({});
@@ -65,6 +73,13 @@ export function ReactionButtons({ setlistItemId, initialCounts }: Props) {
           [reactionType]: Math.max(0, (prev[reactionType] ?? 0) - 1),
         }));
       } else {
+        if (songId) {
+          trackEvent("emotion_tag_click", {
+            reaction_type: reactionType,
+            song_id: songId,
+            event_id: eventId,
+          });
+        }
         const res = await fetch("/api/reactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
