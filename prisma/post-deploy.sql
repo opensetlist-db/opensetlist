@@ -120,7 +120,7 @@ WHERE t."realPersonId" = rp.id
 
 -- Orphan guard — warn (don't fail) if any parent row is still missing its
 -- identity original* column (Album uses originalTitle; everyone else uses
--- originalName). PR B's NOT NULL tightening must wait until this is zero.
+-- originalName). Any future NOT NULL tightening must wait until this is zero.
 DO $$
 DECLARE
   orphan_count BIGINT;
@@ -135,6 +135,6 @@ BEGIN
     UNION ALL SELECT COUNT(*)        FROM "Album"         WHERE "originalTitle" IS NULL
   ) s;
   IF orphan_count > 0 THEN
-    RAISE WARNING 'original* backfill left % parent rows with NULL identity — PR B NOT NULL tightening must wait', orphan_count;
+    RAISE WARNING 'original* backfill left % parent rows with NULL identity — NOT NULL tightening must wait until orphan count is zero', orphan_count;
   END IF;
 END $$;
