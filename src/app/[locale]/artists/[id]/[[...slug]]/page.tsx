@@ -218,7 +218,7 @@ export default async function ArtistPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          {artistMain || "Unknown Artist"}
+          {artistMain || t("unknown")}
           {artistSub && (
             <span className="ml-2 text-xl font-normal text-zinc-500">
               {artistSub}
@@ -250,7 +250,7 @@ export default async function ArtistPage({ params }: Props) {
                   key={gl.id}
                   className="rounded-full bg-zinc-100 px-3 py-1 text-sm"
                 >
-                  {gName || "Unknown"}
+                  {gName || t("unknownGroup")}
                 </span>
               );
             })}
@@ -289,7 +289,7 @@ export default async function ArtistPage({ params }: Props) {
                 href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
                 className="font-medium text-blue-600 hover:underline"
               >
-                {siName || "Unknown"}
+                {siName || t("unknownMember")}
               </Link>
               {vaName && (
                 <span className="text-sm text-zinc-500">
@@ -330,7 +330,7 @@ export default async function ArtistPage({ params }: Props) {
                       href={`/${locale}/artists/${sub.id}/${sub.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {subName || "Unknown"}
+                      {subName || t("unknown")}
                     </Link>
                   </li>
                 );
@@ -354,7 +354,7 @@ export default async function ArtistPage({ params }: Props) {
                       href={`/${locale}/artists/${sub.id}/${sub.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {subName || "Unknown"}
+                      {subName || t("unknown")}
                     </Link>
                   </li>
                 );
@@ -372,7 +372,7 @@ export default async function ArtistPage({ params }: Props) {
             .map(
               (sa) =>
                 displayNameWithFallback(sa.artist, sa.artist.translations, locale) ||
-                "Unknown"
+                t("unknown")
             );
         };
         // Separate originals and standalone variants

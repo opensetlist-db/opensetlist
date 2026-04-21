@@ -84,11 +84,11 @@ function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
 }
 
 function getSIName(si: { translations: { locale: string; name: string }[] }) {
-  return si.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
+  return si.translations.find((t) => t.locale === "ko")?.name ?? "이름 없음";
 }
 
 function getArtistName(a: { translations: { locale: string; name: string }[] }) {
-  return a.translations.find((t) => t.locale === "ko")?.name ?? "Unknown";
+  return a.translations.find((t) => t.locale === "ko")?.name ?? "이름 없음";
 }
 
 export default function SetlistBuilder({

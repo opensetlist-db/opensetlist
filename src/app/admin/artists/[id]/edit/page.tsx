@@ -44,7 +44,7 @@ export default async function EditArtistPage({ params }: Props) {
       id: sl.stageIdentity.id as string,
       type: sl.stageIdentity.type as string,
       color: sl.stageIdentity.color as string | null,
-      name: siTr?.name ?? "Unknown",
+      name: siTr?.name ?? "이름 없음",
       vaName: vaTr ? (vaTr.stageName ?? vaTr.name) : null,
     };
   });

@@ -99,7 +99,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               name:
                 si.translations.find((t: { locale: string }) => t.locale === "ko")?.name ??
                 si.translations[0]?.name ??
-                "Unknown",
+                "이름 없음",
               artistName:
                 si.artistLinks?.[0]?.artist?.translations?.find(
                   (t: { locale: string }) => t.locale === "ko"

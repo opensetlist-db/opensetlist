@@ -49,7 +49,7 @@ function emptyTranslation(locale: string): Translation {
 }
 
 function getSIName(si: StageIdentityOption) {
-  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? "Unknown";
+  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? "이름 없음";
 }
 
 export default function EventForm({ initialData }: EventFormProps) {

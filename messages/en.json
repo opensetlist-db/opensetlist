@@ -29,6 +29,8 @@
     "title": "Artists",
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
+    "unknownGroup": "Untitled Group",
+    "unknownMember": "Untitled Member",
     "type": {
       "solo": "Solo",
       "group": "Group",
@@ -49,6 +51,7 @@
   },
   "Song": {
     "title": "Songs",
+    "unknown": "Untitled Song",
     "originalTitle": "Original Title",
     "releaseDate": "Release Date",
     "artists": "Artists",
@@ -72,7 +75,8 @@
     "solos": "Solo",
     "present": "Present",
     "performanceHistory": "Performance History",
-    "noPerformances": "No performance records."
+    "noPerformances": "No performance records.",
+    "unknown": "Untitled Member"
   },
   "Event": {
     "title": "Events",

@@ -73,9 +73,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const member = await getMember(id);
   if (!member) return { title: "Not Found" };
+  const memberT = await getTranslations({ locale, namespace: "Member" });
   const name =
     displayNameWithFallback(member, member.translations, locale, "full") ||
-    "Unknown";
+    memberT("unknown");
 
   const title = `${name} | OpenSetlist`;
   const mt = await getTranslations({ locale, namespace: "Meta" });
@@ -115,6 +116,7 @@ export default async function MemberPage({ params }: Props) {
   const t = await getTranslations("Member");
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
+  const at = await getTranslations("Artist");
   const { main: name, sub: subName, shortName } = displayOriginalName(
     member,
     member.translations,
@@ -152,7 +154,7 @@ export default async function MemberPage({ params }: Props) {
               style={{ backgroundColor: member.color }}
             />
           )}
-          <h1 className="text-3xl font-bold">{name || "Unknown"}</h1>
+          <h1 className="text-3xl font-bold">{name || t("unknown")}</h1>
           {shortName && shortName !== name && (
             <span className="text-xl text-zinc-500">({shortName})</span>
           )}
@@ -193,7 +195,7 @@ export default async function MemberPage({ params }: Props) {
                       href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {aName || "Unknown"}
+                      {aName || at("unknown")}
                     </Link>
                     {periodStr && (
                       <span className="text-sm text-zinc-400">{periodStr}</span>
@@ -224,7 +226,7 @@ export default async function MemberPage({ params }: Props) {
                       href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {aName || "Unknown"}
+                      {aName || at("unknown")}
                     </Link>
                   </li>
                 );
