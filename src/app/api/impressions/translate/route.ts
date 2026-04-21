@@ -79,7 +79,11 @@ export async function POST(req: NextRequest) {
       AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
     );
   } catch (err) {
-    console.error("Translator call failed", err);
+    // Don't log `err` directly — provider SDK errors often echo the request
+    // payload (the user's impression text) in their message/cause fields.
+    console.error("Translator call failed", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Translation unavailable" },
       { status: 502 },
