@@ -251,6 +251,14 @@ Hard rules:
 
 ## Release Notes
 
+### v0.8.0 (2026-04-21)
+- Per-cell Translate button on impressions — toggles between original and viewer-locale translation, no re-fetch on subsequent toggles
+- POST /api/impressions/translate with server-side cache (ImpressionTranslation table keyed on impressionId+sourceLocale+targetLocale, naturally per-version against the append-only chain), P2002-race winner re-SELECT
+- Translator provider abstraction: OpenAI Responses API (gpt-4o-mini) and Google Gemini (gemini-3.1-flash-lite-preview) behind a single Translator interface; TRANSLATION_PROVIDER selects (Vercel preview = Gemini, prod = OpenAI)
+- Hardening: shared JSON-shaped system prompt, max-token truncation detection on both providers (TranslationTruncatedError), 256-token floor, AbortSignal.timeout(30s), error-payload redaction in logs
+- Schema: new impression_translations table with onDelete: Cascade FK to event_impressions
+- 8-case unit test on the translate route + pinned create() args on impression POST test
+
 ### v0.3.0 (2026-04-15)
 - 3-language UI support (Korean / Japanese / English) with LanguageSwitcher
 - Privacy policy and terms of service pages (ko/ja/en)
