@@ -143,10 +143,9 @@ function SetlistList({
     <ol className="space-y-3">
       {items.map((item, index) => {
         const songNames = item.songs.map((s) => {
-          const sTr = pickTranslation(s.song.translations, locale);
           const { main, sub, variant } = displayOriginalTitle(
             s.song,
-            sTr ?? null,
+            s.song.translations,
             locale,
           );
           return {
