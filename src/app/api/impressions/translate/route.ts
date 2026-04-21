@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
 
+const TRANSLATOR_TIMEOUT_MS = 30_000;
+
 // POST /api/impressions/translate
 // Body: { impressionId: string, targetLocale: "ko" | "ja" | "en" }
 // Response: { translatedText: string } | { error: string }
@@ -74,6 +76,7 @@ export async function POST(req: NextRequest) {
       impression.content,
       sourceLocale,
       targetLocale,
+      AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
     );
   } catch (err) {
     console.error("Translator call failed", err);

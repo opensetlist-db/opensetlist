@@ -150,6 +150,7 @@ describe("POST /api/impressions/translate", () => {
       "今日のライブ最高でした",
       "ja",
       "ko",
+      expect.any(AbortSignal),
     );
     expect(prisma.impressionTranslation.create).toHaveBeenCalledWith({
       data: {
