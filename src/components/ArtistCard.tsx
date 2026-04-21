@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { pickTranslation } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import type { ArtistForList } from "@/lib/artists";
 
 export async function ArtistCard({
@@ -11,8 +11,9 @@ export async function ArtistCard({
   locale: string;
 }) {
   const t = await getTranslations("Artist");
-  const tr = pickTranslation(artist.translations, locale);
-  const name = tr?.name ?? t("unknown");
+  const name =
+    displayNameWithFallback(artist, artist.translations, locale) ||
+    t("unknown");
 
   return (
     <li

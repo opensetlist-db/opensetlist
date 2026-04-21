@@ -4,12 +4,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickTranslation,
   pickLocaleTranslation,
-  slugify,
 } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
-import { displayName } from "@/lib/display";
+import {
+  displayNameWithFallback,
+  resolveLocalizedField,
+} from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
@@ -80,24 +81,51 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   ]);
   if (!event) return { title: metaT("notFound") };
   const t = await getTranslations({ locale, namespace: "Event" });
-  const tr = pickTranslation(event.translations, locale);
-  const seriesTr = event.eventSeries
-    ? pickTranslation(event.eventSeries.translations, locale)
+  const seriesFullName = event.eventSeries
+    ? displayNameWithFallback(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale,
+        "full"
+      )
     : null;
+  const seriesShortName = event.eventSeries
+    ? displayNameWithFallback(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale
+      )
+    : null;
+  const eventFullName = displayNameWithFallback(
+    event,
+    event.translations,
+    locale,
+    "full"
+  );
+  const city = resolveLocalizedField(
+    event,
+    event.translations,
+    locale,
+    "city",
+    "originalCity"
+  );
+  const venue = resolveLocalizedField(
+    event,
+    event.translations,
+    locale,
+    "venue",
+    "originalVenue"
+  );
 
-  const headlineName = seriesTr
-    ? displayName(seriesTr, "full")
-    : tr?.name
-      ? displayName(tr, "full")
-      : null;
+  const headlineName = seriesFullName || eventFullName || null;
   const title = headlineName
     ? `${headlineName} ${t("setlist")} | OpenSetlist`
     : "OpenSetlist";
   const description = [
     event.date ? formatVenueDate(event.date, locale) : "",
-    tr?.city,
-    tr?.venue,
-    seriesTr ? displayName(seriesTr) : "",
+    city ?? "",
+    venue ?? "",
+    seriesShortName ?? "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -170,7 +198,8 @@ async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
 
 async function getTrendingSongs(
   eventId: bigint,
-  locale: string
+  locale: string,
+  unknownSongLabel: string
 ): Promise<TrendingSong[]> {
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId"],
@@ -216,7 +245,7 @@ async function getTrendingSongs(
     const item = items.find((i) => i.id === g.setlistItemId);
     const song = item?.songs[0]?.song;
     const sTr = song ? pickLocaleTranslation(song.translations, locale) : null;
-    const songTitle = sTr?.title ?? song?.originalTitle ?? "Unknown";
+    const songTitle = sTr?.title ?? song?.originalTitle ?? unknownSongLabel;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
     const topType = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
@@ -245,19 +274,51 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const [t, ct, reactionCounts, trendingSongs, impressions] = await Promise.all([
+  const [t, ct, st, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
+    getTranslations("Song"),
     getReactionCounts(eventId),
-    getTrendingSongs(eventId, locale),
     getEventImpressions(eventId),
   ]);
+  const trendingSongs = await getTrendingSongs(eventId, locale, st("unknown"));
 
-  const tr = pickTranslation(event.translations, locale);
-
-  const seriesTr = event.eventSeries
-    ? pickTranslation(event.eventSeries.translations, locale)
+  const eventName = displayNameWithFallback(event, event.translations, locale);
+  const eventFullName = displayNameWithFallback(
+    event,
+    event.translations,
+    locale,
+    "full"
+  );
+  const seriesShortName = event.eventSeries
+    ? displayNameWithFallback(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale
+      )
     : null;
+  const seriesFullName = event.eventSeries
+    ? displayNameWithFallback(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale,
+        "full"
+      )
+    : null;
+  const venue = resolveLocalizedField(
+    event,
+    event.translations,
+    locale,
+    "venue",
+    "originalVenue"
+  );
+  const city = resolveLocalizedField(
+    event,
+    event.translations,
+    locale,
+    "city",
+    "originalCity"
+  );
 
   const isOngoing = getEventStatus(event) === "ongoing";
 
@@ -268,14 +329,14 @@ export default async function EventPage({ params }: Props) {
         <Link href={`/${locale}`} className="hover:underline">
           {ct("backToHome")}
         </Link>
-        {event.eventSeries && seriesTr && (
+        {event.eventSeries && seriesShortName && (
           <>
             {" / "}
             <Link
-              href={`/${locale}/series/${event.eventSeries.id}/${slugify(seriesTr.name)}`}
+              href={`/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`}
               className="hover:underline"
             >
-              {displayName(seriesTr)}
+              {seriesShortName}
             </Link>
           </>
         )}
@@ -284,12 +345,10 @@ export default async function EventPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold">
-          {seriesTr
-            ? displayName(seriesTr, "full")
-            : tr?.name ?? t("unknownEvent")}
+          {seriesFullName || eventFullName || t("unknownEvent")}
         </h1>
-        {seriesTr && tr?.name && (
-          <p className="mt-1 text-lg text-zinc-600">{tr.name}</p>
+        {seriesFullName && eventName && eventName !== seriesFullName && (
+          <p className="mt-1 text-lg text-zinc-600">{eventName}</p>
         )}
         <div className="mt-2 space-y-1 text-sm text-zinc-600">
           <div className="flex items-center gap-2">
@@ -311,10 +370,10 @@ export default async function EventPage({ params }: Props) {
               />
             )}
           </div>
-          {tr?.venue && (
+          {(venue || city) && (
             <div>
-              {tr.venue}
-              {tr.city && `, ${tr.city}`}
+              {venue ?? city}
+              {venue && city && `, ${city}`}
             </div>
           )}
         </div>

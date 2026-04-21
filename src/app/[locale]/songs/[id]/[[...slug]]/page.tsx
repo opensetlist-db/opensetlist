@@ -4,12 +4,14 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickTranslation,
   pickLocaleTranslation,
   slugify,
   formatDate,
 } from "@/lib/utils";
-import { displayName, displayOriginalTitle } from "@/lib/display";
+import {
+  displayNameWithFallback,
+  displayOriginalTitle,
+} from "@/lib/display";
 import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { Metadata } from "next";
@@ -94,15 +96,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   ]);
   if (!song) return { title: metaT("notFound") };
   const tr = pickLocaleTranslation(song.translations, locale);
-  const artistTr = song.artists[0]
-    ? pickTranslation(song.artists[0].artist.translations, locale)
+  const firstArtist = song.artists[0]?.artist ?? null;
+  const artistName = firstArtist
+    ? displayNameWithFallback(firstArtist, firstArtist.translations, locale)
     : null;
 
   const songTitle = tr?.title ?? song.originalTitle;
   const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
-  const description = artistTr
-    ? `${displayName(artistTr)} · ${metaT("performanceHistory")}`
+  const description = artistName
+    ? `${artistName} · ${metaT("performanceHistory")}`
     : metaT("performanceHistory");
 
   const ogImage = `/api/og/song/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
@@ -151,6 +154,7 @@ export default async function SongPage({ params }: Props) {
   const t = await getTranslations("Song");
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
+  const at = await getTranslations("Artist");
   const { main, sub, variant } = displayOriginalTitle(song, song.translations, locale);
   const baseVersion = song.baseVersion;
   const baseTr = baseVersion
@@ -200,14 +204,18 @@ export default async function SongPage({ params }: Props) {
           <h2 className="mb-3 text-xl font-semibold">{t("artists")}</h2>
           <ul className="space-y-1">
             {song.artists.map((sa) => {
-              const aTr = pickTranslation(sa.artist.translations, locale);
+              const aName = displayNameWithFallback(
+                sa.artist,
+                sa.artist.translations,
+                locale
+              );
               return (
                 <li key={sa.id} className="flex items-center gap-2">
                   <Link
-                    href={`/${locale}/artists/${sa.artist.id}/${slugify(aTr?.name ?? "")}`}
+                    href={`/${locale}/artists/${sa.artist.id}/${sa.artist.slug}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {aTr?.name ?? "Unknown"}
+                    {aName || at("unknown")}
                   </Link>
                   {sa.role !== "primary" && (
                     <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs">
@@ -321,17 +329,26 @@ export default async function SongPage({ params }: Props) {
           <ul className="space-y-3">
             {performances.map((p) => {
               const event = p.setlistItem.event;
-              const evTr = pickTranslation(event.translations, locale);
-              const seriesTr = event.eventSeries
-                ? pickTranslation(event.eventSeries.translations, locale)
+              const evName = displayNameWithFallback(
+                event,
+                event.translations,
+                locale
+              );
+              const seriesName = event.eventSeries
+                ? displayNameWithFallback(
+                    event.eventSeries,
+                    event.eventSeries.translations,
+                    locale
+                  )
                 : null;
-              const linkLabel =
-                seriesTr?.name ?? evTr?.name ?? et("unknownEvent");
+              const linkLabel = seriesName || evName || et("unknownEvent");
               const performers = p.setlistItem.performers
-                .map(
-                  (perf) =>
-                    pickTranslation(perf.stageIdentity.translations, locale)
-                      ?.name
+                .map((perf) =>
+                  displayNameWithFallback(
+                    perf.stageIdentity,
+                    perf.stageIdentity.translations,
+                    locale
+                  )
                 )
                 .filter(Boolean);
               return (
@@ -346,9 +363,9 @@ export default async function SongPage({ params }: Props) {
                     >
                       {linkLabel}
                     </Link>
-                    {seriesTr?.name && evTr?.name && seriesTr.name !== evTr.name && (
+                    {seriesName && evName && seriesName !== evName && (
                       <span className="text-sm text-zinc-500">
-                        ({evTr.name})
+                        ({evName})
                       </span>
                     )}
                   </div>

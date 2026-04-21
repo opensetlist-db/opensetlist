@@ -4,10 +4,13 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickTranslation,
-  slugify,
   formatDate,
 } from "@/lib/utils";
+import {
+  displayNameWithFallback,
+  displayOriginalName,
+  resolveLocalizedField,
+} from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import type { Metadata } from "next";
 
@@ -42,10 +45,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const series = await getEventSeries(BigInt(id), locale);
   if (!series) return { title: "Not Found" };
-  const tr = pickTranslation(series.translations, locale);
+  const seriesName = displayNameWithFallback(series, series.translations, locale, "full");
+  const description = resolveLocalizedField(
+    series,
+    series.translations,
+    locale,
+    "description",
+    "originalDescription"
+  );
   return {
-    title: tr?.name ? `${tr.name} | OpenSetlist` : "OpenSetlist",
-    description: tr?.description ?? undefined,
+    title: seriesName ? `${seriesName} | OpenSetlist` : "OpenSetlist",
+    description: description ?? undefined,
   };
 }
 
@@ -65,12 +75,27 @@ export default async function EventSeriesPage({ params }: Props) {
   const t = await getTranslations("EventSeries");
   const ct = await getTranslations("Common");
   const evT = await getTranslations("Event");
-  const tr = pickTranslation(series.translations, locale);
-  const artistTr = series.artist
-    ? pickTranslation(series.artist.translations, locale)
+  const { main: seriesMain, sub: seriesSub } = displayOriginalName(
+    series,
+    series.translations,
+    locale
+  );
+  const description = resolveLocalizedField(
+    series,
+    series.translations,
+    locale,
+    "description",
+    "originalDescription"
+  );
+  const artistName = series.artist
+    ? displayNameWithFallback(series.artist, series.artist.translations, locale)
     : null;
-  const parentTr = series.parentSeries
-    ? pickTranslation(series.parentSeries.translations, locale)
+  const parentName = series.parentSeries
+    ? displayNameWithFallback(
+        series.parentSeries,
+        series.parentSeries.translations,
+        locale
+      )
     : null;
 
   return (
@@ -80,14 +105,14 @@ export default async function EventSeriesPage({ params }: Props) {
         <Link href={`/${locale}`} className="hover:underline">
           {ct("backToHome")}
         </Link>
-        {series.parentSeries && parentTr && (
+        {series.parentSeries && (
           <>
             {" / "}
             <Link
-              href={`/${locale}/series/${series.parentSeries.id}/${slugify(parentTr.name)}`}
+              href={`/${locale}/series/${series.parentSeries.id}/${series.parentSeries.slug}`}
               className="hover:underline"
             >
-              {parentTr.name}
+              {parentName || t("unknownSeries")}
             </Link>
           </>
         )}
@@ -95,15 +120,22 @@ export default async function EventSeriesPage({ params }: Props) {
 
       {/* Header */}
       <header className="mb-8">
-        <h1 className="text-3xl font-bold">{tr?.name ?? "Unknown Series"}</h1>
+        <h1 className="text-3xl font-bold">
+          {seriesMain || t("unknownSeries")}
+          {seriesSub && (
+            <span className="ml-2 text-xl font-normal text-zinc-500">
+              {seriesSub}
+            </span>
+          )}
+        </h1>
         <div className="mt-2 flex flex-wrap gap-3 text-sm text-zinc-500">
           <span>{t(`type.${series.type}`)}</span>
-          {artistTr && (
+          {artistName && (
             <Link
-              href={`/${locale}/artists/${series.artist!.id}/${slugify(artistTr.name)}`}
+              href={`/${locale}/artists/${series.artist!.id}/${series.artist!.slug}`}
               className="text-blue-600 hover:underline"
             >
-              {artistTr.name}
+              {artistName}
             </Link>
           )}
           {series.organizerName && (
@@ -112,8 +144,8 @@ export default async function EventSeriesPage({ params }: Props) {
             </span>
           )}
         </div>
-        {tr?.description && (
-          <p className="mt-4 text-zinc-700">{tr.description}</p>
+        {description && (
+          <p className="mt-4 text-zinc-700">{description}</p>
         )}
       </header>
 
@@ -123,14 +155,14 @@ export default async function EventSeriesPage({ params }: Props) {
           <h2 className="mb-3 text-xl font-semibold">{ct("series")}</h2>
           <ul className="space-y-1">
             {series.childSeries.map((child) => {
-              const childTr = pickTranslation(child.translations, locale);
+              const childName = displayNameWithFallback(child, child.translations, locale);
               return (
                 <li key={child.id}>
                   <Link
-                    href={`/${locale}/series/${child.id}/${slugify(childTr?.name ?? "")}`}
+                    href={`/${locale}/series/${child.id}/${child.slug}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {childTr?.name ?? "Unknown"}
+                    {childName || t("unknownSeries")}
                   </Link>
                 </li>
               );
@@ -147,7 +179,26 @@ export default async function EventSeriesPage({ params }: Props) {
         ) : (
           <ul className="space-y-4">
             {series.events.map((event) => {
-              const evTr = pickTranslation(event.translations, locale);
+              const evName = displayNameWithFallback(
+                event,
+                event.translations,
+                locale,
+                "full"
+              );
+              const venue = resolveLocalizedField(
+                event,
+                event.translations,
+                locale,
+                "venue",
+                "originalVenue"
+              );
+              const city = resolveLocalizedField(
+                event,
+                event.translations,
+                locale,
+                "city",
+                "originalCity"
+              );
               return (
                 <li key={event.id}>
                   <div className="flex items-baseline gap-3">
@@ -157,10 +208,10 @@ export default async function EventSeriesPage({ params }: Props) {
                       </span>
                     )}
                     <Link
-                      href={`/${locale}/events/${event.id}/${slugify(evTr?.name ?? "")}`}
+                      href={`/${locale}/events/${event.id}/${event.slug}`}
                       className="font-medium text-blue-600 hover:underline"
                     >
-                      {evTr?.name ?? evT("unknownEvent")}
+                      {evName || evT("unknownEvent")}
                     </Link>
                     {(() => {
                       const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
@@ -173,10 +224,9 @@ export default async function EventSeriesPage({ params }: Props) {
                       );
                     })()}
                   </div>
-                  {evTr?.venue && (
+                  {(venue || city) && (
                     <p className="ml-9 text-sm text-zinc-500">
-                      {evTr.venue}
-                      {evTr.city && `, ${evTr.city}`}
+                      {[venue, city].filter(Boolean).join(", ")}
                     </p>
                   )}
                 </li>

@@ -7,11 +7,11 @@
 
 ## Project Overview
 
-**OpenSetlist** is a crowdsourced setlist database for anime, game, and Asian music live events.
+**OpenSetlist** is a crowdsourced setlist database for East Asian live music — K-POP, J-POP, C-POP, anime, game, and beyond.
 Similar to setlist.fm but focused on East Asian content — Korean, Japanese, English, Chinese users.
 
 - **Site:** opensetlist.com
-- **Phase 1 target:** Korean users, anime/game music IPs
+- **Phase 1 seed content:** Hasunosora (anime/game music IP, Korean audience) — chosen as a scope-complete starting corpus, not a genre cap on the product.
 - **Unique value:** Unit/member-level setlist detail that setlist.fm lacks entirely
 - **Model:** Crowdsourced data + community discussion boards
 
@@ -244,6 +244,7 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
+- NEVER commit automatically. Always stop and ask the owner before running `git commit`, even when the work is clearly complete, tests pass, and a commit feels like the obvious next step. Stage and show the diff, then wait for explicit approval. This applies regardless of branch, scope, or urgency — no exceptions.
 - Always create a version tag for production releases
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
@@ -251,34 +252,7 @@ Hard rules:
 
 ## Release Notes
 
-### v0.8.0 (2026-04-21)
-- Per-cell Translate button on impressions — toggles between original and viewer-locale translation, no re-fetch on subsequent toggles
-- POST /api/impressions/translate with server-side cache (ImpressionTranslation table keyed on impressionId+sourceLocale+targetLocale, naturally per-version against the append-only chain), P2002-race winner re-SELECT
-- Translator provider abstraction: OpenAI Responses API (gpt-4o-mini) and Google Gemini (gemini-3.1-flash-lite-preview) behind a single Translator interface; TRANSLATION_PROVIDER selects (Vercel preview = Gemini, prod = OpenAI)
-- Hardening: shared JSON-shaped system prompt, max-token truncation detection on both providers (TranslationTruncatedError), 256-token floor, AbortSignal.timeout(30s), error-payload redaction in logs
-- Schema: new impression_translations table with onDelete: Cascade FK to event_impressions
-- 8-case unit test on the translate route + pinned create() args on impression POST test
-
-### v0.3.0 (2026-04-15)
-- 3-language UI support (Korean / Japanese / English) with LanguageSwitcher
-- Privacy policy and terms of service pages (ko/ja/en)
-- Footer component with privacy, terms, contact links
-- Admin setlist builder: reorder (move up/down), insert-after, insert-at-beginning
-- Admin setlist builder: artist names displayed in item rows
-- Input validation on insert-after and swap API routes
-
-### v0.2.0 (2026-04-14)
-- English event translations
-- Google Analytics 4 integration
-- Personal info cleanup from public docs
-- CodeRabbit automated review config
-
-### v0.1.0 (2026-04-14)
-- Initial production release
-- Core read-only pages: Artist, Song, Event, EventSeries
-- Admin UI with CSV import and setlist builder
-- OG cards, SEO, sitemap
-- Hasunosora seed data (224 songs)
+See [README.md](./README.md#release-notes) for the full release history.
 
 ---
 

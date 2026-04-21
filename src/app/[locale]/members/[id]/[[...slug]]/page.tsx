@@ -4,11 +4,14 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickTranslation,
-  slugify,
+  pickLocaleTranslation,
   formatDate,
 } from "@/lib/utils";
-import { displayOriginalTitle } from "@/lib/display";
+import {
+  displayNameWithFallback,
+  displayOriginalName,
+  displayOriginalTitle,
+} from "@/lib/display";
 import type { Metadata } from "next";
 
 type Props = {
@@ -70,8 +73,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
   const member = await getMember(id);
   if (!member) return { title: "Not Found" };
-  const tr = pickTranslation(member.translations, locale);
-  const name = tr?.name ?? "Unknown";
+  const memberT = await getTranslations({ locale, namespace: "Member" });
+  const name =
+    displayNameWithFallback(member, member.translations, locale, "full") ||
+    memberT("unknown");
 
   const title = `${name} | OpenSetlist`;
   const mt = await getTranslations({ locale, namespace: "Meta" });
@@ -111,18 +116,24 @@ export default async function MemberPage({ params }: Props) {
   const t = await getTranslations("Member");
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
-  const tr = pickTranslation(member.translations, locale);
-  const name = tr?.name ?? "Unknown";
-  const shortName = tr?.shortName ?? null;
-
-  // Sub line: show original language name if different from display
-  const jaTr = pickTranslation(member.translations, "ja");
-  const showJaSub = locale !== "ja" && jaTr && jaTr.name !== name;
+  const at = await getTranslations("Artist");
+  const { main: name, sub: subName, shortName } = displayOriginalName(
+    member,
+    member.translations,
+    locale
+  );
 
   // CV info
   const va = member.voicedBy[0];
   const vaTr = va
-    ? pickTranslation(va.realPerson.translations, locale)
+    ? pickLocaleTranslation(va.realPerson.translations, locale)
+    : null;
+  const vaName = va
+    ? vaTr?.stageName ||
+      vaTr?.name ||
+      va.realPerson.originalStageName ||
+      va.realPerson.originalName ||
+      null
     : null;
 
   return (
@@ -143,17 +154,17 @@ export default async function MemberPage({ params }: Props) {
               style={{ backgroundColor: member.color }}
             />
           )}
-          <h1 className="text-3xl font-bold">{name}</h1>
+          <h1 className="text-3xl font-bold">{name || t("unknown")}</h1>
           {shortName && shortName !== name && (
             <span className="text-xl text-zinc-500">({shortName})</span>
           )}
         </div>
-        {showJaSub && (
-          <p className="mt-1 text-lg text-zinc-500">{jaTr!.name}</p>
+        {subName && (
+          <p className="mt-1 text-lg text-zinc-500">{subName}</p>
         )}
-        {vaTr && (
+        {vaName && (
           <p className="mt-2 text-sm text-zinc-500">
-            CV: {vaTr.stageName ?? vaTr.name}
+            CV: {vaName}
           </p>
         )}
       </header>
@@ -166,7 +177,11 @@ export default async function MemberPage({ params }: Props) {
             {member.artistLinks
               .filter((l) => l.artist.type === "unit")
               .map((link) => {
-                const aTr = pickTranslation(link.artist.translations, locale);
+                const aName = displayNameWithFallback(
+                  link.artist,
+                  link.artist.translations,
+                  locale
+                );
                 const period = [
                   link.startDate ? formatDate(link.startDate, locale) : null,
                   link.endDate ? formatDate(link.endDate, locale) : t("present"),
@@ -177,10 +192,10 @@ export default async function MemberPage({ params }: Props) {
                 return (
                   <li key={link.id} className="flex items-baseline gap-2">
                     <Link
-                      href={`/${locale}/artists/${link.artist.id}/${slugify(aTr?.name ?? "")}`}
+                      href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {aTr?.name ?? "Unknown"}
+                      {aName || at("unknown")}
                     </Link>
                     {periodStr && (
                       <span className="text-sm text-zinc-400">{periodStr}</span>
@@ -200,14 +215,18 @@ export default async function MemberPage({ params }: Props) {
             {member.artistLinks
               .filter((l) => l.artist.type === "solo")
               .map((link) => {
-                const aTr = pickTranslation(link.artist.translations, locale);
+                const aName = displayNameWithFallback(
+                  link.artist,
+                  link.artist.translations,
+                  locale
+                );
                 return (
                   <li key={link.id}>
                     <Link
-                      href={`/${locale}/artists/${link.artist.id}/${slugify(aTr?.name ?? "")}`}
+                      href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
-                      {aTr?.name ?? "Unknown"}
+                      {aName || at("unknown")}
                     </Link>
                   </li>
                 );
@@ -225,12 +244,19 @@ export default async function MemberPage({ params }: Props) {
           <ul className="space-y-3">
             {performances.map((p) => {
               const event = p.setlistItem.event;
-              const evTr = pickTranslation(event.translations, locale);
-              const seriesTr = event.eventSeries
-                ? pickTranslation(event.eventSeries.translations, locale)
+              const evName = displayNameWithFallback(
+                event,
+                event.translations,
+                locale
+              );
+              const seriesName = event.eventSeries
+                ? displayNameWithFallback(
+                    event.eventSeries,
+                    event.eventSeries.translations,
+                    locale
+                  )
                 : null;
-              const linkLabel =
-                seriesTr?.name ?? evTr?.name ?? et("unknownEvent");
+              const linkLabel = seriesName || evName || et("unknownEvent");
               const songNames = p.setlistItem.songs
                 .map((s) => {
                   const { main } = displayOriginalTitle(s.song, s.song.translations, locale);
@@ -249,9 +275,9 @@ export default async function MemberPage({ params }: Props) {
                     >
                       {linkLabel}
                     </Link>
-                    {seriesTr?.name && evTr?.name && seriesTr.name !== evTr.name && (
+                    {seriesName && evName && seriesName !== evName && (
                       <span className="text-sm text-zinc-500">
-                        ({evTr.name})
+                        ({evName})
                       </span>
                     )}
                   </div>

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { displayName, displayOriginalTitle } from "@/lib/display";
+import {
+  displayName,
+  displayNameWithFallback,
+  displayOriginalName,
+  displayOriginalTitle,
+  resolveLocalizedField,
+} from "@/lib/display";
 
 describe("displayName", () => {
   it("returns shortName when available", () => {
@@ -175,5 +181,197 @@ describe("displayOriginalTitle", () => {
       sub: "Dazzling Night Journey",
       variant: "104th Ver.",
     });
+  });
+});
+
+describe("displayOriginalName", () => {
+  it("shows sub when ja entity has different ko translation", () => {
+    const result = displayOriginalName(
+      { originalName: "蓮ノ空女学院スクールアイドルクラブ", originalLanguage: "ja" },
+      [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽" }],
+      "ko"
+    );
+    expect(result).toEqual({
+      main: "蓮ノ空女学院スクールアイドルクラブ",
+      sub: "하스노소라 여학원 스쿨 아이돌 클럽",
+      shortName: null,
+    });
+  });
+
+  it("returns parent originalShortName when translation row missing shortName", () => {
+    const result = displayOriginalName(
+      {
+        originalName: "蓮ノ空女学院スクールアイドルクラブ",
+        originalShortName: "蓮ノ空",
+        originalLanguage: "ja",
+      },
+      [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽" }],
+      "ko"
+    );
+    expect(result).toEqual({
+      main: "蓮ノ空女学院スクールアイドルクラブ",
+      sub: "하스노소라 여학원 스쿨 아이돌 클럽",
+      shortName: "蓮ノ空",
+    });
+  });
+
+  it("uses translation shortName when present", () => {
+    const result = displayOriginalName(
+      { originalName: "蓮ノ空女学院スクールアイドルクラブ", originalShortName: "蓮ノ空", originalLanguage: "ja" },
+      [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: "하스노소라" }],
+      "ko"
+    );
+    expect(result.shortName).toBe("하스노소라");
+  });
+
+  it("never bleeds ko translation to ja viewer when ja row missing", () => {
+    // Regression: a ja viewer should never see the ko name in `sub`.
+    const result = displayOriginalName(
+      { originalName: "蓮ノ空", originalLanguage: "ja" },
+      [{ locale: "ko", name: "하스노소라" }],
+      "ja"
+    );
+    expect(result).toEqual({ main: "蓮ノ空", sub: null, shortName: null });
+  });
+
+  it("shows no sub when displayLocale matches originalLanguage", () => {
+    const result = displayOriginalName(
+      { originalName: "蓮ノ空", originalLanguage: "ja" },
+      [{ locale: "ja", name: "蓮ノ空" }],
+      "ja"
+    );
+    expect(result).toEqual({ main: "蓮ノ空", sub: null, shortName: null });
+  });
+
+  it("shows no sub when translation name is identical to original", () => {
+    const result = displayOriginalName(
+      { originalName: "Cerise Bouquet", originalLanguage: "en" },
+      [{ locale: "ko", name: "Cerise Bouquet" }],
+      "ko"
+    );
+    expect(result).toEqual({ main: "Cerise Bouquet", sub: null, shortName: null });
+  });
+
+  it("falls through to parent originalShortName when translation row absent", () => {
+    const result = displayOriginalName(
+      {
+        originalName: "蓮ノ空女学院スクールアイドルクラブ",
+        originalShortName: "蓮ノ空",
+        originalLanguage: "ja",
+      },
+      [],
+      "ko"
+    );
+    expect(result).toEqual({
+      main: "蓮ノ空女学院スクールアイドルクラブ",
+      sub: null,
+      shortName: "蓮ノ空",
+    });
+  });
+});
+
+describe("resolveLocalizedField", () => {
+  it("returns translation field when locale row exists with non-empty value", () => {
+    const event = { originalCity: "神戸", originalLanguage: "ja" };
+    const translations = [{ locale: "ko", city: "고베" }];
+    expect(resolveLocalizedField(event, translations, "ko", "city", "originalCity")).toBe("고베");
+  });
+
+  it("falls back to parent originalField when locale row missing", () => {
+    const event = { originalCity: "神戸", originalLanguage: "ja" };
+    expect(resolveLocalizedField(event, [], "ko", "city", "originalCity")).toBe("神戸");
+  });
+
+  it("falls back to parent when locale row exists but field is null", () => {
+    const event = { originalCity: "神戸", originalLanguage: "ja" };
+    const translations = [{ locale: "ko", city: null }];
+    expect(resolveLocalizedField(event, translations, "ko", "city", "originalCity")).toBe("神戸");
+  });
+
+  it("falls back to parent when locale row exists but field is empty string", () => {
+    const event = { originalCity: "神戸", originalLanguage: "ja" };
+    const translations = [{ locale: "ko", city: "" }];
+    expect(resolveLocalizedField(event, translations, "ko", "city", "originalCity")).toBe("神戸");
+  });
+
+  it("returns null when both locale row missing AND parent field is null", () => {
+    const event = { originalCity: null, originalLanguage: "ja" };
+    expect(resolveLocalizedField(event, [], "ko", "city", "originalCity")).toBeNull();
+  });
+
+  it("never picks a non-matching locale (no fallback chain)", () => {
+    // Regression: pickTranslation would have returned the ko row for a ja viewer.
+    const event = { originalCity: "神戸", originalLanguage: "ja" };
+    const translations = [{ locale: "ko", city: "고베" }];
+    expect(resolveLocalizedField(event, translations, "ja", "city", "originalCity")).toBe("神戸");
+  });
+});
+
+describe("displayNameWithFallback", () => {
+  const item = {
+    originalName: "蓮ノ空女学院スクールアイドルクラブ",
+    originalShortName: "蓮ノ空",
+    originalLanguage: "ja",
+  };
+
+  it("returns translation shortName when present (short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        item,
+        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: "하스노소라" }],
+        "ko"
+      )
+    ).toBe("하스노소라");
+  });
+
+  it("falls back to translation full name when shortName is null (short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        item,
+        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: null }],
+        "ko"
+      )
+    ).toBe("하스노소라 여학원 스쿨 아이돌 클럽");
+  });
+
+  it("falls back to parent originalShortName when no translation row (short mode)", () => {
+    expect(displayNameWithFallback(item, [], "ko")).toBe("蓮ノ空");
+  });
+
+  it("falls back to originalName when originalShortName is null (short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        { originalName: "Cerise Bouquet", originalShortName: null, originalLanguage: "en" },
+        [],
+        "ko"
+      )
+    ).toBe("Cerise Bouquet");
+  });
+
+  it("returns translation full name in full mode", () => {
+    expect(
+      displayNameWithFallback(
+        item,
+        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: "하스노소라" }],
+        "ko",
+        "full"
+      )
+    ).toBe("하스노소라 여학원 스쿨 아이돌 클럽");
+  });
+
+  it("falls back to parent originalName in full mode when no translation", () => {
+    expect(displayNameWithFallback(item, [], "ko", "full")).toBe(
+      "蓮ノ空女学院スクールアイドルクラブ"
+    );
+  });
+
+  it("never bleeds ko translation to ja viewer when ja row missing", () => {
+    expect(
+      displayNameWithFallback(
+        { originalName: "蓮ノ空", originalShortName: null, originalLanguage: "ja" },
+        [{ locale: "ko", name: "하스노소라" }],
+        "ja"
+      )
+    ).toBe("蓮ノ空");
   });
 });
