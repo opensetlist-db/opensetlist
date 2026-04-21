@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  badRequest,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  requireString,
+} from "@/lib/admin-input";
+import { parseArtistTranslations } from "../_validate";
 
 type Props = { params: Promise<{ id: string }> };
-
-function trimmedOrNull(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const t = value.trim();
-  return t.length > 0 ? t : null;
-}
 
 export async function GET(_request: NextRequest, { params }: Props) {
   const { id } = await params;
@@ -47,40 +47,24 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
   const body = await request.json();
-  const {
-    type,
-    parentArtistId,
-    hasBoard,
-    translations,
-    groupIds,
-    originalName,
-    originalShortName,
-    originalBio,
-    originalLanguage,
-  } = body;
+  const { type, parentArtistId, hasBoard, groupIds } = body;
 
-  const trimmedOriginalName = typeof originalName === "string" ? originalName.trim() : "";
-  if (!trimmedOriginalName) {
-    return NextResponse.json(
-      { error: "originalName is required" },
-      { status: 400 }
-    );
-  }
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
 
-  let resolvedOriginalLanguage: string;
-  try {
-    resolvedOriginalLanguage = resolveOriginalLanguage(originalLanguage);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 400 }
-    );
-  }
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
 
-  // Update translations
+  const bio = nullableString(body.originalBio, "originalBio");
+  if (!bio.ok) return badRequest(bio.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseArtistTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
   await prisma.artistTranslation.deleteMany({ where: { artistId } });
-
-  // Update group links
   await prisma.artistGroup.deleteMany({ where: { artistId } });
 
   const artist = await prisma.artist.update({
@@ -89,19 +73,11 @@ export async function PUT(request: NextRequest, { params }: Props) {
       type,
       parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
       hasBoard: hasBoard ?? true,
-      originalName: trimmedOriginalName,
-      originalShortName: trimmedOrNull(originalShortName),
-      originalBio: trimmedOrNull(originalBio),
-      originalLanguage: resolvedOriginalLanguage,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; bio?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            bio: t.bio || null,
-          })
-        ),
-      },
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalBio: bio.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
       groupLinks: groupIds?.length
         ? { create: groupIds.map((gid: string) => ({ groupId: gid })) }
         : undefined,

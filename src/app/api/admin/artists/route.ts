@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
-import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  badRequest,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  requireString,
+} from "@/lib/admin-input";
+import {
+  parseArtistTranslations,
+  parseStageIdentities,
+} from "./_validate";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -28,114 +37,29 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(serializeBigInt(artists));
 }
 
-type IncomingStageIdentity = {
-  type: string;
-  color?: string;
-  originalName?: string;
-  originalShortName?: string | null;
-  originalLanguage?: string;
-  translations: { locale: string; name: string }[];
-  realPerson?: {
-    originalName?: string;
-    originalStageName?: string | null;
-    originalLanguage?: string;
-    translations: { locale: string; name: string; stageName?: string }[];
-  };
-};
-
-function trimmedOrNull(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const t = value.trim();
-  return t.length > 0 ? t : null;
-}
-
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const {
-    type,
-    parentArtistId,
-    hasBoard,
-    translations,
-    groupIds,
-    stageIdentities,
-    originalName,
-    originalShortName,
-    originalBio,
-    originalLanguage,
-  } = body;
+  const { type, parentArtistId, hasBoard, groupIds } = body;
 
-  const trimmedOriginalName = typeof originalName === "string" ? originalName.trim() : "";
-  if (!trimmedOriginalName) {
-    return NextResponse.json(
-      { error: "originalName is required" },
-      { status: 400 }
-    );
-  }
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
 
-  let resolvedOriginalLanguage: string;
-  try {
-    resolvedOriginalLanguage = resolveOriginalLanguage(originalLanguage);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 400 }
-    );
-  }
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
 
-  // Validate every nested SI + RP up front so we don't leave behind a half-built artist.
-  const incomingSIs: IncomingStageIdentity[] = stageIdentities ?? [];
-  const resolvedSIs: {
-    si: IncomingStageIdentity;
-    siOriginalName: string;
-    siOriginalLanguage: string;
-    rpOriginalName: string | null;
-    rpOriginalLanguage: string | null;
-  }[] = [];
-  for (const si of incomingSIs) {
-    const siOriginalName = typeof si.originalName === "string" ? si.originalName.trim() : "";
-    if (!siOriginalName) {
-      return NextResponse.json(
-        { error: "stageIdentities[].originalName is required" },
-        { status: 400 }
-      );
-    }
-    let siOriginalLanguage: string;
-    try {
-      siOriginalLanguage = resolveOriginalLanguage(si.originalLanguage);
-    } catch (err) {
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : String(err) },
-        { status: 400 }
-      );
-    }
+  const bio = nullableString(body.originalBio, "originalBio");
+  if (!bio.ok) return badRequest(bio.message);
 
-    let rpOriginalName: string | null = null;
-    let rpOriginalLanguage: string | null = null;
-    if (si.realPerson) {
-      const rpName = typeof si.realPerson.originalName === "string"
-        ? si.realPerson.originalName.trim()
-        : "";
-      if (!rpName) {
-        return NextResponse.json(
-          { error: "stageIdentities[].realPerson.originalName is required" },
-          { status: 400 }
-        );
-      }
-      rpOriginalName = rpName;
-      try {
-        rpOriginalLanguage = resolveOriginalLanguage(si.realPerson.originalLanguage);
-      } catch (err) {
-        return NextResponse.json(
-          { error: err instanceof Error ? err.message : String(err) },
-          { status: 400 }
-        );
-      }
-    }
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
 
-    resolvedSIs.push({ si, siOriginalName, siOriginalLanguage, rpOriginalName, rpOriginalLanguage });
-  }
+  const translations = parseArtistTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
 
-  const slug = body.slug || generateSlug(translations[0]?.name || `artist-${Date.now()}`);
+  const stageIdentities = parseStageIdentities(body.stageIdentities);
+  if (!stageIdentities.ok) return badRequest(stageIdentities.message);
+
+  const slug = body.slug || generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
 
   const artist = await prisma.artist.create({
     data: {
@@ -143,71 +67,49 @@ export async function POST(request: NextRequest) {
       type,
       parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
       hasBoard: hasBoard ?? true,
-      originalName: trimmedOriginalName,
-      originalShortName: trimmedOrNull(originalShortName),
-      originalBio: trimmedOrNull(originalBio),
-      originalLanguage: resolvedOriginalLanguage,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; bio?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            bio: t.bio || null,
-          })
-        ),
-      },
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalBio: bio.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
       groupLinks: groupIds?.length
         ? { create: groupIds.map((gid: string) => ({ groupId: gid })) }
         : undefined,
-      stageLinks: resolvedSIs.length
+      stageLinks: stageIdentities.value.length
         ? {
             create: await Promise.all(
-              resolvedSIs.map(
-                async ({ si, siOriginalName, siOriginalLanguage, rpOriginalName, rpOriginalLanguage }) => {
-                  // Create StageIdentity first
-                  const siSlug = generateSlug(si.translations[0]?.name || siOriginalName || "identity");
-                  const stageIdentity = await prisma.stageIdentity.create({
-                    data: {
-                      slug: siSlug,
-                      type: si.type as "character" | "persona",
-                      color: si.color || null,
-                      originalName: siOriginalName,
-                      originalShortName: trimmedOrNull(si.originalShortName),
-                      originalLanguage: siOriginalLanguage,
-                      translations: {
-                        create: si.translations.map((t) => ({
-                          locale: t.locale,
-                          name: t.name,
-                        })),
-                      },
-                      voicedBy: si.realPerson
-                        ? {
-                            create: {
-                              realPerson: {
-                                create: {
-                                  slug: `va-${siSlug}`,
-                                  originalName: rpOriginalName!,
-                                  originalStageName: trimmedOrNull(si.realPerson.originalStageName),
-                                  originalLanguage: rpOriginalLanguage!,
-                                  translations: {
-                                    create: si.realPerson.translations.map(
-                                      (t) => ({
-                                        locale: t.locale,
-                                        name: t.name,
-                                        stageName: t.stageName || null,
-                                      })
-                                    ),
-                                  },
-                                },
+              stageIdentities.value.map(async (si) => {
+                const siSlug = generateSlug(
+                  si.translations[0]?.name || si.originalName || "identity"
+                );
+                const stageIdentity = await prisma.stageIdentity.create({
+                  data: {
+                    slug: siSlug,
+                    type: si.type,
+                    color: si.color,
+                    originalName: si.originalName,
+                    originalShortName: si.originalShortName,
+                    originalLanguage: si.originalLanguage,
+                    translations: { create: si.translations },
+                    voicedBy: si.realPerson
+                      ? {
+                          create: {
+                            realPerson: {
+                              create: {
+                                slug: `va-${siSlug}`,
+                                originalName: si.realPerson.originalName,
+                                originalStageName: si.realPerson.originalStageName,
+                                originalLanguage: si.realPerson.originalLanguage,
+                                translations: { create: si.realPerson.translations },
                               },
                             },
-                          }
-                        : undefined,
-                    },
-                  });
-                  return { stageIdentityId: stageIdentity.id };
-                }
-              )
+                          },
+                        }
+                      : undefined,
+                  },
+                });
+                return { stageIdentityId: stageIdentity.id };
+              })
             ),
           }
         : undefined,
