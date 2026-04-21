@@ -544,7 +544,7 @@ model ImpressionTranslation {
   translatedText String   @db.Text
   createdAt      DateTime @default(now())
 
-  impression     EventImpression @relation(fields: [impressionId], references: [id])
+  impression     EventImpression @relation(fields: [impressionId], references: [id], onDelete: Cascade)
 
   @@unique([impressionId, sourceLocale, targetLocale])
   @@index([impressionId])
