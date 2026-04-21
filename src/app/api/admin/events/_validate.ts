@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
-import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  badRequest,
+  nullableString as parseNullableString,
+  originalLanguage as parseOriginalLanguage,
+  requireString,
+} from "@/lib/admin-input";
 
 export function validatePerformerGuestIds(
   performerIds: string[] | undefined,
@@ -223,41 +228,29 @@ export function validateEventOriginals(
 ):
   | { ok: true; value: EventOriginalFields }
   | { ok: false; response: NextResponse } {
-  const reject = (msg: string) => ({
-    ok: false as const,
-    response: NextResponse.json({ error: msg }, { status: 400 }),
-  });
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return { ok: false, response: badRequest(name.message) };
 
-  const trimmedName =
-    typeof body.originalName === "string" ? body.originalName.trim() : "";
-  if (!trimmedName) {
-    return reject("originalName is required");
-  }
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return { ok: false, response: badRequest(language.message) };
 
-  let resolvedLanguage: string;
-  try {
-    resolvedLanguage = resolveOriginalLanguage(
-      body.originalLanguage as string | undefined | null
-    );
-  } catch (err) {
-    return reject(err instanceof Error ? err.message : String(err));
-  }
+  const shortName = parseNullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return { ok: false, response: badRequest(shortName.message) };
 
-  const trimmedNullable = (key: string): string | null => {
-    const v = body[key];
-    if (typeof v !== "string") return null;
-    const t = v.trim();
-    return t.length > 0 ? t : null;
-  };
+  const city = parseNullableString(body.originalCity, "originalCity");
+  if (!city.ok) return { ok: false, response: badRequest(city.message) };
+
+  const venue = parseNullableString(body.originalVenue, "originalVenue");
+  if (!venue.ok) return { ok: false, response: badRequest(venue.message) };
 
   return {
     ok: true,
     value: {
-      originalName: trimmedName,
-      originalShortName: trimmedNullable("originalShortName"),
-      originalCity: trimmedNullable("originalCity"),
-      originalVenue: trimmedNullable("originalVenue"),
-      originalLanguage: resolvedLanguage,
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalCity: city.value,
+      originalVenue: venue.value,
+      originalLanguage: language.value,
     },
   };
 }

@@ -1,51 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  badRequest,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  parseLocalizedTranslations,
+  requireString,
+} from "@/lib/admin-input";
 
 type Props = { params: Promise<{ id: string }> };
-
-type IncomingTranslation = {
-  locale: string;
-  name: string;
-  shortName?: string | null;
-  description?: string | null;
-};
 
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const seriesId = BigInt(id);
   const body = await request.json();
-  const {
-    type,
-    artistId,
-    parentSeriesId,
-    organizerName,
-    hasBoard,
-    translations,
-    originalName,
-    originalShortName,
-    originalDescription,
-    originalLanguage,
-  } = body;
+  const { type, artistId, parentSeriesId, organizerName, hasBoard } = body;
 
-  const trimmedOriginalName = typeof originalName === "string" ? originalName.trim() : "";
-  if (!trimmedOriginalName) {
-    return NextResponse.json(
-      { error: "originalName is required" },
-      { status: 400 }
-    );
-  }
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
 
-  let resolvedOriginalLanguage: string;
-  try {
-    resolvedOriginalLanguage = resolveOriginalLanguage(originalLanguage);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 400 }
-    );
-  }
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
+
+  const description = nullableString(body.originalDescription, "originalDescription");
+  if (!description.ok) return badRequest(description.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseLocalizedTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
 
   await prisma.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
 
@@ -57,18 +42,11 @@ export async function PUT(request: NextRequest, { params }: Props) {
       parentSeriesId: parentSeriesId ? BigInt(parentSeriesId) : null,
       organizerName: organizerName || null,
       hasBoard: hasBoard ?? false,
-      originalName: trimmedOriginalName,
-      originalShortName: originalShortName?.trim() || null,
-      originalDescription: originalDescription?.trim() || null,
-      originalLanguage: resolvedOriginalLanguage,
-      translations: {
-        create: translations.map((t: IncomingTranslation) => ({
-          locale: t.locale,
-          name: t.name,
-          shortName: t.shortName?.trim() || null,
-          description: t.description?.trim() || null,
-        })),
-      },
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalDescription: description.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
     },
     include: { translations: true },
   });

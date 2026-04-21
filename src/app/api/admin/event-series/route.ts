@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
-import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  badRequest,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  parseLocalizedTranslations,
+  requireString,
+} from "@/lib/admin-input";
 
 export async function GET() {
   const series = await prisma.eventSeries.findMany({
@@ -16,47 +22,26 @@ export async function GET() {
   return NextResponse.json(serializeBigInt(series));
 }
 
-type IncomingTranslation = {
-  locale: string;
-  name: string;
-  shortName?: string | null;
-  description?: string | null;
-};
-
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const {
-    type,
-    artistId,
-    parentSeriesId,
-    organizerName,
-    hasBoard,
-    translations,
-    originalName,
-    originalShortName,
-    originalDescription,
-    originalLanguage,
-  } = body;
+  const { type, artistId, parentSeriesId, organizerName, hasBoard } = body;
 
-  const trimmedOriginalName = typeof originalName === "string" ? originalName.trim() : "";
-  if (!trimmedOriginalName) {
-    return NextResponse.json(
-      { error: "originalName is required" },
-      { status: 400 }
-    );
-  }
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
 
-  let resolvedOriginalLanguage: string;
-  try {
-    resolvedOriginalLanguage = resolveOriginalLanguage(originalLanguage);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 400 }
-    );
-  }
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
 
-  const slug = body.slug || generateSlug(translations[0]?.name || `series-${Date.now()}`);
+  const description = nullableString(body.originalDescription, "originalDescription");
+  if (!description.ok) return badRequest(description.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseLocalizedTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
+  const slug = body.slug || generateSlug(translations.value[0]?.name || `series-${Date.now()}`);
 
   const series = await prisma.eventSeries.create({
     data: {
@@ -66,18 +51,11 @@ export async function POST(request: NextRequest) {
       parentSeriesId: parentSeriesId ? BigInt(parentSeriesId) : null,
       organizerName: organizerName || null,
       hasBoard: hasBoard ?? false,
-      originalName: trimmedOriginalName,
-      originalShortName: originalShortName?.trim() || null,
-      originalDescription: originalDescription?.trim() || null,
-      originalLanguage: resolvedOriginalLanguage,
-      translations: {
-        create: translations.map((t: IncomingTranslation) => ({
-          locale: t.locale,
-          name: t.name,
-          shortName: t.shortName?.trim() || null,
-          description: t.description?.trim() || null,
-        })),
-      },
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalDescription: description.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
     },
     include: { translations: true },
   });
