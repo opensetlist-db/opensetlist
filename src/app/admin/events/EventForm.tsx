@@ -50,7 +50,7 @@ function emptyTranslation(locale: string): Translation {
 }
 
 function getSIName(si: StageIdentityOption) {
-  return si.translations.find((t) => t.locale === "ko")?.name ?? si.translations[0]?.name ?? ADMIN_UNKNOWN_NAME;
+  return si.translations.find((t) => t.locale === "ko")?.name ?? ADMIN_UNKNOWN_NAME;
 }
 
 export default function EventForm({ initialData }: EventFormProps) {
