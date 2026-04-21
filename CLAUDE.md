@@ -251,6 +251,30 @@ Hard rules:
 
 ## Release Notes
 
+### v0.8.3 (2026-04-21)
+- Event OG card: use EventSeries short name as the headline; specific event name moves to the subtitle (matches page H1 composition)
+- OG card overflow: smaller title/subtitle fonts + 2-line clamp (-webkit-box + WebkitLineClamp) so long KR/JP event names no longer overflow the glass panel
+- i18n: new pickLocaleTranslation helper (strict locale match, no ko/en fallback) for Song/Album fields that have parent-level originalTitle/variantLabel — a JP viewer no longer sees a KR variantLabel leak through for a JP song with only a ko translation
+- displayOriginalTitle rewritten to take the full translations array and do the locale-exact match internally
+- Base-version link on song page now renders locale-aware variantLabel next to the base title using the same fallback rule
+- Schema: no changes (migrate-prod is no-op)
+
+### v0.8.2 (2026-04-21)
+- Phase 1A GA4 custom events wired across the app (setlist_item_click, reaction toggles, etc.) for the 2026-05-02 launch-cohort revisit-rate KPI
+- First-visit cohort cookie identifies launch-day visitors for retention tracking
+- Removal of Sentry verification scaffolding (/api/sentry-example-api, /sentry-example-page, ENABLE_SENTRY_VERIFICATION_ROUTES flag) after prod-alert-email confirmation
+- Schema: no changes
+
+### v0.8.1 (2026-04-20)
+- Admin impression moderation UI at /admin/impressions with 숨김/정상/삭제/전체 filter tabs; default 숨김 tab sorted by reportCount desc surfaces auto-hidden chains (reportCount >= 3) on top
+- DeleteImpressionButton + RestoreImpressionButton wire to the existing DELETE/PATCH /api/admin/impressions/[chainId] endpoints (replaces prior DevTools-fetch() moderation workflow)
+- Sidebar nav entry 한줄평 added between 이벤트 and CSV 가져오기
+- Sentry error tracking via @sentry/nextjs on Next 16.2.2 with withSentryConfig(withNextIntl(...)) outer-wrap, prod-only gate, 10% trace sampling, tunnelRoute "/monitoring" to bypass ad-blockers
+- Server beforeSend coerces BigInt → string so Prisma results don't crash Sentry's serializer
+- Client uses NEXT_PUBLIC_VERCEL_ENV (Next.js does not inline plain VERCEL_ENV into the browser bundle)
+- Wizard verification routes gated behind ENABLE_SENTRY_VERIFICATION_ROUTES env flag
+- Schema: no changes
+
 ### v0.8.0 (2026-04-21)
 - Per-cell Translate button on impressions — toggles between original and viewer-locale translation, no re-fetch on subsequent toggles
 - POST /api/impressions/translate with server-side cache (ImpressionTranslation table keyed on impressionId+sourceLocale+targetLocale, naturally per-version against the append-only chain), P2002-race winner re-SELECT
