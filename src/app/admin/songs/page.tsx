@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import { serializeBigInt, pickLocaleTranslation } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import DeleteButton from "../DeleteButton";
 
 export default async function SongsListPage() {
@@ -39,11 +40,10 @@ export default async function SongsListPage() {
         </thead>
         <tbody>
           {data.map((song) => {
-            const tr = pickTranslation(song.translations, "ko");
+            const tr = pickLocaleTranslation(song.translations, "ko");
             const artistNames = song.artists
-              .map(
-                (sa) =>
-                  pickTranslation(sa.artist.translations, "ko")?.name
+              .map((sa) =>
+                displayNameWithFallback(sa.artist, sa.artist.translations, "ko")
               )
               .filter(Boolean)
               .join(", ");

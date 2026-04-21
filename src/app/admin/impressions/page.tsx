@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation, formatDate } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { serializeBigInt, formatDate } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import DeleteImpressionButton from "./DeleteImpressionButton";
 import RestoreImpressionButton from "./RestoreImpressionButton";
 
@@ -67,6 +67,9 @@ export default async function ImpressionsAdminPage({
         select: {
           id: true,
           date: true,
+          originalName: true,
+          originalShortName: true,
+          originalLanguage: true,
           translations: {
             select: { locale: true, name: true, shortName: true },
           },
@@ -115,9 +118,13 @@ export default async function ImpressionsAdminPage({
         </thead>
         <tbody>
           {data.map((imp) => {
-            const tr = pickTranslation(imp.event.translations, "ko");
-            const eventLabel = tr
-              ? `${displayName(tr, "short")} (${formatDate(imp.event.date, "ko")})`
+            const name = displayNameWithFallback(
+              imp.event,
+              imp.event.translations,
+              "ko"
+            );
+            const eventLabel = name
+              ? `${name} (${formatDate(imp.event.date, "ko")})`
               : `#${imp.event.id}`;
             const status = imp.isDeleted
               ? { label: "삭제", color: "bg-zinc-200 text-zinc-700" }

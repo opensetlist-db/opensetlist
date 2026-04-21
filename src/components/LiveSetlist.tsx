@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { pickTranslation, slugify } from "@/lib/utils";
-import { displayOriginalTitle } from "@/lib/display";
+import { slugify } from "@/lib/utils";
+import {
+  displayNameWithFallback,
+  displayOriginalTitle,
+} from "@/lib/display";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
 import {
@@ -26,6 +29,25 @@ type SongTranslation = {
 type ArtistRef = {
   id: number;
   parentArtistId?: number | null;
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
+  translations: NameTranslation[];
+};
+
+type StageIdentityRef = {
+  id: number;
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
+  translations: NameTranslation[];
+};
+
+type RealPersonRef = {
+  id: number;
+  originalName: string | null;
+  originalStageName: string | null;
+  originalLanguage: string;
   translations: NameTranslation[];
 };
 
@@ -50,8 +72,8 @@ export type LiveSetlistItem = {
   type: string;
   songs: Array<{ song: SongRef }>;
   performers: Array<{
-    stageIdentity: { id: number; translations: NameTranslation[] };
-    realPerson: { id: number; translations: NameTranslation[] } | null;
+    stageIdentity: StageIdentityRef;
+    realPerson: RealPersonRef | null;
   }>;
   artists: Array<{ artist: ArtistRef }>;
 };
@@ -158,17 +180,26 @@ function SetlistList({
         });
 
         const performers = item.performers.map((p) => {
-          const siTr = pickTranslation(p.stageIdentity.translations, locale);
-          return siTr?.name ?? t("unknownPerformer");
+          return (
+            displayNameWithFallback(
+              p.stageIdentity,
+              p.stageIdentity.translations,
+              locale
+            ) || t("unknownPerformer")
+          );
         });
 
         const unitArtist =
           item.stageType !== "full_group" && item.artists?.[0]
             ? item.artists[0]
             : null;
-        const unitArtistTr = unitArtist
-          ? pickTranslation(unitArtist.artist.translations, locale)
-          : null;
+        const unitArtistName = unitArtist
+          ? displayNameWithFallback(
+              unitArtist.artist,
+              unitArtist.artist.translations,
+              locale
+            )
+          : "";
 
         return (
           <li key={item.id} className="border-b border-zinc-100 pb-2">
@@ -219,12 +250,12 @@ function SetlistList({
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2 text-sm text-zinc-500">
                   {item.stageType !== "full_group" &&
-                    (unitArtistTr ? (
+                    (unitArtistName ? (
                       <Link
-                        href={`/${locale}/artists/${unitArtist!.artist.id}/${slugify(unitArtistTr.name ?? "")}`}
+                        href={`/${locale}/artists/${unitArtist!.artist.id}/${slugify(unitArtistName)}`}
                         className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs hover:underline"
                       >
-                        {unitArtistTr.name}
+                        {unitArtistName}
                       </Link>
                     ) : (
                       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">

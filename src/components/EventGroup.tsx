@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
-import { nonBlank, pickTranslation } from "@/lib/utils";
+import { nonBlank } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { EventRow } from "@/components/EventRow";
 import type { EventForList } from "@/lib/events";
@@ -29,8 +30,9 @@ export async function EventGroup({
       </h3>
       <ul className="space-y-2">
         {events.map((event) => {
-          const evTr = pickTranslation(event.translations, locale);
-          const eventName = nonBlank(evTr?.name);
+          const eventName = nonBlank(
+            displayNameWithFallback(event, event.translations, locale)
+          );
           const badge =
             EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
           return (

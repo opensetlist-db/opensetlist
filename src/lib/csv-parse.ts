@@ -8,9 +8,26 @@ export function parseArtistSlugs(value: string | undefined | null): string[] {
   return value.trim().split(/\s+/).filter(Boolean);
 }
 
-/** Resolve originalLanguage from CSV row value, with default. */
+/**
+ * Resolve originalLanguage from CSV row value, with default "ja".
+ *
+ * Normalizes the legacy `jp` alias to the canonical `ja` so Album rows
+ * imported from Hasunosora CSVs stop landing in the DB with a locale code
+ * that doesn't match any *Translation row's locale. Unknown values throw
+ * loudly — silent pass-through is how the `jp` mismatch escaped review in
+ * the first place.
+ */
+const VALID_ORIGINAL_LANGUAGES = new Set(["ko", "ja", "en", "zh-CN"]);
 export function resolveOriginalLanguage(value: string | undefined | null): string {
-  return value?.trim() || "ja";
+  const raw = (value?.trim() || "ja").toLowerCase();
+  const normalized =
+    raw === "jp" ? "ja" :
+    raw === "zh-cn" ? "zh-CN" :
+    raw;
+  if (!VALID_ORIGINAL_LANGUAGES.has(normalized)) {
+    throw new Error(`Unknown originalLanguage: ${value}`);
+  }
+  return normalized;
 }
 
 export interface TranslationRow {

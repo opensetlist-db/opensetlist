@@ -1,7 +1,6 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import { pickTranslation } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { displayNameWithFallback } from "@/lib/display";
 import { deriveOgPaletteFromArtist, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
@@ -56,13 +55,17 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const t = pickTranslation(artist.translations, lang);
-    const title = t ? displayName(t, "full") : FALLBACK_TITLES[lang].artist;
+    const title =
+      displayNameWithFallback(artist, artist.translations, lang, "full") ||
+      FALLBACK_TITLES[lang].artist;
 
     let subtitle = "";
     if (artist.parentArtist) {
-      const parentT = pickTranslation(artist.parentArtist.translations, lang);
-      if (parentT) subtitle = displayName(parentT);
+      subtitle = displayNameWithFallback(
+        artist.parentArtist,
+        artist.parentArtist.translations,
+        lang
+      );
     }
     if (!subtitle) {
       const activeCount = artist.stageLinks.filter((s) => !s.endDate).length;

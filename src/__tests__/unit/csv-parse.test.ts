@@ -79,8 +79,12 @@ describe("resolveOriginalLanguage", () => {
     expect(resolveOriginalLanguage("ko")).toBe("ko");
   });
 
-  it("returns 'zh' when specified", () => {
-    expect(resolveOriginalLanguage("zh")).toBe("zh");
+  it("returns 'zh-CN' when specified (canonical form)", () => {
+    expect(resolveOriginalLanguage("zh-CN")).toBe("zh-CN");
+  });
+
+  it("normalizes lowercase 'zh-cn' to canonical 'zh-CN'", () => {
+    expect(resolveOriginalLanguage("zh-cn")).toBe("zh-CN");
   });
 
   it("trims whitespace from value", () => {
@@ -89,5 +93,21 @@ describe("resolveOriginalLanguage", () => {
 
   it("returns 'ja' when explicitly set", () => {
     expect(resolveOriginalLanguage("ja")).toBe("ja");
+  });
+
+  it("normalizes legacy 'jp' alias to 'ja'", () => {
+    expect(resolveOriginalLanguage("jp")).toBe("ja");
+  });
+
+  it("normalizes 'JP' uppercase to 'ja'", () => {
+    expect(resolveOriginalLanguage("JP")).toBe("ja");
+  });
+
+  it("throws on unknown language code", () => {
+    expect(() => resolveOriginalLanguage("fr")).toThrow(/Unknown originalLanguage/);
+  });
+
+  it("throws on bare 'zh' (not canonical)", () => {
+    expect(() => resolveOriginalLanguage("zh")).toThrow(/Unknown originalLanguage/);
   });
 });
