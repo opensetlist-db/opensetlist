@@ -93,9 +93,13 @@ export async function GET(req: Request, { params }: Props) {
 
     const t = pickTranslation(event.translations, lang);
     const seriesT = pickTranslation(event.eventSeries?.translations ?? [], lang);
-    const title = t ? displayName(t) : FALLBACK_TITLES[lang].event;
+    const title = seriesT
+      ? displayName(seriesT)
+      : t
+        ? displayName(t)
+        : FALLBACK_TITLES[lang].event;
     const subtitleParts = [
-      seriesT ? displayName(seriesT) : null,
+      seriesT && t ? displayName(t) : null,
       t?.city,
       t?.venue,
     ].filter(Boolean) as string[];
@@ -196,12 +200,14 @@ export async function GET(req: Request, { params }: Props) {
             <div
               style={{
                 display: "-webkit-box",
-                fontSize: 72,
+                fontSize: 60,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 color: "#ffffff",
                 overflow: "hidden",
                 letterSpacing: "-0.015em",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
               }}
             >
               {title}
@@ -211,14 +217,14 @@ export async function GET(req: Request, { params }: Props) {
             {subtitle && (
               <div
                 style={{
-                  display: "flex",
+                  display: "-webkit-box",
                   marginTop: 20,
-                  fontSize: 30,
+                  fontSize: 26,
                   lineHeight: 1.3,
                   color: "rgba(255, 255, 255, 0.8)",
-                  whiteSpace: "nowrap",
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
                 }}
               >
                 {subtitle}
