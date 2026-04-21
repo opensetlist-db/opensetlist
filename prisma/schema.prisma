@@ -525,9 +525,29 @@ model EventImpression {
   deletedAt        DateTime?
 
   event            Event     @relation(fields: [eventId], references: [id])
+  translations     ImpressionTranslation[]
 
   @@index([eventId, createdAt])
   @@index([rootImpressionId])
+}
+
+// LLM translation cache for EventImpression rows. Keyed by row id (not chain
+// id) so each version of an edited impression caches independently — when an
+// impression is edited, the new row gets a new id and the first viewer in
+// any target locale pays the translator call again. Old versions' cached
+// rows stay valid forever against the (now-superseded) source text.
+model ImpressionTranslation {
+  id             String   @id @default(uuid())
+  impressionId   String
+  sourceLocale   String
+  targetLocale   String
+  translatedText String   @db.Text
+  createdAt      DateTime @default(now())
+
+  impression     EventImpression @relation(fields: [impressionId], references: [id])
+
+  @@unique([impressionId, sourceLocale, targetLocale])
+  @@index([impressionId])
 }
 
 // N:N between SetlistItem and Artist — direct performing unit link

@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { IMPRESSION_MAX_CHARS } from "@/lib/config";
-
-const VALID_LOCALES = ["ko", "ja", "en"];
+import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
@@ -86,7 +84,10 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedLocale =
-    typeof locale === "string" && VALID_LOCALES.includes(locale) ? locale : "ko";
+    typeof locale === "string" &&
+    (IMPRESSION_LOCALES as readonly string[]).includes(locale)
+      ? locale
+      : "ko";
 
   // Generate the id upfront so the head row can set
   // rootImpressionId = id in a single insert (no two-step placeholder dance).
