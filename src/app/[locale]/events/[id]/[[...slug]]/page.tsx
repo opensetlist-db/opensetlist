@@ -198,7 +198,8 @@ async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
 
 async function getTrendingSongs(
   eventId: bigint,
-  locale: string
+  locale: string,
+  unknownSongLabel: string
 ): Promise<TrendingSong[]> {
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId"],
@@ -244,7 +245,7 @@ async function getTrendingSongs(
     const item = items.find((i) => i.id === g.setlistItemId);
     const song = item?.songs[0]?.song;
     const sTr = song ? pickLocaleTranslation(song.translations, locale) : null;
-    const songTitle = sTr?.title ?? song?.originalTitle ?? "Unknown";
+    const songTitle = sTr?.title ?? song?.originalTitle ?? unknownSongLabel;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
     const topType = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
@@ -273,13 +274,14 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const [t, ct, reactionCounts, trendingSongs, impressions] = await Promise.all([
+  const [t, ct, st, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
+    getTranslations("Song"),
     getReactionCounts(eventId),
-    getTrendingSongs(eventId, locale),
     getEventImpressions(eventId),
   ]);
+  const trendingSongs = await getTrendingSongs(eventId, locale, st("unknown"));
 
   const eventName = displayNameWithFallback(event, event.translations, locale);
   const eventFullName = displayNameWithFallback(
@@ -368,10 +370,10 @@ export default async function EventPage({ params }: Props) {
               />
             )}
           </div>
-          {venue && (
+          {(venue || city) && (
             <div>
-              {venue}
-              {city && `, ${city}`}
+              {venue ?? city}
+              {venue && city && `, ${city}`}
             </div>
           )}
         </div>
