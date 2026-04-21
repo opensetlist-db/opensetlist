@@ -105,14 +105,14 @@ export default async function EventSeriesPage({ params }: Props) {
         <Link href={`/${locale}`} className="hover:underline">
           {ct("backToHome")}
         </Link>
-        {series.parentSeries && parentName && (
+        {series.parentSeries && (
           <>
             {" / "}
             <Link
               href={`/${locale}/series/${series.parentSeries.id}/${series.parentSeries.slug}`}
               className="hover:underline"
             >
-              {parentName}
+              {parentName || t("unknownSeries")}
             </Link>
           </>
         )}
