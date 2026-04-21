@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations, useLocale } from "next-intl";
-import { formatDate } from "@/lib/utils";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
+import { ImpressionCell } from "./ImpressionCell";
 
 export interface Impression {
   id: string;
@@ -383,26 +383,18 @@ export function EventImpressions({
         <ul className="space-y-2">
           {impressions.map((imp) => {
             const isOwn = saved?.chainId === imp.rootImpressionId;
-            const hasReported = reported[imp.rootImpressionId];
+            const hasReported = !!reported[imp.rootImpressionId];
             return (
               <li
                 key={imp.id}
                 className="rounded border border-zinc-100 bg-white p-3 text-sm"
               >
-                <div className="whitespace-pre-wrap">{imp.content}</div>
-                <div className="mt-1 flex items-center justify-between text-xs text-zinc-400">
-                  <span>{formatDate(imp.createdAt, locale)}</span>
-                  {!isOwn && (
-                    <button
-                      type="button"
-                      onClick={() => handleReport(imp)}
-                      disabled={!!hasReported}
-                      className="text-zinc-400 hover:text-red-600 disabled:opacity-40"
-                    >
-                      {hasReported ? t("reported") : t("report")}
-                    </button>
-                  )}
-                </div>
+                <ImpressionCell
+                  impression={imp}
+                  isOwn={isOwn}
+                  hasReported={hasReported}
+                  onReport={handleReport}
+                />
               </li>
             );
           })}
