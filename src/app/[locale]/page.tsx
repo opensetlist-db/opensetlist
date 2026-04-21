@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation, nonBlank } from "@/lib/utils";
+import { serializeBigInt, nonBlank } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { EventRow } from "@/components/EventRow";
@@ -233,12 +234,18 @@ function EventList({
   return (
     <ul className="space-y-2">
       {events.map((event) => {
-        const evTr = pickTranslation(event.translations, locale);
-        const seriesTr = event.eventSeries
-          ? pickTranslation(event.eventSeries.translations, locale)
+        const eventName = nonBlank(
+          displayNameWithFallback(event, event.translations, locale)
+        );
+        const seriesName = event.eventSeries
+          ? nonBlank(
+              displayNameWithFallback(
+                event.eventSeries,
+                event.eventSeries.translations,
+                locale
+              )
+            )
           : null;
-        const eventName = nonBlank(evTr?.name);
-        const seriesName = nonBlank(seriesTr?.name);
         const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
         return (
           <EventRow

@@ -4,6 +4,19 @@ import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { parseArtistSlugs, resolveOriginalLanguage, resolveSongTranslations } from "@/lib/csv-parse";
 
+/**
+ * Pick the translation whose locale matches `originalLanguage` — that row is
+ * the source of truth for the parent's `original*` fields. Returns null when
+ * the matching row is absent so callers can preserve existing parent values
+ * instead of stomping them with NULL.
+ */
+function pickOriginalSource<T extends { locale: string }>(
+  translations: readonly T[],
+  originalLanguage: string
+): T | null {
+  return translations.find((t) => t.locale === originalLanguage) ?? null;
+}
+
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
@@ -62,6 +75,16 @@ async function importArtists(rows: Record<string, string>[]) {
     const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
     if (translations.length === 0) continue;
 
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const source = pickOriginalSource(translations, originalLanguage);
+    // When the originalLanguage row is absent, leave both originalLanguage and
+    // the original* fields untouched — writing originalLanguage alone would
+    // create a parent whose declared source language doesn't match its
+    // (still-stale) original* values, breaking strict-locale fallback.
+    const originals = source
+      ? { originalName: source.name, originalShortName: source.shortName, originalLanguage }
+      : {};
+
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
@@ -69,6 +92,7 @@ async function importArtists(rows: Record<string, string>[]) {
         where: { slug },
         data: {
           type: (row.type as "solo" | "group" | "unit") || undefined,
+          ...originals,
         },
       });
       // Upsert translations
@@ -86,6 +110,7 @@ async function importArtists(rows: Record<string, string>[]) {
           slug,
           type: (row.type as "solo" | "group" | "unit") || "group",
           hasBoard: true,
+          ...originals,
           translations: { create: translations },
         },
       });
@@ -122,6 +147,16 @@ async function importMembers(rows: Record<string, string>[]) {
     if (row.en_name) translations.push({ locale: "en", name: row.en_name, shortName: row.en_shortName || null });
     if (translations.length === 0) continue;
 
+    const siOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const siSource = pickOriginalSource(translations, siOriginalLanguage);
+    const siOriginals = siSource
+      ? {
+          originalName: siSource.name,
+          originalShortName: siSource.shortName,
+          originalLanguage: siOriginalLanguage,
+        }
+      : {};
+
     // Look up artists by slug
     const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
     const artistIds: bigint[] = [];
@@ -139,8 +174,22 @@ async function importMembers(rows: Record<string, string>[]) {
       if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, stageName: null as string | null });
       if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, stageName: null as string | null });
 
+      const vaOriginalLanguage = resolveOriginalLanguage(row.va_originalLanguage || row.originalLanguage);
+      const vaSource = pickOriginalSource(vaTranslations, vaOriginalLanguage);
+      const vaOriginals = vaSource
+        ? {
+            originalName: vaSource.name,
+            originalStageName: vaSource.stageName,
+            originalLanguage: vaOriginalLanguage,
+          }
+        : {};
+
       const existingRp = await prisma.realPerson.findUnique({ where: { slug: vaSlug } });
       if (existingRp) {
+        await prisma.realPerson.update({
+          where: { id: existingRp.id },
+          data: vaOriginals,
+        });
         for (const t of vaTranslations) {
           await prisma.realPersonTranslation.upsert({
             where: { realPersonId_locale: { realPersonId: existingRp.id, locale: t.locale } },
@@ -151,7 +200,7 @@ async function importMembers(rows: Record<string, string>[]) {
         realPersonId = existingRp.id;
       } else {
         const rp = await prisma.realPerson.create({
-          data: { slug: vaSlug, translations: { create: vaTranslations } },
+          data: { slug: vaSlug, ...vaOriginals, translations: { create: vaTranslations } },
         });
         realPersonId = rp.id;
       }
@@ -167,6 +216,7 @@ async function importMembers(rows: Record<string, string>[]) {
         data: {
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          ...siOriginals,
         },
       });
       // Upsert translations
@@ -214,6 +264,7 @@ async function importMembers(rows: Record<string, string>[]) {
           slug: charSlug,
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          ...siOriginals,
           translations: { create: translations },
           artistLinks: artistIds.length
             ? {
@@ -452,6 +503,16 @@ async function importEvents(rows: Record<string, string>[]) {
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
       : null;
 
+    const seriesOriginalLanguage = resolveOriginalLanguage(row.series_originalLanguage || row.originalLanguage);
+    const seriesSource = pickOriginalSource(translations, seriesOriginalLanguage);
+    const seriesOriginals = seriesSource
+      ? {
+          originalName: seriesSource.name,
+          originalShortName: seriesSource.shortName,
+          originalLanguage: seriesOriginalLanguage,
+        }
+      : {};
+
     const existing = await prisma.eventSeries.findUnique({ where: { slug } });
 
     if (existing) {
@@ -460,6 +521,7 @@ async function importEvents(rows: Record<string, string>[]) {
         data: {
           type: normalizeSeriesType(row.series_type),
           artistId,
+          ...seriesOriginals,
         },
       });
       for (const t of translations) {
@@ -477,6 +539,7 @@ async function importEvents(rows: Record<string, string>[]) {
           type: normalizeSeriesType(row.series_type) ?? "concert_tour",
           artistId,
           hasBoard: true,
+          ...seriesOriginals,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
@@ -498,6 +561,18 @@ async function importEvents(rows: Record<string, string>[]) {
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
       : null;
 
+    const eventOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const eventSource = pickOriginalSource(translations, eventOriginalLanguage);
+    const eventOriginals = eventSource
+      ? {
+          originalName: eventSource.name,
+          originalShortName: eventSource.shortName,
+          originalCity: eventSource.city,
+          originalVenue: eventSource.venue,
+          originalLanguage: eventOriginalLanguage,
+        }
+      : {};
+
     const existing = await prisma.event.findUnique({ where: { slug } });
 
     if (existing) {
@@ -512,6 +587,7 @@ async function importEvents(rows: Record<string, string>[]) {
           // "keep the existing value", not "clear it".
           ...(row.startTime ? { startTime: new Date(row.startTime) } : {}),
           country: row.country || null,
+          ...eventOriginals,
         },
       });
       for (const t of translations) {
@@ -536,6 +612,7 @@ async function importEvents(rows: Record<string, string>[]) {
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           country: row.country || null,
+          ...eventOriginals,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
@@ -763,6 +840,12 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("Import error:", err);
     if (err instanceof ImportValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    // resolveOriginalLanguage in src/lib/csv-parse.ts throws a plain Error
+    // for unsupported language codes — surface that as a 400 too, since a
+    // single bad CSV cell shouldn't look like a server fault.
+    if (err instanceof Error && err.message.startsWith("Unknown originalLanguage:")) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return NextResponse.json({ error: "Import failed" }, { status: 500 });

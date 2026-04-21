@@ -1,8 +1,10 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
-import { pickTranslation } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
-import { displayName } from "@/lib/display";
+import {
+  displayNameWithFallback,
+  resolveLocalizedField,
+} from "@/lib/display";
 import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
@@ -91,17 +93,38 @@ export async function GET(req: Request, { params }: Props) {
       return new Response("Not found", { status: 404 });
     }
 
-    const t = pickTranslation(event.translations, lang);
-    const seriesT = pickTranslation(event.eventSeries?.translations ?? [], lang);
-    const title = seriesT
-      ? displayName(seriesT)
-      : t
-        ? displayName(t)
-        : FALLBACK_TITLES[lang].event;
+    const eventName = displayNameWithFallback(
+      event,
+      event.translations,
+      lang
+    );
+    const seriesName = event.eventSeries
+      ? displayNameWithFallback(
+          event.eventSeries,
+          event.eventSeries.translations,
+          lang
+        )
+      : "";
+    const title =
+      seriesName || eventName || FALLBACK_TITLES[lang].event;
+    const city = resolveLocalizedField(
+      event,
+      event.translations,
+      lang,
+      "city",
+      "originalCity"
+    );
+    const venue = resolveLocalizedField(
+      event,
+      event.translations,
+      lang,
+      "venue",
+      "originalVenue"
+    );
     const subtitleParts = [
-      seriesT && t ? displayName(t) : null,
-      t?.city,
-      t?.venue,
+      seriesName && eventName && seriesName !== eventName ? eventName : null,
+      city,
+      venue,
     ].filter(Boolean) as string[];
     const subtitle = subtitleParts.join(" · ");
     const dateStr = formatVenueDate(event.date, lang);

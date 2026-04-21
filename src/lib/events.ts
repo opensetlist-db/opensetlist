@@ -1,18 +1,23 @@
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import { serializeBigInt } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 
-type SeriesTranslation = { locale: string; name: string };
+type SeriesTranslation = { locale: string; name: string; shortName: string | null };
 
 type SeriesAncestor = {
   id: number;
   parentSeriesId: number | null;
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
   translations: SeriesTranslation[];
 };
 
 type EventTranslation = {
   locale: string;
   name: string;
+  shortName: string | null;
 };
 
 export type EventForList = {
@@ -21,6 +26,9 @@ export type EventForList = {
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
   date: string | null;
   startTime: string;
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
   translations: EventTranslation[];
 };
 
@@ -74,7 +82,7 @@ function groupBySeries(
     } else {
       const root = rootId != null ? ancestry.get(rootId) : null;
       const name = root
-        ? pickTranslation(root.translations, locale)?.name ?? null
+        ? displayNameWithFallback(root, root.translations, locale) || null
         : null;
       groups.set(key, {
         seriesId: rootId != null ? String(rootId) : null,
@@ -116,7 +124,12 @@ export async function getAllEventsGrouped(
         status: true,
         date: true,
         startTime: true,
-        translations: { select: { locale: true, name: true } },
+        originalName: true,
+        originalShortName: true,
+        originalLanguage: true,
+        translations: {
+          select: { locale: true, name: true, shortName: true },
+        },
       },
       orderBy: { startTime: "asc" },
     }),
@@ -125,7 +138,12 @@ export async function getAllEventsGrouped(
       select: {
         id: true,
         parentSeriesId: true,
-        translations: { select: { locale: true, name: true } },
+        originalName: true,
+        originalShortName: true,
+        originalLanguage: true,
+        translations: {
+          select: { locale: true, name: true, shortName: true },
+        },
       },
     }),
   ]);

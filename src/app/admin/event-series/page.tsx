@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import { serializeBigInt } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import DeleteButton from "../DeleteButton";
 
 export default async function EventSeriesListPage() {
@@ -37,17 +38,17 @@ export default async function EventSeriesListPage() {
         </thead>
         <tbody>
           {data.map((s) => {
-            const tr = pickTranslation(s.translations, "ko");
-            const artistTr = s.artist
-              ? pickTranslation(s.artist.translations, "ko")
-              : null;
+            const name = displayNameWithFallback(s, s.translations, "ko");
+            const artistName = s.artist
+              ? displayNameWithFallback(s.artist, s.artist.translations, "ko")
+              : "";
             return (
               <tr key={s.id} className="border-b border-zinc-100">
                 <td className="py-2 text-zinc-400">{s.id}</td>
-                <td className="py-2 font-medium">{tr?.name ?? "—"}</td>
+                <td className="py-2 font-medium">{name || "—"}</td>
                 <td className="py-2">{s.type}</td>
                 <td className="py-2 text-zinc-500">
-                  {artistTr?.name ?? s.organizerName ?? "—"}
+                  {artistName || s.organizerName || "—"}
                 </td>
                 <td className="py-2 space-x-2">
                   <Link

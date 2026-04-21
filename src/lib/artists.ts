@@ -11,6 +11,9 @@ export type ArtistForList = {
   id: number;
   slug: string;
   type: "solo" | "group" | "unit";
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
   translations: ArtistTranslation[];
   mostRecentStartMs: number | null;
 };
@@ -46,6 +49,9 @@ export async function getTopLevelArtists(): Promise<ArtistForList[]> {
         id: true,
         slug: true,
         type: true,
+        originalName: true,
+        originalShortName: true,
+        originalLanguage: true,
         translations: {
           select: { locale: true, name: true, shortName: true },
         },

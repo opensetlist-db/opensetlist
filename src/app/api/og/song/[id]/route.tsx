@@ -1,11 +1,10 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
 import {
-  pickTranslation,
   pickLocaleTranslation,
   formatDate,
 } from "@/lib/utils";
-import { displayName } from "@/lib/display";
+import { displayNameWithFallback } from "@/lib/display";
 import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
 import {
@@ -63,11 +62,10 @@ export async function GET(req: Request, { params }: Props) {
     const t = pickLocaleTranslation(song.translations, lang);
     const title = t?.title ?? song.originalTitle ?? FALLBACK_TITLES[lang].song;
 
-    const firstArtist = song.artists[0];
-    const artistT = firstArtist
-      ? pickTranslation(firstArtist.artist.translations, lang)
-      : null;
-    const artistName = artistT ? displayName(artistT) : "";
+    const firstArtist = song.artists[0]?.artist ?? null;
+    const artistName = firstArtist
+      ? displayNameWithFallback(firstArtist, firstArtist.translations, lang)
+      : "";
     const releaseYear = song.releaseDate
       ? String(song.releaseDate.getUTCFullYear())
       : "";

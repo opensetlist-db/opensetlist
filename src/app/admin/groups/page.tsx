@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, pickTranslation } from "@/lib/utils";
+import { serializeBigInt } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import DeleteButton from "../DeleteButton";
 
 export default async function GroupsListPage() {
@@ -33,10 +34,14 @@ export default async function GroupsListPage() {
         </thead>
         <tbody>
           {data.map((group) => {
-            const tr = pickTranslation(group.translations, "ko");
+            const name = displayNameWithFallback(
+              group,
+              group.translations,
+              "ko"
+            );
             return (
               <tr key={group.id} className="border-b border-zinc-100">
-                <td className="py-2 font-medium">{tr?.name ?? "—"}</td>
+                <td className="py-2 font-medium">{name || "—"}</td>
                 <td className="py-2">{group.type ?? "—"}</td>
                 <td className="py-2">{group.category ?? "—"}</td>
                 <td className="py-2">{group.hasBoard ? "O" : "X"}</td>

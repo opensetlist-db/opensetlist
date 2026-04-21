@@ -180,15 +180,19 @@ enum ScopeType {
 // rollupGroupIds on Comment only includes groups where hasBoard = true.
 // UUID: groups don't appear directly in public URLs.
 model Group {
-  id           String             @id @default(uuid())
-  type         GroupType?
-  category     GroupCategory?
-  hasBoard     Boolean            @default(false)
-  imageUrl     String?
-  createdAt    DateTime           @default(now())
+  id                  String             @id @default(uuid())
+  type                GroupType?
+  category            GroupCategory?
+  hasBoard            Boolean            @default(false)
+  imageUrl            String?
+  originalName        String?
+  originalShortName   String?
+  originalDescription String?
+  originalLanguage    String             @default("ja")
+  createdAt           DateTime           @default(now())
 
-  translations GroupTranslation[]
-  artistLinks  ArtistGroup[]
+  translations        GroupTranslation[]
+  artistLinks         ArtistGroup[]
 }
 
 model GroupTranslation {
@@ -210,15 +214,19 @@ model GroupTranslation {
 // hasBoard: most artists get a board by default.
 // BigInt: appears in public URLs e.g. /artists/42
 model Artist {
-  id             BigInt              @id @default(autoincrement())
-  slug           String              @unique
-  parentArtistId BigInt?
-  type           ArtistType
-  hasBoard       Boolean             @default(true)
-  imageUrl       String?
-  isDeleted      Boolean             @default(false)
-  deletedAt      DateTime?
-  createdAt      DateTime            @default(now())
+  id                BigInt              @id @default(autoincrement())
+  slug              String              @unique
+  parentArtistId    BigInt?
+  type              ArtistType
+  hasBoard          Boolean             @default(true)
+  imageUrl          String?
+  originalName      String?
+  originalShortName String?
+  originalBio       String?
+  originalLanguage  String              @default("ja")
+  isDeleted         Boolean             @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime            @default(now())
 
   parentArtist   Artist?             @relation("ArtistChildren", fields: [parentArtistId], references: [id])
   subArtists     Artist[]            @relation("ArtistChildren")
@@ -266,12 +274,15 @@ model ArtistGroup {
 // A StageIdentity belongs to one or more Artists via StageIdentityArtist.
 // UUID: not a primary search entity, referenced via Artist pages.
 model StageIdentity {
-  id           String                     @id @default(uuid())
-  slug         String                     @unique
-  type         StageIdentityType
-  imageUrl     String?
-  color        String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
-  createdAt    DateTime                   @default(now())
+  id                String                     @id @default(uuid())
+  slug              String                     @unique
+  type              StageIdentityType
+  imageUrl          String?
+  color             String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
+  originalName      String?
+  originalShortName String?
+  originalLanguage  String                     @default("ja")
+  createdAt         DateTime                   @default(now())
 
   translations    StageIdentityTranslation[]
   artistLinks     StageIdentityArtist[]
@@ -316,10 +327,13 @@ model StageIdentityArtist {
 // For anime: linked to the character they voice via RealPersonStageIdentity.
 // UUID: referenced via StageIdentity, not a primary URL entity.
 model RealPerson {
-  id              String                    @id @default(uuid())
-  slug            String                    @unique
-  imageUrl        String?
-  createdAt       DateTime                  @default(now())
+  id                String                    @id @default(uuid())
+  slug              String                    @unique
+  imageUrl          String?
+  originalName      String?
+  originalStageName String?
+  originalLanguage  String                    @default("ja")
+  createdAt         DateTime                  @default(now())
 
   translations    RealPersonTranslation[]
   stageIdentities RealPersonStageIdentity[]
@@ -361,17 +375,21 @@ model RealPersonStageIdentity {
 // hasBoard: admin-controlled board visibility.
 // BigInt: appears in public URLs e.g. /series/7
 model EventSeries {
-  id             BigInt                   @id @default(autoincrement())
-  slug           String                   @unique
-  artistId       BigInt?
-  parentSeriesId BigInt?
-  type           EventSeriesType
-  organizerName  String?
-  hasBoard       Boolean                  @default(false)
-  imageUrl       String?
-  isDeleted      Boolean                  @default(false)
-  deletedAt      DateTime?
-  createdAt      DateTime                 @default(now())
+  id                  BigInt                   @id @default(autoincrement())
+  slug                String                   @unique
+  artistId            BigInt?
+  parentSeriesId      BigInt?
+  type                EventSeriesType
+  organizerName       String?
+  hasBoard            Boolean                  @default(false)
+  imageUrl            String?
+  originalName        String?
+  originalShortName   String?
+  originalDescription String?
+  originalLanguage    String                   @default("ja")
+  isDeleted           Boolean                  @default(false)
+  deletedAt           DateTime?
+  createdAt           DateTime                 @default(now())
 
   artist         Artist?                  @relation(fields: [artistId], references: [id])
   parentSeries   EventSeries?             @relation("SeriesChildren", fields: [parentSeriesId], references: [id])
@@ -404,18 +422,23 @@ model EventSeriesTranslation {
 // status: drives UI mode.
 // BigInt: appears in public URLs e.g. /events/123
 model Event {
-  id            BigInt             @id @default(autoincrement())
-  slug          String             @unique
-  eventSeriesId BigInt?
-  type          EventType
-  status        EventStatus        @default(scheduled)
-  date          DateTime?          @db.Date
-  startTime     DateTime           // UTC; used as lock time for wishlist
-  country       String?            // ISO 3166 e.g. "KR" "JP" "US"
-  posterUrl     String?
-  isDeleted     Boolean            @default(false)
-  deletedAt     DateTime?
-  createdAt     DateTime           @default(now())
+  id                BigInt             @id @default(autoincrement())
+  slug              String             @unique
+  eventSeriesId     BigInt?
+  type              EventType
+  status            EventStatus        @default(scheduled)
+  date              DateTime?          @db.Date
+  startTime         DateTime           // UTC; used as lock time for wishlist
+  country           String?            // ISO 3166 e.g. "KR" "JP" "US"
+  posterUrl         String?
+  originalName      String?
+  originalShortName String?
+  originalCity      String?
+  originalVenue     String?
+  originalLanguage  String             @default("ja")
+  isDeleted         Boolean            @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
 
   eventSeries   EventSeries?       @relation(fields: [eventSeriesId], references: [id])
   translations  EventTranslation[]
