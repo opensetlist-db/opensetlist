@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
+import { trackEvent } from "@/lib/analytics";
 import { ImpressionCell } from "./ImpressionCell";
 
 export interface Impression {
@@ -158,6 +159,10 @@ export function EventImpressions({
       }
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
+      trackEvent("impression_submit", {
+        event_id: String(eventId),
+        locale,
+      });
       const next: SavedImpression = {
         chainId: impression.rootImpressionId,
         content: impression.content,
@@ -199,6 +204,7 @@ export function EventImpressions({
       }
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
+      trackEvent("impression_edit", { event_id: String(eventId) });
       const next: SavedImpression = {
         chainId: impression.rootImpressionId,
         content: impression.content,
@@ -391,6 +397,7 @@ export function EventImpressions({
               >
                 <ImpressionCell
                   impression={imp}
+                  eventId={eventId}
                   isOwn={isOwn}
                   hasReported={hasReported}
                   onReport={handleReport}
