@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { GroupType, GroupCategory } from "@/generated/prisma/enums";
+import { GroupType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
+  nullableEnumValue,
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
@@ -23,11 +24,13 @@ export async function POST(request: NextRequest) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
-  const { type, category, hasBoard } = body as {
-    type?: GroupType;
-    category?: GroupCategory;
-    hasBoard?: boolean;
-  };
+  const typeCheck = nullableEnumValue(body.type, "type", Object.values(GroupType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
+
+  const categoryCheck = nullableEnumValue(body.category, "category", Object.values(GroupCategory));
+  if (!categoryCheck.ok) return badRequest(categoryCheck.message);
+
+  const { hasBoard } = body as { hasBoard?: boolean };
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -46,8 +49,8 @@ export async function POST(request: NextRequest) {
 
   const group = await prisma.group.create({
     data: {
-      type: type || null,
-      category: category || null,
+      type: typeCheck.value,
+      category: categoryCheck.value,
       hasBoard: hasBoard ?? false,
       originalName: name.value,
       originalShortName: shortName.value,

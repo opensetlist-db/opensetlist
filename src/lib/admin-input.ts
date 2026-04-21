@@ -86,6 +86,79 @@ export function translationsArray(
   return { ok: true, value };
 }
 
+// Required enum string. The `as` cast in the destructure is compile-time only;
+// without this an invalid enum value reaches Prisma and 500s.
+export function enumValue<T extends string>(
+  value: unknown,
+  field: string,
+  allowed: readonly T[]
+): AdminFieldResult<T> {
+  if (typeof value !== "string" || value.length === 0) {
+    return { ok: false, message: `${field} is required` };
+  }
+  if (!(allowed as readonly string[]).includes(value)) {
+    return {
+      ok: false,
+      message: `${field} must be one of: ${allowed.join(", ")}`,
+    };
+  }
+  return { ok: true, value: value as T };
+}
+
+export function nullableEnumValue<T extends string>(
+  value: unknown,
+  field: string,
+  allowed: readonly T[]
+): AdminFieldResult<T | null> {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string") {
+    return { ok: false, message: `${field} must be a string` };
+  }
+  if (!(allowed as readonly string[]).includes(value)) {
+    return {
+      ok: false,
+      message: `${field} must be one of: ${allowed.join(", ")}`,
+    };
+  }
+  return { ok: true, value: value as T };
+}
+
+// Optional BigInt-coercible id. Bare `BigInt(value)` throws SyntaxError on "abc"
+// or TypeError on objects, both of which surface as 500s.
+export function nullableBigIntId(
+  value: unknown,
+  field: string
+): AdminFieldResult<bigint | null> {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return { ok: true, value: BigInt(value) };
+  }
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return { ok: true, value: BigInt(value) };
+  }
+  return {
+    ok: false,
+    message: `${field} must be a non-negative integer or digit string`,
+  };
+}
+
+// Optional array of strings. Returns [] for undefined/null so callers can
+// `.length` and `.map` without further branches.
+export function nullableStringArray(
+  value: unknown,
+  field: string
+): AdminFieldResult<string[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] };
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    return { ok: false, message: `${field} must be an array of strings` };
+  }
+  return { ok: true, value: value as string[] };
+}
+
 export type LocalizedTranslation = {
   locale: string;
   name: string;

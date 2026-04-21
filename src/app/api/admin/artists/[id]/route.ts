@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { ArtistType } from "@/generated/prisma/enums";
+import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
+  enumValue,
+  nullableBigIntId,
   nullableString,
+  nullableStringArray,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
   requireString,
@@ -51,12 +54,16 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
-  const { type, parentArtistId, hasBoard, groupIds } = body as {
-    type?: ArtistType;
-    parentArtistId?: string | number | null;
-    hasBoard?: boolean;
-    groupIds?: string[];
-  };
+  const typeCheck = enumValue(body.type, "type", Object.values(ArtistType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
+
+  const parentArtistIdCheck = nullableBigIntId(body.parentArtistId, "parentArtistId");
+  if (!parentArtistIdCheck.ok) return badRequest(parentArtistIdCheck.message);
+
+  const groupIdsCheck = nullableStringArray(body.groupIds, "groupIds");
+  if (!groupIdsCheck.ok) return badRequest(groupIdsCheck.message);
+
+  const { hasBoard } = body as { hasBoard?: boolean };
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -79,16 +86,16 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const artist = await prisma.artist.update({
     where: { id: artistId },
     data: {
-      type,
-      parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
+      type: typeCheck.value,
+      parentArtistId: parentArtistIdCheck.value,
       hasBoard: hasBoard ?? true,
       originalName: name.value,
       originalShortName: shortName.value,
       originalBio: bio.value,
       originalLanguage: language.value,
       translations: { create: translations.value },
-      groupLinks: groupIds?.length
-        ? { create: groupIds.map((gid: string) => ({ groupId: gid })) }
+      groupLinks: groupIdsCheck.value.length
+        ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
         : undefined,
     },
     include: { translations: true },
