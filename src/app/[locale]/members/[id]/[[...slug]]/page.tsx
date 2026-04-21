@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickLocaleTranslation,
-  slugify,
   formatDate,
 } from "@/lib/utils";
 import {
@@ -191,7 +190,7 @@ export default async function MemberPage({ params }: Props) {
                 return (
                   <li key={link.id} className="flex items-baseline gap-2">
                     <Link
-                      href={`/${locale}/artists/${link.artist.id}/${slugify(aName || "")}`}
+                      href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
                       {aName || "Unknown"}
@@ -222,7 +221,7 @@ export default async function MemberPage({ params }: Props) {
                 return (
                   <li key={link.id}>
                     <Link
-                      href={`/${locale}/artists/${link.artist.id}/${slugify(aName || "")}`}
+                      href={`/${locale}/artists/${link.artist.id}/${link.artist.slug}`}
                       className="text-blue-600 hover:underline"
                     >
                       {aName || "Unknown"}

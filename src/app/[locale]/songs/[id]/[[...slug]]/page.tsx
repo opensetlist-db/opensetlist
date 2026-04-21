@@ -211,7 +211,7 @@ export default async function SongPage({ params }: Props) {
               return (
                 <li key={sa.id} className="flex items-center gap-2">
                   <Link
-                    href={`/${locale}/artists/${sa.artist.id}/${slugify(aName || "")}`}
+                    href={`/${locale}/artists/${sa.artist.id}/${sa.artist.slug}`}
                     className="text-blue-600 hover:underline"
                   >
                     {aName || "Unknown"}

@@ -206,7 +206,7 @@ export default async function ArtistPage({ params }: Props) {
           <>
             {" / "}
             <Link
-              href={`/${locale}/artists/${artist.parentArtist.id}/${slugify(parentName)}`}
+              href={`/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`}
               className="hover:underline"
             >
               {parentName}
@@ -286,7 +286,7 @@ export default async function ArtistPage({ params }: Props) {
                 />
               )}
               <Link
-                href={`/${locale}/members/${sl.stageIdentity.id}/${slugify(siName || "")}`}
+                href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
                 className="font-medium text-blue-600 hover:underline"
               >
                 {siName || "Unknown"}
@@ -327,7 +327,7 @@ export default async function ArtistPage({ params }: Props) {
                 return (
                   <li key={sub.id}>
                     <Link
-                      href={`/${locale}/artists/${sub.id}/${slugify(subName || "")}`}
+                      href={`/${locale}/artists/${sub.id}/${sub.slug}`}
                       className="text-blue-600 hover:underline"
                     >
                       {subName || "Unknown"}
@@ -351,7 +351,7 @@ export default async function ArtistPage({ params }: Props) {
                 return (
                   <li key={sub.id}>
                     <Link
-                      href={`/${locale}/artists/${sub.id}/${slugify(subName || "")}`}
+                      href={`/${locale}/artists/${sub.id}/${sub.slug}`}
                       className="text-blue-600 hover:underline"
                     >
                       {subName || "Unknown"}
@@ -495,7 +495,7 @@ export default async function ArtistPage({ params }: Props) {
                     {formatDate(event.date, locale)}
                   </span>
                   <Link
-                    href={`/${locale}/events/${event.id}/${slugify(linkLabel)}`}
+                    href={`/${locale}/events/${event.id}/${event.slug}`}
                     className="text-blue-600 hover:underline"
                   >
                     {linkLabel}

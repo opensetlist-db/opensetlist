@@ -36,7 +36,7 @@ type ArtistRef = {
 };
 
 type StageIdentityRef = {
-  id: number;
+  id: string;
   originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
@@ -44,7 +44,7 @@ type StageIdentityRef = {
 };
 
 type RealPersonRef = {
-  id: number;
+  id: string;
   originalName: string | null;
   originalStageName: string | null;
   originalLanguage: string;

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickLocaleTranslation,
-  slugify,
 } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
@@ -332,7 +331,7 @@ export default async function EventPage({ params }: Props) {
           <>
             {" / "}
             <Link
-              href={`/${locale}/series/${event.eventSeries.id}/${slugify(seriesShortName)}`}
+              href={`/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`}
               className="hover:underline"
             >
               {seriesShortName}

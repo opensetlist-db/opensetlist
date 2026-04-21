@@ -45,12 +45,18 @@ export function displayOriginalName<
 ): NameDisplay {
   const translation =
     translations.find((t) => t.locale === displayLocale) ?? null;
-  // During PR A's nullable transition: if `originalName` is missing, fall
-  // through to the viewer's translation, then any translation, then "".
-  // PR B flips `originalName` to NOT NULL so this fallback becomes dead
-  // code, but it keeps headers from rendering blank in the meantime.
+  const originalTranslation =
+    translations.find((t) => t.locale === item.originalLanguage) ?? null;
+  // During PR A's nullable transition: if `originalName` is missing, prefer
+  // the row in the entity's declared `originalLanguage` (strict — never an
+  // arbitrary translations[0]), then the viewer's locale, then "". PR B
+  // flips `originalName` to NOT NULL so this fallback becomes dead code,
+  // but it keeps headers from rendering blank in the meantime.
   const main =
-    item.originalName ?? translation?.name ?? translations[0]?.name ?? "";
+    item.originalName ??
+    originalTranslation?.name ??
+    translation?.name ??
+    "";
   const shortName =
     translation?.shortName || item.originalShortName || null;
 

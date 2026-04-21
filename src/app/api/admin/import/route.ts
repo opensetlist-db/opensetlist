@@ -77,9 +77,13 @@ async function importArtists(rows: Record<string, string>[]) {
 
     const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const source = pickOriginalSource(translations, originalLanguage);
+    // When the originalLanguage row is absent, leave both originalLanguage and
+    // the original* fields untouched — writing originalLanguage alone would
+    // create a parent whose declared source language doesn't match its
+    // (still-stale) original* values, breaking strict-locale fallback.
     const originals = source
       ? { originalName: source.name, originalShortName: source.shortName, originalLanguage }
-      : { originalLanguage };
+      : {};
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
@@ -151,7 +155,7 @@ async function importMembers(rows: Record<string, string>[]) {
           originalShortName: siSource.shortName,
           originalLanguage: siOriginalLanguage,
         }
-      : { originalLanguage: siOriginalLanguage };
+      : {};
 
     // Look up artists by slug
     const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
@@ -178,7 +182,7 @@ async function importMembers(rows: Record<string, string>[]) {
             originalStageName: vaSource.stageName,
             originalLanguage: vaOriginalLanguage,
           }
-        : { originalLanguage: vaOriginalLanguage };
+        : {};
 
       const existingRp = await prisma.realPerson.findUnique({ where: { slug: vaSlug } });
       if (existingRp) {
@@ -507,7 +511,7 @@ async function importEvents(rows: Record<string, string>[]) {
           originalShortName: seriesSource.shortName,
           originalLanguage: seriesOriginalLanguage,
         }
-      : { originalLanguage: seriesOriginalLanguage };
+      : {};
 
     const existing = await prisma.eventSeries.findUnique({ where: { slug } });
 
@@ -567,7 +571,7 @@ async function importEvents(rows: Record<string, string>[]) {
           originalVenue: eventSource.venue,
           originalLanguage: eventOriginalLanguage,
         }
-      : { originalLanguage: eventOriginalLanguage };
+      : {};
 
     const existing = await prisma.event.findUnique({ where: { slug } });
 
@@ -836,6 +840,12 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("Import error:", err);
     if (err instanceof ImportValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    // resolveOriginalLanguage in src/lib/csv-parse.ts throws a plain Error
+    // for unsupported language codes — surface that as a 400 too, since a
+    // single bad CSV cell shouldn't look like a server fault.
+    if (err instanceof Error && err.message.startsWith("Unknown originalLanguage:")) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
     return NextResponse.json({ error: "Import failed" }, { status: 500 });

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  slugify,
   formatDate,
 } from "@/lib/utils";
 import {
@@ -110,7 +109,7 @@ export default async function EventSeriesPage({ params }: Props) {
           <>
             {" / "}
             <Link
-              href={`/${locale}/series/${series.parentSeries.id}/${slugify(parentName)}`}
+              href={`/${locale}/series/${series.parentSeries.id}/${series.parentSeries.slug}`}
               className="hover:underline"
             >
               {parentName}
@@ -133,7 +132,7 @@ export default async function EventSeriesPage({ params }: Props) {
           <span>{t(`type.${series.type}`)}</span>
           {artistName && (
             <Link
-              href={`/${locale}/artists/${series.artist!.id}/${slugify(artistName)}`}
+              href={`/${locale}/artists/${series.artist!.id}/${series.artist!.slug}`}
               className="text-blue-600 hover:underline"
             >
               {artistName}
@@ -160,7 +159,7 @@ export default async function EventSeriesPage({ params }: Props) {
               return (
                 <li key={child.id}>
                   <Link
-                    href={`/${locale}/series/${child.id}/${slugify(childName || "")}`}
+                    href={`/${locale}/series/${child.id}/${child.slug}`}
                     className="text-blue-600 hover:underline"
                   >
                     {childName || "Unknown"}
@@ -209,7 +208,7 @@ export default async function EventSeriesPage({ params }: Props) {
                       </span>
                     )}
                     <Link
-                      href={`/${locale}/events/${event.id}/${slugify(evName || "")}`}
+                      href={`/${locale}/events/${event.id}/${event.slug}`}
                       className="font-medium text-blue-600 hover:underline"
                     >
                       {evName || evT("unknownEvent")}
