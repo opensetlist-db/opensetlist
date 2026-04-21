@@ -57,7 +57,7 @@ export function pickTranslation<T extends { locale: string }>(
  * variantLabel shown to a Japanese viewer).
  */
 export function pickLocaleTranslation<T extends { locale: string }>(
-  translations: T[],
+  translations: readonly T[],
   locale: string
 ): T | undefined {
   return translations.find((t) => t.locale === locale);

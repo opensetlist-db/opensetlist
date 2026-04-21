@@ -386,9 +386,11 @@ export default async function ArtistPage({ params }: Props) {
                 );
               })}
               {standaloneVariants.map((sc) => {
-                const { main } = displayOriginalTitle(sc.song, sc.song.translations, locale);
-                const songTr = pickLocaleTranslation(sc.song.translations, locale);
-                const vVariant = songTr?.variantLabel || sc.song.variantLabel;
+                const { main, variant: vVariant } = displayOriginalTitle(
+                  sc.song,
+                  sc.song.translations,
+                  locale
+                );
                 const baseTr = sc.song.baseVersion
                   ? pickLocaleTranslation(sc.song.baseVersion.translations, locale)
                   : null;

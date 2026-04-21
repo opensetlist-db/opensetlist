@@ -152,6 +152,13 @@ export default async function SongPage({ params }: Props) {
   const ct = await getTranslations("Common");
   const et = await getTranslations("Event");
   const { main, sub, variant } = displayOriginalTitle(song, song.translations, locale);
+  const baseVersion = song.baseVersion;
+  const baseTr = baseVersion
+    ? pickLocaleTranslation(baseVersion.translations, locale)
+    : null;
+  const baseTitle = baseVersion
+    ? (baseTr?.title ?? baseVersion.originalTitle)
+    : null;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -212,25 +219,16 @@ export default async function SongPage({ params }: Props) {
       )}
 
       {/* Base version link */}
-      {song.baseVersion && (
+      {baseVersion && baseTitle && (
         <section className="mb-8">
           <p className="text-sm text-zinc-500">
             {t("baseVersion")}:{" "}
-            {(() => {
-              const baseTr = pickLocaleTranslation(
-                song.baseVersion.translations,
-                locale
-              );
-              const baseTitle = baseTr?.title ?? song.baseVersion.originalTitle;
-              return (
-                <Link
-                  href={`/${locale}/songs/${song.baseVersion.id}/${slugify(baseTitle)}`}
-                  className="text-blue-600 hover:underline"
-                >
-                  {baseTitle}
-                </Link>
-              );
-            })()}
+            <Link
+              href={`/${locale}/songs/${baseVersion.id}/${slugify(baseTitle)}`}
+              className="text-blue-600 hover:underline"
+            >
+              {baseTitle}
+            </Link>
           </p>
         </section>
       )}
