@@ -199,7 +199,11 @@ export function assemblePairs(
 export async function getGlossaryForEvent(
   eventId: bigint,
   sourceLocale: GlossaryLocale,
-  targetLocale: GlossaryLocale
+  targetLocale: GlossaryLocale,
+  // Pluggable fetcher so the admin debug endpoint can swap in
+  // `buildArtistTerms` to bypass the 1h cache when verifying fresh DB state
+  // after data edits. Production translate route uses the cached default.
+  artistTermsFetcher: (id: bigint) => Promise<ArtistTerms> = getArtistTerms
 ): Promise<GlossaryPair[]> {
   // No filter on isGuest — both regular performers and guests are pulled.
   // Guest VAs from non-Hasunosora rosters get the same proper-noun protection.
@@ -221,7 +225,7 @@ export async function getGlossaryForEvent(
   if (artistIds.size === 0) return [];
 
   const termsList = await Promise.all(
-    Array.from(artistIds, (id) => getArtistTerms(BigInt(id)))
+    Array.from(artistIds, (id) => artistTermsFetcher(BigInt(id)))
   );
 
   const merged: ArtistTerms = {
