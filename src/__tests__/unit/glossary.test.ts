@@ -134,9 +134,10 @@ describe("applyGlossary", () => {
       "Cerise Bouquet's Kaho was incredible.",
       pairs
     );
-    expect(processed).toBe("__GLOSS_0__'s __GLOSS_1__ was incredible.");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("スリーズブーケ");
-    expect(restoreMap.get("__GLOSS_1__")).toBe("花帆");
+    const [g0, g1] = Array.from(restoreMap.keys());
+    expect(processed).toBe(`${g0}'s ${g1} was incredible.`);
+    expect(restoreMap.get(g0)).toBe("スリーズブーケ");
+    expect(restoreMap.get(g1)).toBe("花帆");
   });
 
   it("longest-first input prevents shadowing of substring matches", () => {
@@ -149,12 +150,13 @@ describe("applyGlossary", () => {
       "오늘 츠바이 마이 너무 좋았다",
       pairs
     );
-    expect(processed).toContain("__GLOSS_0__");
+    // Only the longer source produced a placeholder; "마이" never surfaced
+    // because it was absorbed inside "츠바이 마이".
+    const placeholders = Array.from(restoreMap.keys());
+    expect(placeholders).toHaveLength(1);
+    expect(processed).toContain(placeholders[0]);
     expect(processed).not.toContain("츠바이");
-    // "마이" inside "츠바이 마이" was already absorbed by GLOSS_0,
-    // so GLOSS_1 (마이) shouldn't appear in this text.
-    expect(processed).not.toContain("__GLOSS_1__");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("ツヴァイマイ");
+    expect(restoreMap.get(placeholders[0])).toBe("ツヴァイマイ");
   });
 
   it("skips pairs that don't appear in the text — no entry in restoreMap", () => {
@@ -163,9 +165,10 @@ describe("applyGlossary", () => {
       { source: "Sayaka", target: "さやか" },
     ];
     const { processed, restoreMap } = applyGlossary("Kaho was great", pairs);
-    expect(processed).toBe("__GLOSS_0__ was great");
-    expect(restoreMap.has("__GLOSS_0__")).toBe(true);
-    expect(restoreMap.has("__GLOSS_1__")).toBe(false);
+    const placeholders = Array.from(restoreMap.keys());
+    expect(placeholders).toHaveLength(1);
+    expect(processed).toBe(`${placeholders[0]} was great`);
+    expect(restoreMap.get(placeholders[0])).toBe("花帆");
   });
 
   it("source === target still substitutes (preserves through LLM)", () => {
@@ -173,8 +176,9 @@ describe("applyGlossary", () => {
       { source: "DOLLCHESTRA", target: "DOLLCHESTRA" },
     ];
     const { processed, restoreMap } = applyGlossary("DOLLCHESTRA rocks", pairs);
-    expect(processed).toBe("__GLOSS_0__ rocks");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("DOLLCHESTRA");
+    const [g0] = Array.from(restoreMap.keys());
+    expect(processed).toBe(`${g0} rocks`);
+    expect(restoreMap.get(g0)).toBe("DOLLCHESTRA");
   });
 
   it("ASCII sources only match at word boundaries — protects against substring corruption", () => {
@@ -185,9 +189,10 @@ describe("applyGlossary", () => {
       "Send Mai an email about her mailbox",
       pairs
     );
+    const [g0] = Array.from(restoreMap.keys());
     // "Mai" (the standalone word) gets substituted; "email" + "mailbox" untouched.
-    expect(processed).toBe("Send __GLOSS_0__ an email about her mailbox");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("舞");
+    expect(processed).toBe(`Send ${g0} an email about her mailbox`);
+    expect(restoreMap.get(g0)).toBe("舞");
   });
 
   it("ASCII source not in text (no word-boundary match) → no entry in restoreMap", () => {
@@ -202,8 +207,9 @@ describe("applyGlossary", () => {
     // choice. Korean particles (조사) attaching to a name still hit.
     const pairs: GlossaryPair[] = [{ source: "마이", target: "舞" }];
     const { processed, restoreMap } = applyGlossary("마이가 무대에 올랐다", pairs);
-    expect(processed).toBe("__GLOSS_0__가 무대에 올랐다");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("舞");
+    const [g0] = Array.from(restoreMap.keys());
+    expect(processed).toBe(`${g0}가 무대에 올랐다`);
+    expect(restoreMap.get(g0)).toBe("舞");
   });
 
   it("ASCII source with hyphen still matches (hyphen is a word boundary)", () => {
@@ -214,49 +220,78 @@ describe("applyGlossary", () => {
       "Sayo-Shigure was beautiful",
       pairs
     );
-    expect(processed).toBe("__GLOSS_0__ was beautiful");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("小夜時雨");
+    const [g0] = Array.from(restoreMap.keys());
+    expect(processed).toBe(`${g0} was beautiful`);
+    expect(restoreMap.get(g0)).toBe("小夜時雨");
   });
 
   it("ASCII source with regex meta-characters is escaped before regex use", () => {
     const pairs: GlossaryPair[] = [{ source: "ver.2", target: "버전2" }];
     const { processed, restoreMap } = applyGlossary("ver.2 was the best", pairs);
-    expect(processed).toBe("__GLOSS_0__ was the best");
-    expect(restoreMap.get("__GLOSS_0__")).toBe("버전2");
+    const [g0] = Array.from(restoreMap.keys());
+    expect(processed).toBe(`${g0} was the best`);
+    expect(restoreMap.get(g0)).toBe("버전2");
+  });
+
+  it("placeholder format is nonce-bearing — defends against user-typed __GLOSS_N__ literals", () => {
+    // Real placeholder format: __GLOSS_<8-char-base36-nonce>_<index>__
+    const pairs: GlossaryPair[] = [{ source: "Kaho", target: "花帆" }];
+    const { restoreMap } = applyGlossary("Kaho was here", pairs);
+    const [g0] = Array.from(restoreMap.keys());
+    expect(g0).toMatch(/^__GLOSS_[a-z0-9]{8}_0__$/);
+    // A user-typed literal like "__GLOSS_0__" would NOT match the regex,
+    // so it can't collide with the apply/restore cycle.
+    expect("__GLOSS_0__").not.toMatch(/^__GLOSS_[a-z0-9]+_\d+__$/);
   });
 });
 
 describe("restoreGlossary", () => {
   it("empty restoreMap returns text unchanged", () => {
-    expect(restoreGlossary("hello __GLOSS_0__ world", new Map())).toBe(
-      "hello __GLOSS_0__ world"
-    );
+    expect(
+      restoreGlossary("hello __GLOSS_abc12345_0__ world", new Map())
+    ).toBe("hello __GLOSS_abc12345_0__ world");
   });
 
-  it("replaces __GLOSS_N__ tokens with restoreMap values", () => {
+  it("replaces nonce-bearing placeholder tokens with restoreMap values", () => {
     const map = new Map([
-      ["__GLOSS_0__", "스리즈 부케"],
-      ["__GLOSS_1__", "카호"],
+      ["__GLOSS_abc12345_0__", "스리즈 부케"],
+      ["__GLOSS_abc12345_1__", "카호"],
     ]);
-    expect(restoreGlossary("__GLOSS_0__의 __GLOSS_1__는 최고였다", map)).toBe(
-      "스리즈 부케의 카호는 최고였다"
-    );
+    expect(
+      restoreGlossary("__GLOSS_abc12345_0__의 __GLOSS_abc12345_1__는 최고였다", map)
+    ).toBe("스리즈 부케의 카호는 최고였다");
   });
 
-  it("leaves unknown placeholders intact (defensive)", () => {
-    const map = new Map([["__GLOSS_0__", "Foo"]]);
-    expect(restoreGlossary("__GLOSS_0__ and __GLOSS_99__", map)).toBe(
-      "Foo and __GLOSS_99__"
+  it("leaves unknown nonce-bearing placeholders intact (defensive)", () => {
+    const map = new Map([["__GLOSS_abc12345_0__", "Foo"]]);
+    expect(
+      restoreGlossary(
+        "__GLOSS_abc12345_0__ and __GLOSS_xyz67890_99__",
+        map
+      )
+    ).toBe("Foo and __GLOSS_xyz67890_99__");
+  });
+
+  it("ignores user-typed __GLOSS_N__ literals (no nonce → no regex match)", () => {
+    // Defense against the edge case where a user types the placeholder
+    // shape into their impression. Without a nonce segment the literal
+    // doesn't match PLACEHOLDER_RE, so it survives the restore pass even
+    // if the restoreMap somehow contained an entry keyed by it.
+    const map = new Map([["__GLOSS_0__", "should-not-be-used"]]);
+    expect(restoreGlossary("user wrote __GLOSS_0__ here", map)).toBe(
+      "user wrote __GLOSS_0__ here"
     );
   });
 
   it("single-pass: target text containing __GLOSS_N__ literal is safe", () => {
     // If a target value happens to contain a placeholder-shaped string,
     // single-pass replace can't re-trigger and recursively swap it.
-    const map = new Map([["__GLOSS_0__", "literal __GLOSS_5__"]]);
-    expect(restoreGlossary("prefix __GLOSS_0__ suffix", map)).toBe(
-      "prefix literal __GLOSS_5__ suffix"
-    );
+    const map = new Map([
+      ["__GLOSS_abc12345_0__", "literal __GLOSS_xyz67890_5__"],
+    ]);
+    expect(
+      restoreGlossary("prefix __GLOSS_abc12345_0__ suffix", map)
+    ).toBe("prefix literal __GLOSS_xyz67890_5__ suffix");
   });
 });
 
@@ -276,9 +311,9 @@ describe("applyGlossary + restoreGlossary round-trip", () => {
   it("simulated LLM round-trip — extra translator-introduced text passes through cleanly", () => {
     const pairs: GlossaryPair[] = [{ source: "Hasunosora", target: "蓮ノ空" }];
     const { processed, restoreMap } = applyGlossary("I love Hasunosora", pairs);
-    // Simulate translator output (Korean translation with placeholder intact)
+    // Simulate translator output (Korean translation with the nonce-bearing
+    // placeholder still embedded — i.e. "나는 __GLOSS_<nonce>_0__를 사랑합니다").
     const llmOutput = `나는 ${processed.replace("I love ", "")}를 사랑합니다`;
-    // i.e., "나는 __GLOSS_0__를 사랑합니다"
     expect(restoreGlossary(llmOutput, restoreMap)).toBe("나는 蓮ノ空를 사랑합니다");
   });
 });
