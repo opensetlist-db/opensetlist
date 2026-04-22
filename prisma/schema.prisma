@@ -185,7 +185,7 @@ model Group {
   category            GroupCategory?
   hasBoard            Boolean            @default(false)
   imageUrl            String?
-  originalName        String?
+  originalName        String
   originalShortName   String?
   originalDescription String?
   originalLanguage    String             @default("ja")
@@ -220,7 +220,7 @@ model Artist {
   type              ArtistType
   hasBoard          Boolean             @default(true)
   imageUrl          String?
-  originalName      String?
+  originalName      String
   originalShortName String?
   originalBio       String?
   originalLanguage  String              @default("ja")
@@ -279,7 +279,7 @@ model StageIdentity {
   type              StageIdentityType
   imageUrl          String?
   color             String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
-  originalName      String?
+  originalName      String
   originalShortName String?
   originalLanguage  String                     @default("ja")
   createdAt         DateTime                   @default(now())
@@ -330,7 +330,7 @@ model RealPerson {
   id                String                    @id @default(uuid())
   slug              String                    @unique
   imageUrl          String?
-  originalName      String?
+  originalName      String
   originalStageName String?
   originalLanguage  String                    @default("ja")
   createdAt         DateTime                  @default(now())
@@ -383,7 +383,7 @@ model EventSeries {
   organizerName       String?
   hasBoard            Boolean                  @default(false)
   imageUrl            String?
-  originalName        String?
+  originalName        String
   originalShortName   String?
   originalDescription String?
   originalLanguage    String                   @default("ja")
@@ -431,7 +431,7 @@ model Event {
   startTime         DateTime           // UTC; used as lock time for wishlist
   country           String?            // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl         String?
-  originalName      String?
+  originalName      String
   originalShortName String?
   originalCity      String?
   originalVenue     String?
