@@ -243,9 +243,23 @@ export async function getGlossaryForEvent(
   return assemblePairs(merged, sourceLocale, targetLocale);
 }
 
-// __GLOSS_N__ placeholder format — distinct from the dead translation.ts
-// __DICT_N__ helpers so the two never collide if both are ever active.
-const PLACEHOLDER_RE = /__GLOSS_(\d+)__/g;
+// __GLOSS_<nonce>_N__ placeholder format. The per-request nonce defends
+// against an edge case where source text contains a literal __GLOSS_N__:
+// a glossary substitution would create a real placeholder that, on restore,
+// could clobber the user's literal too. With a per-request nonce, the
+// restore regex only matches placeholders this very call created — anything
+// else (including any __GLOSS_N__ literal in source/target text) is safe.
+//
+// Distinct from the dead translation.ts __DICT_N__ helpers so the two
+// never collide if both are ever active.
+const PLACEHOLDER_RE = /__GLOSS_[a-z0-9]+_\d+__/g;
+
+function makeNonce(): string {
+  // 8 chars of base36 (~36^8 = 2.8T possibilities) — astronomically unlikely
+  // a fan impression contains this exact string. Math.random is fine here:
+  // we need uniqueness within the call, not cryptographic guarantees.
+  return Math.random().toString(36).slice(2, 10).padEnd(8, "0");
+}
 
 // ASCII-only sources need word-boundary substitution to avoid corrupting
 // unrelated text — at MIN_LEN=2, "Mai" would otherwise match inside "mail",
@@ -268,9 +282,10 @@ export function applyGlossary(
   }
   const restoreMap: GlossaryRestoreMap = new Map();
   let processed = text;
+  const nonce = makeNonce();
   for (let i = 0; i < pairs.length; i++) {
     const { source, target } = pairs[i];
-    const placeholder = `__GLOSS_${i}__`;
+    const placeholder = `__GLOSS_${nonce}_${i}__`;
     if (isAsciiSource(source)) {
       // Safe-by-construction: `source` is operator-curated translation-row data
       // (not user-supplied), `isAsciiSource` already restricted it to printable
@@ -296,7 +311,10 @@ export function restoreGlossary(
   restoreMap: GlossaryRestoreMap
 ): string {
   if (restoreMap.size === 0) return text;
-  // Single regex pass — newly-inserted target text can't re-trigger the
-  // pattern, so a target string containing literal __GLOSS_N__ is safe.
+  // Single regex pass — the per-request nonce ensures we only match
+  // placeholders this apply/restore cycle created. A user-typed
+  // __GLOSS_N__ literal (no nonce segment) doesn't match the regex;
+  // a target string that happens to contain __GLOSS_N__ also doesn't
+  // match (single-pass replace can't re-trigger anyway).
   return text.replace(PLACEHOLDER_RE, (m) => restoreMap.get(m) ?? m);
 }

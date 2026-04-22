@@ -212,13 +212,17 @@ describe("POST /api/impressions/translate", () => {
   });
 
   it("substitutes glossary terms before translation and restores after", async () => {
-    // Glossary returns one pair; the route should swap "ライブ" → __GLOSS_0__
-    // before sending to the translator, then restore __GLOSS_0__ → "라이브"
-    // before caching/responding.
+    // Glossary returns one pair; the route should swap "ライブ" → placeholder
+    // before sending to the translator, then restore placeholder → "라이브"
+    // before caching/responding. Placeholder format is opaque (nonce-bearing)
+    // so we capture it from the translator call rather than hardcoding.
     getGlossaryForEventMock.mockResolvedValueOnce([
       { source: "ライブ", target: "라이브" },
     ]);
-    translateMock.mockResolvedValueOnce("오늘 __GLOSS_0__ 최고였어요");
+    translateMock.mockImplementationOnce(async (processed: string) => {
+      // Echo back a translation that preserves the placeholder verbatim.
+      return processed.replace(/今日の(.+)最高でした/, "오늘 $1 최고였어요");
+    });
 
     const res = await POST(
       makeRequest({
@@ -238,12 +242,9 @@ describe("POST /api/impressions/translate", () => {
       "ko",
     );
     // Translator received the placeholder-substituted text, NOT the raw content.
-    expect(translateMock).toHaveBeenCalledWith(
-      "今日の__GLOSS_0__最高でした",
-      "ja",
-      "ko",
-      expect.any(AbortSignal),
-    );
+    const [translatorInput] = translateMock.mock.calls[0];
+    expect(translatorInput).toMatch(/^今日の__GLOSS_[a-z0-9]+_\d+__最高でした$/);
+    expect(translatorInput).not.toContain("ライブ");
     // Cache stores the post-restoration text — never the placeholder form.
     expect(prisma.impressionTranslation.create).toHaveBeenCalledWith({
       data: {
