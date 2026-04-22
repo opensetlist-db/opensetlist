@@ -73,9 +73,11 @@ export async function POST(request: NextRequest, { params }: Props) {
   // two stage identities created with the same name (and no explicit slug)
   // would derive identical slugs and trip the @unique constraint. va-${siSlug}
   // inherits the suffix below so the VA RealPerson stays unique too.
-  const siBaseSlug =
-    resolveAdminSlug(body.slug, translations.value[0]?.name || name.value || "identity") ||
-    "identity";
+  const siBaseSlug = resolveAdminSlug(
+    body.slug,
+    translations.value[0]?.name || name.value,
+    "identity"
+  );
   const siSlug = `${siBaseSlug}-${randomUUID().slice(0, 8)}`;
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
@@ -121,13 +123,11 @@ export async function DELETE(request: NextRequest, { params }: Props) {
   const artistId = BigInt(id);
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
-  const { stageIdentityId } = parsed.body as { stageIdentityId?: string };
-  if (!stageIdentityId || typeof stageIdentityId !== "string") {
-    return badRequest("stageIdentityId is required");
-  }
+  const stageIdentityId = requireString(parsed.body.stageIdentityId, "stageIdentityId");
+  if (!stageIdentityId.ok) return badRequest(stageIdentityId.message);
 
   await prisma.stageIdentityArtist.deleteMany({
-    where: { stageIdentityId, artistId },
+    where: { stageIdentityId: stageIdentityId.value, artistId },
   });
 
   return NextResponse.json({ ok: true });

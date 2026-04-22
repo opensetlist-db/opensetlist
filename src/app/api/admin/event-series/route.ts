@@ -61,10 +61,7 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  const slug = resolveAdminSlug(
-    body.slug,
-    translations.value[0]?.name || `series-${Date.now()}`
-  );
+  const slug = resolveAdminSlug(body.slug, translations.value[0]?.name ?? "", "series");
 
   const series = await prisma.eventSeries.create({
     data: {
