@@ -229,6 +229,17 @@ describe("buildOriginals", () => {
     });
   });
 
+  it("skips field when source key is missing entirely (preserves existing on update)", () => {
+    // Cast forces the missing-key shape past the strict type signature so we
+    // exercise the defensive guard for runtime-only type mismatches.
+    const source = { locale: "ja", name: "Foo" } as unknown as Source;
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      // originalShortName intentionally omitted — Prisma update will preserve existing column value
+    });
+  });
+
   it("source matches different prefix when fieldMap uses prefixed override columns", () => {
     type SeriesSource = { locale: string; name: string; shortName: string | null };
     const seriesFields = [

@@ -98,6 +98,11 @@ export function buildOriginals<T extends Record<string, unknown>>(
     }
     if (sourceKey !== null && source !== null) {
       const v = source[sourceKey];
+      // A missing key (undefined) means "no information from this source" —
+      // skip the field so update branches preserve the existing column value.
+      // A present-but-null value still falls through and writes null, matching
+      // the pre-PR-B.3 "write source values verbatim" behavior.
+      if (v === undefined) continue;
       // Trim source values too so a stray whitespace-only translation cell
       // doesn't leak into the parent's identity columns. Mirrors the trim
       // applied to explicit override values above.
