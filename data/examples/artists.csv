@@ -1,4 +1,4 @@
-slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName
+slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName,originalLanguage,originalName,originalShortName,originalBio
 hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라 여학원 스쿨 아이돌 클럽,하스노소라,Hasunosora Girls' High Scholl Idol Club,Hasunosora
 cerise-bouquet,unit,hasunosora,スリーズブーケ,スリブ,스리즈 부케,스리부,Cerise Bouquet,Cerise Bouquet
 dollchestra,unit,hasunosora,DOLLCHESTRA,ドルケ,DOLLCHESTRA,돌케,DOLLCHESTRA,Dollchestra
