@@ -314,38 +314,57 @@ describe("displayNameWithFallback", () => {
     originalLanguage: "ja",
   };
 
-  it("returns translation shortName when present (short mode)", () => {
+  it("returns translation shortName when present (explicit short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        item,
+        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: "하스노소라" }],
+        "ko",
+        "short"
+      )
+    ).toBe("하스노소라");
+  });
+
+  it("falls back to translation full name when shortName is null (explicit short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        item,
+        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: null }],
+        "ko",
+        "short"
+      )
+    ).toBe("하스노소라 여학원 스쿨 아이돌 클럽");
+  });
+
+  it("falls back to parent originalShortName when no translation row (explicit short mode)", () => {
+    expect(displayNameWithFallback(item, [], "ko", "short")).toBe("蓮ノ空");
+  });
+
+  it("falls back to originalName when originalShortName is null (explicit short mode)", () => {
+    expect(
+      displayNameWithFallback(
+        { originalName: "Cerise Bouquet", originalShortName: null, originalLanguage: "en" },
+        [],
+        "ko",
+        "short"
+      )
+    ).toBe("Cerise Bouquet");
+  });
+
+  it("default mode is full — returns translation full name (not shortName)", () => {
     expect(
       displayNameWithFallback(
         item,
         [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: "하스노소라" }],
         "ko"
       )
-    ).toBe("하스노소라");
-  });
-
-  it("falls back to translation full name when shortName is null (short mode)", () => {
-    expect(
-      displayNameWithFallback(
-        item,
-        [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽", shortName: null }],
-        "ko"
-      )
     ).toBe("하스노소라 여학원 스쿨 아이돌 클럽");
   });
 
-  it("falls back to parent originalShortName when no translation row (short mode)", () => {
-    expect(displayNameWithFallback(item, [], "ko")).toBe("蓮ノ空");
-  });
-
-  it("falls back to originalName when originalShortName is null (short mode)", () => {
-    expect(
-      displayNameWithFallback(
-        { originalName: "Cerise Bouquet", originalShortName: null, originalLanguage: "en" },
-        [],
-        "ko"
-      )
-    ).toBe("Cerise Bouquet");
+  it("default mode falls back to parent originalName (not originalShortName)", () => {
+    expect(displayNameWithFallback(item, [], "ko")).toBe(
+      "蓮ノ空女学院スクールアイドルクラブ"
+    );
   });
 
   it("returns translation full name in full mode", () => {

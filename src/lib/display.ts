@@ -118,7 +118,7 @@ export function displayNameWithFallback(
   },
   translations: readonly { locale: string; name: string; shortName?: string | null }[],
   displayLocale: string,
-  mode: "short" | "full" = "short"
+  mode: "short" | "full" = "full"
 ): string {
   const translation = translations.find((t) => t.locale === displayLocale);
   if (mode === "short") {
