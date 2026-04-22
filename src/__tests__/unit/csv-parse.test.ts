@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseArtistSlugs, resolveOriginalLanguage } from "@/lib/csv-parse";
+import {
+  buildOriginals,
+  ensureOriginalName,
+  ImportValidationError,
+  parseArtistSlugs,
+  resolveOriginalLanguage,
+} from "@/lib/csv-parse";
 
 describe("parseArtistSlugs", () => {
   it("parses single slug", () => {
@@ -109,5 +115,181 @@ describe("resolveOriginalLanguage", () => {
 
   it("throws on bare 'zh' (not canonical)", () => {
     expect(() => resolveOriginalLanguage("zh")).toThrow(/Unknown originalLanguage/);
+  });
+});
+
+describe("buildOriginals", () => {
+  type Source = { locale: string; name: string; shortName: string | null };
+  const FIELDS = [
+    { override: "originalName", sourceKey: "name" as const, out: "originalName" },
+    { override: "originalShortName", sourceKey: "shortName" as const, out: "originalShortName" },
+    { override: "originalBio", sourceKey: null, out: "originalBio" },
+  ];
+
+  it("derives all fields from source when no overrides", () => {
+    const source: Source = { locale: "ja", name: "蓮ノ空", shortName: "蓮ノ空" };
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "蓮ノ空",
+      originalShortName: "蓮ノ空",
+    });
+  });
+
+  it("explicit override wins over source value", () => {
+    const source: Source = { locale: "ja", name: "蓮ノ空", shortName: "蓮ノ空" };
+    expect(
+      buildOriginals(
+        { originalName: "Hasunosora", originalShortName: "HSNS" },
+        source,
+        "ja",
+        FIELDS
+      )
+    ).toEqual({
+      originalLanguage: "ja",
+      originalName: "Hasunosora",
+      originalShortName: "HSNS",
+    });
+  });
+
+  it("empty override falls back to source", () => {
+    const source: Source = { locale: "ja", name: "蓮ノ空", shortName: "蓮ノ空" };
+    expect(
+      buildOriginals({ originalName: "   ", originalShortName: "" }, source, "ja", FIELDS)
+    ).toEqual({
+      originalLanguage: "ja",
+      originalName: "蓮ノ空",
+      originalShortName: "蓮ノ空",
+    });
+  });
+
+  it("override-only field (sourceKey null) is omitted unless provided", () => {
+    const source: Source = { locale: "ja", name: "Foo", shortName: null };
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      originalShortName: null,
+    });
+  });
+
+  it("override-only field is included when explicit value present", () => {
+    const source: Source = { locale: "ja", name: "Foo", shortName: null };
+    expect(
+      buildOriginals({ originalBio: "An idol group." }, source, "ja", FIELDS)
+    ).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      originalShortName: null,
+      originalBio: "An idol group.",
+    });
+  });
+
+  it("returns null for source field that is null (matches pre-PR-B.3 nulling behavior)", () => {
+    const source: Source = { locale: "ja", name: "Foo", shortName: null };
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      originalShortName: null,
+    });
+  });
+
+  it("source absent + no overrides → returns empty object (preserve existing on update)", () => {
+    expect(buildOriginals({}, null, "ja", FIELDS)).toEqual({});
+  });
+
+  it("source absent + only secondary override → omits originalLanguage (avoids stale-name mismatch)", () => {
+    expect(buildOriginals({ originalShortName: "HSNS" }, null, "ja", FIELDS)).toEqual({
+      originalShortName: "HSNS",
+    });
+  });
+
+  it("source absent + originalName override → includes originalLanguage", () => {
+    expect(
+      buildOriginals({ originalName: "Hasunosora" }, null, "en", FIELDS)
+    ).toEqual({
+      originalLanguage: "en",
+      originalName: "Hasunosora",
+    });
+  });
+
+  it("trims explicit override whitespace", () => {
+    expect(
+      buildOriginals({ originalName: "  Foo Bar  " }, null, "ja", FIELDS)
+    ).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo Bar",
+    });
+  });
+
+  it("trims source values and treats whitespace-only source as null", () => {
+    const source: Source = { locale: "ja", name: "  Foo  ", shortName: "   " };
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      originalShortName: null,
+    });
+  });
+
+  it("skips field when source key is missing entirely (preserves existing on update)", () => {
+    // Cast forces the missing-key shape past the strict type signature so we
+    // exercise the defensive guard for runtime-only type mismatches.
+    const source = { locale: "ja", name: "Foo" } as unknown as Source;
+    expect(buildOriginals({}, source, "ja", FIELDS)).toEqual({
+      originalLanguage: "ja",
+      originalName: "Foo",
+      // originalShortName intentionally omitted — Prisma update will preserve existing column value
+    });
+  });
+
+  it("source matches different prefix when fieldMap uses prefixed override columns", () => {
+    type SeriesSource = { locale: string; name: string; shortName: string | null };
+    const seriesFields = [
+      { override: "series_originalName", sourceKey: "name" as const, out: "originalName" },
+      { override: "series_originalShortName", sourceKey: "shortName" as const, out: "originalShortName" },
+    ];
+    const source: SeriesSource = { locale: "ja", name: "蓮ノ空 6th", shortName: "6th" };
+    expect(
+      buildOriginals(
+        { series_originalName: "Hasunosora 6th Live" },
+        source,
+        "ja",
+        seriesFields
+      )
+    ).toEqual({
+      originalLanguage: "ja",
+      originalName: "Hasunosora 6th Live",
+      originalShortName: "6th",
+    });
+  });
+});
+
+describe("ensureOriginalName", () => {
+  it("returns the originalName when present", () => {
+    expect(ensureOriginalName({ originalName: "Hasunosora" }, "hasunosora", "Artist", "ja")).toBe(
+      "Hasunosora"
+    );
+  });
+
+  it("throws ImportValidationError when originalName missing", () => {
+    expect(() => ensureOriginalName({}, "hasunosora", "Artist", "ja")).toThrow(
+      ImportValidationError
+    );
+  });
+
+  it("throws when originalName is null", () => {
+    expect(() =>
+      ensureOriginalName({ originalName: null }, "hasunosora", "Artist", "ja")
+    ).toThrow(/has no originalName/);
+  });
+
+  it("throws when originalName is empty string", () => {
+    expect(() =>
+      ensureOriginalName({ originalName: "" }, "hasunosora", "Artist", "ja")
+    ).toThrow(/has no originalName/);
+  });
+
+  it("error message names the entity, slug, and originalLanguage", () => {
+    expect(() => ensureOriginalName({}, "kaho", "RealPerson", "en")).toThrow(
+      /RealPerson "kaho".*originalLanguage=en/
+    );
   });
 });

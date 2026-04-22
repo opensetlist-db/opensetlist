@@ -15,6 +15,7 @@ type StageIdentityInput = {
   translations: { locale: string; name: string }[];
   realPerson?: {
     originalName: string;
+    originalShortName: string;
     originalStageName: string;
     originalLanguage: string;
     translations: { locale: string; name: string; stageName: string }[];
@@ -165,6 +166,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         translations: [{ locale: "ko", name: "" }],
         realPerson: {
           originalName: "",
+          originalShortName: "",
           originalStageName: "",
           originalLanguage: "ja",
           translations: [{ locale: "ko", name: "", stageName: "" }],
@@ -185,7 +187,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   function updateRPOriginal(
     siIndex: number,
-    field: "originalName" | "originalStageName" | "originalLanguage",
+    field: "originalName" | "originalShortName" | "originalStageName" | "originalLanguage",
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -863,6 +865,14 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                       value={si.realPerson.originalName}
                       onChange={(e) =>
                         updateRPOriginal(i, "originalName", e.target.value)
+                      }
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                    />
+                    <input
+                      placeholder="원본 약칭 (글로서리용)"
+                      value={si.realPerson.originalShortName}
+                      onChange={(e) =>
+                        updateRPOriginal(i, "originalShortName", e.target.value)
                       }
                       className="rounded border border-zinc-300 px-2 py-1 text-xs"
                     />
