@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
 
+const ANON_ID_MAX_LEN = 64;
+
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
   if (!eventId) {
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { eventId, content, locale } = body ?? {};
+  const { eventId, content, locale, anonId } = body ?? {};
 
   if (!eventId || typeof content !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -67,6 +69,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  if (anonId !== undefined && (typeof anonId !== "string" || anonId.length > ANON_ID_MAX_LEN)) {
+    return NextResponse.json({ error: "invalid anonId" }, { status: 400 });
+  }
+  // Empty string from a client whose localStorage is disabled / errored —
+  // treat as missing so the chain isn't claimed by an empty-string owner.
+  const dedupAnonId =
+    typeof anonId === "string" && anonId.length > 0 ? anonId : null;
 
   let eid: bigint;
   try {
@@ -91,6 +101,8 @@ export async function POST(req: NextRequest) {
 
   // Generate the id upfront so the head row can set
   // rootImpressionId = id in a single insert (no two-step placeholder dance).
+  // No P2002 catch needed here: rootImpressionId is fresh per call, so the
+  // event_impression_anon_unique partial unique cannot fire on insert.
   const newId = randomUUID();
   const created = await prisma.eventImpression.create({
     data: {
@@ -99,6 +111,7 @@ export async function POST(req: NextRequest) {
       eventId: eid,
       content: trimmed,
       locale: resolvedLocale,
+      anonId: dedupAnonId,
     },
   });
 

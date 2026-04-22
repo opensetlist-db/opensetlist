@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const VALID_TYPES = ["waiting", "best", "surprise", "moved"];
+const ANON_ID_MAX_LEN = 64;
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
@@ -42,11 +44,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { setlistItemId, reactionType } = body;
+  const { setlistItemId, reactionType, anonId } = body;
 
   if (!setlistItemId || !VALID_TYPES.includes(reactionType)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+
+  if (anonId !== undefined && (typeof anonId !== "string" || anonId.length > ANON_ID_MAX_LEN)) {
+    return NextResponse.json({ error: "invalid anonId" }, { status: 400 });
+  }
+  // Empty string from a client whose localStorage is disabled / errored —
+  // treat as missing so the partial unique skips this row.
+  const dedupAnonId =
+    typeof anonId === "string" && anonId.length > 0 ? anonId : null;
 
   let siId: bigint;
   try {
@@ -69,12 +79,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const reaction = await prisma.setlistItemReaction.create({
-    data: {
-      setlistItemId: siId,
-      reactionType,
-    },
-  });
+  // Create-then-catch-P2002 idempotency. The partial unique
+  // setlist_item_reaction_anon_unique enforces one row per
+  // (setlistItemId, reactionType, anonId) when anonId is set; on conflict
+  // we re-select the existing row and return its id so the client's UI
+  // state stays consistent. Same pattern as
+  // src/app/api/impressions/translate/route.ts:121-156.
+  let reaction;
+  try {
+    reaction = await prisma.setlistItemReaction.create({
+      data: {
+        setlistItemId: siId,
+        reactionType,
+        anonId: dedupAnonId,
+      },
+    });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002" &&
+      dedupAnonId
+    ) {
+      reaction = await prisma.setlistItemReaction.findFirst({
+        where: { setlistItemId: siId, reactionType, anonId: dedupAnonId },
+      });
+      if (!reaction) throw e; // partial unique guarantees a row — fail loud
+    } else {
+      throw e;
+    }
+  }
 
   const counts = await getReactionCounts(siId);
   return NextResponse.json({
