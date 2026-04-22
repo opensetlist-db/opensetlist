@@ -22,13 +22,15 @@ export default function TranslationDebugPage() {
   const [result, setResult] = useState<DebugResponse | null>(null);
 
   async function runTranslation() {
+    // Clear prior output first so validation failures don't leave a stale
+    // result on-screen — the debug tool is easy to misread otherwise.
+    setResult(null);
     if (!eventId.trim() || !/^\d+$/.test(eventId.trim())) {
       setError("이벤트 ID는 숫자여야 합니다.");
       return;
     }
     setLoading(true);
     setError("");
-    setResult(null);
     try {
       const res = await fetch("/api/admin/translation-debug", {
         method: "POST",
