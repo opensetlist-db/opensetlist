@@ -17,6 +17,25 @@ vi.mock("@/lib/translator", () => ({
   getTranslator: () => ({ translate: translateMock }),
 }));
 
+// Mock only `getGlossaryForEvent` so the real `applyGlossary` /
+// `restoreGlossary` pure functions still exercise the substitution code path.
+// Default in beforeEach is `[]` (empty pairs) → applyGlossary/restoreGlossary
+// are no-ops, preserving the pre-glossary behavior of the other tests.
+//
+// `vi.hoisted` is required because `vi.mock` factories run before top-level
+// declarations — declaring `getGlossaryForEventMock` outside `vi.hoisted`
+// would trip a "Cannot access ... before initialization" error.
+const { getGlossaryForEventMock } = vi.hoisted(() => ({
+  getGlossaryForEventMock: vi.fn(),
+}));
+vi.mock("@/lib/glossary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/glossary")>();
+  return {
+    ...actual,
+    getGlossaryForEvent: getGlossaryForEventMock,
+  };
+});
+
 // Minimal stand-in for Prisma's runtime PrismaClientKnownRequestError so the
 // route's `instanceof Prisma.PrismaClientKnownRequestError` check fires for
 // our test-injected error. Class is defined inside the factory because
@@ -56,6 +75,7 @@ describe("POST /api/impressions/translate", () => {
       id: "imp-1",
       content: "今日のライブ最高でした",
       locale: "ja",
+      eventId: BigInt(100),
     });
     (
       prisma.impressionTranslation.findUnique as ReturnType<typeof vi.fn>
@@ -64,6 +84,10 @@ describe("POST /api/impressions/translate", () => {
       prisma.impressionTranslation.create as ReturnType<typeof vi.fn>
     ).mockResolvedValue({});
     translateMock.mockResolvedValue("오늘 라이브 최고였어요");
+    // Default to empty glossary — real applyGlossary/restoreGlossary become
+    // no-ops, so the rest of the route exercises its pre-glossary behavior.
+    // Tests that need substitution override this with mockResolvedValueOnce.
+    getGlossaryForEventMock.mockResolvedValue([]);
   });
 
   it("rejects missing impressionId", async () => {
@@ -109,7 +133,7 @@ describe("POST /api/impressions/translate", () => {
         isHidden: false,
         supersededAt: null,
       },
-      select: { id: true, content: true, locale: true },
+      select: { id: true, content: true, locale: true, eventId: true },
     });
     expect(translateMock).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.findUnique).not.toHaveBeenCalled();
@@ -185,6 +209,71 @@ describe("POST /api/impressions/translate", () => {
     );
     expect(res.status).toBe(502);
     expect(prisma.impressionTranslation.create).not.toHaveBeenCalled();
+  });
+
+  it("substitutes glossary terms before translation and restores after", async () => {
+    // Glossary returns one pair; the route should swap "ライブ" → placeholder
+    // before sending to the translator, then restore placeholder → "라이브"
+    // before caching/responding. Placeholder format is opaque (nonce-bearing)
+    // so we capture it from the translator call rather than hardcoding.
+    getGlossaryForEventMock.mockResolvedValueOnce([
+      { source: "ライブ", target: "라이브" },
+    ]);
+    translateMock.mockImplementationOnce(async (processed: string) => {
+      // Echo back a translation that preserves the placeholder verbatim.
+      return processed.replace(/今日の(.+)最高でした/, "오늘 $1 최고였어요");
+    });
+
+    const res = await POST(
+      makeRequest({
+        impressionId: "imp-1",
+        targetLocale: "ko",
+      }) as unknown as Parameters<typeof POST>[0],
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Restored — placeholder swapped back to the target-language value.
+    expect(body.translatedText).toBe("오늘 라이브 최고였어요");
+
+    // Verify glossary was actually called with the right context.
+    expect(getGlossaryForEventMock).toHaveBeenCalledWith(
+      BigInt(100),
+      "ja",
+      "ko",
+    );
+    // Translator received the placeholder-substituted text, NOT the raw content.
+    const [translatorInput] = translateMock.mock.calls[0];
+    expect(translatorInput).toMatch(/^今日の__GLOSS_[a-z0-9]+_\d+__最高でした$/);
+    expect(translatorInput).not.toContain("ライブ");
+    // Cache stores the post-restoration text — never the placeholder form.
+    expect(prisma.impressionTranslation.create).toHaveBeenCalledWith({
+      data: {
+        impressionId: "imp-1",
+        sourceLocale: "ja",
+        targetLocale: "ko",
+        translatedText: "오늘 라이브 최고였어요",
+      },
+    });
+  });
+
+  it("fails open when glossary lookup throws — translates raw content instead of 502", async () => {
+    getGlossaryForEventMock.mockRejectedValueOnce(new Error("db down"));
+
+    const res = await POST(
+      makeRequest({
+        impressionId: "imp-1",
+        targetLocale: "ko",
+      }) as unknown as Parameters<typeof POST>[0],
+    );
+    // Glossary failure is degraded, not fatal — user still gets a translation.
+    expect(res.status).toBe(200);
+    // Translator was called with the raw (non-substituted) content.
+    expect(translateMock).toHaveBeenCalledWith(
+      "今日のライブ最高でした",
+      "ja",
+      "ko",
+      expect.any(AbortSignal),
+    );
   });
 
   it("handles P2002 race by returning the winner's cached row", async () => {
