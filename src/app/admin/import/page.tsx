@@ -6,14 +6,14 @@ const IMPORT_TYPES = [
   {
     value: "artists",
     label: "1. 아티스트 (Artists)",
-    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName"],
-    note: "ja/ko/en_name 최소 1개 필수",
+    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio"],
+    note: "ja/ko/en_name 최소 1개 필수 · originalLanguage 기본값 ja · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 (예: ja면 ja_name → originalName)",
   },
   {
     value: "members",
     label: "2. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "startDate", "endDate", "note"],
-    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalStageName"],
+    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사",
   },
   {
     value: "albums",
@@ -30,8 +30,8 @@ const IMPORT_TYPES = [
   {
     value: "events",
     label: "5. 이벤트 (Events)",
-    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_type", "event_slug*", "event_type", "date", "startTime*", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "artist_slug", "event_performer_slugs", "event_guest_slugs"],
-    note: "ja/ko/en_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트",
+    columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_type", "event_slug*", "event_type", "date", "startTime*", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "artist_slug", "event_performer_slugs", "event_guest_slugs", "originalLanguage", "originalName", "originalShortName", "originalCity", "originalVenue", "series_originalLanguage", "series_originalName", "series_originalShortName", "series_originalDescription"],
+    note: "ja/ko/en_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · 시리즈는 series_* 접두사",
   },
   {
     value: "setlistitems",
