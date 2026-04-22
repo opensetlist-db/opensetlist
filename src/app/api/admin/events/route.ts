@@ -90,10 +90,7 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slug = resolveAdminSlug(
-    body.slug,
-    translations[0].name || `event-${Date.now()}`
-  );
+  const slug = resolveAdminSlug(body.slug, translations[0].name, "event");
 
   try {
     const event = await prisma.$transaction(async (tx) => {

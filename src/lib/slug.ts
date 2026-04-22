@@ -13,13 +13,23 @@ export function generateSlug(input: string): string {
     .slice(0, 100);
 }
 
-// Trim + normalize an admin-supplied slug; fall back to deriving from a source
-// string if the input was missing, blank, or normalized to "".
-export function resolveAdminSlug(rawSlug: unknown, fallbackSource: string): string {
+// Trim + normalize an admin-supplied slug, falling back to the source string and
+// then to `${modelPrefix}-{timestamp}` when both normalize to "" (e.g. an all-
+// non-ASCII translation name like "上昇気流"). Always returns a non-empty value so
+// callers can rely on never persisting an empty slug.
+export function resolveAdminSlug(
+  rawSlug: unknown,
+  fallbackSource: string,
+  modelPrefix: string
+): string {
   const trimmed = typeof rawSlug === "string" ? rawSlug.trim() : "";
-  const fallback = generateSlug(fallbackSource);
-  if (!trimmed) return fallback;
-  return generateSlug(trimmed) || fallback;
+  if (trimmed) {
+    const normalized = generateSlug(trimmed);
+    if (normalized) return normalized;
+  }
+  const fromSource = generateSlug(fallbackSource);
+  if (fromSource) return fromSource;
+  return `${modelPrefix}-${Date.now()}`;
 }
 
 type SlugModel = "artist" | "song" | "event" | "eventSeries" | "album";

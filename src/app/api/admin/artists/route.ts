@@ -78,10 +78,7 @@ export async function POST(request: NextRequest) {
   const stageIdentities = parseStageIdentities(body.stageIdentities);
   if (!stageIdentities.ok) return badRequest(stageIdentities.message);
 
-  const slug = resolveAdminSlug(
-    body.slug,
-    translations.value[0]?.name || `artist-${Date.now()}`
-  );
+  const slug = resolveAdminSlug(body.slug, translations.value[0]?.name ?? "", "artist");
 
   // Single nested create = one transaction; an artist-insert failure no longer leaves orphan StageIdentity/RealPerson rows.
   const artist = await prisma.artist.create({
