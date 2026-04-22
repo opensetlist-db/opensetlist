@@ -7,6 +7,7 @@ import {
   enumValue,
   nullableEnumValue,
   nullableString,
+  nullableStringArray,
   parseJsonBody,
 } from "@/lib/admin-input";
 import {
@@ -69,21 +70,17 @@ export async function GET(_request: NextRequest, { params }: Props) {
   return NextResponse.json(serializeBigInt(event));
 }
 
+// PUT-only wrapper: undefined → "don't replace this side". Everything else
+// flows through nullableStringArray so the trim + reject-empty rules (and their
+// error messages) stay in lockstep with the POST path.
 function validateOptionalIdArray(
   value: unknown,
   field: string
 ): { ok: true; value: string[] | undefined } | { ok: false; response: NextResponse } {
   if (value === undefined) return { ok: true, value: undefined };
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: `${field} must be an array of strings` },
-        { status: 400 }
-      ),
-    };
-  }
-  return { ok: true, value: value as string[] };
+  const result = nullableStringArray(value, field);
+  if (!result.ok) return { ok: false, response: badRequest(result.message) };
+  return { ok: true, value: result.value };
 }
 
 export async function PUT(request: NextRequest, { params }: Props) {
