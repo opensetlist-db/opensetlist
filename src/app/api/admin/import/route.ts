@@ -133,7 +133,9 @@ async function importArtists(rows: Record<string, string>[]) {
           slug,
           type: (row.type as "solo" | "group" | "unit") || "group",
           hasBoard: true,
-          ...originals,
+          originalName: source.name,
+          originalShortName: source.shortName,
+          originalLanguage,
           translations: { create: translations },
         },
       });
@@ -224,7 +226,13 @@ async function importMembers(rows: Record<string, string>[]) {
       } else {
         requireOriginalSource(vaSource, vaSlug, "RealPerson", vaOriginalLanguage);
         const rp = await prisma.realPerson.create({
-          data: { slug: vaSlug, ...vaOriginals, translations: { create: vaTranslations } },
+          data: {
+            slug: vaSlug,
+            originalName: vaSource.name,
+            originalStageName: vaSource.stageName,
+            originalLanguage: vaOriginalLanguage,
+            translations: { create: vaTranslations },
+          },
         });
         realPersonId = rp.id;
       }
@@ -289,7 +297,9 @@ async function importMembers(rows: Record<string, string>[]) {
           slug: charSlug,
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
-          ...siOriginals,
+          originalName: siSource.name,
+          originalShortName: siSource.shortName,
+          originalLanguage: siOriginalLanguage,
           translations: { create: translations },
           artistLinks: artistIds.length
             ? {
@@ -563,7 +573,9 @@ async function importEvents(rows: Record<string, string>[]) {
           type: normalizeSeriesType(row.series_type) ?? "concert_tour",
           artistId,
           hasBoard: true,
-          ...seriesOriginals,
+          originalName: seriesSource.name,
+          originalShortName: seriesSource.shortName,
+          originalLanguage: seriesOriginalLanguage,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
@@ -637,7 +649,11 @@ async function importEvents(rows: Record<string, string>[]) {
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           country: row.country || null,
-          ...eventOriginals,
+          originalName: eventSource.name,
+          originalShortName: eventSource.shortName,
+          originalCity: eventSource.city,
+          originalVenue: eventSource.venue,
+          originalLanguage: eventOriginalLanguage,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
