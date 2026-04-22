@@ -24,13 +24,28 @@ describe("assemblePairs", () => {
     ]);
   });
 
-  it("skips when source-locale length < MIN_LEN[sourceLocale] (2 chars)", () => {
+  it("skips when ko/ja source length < MIN_LEN (2 chars)", () => {
     const terms = termsOf(
       { ko: "츠", ja: "ツ", en: "X" }, // 1 char source — drop
-      { ko: "마이", ja: "マイ", en: "Mai" } // 2 chars — keep at MIN_LEN=2
+      { ko: "마이", ja: "マイ", en: "Mai" } // 2 chars — keep at MIN_LEN.ko=2
     );
     expect(assemblePairs(terms, "ko", "ja")).toEqual([
       { source: "마이", target: "マイ" },
+    ]);
+  });
+
+  it("skips when en source length < MIN_LEN.en (4 chars) — higher floor than ko/ja", () => {
+    // Short Latin words (Mai, Mio, Hime) collide with common English
+    // vocabulary; the per-locale guard pushes en's floor up.
+    const terms = termsOf(
+      { ko: "마이", ja: "マイ", en: "Mai" }, // en is 3 chars — drop
+      { ko: "히메", ja: "姫芽", en: "Hime" }, // en is 4 chars — keep
+      { ko: "카호", ja: "花帆", en: "Kaho" } // en is 4 chars — keep
+    );
+    // en→ko: source "Mai" (3) dropped, sources "Hime"/"Kaho" (4) kept.
+    expect(assemblePairs(terms, "en", "ko")).toEqual([
+      { source: "Hime", target: "히메" },
+      { source: "Kaho", target: "카호" },
     ]);
   });
 

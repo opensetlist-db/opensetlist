@@ -162,7 +162,12 @@ export function _resetGlossaryCacheForTests(): void {
   cache.clear();
 }
 
-const MIN_LEN: Record<GlossaryLocale, number> = { ko: 2, ja: 2, en: 2 };
+// Asymmetric per-locale guard. ko/ja at 2 captures short Hangul/CJK forms
+// (카호, 花帆, 히메) that fans actually use. en at 4 — short Latin words
+// (Mai, Hime, Mio) collide with common English vocabulary too easily; the
+// word-boundary substitution helps but pushing the floor up further
+// reduces the false-positive surface for English-source impressions.
+const MIN_LEN: Record<GlossaryLocale, number> = { ko: 2, ja: 2, en: 4 };
 
 export function assemblePairs(
   terms: ArtistTerms,
