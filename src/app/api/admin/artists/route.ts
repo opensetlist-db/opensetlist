@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
@@ -99,9 +100,10 @@ export async function POST(request: NextRequest) {
       stageLinks: stageIdentities.value.length
         ? {
             create: stageIdentities.value.map((si) => {
-              const siSlug = generateSlug(
+              // Two stage identities entered with the same name would otherwise produce identical slugs and fail the @unique constraint; va-${siSlug} inherits the suffix and stays unique too.
+              const siSlug = `${generateSlug(
                 si.translations[0]?.name || si.originalName || "identity"
-              );
+              )}-${randomUUID().slice(0, 8)}`;
               return {
                 stageIdentity: {
                   create: {

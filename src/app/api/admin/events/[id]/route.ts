@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { parseJsonBody } from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
@@ -81,7 +82,10 @@ function validateOptionalIdArray(
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
-  const body = await request.json();
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body = parsed.body as Record<string, any>;
   const { type, status, country, posterUrl } = body;
 
   const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
