@@ -2,8 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
-
-const ANON_ID_MAX_LEN = 64;
+import { ANON_ID_MAX_LEN } from "@/lib/anonId";
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");

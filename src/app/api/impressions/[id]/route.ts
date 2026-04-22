@@ -8,10 +8,9 @@ import {
   ImpressionNotFoundError,
   ImpressionStaleEditError,
 } from "@/lib/impression";
+import { ANON_ID_MAX_LEN } from "@/lib/anonId";
 
 type RouteProps = { params: Promise<{ id: string }> };
-
-const ANON_ID_MAX_LEN = 64;
 
 // `[id]` is the chain id (rootImpressionId) so that share links and
 // localStorage references survive across edits.
