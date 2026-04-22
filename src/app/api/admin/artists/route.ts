@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { generateSlug, resolveAdminSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -78,9 +78,10 @@ export async function POST(request: NextRequest) {
   const stageIdentities = parseStageIdentities(body.stageIdentities);
   if (!stageIdentities.ok) return badRequest(stageIdentities.message);
 
-  const slug =
-    (typeof body.slug === "string" && body.slug) ||
-    generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
+  const slug = resolveAdminSlug(
+    body.slug,
+    translations.value[0]?.name || `artist-${Date.now()}`
+  );
 
   // Single nested create = one transaction; an artist-insert failure no longer leaves orphan StageIdentity/RealPerson rows.
   const artist = await prisma.artist.create({

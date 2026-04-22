@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { resolveAdminSlug } from "@/lib/slug";
 import {
   badRequest,
   nullableString,
@@ -68,9 +68,10 @@ export async function POST(request: NextRequest, { params }: Props) {
     realPerson = parsed.value;
   }
 
-  const siSlug =
-    (typeof body.slug === "string" && body.slug) ||
-    generateSlug(translations.value[0]?.name || name.value || "identity");
+  const siSlug = resolveAdminSlug(
+    body.slug,
+    translations.value[0]?.name || name.value || "identity"
+  );
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
       slug: siSlug,

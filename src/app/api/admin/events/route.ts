@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { resolveAdminSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -90,9 +90,10 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slug =
-    (typeof body.slug === "string" && body.slug) ||
-    generateSlug(translations[0].name || `event-${Date.now()}`);
+  const slug = resolveAdminSlug(
+    body.slug,
+    translations[0].name || `event-${Date.now()}`
+  );
 
   try {
     const event = await prisma.$transaction(async (tx) => {
