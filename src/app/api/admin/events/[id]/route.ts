@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import {
+  badRequest,
+  enumValue,
+  nullableEnumValue,
+  nullableString,
+  parseJsonBody,
+} from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
@@ -81,8 +89,21 @@ function validateOptionalIdArray(
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
-  const body = await request.json();
-  const { type, status, country, posterUrl } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+
+  const typeCheck = enumValue(body.type, "type", Object.values(EventType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
+
+  const statusCheck = nullableEnumValue(body.status, "status", Object.values(EventStatus));
+  if (!statusCheck.ok) return badRequest(statusCheck.message);
+
+  const country = nullableString(body.country, "country");
+  if (!country.ok) return badRequest(country.message);
+
+  const posterUrl = nullableString(body.posterUrl, "posterUrl");
+  if (!posterUrl.ok) return badRequest(posterUrl.message);
 
   const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
   if (!startTimeCheck.ok) return startTimeCheck.response;
@@ -126,16 +147,16 @@ export async function PUT(request: NextRequest, { params }: Props) {
       const updated = await tx.event.update({
         where: { id: eventId },
         data: {
-          type,
+          type: typeCheck.value,
           // Only overwrite status when the payload explicitly carries one —
           // otherwise existing admin overrides (cancelled/ongoing/completed)
           // would be silently reset to "scheduled" on any unrelated edit.
-          ...(status !== undefined ? { status } : {}),
+          ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
           eventSeriesId,
           date,
           startTime,
-          country: country || null,
-          posterUrl: posterUrl || null,
+          country: country.value,
+          posterUrl: posterUrl.value,
           ...originals,
           translations: { create: translations },
         },

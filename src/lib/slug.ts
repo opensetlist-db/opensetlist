@@ -13,6 +13,15 @@ export function generateSlug(input: string): string {
     .slice(0, 100);
 }
 
+// Trim + normalize an admin-supplied slug; fall back to deriving from a source
+// string if the input was missing, blank, or normalized to "".
+export function resolveAdminSlug(rawSlug: unknown, fallbackSource: string): string {
+  const trimmed = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  const fallback = generateSlug(fallbackSource);
+  if (!trimmed) return fallback;
+  return generateSlug(trimmed) || fallback;
+}
+
 type SlugModel = "artist" | "song" | "event" | "eventSeries" | "album";
 
 /**

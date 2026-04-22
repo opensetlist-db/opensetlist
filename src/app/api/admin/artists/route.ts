@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { generateSlug, resolveAdminSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -77,9 +78,10 @@ export async function POST(request: NextRequest) {
   const stageIdentities = parseStageIdentities(body.stageIdentities);
   if (!stageIdentities.ok) return badRequest(stageIdentities.message);
 
-  const slug =
-    (typeof body.slug === "string" && body.slug) ||
-    generateSlug(translations.value[0]?.name || `artist-${Date.now()}`);
+  const slug = resolveAdminSlug(
+    body.slug,
+    translations.value[0]?.name || `artist-${Date.now()}`
+  );
 
   // Single nested create = one transaction; an artist-insert failure no longer leaves orphan StageIdentity/RealPerson rows.
   const artist = await prisma.artist.create({
@@ -99,9 +101,11 @@ export async function POST(request: NextRequest) {
       stageLinks: stageIdentities.value.length
         ? {
             create: stageIdentities.value.map((si) => {
-              const siSlug = generateSlug(
-                si.translations[0]?.name || si.originalName || "identity"
-              );
+              // Two stage identities entered with the same name would otherwise produce identical slugs and fail the @unique constraint; va-${siSlug} inherits the suffix and stays unique too. The "identity" fallback covers names that normalize to "" (e.g. all-symbol input).
+              const siBaseSlug =
+                generateSlug(si.translations[0]?.name || si.originalName || "identity") ||
+                "identity";
+              const siSlug = `${siBaseSlug}-${randomUUID().slice(0, 8)}`;
               return {
                 stageIdentity: {
                   create: {

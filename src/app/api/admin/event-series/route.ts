@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { EventSeriesType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { resolveAdminSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -61,9 +61,10 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  const slug =
-    (typeof body.slug === "string" && body.slug) ||
-    generateSlug(translations.value[0]?.name || `series-${Date.now()}`);
+  const slug = resolveAdminSlug(
+    body.slug,
+    translations.value[0]?.name || `series-${Date.now()}`
+  );
 
   const series = await prisma.eventSeries.create({
     data: {
