@@ -522,6 +522,12 @@ model SetlistItemReaction {
   setlistItemId BigInt
   reactionType  ReactionType
   createdAt     DateTime @default(now())
+  // localStorage opensetlist_anon_id — nullable for legacy rows + clients
+  // with localStorage disabled. Per-(setlistItemId, reactionType, anonId)
+  // partial unique lives in prisma/post-deploy.sql since Prisma can't
+  // declare partial uniques in schema. VarChar(64) mirrors
+  // ANON_ID_MAX_LEN in the API routes — DB-level defense in depth.
+  anonId        String?      @db.VarChar(64)
 
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
 
@@ -548,6 +554,11 @@ model EventImpression {
   isHidden         Boolean   @default(false)
   isDeleted        Boolean   @default(false)
   deletedAt        DateTime?
+  // localStorage opensetlist_anon_id — same semantics as
+  // SetlistItemReaction.anonId. Per-(rootImpressionId, anonId) partial
+  // unique (head-only) in prisma/post-deploy.sql enforces one head row
+  // per chain per anon. VarChar(64) mirrors ANON_ID_MAX_LEN in the API.
+  anonId           String?   @db.VarChar(64)
 
   event            Event     @relation(fields: [eventId], references: [id])
   translations     ImpressionTranslation[]

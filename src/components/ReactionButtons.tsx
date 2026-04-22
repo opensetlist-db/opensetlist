@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { trackEvent } from "@/lib/analytics";
+import { getAnonId } from "@/lib/anonId";
 
 const REACTIONS = [
   { type: "waiting", emoji: "😭" },
@@ -83,7 +84,11 @@ export function ReactionButtons({
         const res = await fetch("/api/reactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ setlistItemId, reactionType }),
+          body: JSON.stringify({
+            setlistItemId,
+            reactionType,
+            anonId: getAnonId(),
+          }),
         });
         if (!res.ok) return;
         const { reactionId, counts: newCounts } = await res.json();

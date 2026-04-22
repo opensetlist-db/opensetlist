@@ -6,6 +6,7 @@ import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 import { trackEvent } from "@/lib/analytics";
+import { getAnonId } from "@/lib/anonId";
 import { ImpressionCell } from "./ImpressionCell";
 
 export interface Impression {
@@ -151,7 +152,12 @@ export function EventImpressions({
       const res = await fetch("/api/impressions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId, content: trimmed, locale }),
+        body: JSON.stringify({
+          eventId,
+          content: trimmed,
+          locale,
+          anonId: getAnonId(),
+        }),
       });
       if (!res.ok) {
         setError(t("submitError"));
@@ -191,7 +197,7 @@ export function EventImpressions({
       const res = await fetch(`/api/impressions/${saved.chainId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmed }),
+        body: JSON.stringify({ content: trimmed, anonId: getAnonId() }),
       });
       if (res.status === 429) {
         const body = (await res.json()) as { remainingSeconds?: number };

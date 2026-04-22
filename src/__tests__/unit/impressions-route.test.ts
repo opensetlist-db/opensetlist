@@ -114,7 +114,7 @@ describe("POST /api/impressions", () => {
     expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 
-  it("accepts a valid payload at exactly 200 chars", async () => {
+  it("accepts a valid payload at exactly 200 chars (no anonId — legacy compat)", async () => {
     const res = await POST(
       makeRequest({
         eventId: "1",
@@ -130,7 +130,7 @@ describe("POST /api/impressions", () => {
 
     // Pin the exact shape the route persists, so a regression that drops
     // or mutates a field fails here even if the response still echoes the
-    // client-supplied input.
+    // client-supplied input. anonId: null when the client doesn't send one.
     expect(prisma.eventImpression.create).toHaveBeenCalledTimes(1);
     const createArgs = (
       prisma.eventImpression.create as ReturnType<typeof vi.fn>
@@ -141,7 +141,72 @@ describe("POST /api/impressions", () => {
       eventId: BigInt(1),
       content: "a".repeat(200),
       locale: "ko",
+      anonId: null,
     });
     expect(createArgs.data.id).toBe(createArgs.data.rootImpressionId);
+  });
+
+  it("stores anonId on the new chain when client provides one", async () => {
+    const res = await POST(
+      makeRequest({
+        eventId: "1",
+        content: "great show",
+        locale: "ko",
+        anonId: "anon-A",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    expect(res.status).toBe(200);
+    const createArgs = (
+      prisma.eventImpression.create as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(createArgs.data.anonId).toBe("anon-A");
+  });
+
+  it("normalizes empty-string anonId to null (localStorage-disabled client)", async () => {
+    const res = await POST(
+      makeRequest({
+        eventId: "1",
+        content: "great show",
+        locale: "ko",
+        anonId: "",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    expect(res.status).toBe(200);
+    const createArgs = (
+      prisma.eventImpression.create as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(createArgs.data.anonId).toBeNull();
+  });
+
+  it("rejects bogus anonId types (non-string)", async () => {
+    const res = await POST(
+      makeRequest({
+        eventId: "1",
+        content: "valid content",
+        locale: "ko",
+        anonId: 12345,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects anonId longer than 64 chars", async () => {
+    const res = await POST(
+      makeRequest({
+        eventId: "1",
+        content: "valid content",
+        locale: "ko",
+        anonId: "a".repeat(65),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    expect(prisma.eventImpression.create).not.toHaveBeenCalled();
   });
 });
