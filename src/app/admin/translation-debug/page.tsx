@@ -74,8 +74,11 @@ export default function TranslationDebugPage() {
 
       <div className="mb-4 grid grid-cols-3 gap-3">
         <div>
-          <label className="mb-1 block text-sm font-medium">이벤트 ID</label>
+          <label htmlFor="td-event-id" className="mb-1 block text-sm font-medium">
+            이벤트 ID
+          </label>
           <input
+            id="td-event-id"
             type="text"
             inputMode="numeric"
             value={eventId}
@@ -85,8 +88,11 @@ export default function TranslationDebugPage() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">원본 로케일</label>
+          <label htmlFor="td-source-locale" className="mb-1 block text-sm font-medium">
+            원본 로케일
+          </label>
           <select
+            id="td-source-locale"
             value={sourceLocale}
             onChange={(e) => setSourceLocale(e.target.value as Locale)}
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
@@ -99,8 +105,11 @@ export default function TranslationDebugPage() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">대상 로케일</label>
+          <label htmlFor="td-target-locale" className="mb-1 block text-sm font-medium">
+            대상 로케일
+          </label>
           <select
+            id="td-target-locale"
             value={targetLocale}
             onChange={(e) => setTargetLocale(e.target.value as Locale)}
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
@@ -115,8 +124,11 @@ export default function TranslationDebugPage() {
       </div>
 
       <div className="mb-4">
-        <label className="mb-1 block text-sm font-medium">원본 텍스트</label>
+        <label htmlFor="td-source-text" className="mb-1 block text-sm font-medium">
+          원본 텍스트
+        </label>
         <textarea
+          id="td-source-text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}

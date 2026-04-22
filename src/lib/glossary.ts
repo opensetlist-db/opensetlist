@@ -162,7 +162,12 @@ export function _resetGlossaryCacheForTests(): void {
   cache.clear();
 }
 
-const MIN_LEN: Record<GlossaryLocale, number> = { ko: 2, ja: 2, en: 2 };
+// Asymmetric per-locale guard. ko/ja at 2 captures short Hangul/CJK forms
+// (카호, 花帆, 히메) that fans actually use. en at 4 — short Latin words
+// (Mai, Hime, Mio) collide with common English vocabulary too easily; the
+// word-boundary substitution helps but pushing the floor up further
+// reduces the false-positive surface for English-source impressions.
+const MIN_LEN: Record<GlossaryLocale, number> = { ko: 2, ja: 2, en: 4 };
 
 export function assemblePairs(
   terms: ArtistTerms,
@@ -242,6 +247,18 @@ export async function getGlossaryForEvent(
 // __DICT_N__ helpers so the two never collide if both are ever active.
 const PLACEHOLDER_RE = /__GLOSS_(\d+)__/g;
 
+// ASCII-only sources need word-boundary substitution to avoid corrupting
+// unrelated text — at MIN_LEN=2, "Mai" would otherwise match inside "mail",
+// "Email", etc. CJK/Hangul sources keep raw substring substitution because
+// `\b` doesn't fire cleanly on those scripts (per spec §6).
+function isAsciiSource(s: string): boolean {
+  return /^[\x20-\x7E]+$/.test(s);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function applyGlossary(
   text: string,
   pairs: GlossaryPair[]
@@ -253,9 +270,22 @@ export function applyGlossary(
   let processed = text;
   for (let i = 0; i < pairs.length; i++) {
     const { source, target } = pairs[i];
-    if (!processed.includes(source)) continue;
     const placeholder = `__GLOSS_${i}__`;
-    processed = processed.replaceAll(source, placeholder);
+    if (isAsciiSource(source)) {
+      // Safe-by-construction: `source` is operator-curated translation-row data
+      // (not user-supplied), `isAsciiSource` already restricted it to printable
+      // ASCII (no Unicode property classes that could explode), and
+      // `escapeRegExp` neutralizes regex metacharacters. The resulting pattern
+      // is `\b<literal>\b` — no quantifiers, no backreferences → no ReDoS surface.
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+      const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "g");
+      const next = processed.replace(re, placeholder);
+      if (next === processed) continue;
+      processed = next;
+    } else {
+      if (!processed.includes(source)) continue;
+      processed = processed.replaceAll(source, placeholder);
+    }
     restoreMap.set(placeholder, target);
   }
   return { processed, restoreMap };

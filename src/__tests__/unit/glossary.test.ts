@@ -24,13 +24,28 @@ describe("assemblePairs", () => {
     ]);
   });
 
-  it("skips when source-locale length < MIN_LEN[sourceLocale] (2 chars)", () => {
+  it("skips when ko/ja source length < MIN_LEN (2 chars)", () => {
     const terms = termsOf(
       { ko: "츠", ja: "ツ", en: "X" }, // 1 char source — drop
-      { ko: "마이", ja: "マイ", en: "Mai" } // 2 chars — keep at MIN_LEN=2
+      { ko: "마이", ja: "マイ", en: "Mai" } // 2 chars — keep at MIN_LEN.ko=2
     );
     expect(assemblePairs(terms, "ko", "ja")).toEqual([
       { source: "마이", target: "マイ" },
+    ]);
+  });
+
+  it("skips when en source length < MIN_LEN.en (4 chars) — higher floor than ko/ja", () => {
+    // Short Latin words (Mai, Mio, Hime) collide with common English
+    // vocabulary; the per-locale guard pushes en's floor up.
+    const terms = termsOf(
+      { ko: "마이", ja: "マイ", en: "Mai" }, // en is 3 chars — drop
+      { ko: "히메", ja: "姫芽", en: "Hime" }, // en is 4 chars — keep
+      { ko: "카호", ja: "花帆", en: "Kaho" } // en is 4 chars — keep
+    );
+    // en→ko: source "Mai" (3) dropped, sources "Hime"/"Kaho" (4) kept.
+    expect(assemblePairs(terms, "en", "ko")).toEqual([
+      { source: "Hime", target: "히메" },
+      { source: "Kaho", target: "카호" },
     ]);
   });
 
@@ -160,6 +175,54 @@ describe("applyGlossary", () => {
     const { processed, restoreMap } = applyGlossary("DOLLCHESTRA rocks", pairs);
     expect(processed).toBe("__GLOSS_0__ rocks");
     expect(restoreMap.get("__GLOSS_0__")).toBe("DOLLCHESTRA");
+  });
+
+  it("ASCII sources only match at word boundaries — protects against substring corruption", () => {
+    // At MIN_LEN=2, short Latin sources like "Mai" would otherwise corrupt
+    // "mail", "Email", etc. via raw replaceAll. Word-boundary regex prevents this.
+    const pairs: GlossaryPair[] = [{ source: "Mai", target: "舞" }];
+    const { processed, restoreMap } = applyGlossary(
+      "Send Mai an email about her mailbox",
+      pairs
+    );
+    // "Mai" (the standalone word) gets substituted; "email" + "mailbox" untouched.
+    expect(processed).toBe("Send __GLOSS_0__ an email about her mailbox");
+    expect(restoreMap.get("__GLOSS_0__")).toBe("舞");
+  });
+
+  it("ASCII source not in text (no word-boundary match) → no entry in restoreMap", () => {
+    const pairs: GlossaryPair[] = [{ source: "Mai", target: "舞" }];
+    const { processed, restoreMap } = applyGlossary("just an email here", pairs);
+    expect(processed).toBe("just an email here");
+    expect(restoreMap.size).toBe(0);
+  });
+
+  it("CJK source uses substring (word boundary doesn't apply to CJK)", () => {
+    // Per spec §6: \b doesn't fire cleanly on CJK; substring is the practical
+    // choice. Korean particles (조사) attaching to a name still hit.
+    const pairs: GlossaryPair[] = [{ source: "마이", target: "舞" }];
+    const { processed, restoreMap } = applyGlossary("마이가 무대에 올랐다", pairs);
+    expect(processed).toBe("__GLOSS_0__가 무대에 올랐다");
+    expect(restoreMap.get("__GLOSS_0__")).toBe("舞");
+  });
+
+  it("ASCII source with hyphen still matches (hyphen is a word boundary)", () => {
+    const pairs: GlossaryPair[] = [
+      { source: "Sayo-Shigure", target: "小夜時雨" },
+    ];
+    const { processed, restoreMap } = applyGlossary(
+      "Sayo-Shigure was beautiful",
+      pairs
+    );
+    expect(processed).toBe("__GLOSS_0__ was beautiful");
+    expect(restoreMap.get("__GLOSS_0__")).toBe("小夜時雨");
+  });
+
+  it("ASCII source with regex meta-characters is escaped before regex use", () => {
+    const pairs: GlossaryPair[] = [{ source: "ver.2", target: "버전2" }];
+    const { processed, restoreMap } = applyGlossary("ver.2 was the best", pairs);
+    expect(processed).toBe("__GLOSS_0__ was the best");
+    expect(restoreMap.get("__GLOSS_0__")).toBe("버전2");
   });
 });
 
