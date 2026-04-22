@@ -100,10 +100,11 @@ export async function POST(request: NextRequest) {
       stageLinks: stageIdentities.value.length
         ? {
             create: stageIdentities.value.map((si) => {
-              // Two stage identities entered with the same name would otherwise produce identical slugs and fail the @unique constraint; va-${siSlug} inherits the suffix and stays unique too.
-              const siSlug = `${generateSlug(
-                si.translations[0]?.name || si.originalName || "identity"
-              )}-${randomUUID().slice(0, 8)}`;
+              // Two stage identities entered with the same name would otherwise produce identical slugs and fail the @unique constraint; va-${siSlug} inherits the suffix and stays unique too. The "identity" fallback covers names that normalize to "" (e.g. all-symbol input).
+              const siBaseSlug =
+                generateSlug(si.translations[0]?.name || si.originalName || "identity") ||
+                "identity";
+              const siSlug = `${siBaseSlug}-${randomUUID().slice(0, 8)}`;
               return {
                 stageIdentity: {
                   create: {

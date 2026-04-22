@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug } from "@/lib/slug";
-import { parseJsonBody } from "@/lib/admin-input";
+import {
+  badRequest,
+  enumValue,
+  nullableEnumValue,
+  nullableString,
+  parseJsonBody,
+} from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
@@ -41,9 +48,19 @@ function validateIdArray(value: unknown, field: string): string[] | NextResponse
 export async function POST(request: NextRequest) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const body = parsed.body as Record<string, any>;
-  const { type, status, country, posterUrl } = body;
+  const body = parsed.body;
+
+  const typeCheck = enumValue(body.type, "type", Object.values(EventType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
+
+  const statusCheck = nullableEnumValue(body.status, "status", Object.values(EventStatus));
+  if (!statusCheck.ok) return badRequest(statusCheck.message);
+
+  const country = nullableString(body.country, "country");
+  if (!country.ok) return badRequest(country.message);
+
+  const posterUrl = nullableString(body.posterUrl, "posterUrl");
+  if (!posterUrl.ok) return badRequest(posterUrl.message);
 
   const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
   if (!startTimeCheck.ok) return startTimeCheck.response;
@@ -73,7 +90,9 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slug = body.slug || generateSlug(translations[0].name || `event-${Date.now()}`);
+  const slug =
+    (typeof body.slug === "string" && body.slug) ||
+    generateSlug(translations[0].name || `event-${Date.now()}`);
 
   try {
     const event = await prisma.$transaction(async (tx) => {
@@ -82,13 +101,13 @@ export async function POST(request: NextRequest) {
       const created = await tx.event.create({
         data: {
           slug,
-          type,
-          status: status ?? "scheduled",
+          type: typeCheck.value,
+          status: statusCheck.value ?? "scheduled",
           eventSeriesId,
           date,
           startTime,
-          country: country || null,
-          posterUrl: posterUrl || null,
+          country: country.value,
+          posterUrl: posterUrl.value,
           ...originals,
           translations: { create: translations },
         },
