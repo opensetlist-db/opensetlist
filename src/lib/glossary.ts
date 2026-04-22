@@ -242,6 +242,18 @@ export async function getGlossaryForEvent(
 // __DICT_N__ helpers so the two never collide if both are ever active.
 const PLACEHOLDER_RE = /__GLOSS_(\d+)__/g;
 
+// ASCII-only sources need word-boundary substitution to avoid corrupting
+// unrelated text — at MIN_LEN=2, "Mai" would otherwise match inside "mail",
+// "Email", etc. CJK/Hangul sources keep raw substring substitution because
+// `\b` doesn't fire cleanly on those scripts (per spec §6).
+function isAsciiSource(s: string): boolean {
+  return /^[\x20-\x7E]+$/.test(s);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function applyGlossary(
   text: string,
   pairs: GlossaryPair[]
@@ -253,9 +265,16 @@ export function applyGlossary(
   let processed = text;
   for (let i = 0; i < pairs.length; i++) {
     const { source, target } = pairs[i];
-    if (!processed.includes(source)) continue;
     const placeholder = `__GLOSS_${i}__`;
-    processed = processed.replaceAll(source, placeholder);
+    if (isAsciiSource(source)) {
+      const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "g");
+      const next = processed.replace(re, placeholder);
+      if (next === processed) continue;
+      processed = next;
+    } else {
+      if (!processed.includes(source)) continue;
+      processed = processed.replaceAll(source, placeholder);
+    }
     restoreMap.set(placeholder, target);
   }
   return { processed, restoreMap };
