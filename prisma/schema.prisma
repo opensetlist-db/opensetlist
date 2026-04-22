@@ -331,6 +331,7 @@ model RealPerson {
   slug              String                    @unique
   imageUrl          String?
   originalName      String
+  originalShortName String?
   originalStageName String?
   originalLanguage  String                    @default("ja")
   createdAt         DateTime                  @default(now())
@@ -345,6 +346,7 @@ model RealPersonTranslation {
   realPersonId String
   locale       String
   name         String
+  shortName    String?    // short form fans use; separate dataset from `name`
   stageName    String?    // stage name if different from real name
 
   realPerson   RealPerson @relation(fields: [realPersonId], references: [id])

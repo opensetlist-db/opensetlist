@@ -25,6 +25,7 @@ export type RealPersonTranslationInput = {
 
 export type ParsedRealPerson = {
   originalName: string;
+  originalShortName: string | null;
   originalStageName: string | null;
   originalLanguage: string;
   translations: RealPersonTranslationInput[];
@@ -102,6 +103,11 @@ export function parseRealPerson(
   const rp = raw as Record<string, unknown>;
   const name = requireString(rp.originalName, `${prefix}.originalName`);
   if (!name.ok) return name;
+  const shortName = nullableString(
+    rp.originalShortName,
+    `${prefix}.originalShortName`
+  );
+  if (!shortName.ok) return shortName;
   const stageName = nullableString(
     rp.originalStageName,
     `${prefix}.originalStageName`
@@ -118,6 +124,7 @@ export function parseRealPerson(
     ok: true,
     value: {
       originalName: name.value,
+      originalShortName: shortName.value,
       originalStageName: stageName.value,
       originalLanguage: language.value,
       translations: translations.value,

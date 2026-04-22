@@ -98,6 +98,7 @@ export async function POST(request: NextRequest, { params }: Props) {
                 create: {
                   slug: `va-${siSlug}`,
                   originalName: realPerson.originalName,
+                  originalShortName: realPerson.originalShortName,
                   originalStageName: realPerson.originalStageName,
                   originalLanguage: realPerson.originalLanguage,
                   translations: { create: realPerson.translations },

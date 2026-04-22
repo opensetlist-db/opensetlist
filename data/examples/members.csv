@@ -1,4 +1,4 @@
-character_slug,character_type,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName,color,artist_slugs,va_ja_name,va_ko_name,va_en_name,startDate,endDate,note,originalLanguage,originalName,originalShortName,va_originalLanguage,va_originalName,va_originalStageName
+character_slug,character_type,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName,color,artist_slugs,va_ja_name,va_ko_name,va_en_name,startDate,endDate,note,originalLanguage,originalName,originalShortName,va_originalLanguage,va_originalName,va_originalShortName,va_originalStageName,va_ja_shortName,va_ko_shortName,va_en_shortName
 hinoshita-kaho,character,日野下花帆,花帆,히노시타 카호,카호,Kaho Hinoshita,Kaho,#f8b500,hasunosora cerise-bouquet kaho-megu-gelato prince-epsilon kaho-solo,楡井希実,니레이 노조미,Nozomi Nirei,2023-03-29,2026-03-31,
 murano-sayaka,character,村野さやか,さやか,무라노 사야카,사야카,Sayaka Murano,Sayaka,#5383c3,hasunosora dollchestra hasuno-kyuujitsu ruri-to sayaka-solo,野中ここな,노나카 코코나,Kokona Nonaka,2023-03-29,2026-03-31,
 otomune-kozue,character,乙宗梢,梢,오토무네 코즈에,코즈에,Kozue Otomune,Kozue,#68be8d,hasunosora cerise-bouquet hasuno-kyuujitsu kozue-solo,花宮初奈,하나미야 니나,Nina Hanamiya,2023-03-29,2025-03-31,
