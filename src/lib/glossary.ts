@@ -272,6 +272,12 @@ export function applyGlossary(
     const { source, target } = pairs[i];
     const placeholder = `__GLOSS_${i}__`;
     if (isAsciiSource(source)) {
+      // Safe-by-construction: `source` is operator-curated translation-row data
+      // (not user-supplied), `isAsciiSource` already restricted it to printable
+      // ASCII (no Unicode property classes that could explode), and
+      // `escapeRegExp` neutralizes regex metacharacters. The resulting pattern
+      // is `\b<literal>\b` — no quantifiers, no backreferences → no ReDoS surface.
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const re = new RegExp(`\\b${escapeRegExp(source)}\\b`, "g");
       const next = processed.replace(re, placeholder);
       if (next === processed) continue;
