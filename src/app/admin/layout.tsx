@@ -11,6 +11,7 @@ const navItems = [
   { href: "/admin/events", label: "이벤트" },
   { href: "/admin/impressions", label: "한줄평" },
   { href: "/admin/import", label: "CSV 가져오기" },
+  { href: "/admin/translation-debug", label: "번역 디버그" },
 ];
 
 export default async function AdminLayout({
