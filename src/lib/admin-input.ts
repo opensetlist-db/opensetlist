@@ -170,10 +170,21 @@ export function nullableStringArray(
   field: string
 ): AdminFieldResult<string[]> {
   if (value === undefined || value === null) return { ok: true, value: [] };
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+  if (!Array.isArray(value)) {
     return { ok: false, message: `${field} must be an array of strings` };
   }
-  return { ok: true, value: value as string[] };
+  const trimmed: string[] = [];
+  for (const v of value) {
+    if (typeof v !== "string") {
+      return { ok: false, message: `${field} must be an array of strings` };
+    }
+    const t = v.trim();
+    if (t.length === 0) {
+      return { ok: false, message: `${field} must not contain empty strings` };
+    }
+    trimmed.push(t);
+  }
+  return { ok: true, value: trimmed };
 }
 
 export type LocalizedTranslation = {

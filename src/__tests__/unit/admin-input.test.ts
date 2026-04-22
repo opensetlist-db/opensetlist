@@ -138,6 +138,17 @@ describe("nullableStringArray", () => {
     const r = nullableStringArray(["a", 1, "c"], "ids");
     expect(r.ok).toBe(false);
   });
+
+  it("trims each element and rejects empty/whitespace-only entries", () => {
+    expect(nullableStringArray([" a ", "b"], "ids")).toEqual({
+      ok: true,
+      value: ["a", "b"],
+    });
+    for (const v of [["a", ""], ["a", "   "]]) {
+      const r = nullableStringArray(v, "ids");
+      expect(r.ok).toBe(false);
+    }
+  });
 });
 
 describe("originalLanguage", () => {

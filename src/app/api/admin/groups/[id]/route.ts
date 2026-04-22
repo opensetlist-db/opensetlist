@@ -44,21 +44,23 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  await prisma.groupTranslation.deleteMany({ where: { groupId: id } });
-
-  const group = await prisma.group.update({
-    where: { id },
-    data: {
-      type: typeCheck.value,
-      category: categoryCheck.value,
-      hasBoard: hasBoardCheck.value ?? false,
-      originalName: name.value,
-      originalShortName: shortName.value,
-      originalDescription: description.value,
-      originalLanguage: language.value,
-      translations: { create: translations.value },
-    },
-    include: { translations: true },
+  // Atomic delete-then-update: a failed update would otherwise leave the group with no translation rows.
+  const group = await prisma.$transaction(async (tx) => {
+    await tx.groupTranslation.deleteMany({ where: { groupId: id } });
+    return tx.group.update({
+      where: { id },
+      data: {
+        type: typeCheck.value,
+        category: categoryCheck.value,
+        hasBoard: hasBoardCheck.value ?? false,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalDescription: description.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
+      },
+      include: { translations: true },
+    });
   });
   return NextResponse.json(serializeBigInt(group));
 }

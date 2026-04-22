@@ -52,23 +52,25 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  await prisma.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
-
-  const series = await prisma.eventSeries.update({
-    where: { id: seriesId },
-    data: {
-      type: typeCheck.value,
-      artistId: artistIdCheck.value,
-      parentSeriesId: parentSeriesIdCheck.value,
-      organizerName: organizerName.value,
-      hasBoard: hasBoardCheck.value ?? false,
-      originalName: name.value,
-      originalShortName: shortName.value,
-      originalDescription: description.value,
-      originalLanguage: language.value,
-      translations: { create: translations.value },
-    },
-    include: { translations: true },
+  // Atomic delete-then-update: a failed update would otherwise leave the series with no translation rows.
+  const series = await prisma.$transaction(async (tx) => {
+    await tx.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
+    return tx.eventSeries.update({
+      where: { id: seriesId },
+      data: {
+        type: typeCheck.value,
+        artistId: artistIdCheck.value,
+        parentSeriesId: parentSeriesIdCheck.value,
+        organizerName: organizerName.value,
+        hasBoard: hasBoardCheck.value ?? false,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalDescription: description.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
+      },
+      include: { translations: true },
+    });
   });
   return NextResponse.json(serializeBigInt(series));
 }
