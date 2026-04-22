@@ -2,41 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
-import { parseArtistSlugs, resolveOriginalLanguage, resolveSongTranslations } from "@/lib/csv-parse";
-
-class ImportValidationError extends Error {}
+import {
+  buildOriginals,
+  ensureOriginalName,
+  ImportValidationError,
+  parseArtistSlugs,
+  resolveOriginalLanguage,
+  resolveSongTranslations,
+} from "@/lib/csv-parse";
 
 /**
  * Pick the translation whose locale matches `originalLanguage` — that row is
  * the source of truth for the parent's `original*` fields. Returns null when
- * the matching row is absent so callers can preserve existing parent values
- * instead of stomping them with NULL.
+ * the matching row is absent so callers fall through to explicit override
+ * columns (or, on update, preserve existing values rather than stomp them).
  */
 function pickOriginalSource<T extends { locale: string }>(
   translations: readonly T[],
   originalLanguage: string
 ): T | null {
   return translations.find((t) => t.locale === originalLanguage) ?? null;
-}
-
-/**
- * Throw when an import row would create a new parent with no translation row
- * matching its declared originalLanguage. Update branches can safely skip
- * touching `original*` in that case (preserving existing values), but creates
- * would persist NULL identity columns and reintroduce the locale-bleed state
- * PR A exists to prevent.
- */
-function requireOriginalSource(
-  source: unknown,
-  slug: string,
-  entity: string,
-  originalLanguage: string
-): asserts source {
-  if (!source) {
-    throw new ImportValidationError(
-      `${entity} "${slug}" declares originalLanguage=${originalLanguage} but has no ${originalLanguage}_* translation columns — cannot create with NULL original* fields. Provide the ${originalLanguage} translation or change originalLanguage to a locale present in the row.`
-    );
-  }
 }
 
 function parseCSV(text: string): Record<string, string>[] {
@@ -99,13 +84,11 @@ async function importArtists(rows: Record<string, string>[]) {
 
     const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const source = pickOriginalSource(translations, originalLanguage);
-    // When the originalLanguage row is absent, leave both originalLanguage and
-    // the original* fields untouched — writing originalLanguage alone would
-    // create a parent whose declared source language doesn't match its
-    // (still-stale) original* values, breaking strict-locale fallback.
-    const originals = source
-      ? { originalName: source.name, originalShortName: source.shortName, originalLanguage }
-      : {};
+    const originals = buildOriginals(row, source, originalLanguage, [
+      { override: "originalName", sourceKey: "name", out: "originalName" },
+      { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
+      { override: "originalBio", sourceKey: null, out: "originalBio" },
+    ]);
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
@@ -127,15 +110,14 @@ async function importArtists(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
-      requireOriginalSource(source, slug, "Artist", originalLanguage);
+      const originalName = ensureOriginalName(originals, slug, "Artist", originalLanguage);
       const artist = await prisma.artist.create({
         data: {
           slug,
           type: (row.type as "solo" | "group" | "unit") || "group",
           hasBoard: true,
-          originalName: source.name,
-          originalShortName: source.shortName,
-          originalLanguage,
+          ...originals,
+          originalName,
           translations: { create: translations },
         },
       });
@@ -174,13 +156,10 @@ async function importMembers(rows: Record<string, string>[]) {
 
     const siOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const siSource = pickOriginalSource(translations, siOriginalLanguage);
-    const siOriginals = siSource
-      ? {
-          originalName: siSource.name,
-          originalShortName: siSource.shortName,
-          originalLanguage: siOriginalLanguage,
-        }
-      : {};
+    const siOriginals = buildOriginals(row, siSource, siOriginalLanguage, [
+      { override: "originalName", sourceKey: "name", out: "originalName" },
+      { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
+    ]);
 
     // Look up artists by slug
     const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
@@ -201,13 +180,10 @@ async function importMembers(rows: Record<string, string>[]) {
 
       const vaOriginalLanguage = resolveOriginalLanguage(row.va_originalLanguage || row.originalLanguage);
       const vaSource = pickOriginalSource(vaTranslations, vaOriginalLanguage);
-      const vaOriginals = vaSource
-        ? {
-            originalName: vaSource.name,
-            originalStageName: vaSource.stageName,
-            originalLanguage: vaOriginalLanguage,
-          }
-        : {};
+      const vaOriginals = buildOriginals(row, vaSource, vaOriginalLanguage, [
+        { override: "va_originalName", sourceKey: "name", out: "originalName" },
+        { override: "va_originalStageName", sourceKey: "stageName", out: "originalStageName" },
+      ]);
 
       const existingRp = await prisma.realPerson.findUnique({ where: { slug: vaSlug } });
       if (existingRp) {
@@ -224,13 +200,12 @@ async function importMembers(rows: Record<string, string>[]) {
         }
         realPersonId = existingRp.id;
       } else {
-        requireOriginalSource(vaSource, vaSlug, "RealPerson", vaOriginalLanguage);
+        const originalName = ensureOriginalName(vaOriginals, vaSlug, "RealPerson", vaOriginalLanguage);
         const rp = await prisma.realPerson.create({
           data: {
             slug: vaSlug,
-            originalName: vaSource.name,
-            originalStageName: vaSource.stageName,
-            originalLanguage: vaOriginalLanguage,
+            ...vaOriginals,
+            originalName,
             translations: { create: vaTranslations },
           },
         });
@@ -291,15 +266,14 @@ async function importMembers(rows: Record<string, string>[]) {
       siId = existingSi.id;
       results.push(`UPDATED: ${charSlug} → ${siId}`);
     } else {
-      requireOriginalSource(siSource, charSlug, "StageIdentity", siOriginalLanguage);
+      const originalName = ensureOriginalName(siOriginals, charSlug, "StageIdentity", siOriginalLanguage);
       const si = await prisma.stageIdentity.create({
         data: {
           slug: charSlug,
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
-          originalName: siSource.name,
-          originalShortName: siSource.shortName,
-          originalLanguage: siOriginalLanguage,
+          ...siOriginals,
+          originalName,
           translations: { create: translations },
           artistLinks: artistIds.length
             ? {
@@ -538,13 +512,11 @@ async function importEvents(rows: Record<string, string>[]) {
 
     const seriesOriginalLanguage = resolveOriginalLanguage(row.series_originalLanguage || row.originalLanguage);
     const seriesSource = pickOriginalSource(translations, seriesOriginalLanguage);
-    const seriesOriginals = seriesSource
-      ? {
-          originalName: seriesSource.name,
-          originalShortName: seriesSource.shortName,
-          originalLanguage: seriesOriginalLanguage,
-        }
-      : {};
+    const seriesOriginals = buildOriginals(row, seriesSource, seriesOriginalLanguage, [
+      { override: "series_originalName", sourceKey: "name", out: "originalName" },
+      { override: "series_originalShortName", sourceKey: "shortName", out: "originalShortName" },
+      { override: "series_originalDescription", sourceKey: null, out: "originalDescription" },
+    ]);
 
     const existing = await prisma.eventSeries.findUnique({ where: { slug } });
 
@@ -566,16 +538,15 @@ async function importEvents(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED Series: ${slug} → ${existing.id}`);
     } else {
-      requireOriginalSource(seriesSource, slug, "EventSeries", seriesOriginalLanguage);
+      const originalName = ensureOriginalName(seriesOriginals, slug, "EventSeries", seriesOriginalLanguage);
       const series = await prisma.eventSeries.create({
         data: {
           slug,
           type: normalizeSeriesType(row.series_type) ?? "concert_tour",
           artistId,
           hasBoard: true,
-          originalName: seriesSource.name,
-          originalShortName: seriesSource.shortName,
-          originalLanguage: seriesOriginalLanguage,
+          ...seriesOriginals,
+          originalName,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
@@ -599,15 +570,12 @@ async function importEvents(rows: Record<string, string>[]) {
 
     const eventOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const eventSource = pickOriginalSource(translations, eventOriginalLanguage);
-    const eventOriginals = eventSource
-      ? {
-          originalName: eventSource.name,
-          originalShortName: eventSource.shortName,
-          originalCity: eventSource.city,
-          originalVenue: eventSource.venue,
-          originalLanguage: eventOriginalLanguage,
-        }
-      : {};
+    const eventOriginals = buildOriginals(row, eventSource, eventOriginalLanguage, [
+      { override: "originalName", sourceKey: "name", out: "originalName" },
+      { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
+      { override: "originalCity", sourceKey: "city", out: "originalCity" },
+      { override: "originalVenue", sourceKey: "venue", out: "originalVenue" },
+    ]);
 
     const existing = await prisma.event.findUnique({ where: { slug } });
 
@@ -639,7 +607,7 @@ async function importEvents(rows: Record<string, string>[]) {
         results.push(`SKIPPED: ${slug} (startTime required for new events)`);
         continue;
       }
-      requireOriginalSource(eventSource, slug, "Event", eventOriginalLanguage);
+      const originalName = ensureOriginalName(eventOriginals, slug, "Event", eventOriginalLanguage);
       const event = await prisma.event.create({
         data: {
           slug,
@@ -649,11 +617,8 @@ async function importEvents(rows: Record<string, string>[]) {
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           country: row.country || null,
-          originalName: eventSource.name,
-          originalShortName: eventSource.shortName,
-          originalCity: eventSource.city,
-          originalVenue: eventSource.venue,
-          originalLanguage: eventOriginalLanguage,
+          ...eventOriginals,
+          originalName,
           translations: translations.length ? { create: translations } : undefined,
         },
       });
