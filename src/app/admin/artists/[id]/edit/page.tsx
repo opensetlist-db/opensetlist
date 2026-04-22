@@ -61,6 +61,10 @@ export default async function EditArtistPage({ params }: Props) {
             ? Number(data.parentArtistId)
             : null,
           hasBoard: data.hasBoard,
+          originalName: data.originalName ?? "",
+          originalShortName: data.originalShortName ?? "",
+          originalBio: data.originalBio ?? "",
+          originalLanguage: data.originalLanguage ?? "ja",
           translations: data.translations.map((t) => ({
             locale: t.locale,
             name: t.name,

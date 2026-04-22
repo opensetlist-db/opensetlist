@@ -24,9 +24,14 @@ export default async function EditGroupPage({ params }: Props) {
           type: data.type,
           category: data.category,
           hasBoard: data.hasBoard,
+          originalName: data.originalName ?? "",
+          originalShortName: data.originalShortName ?? "",
+          originalDescription: data.originalDescription ?? "",
+          originalLanguage: data.originalLanguage ?? "ja",
           translations: data.translations.map((t) => ({
             locale: t.locale,
             name: t.name,
+            shortName: t.shortName ?? "",
             description: t.description ?? "",
           })),
         }}

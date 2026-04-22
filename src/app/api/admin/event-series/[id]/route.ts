@@ -1,37 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EventSeriesType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import {
+  badRequest,
+  enumValue,
+  nullableBigIntId,
+  nullableBoolean,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
+  parseLocalizedTranslations,
+  requireString,
+} from "@/lib/admin-input";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const seriesId = BigInt(id);
-  const body = await request.json();
-  const { type, artistId, parentSeriesId, organizerName, hasBoard, translations } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const typeCheck = enumValue(body.type, "type", Object.values(EventSeriesType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
 
-  await prisma.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
+  const artistIdCheck = nullableBigIntId(body.artistId, "artistId");
+  if (!artistIdCheck.ok) return badRequest(artistIdCheck.message);
 
-  const series = await prisma.eventSeries.update({
-    where: { id: seriesId },
-    data: {
-      type,
-      artistId: artistId ? BigInt(artistId) : null,
-      parentSeriesId: parentSeriesId ? BigInt(parentSeriesId) : null,
-      organizerName: organizerName || null,
-      hasBoard: hasBoard ?? false,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; shortName?: string | null; description?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            shortName: t.shortName || null,
-            description: t.description || null,
-          })
-        ),
+  const parentSeriesIdCheck = nullableBigIntId(body.parentSeriesId, "parentSeriesId");
+  if (!parentSeriesIdCheck.ok) return badRequest(parentSeriesIdCheck.message);
+
+  const organizerName = nullableString(body.organizerName, "organizerName");
+  if (!organizerName.ok) return badRequest(organizerName.message);
+
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
+
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
+
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
+
+  const description = nullableString(body.originalDescription, "originalDescription");
+  if (!description.ok) return badRequest(description.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseLocalizedTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
+  // Atomic delete-then-update: a failed update would otherwise leave the series with no translation rows.
+  const series = await prisma.$transaction(async (tx) => {
+    await tx.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
+    return tx.eventSeries.update({
+      where: { id: seriesId },
+      data: {
+        type: typeCheck.value,
+        artistId: artistIdCheck.value,
+        parentSeriesId: parentSeriesIdCheck.value,
+        organizerName: organizerName.value,
+        hasBoard: hasBoardCheck.value ?? false,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalDescription: description.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
       },
-    },
-    include: { translations: true },
+      include: { translations: true },
+    });
   });
   return NextResponse.json(serializeBigInt(series));
 }

@@ -13,6 +13,25 @@ export function generateSlug(input: string): string {
     .slice(0, 100);
 }
 
+// Trim + normalize an admin-supplied slug, falling back to the source string and
+// then to `${modelPrefix}-{timestamp}` when both normalize to "" (e.g. an all-
+// non-ASCII translation name like "上昇気流"). Always returns a non-empty value so
+// callers can rely on never persisting an empty slug.
+export function resolveAdminSlug(
+  rawSlug: unknown,
+  fallbackSource: string,
+  modelPrefix: string
+): string {
+  const trimmed = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  if (trimmed) {
+    const normalized = generateSlug(trimmed);
+    if (normalized) return normalized;
+  }
+  const fromSource = generateSlug(fallbackSource);
+  if (fromSource) return fromSource;
+  return `${modelPrefix}-${Date.now()}`;
+}
+
 type SlugModel = "artist" | "song" | "event" | "eventSeries" | "album";
 
 /**

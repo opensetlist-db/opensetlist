@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
+import {
+  badRequest,
+  nullableString as parseNullableString,
+  originalLanguage as parseOriginalLanguage,
+  requireString,
+} from "@/lib/admin-input";
 
 export function validatePerformerGuestIds(
   performerIds: string[] | undefined,
@@ -207,4 +213,44 @@ export function validateEventTranslations(
     });
   }
   return { ok: true, value: out };
+}
+
+export type EventOriginalFields = {
+  originalName: string;
+  originalShortName: string | null;
+  originalCity: string | null;
+  originalVenue: string | null;
+  originalLanguage: string;
+};
+
+export function validateEventOriginals(
+  body: Record<string, unknown>
+):
+  | { ok: true; value: EventOriginalFields }
+  | { ok: false; response: NextResponse } {
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return { ok: false, response: badRequest(name.message) };
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return { ok: false, response: badRequest(language.message) };
+
+  const shortName = parseNullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return { ok: false, response: badRequest(shortName.message) };
+
+  const city = parseNullableString(body.originalCity, "originalCity");
+  if (!city.ok) return { ok: false, response: badRequest(city.message) };
+
+  const venue = parseNullableString(body.originalVenue, "originalVenue");
+  if (!venue.ok) return { ok: false, response: badRequest(venue.message) };
+
+  return {
+    ok: true,
+    value: {
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalCity: city.value,
+      originalVenue: venue.value,
+      originalLanguage: language.value,
+    },
+  };
 }

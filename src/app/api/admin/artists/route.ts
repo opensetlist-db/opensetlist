@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
+import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { generateSlug, resolveAdminSlug } from "@/lib/slug";
+import {
+  badRequest,
+  enumValue,
+  nullableBigIntId,
+  nullableBoolean,
+  nullableString,
+  nullableStringArray,
+  originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
+  requireString,
+} from "@/lib/admin-input";
+import {
+  parseArtistTranslations,
+  parseStageIdentities,
+} from "./_validate";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -28,91 +45,93 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const {
-    type,
-    parentArtistId,
-    hasBoard,
-    translations,
-    groupIds,
-    stageIdentities,
-  } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const typeCheck = enumValue(body.type, "type", Object.values(ArtistType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
 
-  const slug = body.slug || generateSlug(translations[0]?.name || `artist-${Date.now()}`);
+  const parentArtistIdCheck = nullableBigIntId(body.parentArtistId, "parentArtistId");
+  if (!parentArtistIdCheck.ok) return badRequest(parentArtistIdCheck.message);
 
+  const groupIdsCheck = nullableStringArray(body.groupIds, "groupIds");
+  if (!groupIdsCheck.ok) return badRequest(groupIdsCheck.message);
+
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
+
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
+
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
+
+  const bio = nullableString(body.originalBio, "originalBio");
+  if (!bio.ok) return badRequest(bio.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseArtistTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
+  const stageIdentities = parseStageIdentities(body.stageIdentities);
+  if (!stageIdentities.ok) return badRequest(stageIdentities.message);
+
+  const slug = resolveAdminSlug(body.slug, translations.value[0]?.name ?? "", "artist");
+
+  // Single nested create = one transaction; an artist-insert failure no longer leaves orphan StageIdentity/RealPerson rows.
   const artist = await prisma.artist.create({
     data: {
       slug,
-      type,
-      parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
-      hasBoard: hasBoard ?? true,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; bio?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            bio: t.bio || null,
-          })
-        ),
-      },
-      groupLinks: groupIds?.length
-        ? { create: groupIds.map((gid: string) => ({ groupId: gid })) }
+      type: typeCheck.value,
+      parentArtistId: parentArtistIdCheck.value,
+      hasBoard: hasBoardCheck.value ?? true,
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalBio: bio.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
+      groupLinks: groupIdsCheck.value.length
+        ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
         : undefined,
-      stageLinks: stageIdentities?.length
+      stageLinks: stageIdentities.value.length
         ? {
-            create: await Promise.all(
-              stageIdentities.map(
-                async (si: {
-                  type: string;
-                  color?: string;
-                  translations: { locale: string; name: string }[];
-                  realPerson?: {
-                    translations: {
-                      locale: string;
-                      name: string;
-                      stageName?: string;
-                    }[];
-                  };
-                }) => {
-                  // Create StageIdentity first
-                  const siSlug = generateSlug(si.translations[0]?.name || "identity");
-                  const stageIdentity = await prisma.stageIdentity.create({
-                    data: {
-                      slug: siSlug,
-                      type: si.type as "character" | "persona",
-                      color: si.color || null,
-                      translations: {
-                        create: si.translations.map((t) => ({
-                          locale: t.locale,
-                          name: t.name,
-                        })),
-                      },
-                      voicedBy: si.realPerson
-                        ? {
-                            create: {
-                              realPerson: {
-                                create: {
-                                  slug: `va-${siSlug}`,
-                                  translations: {
-                                    create: si.realPerson.translations.map(
-                                      (t) => ({
-                                        locale: t.locale,
-                                        name: t.name,
-                                        stageName: t.stageName || null,
-                                      })
-                                    ),
-                                  },
-                                },
+            create: stageIdentities.value.map((si) => {
+              // Two stage identities entered with the same name would otherwise produce identical slugs and fail the @unique constraint; va-${siSlug} inherits the suffix and stays unique too. The "identity" fallback covers names that normalize to "" (e.g. all-symbol input).
+              const siBaseSlug =
+                generateSlug(si.translations[0]?.name || si.originalName || "identity") ||
+                "identity";
+              const siSlug = `${siBaseSlug}-${randomUUID().slice(0, 8)}`;
+              return {
+                stageIdentity: {
+                  create: {
+                    slug: siSlug,
+                    type: si.type,
+                    color: si.color,
+                    originalName: si.originalName,
+                    originalShortName: si.originalShortName,
+                    originalLanguage: si.originalLanguage,
+                    translations: { create: si.translations },
+                    voicedBy: si.realPerson
+                      ? {
+                          create: {
+                            realPerson: {
+                              create: {
+                                slug: `va-${siSlug}`,
+                                originalName: si.realPerson.originalName,
+                                originalStageName: si.realPerson.originalStageName,
+                                originalLanguage: si.realPerson.originalLanguage,
+                                translations: { create: si.realPerson.translations },
                               },
                             },
-                          }
-                        : undefined,
-                    },
-                  });
-                  return { stageIdentityId: stageIdentity.id };
-                }
-              )
-            ),
+                          },
+                        }
+                      : undefined,
+                  },
+                },
+              };
+            }),
           }
         : undefined,
     },

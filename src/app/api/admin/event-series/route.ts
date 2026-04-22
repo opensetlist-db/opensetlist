@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EventSeriesType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug } from "@/lib/slug";
+import { resolveAdminSlug } from "@/lib/slug";
+import {
+  badRequest,
+  enumValue,
+  nullableBigIntId,
+  nullableBoolean,
+  nullableString,
+  originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
+  parseLocalizedTranslations,
+  requireString,
+} from "@/lib/admin-input";
 
 export async function GET() {
   const series = await prisma.eventSeries.findMany({
@@ -16,36 +28,54 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const {
-    type,
-    artistId,
-    parentSeriesId,
-    organizerName,
-    hasBoard,
-    translations,
-  } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const typeCheck = enumValue(body.type, "type", Object.values(EventSeriesType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
 
-  const slug = body.slug || generateSlug(translations[0]?.name || `series-${Date.now()}`);
+  const artistIdCheck = nullableBigIntId(body.artistId, "artistId");
+  if (!artistIdCheck.ok) return badRequest(artistIdCheck.message);
+
+  const parentSeriesIdCheck = nullableBigIntId(body.parentSeriesId, "parentSeriesId");
+  if (!parentSeriesIdCheck.ok) return badRequest(parentSeriesIdCheck.message);
+
+  const organizerName = nullableString(body.organizerName, "organizerName");
+  if (!organizerName.ok) return badRequest(organizerName.message);
+
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
+
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
+
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
+
+  const description = nullableString(body.originalDescription, "originalDescription");
+  if (!description.ok) return badRequest(description.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseLocalizedTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
+  const slug = resolveAdminSlug(body.slug, translations.value[0]?.name ?? "", "series");
 
   const series = await prisma.eventSeries.create({
     data: {
       slug,
-      type,
-      artistId: artistId ? BigInt(artistId) : null,
-      parentSeriesId: parentSeriesId ? BigInt(parentSeriesId) : null,
-      organizerName: organizerName || null,
-      hasBoard: hasBoard ?? false,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; shortName?: string | null; description?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            shortName: t.shortName || null,
-            description: t.description || null,
-          })
-        ),
-      },
+      type: typeCheck.value,
+      artistId: artistIdCheck.value,
+      parentSeriesId: parentSeriesIdCheck.value,
+      organizerName: organizerName.value,
+      hasBoard: hasBoardCheck.value ?? false,
+      originalName: name.value,
+      originalShortName: shortName.value,
+      originalDescription: description.value,
+      originalLanguage: language.value,
+      translations: { create: translations.value },
     },
     include: { translations: true },
   });

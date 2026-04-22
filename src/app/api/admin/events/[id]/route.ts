@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import {
+  badRequest,
+  enumValue,
+  nullableEnumValue,
+  nullableString,
+  nullableStringArray,
+  parseJsonBody,
+} from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
   validateDateInput,
+  validateEventOriginals,
   validateEventSeriesId,
   validateEventTranslations,
   validatePerformerGuestIds,
@@ -60,28 +70,37 @@ export async function GET(_request: NextRequest, { params }: Props) {
   return NextResponse.json(serializeBigInt(event));
 }
 
+// PUT-only wrapper: undefined → "don't replace this side". Everything else
+// flows through nullableStringArray so the trim + reject-empty rules (and their
+// error messages) stay in lockstep with the POST path.
 function validateOptionalIdArray(
   value: unknown,
   field: string
 ): { ok: true; value: string[] | undefined } | { ok: false; response: NextResponse } {
   if (value === undefined) return { ok: true, value: undefined };
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: `${field} must be an array of strings` },
-        { status: 400 }
-      ),
-    };
-  }
-  return { ok: true, value: value as string[] };
+  const result = nullableStringArray(value, field);
+  if (!result.ok) return { ok: false, response: badRequest(result.message) };
+  return { ok: true, value: result.value };
 }
 
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
-  const body = await request.json();
-  const { type, status, country, posterUrl } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+
+  const typeCheck = enumValue(body.type, "type", Object.values(EventType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
+
+  const statusCheck = nullableEnumValue(body.status, "status", Object.values(EventStatus));
+  if (!statusCheck.ok) return badRequest(statusCheck.message);
+
+  const country = nullableString(body.country, "country");
+  if (!country.ok) return badRequest(country.message);
+
+  const posterUrl = nullableString(body.posterUrl, "posterUrl");
+  if (!posterUrl.ok) return badRequest(posterUrl.message);
 
   const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
   if (!startTimeCheck.ok) return startTimeCheck.response;
@@ -98,6 +117,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const translationsCheck = validateEventTranslations(body.translations);
   if (!translationsCheck.ok) return translationsCheck.response;
   const translations = translationsCheck.value;
+
+  const originalsCheck = validateEventOriginals(body);
+  if (!originalsCheck.ok) return originalsCheck.response;
+  const originals = originalsCheck.value;
 
   const performerCheck = validateOptionalIdArray(body.performerIds, "performerIds");
   if (!performerCheck.ok) return performerCheck.response;
@@ -121,16 +144,17 @@ export async function PUT(request: NextRequest, { params }: Props) {
       const updated = await tx.event.update({
         where: { id: eventId },
         data: {
-          type,
+          type: typeCheck.value,
           // Only overwrite status when the payload explicitly carries one —
           // otherwise existing admin overrides (cancelled/ongoing/completed)
           // would be silently reset to "scheduled" on any unrelated edit.
-          ...(status !== undefined ? { status } : {}),
+          ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
           eventSeriesId,
           date,
           startTime,
-          country: country || null,
-          posterUrl: posterUrl || null,
+          country: country.value,
+          posterUrl: posterUrl.value,
+          ...originals,
           translations: { create: translations },
         },
         include: { translations: true },
