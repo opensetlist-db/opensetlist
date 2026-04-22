@@ -3,6 +3,12 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
+import {
+  applyGlossary,
+  getGlossaryForEvent,
+  restoreGlossary,
+  type GlossaryPair,
+} from "@/lib/glossary";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -42,7 +48,7 @@ export async function POST(req: NextRequest) {
       isHidden: false,
       supersededAt: null,
     },
-    select: { id: true, content: true, locale: true },
+    select: { id: true, content: true, locale: true, eventId: true },
   });
   if (!impression) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -69,11 +75,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ translatedText: cached.translatedText });
   }
 
-  let translatedText: string;
+  // Build glossary so proper nouns survive the LLM call as opaque
+  // placeholders. Fail-open: if the glossary fetch flakes, translate the
+  // raw content instead of 502'ing — degraded translation quality is
+  // strictly better than no translation at all.
+  let pairs: GlossaryPair[] = [];
+  try {
+    pairs = await getGlossaryForEvent(
+      impression.eventId,
+      sourceLocale as "ko" | "ja" | "en",
+      targetLocale as "ko" | "ja" | "en",
+    );
+  } catch (err) {
+    // Same redaction discipline as the translator catch — log identifying
+    // metadata only, never the raw err (Prisma errors can echo query args).
+    console.warn("Glossary lookup failed, translating without glossary", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
+  }
+  const { processed, restoreMap } = applyGlossary(impression.content, pairs);
+
+  let rawTranslation: string;
   try {
     const translator = getTranslator();
-    translatedText = await translator.translate(
-      impression.content,
+    rawTranslation = await translator.translate(
+      processed,
       sourceLocale,
       targetLocale,
       AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
@@ -89,6 +115,8 @@ export async function POST(req: NextRequest) {
       { status: 502 },
     );
   }
+
+  const translatedText = restoreGlossary(rawTranslation, restoreMap);
 
   try {
     await prisma.impressionTranslation.create({

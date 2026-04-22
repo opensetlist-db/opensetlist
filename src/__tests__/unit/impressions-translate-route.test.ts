@@ -109,7 +109,7 @@ describe("POST /api/impressions/translate", () => {
         isHidden: false,
         supersededAt: null,
       },
-      select: { id: true, content: true, locale: true },
+      select: { id: true, content: true, locale: true, eventId: true },
     });
     expect(translateMock).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.findUnique).not.toHaveBeenCalled();
