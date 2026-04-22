@@ -8,6 +8,7 @@ import {
   enumValue,
   nullableEnumValue,
   nullableString,
+  nullableStringArray,
   parseJsonBody,
 } from "@/lib/admin-input";
 import {
@@ -32,17 +33,6 @@ export async function GET() {
     take: 200,
   });
   return NextResponse.json(serializeBigInt(events));
-}
-
-function validateIdArray(value: unknown, field: string): string[] | NextResponse {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    return NextResponse.json(
-      { error: `${field} must be an array of strings` },
-      { status: 400 }
-    );
-  }
-  return value as string[];
 }
 
 export async function POST(request: NextRequest) {
@@ -82,10 +72,13 @@ export async function POST(request: NextRequest) {
   if (!originalsCheck.ok) return originalsCheck.response;
   const originals = originalsCheck.value;
 
-  const performerIds = validateIdArray(body.performerIds, "performerIds");
-  if (performerIds instanceof NextResponse) return performerIds;
-  const guestIds = validateIdArray(body.guestIds, "guestIds");
-  if (guestIds instanceof NextResponse) return guestIds;
+  const performerIdsCheck = nullableStringArray(body.performerIds, "performerIds");
+  if (!performerIdsCheck.ok) return badRequest(performerIdsCheck.message);
+  const performerIds = performerIdsCheck.value;
+
+  const guestIdsCheck = nullableStringArray(body.guestIds, "guestIds");
+  if (!guestIdsCheck.ok) return badRequest(guestIdsCheck.message);
+  const guestIds = guestIdsCheck.value;
 
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
