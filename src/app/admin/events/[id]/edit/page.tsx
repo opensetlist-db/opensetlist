@@ -66,6 +66,11 @@ export default async function EditEventPage({ params }: Props) {
             country: data.country,
             posterUrl: data.posterUrl,
             startTime: new Date(data.startTime).toISOString().slice(0, 16),
+            originalName: data.originalName ?? "",
+            originalShortName: data.originalShortName ?? "",
+            originalCity: data.originalCity ?? "",
+            originalVenue: data.originalVenue ?? "",
+            originalLanguage: data.originalLanguage ?? "ja",
             translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; city?: string | null; venue?: string | null }) => ({
               locale: t.locale,
               name: t.name,

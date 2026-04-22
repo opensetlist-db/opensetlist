@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Translation = { locale: string; name: string; description: string };
+type Translation = {
+  locale: string;
+  name: string;
+  shortName: string;
+  description: string;
+};
 
 type GroupFormProps = {
   initialData?: {
@@ -11,6 +16,10 @@ type GroupFormProps = {
     type: string | null;
     category: string | null;
     hasBoard: boolean;
+    originalName: string;
+    originalShortName: string;
+    originalDescription: string;
+    originalLanguage: string;
     translations: Translation[];
   };
 };
@@ -18,6 +27,7 @@ type GroupFormProps = {
 const GROUP_TYPES = ["franchise", "label", "agency", "series"];
 const GROUP_CATEGORIES = ["anime", "kpop", "jpop", "cpop", "game"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
+const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 export default function GroupForm({ initialData }: GroupFormProps) {
   const router = useRouter();
@@ -25,10 +35,22 @@ export default function GroupForm({ initialData }: GroupFormProps) {
   const [type, setType] = useState(initialData?.type ?? "");
   const [category, setCategory] = useState(initialData?.category ?? "");
   const [hasBoard, setHasBoard] = useState(initialData?.hasBoard ?? false);
+  const [originalLanguage, setOriginalLanguage] = useState(
+    initialData?.originalLanguage ?? "ja"
+  );
+  const [originalName, setOriginalName] = useState(
+    initialData?.originalName ?? ""
+  );
+  const [originalShortName, setOriginalShortName] = useState(
+    initialData?.originalShortName ?? ""
+  );
+  const [originalDescription, setOriginalDescription] = useState(
+    initialData?.originalDescription ?? ""
+  );
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "", description: "" }]
+      : [{ locale: "ko", name: "", shortName: "", description: "" }]
   );
 
   function updateTranslation(
@@ -47,7 +69,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
     if (next) {
       setTranslations((prev) => [
         ...prev,
-        { locale: next, name: "", description: "" },
+        { locale: next, name: "", shortName: "", description: "" },
       ]);
     }
   }
@@ -60,12 +82,22 @@ export default function GroupForm({ initialData }: GroupFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!originalName.trim()) {
+      alert("원본 이름(originalName)은 필수입니다.");
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
       type: type || null,
       category: category || null,
       hasBoard,
+      originalName: originalName.trim(),
+      originalShortName: originalShortName.trim() || null,
+      originalDescription: originalDescription.trim() || null,
+      originalLanguage,
       translations: translations.filter((t) => t.name.trim()),
     };
 
@@ -133,6 +165,48 @@ export default function GroupForm({ initialData }: GroupFormProps) {
         게시판 활성화
       </label>
 
+      <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
+        <div className="mb-3 text-sm font-medium">
+          원본 (다른 언어 번역이 없을 때 표시)
+        </div>
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-zinc-600">
+            원본 언어
+          </label>
+          <select
+            value={originalLanguage}
+            onChange={(e) => setOriginalLanguage(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {ORIGINAL_LANGUAGES.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </div>
+        <input
+          placeholder="원본 이름 (필수)"
+          value={originalName}
+          onChange={(e) => setOriginalName(e.target.value)}
+          className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          required
+        />
+        <input
+          placeholder="원본 짧은 이름 (선택)"
+          value={originalShortName}
+          onChange={(e) => setOriginalShortName(e.target.value)}
+          className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+        />
+        <textarea
+          placeholder="원본 설명 (선택)"
+          value={originalDescription}
+          onChange={(e) => setOriginalDescription(e.target.value)}
+          rows={2}
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+        />
+      </div>
+
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-sm font-medium">번역</label>
@@ -178,6 +252,14 @@ export default function GroupForm({ initialData }: GroupFormProps) {
                 placeholder="이름"
                 value={tr.name}
                 onChange={(e) => updateTranslation(i, "name", e.target.value)}
+                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="짧은 이름 (선택)"
+                value={tr.shortName}
+                onChange={(e) =>
+                  updateTranslation(i, "shortName", e.target.value)
+                }
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               <textarea

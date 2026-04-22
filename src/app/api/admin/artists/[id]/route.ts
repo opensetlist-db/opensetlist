@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ArtistType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import {
+  badRequest,
+  enumValue,
+  nullableBigIntId,
+  nullableBoolean,
+  nullableString,
+  nullableStringArray,
+  originalLanguage as parseOriginalLanguage,
+  parseJsonBody,
+  requireString,
+} from "@/lib/admin-input";
+import { parseArtistTranslations } from "../_validate";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -39,35 +52,57 @@ export async function GET(_request: NextRequest, { params }: Props) {
 export async function PUT(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const artistId = BigInt(id);
-  const body = await request.json();
-  const { type, parentArtistId, hasBoard, translations, groupIds } = body;
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.body;
+  const typeCheck = enumValue(body.type, "type", Object.values(ArtistType));
+  if (!typeCheck.ok) return badRequest(typeCheck.message);
 
-  // Update translations
-  await prisma.artistTranslation.deleteMany({ where: { artistId } });
+  const parentArtistIdCheck = nullableBigIntId(body.parentArtistId, "parentArtistId");
+  if (!parentArtistIdCheck.ok) return badRequest(parentArtistIdCheck.message);
 
-  // Update group links
-  await prisma.artistGroup.deleteMany({ where: { artistId } });
+  const groupIdsCheck = nullableStringArray(body.groupIds, "groupIds");
+  if (!groupIdsCheck.ok) return badRequest(groupIdsCheck.message);
 
-  const artist = await prisma.artist.update({
-    where: { id: artistId },
-    data: {
-      type,
-      parentArtistId: parentArtistId ? BigInt(parentArtistId) : null,
-      hasBoard: hasBoard ?? true,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; name: string; bio?: string }) => ({
-            locale: t.locale,
-            name: t.name,
-            bio: t.bio || null,
-          })
-        ),
+  const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
+  if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
+
+  const name = requireString(body.originalName, "originalName");
+  if (!name.ok) return badRequest(name.message);
+
+  const shortName = nullableString(body.originalShortName, "originalShortName");
+  if (!shortName.ok) return badRequest(shortName.message);
+
+  const bio = nullableString(body.originalBio, "originalBio");
+  if (!bio.ok) return badRequest(bio.message);
+
+  const language = parseOriginalLanguage(body.originalLanguage);
+  if (!language.ok) return badRequest(language.message);
+
+  const translations = parseArtistTranslations(body.translations);
+  if (!translations.ok) return badRequest(translations.message);
+
+  // Atomic delete-then-update: a failure on the update would otherwise leave the artist with no translations/group links.
+  const artist = await prisma.$transaction(async (tx) => {
+    await tx.artistTranslation.deleteMany({ where: { artistId } });
+    await tx.artistGroup.deleteMany({ where: { artistId } });
+    return tx.artist.update({
+      where: { id: artistId },
+      data: {
+        type: typeCheck.value,
+        parentArtistId: parentArtistIdCheck.value,
+        hasBoard: hasBoardCheck.value ?? true,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalBio: bio.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
+        groupLinks: groupIdsCheck.value.length
+          ? { create: groupIdsCheck.value.map((gid) => ({ groupId: gid })) }
+          : undefined,
       },
-      groupLinks: groupIds?.length
-        ? { create: groupIds.map((gid: string) => ({ groupId: gid })) }
-        : undefined,
-    },
-    include: { translations: true },
+      include: { translations: true },
+    });
   });
   return NextResponse.json(serializeBigInt(artist));
 }
