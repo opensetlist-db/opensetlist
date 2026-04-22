@@ -109,12 +109,14 @@ WHERE t."stageIdentityId" = si.id
 
 UPDATE "RealPerson" rp SET
   "originalName"      = COALESCE(rp."originalName",      t.name),
+  "originalShortName" = COALESCE(rp."originalShortName", t."shortName"),
   "originalStageName" = COALESCE(rp."originalStageName", t."stageName")
 FROM "RealPersonTranslation" t
 WHERE t."realPersonId" = rp.id
   AND t.locale = rp."originalLanguage"
   AND (
     rp."originalName" IS NULL OR
+    rp."originalShortName" IS NULL OR
     rp."originalStageName" IS NULL
   );
 

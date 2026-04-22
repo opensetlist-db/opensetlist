@@ -12,8 +12,8 @@ const IMPORT_TYPES = [
   {
     value: "members",
     label: "2. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalStageName"],
-    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
+    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
   },
   {
     value: "albums",

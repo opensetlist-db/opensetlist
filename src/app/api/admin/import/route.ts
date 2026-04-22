@@ -174,14 +174,15 @@ async function importMembers(rows: Record<string, string>[]) {
     const vaSlug = `va-${charSlug}`;
     if (row.va_ja_name || row.va_ko_name || row.va_en_name) {
       const vaTranslations = [];
-      if (row.va_ja_name) vaTranslations.push({ locale: "ja", name: row.va_ja_name, stageName: null as string | null });
-      if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, stageName: null as string | null });
-      if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, stageName: null as string | null });
+      if (row.va_ja_name) vaTranslations.push({ locale: "ja", name: row.va_ja_name, shortName: row.va_ja_shortName || null, stageName: null as string | null });
+      if (row.va_ko_name) vaTranslations.push({ locale: "ko", name: row.va_ko_name, shortName: row.va_ko_shortName || null, stageName: null as string | null });
+      if (row.va_en_name) vaTranslations.push({ locale: "en", name: row.va_en_name, shortName: row.va_en_shortName || null, stageName: null as string | null });
 
       const vaOriginalLanguage = resolveOriginalLanguage(row.va_originalLanguage || row.originalLanguage);
       const vaSource = pickOriginalSource(vaTranslations, vaOriginalLanguage);
       const vaOriginals = buildOriginals(row, vaSource, vaOriginalLanguage, [
         { override: "va_originalName", sourceKey: "name", out: "originalName" },
+        { override: "va_originalShortName", sourceKey: "shortName", out: "originalShortName" },
         { override: "va_originalStageName", sourceKey: "stageName", out: "originalStageName" },
       ]);
 
@@ -195,7 +196,7 @@ async function importMembers(rows: Record<string, string>[]) {
           await prisma.realPersonTranslation.upsert({
             where: { realPersonId_locale: { realPersonId: existingRp.id, locale: t.locale } },
             create: { realPersonId: existingRp.id, ...t },
-            update: { name: t.name, stageName: t.stageName },
+            update: { name: t.name, shortName: t.shortName, stageName: t.stageName },
           });
         }
         realPersonId = existingRp.id;

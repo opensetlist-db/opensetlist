@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
                               create: {
                                 slug: `va-${siSlug}`,
                                 originalName: si.realPerson.originalName,
+                                originalShortName: si.realPerson.originalShortName,
                                 originalStageName: si.realPerson.originalStageName,
                                 originalLanguage: si.realPerson.originalLanguage,
                                 translations: { create: si.realPerson.translations },
