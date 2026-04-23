@@ -40,7 +40,7 @@ function resolveFilter(value: string | undefined): Filter {
 
 type SearchParams = Promise<{ type?: string }>;
 
-const eventInclude = {
+const eventSelect = {
   id: true,
   date: true,
   originalName: true,
@@ -51,10 +51,10 @@ const eventInclude = {
   },
 } as const;
 
-const setlistItemInclude = {
+const setlistItemSelect = {
   id: true,
   isDeleted: true,
-  event: { select: eventInclude },
+  event: { select: eventSelect },
   songs: {
     orderBy: { order: "asc" },
     select: {
@@ -121,7 +121,7 @@ export default async function ReactionsAdminPage({
   const [feedRowsRaw, topItems, topAnons] = await Promise.all([
     prisma.setlistItemReaction.findMany({
       where: reactionTypeWhere,
-      include: { setlistItem: { select: setlistItemInclude } },
+      include: { setlistItem: { select: setlistItemSelect } },
       orderBy: { createdAt: "desc" },
       take: ROW_LIMIT,
     }),
@@ -149,7 +149,7 @@ export default async function ReactionsAdminPage({
   const topItemDetailsRaw = topItemIds.length
     ? await prisma.setlistItem.findMany({
         where: { id: { in: topItemIds } },
-        select: setlistItemInclude,
+        select: setlistItemSelect,
       })
     : [];
 
