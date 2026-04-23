@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
+import { useMounted } from "@/hooks/useMounted";
 
 const REACTIONS = [
   { type: "waiting", emoji: "😭" },
@@ -12,13 +13,15 @@ const REACTIONS = [
   { type: "moved", emoji: "🩷" },
 ] as const;
 
+const EMPTY_REACTIONS: Record<string, string> = {};
+
 function readMyReactions(setlistItemId: string): Record<string, string> {
-  if (typeof window === "undefined") return {};
+  if (typeof window === "undefined") return EMPTY_REACTIONS;
   try {
     const raw = localStorage.getItem(`reactions-${setlistItemId}`);
-    return raw ? JSON.parse(raw) : {};
+    return raw ? JSON.parse(raw) : EMPTY_REACTIONS;
   } catch {
-    return {};
+    return EMPTY_REACTIONS;
   }
 }
 
@@ -36,21 +39,27 @@ export function ReactionButtons({
   initialCounts,
 }: Props) {
   const t = useTranslations("Reaction");
+  const mounted = useMounted();
   const [counts, setCounts] = useState(initialCounts);
-  const [myReactions, setMyReactions] = useState<Record<string, string>>(() =>
-    readMyReactions(setlistItemId)
+  // SSR + client first render both start at EMPTY_REACTIONS so hydration
+  // matches; the `mounted && hydratedKey !== setlistItemId` block below
+  // pulls the real localStorage value on the first commit AFTER mount.
+  const [myReactions, setMyReactions] = useState<Record<string, string>>(
+    EMPTY_REACTIONS
   );
   const [loading, setLoading] = useState<string | null>(null);
 
-  // Re-hydrate from localStorage on setlistItemId change without an effect.
-  // The useState-pair pattern (track previous prop in state, not a ref) is
-  // the React docs' "Storing information from previous renders" idiom —
-  // setState during render is allowed and react-hooks/refs is happy
-  // because we never read or write a ref in the render body.
-  const [prevSetlistItemId, setPrevSetlistItemId] = useState(setlistItemId);
-  if (prevSetlistItemId !== setlistItemId) {
-    setPrevSetlistItemId(setlistItemId);
+  // Hydrate (or re-hydrate on setlistItemId change) AFTER mount. Tracking
+  // hydratedKey in useState avoids both react-hooks/set-state-in-effect
+  // (no useEffect) and react-hooks/refs (no ref access in render).
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  if (mounted && hydratedKey !== setlistItemId) {
+    setHydratedKey(setlistItemId);
     setMyReactions(readMyReactions(setlistItemId));
+    // Reset aggregate counts to the new item's initialCounts so we don't
+    // show stale counts from the previously-rendered item if React reuses
+    // this component instance via key.
+    setCounts(initialCounts);
   }
 
   const persistReactions = useCallback(

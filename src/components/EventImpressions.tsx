@@ -7,6 +7,7 @@ import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
+import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
 
 export interface Impression {
@@ -30,6 +31,9 @@ interface Props {
   isOngoing: boolean;
 }
 
+// Pure read — no side effects (no localStorage.removeItem on parse failure).
+// Corrupt entries get overwritten on the next valid persist; leaving them
+// alone keeps this safe to call during render.
 function readSavedFromStorage(key: string): SavedImpression | null {
   if (typeof window === "undefined") return null;
   try {
@@ -39,11 +43,6 @@ function readSavedFromStorage(key: string): SavedImpression | null {
     if (!parsed?.chainId || !parsed.content) return null;
     return parsed;
   } catch {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // localStorage may be locked / unavailable — best-effort cleanup.
-    }
     return null;
   }
 }
@@ -63,6 +62,7 @@ export function EventImpressions({
   const t = useTranslations("Impression");
   const et = useTranslations("Event");
   const locale = useLocale();
+  const mounted = useMounted();
   const [impressions, setImpressions] = useState<Impression[]>(initialImpressions);
 
   // Polling hook drives `impressions` directly via the onUpdate callback —
@@ -76,33 +76,31 @@ export function EventImpressions({
   });
 
   const savedKey = `impression-${eventId}`;
-  // Lazy init reads localStorage on the client first render; SSR returns
-  // null. Subsequent re-hydration on savedKey change happens via the
-  // ref-track block below — no useEffect needed.
-  const initialSaved = readSavedFromStorage(savedKey);
-  const [saved, setSaved] = useState<SavedImpression | null>(initialSaved);
-  const [mode, setMode] = useState<"new" | "submitted" | "editing">(
-    initialSaved ? "submitted" : "new"
-  );
+  // SSR + client first render start at empty values so hydration matches
+  // server HTML (which has no localStorage access). The
+  // `mounted && hydratedKey !== savedKey` block below pulls the real
+  // localStorage value on the first commit AFTER mount.
+  const [saved, setSaved] = useState<SavedImpression | null>(null);
+  const [mode, setMode] = useState<"new" | "submitted" | "editing">("new");
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(() =>
-    initialCooldownFor(initialSaved)
-  );
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Keyed by rootImpressionId so a chain can't be reported twice across
   // edits. Holds *user-action* report writes only — pre-existing reports
-  // from localStorage are merged into `reportedChainIds` below at render
-  // time, no separate state sync.
+  // from localStorage are merged into `reportedChainIds` below after
+  // mount; no separate state sync needed.
   const [reported, setReported] = useState<Record<string, boolean>>({});
 
-  // Reset + re-hydrate state when navigating between events. The
+  // Reset + hydrate (or re-hydrate when navigating between events). The
   // useState-pair "track previous prop" idiom (React docs: "Storing
   // information from previous renders") avoids both
-  // react-hooks/set-state-in-effect AND react-hooks/refs.
-  const [prevEventId, setPrevEventId] = useState(eventId);
-  if (prevEventId !== eventId) {
-    setPrevEventId(eventId);
+  // react-hooks/set-state-in-effect and react-hooks/refs. Gated on
+  // `mounted` so the first paint matches server-rendered HTML — no
+  // hydration mismatch from localStorage reads.
+  const [hydratedSavedKey, setHydratedSavedKey] = useState<string | null>(null);
+  if (mounted && hydratedSavedKey !== savedKey) {
+    setHydratedSavedKey(savedKey);
     setImpressions(initialImpressions);
     setReported({});
     const next = readSavedFromStorage(savedKey);
@@ -115,25 +113,25 @@ export function EventImpressions({
 
   // Derived reported-set: union of user-action writes (`reported`) and
   // the localStorage-backed reports for impressions currently in view.
-  // Recomputed when the impressions list or the user-action map changes —
-  // no effect, no setState.
+  // Gated on `mounted` so the SSR + client-first-render result matches
+  // (server has no localStorage). The actual report-state badges flip on
+  // the first commit after mount.
   const reportedChainIds = useMemo<Set<string>>(() => {
     const set = new Set<string>(
       Object.keys(reported).filter((k) => reported[k])
     );
-    if (typeof window !== "undefined") {
-      for (const imp of impressions) {
-        if (set.has(imp.rootImpressionId)) continue;
-        if (
-          localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
-          "true"
-        ) {
-          set.add(imp.rootImpressionId);
-        }
+    if (!mounted) return set;
+    for (const imp of impressions) {
+      if (set.has(imp.rootImpressionId)) continue;
+      if (
+        localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
+        "true"
+      ) {
+        set.add(imp.rootImpressionId);
       }
     }
     return set;
-  }, [impressions, reported]);
+  }, [impressions, reported, mounted]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
