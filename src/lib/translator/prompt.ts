@@ -38,12 +38,19 @@ export function parseMultilingualResponse(raw: string): MultilingualOutput {
     .replace(/```\s*$/i, "")
     .trim();
 
+  // Tolerate leading prose like "Sure, here's the JSON: [...]" by slicing
+  // to the first JSON start token. Gemini's responseMimeType + the
+  // "JSON 배열로만" instruction already make this rare; belt-and-suspenders
+  // for OpenAI (no equivalent API-level enforcement).
+  const firstTokenIdx = cleaned.search(/[{[]/);
+  const jsonSlice = firstTokenIdx >= 0 ? cleaned.slice(firstTokenIdx) : cleaned;
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(jsonSlice);
   } catch {
     throw new Error(
-      `LLM response is not valid JSON (first 80 chars: ${cleaned.slice(0, 80)})`,
+      `LLM response is not valid JSON (first 80 chars: ${jsonSlice.slice(0, 80)})`,
     );
   }
 
