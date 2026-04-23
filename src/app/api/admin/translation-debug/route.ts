@@ -110,7 +110,11 @@ export async function POST(req: NextRequest) {
     // Surface the provider's underlying cause in the response — this is an
     // admin-only debug endpoint, so structured diagnostic detail is the
     // whole point. The production translate route still redacts.
-    const detail = err instanceof Error ? err.message : String(err);
+    // Cap at 2000 chars so verbose SDK stack traces / request-payload
+    // echoes don't bloat the log pipeline and response body.
+    const rawDetail = err instanceof Error ? err.message : String(err);
+    const detail =
+      rawDetail.length > 2000 ? `${rawDetail.slice(0, 2000)}…` : rawDetail;
     console.error("Debug translator call failed", {
       name: err instanceof Error ? err.name : typeof err,
       detail,
