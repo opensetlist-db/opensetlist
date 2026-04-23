@@ -23,7 +23,7 @@ export async function EventGroup({
   return (
     <div className="mb-6">
       <h3
-        className="font-dm-sans mb-2 text-[13px] font-medium"
+        className="font-dm-sans mb-2 text-[13px] font-medium break-words"
         style={{ color: "#555555" }}
       >
         {nonBlank(seriesName) ?? evT("ungrouped")}
