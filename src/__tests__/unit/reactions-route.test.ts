@@ -72,6 +72,21 @@ describe("POST /api/reactions", () => {
     expect(prisma.setlistItemReaction.groupBy).not.toHaveBeenCalled();
   }
 
+  it("rejects literal null body without throwing (returns 400)", async () => {
+    // Regression: req.json() can return null when the client sends
+    // literal JSON null. Prior version destructured straight from `body`
+    // and threw TypeError → 500.
+    const res = await POST(
+      new Request("http://localhost/api/reactions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      }) as unknown as Parameters<typeof POST>[0],
+    );
+    expect(res.status).toBe(400);
+    expectNoPrismaCalls();
+  });
+
   it("rejects missing setlistItemId", async () => {
     const res = await POST(
       makeRequest({ reactionType: "best" }) as unknown as Parameters<
