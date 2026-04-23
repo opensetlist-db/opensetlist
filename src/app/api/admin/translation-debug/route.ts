@@ -5,6 +5,7 @@ import { verifyAdminAPI } from "@/lib/admin-auth";
 import { IMPRESSION_LOCALES } from "@/lib/config";
 import {
   SYSTEM_PROMPT,
+  buildUserInput,
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "@/lib/translator/prompt";
@@ -73,6 +74,11 @@ export async function POST(req: NextRequest) {
     )
       ? (process.env.TRANSLATION_PROVIDER as Provider)
       : "gemini");
+
+  // Echo the exact user turn the providers see (text + source_locale hint),
+  // not just the raw text. This is what prompt-reproduction debugging needs.
+  const input = buildUserInput(text, sourceLocale);
+
   let raw: string;
   try {
     if (provider === "gemini") {
@@ -101,15 +107,25 @@ export async function POST(req: NextRequest) {
       throw new Error(`Unknown provider: ${exhaustive}`);
     }
   } catch (err) {
+    // Surface the provider's underlying cause in the response — this is an
+    // admin-only debug endpoint, so structured diagnostic detail is the
+    // whole point. The production translate route still redacts.
+    // Cap at 2000 chars so verbose SDK stack traces / request-payload
+    // echoes don't bloat the log pipeline and response body.
+    const rawDetail = err instanceof Error ? err.message : String(err);
+    const detail =
+      rawDetail.length > 2000 ? `${rawDetail.slice(0, 2000)}…` : rawDetail;
     console.error("Debug translator call failed", {
       name: err instanceof Error ? err.name : typeof err,
+      detail,
       provider,
     });
     return NextResponse.json(
       {
         error: "Translation unavailable",
+        detail,
         systemPrompt: SYSTEM_PROMPT,
-        input: text,
+        input,
         sourceLocale,
         provider,
       },
@@ -127,7 +143,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     systemPrompt: SYSTEM_PROMPT,
-    input: text,
+    input,
     raw,
     parsed,
     parseError,
