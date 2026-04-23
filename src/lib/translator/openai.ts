@@ -33,7 +33,7 @@ export class OpenAITranslator implements Translator {
 export async function openaiRawTranslate(
   client: OpenAI,
   text: string,
-  sourceLocale: string | undefined,
+  sourceLocale: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const res = await client.responses.create(

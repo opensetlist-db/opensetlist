@@ -15,8 +15,7 @@ export type MultilingualOutput = { ko: string; ja: string; en: string };
 //
 // The hint lives on the user turn, NOT the system prompt, so it does not
 // perturb the cached prefix (implicit cache still hits).
-export function buildUserInput(text: string, sourceLocale?: string): string {
-  if (!sourceLocale) return text;
+export function buildUserInput(text: string, sourceLocale: string): string {
   return `source_locale: ${sourceLocale}\n${text}`;
 }
 

@@ -36,7 +36,7 @@ export class GeminiTranslator implements Translator {
 export async function geminiRawTranslate(
   client: GoogleGenAI,
   text: string,
-  sourceLocale: string | undefined,
+  sourceLocale: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const response = await client.models.generateContent({
