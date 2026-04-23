@@ -7,11 +7,17 @@ export const SYSTEM_PROMPT = HASUNOSORA_GLOSSARY_PROMPT;
 
 export type MultilingualOutput = { ko: string; ja: string; en: string };
 
-// The system prompt already encodes direction rules and output format; the
-// user turn is just the text to translate. Wrapped in a helper so provider
-// code stays symmetric (Gemini `contents` vs OpenAI `input`).
-export function buildUserInput(text: string): string {
-  return text;
+// The system prompt encodes direction rules and output format. We still
+// prepend a single-line `source_locale: <code>` hint because Latin-script
+// titles and short strings that exist verbatim across ko/ja/en are hard
+// for the model to detect on content alone — without the hint the source
+// row can get rewritten or the non-source rows drift.
+//
+// The hint lives on the user turn, NOT the system prompt, so it does not
+// perturb the cached prefix (implicit cache still hits).
+export function buildUserInput(text: string, sourceLocale?: string): string {
+  if (!sourceLocale) return text;
+  return `source_locale: ${sourceLocale}\n${text}`;
 }
 
 // LLMs occasionally wrap JSON in ```json fences or prepend prose despite the

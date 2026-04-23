@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
       raw = await geminiRawTranslate(
         new GoogleGenAI({ apiKey: key }),
         text,
+        sourceLocale,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else if (provider === "openai") {
@@ -89,6 +90,7 @@ export async function POST(req: NextRequest) {
       raw = await openaiRawTranslate(
         new OpenAI({ apiKey: key }),
         text,
+        sourceLocale,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else {

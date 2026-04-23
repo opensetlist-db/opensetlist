@@ -113,8 +113,14 @@ export async function POST(req: NextRequest) {
   // `skipDuplicates: true` tolerates a concurrent writer racing us for the
   // same (impressionId, sourceLocale, targetLocale) key, so no explicit
   // P2002 branch is needed.
+  // Type guard narrows `multilingual[loc]` to `string` in the subsequent
+  // map — without the guard, strict mode sees `string | undefined` even
+  // though the runtime check eliminates empties.
   const rowsToCache = (IMPRESSION_LOCALES as readonly ImpressionLocale[])
-    .filter((loc) => loc !== sourceLocale && multilingual[loc])
+    .filter(
+      (loc): loc is ImpressionLocale =>
+        loc !== sourceLocale && !!multilingual[loc],
+    )
     .map((loc) => ({
       impressionId,
       sourceLocale,

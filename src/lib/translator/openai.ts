@@ -21,10 +21,10 @@ export class OpenAITranslator implements Translator {
 
   async translate(
     text: string,
-    _sourceLocale: string,
+    sourceLocale: string,
     signal?: AbortSignal,
   ): Promise<MultilingualOutput> {
-    const raw = await openaiRawTranslate(this.client, text, signal);
+    const raw = await openaiRawTranslate(this.client, text, sourceLocale, signal);
     return parseMultilingualResponse(raw);
   }
 }
@@ -33,13 +33,14 @@ export class OpenAITranslator implements Translator {
 export async function openaiRawTranslate(
   client: OpenAI,
   text: string,
+  sourceLocale: string | undefined,
   signal?: AbortSignal,
 ): Promise<string> {
   const res = await client.responses.create(
     {
       model: "gpt-4o-mini",
       instructions: SYSTEM_PROMPT,
-      input: buildUserInput(text),
+      input: buildUserInput(text, sourceLocale),
       max_output_tokens: estimateMaxTokens(text),
       // Mirror of gemini.ts: translation is low-creativity, so lower temp
       // keeps output close to the source and reduces phrasing drift.

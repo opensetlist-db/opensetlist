@@ -23,10 +23,10 @@ export class GeminiTranslator implements Translator {
 
   async translate(
     text: string,
-    _sourceLocale: string,
+    sourceLocale: string,
     signal?: AbortSignal,
   ): Promise<MultilingualOutput> {
-    const raw = await geminiRawTranslate(this.client, text, signal);
+    const raw = await geminiRawTranslate(this.client, text, sourceLocale, signal);
     return parseMultilingualResponse(raw);
   }
 }
@@ -36,11 +36,12 @@ export class GeminiTranslator implements Translator {
 export async function geminiRawTranslate(
   client: GoogleGenAI,
   text: string,
+  sourceLocale: string | undefined,
   signal?: AbortSignal,
 ): Promise<string> {
   const response = await client.models.generateContent({
     model: "gemini-3.1-flash-lite-preview",
-    contents: buildUserInput(text),
+    contents: buildUserInput(text, sourceLocale),
     config: {
       systemInstruction: SYSTEM_PROMPT,
       maxOutputTokens: estimateMaxTokens(text),
@@ -59,8 +60,16 @@ export async function geminiRawTranslate(
       ...(signal ? { abortSignal: signal } : {}),
     },
   });
-  if (response.candidates?.[0]?.finishReason === "MAX_TOKENS") {
+  // Surface non-STOP finish reasons (SAFETY / RECITATION / OTHER / ...) so
+  // safety-block failures don't get tarred with the generic
+  // "empty translation" message — retry / debugging depends on seeing the
+  // actual reason.
+  const finishReason = response.candidates?.[0]?.finishReason;
+  if (finishReason === "MAX_TOKENS") {
     throw new TranslationTruncatedError("Gemini");
+  }
+  if (finishReason && finishReason !== "STOP") {
+    throw new Error(`Gemini translation failed: finishReason=${finishReason}`);
   }
   const raw = response.text;
   if (!raw) throw new Error("Gemini returned empty translation");
