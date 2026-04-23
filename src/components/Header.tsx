@@ -26,9 +26,11 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
+  // Closing the menu on navigation is handled at the click site (each mobile
+  // <Link> below) — moving the setState into an event handler avoids the
+  // react-hooks/set-state-in-effect violation. Browser back/forward doesn't
+  // close the menu, but the click-outside effect below handles most of those
+  // cases anyway.
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -144,6 +146,7 @@ export function Header() {
                 <Link
                   key={item.key}
                   href={item.href}
+                  onClick={() => setMenuOpen(false)}
                   className="font-dm-sans text-[15px] py-3 border-b border-[#f0f0f0]"
                   style={{
                     color: active ? "#0288D1" : "#333333",
