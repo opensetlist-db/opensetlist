@@ -1,16 +1,73 @@
-// Shared translation prompt so both providers see identical instructions.
-// Input is a JSON object — not a delimited string — because impression text
-// is user-generated and can contain any character (pipes, newlines, quotes).
-export const TRANSLATE_INSTRUCTIONS =
-  "You are a translator. Input arrives as a JSON object with keys " +
-  "`sourceLocale`, `targetLocale`, and `text`. " +
-  "Translate `text` from sourceLocale to targetLocale. " +
-  "Return ONLY the translated text — no quotes, no explanations, no source echo, no labels, no JSON wrapping.";
+import { HASUNOSORA_GLOSSARY_PROMPT } from "./prompts/hasunosora";
 
-export function buildTranslationInput(
-  sourceLocale: string,
-  targetLocale: string,
-  text: string,
-): string {
-  return JSON.stringify({ sourceLocale, targetLocale, text });
+// Exported so the admin debug route can display the exact cached prefix the
+// providers send. Phase 1B will replace this constant with a per-event
+// generator — see task-translation-implicit-cache-rewrite.md §Follow-ups.
+export const SYSTEM_PROMPT = HASUNOSORA_GLOSSARY_PROMPT;
+
+export type MultilingualOutput = { ko: string; ja: string; en: string };
+
+// The system prompt encodes direction rules and output format. We still
+// prepend a single-line `source_locale: <code>` hint because Latin-script
+// titles and short strings that exist verbatim across ko/ja/en are hard
+// for the model to detect on content alone — without the hint the source
+// row can get rewritten or the non-source rows drift.
+//
+// The hint lives on the user turn, NOT the system prompt, so it does not
+// perturb the cached prefix (implicit cache still hits).
+export function buildUserInput(text: string, sourceLocale: string): string {
+  return `source_locale: ${sourceLocale}\n${text}`;
+}
+
+// Three-language JSON output ≈ 3× source length + brace/quote overhead.
+// Floor of 512 catches short inputs; 4.5× is the "rough floor" from the
+// task spec and leaves headroom for edited impressions. Shared across
+// providers so the maxTokens budget stays in sync.
+export function estimateMaxTokens(text: string): number {
+  return Math.max(512, Math.round((text.length / 4) * 4.5));
+}
+
+// LLMs occasionally wrap JSON in ```json fences or prepend prose despite the
+// "JSON 배열로만" instruction. Strip that, then parse. Tolerates both a bare
+// object and a single-element array (the prompt asks for array, but models
+// sometimes emit a naked object).
+export function parseMultilingualResponse(raw: string): MultilingualOutput {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  // Tolerate leading prose like "Sure, here's the JSON: [...]" by slicing
+  // to the first JSON start token. Gemini's responseMimeType + the
+  // "JSON 배열로만" instruction already make this rare; belt-and-suspenders
+  // for OpenAI (no equivalent API-level enforcement).
+  const firstTokenIdx = cleaned.search(/[{[]/);
+  const jsonSlice = firstTokenIdx >= 0 ? cleaned.slice(firstTokenIdx) : cleaned;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonSlice);
+  } catch {
+    throw new Error(
+      `LLM response is not valid JSON (first 80 chars: ${jsonSlice.slice(0, 80)})`,
+    );
+  }
+
+  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+  if (!entry || typeof entry !== "object") {
+    throw new Error("LLM response has no object entry");
+  }
+  const obj = entry as Record<string, unknown>;
+
+  const out: MultilingualOutput = {
+    ko: typeof obj.ko === "string" ? obj.ko.trim() : "",
+    ja: typeof obj.ja === "string" ? obj.ja.trim() : "",
+    en: typeof obj.en === "string" ? obj.en.trim() : "",
+  };
+
+  if (!out.ko && !out.ja && !out.en) {
+    throw new Error("LLM response has no locale values");
+  }
+  return out;
 }

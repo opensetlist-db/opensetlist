@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { IMPRESSION_LOCALES } from "@/lib/config";
+import { IMPRESSION_LOCALES, type ImpressionLocale } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
-import {
-  applyGlossary,
-  getGlossaryForEvent,
-  restoreGlossary,
-  type GlossaryPair,
-} from "@/lib/glossary";
+import type { MultilingualOutput } from "@/lib/translator/prompt";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -19,6 +13,10 @@ const TRANSLATOR_TIMEOUT_MS = 30_000;
 // `impressionId` is the row id (EventImpression.id, a UUID), not the chain
 // id (rootImpressionId). The translation cache keys per row so each version
 // of an edited impression caches independently.
+//
+// The LLM returns all three locales per call. We cache both non-source
+// target rows so the second-target request hits the cache without a second
+// LLM round-trip.
 export async function POST(req: NextRequest) {
   let body;
   try {
@@ -75,33 +73,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ translatedText: cached.translatedText });
   }
 
-  // Build glossary so proper nouns survive the LLM call as opaque
-  // placeholders. Fail-open: if the glossary fetch flakes, translate the
-  // raw content instead of 502'ing — degraded translation quality is
-  // strictly better than no translation at all.
-  let pairs: GlossaryPair[] = [];
-  try {
-    pairs = await getGlossaryForEvent(
-      impression.eventId,
-      sourceLocale as "ko" | "ja" | "en",
-      targetLocale as "ko" | "ja" | "en",
-    );
-  } catch (err) {
-    // Same redaction discipline as the translator catch — log identifying
-    // metadata only, never the raw err (Prisma errors can echo query args).
-    console.warn("Glossary lookup failed, translating without glossary", {
-      name: err instanceof Error ? err.name : typeof err,
-    });
-  }
-  const { processed, restoreMap } = applyGlossary(impression.content, pairs);
-
-  let rawTranslation: string;
+  let multilingual: MultilingualOutput;
   try {
     const translator = getTranslator();
-    rawTranslation = await translator.translate(
-      processed,
+    multilingual = await translator.translate(
+      impression.content,
       sourceLocale,
-      targetLocale,
       AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
     );
   } catch (err) {
@@ -116,42 +93,56 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const translatedText = restoreGlossary(rawTranslation, restoreMap);
+  // Trim all three locale outputs once — whitespace-only strings pass
+  // `!translatedText` but render as empty to the user, and once cached
+  // they'd keep hitting the cache instead of retrying the LLM.
+  const trimmed: MultilingualOutput = {
+    ko: multilingual.ko.trim(),
+    ja: multilingual.ja.trim(),
+    en: multilingual.en.trim(),
+  };
+
+  const translatedText = trimmed[targetLocale as ImpressionLocale];
+  if (!translatedText) {
+    // Provider returned the JSON shape but omitted / emptied the requested
+    // locale. Log locale presence (not content) and 502 — cache nothing.
+    console.warn("Translator returned empty target locale", {
+      sourceLocale,
+      targetLocale,
+      hasKo: !!trimmed.ko,
+      hasJa: !!trimmed.ja,
+      hasEn: !!trimmed.en,
+    });
+    return NextResponse.json(
+      { error: "Translation unavailable" },
+      { status: 502 },
+    );
+  }
+
+  // Cache all non-source locales the LLM actually produced in one write.
+  // `skipDuplicates: true` tolerates a concurrent writer racing us for the
+  // same (impressionId, sourceLocale, targetLocale) key, so no explicit
+  // P2002 branch is needed.
+  const rowsToCache = (IMPRESSION_LOCALES as readonly ImpressionLocale[])
+    .filter((loc) => loc !== sourceLocale && trimmed[loc].length > 0)
+    .map((loc) => ({
+      impressionId,
+      sourceLocale,
+      targetLocale: loc,
+      translatedText: trimmed[loc],
+    }));
 
   try {
-    await prisma.impressionTranslation.create({
-      data: { impressionId, sourceLocale, targetLocale, translatedText },
+    await prisma.impressionTranslation.createMany({
+      data: rowsToCache,
+      skipDuplicates: true,
     });
   } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      // Concurrent miss raced us — return the winner's row.
-      const winner = await prisma.impressionTranslation.findUnique({
-        where: {
-          impressionId_sourceLocale_targetLocale: {
-            impressionId,
-            sourceLocale,
-            targetLocale,
-          },
-        },
-        select: { translatedText: true },
-      });
-      if (winner) {
-        return NextResponse.json({ translatedText: winner.translatedText });
-      }
-    }
-    // Insert failed for some other reason — log and return the fresh
-    // translation anyway. The cache just won't stick this time. Same
-    // redaction pattern as the translator catch above: log identifying
-    // metadata only, never the raw err.
+    // Insert failed — log redacted metadata and return the fresh
+    // translation anyway. Cache just won't stick; next call repeats the
+    // LLM hit. Same redaction discipline as the translator catch above.
     console.warn("ImpressionTranslation insert failed", {
       name: err instanceof Error ? err.name : typeof err,
-      code:
-        err instanceof Prisma.PrismaClientKnownRequestError
-          ? err.code
-          : undefined,
     });
   }
 

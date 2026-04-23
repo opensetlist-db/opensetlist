@@ -1,5 +1,16 @@
 /**
- * Phase 1A glossary builder for impression translation.
+ * Phase 1B substrate — NOT on the runtime path in Phase 1A.
+ *
+ * The impression translate route switched to a hardcoded Hasunosora system
+ * prompt (src/lib/translator/prompts/hasunosora.ts) that embeds the glossary
+ * inline, so `applyGlossary` / `restoreGlossary` / `getGlossaryForEvent` are
+ * unused at runtime in Phase 1A. Retained here as the substrate for Phase 1B
+ * per-event prompt generation (where `buildArtistTerms` / `assemblePairs`
+ * will feed into a `generatePromptForEvent` helper).
+ *
+ * See task-translation-implicit-cache-rewrite.md §Follow-ups.
+ *
+ * ---
  *
  * Auto-derives a proper-noun substitution list from existing translation rows
  * (artists, stage identities, VAs, songs) for a given event, then provides

@@ -1,10 +1,16 @@
+import type { MultilingualOutput } from "./prompt";
+
 export interface Translator {
+  // Returns all three target locales in one call so each request populates
+  // both non-source target-cache rows in a single LLM round-trip. The
+  // hardcoded Hasunosora prompt encodes direction rules inline, so
+  // `sourceLocale` is advisory for Phase 1A; retained in the signature for
+  // Phase 1B per-event prompts that may want it.
   translate(
     text: string,
     sourceLocale: string,
-    targetLocale: string,
     signal?: AbortSignal,
-  ): Promise<string>;
+  ): Promise<MultilingualOutput>;
 }
 
 export class TranslationTruncatedError extends Error {
