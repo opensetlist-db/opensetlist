@@ -17,10 +17,11 @@ async function getCounts() {
     prisma.eventSeries.count({ where: { isDeleted: false } }),
     prisma.event.count({ where: { isDeleted: false } }),
     prisma.setlistItem.count({ where: { isDeleted: false } }),
-    // Match the admin /admin/impressions "all" tab: exclude rows that have
-    // been edited over (supersededAt set) and rows hard-deleted by admins.
-    // Hidden rows (auto-hidden by reportCount ≥ 3) stay in the count so the
-    // dashboard reflects moderation backlog.
+    // Count non-superseded, non-hard-deleted heads. Hidden rows (auto-hidden
+    // by reportCount ≥ 3) stay in the total so the dashboard reflects
+    // moderation backlog. Stricter than the /admin/impressions "all" tab,
+    // which only filters `supersededAt: null` — that one still lists deleted
+    // rows for restore workflows; the dashboard wants content volume.
     prisma.eventImpression.count({
       where: { supersededAt: null, isDeleted: false },
     }),
