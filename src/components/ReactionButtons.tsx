@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
@@ -11,6 +11,16 @@ const REACTIONS = [
   { type: "surprise", emoji: "😱" },
   { type: "moved", emoji: "🩷" },
 ] as const;
+
+function readMyReactions(setlistItemId: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(`reactions-${setlistItemId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
 interface Props {
   setlistItemId: string;
@@ -27,19 +37,21 @@ export function ReactionButtons({
 }: Props) {
   const t = useTranslations("Reaction");
   const [counts, setCounts] = useState(initialCounts);
-  const [myReactions, setMyReactions] = useState<Record<string, string>>({});
+  const [myReactions, setMyReactions] = useState<Record<string, string>>(() =>
+    readMyReactions(setlistItemId)
+  );
   const [loading, setLoading] = useState<string | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem(`reactions-${setlistItemId}`);
-    if (saved) {
-      try {
-        setMyReactions(JSON.parse(saved));
-      } catch {
-        // ignore corrupt data
-      }
-    }
-  }, [setlistItemId]);
+  // Re-hydrate from localStorage on setlistItemId change without an effect.
+  // The useState-pair pattern (track previous prop in state, not a ref) is
+  // the React docs' "Storing information from previous renders" idiom —
+  // setState during render is allowed and react-hooks/refs is happy
+  // because we never read or write a ref in the render body.
+  const [prevSetlistItemId, setPrevSetlistItemId] = useState(setlistItemId);
+  if (prevSetlistItemId !== setlistItemId) {
+    setPrevSetlistItemId(setlistItemId);
+    setMyReactions(readMyReactions(setlistItemId));
+  }
 
   const persistReactions = useCallback(
     (reactions: Record<string, string>) => {

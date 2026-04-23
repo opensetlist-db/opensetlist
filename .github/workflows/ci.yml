@@ -24,6 +24,13 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      # Lint runs after prisma generate (so generated types resolve in
+      # imports) and before Typecheck (faster failure on style — the type
+      # pass is more expensive). Errors fail the gate; existing warnings
+      # don't (no --max-warnings=0 yet — that's a follow-up).
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npx tsc --noEmit
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
@@ -30,6 +30,31 @@ interface Props {
   isOngoing: boolean;
 }
 
+function readSavedFromStorage(key: string): SavedImpression | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SavedImpression;
+    if (!parsed?.chainId || !parsed.content) return null;
+    return parsed;
+  } catch {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // localStorage may be locked / unavailable — best-effort cleanup.
+    }
+    return null;
+  }
+}
+
+function initialCooldownFor(saved: SavedImpression | null): number {
+  if (!saved?.createdAt) return 0;
+  const sinceDate = new Date(saved.createdAt);
+  if (Number.isNaN(sinceDate.getTime())) return 0;
+  return Math.max(0, getEditCooldownRemaining(sinceDate, new Date()));
+}
+
 export function EventImpressions({
   eventId,
   initialImpressions,
@@ -40,75 +65,75 @@ export function EventImpressions({
   const locale = useLocale();
   const [impressions, setImpressions] = useState<Impression[]>(initialImpressions);
 
-  const { impressions: polled } = useImpressionPolling({
+  // Polling hook drives `impressions` directly via the onUpdate callback —
+  // no effect-based sync from the hook's return value. Held in a ref by
+  // useImpressionPolling so a fresh `setImpressions` identity each render
+  // doesn't tear down the polling timer.
+  useImpressionPolling({
     eventId,
     enabled: isOngoing,
+    onUpdate: setImpressions,
   });
-  const [saved, setSaved] = useState<SavedImpression | null>(null);
-  const [mode, setMode] = useState<"new" | "submitted" | "editing">("new");
-  const [draft, setDraft] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  // Keyed by rootImpressionId so a chain can't be reported twice across edits.
-  const [reported, setReported] = useState<Record<string, boolean>>({});
 
   const savedKey = `impression-${eventId}`;
+  // Lazy init reads localStorage on the client first render; SSR returns
+  // null. Subsequent re-hydration on savedKey change happens via the
+  // ref-track block below — no useEffect needed.
+  const initialSaved = readSavedFromStorage(savedKey);
+  const [saved, setSaved] = useState<SavedImpression | null>(initialSaved);
+  const [mode, setMode] = useState<"new" | "submitted" | "editing">(
+    initialSaved ? "submitted" : "new"
+  );
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(() =>
+    initialCooldownFor(initialSaved)
+  );
+  const [error, setError] = useState<string | null>(null);
+  // Keyed by rootImpressionId so a chain can't be reported twice across
+  // edits. Holds *user-action* report writes only — pre-existing reports
+  // from localStorage are merged into `reportedChainIds` below at render
+  // time, no separate state sync.
+  const [reported, setReported] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
+  // Reset + re-hydrate state when navigating between events. The
+  // useState-pair "track previous prop" idiom (React docs: "Storing
+  // information from previous renders") avoids both
+  // react-hooks/set-state-in-effect AND react-hooks/refs.
+  const [prevEventId, setPrevEventId] = useState(eventId);
+  if (prevEventId !== eventId) {
+    setPrevEventId(eventId);
     setImpressions(initialImpressions);
     setReported({});
-  }, [eventId, initialImpressions]);
-
-  useEffect(() => {
-    if (!polled) return;
-    setImpressions(polled);
-  }, [polled]);
-
-  useEffect(() => {
-    setSaved(null);
-    setMode("new");
+    const next = readSavedFromStorage(savedKey);
+    setSaved(next);
+    setMode(next ? "submitted" : "new");
     setDraft("");
-    setCooldownSeconds(0);
+    setCooldownSeconds(initialCooldownFor(next));
     setError(null);
+  }
 
-    const raw = localStorage.getItem(savedKey);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as SavedImpression;
-      if (parsed?.chainId && parsed.content) {
-        setSaved(parsed);
-        setMode("submitted");
-        if (parsed.createdAt) {
-          const sinceDate = new Date(parsed.createdAt);
-          if (!Number.isNaN(sinceDate.getTime())) {
-            const remaining = getEditCooldownRemaining(sinceDate, new Date());
-            if (remaining > 0) setCooldownSeconds(remaining);
-          }
-        }
-      }
-    } catch {
-      localStorage.removeItem(savedKey);
-    }
-  }, [savedKey]);
-
-  useEffect(() => {
-    setReported((prev) => {
-      const next = { ...prev };
-      let changed = false;
+  // Derived reported-set: union of user-action writes (`reported`) and
+  // the localStorage-backed reports for impressions currently in view.
+  // Recomputed when the impressions list or the user-action map changes —
+  // no effect, no setState.
+  const reportedChainIds = useMemo<Set<string>>(() => {
+    const set = new Set<string>(
+      Object.keys(reported).filter((k) => reported[k])
+    );
+    if (typeof window !== "undefined") {
       for (const imp of impressions) {
-        if (imp.rootImpressionId in next) continue;
+        if (set.has(imp.rootImpressionId)) continue;
         if (
           localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
           "true"
         ) {
-          next[imp.rootImpressionId] = true;
-          changed = true;
+          set.add(imp.rootImpressionId);
         }
       }
-      return changed ? next : prev;
-    });
-  }, [impressions]);
+    }
+    return set;
+  }, [impressions, reported]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -230,7 +255,7 @@ export function EventImpressions({
 
   const handleReport = async (imp: Impression) => {
     const chainId = imp.rootImpressionId;
-    if (reported[chainId]) return;
+    if (reportedChainIds.has(chainId)) return;
     setReported((prev) => ({ ...prev, [chainId]: true }));
     localStorage.setItem(`impression-report-${chainId}`, "true");
 
@@ -395,7 +420,7 @@ export function EventImpressions({
         <ul className="space-y-2">
           {impressions.map((imp) => {
             const isOwn = saved?.chainId === imp.rootImpressionId;
-            const hasReported = !!reported[imp.rootImpressionId];
+            const hasReported = reportedChainIds.has(imp.rootImpressionId);
             return (
               <li
                 key={imp.id}
