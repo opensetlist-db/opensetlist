@@ -19,7 +19,18 @@ function readMyReactions(setlistItemId: string): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_REACTIONS;
   try {
     const raw = localStorage.getItem(`reactions-${setlistItemId}`);
-    return raw ? JSON.parse(raw) : EMPTY_REACTIONS;
+    if (!raw) return EMPTY_REACTIONS;
+    const parsed: unknown = JSON.parse(raw);
+    // Defensive shape check — localStorage can be tampered with (DevTools,
+    // browser extensions, JSON.parse("null") returning null, etc.). Spread
+    // on a non-object would either silently misbehave or throw at the
+    // myReactions[type] access site.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return EMPTY_REACTIONS;
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => typeof value === "string")
+    ) as Record<string, string>;
   } catch {
     return EMPTY_REACTIONS;
   }

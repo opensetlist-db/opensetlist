@@ -47,6 +47,39 @@ function readSavedFromStorage(key: string): SavedImpression | null {
   }
 }
 
+// Pure read with try/catch — `localStorage.getItem` can throw SecurityError
+// in some browsers (storage blocked, third-party-context restrictions, quota
+// disabled, etc.). Falls back to false on any failure so the report-flag
+// scan in `reportedChainIds` can't take down the whole impressions section.
+function readReportFlag(rootImpressionId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      localStorage.getItem(`impression-report-${rootImpressionId}`) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Same defensive wrapper around the WRITE path. setItem/removeItem can also
+// throw (quota exceeded, storage blocked, etc.) — failing silently keeps
+// the report click from surfacing an exception to the user. The optimistic
+// state update + server POST still proceed; only the cross-session cache
+// write is lost in the failure case.
+function writeReportFlag(rootImpressionId: string, reported: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (reported) {
+      localStorage.setItem(`impression-report-${rootImpressionId}`, "true");
+    } else {
+      localStorage.removeItem(`impression-report-${rootImpressionId}`);
+    }
+  } catch {
+    // Storage-blocked browser — best-effort.
+  }
+}
+
 function initialCooldownFor(saved: SavedImpression | null): number {
   if (!saved?.createdAt) return 0;
   const sinceDate = new Date(saved.createdAt);
@@ -123,10 +156,7 @@ export function EventImpressions({
     if (!mounted) return set;
     for (const imp of impressions) {
       if (set.has(imp.rootImpressionId)) continue;
-      if (
-        localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
-        "true"
-      ) {
+      if (readReportFlag(imp.rootImpressionId)) {
         set.add(imp.rootImpressionId);
       }
     }
@@ -255,7 +285,7 @@ export function EventImpressions({
     const chainId = imp.rootImpressionId;
     if (reportedChainIds.has(chainId)) return;
     setReported((prev) => ({ ...prev, [chainId]: true }));
-    localStorage.setItem(`impression-report-${chainId}`, "true");
+    writeReportFlag(chainId, true);
 
     const rollback = () => {
       setReported((prev) => {
@@ -263,7 +293,7 @@ export function EventImpressions({
         delete next[chainId];
         return next;
       });
-      localStorage.removeItem(`impression-report-${chainId}`);
+      writeReportFlag(chainId, false);
     };
 
     try {
