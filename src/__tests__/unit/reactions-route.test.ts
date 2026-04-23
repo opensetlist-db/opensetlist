@@ -28,7 +28,7 @@ vi.mock("@/generated/prisma/client", () => {
   return { Prisma: { PrismaClientKnownRequestError: FakePrismaKnownError } };
 });
 
-import { POST } from "@/app/api/reactions/route";
+import { POST, DELETE } from "@/app/api/reactions/route";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -268,5 +268,19 @@ describe("POST /api/reactions", () => {
     expect(prisma.setlistItemReaction.create).toHaveBeenCalledWith({
       data: { setlistItemId: BigInt(10), reactionType: "best", anonId: null },
     });
+  });
+});
+
+describe("DELETE /api/reactions", () => {
+  it("rejects literal null body without throwing (returns 400)", async () => {
+    // Regression mirror of the POST null-body case.
+    const res = await DELETE(
+      new Request("http://localhost/api/reactions", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      }) as unknown as Parameters<typeof DELETE>[0],
+    );
+    expect(res.status).toBe(400);
   });
 });

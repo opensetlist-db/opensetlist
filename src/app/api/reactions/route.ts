@@ -124,7 +124,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { reactionId } = body;
+  // Same null-body guard as POST — `body ?? {}` so a literal JSON null
+  // doesn't TypeError on destructuring → we return 400, not 500.
+  const { reactionId } = body ?? {};
 
   if (!reactionId || typeof reactionId !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
