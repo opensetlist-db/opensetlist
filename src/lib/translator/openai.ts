@@ -47,8 +47,17 @@ export async function openaiRawTranslate(
     },
     signal ? { signal } : undefined,
   );
-  if (res.incomplete_details?.reason === "max_output_tokens") {
+  // Surface abnormal incomplete reasons (content_filter, etc.) instead of
+  // squashing into the generic "empty translation" error — symmetric with
+  // Gemini's non-STOP finishReason handling.
+  const incompleteReason = res.incomplete_details?.reason;
+  if (incompleteReason === "max_output_tokens") {
     throw new TranslationTruncatedError("OpenAI");
+  }
+  if (incompleteReason) {
+    throw new Error(
+      `OpenAI translation failed: incomplete_reason=${incompleteReason}`,
+    );
   }
   const raw = res.output_text;
   if (!raw) throw new Error("OpenAI returned empty translation");

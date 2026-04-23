@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, type ImpressionLocale } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
+import type { MultilingualOutput } from "@/lib/translator/prompt";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ translatedText: cached.translatedText });
   }
 
-  let multilingual;
+  let multilingual: MultilingualOutput;
   try {
     const translator = getTranslator();
     multilingual = await translator.translate(
@@ -92,16 +93,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const translatedText = multilingual[targetLocale as ImpressionLocale];
+  // Trim all three locale outputs once — whitespace-only strings pass
+  // `!translatedText` but render as empty to the user, and once cached
+  // they'd keep hitting the cache instead of retrying the LLM.
+  const trimmed: MultilingualOutput = {
+    ko: multilingual.ko.trim(),
+    ja: multilingual.ja.trim(),
+    en: multilingual.en.trim(),
+  };
+
+  const translatedText = trimmed[targetLocale as ImpressionLocale];
   if (!translatedText) {
     // Provider returned the JSON shape but omitted / emptied the requested
     // locale. Log locale presence (not content) and 502 — cache nothing.
     console.warn("Translator returned empty target locale", {
       sourceLocale,
       targetLocale,
-      hasKo: !!multilingual.ko,
-      hasJa: !!multilingual.ja,
-      hasEn: !!multilingual.en,
+      hasKo: !!trimmed.ko,
+      hasJa: !!trimmed.ja,
+      hasEn: !!trimmed.en,
     });
     return NextResponse.json(
       { error: "Translation unavailable" },
@@ -113,19 +123,13 @@ export async function POST(req: NextRequest) {
   // `skipDuplicates: true` tolerates a concurrent writer racing us for the
   // same (impressionId, sourceLocale, targetLocale) key, so no explicit
   // P2002 branch is needed.
-  // Type guard narrows `multilingual[loc]` to `string` in the subsequent
-  // map — without the guard, strict mode sees `string | undefined` even
-  // though the runtime check eliminates empties.
   const rowsToCache = (IMPRESSION_LOCALES as readonly ImpressionLocale[])
-    .filter(
-      (loc): loc is ImpressionLocale =>
-        loc !== sourceLocale && !!multilingual[loc],
-    )
+    .filter((loc) => loc !== sourceLocale && trimmed[loc].length > 0)
     .map((loc) => ({
       impressionId,
       sourceLocale,
       targetLocale: loc,
-      translatedText: multilingual[loc],
+      translatedText: trimmed[loc],
     }));
 
   try {
