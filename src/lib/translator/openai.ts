@@ -1,6 +1,12 @@
 import OpenAI from "openai";
 import { TranslationTruncatedError, type Translator } from "./types";
-import { TRANSLATE_INSTRUCTIONS, buildTranslationInput } from "./prompt";
+import {
+  SYSTEM_PROMPT,
+  buildUserInput,
+  estimateMaxTokens,
+  parseMultilingualResponse,
+  type MultilingualOutput,
+} from "./prompt";
 
 export class OpenAITranslator implements Translator {
   private client: OpenAI;
@@ -12,24 +18,39 @@ export class OpenAITranslator implements Translator {
   async translate(
     text: string,
     sourceLocale: string,
-    targetLocale: string,
     signal?: AbortSignal,
-  ): Promise<string> {
-    const maxTokens = Math.max(256, Math.round((text.length / 4) * 1.5));
-    const res = await this.client.responses.create(
-      {
-        model: "gpt-4o-mini",
-        instructions: TRANSLATE_INSTRUCTIONS,
-        input: buildTranslationInput(sourceLocale, targetLocale, text),
-        max_output_tokens: maxTokens,
-      },
-      signal ? { signal } : undefined,
-    );
-    if (res.incomplete_details?.reason === "max_output_tokens") {
-      throw new TranslationTruncatedError("OpenAI");
-    }
-    const translated = res.output_text;
-    if (!translated) throw new Error("OpenAI returned empty translation");
-    return translated.trim();
+  ): Promise<MultilingualOutput> {
+    const raw = await openaiRawTranslate(this.client, text, sourceLocale, signal);
+    return parseMultilingualResponse(raw);
   }
+}
+
+// Exposed for the admin debug route — returns the raw pre-parse string.
+export async function openaiRawTranslate(
+  client: OpenAI,
+  text: string,
+  sourceLocale: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const res = await client.responses.create(
+    {
+      model: "gpt-4o-mini",
+      instructions: SYSTEM_PROMPT,
+      input: buildUserInput(text, sourceLocale),
+      max_output_tokens: estimateMaxTokens(text),
+      // Mirror of gemini.ts: translation is low-creativity, so lower temp
+      // keeps output close to the source and reduces phrasing drift.
+      temperature: 0.3,
+      // The prompt's "JSON 배열로만" line is the primary JSON enforcement.
+      // Skip `response_format` here — task notes the current SDK version may
+      // not expose it on responses.create; retrofit later if needed.
+    },
+    signal ? { signal } : undefined,
+  );
+  if (res.incomplete_details?.reason === "max_output_tokens") {
+    throw new TranslationTruncatedError("OpenAI");
+  }
+  const raw = res.output_text;
+  if (!raw) throw new Error("OpenAI returned empty translation");
+  return raw;
 }
