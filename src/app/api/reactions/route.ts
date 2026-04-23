@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ANON_ID_MAX_LEN } from "@/lib/anonId";
 
 const VALID_TYPES = ["waiting", "best", "surprise", "moved"];
-const ANON_ID_MAX_LEN = 64;
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");

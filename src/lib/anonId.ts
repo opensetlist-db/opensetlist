@@ -1,6 +1,14 @@
 const KEY = "opensetlist_anon_id";
 
 /**
+ * Server-side validation cap on anonId length. Keep in sync with the
+ * `@db.VarChar(64)` declaration on the SetlistItemReaction.anonId and
+ * EventImpression.anonId columns in `prisma/schema.prisma`. Single source
+ * of truth used by every API route that accepts the field.
+ */
+export const ANON_ID_MAX_LEN = 64;
+
+/**
  * Returns the browser's anonymous identifier, creating it on first call.
  *
  * SSR-safe (returns ''). Returns '' if localStorage is unavailable
