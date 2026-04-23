@@ -7,7 +7,7 @@ import { useLocale } from "next-intl";
 const LOCALE_LABELS: Record<string, string> = {
   ko: "한국어",
   ja: "日本語",
-  en: "EN",
+  en: "English",
 };
 
 export function LanguageSwitcher() {
