@@ -53,14 +53,14 @@ export function EventRow({
         />
         <Link
           href={href}
-          className="font-dm-sans block truncate text-[12px] hover:underline"
+          className="font-dm-sans block break-words text-[12px] hover:underline"
           style={{ color: "#1a1a1a", fontWeight: 500 }}
         >
           {title}
         </Link>
         {subtitle && (
           <span
-            className="font-dm-sans block truncate text-[11px]"
+            className="font-dm-sans block break-words text-[11px]"
             style={{ color: "#999999" }}
           >
             {subtitle}
