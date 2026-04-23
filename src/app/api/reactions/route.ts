@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ANON_ID_MAX_LEN } from "@/lib/anonId";
+import { parseAnonId } from "@/lib/anonId";
 
 const VALID_TYPES = ["waiting", "best", "surprise", "moved"];
 
@@ -44,19 +44,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { setlistItemId, reactionType, anonId } = body;
+  // Default to {} so a literal JSON `null` body doesn't TypeError on
+  // destructuring — same defensive pattern as impressions/route.ts.
+  const { setlistItemId, reactionType, anonId } = body ?? {};
 
   if (!setlistItemId || !VALID_TYPES.includes(reactionType)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  if (anonId !== undefined && (typeof anonId !== "string" || anonId.length > ANON_ID_MAX_LEN)) {
-    return NextResponse.json({ error: "invalid anonId" }, { status: 400 });
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
   }
-  // Empty string from a client whose localStorage is disabled / errored —
-  // treat as missing so the partial unique skips this row.
-  const dedupAnonId =
-    typeof anonId === "string" && anonId.length > 0 ? anonId : null;
+  const dedupAnonId = anonResult.value;
 
   let siId: bigint;
   try {
@@ -124,7 +124,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { reactionId } = body;
+  // Same null-body guard as POST — `body ?? {}` so a literal JSON null
+  // doesn't TypeError on destructuring → we return 400, not 500.
+  const { reactionId } = body ?? {};
 
   if (!reactionId || typeof reactionId !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });

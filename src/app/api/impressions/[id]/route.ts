@@ -8,7 +8,7 @@ import {
   ImpressionNotFoundError,
   ImpressionStaleEditError,
 } from "@/lib/impression";
-import { ANON_ID_MAX_LEN } from "@/lib/anonId";
+import { parseAnonId } from "@/lib/anonId";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -37,11 +37,11 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     );
   }
 
-  if (anonId !== undefined && (typeof anonId !== "string" || anonId.length > ANON_ID_MAX_LEN)) {
-    return NextResponse.json({ error: "invalid anonId" }, { status: 400 });
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
   }
-  const requesterAnonId =
-    typeof anonId === "string" && anonId.length > 0 ? anonId : null;
+  const requesterAnonId = anonResult.value;
 
   try {
     const created = await prisma.$transaction(async (tx) => {

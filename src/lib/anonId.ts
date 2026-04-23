@@ -8,6 +8,31 @@ const KEY = "opensetlist_anon_id";
  */
 export const ANON_ID_MAX_LEN = 64;
 
+export type ParseAnonIdResult =
+  | { ok: true; value: string | null }
+  | { ok: false; message: string };
+
+/**
+ * Validate + normalize an anonId from a request body. Pattern shared by
+ * every API route that accepts the field — keeps the rules in one place.
+ *
+ * Accepts:
+ *   - undefined  → ok, value=null (legacy / no-anon client)
+ *   - string ≤ ANON_ID_MAX_LEN → ok, value=string|null (empty → null so
+ *     the partial unique correctly skips this row)
+ *
+ * Rejects:
+ *   - any other type
+ *   - string longer than ANON_ID_MAX_LEN
+ */
+export function parseAnonId(value: unknown): ParseAnonIdResult {
+  if (value === undefined) return { ok: true, value: null };
+  if (typeof value !== "string" || value.length > ANON_ID_MAX_LEN) {
+    return { ok: false, message: "invalid anonId" };
+  }
+  return { ok: true, value: value.length > 0 ? value : null };
+}
+
 /**
  * Returns the browser's anonymous identifier, creating it on first call.
  *

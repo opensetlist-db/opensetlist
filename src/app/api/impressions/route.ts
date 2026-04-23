@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
-import { ANON_ID_MAX_LEN } from "@/lib/anonId";
+import { parseAnonId } from "@/lib/anonId";
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
@@ -69,13 +69,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (anonId !== undefined && (typeof anonId !== "string" || anonId.length > ANON_ID_MAX_LEN)) {
-    return NextResponse.json({ error: "invalid anonId" }, { status: 400 });
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
   }
-  // Empty string from a client whose localStorage is disabled / errored —
-  // treat as missing so the chain isn't claimed by an empty-string owner.
-  const dedupAnonId =
-    typeof anonId === "string" && anonId.length > 0 ? anonId : null;
+  const dedupAnonId = anonResult.value;
 
   let eid: bigint;
   try {
