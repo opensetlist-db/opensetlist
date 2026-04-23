@@ -31,11 +31,27 @@ export function useSetlistPolling<T>({
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  // Re-sync from props only when eventId actually changes — not on every
+  // parent re-render. Without this guard, callers passing fresh array refs
+  // (like LiveSetlist) would re-trigger setState on every paint and thrash
+  // the polling state. The useState-pair "track previous prop" idiom
+  // (React docs: "Storing information from previous renders") avoids
+  // both react-hooks/set-state-in-effect AND react-hooks/refs.
+  //
+  // Trade-off: if a caller updates initialItems / initialReactionCounts
+  // WITHOUT changing eventId (e.g., a future router.refresh delivering a
+  // fresh SSR seed for the same event), the hook keeps the prior state.
+  // Acceptable for Phase 1A — the seed only changes when eventId changes
+  // (page navigation forces a remount with new useState initial values).
+  // Revisit by accepting an explicit `seedVersion` prop if a router.refresh
+  // path ever delivers fresh seed for the same event.
+  const [prevEventId, setPrevEventId] = useState(eventId);
+  if (prevEventId !== eventId) {
+    setPrevEventId(eventId);
     setItems(initialItems);
     setReactionCounts(initialReactionCounts);
     setLastUpdated(null);
-  }, [eventId, initialItems, initialReactionCounts]);
+  }
 
   const fetchSetlist = useCallback(async () => {
     try {

@@ -26,9 +26,17 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname]);
+  // Close the menu on navigation (covers browser back/forward, programmatic
+  // routing, etc. — anything the per-Link onClick wouldn't catch). The
+  // useState-pair "track previous prop" idiom (React docs: "Storing
+  // information from previous renders") avoids both the
+  // react-hooks/set-state-in-effect rule (no useEffect) and the
+  // react-hooks/refs rule (no ref read/write in render).
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    if (menuOpen) setMenuOpen(false);
+  }
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -144,6 +152,7 @@ export function Header() {
                 <Link
                   key={item.key}
                   href={item.href}
+                  onClick={() => setMenuOpen(false)}
                   className="font-dm-sans text-[15px] py-3 border-b border-[#f0f0f0]"
                   style={{
                     color: active ? "#0288D1" : "#333333",

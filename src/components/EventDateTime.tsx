@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { formatEventDateTime } from "@/lib/eventDateTime";
+import { useMounted } from "@/hooks/useMounted";
 
 interface Props {
   date: string | Date | null;
@@ -19,9 +19,7 @@ export function EventDateTime({
 }: Props) {
   const locale = useLocale();
   const t = useTranslations("EventDateTime");
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  const mounted = useMounted();
 
   if (!date && !startTime) return null;
 
