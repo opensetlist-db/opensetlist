@@ -5,6 +5,10 @@ import { useState } from "react";
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 
+type Provider = "gemini" | "openai";
+// "default" means: let the server fall back to TRANSLATION_PROVIDER env.
+type ProviderChoice = Provider | "default";
+
 type DebugResponse = {
   systemPrompt: string;
   input: string;
@@ -12,10 +16,12 @@ type DebugResponse = {
   parsed: { ko: string; ja: string; en: string } | null;
   parseError: string | null;
   sourceLocale: Locale;
+  provider: Provider;
 };
 
 export default function TranslationDebugPage() {
   const [sourceLocale, setSourceLocale] = useState<Locale>("ko");
+  const [providerChoice, setProviderChoice] = useState<ProviderChoice>("default");
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +37,13 @@ export default function TranslationDebugPage() {
       const res = await fetch("/api/admin/translation-debug", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceLocale, text }),
+        body: JSON.stringify({
+          sourceLocale,
+          text,
+          // Only send `provider` when the admin explicitly picked one; an
+          // absent field lets the server use TRANSLATION_PROVIDER env.
+          ...(providerChoice !== "default" ? { provider: providerChoice } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -46,6 +58,7 @@ export default function TranslationDebugPage() {
             parsed: null,
             parseError: null,
             sourceLocale: data.sourceLocale ?? sourceLocale,
+            provider: data.provider ?? "gemini",
           });
         }
       } else {
@@ -82,6 +95,21 @@ export default function TranslationDebugPage() {
                 {l}
               </option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="td-provider" className="mb-1 block text-sm font-medium">
+            번역기
+          </label>
+          <select
+            id="td-provider"
+            value={providerChoice}
+            onChange={(e) => setProviderChoice(e.target.value as ProviderChoice)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="default">기본 (환경 변수)</option>
+            <option value="gemini">Gemini</option>
+            <option value="openai">OpenAI</option>
           </select>
         </div>
       </div>
@@ -126,7 +154,7 @@ export default function TranslationDebugPage() {
           )}
 
           <DebugBlock
-            label="LLM 원본 출력"
+            label={`LLM 원본 출력 (${result.provider})`}
             content={result.raw || "(번역기 호출 안됨)"}
           />
 

@@ -13,15 +13,22 @@ import { openaiRawTranslate } from "@/lib/translator/openai";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
+const PROVIDERS = ["gemini", "openai"] as const;
+type Provider = (typeof PROVIDERS)[number];
+
 // POST /api/admin/translation-debug
-// Body: { sourceLocale: "ko" | "ja" | "en", text: string }
-// Response: { systemPrompt, input, raw, parsed, parseError, sourceLocale }
+// Body: { sourceLocale: "ko" | "ja" | "en", text: string, provider?: "gemini" | "openai" }
+// Response: { systemPrompt, input, raw, parsed, parseError, sourceLocale, provider }
 //
 // Phase 1A uses a hardcoded Hasunosora prompt (see
 // src/lib/translator/prompts/hasunosora.ts), so `eventId` is no longer
 // part of the request shape — per-event prompts arrive in Phase 1B.
 // `sourceLocale` is used by the UI to dim the source row in the parsed
 // output table; the prompt itself does not inject it.
+//
+// `provider` overrides TRANSLATION_PROVIDER for this request only — lets
+// admins A/B the same prompt across both providers without touching env.
+// Falls back to env (default "gemini") when unset.
 //
 // Bypasses the ImpressionTranslation cache — every click hits the
 // translator. The production translate route is the caching-enabled path.
@@ -36,9 +43,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { sourceLocale, text } = (body ?? {}) as {
+  const { sourceLocale, text, provider: providerInput } = (body ?? {}) as {
     sourceLocale?: unknown;
     text?: unknown;
+    provider?: unknown;
   };
 
   if (
@@ -50,8 +58,21 @@ export async function POST(req: NextRequest) {
   if (typeof text !== "string" || text.length === 0) {
     return NextResponse.json({ error: "Invalid text" }, { status: 400 });
   }
+  if (
+    providerInput !== undefined &&
+    (typeof providerInput !== "string" ||
+      !(PROVIDERS as readonly string[]).includes(providerInput))
+  ) {
+    return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
+  }
 
-  const provider = process.env.TRANSLATION_PROVIDER ?? "gemini";
+  const provider: Provider =
+    (providerInput as Provider | undefined) ??
+    ((PROVIDERS as readonly string[]).includes(
+      process.env.TRANSLATION_PROVIDER ?? "",
+    )
+      ? (process.env.TRANSLATION_PROVIDER as Provider)
+      : "gemini");
   let raw: string;
   try {
     if (provider === "gemini") {
@@ -71,11 +92,16 @@ export async function POST(req: NextRequest) {
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else {
-      throw new Error(`Unknown TRANSLATION_PROVIDER: ${provider}`);
+      // Exhaustiveness guard — `provider` is narrowed to the validated
+      // union above; `provider satisfies never` fails compilation if the
+      // union grows without a new branch.
+      const exhaustive: never = provider;
+      throw new Error(`Unknown provider: ${exhaustive}`);
     }
   } catch (err) {
     console.error("Debug translator call failed", {
       name: err instanceof Error ? err.name : typeof err,
+      provider,
     });
     return NextResponse.json(
       {
@@ -83,6 +109,7 @@ export async function POST(req: NextRequest) {
         systemPrompt: SYSTEM_PROMPT,
         input: text,
         sourceLocale,
+        provider,
       },
       { status: 502 },
     );
@@ -103,5 +130,6 @@ export async function POST(req: NextRequest) {
     parsed,
     parseError,
     sourceLocale,
+    provider,
   });
 }
