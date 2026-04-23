@@ -3,16 +3,10 @@ import { TranslationTruncatedError, type Translator } from "./types";
 import {
   SYSTEM_PROMPT,
   buildUserInput,
+  estimateMaxTokens,
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "./prompt";
-
-// Three-language JSON output ≈ 3× source length + brace/quote overhead. Floor
-// of 512 catches short inputs; the 4.5× factor is the "rough floor" from the
-// task spec and leaves headroom for edited impressions.
-function estimateMaxTokens(text: string): number {
-  return Math.max(512, Math.round((text.length / 4) * 4.5));
-}
 
 export class GeminiTranslator implements Translator {
   private client: GoogleGenAI;

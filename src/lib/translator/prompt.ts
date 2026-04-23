@@ -19,6 +19,14 @@ export function buildUserInput(text: string, sourceLocale: string): string {
   return `source_locale: ${sourceLocale}\n${text}`;
 }
 
+// Three-language JSON output ≈ 3× source length + brace/quote overhead.
+// Floor of 512 catches short inputs; 4.5× is the "rough floor" from the
+// task spec and leaves headroom for edited impressions. Shared across
+// providers so the maxTokens budget stays in sync.
+export function estimateMaxTokens(text: string): number {
+  return Math.max(512, Math.round((text.length / 4) * 4.5));
+}
+
 // LLMs occasionally wrap JSON in ```json fences or prepend prose despite the
 // "JSON 배열로만" instruction. Strip that, then parse. Tolerates both a bare
 // object and a single-element array (the prompt asks for array, but models

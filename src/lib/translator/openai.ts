@@ -3,14 +3,10 @@ import { TranslationTruncatedError, type Translator } from "./types";
 import {
   SYSTEM_PROMPT,
   buildUserInput,
+  estimateMaxTokens,
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "./prompt";
-
-// Mirror of gemini.ts — see comment there for rationale on the 4.5× factor.
-function estimateMaxTokens(text: string): number {
-  return Math.max(512, Math.round((text.length / 4) * 4.5));
-}
 
 export class OpenAITranslator implements Translator {
   private client: OpenAI;

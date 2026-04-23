@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "Invalid sourceLocale" }, { status: 400 });
   }
-  if (typeof text !== "string" || text.length === 0) {
+  if (typeof text !== "string" || text.trim().length === 0) {
     return NextResponse.json({ error: "Invalid text" }, { status: 400 });
   }
   if (
