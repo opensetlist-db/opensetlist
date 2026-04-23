@@ -26,11 +26,17 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Closing the menu on navigation is handled at the click site (each mobile
-  // <Link> below) — moving the setState into an event handler avoids the
-  // react-hooks/set-state-in-effect violation. Browser back/forward doesn't
-  // close the menu, but the click-outside effect below handles most of those
-  // cases anyway.
+  // Close the menu on navigation (covers browser back/forward, programmatic
+  // routing, etc. — anything the per-Link onClick wouldn't catch). The
+  // useState-pair "track previous prop" idiom (React docs: "Storing
+  // information from previous renders") avoids both the
+  // react-hooks/set-state-in-effect rule (no useEffect) and the
+  // react-hooks/refs rule (no ref read/write in render).
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    if (menuOpen) setMenuOpen(false);
+  }
 
   useEffect(() => {
     if (!menuOpen) return;

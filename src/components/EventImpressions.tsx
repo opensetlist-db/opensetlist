@@ -47,6 +47,21 @@ function readSavedFromStorage(key: string): SavedImpression | null {
   }
 }
 
+// Pure read with try/catch — `localStorage.getItem` can throw SecurityError
+// in some browsers (storage blocked, third-party-context restrictions, quota
+// disabled, etc.). Falls back to false on any failure so the report-flag
+// scan in `reportedChainIds` can't take down the whole impressions section.
+function readReportFlag(rootImpressionId: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      localStorage.getItem(`impression-report-${rootImpressionId}`) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function initialCooldownFor(saved: SavedImpression | null): number {
   if (!saved?.createdAt) return 0;
   const sinceDate = new Date(saved.createdAt);
@@ -123,10 +138,7 @@ export function EventImpressions({
     if (!mounted) return set;
     for (const imp of impressions) {
       if (set.has(imp.rootImpressionId)) continue;
-      if (
-        localStorage.getItem(`impression-report-${imp.rootImpressionId}`) ===
-        "true"
-      ) {
+      if (readReportFlag(imp.rootImpressionId)) {
         set.add(imp.rootImpressionId);
       }
     }
