@@ -632,13 +632,29 @@ async function importEvents(rows: Record<string, string>[]) {
     include: { translations: true },
   });
 
+  // Two-pass lookup. The CSV columns (event_performer_slugs /
+  // event_guest_slugs) carry slug values by documented convention, so we
+  // resolve those first. The translation-name fallback exists only for
+  // legacy pre-launch CSV rows that still passed names. Without splitting
+  // the passes, Array.find can return the first SI whose translation
+  // name fuzzy-matches the input even when a LATER SI has the exact
+  // slug — wrong stageIdentityId on the EventPerformer row.
+  //
+  // Without ANY slug match (the bug this hotfix replaces) every imported
+  // event ended up with zero performers and zero guests on prod.
   function findSIIdBySlug(slug: string): string | null {
-    const si = allSIs.find((si) =>
+    const bySlug = allSIs.find((si) => si.slug === slug);
+    if (bySlug) return bySlug.id;
+
+    const normalizedSlug = slug.toLowerCase();
+    const byLegacyName = allSIs.find((si) =>
       si.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
+        (t) =>
+          t.name === slug ||
+          t.name.toLowerCase().replace(/\s+/g, "-") === normalizedSlug
       )
     );
-    return si?.id ?? null;
+    return byLegacyName?.id ?? null;
   }
 
   for (const row of rows) {
@@ -685,14 +701,22 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     include: { translations: true },
   });
 
+  // Two-pass lookup, matching the helper in importEvents above. Splitting
+  // exact slug from legacy name fallback prevents an earlier SI's
+  // translation-name fuzzy match from shadowing a later SI's exact slug.
   function findSIId(slug: string): string | null {
-    const si = allSIs.find((si) =>
-      si.slug === slug ||
+    const bySlug = allSIs.find((si) => si.slug === slug);
+    if (bySlug) return bySlug.id;
+
+    const normalizedSlug = slug.toLowerCase();
+    const byLegacyName = allSIs.find((si) =>
       si.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
+        (t) =>
+          t.name === slug ||
+          t.name.toLowerCase().replace(/\s+/g, "-") === normalizedSlug
       )
     );
-    return si?.id ?? null;
+    return byLegacyName?.id ?? null;
   }
 
   // Pre-pass: delete existing setlist items for events being imported (re-import support)
