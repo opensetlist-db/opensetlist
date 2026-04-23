@@ -8,6 +8,7 @@ import {
   ImpressionNotFoundError,
   ImpressionStaleEditError,
 } from "@/lib/impression";
+import { parseAnonId } from "@/lib/anonId";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -23,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { content } = body ?? {};
+  const { content, anonId } = body ?? {};
   if (typeof content !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
@@ -36,12 +37,27 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
     );
   }
 
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
+  }
+  const requesterAnonId = anonResult.value;
+
   try {
     const created = await prisma.$transaction(async (tx) => {
       const current = await tx.eventImpression.findFirst({
         where: { rootImpressionId: chainId, supersededAt: null, isDeleted: false },
       });
       if (!current) throw new ImpressionNotFoundError();
+
+      // Ownership check: anon-keyed chains require matching caller anonId.
+      // Legacy chains (current.anonId === null, written before this column
+      // existed) accept any caller — preserves backward compat for the few
+      // pre-feature rows. Mismatch returns 404 (not 403) to hide chain
+      // existence from non-owners.
+      if (current.anonId !== null && current.anonId !== requesterAnonId) {
+        throw new ImpressionNotFoundError();
+      }
 
       const remainingSeconds = getEditCooldownRemaining(current.createdAt, new Date());
       if (remainingSeconds > 0) {
@@ -64,6 +80,10 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
           eventId: current.eventId,
           content: trimmed,
           locale: current.locale,
+          // Inherit anonId from the chain head so ownership stays stable
+          // across edits — the anon that owned the previous row owns the
+          // new one.
+          anonId: current.anonId,
         },
       });
     });

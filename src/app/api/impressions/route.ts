@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
+import { parseAnonId } from "@/lib/anonId";
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { eventId, content, locale } = body ?? {};
+  const { eventId, content, locale, anonId } = body ?? {};
 
   if (!eventId || typeof content !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -67,6 +68,12 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
+  }
+  const dedupAnonId = anonResult.value;
 
   let eid: bigint;
   try {
@@ -91,6 +98,8 @@ export async function POST(req: NextRequest) {
 
   // Generate the id upfront so the head row can set
   // rootImpressionId = id in a single insert (no two-step placeholder dance).
+  // No P2002 catch needed here: rootImpressionId is fresh per call, so the
+  // event_impression_anon_unique partial unique cannot fire on insert.
   const newId = randomUUID();
   const created = await prisma.eventImpression.create({
     data: {
@@ -99,6 +108,7 @@ export async function POST(req: NextRequest) {
       eventId: eid,
       content: trimmed,
       locale: resolvedLocale,
+      anonId: dedupAnonId,
     },
   });
 

@@ -140,3 +140,28 @@ BEGIN
     RAISE WARNING 'original* backfill left % parent rows with NULL identity — NOT NULL tightening must wait until orphan count is zero', orphan_count;
   END IF;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Per-browser anon-id dedup for contribution tables.
+-- The partial WHERE clauses skip legacy NULL rows (anyone created before
+-- this column existed) so the new index doesn't retroactively block them.
+
+-- Per-browser reaction idempotency: at most one row per
+-- (setlistItemId, reactionType, anonId) when anonId is set. The reactions
+-- POST handler catches the resulting P2002 and re-selects the existing row.
+CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_reaction_anon_unique
+  ON "SetlistItemReaction" ("setlistItemId", "reactionType", "anonId")
+  WHERE "anonId" IS NOT NULL;
+
+-- Per-browser impression chain ownership: at most one HEAD row per
+-- (rootImpressionId, anonId). The `supersededAt IS NULL` clause is
+-- load-bearing — without it, the PUT supersede+create transaction would
+-- fail P2002 because the old row (now superseded but still anon-keyed)
+-- collides with the new head row. With the clause, only head rows are
+-- indexed, so historical chain rows can repeat (rootImpressionId, anonId)
+-- safely. DROP+CREATE ensures the predicate update lands on environments
+-- that may have already created an earlier version of this index.
+DROP INDEX IF EXISTS event_impression_anon_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS event_impression_anon_unique
+  ON "EventImpression" ("rootImpressionId", "anonId")
+  WHERE "anonId" IS NOT NULL AND "supersededAt" IS NULL;

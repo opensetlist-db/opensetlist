@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { parseAnonId } from "@/lib/anonId";
 
 const VALID_TYPES = ["waiting", "best", "surprise", "moved"];
 
@@ -42,11 +44,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { setlistItemId, reactionType } = body;
+  // Default to {} so a literal JSON `null` body doesn't TypeError on
+  // destructuring — same defensive pattern as impressions/route.ts.
+  const { setlistItemId, reactionType, anonId } = body ?? {};
 
   if (!setlistItemId || !VALID_TYPES.includes(reactionType)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+
+  const anonResult = parseAnonId(anonId);
+  if (!anonResult.ok) {
+    return NextResponse.json({ error: anonResult.message }, { status: 400 });
+  }
+  const dedupAnonId = anonResult.value;
 
   let siId: bigint;
   try {
@@ -69,12 +79,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const reaction = await prisma.setlistItemReaction.create({
-    data: {
-      setlistItemId: siId,
-      reactionType,
-    },
-  });
+  // Create-then-catch-P2002 idempotency. The partial unique
+  // setlist_item_reaction_anon_unique enforces one row per
+  // (setlistItemId, reactionType, anonId) when anonId is set; on conflict
+  // we re-select the existing row and return its id so the client's UI
+  // state stays consistent. Same pattern as
+  // src/app/api/impressions/translate/route.ts:121-156.
+  let reaction;
+  try {
+    reaction = await prisma.setlistItemReaction.create({
+      data: {
+        setlistItemId: siId,
+        reactionType,
+        anonId: dedupAnonId,
+      },
+    });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002" &&
+      dedupAnonId
+    ) {
+      reaction = await prisma.setlistItemReaction.findFirst({
+        where: { setlistItemId: siId, reactionType, anonId: dedupAnonId },
+      });
+      if (!reaction) throw e; // partial unique guarantees a row — fail loud
+    } else {
+      throw e;
+    }
+  }
 
   const counts = await getReactionCounts(siId);
   return NextResponse.json({
@@ -91,7 +124,9 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { reactionId } = body;
+  // Same null-body guard as POST — `body ?? {}` so a literal JSON null
+  // doesn't TypeError on destructuring → we return 400, not 500.
+  const { reactionId } = body ?? {};
 
   if (!reactionId || typeof reactionId !== "string") {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });

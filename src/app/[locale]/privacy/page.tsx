@@ -21,7 +21,7 @@ function KoContent() {
         OpenSetlist(이하 &quot;서비스&quot;)는 이용자의 개인정보를 중요시하며,
         「개인정보 보호법」을 준수합니다.
       </p>
-      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 17일</p>
+      <p className="mb-8 text-sm text-zinc-400">최종 수정일: 2026년 4월 22일</p>
 
       <Section title="1. 수집하는 개인정보">
         <p className="mb-2 font-medium">자동 수집 정보 (제3자 처리자)</p>
@@ -34,6 +34,22 @@ function KoContent() {
           <li>IP 주소, 방문 기록, 쿠키</li>
           <li>브라우저 종류, 운영체제</li>
           <li>방문 페이지, 체류 시간</li>
+        </ul>
+        <p className="mb-2 font-medium">브라우저 로컬 저장소 (localStorage)</p>
+        <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
+          <li>
+            <code>opensetlist_first_visit</code>: 첫 방문 시각 (재방문 안내 목적)
+          </li>
+          <li>
+            <code>opensetlist_anon_id</code>: 익명 식별자 (UUID). 게시물 중복
+            방지 및 향후 회원가입 시 익명으로 작성한 기여 내역을 회원 계정에
+            연결하는 용도로 사용합니다. 이 식별자는 서버에 저장되지만 IP나 다른
+            개인정보와 연계되지 않습니다.
+          </li>
+          <li>
+            브라우저 설정에서 사이트 데이터를 삭제하면 식별자가 초기화되며,
+            이전에 익명으로 작성한 기여 내역과의 연결이 끊어집니다.
+          </li>
         </ul>
         <p className="mb-2 font-medium">회원 가입 시 (Phase 2 이후)</p>
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
@@ -122,7 +138,7 @@ function EnContent() {
   return (
     <>
       <h1 className="mb-8 text-2xl font-bold">Privacy Policy</h1>
-      <p className="mb-8 text-sm text-zinc-400">Last updated: April 17, 2026</p>
+      <p className="mb-8 text-sm text-zinc-400">Last updated: April 22, 2026</p>
 
       <Section title="Information We Collect">
         <p className="mb-2 font-medium">
@@ -138,6 +154,24 @@ function EnContent() {
           <li>IP address, visit logs, cookies</li>
           <li>Browser type, operating system</li>
           <li>Pages visited, time spent</li>
+        </ul>
+        <p className="mb-2 font-medium">Browser Local Storage (localStorage):</p>
+        <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
+          <li>
+            <code>opensetlist_first_visit</code>: timestamp of first visit
+            (used for return-visitor UI).
+          </li>
+          <li>
+            <code>opensetlist_anon_id</code>: anonymous identifier (UUID).
+            Used to prevent duplicate submissions and, when you create an
+            account in the future, to link contributions you made anonymously
+            to that account. This identifier is stored on our servers but is
+            not linked to your IP address or any other personal information.
+          </li>
+          <li>
+            Clearing your browser site data resets this identifier and severs
+            the link to any prior anonymous contributions.
+          </li>
         </ul>
         <p className="mb-2 font-medium">On registration (Phase 2):</p>
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
@@ -229,7 +263,7 @@ function JaContent() {
         OpenSetlist（以下「本サービス」）は、ユーザーの個人情報を重視し、
         個人情報保護法を遵守します。
       </p>
-      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月17日</p>
+      <p className="mb-8 text-sm text-zinc-400">最終更新日: 2026年4月22日</p>
 
       <Section title="1. 収集する個人情報">
         <p className="mb-2 font-medium">自動収集情報（第三者処理者による）</p>
@@ -242,6 +276,24 @@ function JaContent() {
           <li>IPアドレス、訪問履歴、Cookie</li>
           <li>ブラウザの種類、OS</li>
           <li>閲覧ページ、滞在時間</li>
+        </ul>
+        <p className="mb-2 font-medium">
+          ブラウザのローカルストレージ（localStorage）
+        </p>
+        <ul className="mb-4 list-inside list-disc space-y-1 text-zinc-600">
+          <li>
+            <code>opensetlist_first_visit</code>: 初回訪問日時（再訪問案内用）
+          </li>
+          <li>
+            <code>opensetlist_anon_id</code>:
+            匿名識別子（UUID）。投稿の重複防止および将来の会員登録時に匿名で作成した
+            投稿を会員アカウントに紐付ける目的で使用します。この識別子はサーバーに
+            保存されますが、IPアドレスやその他の個人情報とは関連付けられません。
+          </li>
+          <li>
+            ブラウザ設定でサイトデータを削除すると識別子はリセットされ、
+            それ以前の匿名投稿との関連付けは解除されます。
+          </li>
         </ul>
         <p className="mb-2 font-medium">会員登録時（Phase 2以降）</p>
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
