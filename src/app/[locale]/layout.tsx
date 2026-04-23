@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
@@ -64,6 +65,7 @@ export default async function LocaleLayout({
           <Header />
           {children}
           <Footer />
+          <SpeedInsights />
         </NextIntlClientProvider>
       </body>
       {process.env.NEXT_PUBLIC_GA_ID && (
