@@ -632,11 +632,22 @@ async function importEvents(rows: Record<string, string>[]) {
     include: { translations: true },
   });
 
+  // Try the actual `slug` column first — that's what the CSV columns
+  // (event_performer_slugs / event_guest_slugs) contain by documented
+  // convention. Translation-name match is kept only as a legacy fallback
+  // for any pre-launch CSV row that still passes a name; identical to the
+  // findSIId lookup used by importSetlistItems below. Without the slug
+  // check this function never matched the CSV input — every imported
+  // event ended up with zero performers and zero guests on prod.
   function findSIIdBySlug(slug: string): string | null {
-    const si = allSIs.find((si) =>
-      si.translations.some(
-        (t) => t.name === slug || t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
-      )
+    const si = allSIs.find(
+      (si) =>
+        si.slug === slug ||
+        si.translations.some(
+          (t) =>
+            t.name === slug ||
+            t.name.toLowerCase().replace(/\s+/g, "-") === slug.toLowerCase()
+        )
     );
     return si?.id ?? null;
   }
