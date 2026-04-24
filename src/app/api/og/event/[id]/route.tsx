@@ -7,7 +7,7 @@ import {
 } from "@/lib/display";
 import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
-import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
+import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
   FALLBACK_TITLES,
   STATUS_LABELS,
@@ -134,6 +134,7 @@ export async function GET(req: Request, { params }: Props) {
     const statusLabel = STATUS_LABELS[lang][resolved];
     const dotColor = STATUS_DOT_COLOR[resolved];
     const cacheHeaders = cacheHeadersForStatus(resolved, event.startTime, now);
+    const sized = titleFontSize(title, 60);
 
     return new ImageResponse(
       (
@@ -223,7 +224,7 @@ export async function GET(req: Request, { params }: Props) {
             <div
               style={{
                 display: "-webkit-box",
-                fontSize: 60,
+                fontSize: sized.fontSize,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 color: "#ffffff",
@@ -246,7 +247,7 @@ export async function GET(req: Request, { params }: Props) {
                   lineHeight: 1.3,
                   color: "rgba(255, 255, 255, 0.8)",
                   overflow: "hidden",
-                  WebkitLineClamp: 2,
+                  WebkitLineClamp: sized.subtitleClamp,
                   WebkitBoxOrient: "vertical",
                 }}
               >
