@@ -112,16 +112,23 @@ function scoreWeightedLength(text: string): number {
 // existing starting size: 60 for event, 72 for artist/song. Subtitle clamp
 // drops to 1 line when the title goes large-to-medium so the metadata row
 // still has room below.
+const TITLE_SIZE_TIERS = [
+  { maxScore: 20, large: 72, normal: 60, clamp: 2 },
+  { maxScore: 35, large: 64, normal: 56, clamp: 2 },
+  { maxScore: 55, large: 54, normal: 48, clamp: 2 },
+  { maxScore: 80, large: 44, normal: 40, clamp: 1 },
+  { maxScore: 110, large: 36, normal: 34, clamp: 1 },
+] as const;
+const FALLBACK_TIER = { large: 32, normal: 30, clamp: 1 } as const;
+
 export function titleFontSize(
   text: string,
   base: 60 | 72 = 60
 ): { fontSize: number; subtitleClamp: 1 | 2 } {
   const score = scoreWeightedLength(text);
-  const isLarge = base === 72;
-  if (score <= 20) return { fontSize: isLarge ? 72 : 60, subtitleClamp: 2 };
-  if (score <= 35) return { fontSize: isLarge ? 64 : 56, subtitleClamp: 2 };
-  if (score <= 55) return { fontSize: isLarge ? 54 : 48, subtitleClamp: 2 };
-  if (score <= 80) return { fontSize: isLarge ? 44 : 40, subtitleClamp: 1 };
-  if (score <= 110) return { fontSize: isLarge ? 36 : 34, subtitleClamp: 1 };
-  return { fontSize: isLarge ? 32 : 30, subtitleClamp: 1 };
+  const tier = TITLE_SIZE_TIERS.find((t) => score <= t.maxScore) ?? FALLBACK_TIER;
+  return {
+    fontSize: base === 72 ? tier.large : tier.normal,
+    subtitleClamp: tier.clamp,
+  };
 }
