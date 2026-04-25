@@ -1,25 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useSetlistPolling } from "@/hooks/useSetlistPolling";
+import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 
-// Hoisted to keep referential identity across re-renders. The hook's first
-// useEffect lists initialItems / initialReactionCounts in its deps, so a
-// fresh literal on each render would re-fire it indefinitely.
-const initialItems: unknown[] = [];
-const initialReactionCounts = {};
-
-describe("useSetlistPolling", () => {
+describe("useImpressionPolling", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({
-          items: [],
-          reactionCounts: {},
-          updatedAt: new Date().toISOString(),
-        }),
+        json: async () => ({ impressions: [] }),
       }) as unknown as typeof fetch,
     );
   });
@@ -30,12 +20,10 @@ describe("useSetlistPolling", () => {
     vi.restoreAllMocks();
   });
 
-  it("polls every 5 seconds while enabled", async () => {
+  it("polls every 5 seconds while enabled with cache: no-store", async () => {
     renderHook(() =>
-      useSetlistPolling({
+      useImpressionPolling({
         eventId: "1",
-        initialItems,
-        initialReactionCounts,
         enabled: true,
         intervalMs: 5000,
       }),
@@ -49,10 +37,9 @@ describe("useSetlistPolling", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
-    // Guard the endpoint + eventId query string so refactors don't silently
-    // repoint the polling loop. `cache: "no-store"` is required so browsers
-    // can't serve a private cached response across poll ticks.
-    const expectedUrl = "/api/setlist?eventId=1";
+    // `cache: "no-store"` is required so browsers can't serve a private
+    // cached response across poll ticks.
+    const expectedUrl = "/api/impressions?eventId=1";
     const expectedInit = { cache: "no-store" };
     expect(global.fetch).toHaveBeenNthCalledWith(1, expectedUrl, expectedInit);
     expect(global.fetch).toHaveBeenNthCalledWith(2, expectedUrl, expectedInit);
@@ -60,10 +47,8 @@ describe("useSetlistPolling", () => {
 
   it("does not poll when enabled=false", async () => {
     renderHook(() =>
-      useSetlistPolling({
+      useImpressionPolling({
         eventId: "1",
-        initialItems,
-        initialReactionCounts,
         enabled: false,
         intervalMs: 5000,
       }),
@@ -78,10 +63,8 @@ describe("useSetlistPolling", () => {
 
   it("clears the interval on unmount (no leak)", async () => {
     const { unmount } = renderHook(() =>
-      useSetlistPolling({
+      useImpressionPolling({
         eventId: "1",
-        initialItems,
-        initialReactionCounts,
         enabled: true,
         intervalMs: 5000,
       }),
@@ -99,5 +82,45 @@ describe("useSetlistPolling", () => {
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes onUpdate with the polled impressions on each tick", async () => {
+    const onUpdate = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          impressions: [
+            {
+              id: "a",
+              rootImpressionId: "a",
+              eventId: "1",
+              content: "hi",
+              locale: "ko",
+              createdAt: "2026-04-25T00:00:00.000Z",
+            },
+          ],
+        }),
+      }) as unknown as typeof fetch,
+    );
+
+    renderHook(() =>
+      useImpressionPolling({
+        eventId: "1",
+        enabled: true,
+        intervalMs: 5000,
+        onUpdate,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onUpdate).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "a", content: "hi" }),
+    ]);
   });
 });
