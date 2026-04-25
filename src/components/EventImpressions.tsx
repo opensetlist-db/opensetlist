@@ -134,7 +134,7 @@ export function EventImpressions({
   const [hydratedSavedKey, setHydratedSavedKey] = useState<string | null>(null);
   if (mounted && hydratedSavedKey !== savedKey) {
     setHydratedSavedKey(savedKey);
-    setImpressions(initialImpressions);
+    // Do NOT reseed `impressions` here — clobbers polled data if the first poll lands before `mounted` flips.
     setReported({});
     const next = readSavedFromStorage(savedKey);
     setSaved(next);

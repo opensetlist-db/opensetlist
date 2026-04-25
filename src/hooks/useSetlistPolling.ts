@@ -57,6 +57,7 @@ export function useSetlistPolling<T>({
     try {
       const res = await fetch(
         `/api/setlist?eventId=${encodeURIComponent(eventId)}`,
+        { cache: "no-store" },
       );
       if (!res.ok) return;
       const data = (await res.json()) as {
