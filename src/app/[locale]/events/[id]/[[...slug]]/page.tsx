@@ -346,7 +346,11 @@ export default async function EventPage({ params }: Props) {
       {/* Header */}
       <header className="mb-8">
         <EventStatusTicker
-          startTime={event.startTime?.toISOString() ?? null}
+          startTime={
+            typeof event.startTime === "string"
+              ? event.startTime
+              : event.startTime?.toISOString() ?? null
+          }
         />
         <h1 className="text-3xl font-bold">
           {seriesFullName || eventFullName || t("unknownEvent")}
