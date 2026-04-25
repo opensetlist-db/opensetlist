@@ -96,7 +96,7 @@ export async function loadOgFonts(): Promise<OgFont[]> {
 // CJK/Hangul/Hiragana/Katakana and Fullwidth Forms render at roughly 2× the
 // advance width of Latin at the same em size, so raw character count misjudges
 // how much horizontal room a title needs. Weight those codepoints as 2.
-const CJK_WIDE = /\p{sc=Han}|\p{sc=Hiragana}|\p{sc=Katakana}|\p{sc=Hangul}|[＀-￯]/u;
+const CJK_WIDE = /\p{sc=Han}|\p{sc=Hiragana}|\p{sc=Katakana}|\p{sc=Hangul}|[\uFF00-\uFFEF]/u;
 
 function scoreWeightedLength(text: string): number {
   let score = 0;
