@@ -93,6 +93,14 @@ describe("titleFontSize — boundary regression", () => {
       });
     });
 
+    it("counts wave dash (U+301C) as 2×", () => {
+      // 11 wave dashes (U+301C) → score 22 → tier2 (catches U+301C → wide regression)
+      expect(titleFontSize("〜".repeat(11), 60)).toEqual({
+        fontSize: 56,
+        subtitleClamp: 2,
+      });
+    });
+
     it("mixes ASCII (1×) and CJK (2×) correctly", () => {
       // "Dream " (6 ASCII = 6) + "～" (1 fullwidth = 2) + "Bloom" (5 ASCII = 5) = 13 → tier1
       expect(titleFontSize("Dream ～Bloom", 60)).toEqual({

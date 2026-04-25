@@ -60,7 +60,7 @@ export const OG_FONTS = [
 
 let cachedFonts: readonly OgFont[] | null = null;
 // Share an in-flight read across concurrent callers so a cold-start burst of OG
-// requests doesn't re-read the same three WOFFs from disk once per request.
+// requests doesn't re-read the configured WOFFs from disk once per request.
 let inflight: Promise<readonly OgFont[]> | null = null;
 
 // Public return type is a mutable array because `@vercel/og`'s `ImageResponse`
@@ -96,7 +96,7 @@ export async function loadOgFonts(): Promise<OgFont[]> {
 // CJK/Hangul/Hiragana/Katakana and Fullwidth Forms render at roughly 2× the
 // advance width of Latin at the same em size, so raw character count misjudges
 // how much horizontal room a title needs. Weight those codepoints as 2.
-const CJK_WIDE = /\p{sc=Han}|\p{sc=Hiragana}|\p{sc=Katakana}|\p{sc=Hangul}|[\uFF00-\uFFEF]/u;
+const CJK_WIDE = /\p{sc=Han}|\p{sc=Hiragana}|\p{sc=Katakana}|\p{sc=Hangul}|[\u3000-\u303F\uFF00-\uFFEF]/u;
 
 function scoreWeightedLength(text: string): number {
   let score = 0;
