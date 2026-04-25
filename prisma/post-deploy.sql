@@ -173,9 +173,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS event_impression_anon_unique
 -- their position slot forever, so any insert at a previously-used slot
 -- failed P2002 with no recovery path in the admin UI. Switching to a
 -- partial unique lets a fresh active row coexist with a soft-deleted
--- row at the same position. The Prisma-generated
--- "SetlistItem_eventId_position_key" is dropped automatically by
--- `prisma db push` when the @@unique line leaves the schema.
+-- row at the same position. `prisma db push` normally drops the legacy
+-- "SetlistItem_eventId_position_key" once the @@unique leaves the schema,
+-- but we DROP defensively so re-running post-deploy in any order (or on
+-- a DB that briefly holds both indexes) converges to the right state.
+DROP INDEX IF EXISTS "SetlistItem_eventId_position_key";
 CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_event_position_active_unique
   ON "SetlistItem" ("eventId", "position")
   WHERE "isDeleted" = false;
