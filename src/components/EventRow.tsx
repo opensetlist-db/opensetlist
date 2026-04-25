@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EventDateTime } from "@/components/EventDateTime";
+import EventStatusTicker from "@/components/EventStatusTicker";
 import { slugify } from "@/lib/utils";
 
 // Accepts the row both pre-serialization (bigint id, raw prisma rows) and
@@ -36,6 +37,10 @@ export function EventRow({
   const href = slug
     ? `/${locale}/events/${event.id}/${slug}`
     : `/${locale}/events/${event.id}`;
+  const startTimeIso =
+    typeof event.startTime === "string"
+      ? event.startTime
+      : event.startTime?.toISOString() ?? null;
   return (
     <li
       className="flex items-start gap-3 rounded-lg bg-white px-4 py-3"
@@ -44,6 +49,7 @@ export function EventRow({
         borderRadius: "8px",
       }}
     >
+      <EventStatusTicker startTime={startTimeIso} />
       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
         <EventDateTime
           date={event.date}
