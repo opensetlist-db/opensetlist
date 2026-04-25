@@ -6,7 +6,7 @@ import {
 } from "@/lib/utils";
 import { displayNameWithFallback } from "@/lib/display";
 import { deriveOgPaletteFromSong, buildMeshBackground } from "@/lib/ogPalette";
-import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
+import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
   FALLBACK_TITLES,
   SONG_PILL_LABEL,
@@ -73,6 +73,7 @@ export async function GET(req: Request, { params }: Props) {
 
     const dateStr = song.releaseDate ? formatDate(song.releaseDate, lang) : "";
     const pillLabel = SONG_PILL_LABEL[lang];
+    const sized = titleFontSize(title, 72);
 
     return new ImageResponse(
       (
@@ -150,7 +151,7 @@ export async function GET(req: Request, { params }: Props) {
             <div
               style={{
                 display: "-webkit-box",
-                fontSize: 72,
+                fontSize: sized.fontSize,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 color: "#ffffff",

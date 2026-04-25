@@ -2,7 +2,7 @@ import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
 import { displayNameWithFallback } from "@/lib/display";
 import { deriveOgPaletteFromArtist, buildMeshBackground } from "@/lib/ogPalette";
-import { loadOgFonts, OG_FONT_STACK } from "@/lib/ogFonts";
+import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
   ARTIST_TYPE_LABELS,
   FALLBACK_TITLES,
@@ -75,6 +75,7 @@ export async function GET(req: Request, { params }: Props) {
     }
 
     const pillLabel = ARTIST_TYPE_LABELS[lang][artist.type];
+    const sized = titleFontSize(title, 72);
 
     return new ImageResponse(
       (
@@ -152,7 +153,7 @@ export async function GET(req: Request, { params }: Props) {
             <div
               style={{
                 display: "-webkit-box",
-                fontSize: 72,
+                fontSize: sized.fontSize,
                 fontWeight: 700,
                 lineHeight: 1.1,
                 color: "#ffffff",
