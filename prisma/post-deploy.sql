@@ -165,3 +165,17 @@ DROP INDEX IF EXISTS event_impression_anon_unique;
 CREATE UNIQUE INDEX IF NOT EXISTS event_impression_anon_unique
   ON "EventImpression" ("rootImpressionId", "anonId")
   WHERE "anonId" IS NOT NULL AND "supersededAt" IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- SetlistItem position uniqueness, soft-delete aware (F3 from 5/2 rehearsal).
+-- The schema previously had @@unique([eventId, position]) which Prisma
+-- compiled to a non-partial unique index. Soft-deleted rows then held
+-- their position slot forever, so any insert at a previously-used slot
+-- failed P2002 with no recovery path in the admin UI. Switching to a
+-- partial unique lets a fresh active row coexist with a soft-deleted
+-- row at the same position. The Prisma-generated
+-- "SetlistItem_eventId_position_key" is dropped automatically by
+-- `prisma db push` when the @@unique line leaves the schema.
+CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_event_position_active_unique
+  ON "SetlistItem" ("eventId", "position")
+  WHERE "isDeleted" = false;
