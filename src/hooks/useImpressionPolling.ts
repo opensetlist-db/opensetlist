@@ -47,6 +47,7 @@ export function useImpressionPolling({
     try {
       const res = await fetch(
         `/api/impressions?eventId=${encodeURIComponent(eventId)}`,
+        { cache: "no-store" },
       );
       if (!res.ok) return;
       const data = (await res.json()) as { impressions: Impression[] };

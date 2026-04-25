@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     { impressions },
     {
       headers: {
-        "Cache-Control": "public, s-maxage=3, stale-while-revalidate=5",
+        "Cache-Control": "private, no-store",
       },
     },
   );

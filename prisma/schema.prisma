@@ -512,7 +512,8 @@ model SetlistItem {
   performers  SetlistItemMember[]
   reactions   SetlistItemReaction[]
 
-  @@unique([eventId, position])
+  // Partial unique on (eventId, position) WHERE isDeleted = false lives in
+  // prisma/post-deploy.sql — Prisma can't express partial uniques in schema.
   @@index([eventId])
   @@index([isDeleted])
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
+import { nextSetlistPosition } from "@/lib/setlist-position";
 
 type SongOption = {
   id: number;
@@ -111,7 +112,7 @@ export default function SetlistBuilder({
   // New item form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [formPosition, setFormPosition] = useState(items.length + 1);
+  const [formPosition, setFormPosition] = useState(nextSetlistPosition(items));
   const [formIsEncore, setFormIsEncore] = useState(false);
   const [formStageType, setFormStageType] = useState("full_group");
   const [formUnitName, setFormUnitName] = useState("");
@@ -263,7 +264,7 @@ export default function SetlistBuilder({
 
   function resetForm() {
     setEditingId(null);
-    setFormPosition(items.length + 1);
+    setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
     setFormStageType("full_group");
     setFormUnitName("");
@@ -553,7 +554,6 @@ export default function SetlistBuilder({
         <button
           onClick={() => {
             resetForm();
-            setFormPosition(items.length + 1);
             setShowForm(true);
           }}
           className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"

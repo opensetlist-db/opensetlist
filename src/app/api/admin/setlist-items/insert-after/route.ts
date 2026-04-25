@@ -32,11 +32,15 @@ export async function POST(request: NextRequest) {
 
   const item = await prisma.$transaction(async (tx) => {
     // Find items that need to shift, ordered by position DESC
-    // to avoid unique constraint violations on [eventId, position]
+    // to avoid unique constraint violations on [eventId, position].
+    // Skip soft-deleted rows: the partial unique in post-deploy.sql
+    // only applies to active rows, so deleted rows hold their original
+    // slot harmlessly and must not be bumped.
     const itemsToShift = await tx.setlistItem.findMany({
       where: {
         eventId: eid,
         position: { gte: newPosition },
+        isDeleted: false,
       },
       orderBy: { position: "desc" },
       select: { id: true, position: true },

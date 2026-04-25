@@ -18,6 +18,7 @@ import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventDateTime } from "@/components/EventDateTime";
+import EventStatusTicker from "@/components/EventStatusTicker";
 import type { Metadata } from "next";
 
 type Props = {
@@ -344,6 +345,13 @@ export default async function EventPage({ params }: Props) {
 
       {/* Header */}
       <header className="mb-8">
+        <EventStatusTicker
+          startTime={
+            typeof event.startTime === "string"
+              ? event.startTime
+              : event.startTime?.toISOString() ?? null
+          }
+        />
         <h1 className="text-3xl font-bold">
           {seriesFullName || eventFullName || t("unknownEvent")}
         </h1>
