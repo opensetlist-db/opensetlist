@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
-import EventStatusTicker from "@/components/EventStatusTicker";
+import EventStatusTicker, {
+  POST_BOUNDARY_BUFFER_MS,
+} from "@/components/EventStatusTicker";
 import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 
 const refreshMock = vi.fn();
@@ -8,8 +10,6 @@ const refreshMock = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock }),
 }));
-
-const POST_BOUNDARY_BUFFER_MS = 2000;
 // Anchor "now" so boundary math is deterministic across test cases.
 const NOW = new Date("2026-05-02T12:00:00Z").getTime();
 
@@ -70,6 +70,15 @@ describe("EventStatusTicker", () => {
     const startTime = new Date(NOW - 13 * 60 * 60 * 1000).toISOString();
     render(<EventStatusTicker startTime={startTime} />);
     await vi.advanceTimersByTimeAsync(48 * 60 * 60 * 1000);
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the boundary is past the setTimeout 32-bit max (~24.8 days)", async () => {
+    // 30 days out — delay would overflow setTimeout and fire immediately.
+    // Component should skip scheduling rather than premature-refresh on mount.
+    const startTime = new Date(NOW + 30 * 24 * 60 * 60 * 1000).toISOString();
+    render(<EventStatusTicker startTime={startTime} />);
+    await vi.advanceTimersByTimeAsync(60_000); // some forward time, well below 30d
     expect(refreshMock).not.toHaveBeenCalled();
   });
 

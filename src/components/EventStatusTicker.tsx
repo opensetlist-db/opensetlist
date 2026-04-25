@@ -8,7 +8,14 @@ import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 // data. The polling endpoints (/api/setlist, /api/impressions) carry an
 // s-maxage; the SSR page itself isn't explicitly cached but Vercel may still
 // edge-cache HTML. 2s is imperceptible to a user watching the boundary flip.
-const POST_BOUNDARY_BUFFER_MS = 2000;
+// Exported so the test asserts boundary timing against the same value.
+export const POST_BOUNDARY_BUFFER_MS = 2000;
+
+// setTimeout uses a 32-bit signed delay; values past ~24.8 days overflow and
+// the timer fires immediately. A tab open for 25+ days through the boundary
+// is implausible, and a premature refresh on mount is worse than skipping —
+// the next page load will recompute and schedule fresh.
+const MAX_SETTIMEOUT_MS = 2147483647; // 2^31 - 1
 
 type Props = {
   /** Event start time as ISO string. null disables the ticker. */
@@ -37,10 +44,10 @@ export default function EventStatusTicker({ startTime }: Props) {
     else if (nowMs < completedAtMs) nextBoundaryMs = completedAtMs;
     if (nextBoundaryMs === null) return;
 
-    const timer = setTimeout(
-      () => router.refresh(),
-      nextBoundaryMs - nowMs + POST_BOUNDARY_BUFFER_MS
-    );
+    const delayMs = nextBoundaryMs - nowMs + POST_BOUNDARY_BUFFER_MS;
+    if (delayMs > MAX_SETTIMEOUT_MS) return;
+
+    const timer = setTimeout(() => router.refresh(), delayMs);
     return () => clearTimeout(timer);
   }, [startTime, router]);
 
