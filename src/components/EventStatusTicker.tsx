@@ -6,9 +6,9 @@ import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 
 // Buffer the refresh past the boundary so the post-refresh fetch sees fresh
 // data. The polling endpoints (/api/setlist, /api/impressions) are
-// private/no-store as of v0.8.15, but Vercel may still edge-cache the SSR
-// HTML for a brief window; 2s defends against that boundary race and is
-// imperceptible to a user watching the boundary flip.
+// private/no-store, but Vercel may still edge-cache the SSR HTML for a
+// brief window; 2s defends against that boundary race and is imperceptible
+// to a user watching the boundary flip.
 // Exported so the test asserts boundary timing against the same value.
 export const POST_BOUNDARY_BUFFER_MS = 2000;
 
