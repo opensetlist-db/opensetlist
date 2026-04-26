@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, nonBlank } from "@/lib/utils";
@@ -6,6 +7,39 @@ import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { EventRow } from "@/components/EventRow";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { BASE_URL } from "@/lib/config";
+import { routing } from "@/i18n/routing";
+
+// hreflang lives on the homepage (not the locale layout) so the canonical
+// only applies to the locale root. A layout-level canonical would be
+// inherited by every child page (e.g. /ko/songs/789), pointing them all at
+// the home URL — search engines would then de-prioritize the actual content
+// pages. x-default → /en is the safe English fallback for visitors whose
+// language isn't a configured locale; keep it explicit (not tied to
+// routing.defaultLocale, which is currently ko) so adding/changing the
+// default locale doesn't accidentally repoint the international fallback.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  // new URL() instead of `${BASE_URL}/${l}` so a trailing slash on
+  // NEXT_PUBLIC_BASE_URL doesn't produce `//ko` and break the canonical.
+  const localeUrl = (l: string) => new URL(`/${l}`, BASE_URL).toString();
+  const languages: Record<string, string> = Object.fromEntries(
+    routing.locales.map((l) => [l, localeUrl(l)])
+  );
+  return {
+    alternates: {
+      canonical: localeUrl(locale),
+      languages: {
+        ...languages,
+        "x-default": localeUrl("en"),
+      },
+    },
+  };
+}
 
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;

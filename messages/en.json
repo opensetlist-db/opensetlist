@@ -1,7 +1,7 @@
 {
   "Home": {
     "title": "OpenSetlist",
-    "description": "Setlist database for anime & game live events",
+    "description": "Open setlist database for live events (JP/EN/KR)",
     "recentEvents": "Recent Events",
     "upcomingEvents": "Upcoming Events",
     "ongoingEvents": "Live Now",
@@ -174,7 +174,7 @@
     "contact": "Contact"
   },
   "Meta": {
-    "description": "Setlist database for anime & game live events",
+    "description": "Open setlist database for live events (JP/EN/KR)",
     "setlistDb": "setlist database",
     "performanceHistory": "performance history & setlist",
     "notFound": "Not Found"

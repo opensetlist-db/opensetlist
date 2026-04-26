@@ -148,7 +148,7 @@ enum ReportReason {
   hate_speech     // 혐오 발언 (nationality, language, race discrimination)
   harassment      // 특정 유저 괴롭힘
   spam            // 스팸/광고
-  misinformation  // 오정보 (잘못된 셋리스트 데이터 포함)
+  misinformation  // 오정보 (잘못된 세트리스트 데이터 포함)
   copyright       // 저작권 침해
   bad_translation // 의도적 오번역 (dict_entry only)
   other
