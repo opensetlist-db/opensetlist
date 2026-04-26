@@ -19,3 +19,34 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+/*
+ * Event-page redesign animations (used by ReactionButtons and the LIVE
+ * status badge). Consumers apply these via inline `style={{ animation }}`
+ * keyed by component state; the emoji wrapper must NOT be remounted on
+ * state change (would render twice mid-animation).
+ */
+@keyframes emoji-activate {
+  0%   { transform: scale(1)    translateY(0); }
+  30%  { transform: scale(1.55) translateY(-4px); }
+  55%  { transform: scale(0.9)  translateY(1px); }
+  75%  { transform: scale(1.15) translateY(-2px); }
+  100% { transform: scale(1)    translateY(0); }
+}
+
+@keyframes emoji-deactivate {
+  0%   { transform: scale(1)    rotate(0deg); }
+  25%  { transform: scale(0.75) rotate(-8deg); }
+  60%  { transform: scale(1.05) rotate(4deg); }
+  100% { transform: scale(1)    rotate(0deg); }
+}
+
+@keyframes count-slide {
+  0%   { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes status-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
