@@ -1,7 +1,7 @@
 {
   "Home": {
     "title": "오픈셋리스트",
-    "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
+    "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
     "recentEvents": "최근 이벤트",
     "upcomingEvents": "예정된 이벤트",
     "ongoingEvents": "지금 공연 중",
@@ -174,9 +174,9 @@
     "contact": "문의"
   },
   "Meta": {
-    "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
-    "setlistDb": "공연 셋리스트 데이터베이스",
-    "performanceHistory": "공연 이력 및 셋리스트",
+    "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
+    "setlistDb": "공연 세트리스트 데이터베이스",
+    "performanceHistory": "공연 이력 및 세트리스트",
     "notFound": "찾을 수 없음"
   }
 }

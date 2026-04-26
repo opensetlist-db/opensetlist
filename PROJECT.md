@@ -255,7 +255,7 @@ After show (within 30 min — golden window):
   → Fix any errors
   → Change Event.status: ongoing → completed
   → Post to DC인사이드 갤러리:
-    "하스노소라 6th Live [공연명] 셋리스트 업데이트"
+    "하스노소라 6th Live [공연명] 세트리스트 업데이트"
     + opensetlist.com/ko/events/[id] link
   → Post to @opensetlistdb Twitter
 
@@ -281,7 +281,7 @@ If slower than this, fix the admin UI before 후쿠오카 Day1.
 
 ```
 Korean:
-  "하스노소라 6th 셋리스트"
+  "하스노소라 6th 세트리스트"
   "하스노소라 [공연명] 선곡"
   "하나무스비 라이브"
 
@@ -294,7 +294,7 @@ Japanese:
 ### Required meta tags per Event page
 
 ```html
-<title>[shortName] 셋리스트 | OpenSetlist</title>
+<title>[shortName] 세트리스트 | OpenSetlist</title>
 <meta name="description" content="..." />
 <meta property="og:title" content="..." />
 <meta property="og:description" content="..." />
@@ -328,7 +328,7 @@ Target galleries:
   하스노소라 갤러리 (if exists)
 
 Post content:
-  "6th Live 셋리스트 실시간 업데이트 예정입니다"
+  "6th Live 세트리스트 실시간 업데이트 예정입니다"
   "공연 직후 빠르게 업데이트하겠습니다"
   "유닛/멤버별 누가 어느 곡 불렀는지도 기록합니다"
   opensetlist.com 링크
@@ -340,11 +340,11 @@ Tone: 홍보 아닌 공지 — 갤러리에 기여하는 느낌으로
 
 ```
 DC인사이드:
-  "[공연명] 셋리스트 업데이트했습니다"
+  "[공연명] 세트리스트 업데이트했습니다"
   + 링크
 
 Twitter @opensetlistdb:
-  "🌸 [공연명] セトリ更新しました / 셋리스트 업데이트"
+  "🌸 [공연명] セトリ更新しました / 세트리스트 업데이트"
   + 링크
   + #蓮ノ空6thLive 해시태그
 ```

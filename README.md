@@ -2,7 +2,7 @@
 
 Crowdsourced setlist database for East Asian live music — K-POP, J-POP, C-POP, anime, game, and beyond.
 
-동아시아 라이브 음악(K-POP·J-POP·C-POP·애니메이션·게임 등)을 위한 크라우드소싱 셋리스트 데이터베이스.
+동아시아 라이브 음악(K-POP·J-POP·C-POP·애니메이션·게임 등)을 위한 크라우드소싱 세트리스트 데이터베이스.
 
 [opensetlist.com](https://opensetlist.com)
 

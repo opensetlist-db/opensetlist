@@ -20,7 +20,7 @@ function KoContent() {
 
       <Section title="1. 서비스 소개">
         <p className="text-zinc-600">
-          OpenSetlist는 라이브 공연의 셋리스트 정보를 제공하는 커뮤니티
+          OpenSetlist는 라이브 공연의 세트리스트 정보를 제공하는 커뮤니티
           데이터베이스입니다.
         </p>
       </Section>
@@ -43,7 +43,7 @@ function KoContent() {
 
       <Section title="4. 면책 조항">
         <ul className="list-inside list-disc space-y-1 text-zinc-600">
-          <li>셋리스트 정보의 정확성을 보장하지 않습니다</li>
+          <li>세트리스트 정보의 정확성을 보장하지 않습니다</li>
           <li>서비스 중단으로 인한 손해에 책임지지 않습니다</li>
         </ul>
       </Section>

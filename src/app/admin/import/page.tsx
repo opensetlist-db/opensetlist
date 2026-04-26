@@ -35,7 +35,7 @@ const IMPORT_TYPES = [
   },
   {
     value: "setlistitems",
-    label: "6. 셋리스트 (SetlistItems)",
+    label: "6. 세트리스트 (SetlistItems)",
     columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "artist_slugs", "unitName", "performer_slugs", "note", "status"],
     note: "artist_slugs: 공백 구분 artist slug · performer_slugs: 공백 구분 character slug (SI name 매칭) · 가져오기 시 해당 이벤트의 기존 셋리스트가 모두 삭제되고 새로 생성됩니다",
   },
@@ -98,7 +98,7 @@ export default function ImportPage() {
       <h1 className="mb-6 text-2xl font-bold">CSV 가져오기</h1>
 
       <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 셋리스트
+        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
       </div>
 
       {/* Type selector */}
