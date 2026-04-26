@@ -271,7 +271,16 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const isOngoing = getEventStatus(event) === "ongoing";
+  // Anchor every per-request status read to the same `now`. Two
+  // `getEventStatus(event)` calls without this would each construct
+  // their own `new Date()` and could disagree at a boundary tick (e.g.
+  // status flips ongoing → completed between the polling-gate
+  // computation and the header-badge computation). Pass `referenceNow`
+  // through to the second call below so the page is internally
+  // consistent.
+  const referenceNow = new Date();
+  const resolvedStatus = getEventStatus(event, referenceNow);
+  const isOngoing = resolvedStatus === "ongoing";
 
   const [t, ct, st, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
@@ -363,16 +372,12 @@ export default async function EventPage({ params }: Props) {
         )}
         <div className="mt-2 space-y-1 text-sm text-zinc-600">
           <div className="flex items-center gap-2">
-            {(() => {
-              const status = getEventStatus(event);
-              return (
-                <StatusBadge
-                  status={status}
-                  label={t(`status.${status}`)}
-                  size="md"
-                />
-              );
-            })()}
+            <StatusBadge
+              status={resolvedStatus}
+              label={t(`status.${resolvedStatus}`)}
+              size="md"
+            />
+
             {event.date && (
               <EventDateTime
                 date={event.date ?? null}

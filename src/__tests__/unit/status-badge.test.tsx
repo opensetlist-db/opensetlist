@@ -65,6 +65,18 @@ describe("StatusBadge", () => {
     expect(badge.style.color).toBe(hexToRgbString(colors.completed));
   });
 
+  it("uses the cancelled (lighter-gray + bordered) palette for cancelled", () => {
+    // Cancelled palette is intentionally inlined in StatusBadge.tsx (handoff §5
+    // doesn't promote these to tokens). Hard-code the exact hex values here so
+    // a future drift in the component's CONFIG without a token rename gets
+    // caught.
+    render(<StatusBadge status="cancelled" label="Cancelled" />);
+    const badge = screen.getByText("Cancelled");
+    expect(badge.style.backgroundColor).toBe(hexToRgbString("#fafafa"));
+    expect(badge.style.color).toBe(hexToRgbString(colors.textMuted));
+    expect(badge.style.border).toContain(hexToRgbString("#e5e7eb"));
+  });
+
   it("differs in padding/fontSize between size sm and md", () => {
     const { rerender, getByText } = render(
       <StatusBadge status="upcoming" label="Upcoming" size="sm" />,
