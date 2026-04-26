@@ -245,6 +245,7 @@ Hard rules:
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
 - NEVER commit automatically. Always stop and ask the owner before running `git commit`, even when the work is clearly complete, tests pass, and a commit feels like the obvious next step. Stage and show the diff, then wait for explicit approval. This applies regardless of branch, scope, or urgency — no exceptions.
+- Run `git add ...` and `git commit -m "..."` as **two separate Bash tool calls**, not chained with `&&`. The owner runs a `PreToolUse` hook (`~/.claude/hooks/review-staged.js`) that calls `git diff --cached` to review the staged change against this CLAUDE.md before each commit. Chained `add && commit` leaves the index empty at hook time, the hook logs `exit:empty-diff`, and the review never runs. Splitting the calls puts staging done before the commit Bash invocation so the hook actually reviews. `git commit && git push` is fine to chain — staging is already done by then.
 - Always create a version tag for production releases
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
