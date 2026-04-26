@@ -24,15 +24,18 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  // new URL() instead of `${BASE_URL}/${l}` so a trailing slash on
+  // NEXT_PUBLIC_BASE_URL doesn't produce `//ko` and break the canonical.
+  const localeUrl = (l: string) => new URL(`/${l}`, BASE_URL).toString();
   const languages: Record<string, string> = Object.fromEntries(
-    routing.locales.map((l) => [l, `${BASE_URL}/${l}`])
+    routing.locales.map((l) => [l, localeUrl(l)])
   );
   return {
     alternates: {
-      canonical: `${BASE_URL}/${locale}`,
+      canonical: localeUrl(locale),
       languages: {
         ...languages,
-        "x-default": `${BASE_URL}/en`,
+        "x-default": localeUrl("en"),
       },
     },
   };
