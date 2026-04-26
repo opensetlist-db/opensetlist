@@ -14,7 +14,7 @@ import {
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
-import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
+import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventDateTime } from "@/components/EventDateTime";
@@ -388,10 +388,8 @@ export default async function EventPage({ params }: Props) {
         </div>
       </header>
 
-      {/* Trending Songs */}
-      <TrendingSongs songs={trendingSongs} />
-
-      {/* Setlist */}
+      {/* Setlist (renders TrendingSongs at the top, derived from polling state
+          while ongoing so trending refreshes alongside per-item counts). */}
       {/*
         serializeBigInt() converts BigInt → Number at runtime, but its generic
         signature preserves the input's TS types, so `setlistItems` still reports
@@ -402,6 +400,8 @@ export default async function EventPage({ params }: Props) {
         eventId={id}
         initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
         initialReactionCounts={reactionCounts}
+        initialTrendingSongs={trendingSongs}
+        unknownSongLabel={st("unknown")}
         isOngoing={isOngoing}
         locale={locale}
       />
