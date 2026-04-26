@@ -67,7 +67,6 @@ export type LiveSetlistItem = {
   isEncore: boolean;
   stageType: string;
   unitName: string | null;
-  note: string | null;
   status: string;
   performanceType: string | null;
   type: string;
@@ -272,9 +271,6 @@ function SetlistList({
                     <span>{performers.join(", ")}</span>
                   )}
                 </div>
-                {item.type === "song" && !item.isEncore && item.note && (
-                  <p className="mt-1 text-xs text-zinc-400">{item.note}</p>
-                )}
                 {/*
                   Note: ReactionButtons seeds its counts from initialCounts once
                   on mount and does not re-sync on prop change. Existing items

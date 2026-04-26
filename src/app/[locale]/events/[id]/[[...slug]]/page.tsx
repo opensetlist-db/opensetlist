@@ -35,6 +35,7 @@ async function getEvent(id: bigint, locale: string) {
       },
       setlistItems: {
         where: { isDeleted: false },
+        omit: { note: true },
         include: {
           songs: {
             include: {
