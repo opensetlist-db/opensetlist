@@ -125,7 +125,7 @@ describe("deriveTrendingSongs", () => {
     ).toBe("Original");
   });
 
-  it("falls back to unknownSongLabel when neither translation nor originalTitle exists", () => {
+  it("preserves empty-string originalTitle (?? does not fall through to unknownSongLabel on '')", () => {
     const items: LiveSetlistItem[] = [
       {
         ...makeItem(1, ""),
