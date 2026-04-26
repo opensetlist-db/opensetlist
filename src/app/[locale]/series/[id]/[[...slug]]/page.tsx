@@ -11,7 +11,8 @@ import {
   displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
-import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { getEventStatus } from "@/lib/eventStatus";
+import { StatusBadge } from "@/components/StatusBadge";
 import type { Metadata } from "next";
 
 type Props = {
@@ -214,13 +215,12 @@ export default async function EventSeriesPage({ params }: Props) {
                       {evName || evT("unknownEvent")}
                     </Link>
                     {(() => {
-                      const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+                      const status = getEventStatus(event);
                       return (
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}
-                        >
-                          {evT(badge.labelKey)}
-                        </span>
+                        <StatusBadge
+                          status={status}
+                          label={evT(`status.${status}`)}
+                        />
                       );
                     })()}
                   </div>

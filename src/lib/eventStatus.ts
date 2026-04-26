@@ -32,16 +32,3 @@ export function getEventStatus(
   if (now < ongoingEnd) return "ongoing";
   return "completed";
 }
-
-export const EVENT_STATUS_BADGE: Record<
-  ResolvedEventStatus,
-  { labelKey: `status.${ResolvedEventStatus}`; color: string }
-> = {
-  upcoming: { labelKey: "status.upcoming", color: "bg-blue-100 text-blue-700" },
-  ongoing: { labelKey: "status.ongoing", color: "bg-green-100 text-green-700" },
-  completed: {
-    labelKey: "status.completed",
-    color: "bg-gray-100 text-gray-500",
-  },
-  cancelled: { labelKey: "status.cancelled", color: "bg-red-100 text-red-500" },
-};
