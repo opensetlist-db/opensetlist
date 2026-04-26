@@ -1,7 +1,7 @@
 {
   "Home": {
     "title": "OpenSetlist",
-    "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
+    "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
     "recentEvents": "最近のイベント",
     "upcomingEvents": "今後のイベント",
     "ongoingEvents": "開催中のイベント",
@@ -174,7 +174,7 @@
     "contact": "お問い合わせ"
   },
   "Meta": {
-    "description": "アニメ・ゲーム ライブイベント セットリストデータベース",
+    "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
     "setlistDb": "公演セットリストデータベース",
     "performanceHistory": "公演履歴・セットリスト",
     "notFound": "見つかりません"
