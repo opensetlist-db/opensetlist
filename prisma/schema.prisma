@@ -220,7 +220,6 @@ model Artist {
   type              ArtistType
   hasBoard          Boolean             @default(true)
   imageUrl          String?
-  color             String?
   originalName      String
   originalShortName String?
   originalBio       String?
