@@ -270,6 +270,8 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
+  const isOngoing = getEventStatus(event) === "ongoing";
+
   const [t, ct, st, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
@@ -277,7 +279,14 @@ export default async function EventPage({ params }: Props) {
     getReactionCounts(eventId),
     getEventImpressions(eventId),
   ]);
-  const trendingSongs = await getTrendingSongs(eventId, locale, st("unknown"));
+
+  // Skip the 3-query SSR trending fetch when ongoing — LiveSetlist derives
+  // trending client-side from `initialReactionCounts` on first paint and
+  // refreshes from polling thereafter, so the SSR result would just be
+  // thrown away on a hot path (live events are the high-traffic case).
+  const trendingSongs = isOngoing
+    ? []
+    : await getTrendingSongs(eventId, locale, st("unknown"));
 
   const eventName = displayNameWithFallback(event, event.translations, locale);
   const eventFullName = displayNameWithFallback(
@@ -315,8 +324,6 @@ export default async function EventPage({ params }: Props) {
     "city",
     "originalCity"
   );
-
-  const isOngoing = getEventStatus(event) === "ongoing";
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
