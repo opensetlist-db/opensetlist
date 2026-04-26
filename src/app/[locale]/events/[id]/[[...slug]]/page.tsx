@@ -14,7 +14,8 @@ import {
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
-import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
+import { EMOJI_MAP } from "@/lib/reactions";
+import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventDateTime } from "@/components/EventDateTime";
@@ -157,13 +158,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-const EMOJI_MAP: Record<string, string> = {
-  waiting: "😭",
-  best: "🔥",
-  surprise: "😱",
-  moved: "🩷",
-};
-
 async function getReactionCounts(eventId: bigint) {
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId", "reactionType"],
@@ -276,6 +270,8 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
+  const isOngoing = getEventStatus(event) === "ongoing";
+
   const [t, ct, st, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
@@ -283,7 +279,14 @@ export default async function EventPage({ params }: Props) {
     getReactionCounts(eventId),
     getEventImpressions(eventId),
   ]);
-  const trendingSongs = await getTrendingSongs(eventId, locale, st("unknown"));
+
+  // Skip the 3-query SSR trending fetch when ongoing — LiveSetlist derives
+  // trending client-side from `initialReactionCounts` on first paint and
+  // refreshes from polling thereafter, so the SSR result would just be
+  // thrown away on a hot path (live events are the high-traffic case).
+  const trendingSongs = isOngoing
+    ? []
+    : await getTrendingSongs(eventId, locale, st("unknown"));
 
   const eventName = displayNameWithFallback(event, event.translations, locale);
   const eventFullName = displayNameWithFallback(
@@ -321,8 +324,6 @@ export default async function EventPage({ params }: Props) {
     "city",
     "originalCity"
   );
-
-  const isOngoing = getEventStatus(event) === "ongoing";
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -388,10 +389,8 @@ export default async function EventPage({ params }: Props) {
         </div>
       </header>
 
-      {/* Trending Songs */}
-      <TrendingSongs songs={trendingSongs} />
-
-      {/* Setlist */}
+      {/* Setlist (renders TrendingSongs at the top, derived from polling state
+          while ongoing so trending refreshes alongside per-item counts). */}
       {/*
         serializeBigInt() converts BigInt → Number at runtime, but its generic
         signature preserves the input's TS types, so `setlistItems` still reports
@@ -402,6 +401,8 @@ export default async function EventPage({ params }: Props) {
         eventId={id}
         initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
         initialReactionCounts={reactionCounts}
+        initialTrendingSongs={trendingSongs}
+        unknownSongLabel={st("unknown")}
         isOngoing={isOngoing}
         locale={locale}
       />

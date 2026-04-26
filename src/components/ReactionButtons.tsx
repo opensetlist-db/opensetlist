@@ -5,13 +5,7 @@ import { useTranslations } from "next-intl";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
-
-const REACTIONS = [
-  { type: "waiting", emoji: "😭" },
-  { type: "best", emoji: "🔥" },
-  { type: "surprise", emoji: "😱" },
-  { type: "moved", emoji: "🩷" },
-] as const;
+import { REACTION_TYPES } from "@/lib/reactions";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
 
@@ -52,6 +46,17 @@ export function ReactionButtons({
   const t = useTranslations("Reaction");
   const mounted = useMounted();
   const [counts, setCounts] = useState(initialCounts);
+  // Re-sync `counts` when the parent passes a fresh `initialCounts`
+  // reference (the 5s polling refresh produces a new map every tick).
+  // useState idiom from React docs ("Storing information from previous
+  // renders") — avoids react-hooks/set-state-in-effect. Callers must
+  // stabilize empty references so this guard doesn't thrash on items
+  // with zero reactions; LiveSetlist hoists EMPTY_COUNTS for that.
+  const [prevInitialCounts, setPrevInitialCounts] = useState(initialCounts);
+  if (prevInitialCounts !== initialCounts) {
+    setPrevInitialCounts(initialCounts);
+    setCounts(initialCounts);
+  }
   // SSR + client first render both start at EMPTY_REACTIONS so hydration
   // matches; the `mounted && hydratedKey !== setlistItemId` block below
   // pulls the real localStorage value on the first commit AFTER mount.
@@ -67,10 +72,6 @@ export function ReactionButtons({
   if (mounted && hydratedKey !== setlistItemId) {
     setHydratedKey(setlistItemId);
     setMyReactions(readMyReactions(setlistItemId));
-    // Reset aggregate counts to the new item's initialCounts so we don't
-    // show stale counts from the previously-rendered item if React reuses
-    // this component instance via key.
-    setCounts(initialCounts);
   }
 
   const persistReactions = useCallback(
@@ -138,7 +139,7 @@ export function ReactionButtons({
 
   return (
     <div className="mt-1 flex gap-1">
-      {REACTIONS.map(({ type, emoji }) => {
+      {REACTION_TYPES.map(({ type, emoji }) => {
         const isActive = !!myReactions[type];
         const count = counts[type] ?? 0;
         return (
