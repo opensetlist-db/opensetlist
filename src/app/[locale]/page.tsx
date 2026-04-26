@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, nonBlank } from "@/lib/utils";
@@ -6,6 +7,32 @@ import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { EventRow } from "@/components/EventRow";
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { BASE_URL } from "@/lib/config";
+
+// hreflang lives on the homepage (not the locale layout) so the canonical
+// only applies to the locale root. A layout-level canonical would be
+// inherited by every child page (e.g. /ko/songs/789), pointing them all at
+// the home URL — search engines would then de-prioritize the actual content
+// pages. x-default → /en is the safe English fallback for visitors whose
+// language isn't ko/ja/en.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  return {
+    alternates: {
+      canonical: `${BASE_URL}/${locale}`,
+      languages: {
+        ko: `${BASE_URL}/ko`,
+        ja: `${BASE_URL}/ja`,
+        en: `${BASE_URL}/en`,
+        "x-default": `${BASE_URL}/en`,
+      },
+    },
+  };
+}
 
 const PAGE_SIZE = 10;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;

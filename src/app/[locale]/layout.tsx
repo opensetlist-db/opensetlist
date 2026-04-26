@@ -32,15 +32,6 @@ export async function generateMetadata({
     metadataBase: new URL(BASE_URL),
     title: "OpenSetlist",
     description: mt("description"),
-    alternates: {
-      canonical: `${BASE_URL}/${locale}`,
-      languages: {
-        ko: `${BASE_URL}/ko`,
-        ja: `${BASE_URL}/ja`,
-        en: `${BASE_URL}/en`,
-        "x-default": `${BASE_URL}/en`,
-      },
-    },
     verification: {
       other: {
         "naver-site-verification": "ba0a8cbcd0d75b35340f288a129a4e0d8dbc71c9",
