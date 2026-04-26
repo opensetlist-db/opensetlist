@@ -1,0 +1,76 @@
+/*
+ * Design tokens — single source of truth for colors / shadows / radii /
+ * breakpoints across all page redesigns. Verbatim from
+ * `shared-components-handoff.md` §1.
+ *
+ * Use `as const` so consumers get literal-typed values (e.g.
+ * `typeof colors.primary` is `"#0277BD"`, not `string`) — this lets
+ * `<StatusBadge size="sm" | "md">` style switches type-narrow correctly
+ * when keyed off a token.
+ */
+
+export const colors = {
+  // Brand
+  primary: "#0277BD",
+  primaryLight: "#4FC3F7",
+  primaryBg: "#e8f4fd",
+  primaryBorder: "#bfdbfe",
+  brandGradient: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+  // CTA-emphasis gradient (purple terminal — used for "join the live"
+  // / share buttons in mockups, not the regular primary).
+  darkGradient: "linear-gradient(135deg, #4FC3F7, #7B1FA2)",
+
+  // Text
+  textPrimary: "#0f172a",
+  textSecondary: "#475569",
+  textMuted: "#94a3b8",
+  textSubtle: "#64748b",
+
+  // Backgrounds
+  bgPage: "#f0f4f8",
+  bgCard: "#ffffff",
+  bgSubtle: "#f8fafc",
+  bgFaint: "#fafbfc",
+
+  // Borders
+  border: "#e2e8f0",
+  borderLight: "#f1f5f9",
+  borderFaint: "#f8fafc",
+
+  // Event status palette (consumed by <StatusBadge>)
+  live: "#dc2626",
+  liveBg: "#fef2f2",
+  liveBorder: "#fecaca",
+  upcoming: "#16a34a",
+  upcomingBg: "#f0fdf4",
+  upcomingBorder: "#bbf7d0",
+  completed: "#64748b",
+  completedBg: "#f8fafc",
+  completedBorder: "#e2e8f0",
+
+  // Trending TOP3 card (consumed by <TrendingSongs>)
+  trendingBg: "#fffbeb",
+  trendingBorder: "#fde68a",
+  trendingText: "#b45309",
+
+  // Song-variant / encore divider accent
+  variant: "#7B1FA2",
+  variantBg: "#F3E5F5",
+} as const;
+
+export const shadows = {
+  card: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(2,119,189,0.06)",
+  nav: "0 1px 3px rgba(0,0,0,0.04)",
+} as const;
+
+export const radius = {
+  card: 16,
+  badge: 20,
+  button: 20,
+  tag: 10,
+  avatar: 14,
+} as const;
+
+export const breakpoint = {
+  desktop: 1024,
+} as const;

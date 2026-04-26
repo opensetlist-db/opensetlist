@@ -46,7 +46,11 @@ body {
   100% { transform: translateY(0);   opacity: 1; }
 }
 
-@keyframes status-badge-pulse {
+/*
+ * Used by the LIVE dot in `<StatusBadge status="ongoing">` (handoff §5).
+ * 1.2s ease-in-out infinite at the call site.
+ */
+@keyframes live-pulse {
   0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
+  50%      { opacity: 0.3; }
 }
