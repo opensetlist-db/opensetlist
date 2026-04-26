@@ -6,7 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { BASE_URL } from "@/lib/config";
-import { Header } from "@/components/Header";
+import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import FirstVisitTracker from "@/components/FirstVisitTracker";
 import "@fontsource-variable/noto-sans-kr";
@@ -62,7 +62,7 @@ export default async function LocaleLayout({
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>
           <FirstVisitTracker />
-          <Header />
+          <Nav />
           {children}
           <Footer />
           <SpeedInsights />
