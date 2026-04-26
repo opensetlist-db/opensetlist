@@ -175,8 +175,8 @@
   },
   "Meta": {
     "description": "애니메이션·게임 라이브 이벤트 세트리스트 데이터베이스",
-    "setlistDb": "공연 셋리스트 데이터베이스",
-    "performanceHistory": "공연 이력 및 셋리스트",
+    "setlistDb": "공연 세트리스트 데이터베이스",
+    "performanceHistory": "공연 이력 및 세트리스트",
     "notFound": "찾을 수 없음"
   }
 }
