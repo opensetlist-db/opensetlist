@@ -16,6 +16,13 @@ const EMPTY_REACTIONS: Record<string, string> = {};
 // by the server, never this sentinel (see handleToggle).
 const OPTIMISTIC_PENDING = "pending";
 
+// Hard ceiling on a single mutation request. If the server hangs for
+// longer than this, the AbortSignal fires, fetch throws, and the catch
+// block rolls back the optimistic update + clears `loading`. Without
+// this ceiling, a single hung request would leave all four reaction
+// buttons disabled until the user navigates away.
+const REACTION_TIMEOUT_MS = 10_000;
+
 function readMyReactions(setlistItemId: string): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_REACTIONS;
   try {
@@ -53,16 +60,28 @@ export function ReactionButtons({
   const t = useTranslations("Reaction");
   const mounted = useMounted();
   const [counts, setCounts] = useState(initialCounts);
+  const [loading, setLoading] = useState<string | null>(null);
+
   // Re-sync `counts` when the parent passes a fresh `initialCounts`
   // reference (the 5s polling refresh produces a new map every tick).
   // useState idiom from React docs ("Storing information from previous
   // renders") — avoids react-hooks/set-state-in-effect. Callers must
   // stabilize empty references so this guard doesn't thrash on items
   // with zero reactions; LiveSetlist hoists EMPTY_COUNTS for that.
+  //
+  // Skip the sync while a mutation is in flight: otherwise a polling
+  // tick mid-roundtrip clobbers the optimistic count, and on rollback
+  // we'd restore to a snapshot taken *before* the polling update, so
+  // legitimate concurrent reactions from other users disappear from
+  // the UI for one cycle. Always advance `prevInitialCounts` so the
+  // next genuine prop change after the mutation settles re-syncs
+  // cleanly to whatever the latest server truth is.
   const [prevInitialCounts, setPrevInitialCounts] = useState(initialCounts);
   if (prevInitialCounts !== initialCounts) {
     setPrevInitialCounts(initialCounts);
-    setCounts(initialCounts);
+    if (loading === null) {
+      setCounts(initialCounts);
+    }
   }
   // SSR + client first render both start at EMPTY_REACTIONS so hydration
   // matches; the `mounted && hydratedKey !== setlistItemId` block below
@@ -70,7 +89,6 @@ export function ReactionButtons({
   const [myReactions, setMyReactions] = useState<Record<string, string>>(
     EMPTY_REACTIONS
   );
-  const [loading, setLoading] = useState<string | null>(null);
 
   // Hydrate (or re-hydrate on setlistItemId change) AFTER mount. Tracking
   // hydratedKey in useState avoids both react-hooks/set-state-in-effect
@@ -134,6 +152,10 @@ export function ReactionButtons({
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reactionId }),
+          // Bound the request so a hung connection can't permanently
+          // disable all four buttons (loading is only cleared in
+          // `finally`, so a never-settling Promise leaves them locked).
+          signal: AbortSignal.timeout(REACTION_TIMEOUT_MS),
         });
         if (res.ok) {
           const next = { ...snapshotMyReactions };
@@ -159,6 +181,7 @@ export function ReactionButtons({
             reactionType,
             anonId: getAnonId(),
           }),
+          signal: AbortSignal.timeout(REACTION_TIMEOUT_MS),
         });
         if (res.ok) {
           const { reactionId, counts: newCounts } = await res.json();
@@ -271,6 +294,8 @@ function ReactionButton({
       onClick={handleClick}
       disabled={isDisabled}
       title={title}
+      aria-label={title}
+      aria-pressed={isActive}
       style={{
         display: "inline-flex",
         alignItems: "center",

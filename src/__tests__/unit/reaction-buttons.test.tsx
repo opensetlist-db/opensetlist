@@ -250,4 +250,74 @@ describe("ReactionButtons", () => {
       expect(persisted.best).toBe("real-reaction-uuid");
     });
   });
+
+  it("does not clobber optimistic counts when polling delivers a fresh initialCounts mid-flight", async () => {
+    // Hang the fetch so the mutation stays in flight for the whole test.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+
+    // Tap → optimistic count goes 0 → 1.
+    fireEvent.click(fireButton);
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("1");
+    });
+
+    // Polling tick fires mid-roundtrip with a brand-new map. Without the
+    // in-flight gate, the prev-prop guard would call setCounts({best:0})
+    // and erase the optimistic +1 — then on success/failure the snapshot
+    // restore would target a stale counts value.
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    expect(fireButton.textContent).toContain("1");
+  });
+
+  it("exposes toggle state to assistive tech via aria-pressed and aria-label", () => {
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+    expect(fireButton.getAttribute("aria-pressed")).toBe("false");
+    expect(fireButton.getAttribute("aria-label")).toBe("best");
+
+    // Pre-seed localStorage so myReactions is hydrated as active for "best".
+    localStorage.setItem(
+      "reactions-2",
+      JSON.stringify({ best: "existing-id" }),
+    );
+    rerender(
+      <ReactionButtons
+        setlistItemId="2"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 1 }}
+      />,
+    );
+    const fireButton2 = screen.getByTitle("best");
+    expect(fireButton2.getAttribute("aria-pressed")).toBe("true");
+  });
 });
