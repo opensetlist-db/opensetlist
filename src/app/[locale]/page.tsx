@@ -6,7 +6,7 @@ import { displayNameWithFallback } from "@/lib/display";
 import { HomeHero } from "@/components/HomeHero";
 import { Pagination } from "@/components/Pagination";
 import { EventRow } from "@/components/EventRow";
-import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { getEventStatus } from "@/lib/eventStatus";
 import { BASE_URL } from "@/lib/config";
 import { routing } from "@/i18n/routing";
 
@@ -280,7 +280,7 @@ function EventList({
               )
             )
           : null;
-        const badge = EVENT_STATUS_BADGE[getEventStatus(event, referenceNow)];
+        const status = getEventStatus(event, referenceNow);
         return (
           <EventRow
             key={event.id}
@@ -289,8 +289,8 @@ function EventList({
             title={seriesName ?? eventName ?? evT("unknownEvent")}
             subtitle={seriesName && eventName ? eventName : null}
             slugSource={eventName}
-            badgeLabel={evT(badge.labelKey)}
-            badgeColor={badge.color}
+            status={status}
+            statusLabel={evT(`status.${status}`)}
           />
         );
       })}

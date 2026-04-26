@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
+import { StatusBadge } from "@/components/StatusBadge";
 import { slugify } from "@/lib/utils";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 // Accepts the row both pre-serialization (bigint id, raw prisma rows) and
 // post-serialization (number id, EventForList). The home page passes the
@@ -18,8 +20,12 @@ interface Props {
   title: string;
   subtitle?: string | null;
   slugSource: string | null;
-  badgeLabel: string;
-  badgeColor: string;
+  // Resolved by the caller via getTranslations("Event") on locale pages.
+  // Splitting status (semantic) from statusLabel (i18n string) keeps
+  // <StatusBadge> usable from both server and client trees without forcing
+  // it to be async or client-only.
+  status: ResolvedEventStatus;
+  statusLabel: string;
 }
 
 export function EventRow({
@@ -28,8 +34,8 @@ export function EventRow({
   title,
   subtitle,
   slugSource,
-  badgeLabel,
-  badgeColor,
+  status,
+  statusLabel,
 }: Props) {
   // slugSource may be all-punctuation (`!!!`, `***`); slugify strips it to ""
   // and we'd emit `/events/{id}/`. Branch on the slug, not the source.
@@ -73,10 +79,8 @@ export function EventRow({
           </span>
         )}
       </div>
-      <span
-        className={`font-dm-sans shrink-0 rounded-full px-2 py-0.5 text-[11px] ${badgeColor}`}
-      >
-        {badgeLabel}
+      <span className="shrink-0">
+        <StatusBadge status={status} label={statusLabel} size="sm" />
       </span>
     </li>
   );

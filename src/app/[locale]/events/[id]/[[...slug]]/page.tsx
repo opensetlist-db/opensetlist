@@ -11,7 +11,8 @@ import {
   displayNameWithFallback,
   resolveLocalizedField,
 } from "@/lib/display";
-import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { getEventStatus } from "@/lib/eventStatus";
+import { StatusBadge } from "@/components/StatusBadge";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { EMOJI_MAP } from "@/lib/reactions";
@@ -363,13 +364,13 @@ export default async function EventPage({ params }: Props) {
         <div className="mt-2 space-y-1 text-sm text-zinc-600">
           <div className="flex items-center gap-2">
             {(() => {
-              const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
+              const status = getEventStatus(event);
               return (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}
-                >
-                  {t(badge.labelKey)}
-                </span>
+                <StatusBadge
+                  status={status}
+                  label={t(`status.${status}`)}
+                  size="md"
+                />
               );
             })()}
             {event.date && (
