@@ -5,13 +5,7 @@ import { useTranslations } from "next-intl";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
-
-const REACTIONS = [
-  { type: "waiting", emoji: "😭" },
-  { type: "best", emoji: "🔥" },
-  { type: "surprise", emoji: "😱" },
-  { type: "moved", emoji: "🩷" },
-] as const;
+import { REACTION_TYPES } from "@/lib/reactions";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
 
@@ -145,7 +139,7 @@ export function ReactionButtons({
 
   return (
     <div className="mt-1 flex gap-1">
-      {REACTIONS.map(({ type, emoji }) => {
+      {REACTION_TYPES.map(({ type, emoji }) => {
         const isActive = !!myReactions[type];
         const count = counts[type] ?? 0;
         return (

@@ -14,6 +14,7 @@ import {
 import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
+import { EMOJI_MAP } from "@/lib/reactions";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
@@ -156,13 +157,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
   };
 }
-
-const EMOJI_MAP: Record<string, string> = {
-  waiting: "😭",
-  best: "🔥",
-  surprise: "😱",
-  moved: "🩷",
-};
 
 async function getReactionCounts(eventId: bigint) {
   const groups = await prisma.setlistItemReaction.groupBy({

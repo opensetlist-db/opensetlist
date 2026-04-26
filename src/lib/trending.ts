@@ -2,13 +2,7 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import { pickLocaleTranslation } from "@/lib/utils";
-
-const EMOJI_MAP: Record<string, string> = {
-  waiting: "😭",
-  best: "🔥",
-  surprise: "😱",
-  moved: "🩷",
-};
+import { EMOJI_MAP } from "@/lib/reactions";
 
 // Mirrors the SSR `getTrendingSongs` (in src/app/[locale]/events/[id]/...)
 // closely enough to produce equivalent rankings: items with no songs are
