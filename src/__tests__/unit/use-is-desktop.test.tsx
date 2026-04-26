@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
+import { breakpoint } from "@/styles/tokens";
 
-// jsdom's default innerWidth is 1024. Set explicitly per test so
-// behavior is deterministic regardless of jsdom version drift.
+// jsdom's default innerWidth happens to equal `breakpoint.desktop` (1024).
+// Set explicitly per test so behavior is deterministic regardless of jsdom
+// version drift, and reference the token so a future change to
+// `breakpoint.desktop` doesn't silently invalidate the tests.
 function setInnerWidth(px: number) {
   Object.defineProperty(window, "innerWidth", {
     value: px,
@@ -12,9 +15,13 @@ function setInnerWidth(px: number) {
   });
 }
 
+const DESKTOP = breakpoint.desktop;
+const BELOW = DESKTOP - 1;
+const ABOVE = DESKTOP + 256;
+
 describe("useIsDesktop", () => {
   beforeEach(() => {
-    setInnerWidth(1024);
+    setInnerWidth(DESKTOP);
   });
 
   afterEach(() => {
@@ -22,36 +29,36 @@ describe("useIsDesktop", () => {
   });
 
   it("returns false when innerWidth is below the breakpoint", () => {
-    setInnerWidth(600);
-    const { result } = renderHook(() => useIsDesktop(1024));
+    setInnerWidth(BELOW);
+    const { result } = renderHook(() => useIsDesktop(DESKTOP));
     expect(result.current).toBe(false);
   });
 
   it("returns true when innerWidth is at or above the breakpoint", () => {
-    setInnerWidth(1280);
-    const { result } = renderHook(() => useIsDesktop(1024));
+    setInnerWidth(ABOVE);
+    const { result } = renderHook(() => useIsDesktop(DESKTOP));
     expect(result.current).toBe(true);
   });
 
-  it("uses the tokens default breakpoint (1024) when no argument is passed", () => {
-    setInnerWidth(1024);
+  it("uses the tokens default breakpoint when no argument is passed", () => {
+    setInnerWidth(DESKTOP);
     const { result } = renderHook(() => useIsDesktop());
     expect(result.current).toBe(true);
   });
 
   it("re-renders on window resize", () => {
-    setInnerWidth(600);
-    const { result } = renderHook(() => useIsDesktop(1024));
+    setInnerWidth(BELOW);
+    const { result } = renderHook(() => useIsDesktop(DESKTOP));
     expect(result.current).toBe(false);
 
     act(() => {
-      setInnerWidth(1280);
+      setInnerWidth(ABOVE);
       window.dispatchEvent(new Event("resize"));
     });
     expect(result.current).toBe(true);
 
     act(() => {
-      setInnerWidth(500);
+      setInnerWidth(BELOW);
       window.dispatchEvent(new Event("resize"));
     });
     expect(result.current).toBe(false);
@@ -61,7 +68,7 @@ describe("useIsDesktop", () => {
     const addSpy = vi.spyOn(window, "addEventListener");
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
-    const { unmount } = renderHook(() => useIsDesktop(1024));
+    const { unmount } = renderHook(() => useIsDesktop(DESKTOP));
     expect(
       addSpy.mock.calls.some(([type]) => type === "resize"),
     ).toBe(true);
