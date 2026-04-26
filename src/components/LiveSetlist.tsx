@@ -9,10 +9,17 @@ import {
 } from "@/lib/display";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
+import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import {
   useSetlistPolling,
   type ReactionCountsMap,
 } from "@/hooks/useSetlistPolling";
+import { deriveTrendingSongs } from "@/lib/trending";
+
+// Stable reference for items with no reactions yet — without this, every
+// render produces a fresh `{}` and ReactionButtons' prev-prop guard would
+// needlessly run setState every poll for those items.
+const EMPTY_COUNTS: Record<string, number> = {};
 
 type NameTranslation = {
   locale: string;
@@ -82,6 +89,8 @@ interface Props {
   eventId: string;
   initialItems: LiveSetlistItem[];
   initialReactionCounts: ReactionCountsMap;
+  initialTrendingSongs: TrendingSong[];
+  unknownSongLabel: string;
   isOngoing: boolean;
   locale: string;
 }
@@ -90,6 +99,8 @@ export function LiveSetlist({
   eventId,
   initialItems,
   initialReactionCounts,
+  initialTrendingSongs,
+  unknownSongLabel,
   isOngoing,
   locale,
 }: Props) {
@@ -103,11 +114,20 @@ export function LiveSetlist({
     enabled: isOngoing,
   });
 
+  // While polling, derive trending from the same reactionCounts that drives
+  // per-item counts — single source of truth, no risk of the two views
+  // drifting. When polling is off (upcoming/completed events) we keep the
+  // SSR seed; no recompute, no behavior change.
+  const trendingSongs = isOngoing
+    ? deriveTrendingSongs(items, reactionCounts, locale, unknownSongLabel)
+    : initialTrendingSongs;
+
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
 
   return (
     <section className="mb-8">
+      <TrendingSongs songs={trendingSongs} />
       <div className="mb-3 flex items-center gap-2">
         <h2 className="text-xl font-semibold">{t("setlist")}</h2>
         {isOngoing && (
@@ -271,18 +291,13 @@ function SetlistList({
                     <span>{performers.join(", ")}</span>
                   )}
                 </div>
-                {/*
-                  Note: ReactionButtons seeds its counts from initialCounts once
-                  on mount and does not re-sync on prop change. Existing items
-                  won't reflect other users' count bumps until remount. Fresh
-                  counts apply to newly-inserted items. Phase 1C (Supabase
-                  Realtime) will address this.
-                */}
                 <ReactionButtons
                   setlistItemId={String(item.id)}
                   songId={String(item.songs[0]?.song.id ?? "")}
                   eventId={eventId}
-                  initialCounts={reactionCounts[String(item.id)] ?? {}}
+                  initialCounts={
+                    reactionCounts[String(item.id)] ?? EMPTY_COUNTS
+                  }
                 />
               </div>
             </div>
