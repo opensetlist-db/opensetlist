@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     prisma.setlistItem.findMany({
       where: { eventId, isDeleted: false },
       orderBy: { position: "asc" },
+      omit: { note: true },
       include: {
         songs: {
           include: {
