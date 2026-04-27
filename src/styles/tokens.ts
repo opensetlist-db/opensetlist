@@ -61,6 +61,8 @@ export const colors = {
   // orange (rare but possible per CR) shouldn't recolor error text. Keep
   // both hexes here so the divergence is one-line easy if it happens.
   error: "#dc2626",
+  errorBg: "#fef2f2",
+  errorBorder: "#fecaca",
   upcoming: "#16a34a",
   upcomingBg: "#f0fdf4",
   upcomingBorder: "#bbf7d0",

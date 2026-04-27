@@ -9,7 +9,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
-import { colors, radius } from "@/styles/tokens";
+import { colors, motion, radius } from "@/styles/tokens";
 
 export interface Impression {
   id: string;
@@ -377,7 +377,7 @@ export function EventImpressions({
                 className="h-1.5 w-1.5 rounded-full"
                 style={{
                   background: colors.live,
-                  animation: "live-pulse 1.2s ease-in-out infinite",
+                  animation: motion.livePulse,
                 }}
               />
               {et("live")}
@@ -402,7 +402,6 @@ export function EventImpressions({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={t("placeholder")}
-                maxLength={IMPRESSION_MAX_CHARS}
                 rows={2}
                 className="w-full resize-none p-2 text-sm outline-none"
                 style={textareaStyle}
@@ -475,7 +474,6 @@ export function EventImpressions({
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                maxLength={IMPRESSION_MAX_CHARS}
                 rows={2}
                 className="w-full resize-none p-2 text-sm outline-none"
                 style={textareaStyle}
