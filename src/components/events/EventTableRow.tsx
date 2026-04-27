@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { StatusBadge } from "@/components/StatusBadge";
+import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
 
@@ -40,7 +41,7 @@ export function EventTableRow({
       onBlur={() => setActive(false)}
       className="grid items-center transition-colors"
       style={{
-        gridTemplateColumns: "90px 100px 1fr 200px 60px 28px",
+        gridTemplateColumns: EVENT_TABLE_COLUMNS,
         padding: "10px 20px",
         borderBottom: `1px solid ${colors.borderLight}`,
         background: active ? colors.bgSubtle : "transparent",

@@ -4,7 +4,11 @@ import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { formatDate, nonBlank } from "@/lib/utils";
-import { FilterBar, type EventListFilter } from "@/components/events/FilterBar";
+import {
+  FilterBar,
+  FILTER_VALUES,
+  type EventListFilter,
+} from "@/components/events/FilterBar";
 import { SeriesSection } from "@/components/events/SeriesSection";
 import { SeriesBlock } from "@/components/events/SeriesBlock";
 import { EventRow } from "@/components/events/EventRow";
@@ -13,8 +17,6 @@ import { Pagination } from "@/components/Pagination";
 import { colors } from "@/styles/tokens";
 
 const PAST_GROUPS_PER_PAGE = 10;
-
-const FILTER_VALUES = ["all", "ongoing", "upcoming", "completed"] as const;
 
 const MOBILE_MONTH_FORMAT: Intl.DateTimeFormatOptions = {
   month: "short",

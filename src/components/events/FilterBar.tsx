@@ -3,18 +3,19 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { colors, radius } from "@/styles/tokens";
 
-export type EventListFilter =
-  | "all"
-  | "ongoing"
-  | "upcoming"
-  | "completed";
-
-const FILTER_ORDER: EventListFilter[] = [
+/**
+ * Canonical filter values + display order. The order doubles as the
+ * source of truth for `EventListFilter` and the buttons rendered, so
+ * `events/page.tsx` imports it for searchParam validation.
+ */
+export const FILTER_VALUES = [
   "all",
   "ongoing",
   "upcoming",
   "completed",
-];
+] as const;
+
+export type EventListFilter = (typeof FILTER_VALUES)[number];
 
 interface Props {
   active: EventListFilter;
@@ -46,7 +47,7 @@ export function FilterBar({ active, labels }: Props) {
 
   return (
     <div className="mb-4 flex flex-wrap gap-1.5 lg:mb-5">
-      {FILTER_ORDER.map((value) => {
+      {FILTER_VALUES.map((value) => {
         const isActive = value === active;
         return (
           <button

@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
@@ -102,7 +103,7 @@ export function SeriesBlock({
           <div
             className="grid"
             style={{
-              gridTemplateColumns: "90px 100px 1fr 200px 60px 28px",
+              gridTemplateColumns: EVENT_TABLE_COLUMNS,
               padding: "7px 20px",
               background: colors.bgFaint,
               borderBottom: `1px solid ${colors.border}`,
