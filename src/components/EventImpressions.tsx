@@ -481,7 +481,7 @@ export function EventImpressions({
               {cooldownSeconds > 0 && (
                 <div
                   className="mt-2 text-xs"
-                  style={{ color: colors.trendingText }}
+                  style={{ color: colors.warning }}
                 >
                   {t("editCooldown", { seconds: cooldownSeconds })}
                 </div>
