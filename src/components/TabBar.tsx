@@ -32,6 +32,14 @@ interface Props {
   tabs: ReadonlyArray<Tab>;
   active: string;
   /**
+   * Translated `aria-label` for the wrapping `<nav>`. Required (not
+   * defaulted to a literal "Tabs") so screen readers expose a
+   * locale-correct value — a default English string would leak
+   * through on ko/ja pages. Resolve via `getTranslations("Common")`
+   * → `ct("tabsAriaLabel")` (or the page's own namespace).
+   */
+  ariaLabel: string;
+  /**
    * URL search-param name. Defaults to "tab"; override when the page
    * needs a different param (e.g. song page might use "view" if
    * "tab" is taken by a parent context). Same param goes server-side
@@ -40,7 +48,12 @@ interface Props {
   paramName?: string;
 }
 
-export function TabBar({ tabs, active, paramName = "tab" }: Props) {
+export function TabBar({
+  tabs,
+  active,
+  ariaLabel,
+  paramName = "tab",
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -62,7 +75,7 @@ export function TabBar({ tabs, active, paramName = "tab" }: Props) {
   // `aria-current="page"` is the honest representation.
   return (
     <nav
-      aria-label="Tabs"
+      aria-label={ariaLabel}
       style={{
         display: "flex",
         gap: 0,

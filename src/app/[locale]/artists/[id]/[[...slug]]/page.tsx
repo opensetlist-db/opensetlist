@@ -464,7 +464,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
 
           {/* Main content */}
           <div>
-            <TabBar tabs={tabs} active={activeTab} />
+            <TabBar
+              tabs={tabs}
+              active={activeTab}
+              ariaLabel={ct("tabsAriaLabel")}
+            />
 
             {activeTab === "overview" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

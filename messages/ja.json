@@ -17,6 +17,7 @@
     "notFound": "ページが見つかりません。",
     "backToHome": "ホームに戻る",
     "noData": "データがありません。",
+    "tabsAriaLabel": "タブ",
     "event": "イベント",
     "events": "イベント",
     "artist": "アーティスト",
