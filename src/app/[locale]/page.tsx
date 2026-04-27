@@ -43,6 +43,7 @@ export async function generateMetadata({
 
 const HOME_TAKE = 5;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // Home is the "near future / near past" surface; full-range browsing
 // lives on /[locale]/events. Bound upcoming + recent queries to a
 // ±30-day window so the home stays relevant even when the catalog has
@@ -79,7 +80,7 @@ function utcDayOffset(d: Date, days: number): Date {
 
 function daysUntilUTC(target: Date, now: Date): number {
   const diff = utcDayStart(target).getTime() - utcDayStart(now).getTime();
-  return Math.round(diff / 86400000);
+  return Math.round(diff / MS_PER_DAY);
 }
 
 function eventHref(

@@ -2,6 +2,13 @@ import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
 
+// Mid-stop on the hero gradient. Lives between `colors.textPrimary`
+// (#0f172a) and `colors.primary` (#0277BD); a deeper navy that gives
+// the gradient its "from-night-to-brand" arc. Not promoted to a
+// `colors` token because no other surface uses it — pinning it as a
+// named constant keeps it searchable for future palette audits.
+const HERO_GRADIENT_MID = "#1e3a5f";
+
 interface Props {
   href: string;
   startTimeIso: string | null;
@@ -28,9 +35,7 @@ export function LiveHeroCard({
       href={href}
       className="relative block overflow-hidden"
       style={{
-        // `#1e3a5f` is the unique mid-stop on this hero gradient; not
-        // surfaced as a token because no other surface uses it.
-        background: `linear-gradient(135deg, ${colors.textPrimary} 0%, #1e3a5f 60%, ${colors.primary} 100%)`,
+        background: `linear-gradient(135deg, ${colors.textPrimary} 0%, ${HERO_GRADIENT_MID} 60%, ${colors.primary} 100%)`,
         borderRadius: radius.cardLg,
         padding: "24px 20px",
         boxShadow: shadows.heroLive,
