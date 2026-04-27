@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { displayName } from "@/lib/display";
+import { displayNameWithFallback } from "@/lib/display";
 import { colors } from "@/styles/tokens";
 import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -31,29 +31,27 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
     getTranslations("Event"),
   ]);
 
-  const localizedTr = artist.translations.find((tr) => tr.locale === locale);
+  // `displayNameWithFallback` cascades: localized shortName → localized
+  // name → originalShortName → originalName → "". When everything is
+  // null the cascade ends in "" (Prisma types original* as nullable
+  // even though the schema is non-null), so add t("unknown") as the
+  // last-resort label so a row never renders as a nameless link.
   const primaryName =
-    (localizedTr
-      ? displayName(localizedTr, "short")
-      : (artist.originalShortName ?? artist.originalName)) ?? "";
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    t("unknown");
   // Show the original (typically Japanese) name as a sub-line only when
   // the viewer's locale differs from the artist's original-language and
-  // an original name actually exists. Prisma types every original* field
-  // as nullable; falsy-check guards against a null bleeding into the
-  // <div>{...}</div> below as the literal string "null".
+  // an original name actually exists.
   const showOriginal =
     locale !== artist.originalLanguage &&
     !!artist.originalName &&
     primaryName !== artist.originalName;
 
-  const subUnitNames = artist.subArtists.map((s) => {
-    const subTr = s.translations.find((tr) => tr.locale === locale);
-    return (
-      (subTr
-        ? displayName(subTr, "short")
-        : (s.originalShortName ?? s.originalName)) ?? ""
-    );
-  });
+  const subUnitNames = artist.subArtists.map(
+    (s) =>
+      displayNameWithFallback(s, s.translations, locale, "short") ||
+      t("unknown"),
+  );
 
   return (
     <li

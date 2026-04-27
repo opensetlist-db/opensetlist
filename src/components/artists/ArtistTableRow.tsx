@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { displayName } from "@/lib/display";
+import { displayNameWithFallback } from "@/lib/display";
 import { colors } from "@/styles/tokens";
 import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -38,27 +38,22 @@ export default async function ArtistTableRow({
     getTranslations("Event"),
   ]);
 
-  const localizedTr = artist.translations.find((tr) => tr.locale === locale);
+  // Same `displayNameWithFallback` + t("unknown") pattern as
+  // <ArtistCard>; see the comment there for why the final fallback is
+  // a translatable label rather than empty string.
   const primaryName =
-    (localizedTr
-      ? displayName(localizedTr, "short")
-      : (artist.originalShortName ?? artist.originalName)) ?? "";
-  // Mirror the null-handling rules in <ArtistCard> — primary/original
-  // names are typed `string | null` by the Prisma generator even though
-  // the schema is non-null, so guard explicitly here too.
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    t("unknown");
   const showOriginal =
     locale !== artist.originalLanguage &&
     !!artist.originalName &&
     primaryName !== artist.originalName;
 
-  const subUnitNames = artist.subArtists.map((s) => {
-    const subTr = s.translations.find((tr) => tr.locale === locale);
-    return (
-      (subTr
-        ? displayName(subTr, "short")
-        : (s.originalShortName ?? s.originalName)) ?? ""
-    );
-  });
+  const subUnitNames = artist.subArtists.map(
+    (s) =>
+      displayNameWithFallback(s, s.translations, locale, "short") ||
+      t("unknown"),
+  );
 
   return (
     <li

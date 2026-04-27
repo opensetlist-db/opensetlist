@@ -8,10 +8,18 @@ import FilterBar from "@/components/artists/FilterBar";
 import GroupSection from "@/components/artists/GroupSection";
 import { colors } from "@/styles/tokens";
 
-type SearchParams = Promise<{ category?: string }>;
+// Repeated query params arrive as `string[]` in App Router (e.g.
+// `?category=kpop&category=jpop` → `category: ["kpop", "jpop"]`).
+// Type for both shapes; pick the first value when an array, then run
+// it through the type-guard. Defends against both intentional repeats
+// and accidental URL manipulation by treating malformed input as "all".
+type SearchParams = Promise<{ category?: string | string[] }>;
 
-function resolveCategory(value: string | undefined): ArtistsListFilter {
-  return isArtistsListFilter(value) ? value : "all";
+function resolveCategory(
+  value: string | string[] | undefined,
+): ArtistsListFilter {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return isArtistsListFilter(candidate) ? candidate : "all";
 }
 
 export default async function ArtistsPage({

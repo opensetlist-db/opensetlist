@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { displayName } from "@/lib/display";
+import { displayNameWithFallback } from "@/lib/display";
 import { colors, shadows, radius } from "@/styles/tokens";
 import type { GroupForList } from "@/lib/artists";
 import ArtistCard from "@/components/artists/ArtistCard";
@@ -36,13 +36,12 @@ const CATEGORY_LABEL_KEY: Record<NonNullable<GroupForList["category"]>, string> 
 export default async function GroupSection({ group, locale }: Props) {
   const t = await getTranslations("Artist");
 
-  const localizedTranslation = group.translations.find(
-    (tr) => tr.locale === locale,
-  );
+  // Cascade: localized shortName → localized name → originalShortName
+  // → originalName → t("unknownGroup"). Final i18n fallback prevents
+  // an empty <h2> from rendering when every name field is null.
   const displayedName =
-    (localizedTranslation
-      ? displayName(localizedTranslation, "short")
-      : (group.originalShortName ?? group.originalName)) ?? "";
+    displayNameWithFallback(group, group.translations, locale, "short") ||
+    t("unknownGroup");
 
   const artistCount = group.artists.length;
   const categoryLabel = group.category
