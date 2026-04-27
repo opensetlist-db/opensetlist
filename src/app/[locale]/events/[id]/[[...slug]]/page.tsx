@@ -11,15 +11,13 @@ import {
   resolveLocalizedField,
 } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
-import { StatusBadge } from "@/components/StatusBadge";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { EMOJI_MAP } from "@/lib/reactions";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
-import { EventDateTime } from "@/components/EventDateTime";
-import EventStatusTicker from "@/components/EventStatusTicker";
+import { EventHeader } from "@/components/EventHeader";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import type { Metadata } from "next";
 
@@ -335,8 +333,18 @@ export default async function EventPage({ params }: Props) {
     "originalCity"
   );
 
+  // Display title: series full name takes precedence (most concert events
+  // brand by series, e.g. "Hasunosora 6th Live"); falls back to the event's
+  // own full name then "unknown event" if both are missing. Subtitle shown
+  // only when distinct from the title — avoids duplication.
+  const headerTitle = seriesFullName || eventFullName || t("unknownEvent");
+  const headerSubtitle =
+    seriesFullName && eventName && eventName !== seriesFullName
+      ? eventName
+      : null;
+
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
+    <main className="mx-auto max-w-3xl px-4 py-8 lg:max-w-[1280px] lg:px-8">
       <Breadcrumb
         ariaLabel={ct("breadcrumb")}
         items={[
@@ -352,69 +360,60 @@ export default async function EventPage({ params }: Props) {
         ]}
       />
 
-      {/* Header */}
-      <header className="mb-8">
-        <EventStatusTicker
-          startTime={
-            typeof event.startTime === "string"
-              ? event.startTime
-              : event.startTime?.toISOString() ?? null
-          }
-        />
-        <h1 className="text-3xl font-bold">
-          {seriesFullName || eventFullName || t("unknownEvent")}
-        </h1>
-        {seriesFullName && eventName && eventName !== seriesFullName && (
-          <p className="mt-1 text-lg text-zinc-600">{eventName}</p>
-        )}
-        <div className="mt-2 space-y-1 text-sm text-zinc-600">
-          <div className="flex items-center gap-2">
-            <StatusBadge
-              status={resolvedStatus}
-              label={t(`status.${resolvedStatus}`)}
-              size="md"
-            />
-
-            {event.date && (
-              <EventDateTime
-                date={event.date ?? null}
-                startTime={event.startTime ?? null}
-                variant="inline"
-              />
-            )}
-          </div>
-          {(venue || city) && (
-            <div>
-              {venue ?? city}
-              {venue && city && `, ${city}`}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Setlist (renders TrendingSongs at the top, derived from polling state
-          while ongoing so trending refreshes alongside per-item counts). */}
       {/*
-        serializeBigInt() converts BigInt → Number at runtime, but its generic
-        signature preserves the input's TS types, so `setlistItems` still reports
-        bigint ids. Cast at the boundary — LiveSetlistItem mirrors the runtime
-        (Number) shape.
+        Mobile: single column (header on top, setlist + impressions below).
+        Desktop (lg ≥ 1024px): 2-col grid 300px / 1fr with sticky sidebar at
+        top: 72px. Grid's natural single-col on mobile means EventHeader
+        renders above the main column without any extra layout branching.
       */}
-      <LiveSetlist
-        eventId={id}
-        initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
-        initialReactionCounts={reactionCounts}
-        initialTrendingSongs={trendingSongs}
-        unknownSongLabel={st("unknown")}
-        isOngoing={isOngoing}
-        locale={locale}
-      />
+      <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+        {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room */}
+        <aside className="lg:sticky lg:top-[72px]">
+          <EventHeader
+            status={resolvedStatus}
+            statusLabel={t(`status.${resolvedStatus}`)}
+            date={event.date}
+            startTime={event.startTime}
+            series={
+              event.eventSeries && seriesShortName
+                ? {
+                    id: event.eventSeries.id,
+                    slug: event.eventSeries.slug,
+                    shortName: seriesShortName,
+                  }
+                : null
+            }
+            title={headerTitle}
+            subtitle={headerSubtitle}
+            venue={venue}
+            city={city}
+          />
+        </aside>
 
-      <EventImpressions
-        eventId={id}
-        initialImpressions={impressions}
-        isOngoing={isOngoing}
-      />
+        <div className="mt-6 lg:mt-0 min-w-0">
+          {/*
+            serializeBigInt() converts BigInt → Number at runtime, but its
+            generic signature preserves the input's TS types, so
+            `setlistItems` still reports bigint ids. Cast at the boundary —
+            LiveSetlistItem mirrors the runtime (Number) shape.
+          */}
+          <LiveSetlist
+            eventId={id}
+            initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
+            initialReactionCounts={reactionCounts}
+            initialTrendingSongs={trendingSongs}
+            unknownSongLabel={st("unknown")}
+            isOngoing={isOngoing}
+            locale={locale}
+          />
+
+          <EventImpressions
+            eventId={id}
+            initialImpressions={impressions}
+            isOngoing={isOngoing}
+          />
+        </div>
+      </div>
     </main>
   );
 }
