@@ -1,8 +1,10 @@
 import Link from "next/link";
+import EventStatusTicker from "@/components/EventStatusTicker";
 import { colors, radius } from "@/styles/tokens";
 
 interface Props {
   href: string;
+  startTimeIso: string | null;
   seriesName: string | null;
   eventName: string;
   venue: string | null;
@@ -13,6 +15,7 @@ interface Props {
 
 export function LiveHeroCard({
   href,
+  startTimeIso,
   seriesName,
   eventName,
   venue,
@@ -134,6 +137,7 @@ export function LiveHeroCard({
       >
         ›
       </span>
+      <EventStatusTicker startTime={startTimeIso} />
     </Link>
   );
 }

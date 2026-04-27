@@ -43,6 +43,11 @@ export async function generateMetadata({
 
 const HOME_TAKE = 5;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
+// Home is the "near future / near past" surface; full-range browsing
+// lives on /[locale]/events. Bound upcoming + recent queries to a
+// ±30-day window so the home stays relevant even when the catalog has
+// long-tail events that would otherwise dominate take(5).
+const HOME_WINDOW_DAYS = 30;
 
 const LOCALE_MAP: Record<string, string> = {
   ko: "ko-KR",
@@ -59,6 +64,16 @@ const LOCALE_MAP: Record<string, string> = {
 function utcDayStart(d: Date): Date {
   return new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  );
+}
+
+// UTC day at `now + days` for window bounds. Anchoring on UTC midnight
+// (not `now ± Nd` time offset) keeps the window edges stable across
+// regions — otherwise the inclusion of an event on the 30th day drifts
+// by the server's running time-of-day.
+function utcDayOffset(d: Date, days: number): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days)
   );
 }
 
@@ -107,11 +122,14 @@ async function getOngoingEvents(now: Date) {
 }
 
 async function getUpcomingEvents(now: Date) {
+  // End-exclusive: "events scheduled before the start of day +31",
+  // i.e. all events up to and including the 30-days-from-today UTC day.
+  const upcomingCutoff = utcDayOffset(now, HOME_WINDOW_DAYS + 1);
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
       status: "scheduled",
-      startTime: { gt: now },
+      startTime: { gt: now, lt: upcomingCutoff },
     },
     include: {
       translations: true,
@@ -125,9 +143,13 @@ async function getUpcomingEvents(now: Date) {
 
 async function getRecentEvents(now: Date) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
+  // Inclusive: events starting on or after the start of the UTC day
+  // that is `HOME_WINDOW_DAYS` days before today.
+  const windowStart = utcDayOffset(now, -HOME_WINDOW_DAYS);
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
+      startTime: { gte: windowStart },
       OR: [
         { status: "completed" },
         { status: "scheduled", startTime: { lte: completedCutoff } },
@@ -150,6 +172,7 @@ type RecentEvent = Awaited<ReturnType<typeof getRecentEvents>>[number];
 
 interface OngoingView {
   href: string;
+  startTimeIso: string;
   seriesName: string | null;
   eventName: string;
   venue: string | null;
@@ -158,6 +181,7 @@ interface OngoingView {
 
 interface UpcomingView {
   href: string;
+  startTimeIso: string;
   seriesName: string | null;
   eventName: string;
   venue: string | null;
@@ -255,10 +279,18 @@ export default async function HomePage({
     getRecentEvents(now),
   ]);
 
+  // Prisma's runtime row has `startTime: Date`, but `serializeBigInt`
+  // round-trips through JSON so values arrive here as strings. TS still
+  // sees the Prisma type — `new Date(...).toISOString()` works on either,
+  // so callers downstream get a stable ISO string regardless.
+  const toIso = (v: Date | string): string =>
+    typeof v === "string" ? v : v.toISOString();
+
   const ongoingViews: OngoingView[] = ongoingEvents.map((e: OngoingEvent) => {
     const { eventName, seriesName } = projectNames(e, locale);
     return {
       href: eventHref(locale, e.id, eventName),
+      startTimeIso: toIso(e.startTime),
       seriesName,
       eventName: eventName || evT("unknownEvent"),
       venue: projectVenue(e, locale),
@@ -274,6 +306,7 @@ export default async function HomePage({
       const start = new Date(e.startTime);
       return {
         href: eventHref(locale, e.id, eventName),
+        startTimeIso: toIso(e.startTime),
         seriesName,
         eventName: eventName || evT("unknownEvent"),
         venue: projectVenue(e, locale),
@@ -326,6 +359,7 @@ export default async function HomePage({
                       <LiveHeroCard
                         key={i}
                         href={v.href}
+                        startTimeIso={v.startTimeIso}
                         seriesName={v.seriesName}
                         eventName={v.eventName}
                         venue={v.venue}
@@ -358,6 +392,7 @@ export default async function HomePage({
                       <UpcomingCard
                         key={v.href}
                         href={v.href}
+                        startTimeIso={v.startTimeIso}
                         seriesName={v.seriesName}
                         eventName={v.eventName}
                         venue={v.venue}
@@ -422,6 +457,7 @@ export default async function HomePage({
                     <UpcomingCard
                       key={v.href}
                       href={v.href}
+                      startTimeIso={v.startTimeIso}
                       seriesName={v.seriesName}
                       eventName={v.eventName}
                       venue={v.venue}
