@@ -1,5 +1,5 @@
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
-import { colors, radius } from "@/styles/tokens";
+import { colors, motion, radius } from "@/styles/tokens";
 
 /*
  * Per-status visual config — verbatim from shared-components-handoff §5
@@ -94,7 +94,7 @@ export function StatusBadge({ status, label, size = "sm" }: Props) {
             height: s.dotSize,
             borderRadius: "50%",
             background: cfg.color,
-            animation: "live-pulse 1.2s ease-in-out infinite",
+            animation: motion.livePulse,
           }}
         />
       )}

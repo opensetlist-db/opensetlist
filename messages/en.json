@@ -2,11 +2,16 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "Open setlist database for live events (JP/EN/KR)",
-    "recentEvents": "Recent Events",
-    "upcomingEvents": "Upcoming Events",
-    "ongoingEvents": "Live Now",
-    "noEvents": "No events registered.",
-    "viewAll": "View All"
+    "ongoingTitle": "🔴 Live Now",
+    "ongoingSubtitle": "Setlist updating in real time",
+    "upcomingTitle": "Upcoming Shows",
+    "recentTitle": "Recent Shows",
+    "viewAllSchedule": "View full schedule ›",
+    "viewAllEvents": "View all events ›",
+    "songCountOngoing": "{count, plural, one {🎵 # song so far} other {🎵 # songs so far}}",
+    "songCount": "{count, plural, one {🎵 # song} other {🎵 # songs}}",
+    "dDay": "D-{days}",
+    "noEvents": "Event listings coming soon."
   },
   "Common": {
     "notFound": "Page not found.",
