@@ -55,6 +55,12 @@ export const colors = {
   live: "#dc2626",
   liveBg: "#fef2f2",
   liveBorder: "#fecaca",
+
+  // Error feedback (validation + submission failures). Same red as `live`
+  // today, but semantically distinct: a future brand shift moving live to
+  // orange (rare but possible per CR) shouldn't recolor error text. Keep
+  // both hexes here so the divergence is one-line easy if it happens.
+  error: "#dc2626",
   upcoming: "#16a34a",
   upcomingBg: "#f0fdf4",
   upcomingBorder: "#bbf7d0",

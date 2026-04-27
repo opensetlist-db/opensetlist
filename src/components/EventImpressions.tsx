@@ -411,7 +411,7 @@ export function EventImpressions({
                 <div
                   className="mt-2 text-xs"
                   role="alert"
-                  style={{ color: colors.live }}
+                  style={{ color: colors.error }}
                 >
                   {error}
                 </div>
@@ -419,7 +419,7 @@ export function EventImpressions({
               <div className="mt-2 flex items-center justify-between text-xs">
                 <span
                   style={{
-                    color: overLimit ? colors.live : colors.textSecondary,
+                    color: overLimit ? colors.error : colors.textSecondary,
                   }}
                 >
                   {t("charLimit", { current: charCount })}
@@ -492,7 +492,7 @@ export function EventImpressions({
                 <div
                   className="mt-2 text-xs"
                   role="alert"
-                  style={{ color: colors.live }}
+                  style={{ color: colors.error }}
                 >
                   {error}
                 </div>
@@ -500,7 +500,7 @@ export function EventImpressions({
               <div className="mt-2 flex items-center justify-between text-xs">
                 <span
                   style={{
-                    color: overLimit ? colors.live : colors.textSecondary,
+                    color: overLimit ? colors.error : colors.textSecondary,
                   }}
                 >
                   {t("charLimit", { current: charCount })}
