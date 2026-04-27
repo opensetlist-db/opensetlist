@@ -32,7 +32,7 @@ const REACTION_TIMEOUT_MS = 10_000;
 export const REACTION_ACTIVE_COLOR = colors.primary;
 export const REACTION_ACTIVE_BG = colors.primaryBg;
 const REACTION_BORDER_SOLID = colors.border;
-const REACTION_BORDER_DASHED = "#d1d5db";
+const REACTION_BORDER_DASHED = colors.borderDashed;
 const REACTION_COUNT_INACTIVE_COLOR = colors.textSecondary;
 
 // Mirrors the durations in globals.css `@keyframes emoji-activate` /

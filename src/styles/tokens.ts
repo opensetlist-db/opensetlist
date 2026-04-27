@@ -36,6 +36,11 @@ export const colors = {
   border: "#e2e8f0",
   borderLight: "#f1f5f9",
   borderFaint: "#f8fafc",
+  // Slightly darker than `border` — used for the dashed empty-state
+  // border on inactive reaction buttons (mockup §3-3). Distinct from
+  // `border` (solid e2e8f0) so the dashed-vs-solid contrast remains
+  // visible at small sizes; `textMuted` would be too dark.
+  borderDashed: "#d1d5db",
 
   // Event status palette (consumed by <StatusBadge>)
   live: "#dc2626",
