@@ -2,11 +2,16 @@
   "Home": {
     "title": "오픈셋리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
-    "recentEvents": "최근 이벤트",
-    "upcomingEvents": "예정된 이벤트",
-    "ongoingEvents": "지금 공연 중",
-    "noEvents": "등록된 이벤트가 없습니다.",
-    "viewAll": "전체 보기"
+    "ongoingTitle": "🔴 지금 진행 중",
+    "ongoingSubtitle": "실시간 셋리스트 업데이트 중",
+    "upcomingTitle": "다가오는 공연",
+    "recentTitle": "최근 공연",
+    "viewAllSchedule": "전체 일정 보기 ›",
+    "viewAllEvents": "전체 이벤트 보기 ›",
+    "songCountOngoing": "{count, plural, other {🎵 #곡 진행 중}}",
+    "songCount": "{count, plural, other {🎵 #곡}}",
+    "dDay": "D-{days}",
+    "noEvents": "곧 공연 정보가 업데이트됩니다."
   },
   "Common": {
     "notFound": "페이지를 찾을 수 없습니다.",

@@ -2,11 +2,16 @@
   "Home": {
     "title": "OpenSetlist",
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
-    "recentEvents": "最近のイベント",
-    "upcomingEvents": "今後のイベント",
-    "ongoingEvents": "開催中のイベント",
-    "noEvents": "登録されたイベントがありません。",
-    "viewAll": "すべて見る"
+    "ongoingTitle": "🔴 開催中",
+    "ongoingSubtitle": "セットリスト更新中",
+    "upcomingTitle": "今後の公演",
+    "recentTitle": "最近の公演",
+    "viewAllSchedule": "すべての日程を見る ›",
+    "viewAllEvents": "すべてのイベントを見る ›",
+    "songCountOngoing": "{count, plural, other {🎵 #曲 進行中}}",
+    "songCount": "{count, plural, other {🎵 #曲}}",
+    "dDay": "D-{days}",
+    "noEvents": "もうすぐ公演情報が更新されます。"
   },
   "Common": {
     "notFound": "ページが見つかりません。",
