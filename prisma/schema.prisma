@@ -220,6 +220,7 @@ model Artist {
   type              ArtistType
   hasBoard          Boolean             @default(true)
   imageUrl          String?
+  color             String?                    // unit badge color e.g. "#e91e8c" — nullable, falls back to zinc tokens
   originalName      String
   originalShortName String?
   originalBio       String?
