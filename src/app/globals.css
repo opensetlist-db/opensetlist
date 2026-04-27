@@ -3,6 +3,11 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
+     so a palette change is one edit, not a grep across components.
+     Consumed by `.row-hover-bg:hover` below; available as a Tailwind
+     arbitrary-value `bg-[var(--bg-subtle)]` if needed elsewhere. */
+  --bg-subtle: #f8fafc;
 }
 
 @theme inline {
@@ -53,4 +58,20 @@ body {
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
+}
+
+/*
+ * Subtle hover background for full-row clickable lists (artists list
+ * card + table rows, future list pages). Reads `--bg-subtle` from the
+ * `:root` block above so the hex lives in exactly one place. The
+ * transition is on the base rule (not just `:hover`) so the fade
+ * runs on both enter and leave; pairing both rules here keeps the
+ * effect a single class consumers can apply without restating the
+ * timing.
+ */
+.row-hover-bg {
+  transition: background 0.12s ease;
+}
+.row-hover-bg:hover {
+  background: var(--bg-subtle);
 }
