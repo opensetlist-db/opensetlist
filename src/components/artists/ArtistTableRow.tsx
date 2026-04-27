@@ -83,6 +83,15 @@ export default async function ArtistTableRow({
             <span
               className="truncate"
               style={{
+                // `flex: 1` + `minWidth: 0` are what actually let the
+                // ellipsis kick in: a flex child defaults to
+                // `min-width: auto` and refuses to shrink below its
+                // content, so `truncate` (text-overflow:ellipsis) is a
+                // no-op without these. The LIVE badge next to the name
+                // is the trigger — long names overflow only when both
+                // siblings are present.
+                flex: 1,
+                minWidth: 0,
                 fontSize: 14,
                 fontWeight: 700,
                 color: colors.primary,

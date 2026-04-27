@@ -71,6 +71,14 @@ export default async function GroupSection({ group, locale }: Props) {
           <h2
             className="truncate"
             style={{
+              // Same flex-shrink unlock pattern as ArtistTableRow's
+              // name span: `truncate` only takes effect on a flex
+              // child once `min-width: 0` overrides the default
+              // `min-width: auto`. With the category badge as a
+              // sibling, a long group name otherwise pushes the badge
+              // off the right edge instead of clipping.
+              flex: 1,
+              minWidth: 0,
               fontSize: 13,
               fontWeight: 700,
               color: colors.textPrimary,
