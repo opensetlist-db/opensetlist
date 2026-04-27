@@ -6,6 +6,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { REACTION_TYPES } from "@/lib/reactions";
+import { colors, radius } from "@/styles/tokens";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
 
@@ -23,13 +24,16 @@ const OPTIMISTIC_PENDING = "pending";
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
 
-// Three-state palette (mockup §3-3). Exported so tests assert against
-// the same source of truth instead of duplicating jsdom-converted RGB.
-export const REACTION_ACTIVE_COLOR = "#0277BD";
-export const REACTION_ACTIVE_BG = "#e8f4fd";
-const REACTION_BORDER_SOLID = "#e2e8f0";
+// Three-state palette (mockup §3-3). Active state pulls from the
+// shared design tokens so the brand-blue stays in lockstep with the
+// rest of the chrome. Re-exported under reaction-scoped names so
+// tests can assert against the same source of truth without
+// importing tokens directly.
+export const REACTION_ACTIVE_COLOR = colors.primary;
+export const REACTION_ACTIVE_BG = colors.primaryBg;
+const REACTION_BORDER_SOLID = colors.border;
 const REACTION_BORDER_DASHED = "#d1d5db";
-const REACTION_COUNT_INACTIVE_COLOR = "#475569";
+const REACTION_COUNT_INACTIVE_COLOR = colors.textSecondary;
 
 // Mirrors the durations in globals.css `@keyframes emoji-activate` /
 // `@keyframes emoji-deactivate` / `@keyframes count-slide`. Source of
@@ -358,7 +362,7 @@ function ReactionButton({
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        borderRadius: 20,
+        borderRadius: radius.button,
         padding: "4px 10px",
         border: isActive
           ? `1.5px solid ${REACTION_ACTIVE_COLOR}`
