@@ -63,8 +63,15 @@ body {
 /*
  * Subtle hover background for full-row clickable lists (artists list
  * card + table rows, future list pages). Reads `--bg-subtle` from the
- * `:root` block above so the hex lives in exactly one place.
+ * `:root` block above so the hex lives in exactly one place. The
+ * transition is on the base rule (not just `:hover`) so the fade
+ * runs on both enter and leave; pairing both rules here keeps the
+ * effect a single class consumers can apply without restating the
+ * timing.
  */
+.row-hover-bg {
+  transition: background 0.12s ease;
+}
 .row-hover-bg:hover {
   background: var(--bg-subtle);
 }

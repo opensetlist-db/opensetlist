@@ -73,6 +73,11 @@ export const radius = {
   badge: 20,
   button: 20,
   tag: 10,
+  // Sub-unit chip on artist rows (mockup §2). Numerically same as
+  // `tag` today but semantically distinct — `tag` is for content
+  // tags, `chip` is for sub-entity references; keeping them separate
+  // lets a future design tweak adjust one without churning the other.
+  chip: 10,
   avatar: 14,
 } as const;
 

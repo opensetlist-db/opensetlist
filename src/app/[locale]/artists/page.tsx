@@ -13,6 +13,12 @@ import { colors } from "@/styles/tokens";
 // Type for both shapes; pick the first value when an array, then run
 // it through the type-guard. Defends against both intentional repeats
 // and accidental URL manipulation by treating malformed input as "all".
+// Reading-comfort cap for the multi-column desktop table per mockup.
+// Mobile uses full width; the page only narrows when the desktop
+// breakpoint kicks in (1024px) and the 5-col grid would otherwise
+// stretch awkwardly wide on ultra-wide monitors.
+const PAGE_MAX_WIDTH = 960;
+
 type SearchParams = Promise<{ category?: string | string[] }>;
 
 function resolveCategory(
@@ -46,7 +52,7 @@ export default async function ArtistsPage({
     <main
       className="mx-auto"
       style={{
-        maxWidth: 960,
+        maxWidth: PAGE_MAX_WIDTH,
         padding: "24px 0 48px",
       }}
     >

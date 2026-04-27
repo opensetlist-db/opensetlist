@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { displayNameWithFallback } from "@/lib/display";
-import { colors } from "@/styles/tokens";
+import { colors, radius } from "@/styles/tokens";
 import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ArtistRowData } from "@/lib/artists";
@@ -72,7 +72,6 @@ export default async function ArtistTableRow({
           padding: "12px 20px",
           textDecoration: "none",
           color: "inherit",
-          transition: "background 0.12s ease",
         }}
       >
         {/* col 1: avatar */}
@@ -127,7 +126,7 @@ export default async function ArtistTableRow({
               style={{
                 background: colors.borderLight,
                 color: colors.textSubtle,
-                borderRadius: 10,
+                borderRadius: radius.chip,
                 padding: "1px 6px",
                 fontSize: 10,
                 fontWeight: 600,
