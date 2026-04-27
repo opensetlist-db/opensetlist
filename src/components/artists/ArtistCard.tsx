@@ -32,20 +32,27 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
   ]);
 
   const localizedTr = artist.translations.find((tr) => tr.locale === locale);
-  const primaryName = localizedTr
-    ? displayName(localizedTr, "short")
-    : (artist.originalShortName ?? artist.originalName);
+  const primaryName =
+    (localizedTr
+      ? displayName(localizedTr, "short")
+      : (artist.originalShortName ?? artist.originalName)) ?? "";
   // Show the original (typically Japanese) name as a sub-line only when
-  // the viewer's locale differs from the artist's original-language —
-  // otherwise it's just the same string repeated.
+  // the viewer's locale differs from the artist's original-language and
+  // an original name actually exists. Prisma types every original* field
+  // as nullable; falsy-check guards against a null bleeding into the
+  // <div>{...}</div> below as the literal string "null".
   const showOriginal =
-    locale !== artist.originalLanguage && primaryName !== artist.originalName;
+    locale !== artist.originalLanguage &&
+    !!artist.originalName &&
+    primaryName !== artist.originalName;
 
   const subUnitNames = artist.subArtists.map((s) => {
     const subTr = s.translations.find((tr) => tr.locale === locale);
-    return subTr
-      ? displayName(subTr, "short")
-      : (s.originalShortName ?? s.originalName);
+    return (
+      (subTr
+        ? displayName(subTr, "short")
+        : (s.originalShortName ?? s.originalName)) ?? ""
+    );
   });
 
   return (

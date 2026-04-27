@@ -39,17 +39,25 @@ export default async function ArtistTableRow({
   ]);
 
   const localizedTr = artist.translations.find((tr) => tr.locale === locale);
-  const primaryName = localizedTr
-    ? displayName(localizedTr, "short")
-    : (artist.originalShortName ?? artist.originalName);
+  const primaryName =
+    (localizedTr
+      ? displayName(localizedTr, "short")
+      : (artist.originalShortName ?? artist.originalName)) ?? "";
+  // Mirror the null-handling rules in <ArtistCard> — primary/original
+  // names are typed `string | null` by the Prisma generator even though
+  // the schema is non-null, so guard explicitly here too.
   const showOriginal =
-    locale !== artist.originalLanguage && primaryName !== artist.originalName;
+    locale !== artist.originalLanguage &&
+    !!artist.originalName &&
+    primaryName !== artist.originalName;
 
   const subUnitNames = artist.subArtists.map((s) => {
     const subTr = s.translations.find((tr) => tr.locale === locale);
-    return subTr
-      ? displayName(subTr, "short")
-      : (s.originalShortName ?? s.originalName);
+    return (
+      (subTr
+        ? displayName(subTr, "short")
+        : (s.originalShortName ?? s.originalName)) ?? ""
+    );
   });
 
   return (

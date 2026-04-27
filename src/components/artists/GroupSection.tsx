@@ -39,9 +39,10 @@ export default async function GroupSection({ group, locale }: Props) {
   const localizedTranslation = group.translations.find(
     (tr) => tr.locale === locale,
   );
-  const displayedName = localizedTranslation
-    ? displayName(localizedTranslation, "short")
-    : (group.originalShortName ?? group.originalName);
+  const displayedName =
+    (localizedTranslation
+      ? displayName(localizedTranslation, "short")
+      : (group.originalShortName ?? group.originalName)) ?? "";
 
   const artistCount = group.artists.length;
   const categoryLabel = group.category

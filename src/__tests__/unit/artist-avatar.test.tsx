@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import ArtistAvatar from "@/components/ArtistAvatar";
-import { colors, radius } from "@/styles/tokens";
+import { BRAND_GRADIENT } from "@/lib/artistColor";
+import { radius } from "@/styles/tokens";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
 function getAvatarEl(container: HTMLElement): HTMLElement {
@@ -10,6 +11,23 @@ function getAvatarEl(container: HTMLElement): HTMLElement {
   if (!el) throw new Error("ArtistAvatar produced no DOM");
   return el;
 }
+
+// jsdom converts each hex literal inside `linear-gradient(...)` to its
+// rgb() form when reading back from `el.style.background`. Build the
+// expected string by extracting the hex stops out of the live token
+// (so a future palette change doesn't silently make this test stale)
+// and converting each one through `hexToRgbString`.
+const EXPECTED_GRADIENT_BG = (() => {
+  const stops = BRAND_GRADIENT.match(/#[0-9a-fA-F]{6}/g);
+  if (!stops || stops.length === 0) {
+    throw new Error(`BRAND_GRADIENT has no hex stops: ${BRAND_GRADIENT}`);
+  }
+  const direction = BRAND_GRADIENT.match(/^linear-gradient\(([^,]+),/)?.[1];
+  if (!direction) {
+    throw new Error(`BRAND_GRADIENT missing direction: ${BRAND_GRADIENT}`);
+  }
+  return `linear-gradient(${direction}, ${stops.map(hexToRgbString).join(", ")})`;
+})();
 
 describe("<ArtistAvatar />", () => {
   describe("color fallback chain", () => {
@@ -25,21 +43,12 @@ describe("<ArtistAvatar />", () => {
       const { container } = render(
         <ArtistAvatar artist={{ color: null, shortName: "Gaku" }} />,
       );
-      const el = getAvatarEl(container);
-      // jsdom converts each hex inside `linear-gradient(...)` to its
-      // rgb() form, so assert against the converted equivalent rather
-      // than the raw token string.
-      expect(el.style.background).toBe(
-        `linear-gradient(135deg, ${hexToRgbString("#4FC3F7")}, ${hexToRgbString("#0277BD")})`,
-      );
+      expect(getAvatarEl(container).style.background).toBe(EXPECTED_GRADIENT_BG);
     });
 
     it("renders the brand gradient when color is undefined / absent", () => {
       const { container } = render(<ArtistAvatar artist={{}} />);
-      const el = getAvatarEl(container);
-      expect(el.style.background).toBe(
-        `linear-gradient(135deg, ${hexToRgbString("#4FC3F7")}, ${hexToRgbString("#0277BD")})`,
-      );
+      expect(getAvatarEl(container).style.background).toBe(EXPECTED_GRADIENT_BG);
     });
   });
 

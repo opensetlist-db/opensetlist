@@ -68,9 +68,15 @@ export function isArtistsListFilter(
   );
 }
 
+// `originalName` is declared `String` (non-null) in schema.prisma but the
+// Prisma-7 generated client types it as `string | null` for every model
+// here — defensive default the generator applies regardless of the
+// schema-level NOT NULL. Match that shape exactly so callers handle the
+// null branch instead of crashing on a typed-string contract that the
+// generated client doesn't actually guarantee.
 export type SubArtistChip = {
   id: number;
-  originalName: string;
+  originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
   translations: ArtistTranslation[];
@@ -81,7 +87,7 @@ export type ArtistRowData = {
   slug: string;
   color: string | null;
   type: ArtistType;
-  originalName: string;
+  originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
   translations: ArtistTranslation[];
@@ -100,7 +106,7 @@ type GroupTranslationRow = {
 export type GroupForList = {
   id: string;
   category: GroupCategory | null;
-  originalName: string;
+  originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
   translations: GroupTranslationRow[];
@@ -264,6 +270,6 @@ export async function getArtistGroupsForList(
   // originalName is the stable cross-locale anchor).
   return nonEmpty.sort((a, b) => {
     if (a.hasOngoing !== b.hasOngoing) return a.hasOngoing ? -1 : 1;
-    return a.originalName.localeCompare(b.originalName);
+    return (a.originalName ?? "").localeCompare(b.originalName ?? "");
   });
 }
