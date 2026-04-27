@@ -198,6 +198,30 @@ reinvent it inline.
 
 ---
 
+## Code Comments
+
+Detailed multi-line comments are **encouraged** when they explain WHY:
+rationale, design decisions, edge cases, workarounds, subtle invariants,
+non-obvious constraints. The Claude Code default of "one short line max"
+is **overridden for this project** — write the comments you'd want when
+re-reading the code in 6 months.
+
+What's worth commenting:
+- Non-obvious design decisions and the reasoning behind them
+- Edge cases the code handles, and why they matter
+- Workarounds, with a pointer to the underlying issue
+- Subtle invariants, ordering requirements, or hidden coupling
+
+Still skip:
+- Restating what well-named code already says (`// increment i`)
+- References to the current task / PR / fix — those rot fast and
+  belong in the PR description, not the source
+
+Code reviewers (CodeRabbit and the local review hooks) should NOT flag
+multi-line comment blocks as a style violation in this project.
+
+---
+
 ## Folder Structure
 
 See `memory/schema_design.md` for the intended directory tree.
