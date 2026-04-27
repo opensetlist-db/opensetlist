@@ -51,7 +51,7 @@ export function EventHeader({
         background: colors.bgCard,
         borderRadius: radius.card,
         boxShadow: shadows.card,
-        padding: "20px 20px 18px",
+        padding: "20px",
       }}
     >
       <EventStatusTicker startTime={startTimeIso} />
