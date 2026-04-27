@@ -9,6 +9,13 @@ import { colors, motion, radius, shadows } from "@/styles/tokens";
 // named constant keeps it searchable for future palette audits.
 const HERO_GRADIENT_MID = "#1e3a5f";
 
+// RGB decomposition of `colors.primaryLight` (#4FC3F7 = rgb 79,195,247),
+// used to compose the decorative-blob backgrounds at low alpha. Kept
+// as a string so the rgba() template literal can interpolate it
+// directly. If `colors.primaryLight` ever changes, update this too —
+// there's no automated derivation from hex to "r,g,b" today.
+const PRIMARY_LIGHT_RGB = "79,195,247";
+
 interface Props {
   href: string;
   startTimeIso: string | null;
@@ -50,7 +57,7 @@ export function LiveHeroCard({
           width: 160,
           height: 160,
           borderRadius: "50%",
-          background: "rgba(79,195,247,0.08)",
+          background: `rgba(${PRIMARY_LIGHT_RGB},0.08)`,
         }}
       />
       <div
@@ -62,7 +69,7 @@ export function LiveHeroCard({
           width: 80,
           height: 80,
           borderRadius: "50%",
-          background: "rgba(79,195,247,0.05)",
+          background: `rgba(${PRIMARY_LIGHT_RGB},0.05)`,
         }}
       />
 
