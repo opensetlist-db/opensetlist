@@ -77,8 +77,9 @@ describe("TrendingSongs", () => {
     const medals = Array.from(
       container.querySelectorAll("span[aria-hidden='true']"),
     );
-    // Three medals (🥇 🥈 🥉) marked aria-hidden so screen readers don't
-    // announce them.
-    expect(medals.length).toBeGreaterThanOrEqual(3);
+    // Exactly three medals (🥇 🥈 🥉) marked aria-hidden so screen readers
+    // don't announce them. Pinning the exact count catches regressions
+    // where an extra decorative span sneaks in.
+    expect(medals).toHaveLength(3);
   });
 });

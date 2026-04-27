@@ -24,6 +24,10 @@ export function TrendingSongs({ songs }: Props) {
   const t = useTranslations("Reaction");
 
   if (songs.length === 0) return null;
+  // Defensive slice: deriveTrendingSongs() already takes top 3, but the
+  // medal-strip rendering depends on `MEDALS[i]` resolving — a future
+  // caller passing more than 3 would render `undefined` past index 2.
+  const rankedSongs = songs.slice(0, MEDALS.length);
 
   return (
     <section
@@ -41,7 +45,7 @@ export function TrendingSongs({ songs }: Props) {
         {t("trending")}
       </h3>
       <ul className="space-y-1.5 lg:flex lg:gap-4 lg:space-y-0">
-        {songs.map((song, i) => (
+        {rankedSongs.map((song, i) => (
           <li
             key={song.setlistItemId}
             className="flex items-center gap-2 text-sm lg:flex-1 lg:min-w-0"
