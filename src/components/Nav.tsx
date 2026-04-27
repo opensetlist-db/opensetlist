@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
+import { colors } from "@/styles/tokens";
 
 type NavItem = { key: "home" | "artists" | "events"; href: string };
 
@@ -20,7 +21,7 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Header() {
+export function Nav() {
   const t = useTranslations("Header");
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,8 +53,8 @@ export function Header() {
   return (
     <div ref={menuRef} className="relative">
       <header
-        className="flex h-[60px] items-center justify-between border-b border-[#e8e8e8] bg-white px-4 lg:px-8"
-        style={{ borderBottomWidth: "0.5px" }}
+        className="flex h-[52px] items-center justify-between bg-white px-4 lg:h-[56px] lg:px-8"
+        style={{ borderBottom: `0.5px solid ${colors.border}` }}
       >
         <Link href="/" className="flex items-center gap-2.5">
           <span
@@ -70,7 +71,7 @@ export function Header() {
           </span>
           <span
             className="font-josefin text-[17px] uppercase"
-            style={{ color: "#1a1a1a", letterSpacing: 0 }}
+            style={{ color: colors.textPrimary, letterSpacing: 0 }}
           >
             {t("brandName")}
           </span>
@@ -87,7 +88,7 @@ export function Header() {
                   href={item.href}
                   className="font-dm-sans text-[13px]"
                   style={{
-                    color: active ? "#0288D1" : "#555555",
+                    color: active ? colors.primary : colors.textSubtle,
                     fontWeight: active ? 500 : 400,
                   }}
                 >
@@ -111,7 +112,7 @@ export function Header() {
                 fontWeight: 500,
                 padding: "7px 16px",
                 borderRadius: "6px",
-                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                background: colors.brandGradient,
               }}
             >
               {t("signIn")}
@@ -128,23 +129,35 @@ export function Header() {
           aria-expanded={menuOpen}
         >
           <span
-            className="block w-5 h-0.5 bg-[#555] transition-transform duration-200"
-            style={{ transform: menuOpen ? "translateY(8px) rotate(45deg)" : "none" }}
+            className="block w-5 h-0.5 transition-transform duration-200"
+            style={{
+              background: colors.textSubtle,
+              transform: menuOpen ? "translateY(8px) rotate(45deg)" : "none",
+            }}
           />
           <span
-            className="block w-5 h-0.5 bg-[#555] transition-opacity duration-200"
-            style={{ opacity: menuOpen ? 0 : 1 }}
+            className="block w-5 h-0.5 transition-opacity duration-200"
+            style={{
+              background: colors.textSubtle,
+              opacity: menuOpen ? 0 : 1,
+            }}
           />
           <span
-            className="block w-5 h-0.5 bg-[#555] transition-transform duration-200"
-            style={{ transform: menuOpen ? "translateY(-8px) rotate(-45deg)" : "none" }}
+            className="block w-5 h-0.5 transition-transform duration-200"
+            style={{
+              background: colors.textSubtle,
+              transform: menuOpen ? "translateY(-8px) rotate(-45deg)" : "none",
+            }}
           />
         </button>
       </header>
 
       {/* Mobile / tablet dropdown */}
       {menuOpen && (
-        <div className="lg:hidden absolute top-full left-0 right-0 z-50 bg-white border-b border-[#e8e8e8] shadow-sm">
+        <div
+          className="lg:hidden absolute top-full left-0 right-0 z-50 bg-white shadow-sm"
+          style={{ borderBottom: `1px solid ${colors.border}` }}
+        >
           <nav className="flex flex-col px-4 py-2">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
@@ -153,10 +166,11 @@ export function Header() {
                   key={item.key}
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
-                  className="font-dm-sans text-[15px] py-3 border-b border-[#f0f0f0]"
+                  className="font-dm-sans text-[15px] py-3"
                   style={{
-                    color: active ? "#0288D1" : "#333333",
+                    color: active ? colors.primary : colors.textPrimary,
                     fontWeight: active ? 500 : 400,
+                    borderBottom: `1px solid ${colors.borderLight}`,
                   }}
                 >
                   {t(item.key)}
@@ -179,7 +193,7 @@ export function Header() {
                   fontWeight: 500,
                   padding: "8px 20px",
                   borderRadius: "6px",
-                  background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                  background: colors.brandGradient,
                 }}
               >
                 {t("signIn")}

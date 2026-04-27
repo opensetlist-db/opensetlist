@@ -171,7 +171,8 @@
   "Footer": {
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
-    "contact": "Contact"
+    "contact": "Contact",
+    "copyright": "© {year} OpenSetlist"
   },
   "Meta": {
     "description": "Open setlist database for live events (JP/EN/KR)",

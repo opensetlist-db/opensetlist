@@ -171,7 +171,8 @@
   "Footer": {
     "privacy": "개인정보처리방침",
     "terms": "이용약관",
-    "contact": "문의"
+    "contact": "문의",
+    "copyright": "© {year} OpenSetlist"
   },
   "Meta": {
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
