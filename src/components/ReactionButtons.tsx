@@ -58,7 +58,12 @@ function isReactionPostResponse(
 ): value is { reactionId: string; counts: Record<string, number> } {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  if (typeof v.reactionId !== "string") return false;
+  // Reject empty strings too — `myReactions[type] = ""` would make
+  // `!!myReactions[type]` false, silently dropping the active state
+  // and persisting a bogus empty ID to localStorage.
+  if (typeof v.reactionId !== "string" || v.reactionId.length === 0) {
+    return false;
+  }
   if (!v.counts || typeof v.counts !== "object" || Array.isArray(v.counts)) {
     return false;
   }

@@ -262,6 +262,39 @@ describe("ReactionButtons", () => {
     expect(localStorage.getItem("reactions-1")).toBeNull();
   });
 
+  it("rolls back when POST returns an empty-string reactionId", async () => {
+    // Server returns reactionId: "" — passes a naive `typeof === "string"`
+    // check but `!!myReactions[type]` would be false, silently clearing
+    // the active state and writing a bogus empty ID to localStorage.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "", counts: { best: 1 } }),
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+
+    await act(async () => {
+      fireEvent.click(fireButton);
+    });
+
+    await waitFor(() => {
+      expect(fireButton.style.background).toBe("white");
+      expect(fireButton.textContent).not.toMatch(/\d/);
+    });
+    expect(localStorage.getItem("reactions-1")).toBeNull();
+  });
+
   it("rolls back when POST returns counts with a non-numeric value", async () => {
     vi.stubGlobal(
       "fetch",
