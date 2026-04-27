@@ -31,8 +31,17 @@ const REACTION_BORDER_SOLID = "#e2e8f0";
 const REACTION_BORDER_DASHED = "#d1d5db";
 const REACTION_COUNT_INACTIVE_COLOR = "#475569";
 
-// Must exceed the longer emoji animation in globals.css (350ms); 50ms safety margin.
-const EMOJI_ANIM_RESET_MS = 400;
+// Mirrors the durations in globals.css `@keyframes emoji-activate` /
+// `@keyframes emoji-deactivate`. Source of truth for the inline animation
+// strings AND the post-animation reset timer below — keep them in lockstep.
+const EMOJI_ACTIVATE_DURATION_MS = 350;
+const EMOJI_DEACTIVATE_DURATION_MS = 300;
+
+// Reset window so the next tap can re-trigger; 50ms safety margin past
+// whichever animation runs longer. Derives from the durations above so a
+// future keyframe change auto-extends the buffer.
+const EMOJI_ANIM_RESET_MS =
+  Math.max(EMOJI_ACTIVATE_DURATION_MS, EMOJI_DEACTIVATE_DURATION_MS) + 50;
 
 // Runtime guard for POST /api/reactions success responses. Server is
 // expected to return `{ reactionId: string; counts: Record<string,
@@ -321,9 +330,9 @@ function ReactionButton({
   const hasAny = count > 0;
   const emojiAnimation =
     emojiAnim === "activate"
-      ? "emoji-activate 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97)"
+      ? `emoji-activate ${EMOJI_ACTIVATE_DURATION_MS / 1000}s cubic-bezier(0.36, 0.07, 0.19, 0.97)`
       : emojiAnim === "deactivate"
-        ? "emoji-deactivate 0.3s ease"
+        ? `emoji-deactivate ${EMOJI_DEACTIVATE_DURATION_MS / 1000}s ease`
         : undefined;
 
   return (
