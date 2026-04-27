@@ -367,6 +367,7 @@ export default async function EventPage({ params }: Props) {
         renders above the main column without any extra layout branching.
       */}
       <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+        {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room */}
         <aside className="lg:sticky lg:top-[72px]">
           <EventHeader
             status={resolvedStatus}
