@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { TabBar, type TabBarItem } from "@/components/TabBar";
 import { LegalSection } from "@/components/legal/LegalSection";
-import type { LegalContent } from "@/components/legal/types";
+import type { LegalContent } from "@/lib/types/legal";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 import privacyKo from "@/content/privacy/ko";

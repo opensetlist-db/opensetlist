@@ -1,4 +1,5 @@
-import type { LegalContent } from "@/components/legal/types";
+import type { LegalContent } from "@/lib/types/legal";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 const content: LegalContent = {
   lastUpdated: "2026年4月17日",
@@ -57,7 +58,7 @@ const content: LegalContent = {
     {
       id: "contact",
       title: "5. お問い合わせ",
-      blocks: [{ kind: "contact", email: "help@opensetlist.com" }],
+      blocks: [{ kind: "contact", email: CONTACT_EMAIL }],
     },
   ],
 };

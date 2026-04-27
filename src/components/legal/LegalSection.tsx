@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Block, Section } from "./types";
+import type { Block, Section } from "@/lib/types/legal";
 import { colors } from "@/styles/tokens";
 
 /**

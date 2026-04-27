@@ -1,4 +1,5 @@
-import type { LegalContent } from "@/components/legal/types";
+import type { LegalContent } from "@/lib/types/legal";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 const content: LegalContent = {
   intro:
@@ -134,7 +135,7 @@ const content: LegalContent = {
           kind: "p",
           text: "個人情報に関するお問い合わせは以下のメールアドレスまでご連絡ください。",
         },
-        { kind: "contact", email: "help@opensetlist.com" },
+        { kind: "contact", email: CONTACT_EMAIL },
       ],
     },
   ],
