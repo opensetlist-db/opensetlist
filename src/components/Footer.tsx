@@ -34,6 +34,11 @@ function FooterLink({ href, active, children }: FooterLinkProps) {
 export function Footer() {
   const t = useTranslations("Footer");
   const pathname = usePathname();
+  // UTC year so the rendered copyright doesn't flicker between regions
+  // around Jan 1 (CLAUDE.md "UTC is the only correct default" — applies
+  // even to display-cosmetic year reads since the alternative is local
+  // tz which is non-deterministic on Vercel edge).
+  const currentYear = new Date().getUTCFullYear();
 
   return (
     <footer
@@ -60,7 +65,7 @@ export function Footer() {
           {t("contact")}
         </a>
       </div>
-      <div className="text-[11px]">&copy; 2026 OpenSetlist</div>
+      <div className="text-[11px]">{t("copyright", { year: currentYear })}</div>
     </footer>
   );
 }
