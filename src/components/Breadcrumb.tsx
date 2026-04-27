@@ -35,11 +35,8 @@ export function Breadcrumb({ items, ariaLabel }: Props) {
   return (
     <nav
       aria-label={ariaLabel}
-      className="mb-4 flex flex-wrap items-center"
-      style={{
-        fontSize: 12,
-        color: colors.textMuted,
-      }}
+      className="mb-4 flex flex-wrap items-center text-xs"
+      style={{ color: colors.textMuted }}
     >
       {items.map((item, i) => (
         <span key={i} className="flex items-center">
