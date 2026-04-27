@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Block, Section } from "@/lib/types/legal";
-import { colors } from "@/styles/tokens";
+import { colors, layout } from "@/styles/tokens";
 
 /**
  * Tokenize backtick-delimited spans into `<code>` elements so the
@@ -142,7 +142,16 @@ interface Props {
 
 export function LegalSection({ section }: Props) {
   return (
-    <section id={section.id} style={{ marginBottom: 32, scrollMarginTop: 80 }}>
+    <section
+      id={section.id}
+      style={{
+        marginBottom: 32,
+        // Anchor-link offset: clear the sticky `<Nav>` plus a 24px
+        // breathing room so the heading isn't flush against the
+        // navbar bottom edge after the jump.
+        scrollMarginTop: layout.navHeight.desktop + 24,
+      }}
+    >
       <h2
         className="mb-3 text-[15px] font-bold"
         style={{

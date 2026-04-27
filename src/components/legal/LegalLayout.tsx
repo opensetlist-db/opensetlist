@@ -3,7 +3,7 @@ import { Link } from "@/i18n/navigation";
 import { TabBar, type TabBarItem } from "@/components/TabBar";
 import { LegalSection } from "@/components/legal/LegalSection";
 import type { LegalContent } from "@/lib/types/legal";
-import { colors, radius, shadows } from "@/styles/tokens";
+import { colors, layout, radius, shadows } from "@/styles/tokens";
 
 import privacyKo from "@/content/privacy/ko";
 import privacyJa from "@/content/privacy/ja";
@@ -66,8 +66,16 @@ export default async function LegalLayout({ page, locale }: Props) {
         </div>
 
         <div className="lg:grid lg:grid-cols-[180px_1fr] lg:items-start lg:gap-10">
-          {/* Desktop sidebar — sticky page switcher + section TOC. */}
-          <aside className="hidden lg:block lg:sticky lg:top-[72px]">
+          {/* Desktop sidebar — sticky page switcher + section TOC.
+              `top` is inline so the value derives from the
+              `layout.navHeight.desktop` token rather than a Tailwind
+              arbitrary value; the +16 is breathing room above the
+              navbar bottom edge. The `lg:sticky` class still gates
+              when sticky positioning kicks in. */}
+          <aside
+            className="hidden lg:sticky lg:block"
+            style={{ top: layout.navHeight.desktop + 16 }}
+          >
             <div className="mb-6">
               {tabs.map((tab) => {
                 const isActive = tab.key === page;
