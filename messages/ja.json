@@ -23,7 +23,8 @@
     "encore": "アンコール",
     "date": "日付",
     "venue": "会場",
-    "status": "ステータス"
+    "status": "ステータス",
+    "breadcrumb": "パンくずリスト"
   },
   "Artist": {
     "title": "アーティスト",

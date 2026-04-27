@@ -23,7 +23,8 @@
     "encore": "Encore",
     "date": "Date",
     "venue": "Venue",
-    "status": "Status"
+    "status": "Status",
+    "breadcrumb": "Breadcrumb"
   },
   "Artist": {
     "title": "Artists",

@@ -23,7 +23,8 @@
     "encore": "앙코르",
     "date": "날짜",
     "venue": "장소",
-    "status": "상태"
+    "status": "상태",
+    "breadcrumb": "탐색 경로"
   },
   "Artist": {
     "title": "아티스트",

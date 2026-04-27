@@ -12,6 +12,7 @@ import {
   displayOriginalName,
   displayOriginalTitle,
 } from "@/lib/display";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import type { Metadata } from "next";
 
 type Props = {
@@ -138,12 +139,10 @@ export default async function MemberPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-      </nav>
+      <Breadcrumb
+        ariaLabel={ct("breadcrumb")}
+        items={[{ label: ct("backToHome"), href: "/" }]}
+      />
 
       {/* Header */}
       <header className="mb-8">

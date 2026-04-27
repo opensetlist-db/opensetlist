@@ -13,6 +13,7 @@ import {
 } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import type { Metadata } from "next";
 
 type Props = {
@@ -101,23 +102,20 @@ export default async function EventSeriesPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-        {series.parentSeries && (
-          <>
-            {" / "}
-            <Link
-              href={`/${locale}/series/${series.parentSeries.id}/${series.parentSeries.slug}`}
-              className="hover:underline"
-            >
-              {parentName || t("unknownSeries")}
-            </Link>
-          </>
-        )}
-      </nav>
+      <Breadcrumb
+        ariaLabel={ct("breadcrumb")}
+        items={[
+          { label: ct("backToHome"), href: "/" },
+          ...(series.parentSeries
+            ? [
+                {
+                  label: parentName || t("unknownSeries"),
+                  href: `/series/${series.parentSeries.id}/${series.parentSeries.slug}`,
+                } satisfies BreadcrumbItem,
+              ]
+            : []),
+        ]}
+      />
 
       {/* Header */}
       <header className="mb-8">

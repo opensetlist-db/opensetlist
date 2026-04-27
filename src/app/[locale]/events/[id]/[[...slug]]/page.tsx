@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -21,6 +20,7 @@ import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import type { Metadata } from "next";
 
 type Props = {
@@ -337,23 +337,20 @@ export default async function EventPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-        {event.eventSeries && seriesShortName && (
-          <>
-            {" / "}
-            <Link
-              href={`/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`}
-              className="hover:underline"
-            >
-              {seriesShortName}
-            </Link>
-          </>
-        )}
-      </nav>
+      <Breadcrumb
+        ariaLabel={ct("breadcrumb")}
+        items={[
+          { label: ct("backToHome"), href: "/" },
+          ...(event.eventSeries && seriesShortName
+            ? [
+                {
+                  label: seriesShortName,
+                  href: `/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+                } satisfies BreadcrumbItem,
+              ]
+            : []),
+        ]}
+      />
 
       {/* Header */}
       <header className="mb-8">
