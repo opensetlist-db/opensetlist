@@ -6,7 +6,15 @@ import {
   waitFor,
   act,
 } from "@testing-library/react";
-import { ReactionButtons } from "@/components/ReactionButtons";
+import {
+  ReactionButtons,
+  REACTION_ACTIVE_COLOR,
+  REACTION_ACTIVE_BG,
+} from "@/components/ReactionButtons";
+import { hexToRgbString } from "@/__tests__/utils/color";
+
+const ACTIVE_COLOR_RGB = hexToRgbString(REACTION_ACTIVE_COLOR);
+const ACTIVE_BG_RGB = hexToRgbString(REACTION_ACTIVE_BG);
 
 // Minimal next-intl stub — title is the only prop ReactionButtons reads, and
 // it's only used as a button `title` attribute, so identity-mapping is fine.
@@ -173,10 +181,10 @@ describe("ReactionButtons", () => {
     fireEvent.click(fireButton);
 
     await waitFor(() => {
-      // After click, the optimistic update flips border to blue + bg to
-      // light blue + count to 1, all before the POST has resolved.
-      expect(fireButton.style.background).toContain("rgb(232, 244, 253)");
-      expect(fireButton.style.border).toContain("rgb(2, 119, 189)");
+      // After click, the optimistic update flips border to active color +
+      // bg to active bg + count to 1, all before the POST has resolved.
+      expect(fireButton.style.background).toContain(ACTIVE_BG_RGB);
+      expect(fireButton.style.border).toContain(ACTIVE_COLOR_RGB);
       expect(fireButton.textContent).toContain("1");
     });
   });
@@ -213,7 +221,111 @@ describe("ReactionButtons", () => {
       expect(fireButton.textContent).toContain("2");
       expect(fireButton.style.background).toBe("white");
     });
-    expect(fireButton.style.border).not.toContain("rgb(2, 119, 189)");
+    expect(fireButton.style.border).not.toContain(ACTIVE_COLOR_RGB);
+  });
+
+  it("rolls back the optimistic update when POST returns a malformed response (missing reactionId)", async () => {
+    // Server returns 200 OK but a payload without `reactionId` — could happen
+    // via deploy desync, proxy injection, or schema regression. Without the
+    // runtime guard, the optimistic state would be written with reactionId =
+    // undefined and setCounts would receive undefined.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ counts: { best: 1 } }), // no reactionId
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+
+    await act(async () => {
+      fireEvent.click(fireButton);
+    });
+
+    // Visual state should revert: count back to 0 (no digit text), bg
+    // back to white. Asserting both — bg-only would miss a regression
+    // where the optimistic +1 count survives the rollback.
+    await waitFor(() => {
+      expect(fireButton.style.background).toBe("white");
+      expect(fireButton.textContent).not.toMatch(/\d/);
+    });
+    // localStorage must NOT contain the OPTIMISTIC_PENDING sentinel.
+    expect(localStorage.getItem("reactions-1")).toBeNull();
+  });
+
+  it("rolls back when POST returns an empty-string reactionId", async () => {
+    // Server returns reactionId: "" — passes a naive `typeof === "string"`
+    // check but `!!myReactions[type]` would be false, silently clearing
+    // the active state and writing a bogus empty ID to localStorage.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "", counts: { best: 1 } }),
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+
+    await act(async () => {
+      fireEvent.click(fireButton);
+    });
+
+    await waitFor(() => {
+      expect(fireButton.style.background).toBe("white");
+      expect(fireButton.textContent).not.toMatch(/\d/);
+    });
+    expect(localStorage.getItem("reactions-1")).toBeNull();
+  });
+
+  it("rolls back when POST returns counts with a non-numeric value", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          reactionId: "uuid-here",
+          counts: { best: "1" }, // string instead of number
+        }),
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 2 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+
+    await act(async () => {
+      fireEvent.click(fireButton);
+    });
+
+    // Original count should be restored (no string contamination).
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("2");
+    });
+    expect(localStorage.getItem("reactions-1")).toBeNull();
   });
 
   it("on successful POST, replaces optimistic 'pending' with the server-returned reactionId in localStorage", async () => {

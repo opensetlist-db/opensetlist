@@ -6,6 +6,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { REACTION_TYPES } from "@/lib/reactions";
+import { colors, radius } from "@/styles/tokens";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
 
@@ -22,6 +23,61 @@ const OPTIMISTIC_PENDING = "pending";
 // this ceiling, a single hung request would leave all four reaction
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
+
+// Three-state palette (mockup §3-3). Active state pulls from the
+// shared design tokens so the brand-blue stays in lockstep with the
+// rest of the chrome. Re-exported under reaction-scoped names so
+// tests can assert against the same source of truth without
+// importing tokens directly.
+export const REACTION_ACTIVE_COLOR = colors.primary;
+export const REACTION_ACTIVE_BG = colors.primaryBg;
+const REACTION_BORDER_SOLID = colors.border;
+const REACTION_BORDER_DASHED = "#d1d5db";
+const REACTION_COUNT_INACTIVE_COLOR = colors.textSecondary;
+
+// Mirrors the durations in globals.css `@keyframes emoji-activate` /
+// `@keyframes emoji-deactivate` / `@keyframes count-slide`. Source of
+// truth for the inline animation strings AND the post-animation reset
+// timer below — keep them in lockstep.
+const EMOJI_ACTIVATE_DURATION_MS = 350;
+const EMOJI_DEACTIVATE_DURATION_MS = 300;
+const COUNT_SLIDE_DURATION_MS = 220;
+
+// Reset window so the next tap can re-trigger; 50ms safety margin past
+// whichever animation runs longer. Derives from the durations above so a
+// future keyframe change auto-extends the buffer.
+const EMOJI_ANIM_RESET_MS =
+  Math.max(EMOJI_ACTIVATE_DURATION_MS, EMOJI_DEACTIVATE_DURATION_MS) + 50;
+
+// Runtime guard for POST /api/reactions success responses. Server is
+// expected to return `{ reactionId: string; counts: Record<string,
+// number> }`. Used to fail closed (rollback) on any unexpected shape
+// rather than write garbage into local state.
+function isReactionPostResponse(
+  value: unknown,
+): value is { reactionId: string; counts: Record<string, number> } {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  // Reject empty strings too — `myReactions[type] = ""` would make
+  // `!!myReactions[type]` false, silently dropping the active state
+  // and persisting a bogus empty ID to localStorage.
+  if (typeof v.reactionId !== "string" || v.reactionId.length === 0) {
+    return false;
+  }
+  if (!v.counts || typeof v.counts !== "object" || Array.isArray(v.counts)) {
+    return false;
+  }
+  // Tighter than `typeof n === "number"` — NaN, Infinity, negatives and
+  // decimals shouldn't ever land in `setCounts(data.counts)` and would
+  // produce corrupted UI (negative count badges, NaN labels).
+  return Object.values(v.counts).every(
+    (n) =>
+      typeof n === "number" &&
+      Number.isFinite(n) &&
+      Number.isInteger(n) &&
+      n >= 0,
+  );
+}
 
 function readMyReactions(setlistItemId: string): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_REACTIONS;
@@ -184,14 +240,25 @@ export function ReactionButtons({
           signal: AbortSignal.timeout(REACTION_TIMEOUT_MS),
         });
         if (res.ok) {
-          const { reactionId, counts: newCounts } = await res.json();
-          const finalReactions = {
-            ...snapshotMyReactions,
-            [reactionType]: reactionId,
-          };
-          setMyReactions(finalReactions);
-          persistReactions(finalReactions);
-          setCounts(newCounts);
+          // Validate response shape before destructuring. Server is
+          // expected to return `{ reactionId: string, counts: Record<string,
+          // number> }`, but a deploy desync, proxy injection, or schema
+          // change could deliver an unexpected payload — destructuring
+          // blindly would write `undefined` into `myReactions[type]` and
+          // call `setCounts(undefined)`, crashing the next render.
+          const data: unknown = await res.json();
+          if (!isReactionPostResponse(data)) {
+            setMyReactions(snapshotMyReactions);
+            setCounts(snapshotCounts);
+          } else {
+            const finalReactions = {
+              ...snapshotMyReactions,
+              [reactionType]: data.reactionId,
+            };
+            setMyReactions(finalReactions);
+            persistReactions(finalReactions);
+            setCounts(data.counts);
+          }
         } else {
           setMyReactions(snapshotMyReactions);
           setCounts(snapshotCounts);
@@ -271,7 +338,7 @@ function ReactionButton({
   // canceling the pending reset).
   useEffect(() => {
     if (emojiAnim === null) return;
-    const timer = setTimeout(() => setEmojiAnim(null), 400);
+    const timer = setTimeout(() => setEmojiAnim(null), EMOJI_ANIM_RESET_MS);
     return () => clearTimeout(timer);
   }, [emojiAnim]);
 
@@ -283,9 +350,9 @@ function ReactionButton({
   const hasAny = count > 0;
   const emojiAnimation =
     emojiAnim === "activate"
-      ? "emoji-activate 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97)"
+      ? `emoji-activate ${EMOJI_ACTIVATE_DURATION_MS / 1000}s cubic-bezier(0.36, 0.07, 0.19, 0.97)`
       : emojiAnim === "deactivate"
-        ? "emoji-deactivate 0.3s ease"
+        ? `emoji-deactivate ${EMOJI_DEACTIVATE_DURATION_MS / 1000}s ease`
         : undefined;
 
   return (
@@ -300,14 +367,14 @@ function ReactionButton({
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        borderRadius: 20,
+        borderRadius: radius.button,
         padding: "4px 10px",
         border: isActive
-          ? "1.5px solid #0277BD"
+          ? `1.5px solid ${REACTION_ACTIVE_COLOR}`
           : hasAny
-            ? "1.5px solid #e2e8f0"
-            : "1.5px dashed #d1d5db",
-        background: isActive ? "#e8f4fd" : "white",
+            ? `1.5px solid ${REACTION_BORDER_SOLID}`
+            : `1.5px dashed ${REACTION_BORDER_DASHED}`,
+        background: isActive ? REACTION_ACTIVE_BG : "white",
         cursor: isDisabled ? "default" : "pointer",
         opacity: isActive || hasAny ? 1 : 0.4,
         transition:
@@ -333,11 +400,14 @@ function ReactionButton({
           style={{
             fontSize: 12,
             fontWeight: 700,
-            color: isActive ? "#0277BD" : "#475569",
+            color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
             minWidth: 14,
             display: "inline-block",
             transition: "color 0.18s ease",
-            animation: animKey > 0 ? "count-slide 0.22s ease" : undefined,
+            animation:
+              animKey > 0
+                ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
+                : undefined,
           }}
         >
           {count}

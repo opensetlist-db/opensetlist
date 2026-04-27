@@ -2,16 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { colors } from "@/styles/tokens";
-
-// Browser-style hex normalization: jsdom turns "#dc2626" → "rgb(220, 38, 38)"
-// when reading element.style.backgroundColor. Helper compares loosely.
-function hexToRgbString(hex: string): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgb(${r}, ${g}, ${b})`;
-}
+import { hexToRgbString } from "@/__tests__/utils/color";
 
 describe("StatusBadge", () => {
   it("renders the supplied label", () => {
