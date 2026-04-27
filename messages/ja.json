@@ -87,11 +87,28 @@
   "Event": {
     "title": "イベント",
     "allEvents": "イベント一覧",
+    "subtitle": "公演のセットリストとリアクションをチェック",
     "ongoing": "開催中",
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
     "ungrouped": "その他のイベント",
     "noEvents": "表示できるイベントはありません",
+    "filter": {
+      "all": "すべて",
+      "ongoing": "開催中",
+      "upcoming": "開催予定",
+      "completed": "終了"
+    },
+    "emptyFilterState": "該当する公演がありません",
+    "eventCount": "{count, plural, other {#公演}}",
+    "songCount": "{count, plural, other {🎵 #}}",
+    "tableHeader": {
+      "date": "日付",
+      "status": "ステータス",
+      "name": "公演名",
+      "venue": "会場",
+      "songs": "曲数"
+    },
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
     "noSongAssigned": "楽曲未指定",
