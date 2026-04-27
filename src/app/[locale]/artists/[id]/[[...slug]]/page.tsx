@@ -16,6 +16,7 @@ import {
 } from "@/lib/display";
 import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import type { Metadata } from "next";
 
 type Props = {
@@ -197,23 +198,19 @@ export default async function ArtistPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-        {artist.parentArtist && parentName && (
-          <>
-            {" / "}
-            <Link
-              href={`/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`}
-              className="hover:underline"
-            >
-              {parentName}
-            </Link>
-          </>
-        )}
-      </nav>
+      <Breadcrumb
+        items={[
+          { label: ct("backToHome"), href: "/" },
+          ...(artist.parentArtist && parentName
+            ? [
+                {
+                  label: parentName,
+                  href: `/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
+                } satisfies BreadcrumbItem,
+              ]
+            : []),
+        ]}
+      />
 
       {/* Header */}
       <header className="mb-8">

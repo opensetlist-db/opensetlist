@@ -13,6 +13,7 @@ import {
   displayOriginalTitle,
 } from "@/lib/display";
 import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { Metadata } from "next";
 
@@ -169,12 +170,7 @@ export default async function SongPage({ params }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-      </nav>
+      <Breadcrumb items={[{ label: ct("backToHome"), href: "/" }]} />
 
       {/* Header */}
       <header className="mb-8">
