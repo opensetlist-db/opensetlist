@@ -3,11 +3,7 @@ import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import {
-  serializeBigInt,
-  pickLocaleTranslation,
-  formatDate,
-} from "@/lib/utils";
+import { serializeBigInt, formatDate } from "@/lib/utils";
 import {
   displayNameWithFallback,
   displayOriginalName,
@@ -309,15 +305,36 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
       };
     })
-    .sort((a, b) => (b as { sortKey: number }).sortKey - (a as { sortKey: number }).sortKey)
-    .map(({ sortKey: _, ...rest }) => rest);
+    .sort(
+      (a, b) =>
+        (b as { sortKey: number }).sortKey -
+        (a as { sortKey: number }).sortKey,
+    )
+    // Strip the temporary sortKey to honor the declared
+    // PerformanceSeries shape — explicit field-by-field copy avoids
+    // the unused `_` discard binding that no-unused-vars warns on.
+    .map((s) => ({
+      seriesId: s.seriesId,
+      seriesShort: s.seriesShort,
+      hasOngoing: s.hasOngoing,
+      events: s.events,
+    }));
 
   // Recent-3 preview for the Overview tab — newest events across the
   // entire artist, regardless of series.
+  // Strip the temporary `rawDateMs` and `seriesId` fields back to the
+  // declared PerformanceEvent shape — explicit field copy avoids the
+  // unused `_` discard pattern that triggers no-unused-vars.
   const recentEvents: PerformanceEvent[] = [...eventViews]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
-    .map(({ rawDateMs: _, seriesId: __, ...rest }) => rest);
+    .map((e) => ({
+      id: e.id,
+      status: e.status,
+      formattedDate: e.formattedDate,
+      name: e.name,
+      href: e.href,
+    }));
 
   return (
     <main
