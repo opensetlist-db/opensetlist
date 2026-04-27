@@ -9,6 +9,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
+import { colors, radius } from "@/styles/tokens";
 
 export interface Impression {
   id: string;
@@ -333,139 +334,235 @@ export function EventImpressions({
   const overLimit = charCount > IMPRESSION_MAX_CHARS;
   const isEmptyTrimmed = trimmedLength < 1;
 
+  // Card / chrome styles centralized so the JSX stays readable. The
+  // my-impression cards (submitted / editing modes) use the primary-tinted
+  // palette per handoff §3-6 to visually mark them as the user's own;
+  // the new-impression input + others-list rows use neutral chrome.
+  const myImpressionCardStyle: React.CSSProperties = {
+    background: colors.primaryBg,
+    border: `1.5px solid ${colors.primaryBorder}`,
+    borderRadius: radius.card,
+  };
+  const neutralCardStyle: React.CSSProperties = {
+    background: colors.bgCard,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.card,
+  };
+  const otherCardStyle: React.CSSProperties = {
+    background: colors.bgCard,
+    border: `1px solid ${colors.borderLight}`,
+    borderRadius: radius.card,
+  };
+  const textareaStyle: React.CSSProperties = {
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.tag,
+    background: colors.bgCard,
+  };
+
   return (
     <section className="mt-10">
       <div className="mb-3 flex items-baseline justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">{t("title")}</h2>
           {isOngoing && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{
+                background: colors.liveBg,
+                color: colors.live,
+                border: `1px solid ${colors.liveBorder}`,
+              }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  background: colors.live,
+                  animation: "live-pulse 1.2s ease-in-out infinite",
+                }}
+              />
               {et("live")}
             </span>
           )}
         </div>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs" style={{ color: colors.textSecondary }}>
           {t("count", { count: impressions.length })}
         </span>
       </div>
 
-      {mode === "new" && (
-        <div className="mb-4 rounded border border-zinc-200 p-3">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={t("placeholder")}
-            maxLength={IMPRESSION_MAX_CHARS}
-            rows={2}
-            className="w-full resize-none rounded border border-zinc-200 p-2 text-sm outline-none focus:border-zinc-400"
-          />
-          {error && (
-            <div className="mt-2 text-xs text-red-600" role="alert">
-              {error}
+      {/*
+        Mobile: vertical stack (my-impression block above the list).
+        Desktop (lg): 2-col grid `[my-impression | list]` per handoff §3-6.
+        Grid's natural single-col on mobile means no extra layout branching.
+      */}
+      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+        <div>
+          {mode === "new" && (
+            <div className="mb-4 p-3" style={neutralCardStyle}>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={t("placeholder")}
+                maxLength={IMPRESSION_MAX_CHARS}
+                rows={2}
+                className="w-full resize-none p-2 text-sm outline-none"
+                style={textareaStyle}
+              />
+              {error && (
+                <div
+                  className="mt-2 text-xs"
+                  role="alert"
+                  style={{ color: colors.live }}
+                >
+                  {error}
+                </div>
+              )}
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span
+                  style={{
+                    color: overLimit ? colors.live : colors.textSecondary,
+                  }}
+                >
+                  {t("charLimit", { current: charCount })}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting || isEmptyTrimmed || overLimit}
+                  className="rounded px-3 py-1 text-white disabled:opacity-40"
+                  style={{ background: colors.primary }}
+                >
+                  {t("submit")}
+                </button>
+              </div>
             </div>
           )}
-          <div className="mt-2 flex items-center justify-between text-xs">
-            <span className={overLimit ? "text-red-600" : "text-zinc-500"}>
-              {t("charLimit", { current: charCount })}
-            </span>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || isEmptyTrimmed || overLimit}
-              className="rounded bg-zinc-900 px-3 py-1 text-white disabled:opacity-40"
-            >
-              {t("submit")}
-            </button>
-          </div>
-        </div>
-      )}
 
-      {mode === "submitted" && saved && (
-        <div className="mb-4 rounded border border-zinc-200 bg-zinc-50 p-3">
-          <div className="text-xs text-zinc-500">{t("submitted")}</div>
-          <div className="mt-1 text-sm">{saved.content}</div>
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={startEditing}
-              className="text-xs text-zinc-600 hover:text-zinc-900"
-            >
-              {t("edit")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {mode === "editing" && saved && (
-        <div className="mb-4 rounded border border-zinc-200 p-3">
-          <div className="mb-2 text-xs text-zinc-500">{t("editing")}</div>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            maxLength={IMPRESSION_MAX_CHARS}
-            rows={2}
-            className="w-full resize-none rounded border border-zinc-200 p-2 text-sm outline-none focus:border-zinc-400"
-          />
-          {cooldownSeconds > 0 && (
-            <div className="mt-2 text-xs text-amber-600">
-              {t("editCooldown", { seconds: cooldownSeconds })}
+          {mode === "submitted" && saved && (
+            <div className="mb-4 p-3" style={myImpressionCardStyle}>
+              <div
+                className="text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: colors.primary }}
+              >
+                {t("submitted")}
+              </div>
+              <div
+                className="mt-1 text-sm"
+                style={{ color: colors.textPrimary }}
+              >
+                {saved.content}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={startEditing}
+                  className="text-xs hover:underline"
+                  style={{ color: colors.primary }}
+                >
+                  {t("edit")}
+                </button>
+              </div>
             </div>
           )}
-          {error && (
-            <div className="mt-2 text-xs text-red-600" role="alert">
-              {error}
+
+          {mode === "editing" && saved && (
+            <div className="mb-4 p-3" style={myImpressionCardStyle}>
+              <div
+                className="mb-2 text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: colors.primary }}
+              >
+                {t("editing")}
+              </div>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={IMPRESSION_MAX_CHARS}
+                rows={2}
+                className="w-full resize-none p-2 text-sm outline-none"
+                style={textareaStyle}
+              />
+              {cooldownSeconds > 0 && (
+                <div
+                  className="mt-2 text-xs"
+                  style={{ color: colors.trendingText }}
+                >
+                  {t("editCooldown", { seconds: cooldownSeconds })}
+                </div>
+              )}
+              {error && (
+                <div
+                  className="mt-2 text-xs"
+                  role="alert"
+                  style={{ color: colors.live }}
+                >
+                  {error}
+                </div>
+              )}
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span
+                  style={{
+                    color: overLimit ? colors.live : colors.textSecondary,
+                  }}
+                >
+                  {t("charLimit", { current: charCount })}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded px-3 py-1"
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      color: colors.textSecondary,
+                      background: colors.bgCard,
+                    }}
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEdit}
+                    disabled={submitting || cooldownSeconds > 0 || isEmptyTrimmed || overLimit}
+                    className="rounded px-3 py-1 text-white disabled:opacity-40"
+                    style={{ background: colors.primary }}
+                  >
+                    {t("submit")}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-          <div className="mt-2 flex items-center justify-between text-xs">
-            <span className={overLimit ? "text-red-600" : "text-zinc-500"}>
-              {t("charLimit", { current: charCount })}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={cancelEditing}
-                className="rounded border border-zinc-200 px-3 py-1 text-zinc-700"
-              >
-                {t("cancel")}
-              </button>
-              <button
-                type="button"
-                onClick={handleEdit}
-                disabled={submitting || cooldownSeconds > 0 || isEmptyTrimmed || overLimit}
-                className="rounded bg-zinc-900 px-3 py-1 text-white disabled:opacity-40"
-              >
-                {t("submit")}
-              </button>
-            </div>
-          </div>
         </div>
-      )}
 
-      {impressions.length === 0 ? (
-        <p className="text-sm text-zinc-500">{t("empty")}</p>
-      ) : (
-        <ul className="space-y-2">
-          {impressions.map((imp) => {
-            const isOwn = saved?.chainId === imp.rootImpressionId;
-            const hasReported = reportedChainIds.has(imp.rootImpressionId);
-            return (
-              <li
-                key={imp.id}
-                className="rounded border border-zinc-100 bg-white p-3 text-sm"
-              >
-                <ImpressionCell
-                  impression={imp}
-                  eventId={eventId}
-                  isOwn={isOwn}
-                  hasReported={hasReported}
-                  onReport={handleReport}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+        <div>
+          {impressions.length === 0 ? (
+            <p className="text-sm" style={{ color: colors.textSecondary }}>
+              {t("empty")}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {impressions.map((imp) => {
+                const isOwn = saved?.chainId === imp.rootImpressionId;
+                const hasReported = reportedChainIds.has(imp.rootImpressionId);
+                return (
+                  <li
+                    key={imp.id}
+                    className="p-3 text-sm"
+                    style={otherCardStyle}
+                  >
+                    <ImpressionCell
+                      impression={imp}
+                      eventId={eventId}
+                      isOwn={isOwn}
+                      hasReported={hasReported}
+                      onReport={handleReport}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
