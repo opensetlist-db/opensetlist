@@ -23,6 +23,22 @@ const OPTIMISTIC_PENDING = "pending";
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
 
+// Runtime guard for POST /api/reactions success responses. Server is
+// expected to return `{ reactionId: string; counts: Record<string,
+// number> }`. Used to fail closed (rollback) on any unexpected shape
+// rather than write garbage into local state.
+function isReactionPostResponse(
+  value: unknown,
+): value is { reactionId: string; counts: Record<string, number> } {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.reactionId !== "string") return false;
+  if (!v.counts || typeof v.counts !== "object" || Array.isArray(v.counts)) {
+    return false;
+  }
+  return Object.values(v.counts).every((n) => typeof n === "number");
+}
+
 function readMyReactions(setlistItemId: string): Record<string, string> {
   if (typeof window === "undefined") return EMPTY_REACTIONS;
   try {
@@ -184,14 +200,25 @@ export function ReactionButtons({
           signal: AbortSignal.timeout(REACTION_TIMEOUT_MS),
         });
         if (res.ok) {
-          const { reactionId, counts: newCounts } = await res.json();
-          const finalReactions = {
-            ...snapshotMyReactions,
-            [reactionType]: reactionId,
-          };
-          setMyReactions(finalReactions);
-          persistReactions(finalReactions);
-          setCounts(newCounts);
+          // Validate response shape before destructuring. Server is
+          // expected to return `{ reactionId: string, counts: Record<string,
+          // number> }`, but a deploy desync, proxy injection, or schema
+          // change could deliver an unexpected payload — destructuring
+          // blindly would write `undefined` into `myReactions[type]` and
+          // call `setCounts(undefined)`, crashing the next render.
+          const data: unknown = await res.json();
+          if (!isReactionPostResponse(data)) {
+            setMyReactions(snapshotMyReactions);
+            setCounts(snapshotCounts);
+          } else {
+            const finalReactions = {
+              ...snapshotMyReactions,
+              [reactionType]: data.reactionId,
+            };
+            setMyReactions(finalReactions);
+            persistReactions(finalReactions);
+            setCounts(data.counts);
+          }
         } else {
           setMyReactions(snapshotMyReactions);
           setCounts(snapshotCounts);
