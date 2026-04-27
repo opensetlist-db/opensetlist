@@ -9,6 +9,7 @@ import {
   FILTER_VALUES,
   type EventListFilter,
 } from "@/lib/eventFilters";
+import EventStatusTicker from "@/components/EventStatusTicker";
 import { SeriesSection } from "@/components/events/SeriesSection";
 import { SeriesBlock } from "@/components/events/SeriesBlock";
 import { EventRow } from "@/components/events/EventRow";
@@ -93,7 +94,11 @@ export default async function EventsPage({
     venue: t("tableHeader.venue"),
     songs: t("tableHeader.songs"),
   };
-  const liveLabel = t("status.ongoing");
+  // The ongoing badge uses the dedicated `Event.live` ("LIVE") label
+  // rather than `Event.status.ongoing` ("진행 중") — matches the mockup
+  // and the home page's hero pill, and avoids a confusing collision
+  // with the FilterBar's "진행중" button text in Korean.
+  const liveLabel = t("live");
   const ungroupedName = t("ungrouped");
   const unknownEventName = t("unknownEvent");
 
@@ -138,7 +143,10 @@ export default async function EventsPage({
       href: eventHref(locale, ev.id, eventName),
       startTimeIso: ev.startTime,
       status,
-      statusLabel: t(`status.${status}`),
+      // Per-row badge: "LIVE" for ongoing (matches mockup); locale
+      // status text for upcoming/completed/cancelled.
+      statusLabel:
+        status === "ongoing" ? t("live") : t(`status.${status}`),
       monthLabel: formatDate(start, locale, MOBILE_MONTH_FORMAT),
       dayNumber: formatDate(start, locale, MOBILE_DAY_FORMAT),
       shortDate: formatDate(start, locale, DESKTOP_DATE_FORMAT),
@@ -234,6 +242,26 @@ export default async function EventsPage({
           </p>
         ) : (
           <>
+            {/* Page-level boundary ticker. Mobile + desktop trees are
+                both server-rendered and toggled by Tailwind responsive
+                classes, so per-row mounts would schedule duplicate
+                `setTimeout` callbacks (one for the EventRow, one for
+                the EventTableRow). Lift to the page so each
+                upcoming/ongoing event gets exactly one router.refresh
+                scheduled at its boundary. Past events skip — terminal
+                states have no further boundary to cross. */}
+            {preparedActive
+              .flatMap((g) => g.events)
+              .filter(
+                (e) => e.status === "upcoming" || e.status === "ongoing",
+              )
+              .map((e) => (
+                <EventStatusTicker
+                  key={`ticker-${e.href}`}
+                  startTime={e.startTimeIso}
+                />
+              ))}
+
             {/* Active series */}
             {preparedActive.length > 0 && (
               <>
@@ -251,7 +279,6 @@ export default async function EventsPage({
                         <EventRow
                           key={e.href}
                           href={e.href}
-                          startTimeIso={e.startTimeIso}
                           status={e.status}
                           statusLabel={e.statusLabel}
                           monthLabel={e.monthLabel}
@@ -280,7 +307,6 @@ export default async function EventsPage({
                         <EventTableRow
                           key={e.href}
                           href={e.href}
-                          startTimeIso={e.startTimeIso}
                           status={e.status}
                           statusLabel={e.statusLabel}
                           shortDate={e.shortDate}
@@ -311,7 +337,6 @@ export default async function EventsPage({
                         <EventRow
                           key={e.href}
                           href={e.href}
-                          startTimeIso={e.startTimeIso}
                           status={e.status}
                           statusLabel={e.statusLabel}
                           monthLabel={e.monthLabel}
@@ -339,7 +364,6 @@ export default async function EventsPage({
                         <EventTableRow
                           key={e.href}
                           href={e.href}
-                          startTimeIso={e.startTimeIso}
                           status={e.status}
                           statusLabel={e.statusLabel}
                           shortDate={e.shortDate}

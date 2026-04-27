@@ -2,14 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import EventStatusTicker from "@/components/EventStatusTicker";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
 
 interface Props {
   href: string;
-  startTimeIso: string;
   status: ResolvedEventStatus;
   statusLabel: string;
   monthLabel: string;
@@ -23,7 +21,6 @@ interface Props {
 
 export function EventRow({
   href,
-  startTimeIso,
   status,
   statusLabel,
   monthLabel,
@@ -106,13 +103,6 @@ export function EventRow({
           ›
         </span>
       </div>
-      {/* Auto-flip the page on the next status boundary so an idle tab
-          doesn't stay frozen on "Upcoming" past the show start (F1).
-          Completed/cancelled have no further boundary to cross — skip
-          the timer to avoid scheduling no-op refreshes. */}
-      {(status === "upcoming" || status === "ongoing") && (
-        <EventStatusTicker startTime={startTimeIso} />
-      )}
     </Link>
   );
 }

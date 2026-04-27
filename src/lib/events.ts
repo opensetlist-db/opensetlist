@@ -178,17 +178,20 @@ export async function getEventsListGrouped(
   const nowMs = referenceNow.getTime();
 
   for (const g of groupsMap.values()) {
-    g.events.sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
-    const times = g.events.map((e) => new Date(e.startTime).getTime());
-    g.earliestStart = times.length ? Math.min(...times) : 0;
-    g.latestStart = times.length ? Math.max(...times) : 0;
+    // Parse each startTime once. Sort + earliest/latest + the
+    // cancelled-future check all reuse the cached numeric value.
+    const dated = g.events.map((ev) => ({
+      ev,
+      ts: new Date(ev.startTime).getTime(),
+    }));
+    dated.sort((a, b) => a.ts - b.ts);
+    g.events = dated.map((d) => d.ev);
+    g.earliestStart = dated[0]?.ts ?? 0;
+    g.latestStart = dated[dated.length - 1]?.ts ?? 0;
 
     let hasOngoing = false;
     let hasActive = false;
-    for (const ev of g.events) {
+    for (const { ev, ts } of dated) {
       const resolved = getEventStatus(ev, referenceNow);
       if (resolved === "ongoing") {
         hasOngoing = true;
@@ -199,7 +202,7 @@ export async function getEventsListGrouped(
         // A cancelled-but-future show stays "active" so it appears in
         // the upcoming-aware section with its cancelled badge, matching
         // the per-event routing the previous helper used.
-        if (new Date(ev.startTime).getTime() >= nowMs) hasActive = true;
+        if (ts >= nowMs) hasActive = true;
       }
     }
     g.hasOngoing = hasOngoing;

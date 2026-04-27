@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import EventStatusTicker from "@/components/EventStatusTicker";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -10,7 +9,6 @@ import { colors } from "@/styles/tokens";
 
 interface Props {
   href: string;
-  startTimeIso: string;
   status: ResolvedEventStatus;
   statusLabel: string;
   /** Pre-formatted "12월 7일" via formatDate. */
@@ -23,7 +21,6 @@ interface Props {
 
 export function EventTableRow({
   href,
-  startTimeIso,
   status,
   statusLabel,
   shortDate,
@@ -81,9 +78,6 @@ export function EventTableRow({
       >
         ›
       </span>
-      {(status === "upcoming" || status === "ongoing") && (
-        <EventStatusTicker startTime={startTimeIso} />
-      )}
     </Link>
   );
 }
