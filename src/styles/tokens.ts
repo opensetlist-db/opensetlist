@@ -82,7 +82,13 @@ export const shadows = {
 } as const;
 
 export const radius = {
+  // Card-radius scale, in ascending order. `card` is the regular size
+  // (most surfaces); `cardSm` is the compact card variant used by the
+  // home `UpcomingCard`; `cardLg` is the hero treatment for surfaces
+  // that need more prominence than a regular card (home `LiveHeroCard`).
+  cardSm: 14,
   card: 16,
+  cardLg: 20,
   badge: 20,
   button: 20,
   tag: 10,

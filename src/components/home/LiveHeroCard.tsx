@@ -31,7 +31,7 @@ export function LiveHeroCard({
         // `#1e3a5f` is the unique mid-stop on this hero gradient; not
         // surfaced as a token because no other surface uses it.
         background: `linear-gradient(135deg, ${colors.textPrimary} 0%, #1e3a5f 60%, ${colors.primary} 100%)`,
-        borderRadius: 20,
+        borderRadius: radius.cardLg,
         padding: "24px 20px",
         boxShadow: shadows.heroLive,
       }}

@@ -10,7 +10,7 @@ import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
 import { routing } from "@/i18n/routing";
-import { colors, shadows } from "@/styles/tokens";
+import { colors, radius, shadows } from "@/styles/tokens";
 
 // hreflang lives on the homepage (not the locale layout) so the canonical
 // only applies to the locale root. A layout-level canonical would be
@@ -355,9 +355,9 @@ export default async function HomePage({
                 <section className="mb-6 lg:mb-7">
                   <SectionHeader title={t("ongoingTitle")} />
                   <div className="flex flex-col gap-3">
-                    {ongoingViews.map((v, i) => (
+                    {ongoingViews.map((v) => (
                       <LiveHeroCard
-                        key={i}
+                        key={v.href}
                         href={v.href}
                         startTimeIso={v.startTimeIso}
                         seriesName={v.seriesName}
@@ -412,7 +412,7 @@ export default async function HomePage({
                     className="overflow-hidden"
                     style={{
                       background: colors.bgCard,
-                      borderRadius: 16,
+                      borderRadius: radius.card,
                       boxShadow: shadows.card,
                     }}
                   >

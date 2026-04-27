@@ -47,7 +47,7 @@ export function UpcomingCard({
       style={{
         background: hovered ? colors.primaryHoverBg : colors.bgCard,
         border: `1.5px solid ${colors.border}`,
-        borderRadius: 14,
+        borderRadius: radius.cardSm,
         padding: "14px 16px",
       }}
     >
