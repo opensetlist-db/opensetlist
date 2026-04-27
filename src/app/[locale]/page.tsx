@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, nonBlank, slugify, formatDate } from "@/lib/utils";
+import { serializeBigInt, nonBlank, formatDate } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
+import { eventHref } from "@/lib/eventHref";
 import { LiveHeroCard } from "@/components/home/LiveHeroCard";
 import { UpcomingCard } from "@/components/home/UpcomingCard";
 import { RecentEventRow } from "@/components/home/RecentEventRow";
@@ -93,19 +94,6 @@ function utcDayOffset(d: Date, days: number): Date {
 function daysUntilUTC(target: Date, now: Date): number {
   const diff = utcDayStart(target).getTime() - utcDayStart(now).getTime();
   return Math.round(diff / MS_PER_DAY);
-}
-
-function eventHref(
-  locale: string,
-  id: number | bigint,
-  slugSource: string | null
-): string {
-  // slugSource may be all-punctuation (`!!!`); slugify strips it to "" and
-  // we'd emit `/events/{id}/`. Branch on the slug, not the source.
-  const slug = slugSource ? slugify(slugSource) : "";
-  return slug
-    ? `/${locale}/events/${id}/${slug}`
-    : `/${locale}/events/${id}`;
 }
 
 async function getOngoingEvents(now: Date) {
