@@ -14,6 +14,14 @@ export interface BreadcrumbItem {
 
 interface Props {
   items: BreadcrumbItem[];
+  /**
+   * Translated `aria-label` for the wrapping `<nav>`. Required (not
+   * defaulted to a literal "Breadcrumb") so the label is always
+   * locale-correct — screen readers expose the value verbatim, so a
+   * default English string would leak through on ko/ja pages.
+   * Callers resolve via `getTranslations("Common")` → `ct("breadcrumb")`.
+   */
+  ariaLabel: string;
 }
 
 /**
@@ -22,11 +30,11 @@ interface Props {
  * component just contributes a bottom margin so it sits cleanly above
  * the page header.
  */
-export function Breadcrumb({ items }: Props) {
+export function Breadcrumb({ items, ariaLabel }: Props) {
   if (items.length === 0) return null;
   return (
     <nav
-      aria-label="Breadcrumb"
+      aria-label={ariaLabel}
       className="mb-4 flex flex-wrap items-center"
       style={{
         fontSize: 12,

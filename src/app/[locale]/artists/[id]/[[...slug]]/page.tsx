@@ -199,6 +199,7 @@ export default async function ArtistPage({ params }: Props) {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
       <Breadcrumb
+        ariaLabel={ct("breadcrumb")}
         items={[
           { label: ct("backToHome"), href: "/" },
           ...(artist.parentArtist && parentName

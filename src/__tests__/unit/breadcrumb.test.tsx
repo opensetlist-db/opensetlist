@@ -24,13 +24,14 @@ vi.mock("@/i18n/navigation", () => ({
 
 describe("Breadcrumb", () => {
   it("renders nothing when given an empty items array", () => {
-    const { container } = render(<Breadcrumb items={[]} />);
+    const { container } = render(<Breadcrumb ariaLabel="Breadcrumb" items={[]} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders each item in order with › separators between them", () => {
     render(
       <Breadcrumb
+        ariaLabel="Breadcrumb"
         items={[
           { label: "Home", href: "/" },
           { label: "Series", href: "/series/1" },
@@ -50,6 +51,7 @@ describe("Breadcrumb", () => {
   it("renders href-bearing items as links and href-less items as non-clickable spans", () => {
     render(
       <Breadcrumb
+        ariaLabel="Breadcrumb"
         items={[
           { label: "Home", href: "/" },
           { label: "Current page" },
@@ -65,15 +67,21 @@ describe("Breadcrumb", () => {
     expect(current.getAttribute("aria-current")).toBe("page");
   });
 
-  it("uses an aria-label on the nav for assistive tech", () => {
-    render(<Breadcrumb items={[{ label: "Home", href: "/" }]} />);
+  it("renders the caller-supplied aria-label on the nav (must be locale-translated)", () => {
+    render(
+      <Breadcrumb
+        ariaLabel="탐색 경로"
+        items={[{ label: "Home", href: "/" }]}
+      />,
+    );
     const nav = screen.getByRole("navigation");
-    expect(nav.getAttribute("aria-label")).toBe("Breadcrumb");
+    expect(nav.getAttribute("aria-label")).toBe("탐색 경로");
   });
 
   it("hides the › separator from assistive tech", () => {
     render(
       <Breadcrumb
+        ariaLabel="Breadcrumb"
         items={[
           { label: "Home", href: "/" },
           { label: "X" },
