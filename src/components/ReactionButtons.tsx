@@ -23,6 +23,12 @@ const OPTIMISTIC_PENDING = "pending";
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
 
+// "mine" state border + count color (mockup §3-3 active palette).
+const REACTION_ACTIVE_COLOR = "#0277BD";
+
+// Must exceed the longer emoji animation in globals.css (350ms); 50ms safety margin.
+const EMOJI_ANIM_RESET_MS = 400;
+
 // Runtime guard for POST /api/reactions success responses. Server is
 // expected to return `{ reactionId: string; counts: Record<string,
 // number> }`. Used to fail closed (rollback) on any unexpected shape
@@ -298,7 +304,7 @@ function ReactionButton({
   // canceling the pending reset).
   useEffect(() => {
     if (emojiAnim === null) return;
-    const timer = setTimeout(() => setEmojiAnim(null), 400);
+    const timer = setTimeout(() => setEmojiAnim(null), EMOJI_ANIM_RESET_MS);
     return () => clearTimeout(timer);
   }, [emojiAnim]);
 
@@ -330,7 +336,7 @@ function ReactionButton({
         borderRadius: 20,
         padding: "4px 10px",
         border: isActive
-          ? "1.5px solid #0277BD"
+          ? `1.5px solid ${REACTION_ACTIVE_COLOR}`
           : hasAny
             ? "1.5px solid #e2e8f0"
             : "1.5px dashed #d1d5db",
@@ -360,7 +366,7 @@ function ReactionButton({
           style={{
             fontSize: 12,
             fontWeight: 700,
-            color: isActive ? "#0277BD" : "#475569",
+            color: isActive ? REACTION_ACTIVE_COLOR : "#475569",
             minWidth: 14,
             display: "inline-block",
             transition: "color 0.18s ease",
