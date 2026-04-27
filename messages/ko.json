@@ -103,11 +103,28 @@
   "Event": {
     "title": "이벤트",
     "allEvents": "이벤트 목록",
+    "subtitle": "공연 셋리스트와 반응을 확인하세요",
     "ongoing": "지금 공연 중",
     "upcoming": "예정된 이벤트",
     "past": "지난 이벤트",
     "ungrouped": "기타 이벤트",
     "noEvents": "표시할 이벤트가 없습니다",
+    "filter": {
+      "all": "전체",
+      "ongoing": "진행중",
+      "upcoming": "예정",
+      "completed": "종료"
+    },
+    "emptyFilterState": "해당하는 공연이 없어요",
+    "eventCount": "{count, plural, other {#개 공연}}",
+    "songCount": "{count, plural, other {🎵 #}}",
+    "tableHeader": {
+      "date": "날짜",
+      "status": "상태",
+      "name": "공연명",
+      "venue": "장소",
+      "songs": "곡 수"
+    },
     "setlist": "세트리스트",
     "noSetlist": "세트리스트가 등록되지 않았습니다.",
     "noSongAssigned": "곡 미지정",

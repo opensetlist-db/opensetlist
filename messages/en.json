@@ -103,11 +103,28 @@
   "Event": {
     "title": "Events",
     "allEvents": "All Events",
+    "subtitle": "Check setlists and reactions for each show",
     "ongoing": "Live Now",
     "upcoming": "Upcoming Events",
     "past": "Past Events",
     "ungrouped": "Other events",
     "noEvents": "No events to show",
+    "filter": {
+      "all": "All",
+      "ongoing": "Live now",
+      "upcoming": "Upcoming",
+      "completed": "Completed"
+    },
+    "emptyFilterState": "No events match",
+    "eventCount": "{count, plural, one {# event} other {# events}}",
+    "songCount": "{count, plural, other {🎵 #}}",
+    "tableHeader": {
+      "date": "Date",
+      "status": "Status",
+      "name": "Event",
+      "venue": "Venue",
+      "songs": "Songs"
+    },
     "setlist": "Setlist",
     "noSetlist": "No setlist registered.",
     "noSongAssigned": "No song assigned",
