@@ -23,8 +23,13 @@ const OPTIMISTIC_PENDING = "pending";
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
 
-// "mine" state border + count color (mockup §3-3 active palette).
-const REACTION_ACTIVE_COLOR = "#0277BD";
+// Three-state palette (mockup §3-3). Exported so tests assert against
+// the same source of truth instead of duplicating jsdom-converted RGB.
+export const REACTION_ACTIVE_COLOR = "#0277BD";
+export const REACTION_ACTIVE_BG = "#e8f4fd";
+const REACTION_BORDER_SOLID = "#e2e8f0";
+const REACTION_BORDER_DASHED = "#d1d5db";
+const REACTION_COUNT_INACTIVE_COLOR = "#475569";
 
 // Must exceed the longer emoji animation in globals.css (350ms); 50ms safety margin.
 const EMOJI_ANIM_RESET_MS = 400;
@@ -338,9 +343,9 @@ function ReactionButton({
         border: isActive
           ? `1.5px solid ${REACTION_ACTIVE_COLOR}`
           : hasAny
-            ? "1.5px solid #e2e8f0"
-            : "1.5px dashed #d1d5db",
-        background: isActive ? "#e8f4fd" : "white",
+            ? `1.5px solid ${REACTION_BORDER_SOLID}`
+            : `1.5px dashed ${REACTION_BORDER_DASHED}`,
+        background: isActive ? REACTION_ACTIVE_BG : "white",
         cursor: isDisabled ? "default" : "pointer",
         opacity: isActive || hasAny ? 1 : 0.4,
         transition:
@@ -366,7 +371,7 @@ function ReactionButton({
           style={{
             fontSize: 12,
             fontWeight: 700,
-            color: isActive ? REACTION_ACTIVE_COLOR : "#475569",
+            color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
             minWidth: 14,
             display: "inline-block",
             transition: "color 0.18s ease",
