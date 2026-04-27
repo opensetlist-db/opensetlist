@@ -4,11 +4,11 @@ import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { formatDate, nonBlank } from "@/lib/utils";
+import { FilterBar } from "@/components/events/FilterBar";
 import {
-  FilterBar,
   FILTER_VALUES,
   type EventListFilter,
-} from "@/components/events/FilterBar";
+} from "@/lib/eventFilters";
 import { SeriesSection } from "@/components/events/SeriesSection";
 import { SeriesBlock } from "@/components/events/SeriesBlock";
 import { EventRow } from "@/components/events/EventRow";

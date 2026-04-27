@@ -1,21 +1,11 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  FILTER_VALUES,
+  type EventListFilter,
+} from "@/lib/eventFilters";
 import { colors, radius } from "@/styles/tokens";
-
-/**
- * Canonical filter values + display order. The order doubles as the
- * source of truth for `EventListFilter` and the buttons rendered, so
- * `events/page.tsx` imports it for searchParam validation.
- */
-export const FILTER_VALUES = [
-  "all",
-  "ongoing",
-  "upcoming",
-  "completed",
-] as const;
-
-export type EventListFilter = (typeof FILTER_VALUES)[number];
 
 interface Props {
   active: EventListFilter;
