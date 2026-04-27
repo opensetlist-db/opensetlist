@@ -78,8 +78,14 @@ export function SetlistRow({
 
   return (
     <li
-      className="border-b border-zinc-100 pb-2 lg:grid lg:grid-cols-[36px_1fr_180px_260px] lg:gap-3 lg:px-2 lg:py-2 lg:hover:bg-[#f8fafc] lg:transition-colors lg:duration-[120ms]"
-      style={isNonSong ? { opacity: NON_SONG_OPACITY } : undefined}
+      className="border-b border-zinc-100 pb-2 lg:grid lg:grid-cols-[36px_1fr_180px_260px] lg:gap-3 lg:px-2 lg:py-2 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      // CSS variable funnels colors.bgSubtle into the hover Tailwind class.
+      style={
+        {
+          "--row-hover-bg": colors.bgSubtle,
+          ...(isNonSong ? { opacity: NON_SONG_OPACITY } : {}),
+        } as React.CSSProperties
+      }
     >
       <div className="flex items-start gap-3 lg:col-span-2">
         <span
