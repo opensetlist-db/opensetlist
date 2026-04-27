@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { colors } from "@/styles/tokens";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -140,10 +141,12 @@ export function PerformanceGroup({
       </button>
 
       {/* Event rows — only mounted when expanded so collapsed groups
-          don't pay layout/paint cost. */}
+          don't pay layout/paint cost. Each row is a `next/link` Link
+          so app-internal navigation stays soft (no full document
+          reload) and Next.js can prefetch the linked event page. */}
       {!collapsed &&
         series.events.map((event, i) => (
-          <a
+          <Link
             key={event.id}
             href={event.href}
             className="row-hover-bg"
@@ -200,7 +203,7 @@ export function PerformanceGroup({
             >
               ›
             </span>
-          </a>
+          </Link>
         ))}
     </div>
   );

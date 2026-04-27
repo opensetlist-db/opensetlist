@@ -51,9 +51,18 @@ export function TabBar({ tabs, active, paramName = "tab" }: Props) {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // Intentionally NOT using `role="tablist"` / `role="tab"` /
+  // `aria-selected`. The WAI-ARIA tab pattern requires the tab
+  // panels to live in the same DOM tree with `aria-controls` wiring
+  // and arrow-key roving focus — but our "tabs" are really
+  // server-routed navigation: clicking pushes a new URL and the
+  // page re-renders the chosen content from a fresh server pass.
+  // Promising tab semantics here would mislead screen readers about
+  // the keyboard interaction model. Plain `<nav>` + buttons with
+  // `aria-current="page"` is the honest representation.
   return (
-    <div
-      role="tablist"
+    <nav
+      aria-label="Tabs"
       style={{
         display: "flex",
         gap: 0,
@@ -70,8 +79,7 @@ export function TabBar({ tabs, active, paramName = "tab" }: Props) {
           <button
             key={tab.key}
             type="button"
-            role="tab"
-            aria-selected={isActive}
+            aria-current={isActive ? "page" : undefined}
             onClick={() => handleClick(tab.key)}
             style={{
               flex: 1,
@@ -91,6 +99,6 @@ export function TabBar({ tabs, active, paramName = "tab" }: Props) {
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

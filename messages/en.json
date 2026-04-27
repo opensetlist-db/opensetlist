@@ -62,7 +62,7 @@
     "membersWithCount": "Members ({count})",
     "recentEvents": "Recent events",
     "viewAll": "View all ›",
-    "historyHeader": "Performance history — {count} events",
+    "historyHeader": "{count, plural, one {Performance history — # event} other {Performance history — # events}}",
     "filterAriaLabel": "Category filter",
     "filterAll": "All",
     "filterAnimeGame": "Anime / Game",

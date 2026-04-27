@@ -21,6 +21,7 @@ import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
 import { InitialAvatar } from "@/components/InitialAvatar";
+import { StatusBadge } from "@/components/StatusBadge";
 import {
   PerformanceGroup,
   type PerformanceSeries,
@@ -694,7 +695,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     </p>
                   ) : (
                     recentEvents.map((event, i) => (
-                      <a
+                      <Link
                         key={event.id}
                         href={event.href}
                         className="row-hover-bg"
@@ -711,37 +712,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                           color: "inherit",
                         }}
                       >
-                        <span
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            letterSpacing: "0.06em",
-                            color:
-                              event.status === "ongoing"
-                                ? colors.live
-                                : event.status === "upcoming"
-                                  ? colors.upcoming
-                                  : colors.completed,
-                            background:
-                              event.status === "ongoing"
-                                ? colors.liveBg
-                                : event.status === "upcoming"
-                                  ? colors.upcomingBg
-                                  : colors.completedBg,
-                            border: `1px solid ${
-                              event.status === "ongoing"
-                                ? colors.liveBorder
-                                : event.status === "upcoming"
-                                  ? colors.upcomingBorder
-                                  : colors.completedBorder
-                            }`,
-                            borderRadius: radius.badge,
-                            padding: "2px 8px",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {statusLabels[event.status]}
-                        </span>
+                        <StatusBadge
+                          status={event.status}
+                          size="sm"
+                          label={statusLabels[event.status]}
+                        />
                         <span
                           style={{
                             fontSize: 12,
@@ -775,7 +750,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         >
                           ›
                         </span>
-                      </a>
+                      </Link>
                     ))
                   )}
                 </section>

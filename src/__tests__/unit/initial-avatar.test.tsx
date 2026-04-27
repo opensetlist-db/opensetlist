@@ -38,7 +38,15 @@ describe("<InitialAvatar />", () => {
   });
 
   it("falls back to textMuted when color is null/undefined", () => {
-    const { container } = render(<InitialAvatar label="X" color={null} />);
+    const { container, rerender } = render(
+      <InitialAvatar label="X" color={null} />,
+    );
+    expect(getAvatarEl(container).style.color).toBe(
+      hexToRgbString(colors.textMuted),
+    );
+    // Same fallback when the prop is omitted entirely (undefined),
+    // not just when it's an explicit null.
+    rerender(<InitialAvatar label="X" color={undefined} />);
     expect(getAvatarEl(container).style.color).toBe(
       hexToRgbString(colors.textMuted),
     );
