@@ -75,7 +75,7 @@ export function RecentEventRow({
       <span
         aria-hidden="true"
         className="flex-shrink-0 text-sm"
-        style={{ color: "#cbd5e1" }}
+        style={{ color: colors.borderSubtle }}
       >
         ›
       </span>

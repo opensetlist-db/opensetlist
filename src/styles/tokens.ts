@@ -41,6 +41,10 @@ export const colors = {
   // `border` (solid e2e8f0) so the dashed-vs-solid contrast remains
   // visible at small sizes; `textMuted` would be too dark.
   borderDashed: "#d1d5db",
+  // Slightly darker border / muted-glyph tone (slate-300). Used for
+  // chevrons and faint divider accents that need to read above
+  // `border` without becoming text-weight gray.
+  borderSubtle: "#cbd5e1",
 
   // Event status palette (consumed by <StatusBadge>)
   live: "#dc2626",
