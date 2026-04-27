@@ -11,17 +11,7 @@ import {
   REACTION_ACTIVE_COLOR,
   REACTION_ACTIVE_BG,
 } from "@/components/ReactionButtons";
-
-// jsdom returns inline style colors as `rgb(r, g, b)` regardless of input
-// form. Convert hex → rgb so tests assert against the same source of truth
-// the component renders, not duplicated literals.
-function hexToRgbString(hex: string): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgb(${r}, ${g}, ${b})`;
-}
+import { hexToRgbString } from "@/__tests__/utils/color";
 
 const ACTIVE_COLOR_RGB = hexToRgbString(REACTION_ACTIVE_COLOR);
 const ACTIVE_BG_RGB = hexToRgbString(REACTION_ACTIVE_BG);
