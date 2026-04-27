@@ -33,8 +33,10 @@ export default async function ArtistTableRow({
   locale,
   isLast,
 }: Props) {
-  const t = await getTranslations("Artist");
-  const tEvent = await getTranslations("Event");
+  const [t, tEvent] = await Promise.all([
+    getTranslations("Artist"),
+    getTranslations("Event"),
+  ]);
 
   const localizedTr = artist.translations.find((tr) => tr.locale === locale);
   const primaryName = localizedTr
@@ -58,7 +60,7 @@ export default async function ArtistTableRow({
     >
       <Link
         href={`/${locale}/artists/${artist.id}/${artist.slug}`}
-        className="hover:bg-[#f8fafc]"
+        className="row-hover-bg"
         style={{
           display: "grid",
           gridTemplateColumns: "56px 1fr 1fr 80px 28px",

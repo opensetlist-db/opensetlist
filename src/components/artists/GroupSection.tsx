@@ -122,10 +122,14 @@ export default async function GroupSection({ group, locale }: Props) {
         ))}
       </ul>
 
-      {/* Desktop: table (visible >= lg) */}
+      {/* Desktop: table (visible >= lg). Purely visual — no ARIA grid
+          roles because the rows below are <li> elements; promoting them
+          to role="row" would require a full role="grid" / "rowgroup"
+          tree which doesn't add screen-reader value over the existing
+          list semantics. */}
       <div className="hidden lg:block">
         <div
-          role="row"
+          aria-hidden="true"
           style={{
             display: "grid",
             gridTemplateColumns: "56px 1fr 1fr 80px 28px",

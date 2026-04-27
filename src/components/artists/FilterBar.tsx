@@ -22,7 +22,13 @@ import type { ArtistsListFilter } from "@/lib/artists";
  * mockup §1; inactive: gray border + white bg + dark gray text.
  */
 
-type FilterDef = { value: ArtistsListFilter; key: string };
+type FilterTranslationKey =
+  | "filterAll"
+  | "filterAnimeGame"
+  | "filterKpop"
+  | "filterJpop";
+
+type FilterDef = { value: ArtistsListFilter; key: FilterTranslationKey };
 
 const FILTERS: ReadonlyArray<FilterDef> = [
   { value: "all", key: "filterAll" },

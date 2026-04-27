@@ -54,3 +54,14 @@ body {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
 }
+
+/*
+ * Subtle hover background for full-row clickable lists (artists list
+ * card + table rows, future list pages). Mirrors colors.bgSubtle in
+ * src/styles/tokens.ts — keep these two values in lockstep so a
+ * future palette change is one edit, not a grep-and-replace across
+ * every list component that wants the same hover affordance.
+ */
+.row-hover-bg:hover {
+  background: #f8fafc;
+}
