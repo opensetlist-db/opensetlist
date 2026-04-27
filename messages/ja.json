@@ -224,6 +224,18 @@
     "contact": "お問い合わせ",
     "copyright": "© {year} OpenSetlist"
   },
+  "legal": {
+    "privacyTitle": "プライバシーポリシー",
+    "termsTitle": "利用規約",
+    "openSetlistLabel": "OPENSETLIST",
+    "lastUpdated": "最終更新日",
+    "tocLabel": "目次",
+    "bottomLinkPrivacyToTerms": "利用規約もご確認ください",
+    "bottomLinkTermsToPrivacy": "プライバシーポリシーもご確認ください",
+    "bottomLinkViewTerms": "利用規約を見る ›",
+    "bottomLinkViewPrivacy": "プライバシーポリシーを見る ›",
+    "unavailableInLocale": "韓国語のみ提供しています"
+  },
   "Meta": {
     "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
     "setlistDb": "公演セットリストデータベース",
