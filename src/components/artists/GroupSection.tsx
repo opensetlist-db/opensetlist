@@ -4,6 +4,7 @@ import { colors, shadows, radius } from "@/styles/tokens";
 import type { GroupForList } from "@/lib/artists";
 import ArtistCard from "@/components/artists/ArtistCard";
 import ArtistTableRow from "@/components/artists/ArtistTableRow";
+import { ARTIST_TABLE_COLUMNS } from "@/components/artists/layout";
 
 /*
  * One group block: white card with header (name + category badge +
@@ -140,7 +141,7 @@ export default async function GroupSection({ group, locale }: Props) {
           aria-hidden="true"
           style={{
             display: "grid",
-            gridTemplateColumns: "56px 1fr 1fr 80px 28px",
+            gridTemplateColumns: ARTIST_TABLE_COLUMNS,
             background: colors.bgFaint,
             borderBottom: `2px solid ${colors.border}`,
             padding: "10px 20px",

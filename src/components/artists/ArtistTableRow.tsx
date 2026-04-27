@@ -4,6 +4,7 @@ import { displayNameWithFallback } from "@/lib/display";
 import { colors, radius } from "@/styles/tokens";
 import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ARTIST_TABLE_COLUMNS } from "@/components/artists/layout";
 import type { ArtistRowData } from "@/lib/artists";
 
 /*
@@ -17,9 +18,8 @@ import type { ArtistRowData } from "@/lib/artists";
  * desktop only — mobile uses the default colors.textPrimary because
  * the whole row is one big tap target rather than a discrete link).
  *
- * The 5-col grid `56px | 1fr | 1fr | 80px | 28px` matches the table
- * header in <GroupSection>; widening any column here requires the
- * matching adjustment there.
+ * The 5-col grid spec lives in `./layout.ts` as ARTIST_TABLE_COLUMNS
+ * and is also consumed by <GroupSection>'s column-header row.
  */
 
 interface Props {
@@ -66,7 +66,7 @@ export default async function ArtistTableRow({
         className="row-hover-bg"
         style={{
           display: "grid",
-          gridTemplateColumns: "56px 1fr 1fr 80px 28px",
+          gridTemplateColumns: ARTIST_TABLE_COLUMNS,
           alignItems: "center",
           gap: 12,
           padding: "12px 20px",
