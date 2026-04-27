@@ -46,6 +46,11 @@ export const colors = {
   // `border` without becoming text-weight gray.
   borderSubtle: "#cbd5e1",
 
+  // Card-hover wash for primary-themed surfaces (UpcomingCard).
+  // Lighter than `primaryBg` so resting cards on a white page lift
+  // without flashing a bright brand tint on hover.
+  primaryHoverBg: "#f0f7ff",
+
   // Event status palette (consumed by <StatusBadge>)
   live: "#dc2626",
   liveBg: "#fef2f2",
@@ -70,6 +75,10 @@ export const colors = {
 export const shadows = {
   card: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(2,119,189,0.06)",
   nav: "0 1px 3px rgba(0,0,0,0.04)",
+  // Heavier brand-color glow for the LIVE hero card on the home page.
+  // Same brand RGB as `card` (rgba of `colors.primary` #0277BD) but at
+  // a deeper alpha + larger blur for a "lifted off the page" feel.
+  heroLive: "0 8px 32px rgba(2,119,189,0.25)",
 } as const;
 
 export const radius = {

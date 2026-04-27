@@ -1,6 +1,6 @@
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
-import { colors, radius } from "@/styles/tokens";
+import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
   href: string;
@@ -28,11 +28,12 @@ export function LiveHeroCard({
       href={href}
       className="relative block overflow-hidden"
       style={{
-        background:
-          "linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0277BD 100%)",
+        // `#1e3a5f` is the unique mid-stop on this hero gradient; not
+        // surfaced as a token because no other surface uses it.
+        background: `linear-gradient(135deg, ${colors.textPrimary} 0%, #1e3a5f 60%, ${colors.primary} 100%)`,
         borderRadius: 20,
         padding: "24px 20px",
-        boxShadow: "0 8px 32px rgba(2,119,189,0.25)",
+        boxShadow: shadows.heroLive,
       }}
     >
       <div

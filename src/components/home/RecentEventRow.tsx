@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { colors } from "@/styles/tokens";
 
@@ -22,13 +25,19 @@ export function RecentEventRow({
   dayNumber,
   isLast,
 }: Props) {
+  // Hover via React state (not Tailwind `hover:bg-[#...]`) so the bg
+  // reads from `colors.bgSubtle` and a token change propagates here.
+  const [hovered, setHovered] = useState(false);
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 transition-colors hover:bg-[#f8fafc]"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="flex items-center gap-3 transition-colors"
       style={{
         padding: "12px 16px",
         borderBottom: isLast ? "none" : `1px solid ${colors.borderLight}`,
+        background: hovered ? colors.bgSubtle : "transparent",
       }}
     >
       <div

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { colors, radius } from "@/styles/tokens";
@@ -28,15 +31,21 @@ export function UpcomingCard({
   dDayLabel,
   variant = "stack",
 }: Props) {
+  // Hover via React state (not a Tailwind arbitrary `hover:bg-[#...]`)
+  // so the bg color reads from `colors.primaryHoverBg` and a token
+  // change propagates here automatically.
+  const [hovered, setHovered] = useState(false);
   return (
     <Link
       href={href}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={[
-        "block transition-colors hover:bg-[#f0f7ff]",
+        "block transition-colors",
         variant === "scroll" ? "w-[200px] flex-shrink-0" : "w-full",
       ].join(" ")}
       style={{
-        background: colors.bgCard,
+        background: hovered ? colors.primaryHoverBg : colors.bgCard,
         border: `1.5px solid ${colors.border}`,
         borderRadius: 14,
         padding: "14px 16px",
