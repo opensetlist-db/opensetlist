@@ -1,5 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { ReactionButtons } from "@/components/ReactionButtons";
 
 // Minimal next-intl stub — title is the only prop ReactionButtons reads, and
@@ -15,9 +21,22 @@ vi.mock("@/hooks/useMounted", () => ({
   useMounted: () => true,
 }));
 
+vi.mock("@/lib/anonId", () => ({
+  getAnonId: () => "test-anon-id",
+}));
+
+vi.mock("@/lib/analytics", () => ({
+  trackEvent: vi.fn(),
+}));
+
 describe("ReactionButtons", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("re-syncs displayed counts when initialCounts prop reference changes (the polling fix)", () => {
@@ -97,5 +116,208 @@ describe("ReactionButtons", () => {
       />,
     );
     expect(screen.getByTitle("best").textContent).toContain("7");
+  });
+
+  it("renders the three visual states correctly (zero+unselected dashed, hasCount+unselected solid gray, mine blue)", () => {
+    // Zero count, not mine → dashed border, white bg, opacity 0.4
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    let fireButton = screen.getByTitle("best");
+    expect(fireButton.style.border).toContain("dashed");
+    expect(fireButton.style.background).toBe("white");
+    expect(Number(fireButton.style.opacity)).toBeLessThan(1);
+
+    // Has count, not mine → solid gray border, white bg, opacity 1
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 3 }}
+      />,
+    );
+    fireButton = screen.getByTitle("best");
+    expect(fireButton.style.border).toContain("solid");
+    expect(fireButton.style.border).not.toContain("dashed");
+    expect(fireButton.style.background).toBe("white");
+    expect(Number(fireButton.style.opacity)).toBe(1);
+  });
+
+  it("flips visual state to 'mine' immediately on tap, before the POST resolves (optimistic)", async () => {
+    // Mock fetch to NEVER resolve — we want to assert visual flip before the
+    // network response. If the visual flip waited for the response, this
+    // test would never see the active styling.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+    expect(fireButton.style.background).toBe("white");
+
+    fireEvent.click(fireButton);
+
+    await waitFor(() => {
+      // After click, the optimistic update flips border to blue + bg to
+      // light blue + count to 1, all before the POST has resolved.
+      expect(fireButton.style.background).toContain("rgb(232, 244, 253)");
+      expect(fireButton.style.border).toContain("rgb(2, 119, 189)");
+      expect(fireButton.textContent).toContain("1");
+    });
+  });
+
+  it("rolls back the optimistic update when POST fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 2 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+    expect(fireButton.textContent).toContain("2");
+    expect(fireButton.style.background).toBe("white");
+
+    await act(async () => {
+      fireEvent.click(fireButton);
+    });
+
+    // Network failed — visual state should revert: bg back to white, count
+    // back to 2, no blue border.
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("2");
+      expect(fireButton.style.background).toBe("white");
+    });
+    expect(fireButton.style.border).not.toContain("rgb(2, 119, 189)");
+  });
+
+  it("on successful POST, replaces optimistic 'pending' with the server-returned reactionId in localStorage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          reactionId: "real-reaction-uuid",
+          counts: { best: 1 },
+        }),
+      }) as unknown as typeof fetch,
+    );
+
+    render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("best"));
+    });
+
+    await waitFor(() => {
+      const persisted = JSON.parse(
+        localStorage.getItem("reactions-1") ?? "{}",
+      );
+      // The sentinel 'pending' must never be persisted — the post-confirm
+      // write replaces it with the real server reactionId.
+      expect(persisted.best).toBe("real-reaction-uuid");
+    });
+  });
+
+  it("does not clobber optimistic counts when polling delivers a fresh initialCounts mid-flight", async () => {
+    // Hang the fetch so the mutation stays in flight for the whole test.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+
+    // Tap → optimistic count goes 0 → 1.
+    fireEvent.click(fireButton);
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("1");
+    });
+
+    // Polling tick fires mid-roundtrip with a brand-new map. Without the
+    // in-flight gate, the prev-prop guard would call setCounts({best:0})
+    // and erase the optimistic +1 — then on success/failure the snapshot
+    // restore would target a stale counts value.
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+
+    expect(fireButton.textContent).toContain("1");
+  });
+
+  it("exposes toggle state to assistive tech via aria-pressed and aria-label", () => {
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 0 }}
+      />,
+    );
+    const fireButton = screen.getByTitle("best");
+    expect(fireButton.getAttribute("aria-pressed")).toBe("false");
+    expect(fireButton.getAttribute("aria-label")).toBe("best");
+
+    // Pre-seed localStorage so myReactions is hydrated as active for "best".
+    localStorage.setItem(
+      "reactions-2",
+      JSON.stringify({ best: "existing-id" }),
+    );
+    rerender(
+      <ReactionButtons
+        setlistItemId="2"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 1 }}
+      />,
+    );
+    const fireButton2 = screen.getByTitle("best");
+    expect(fireButton2.getAttribute("aria-pressed")).toBe("true");
   });
 });
