@@ -110,6 +110,14 @@ export const breakpoint = {
   desktop: 1024,
 } as const;
 
+// Border-width scale. `emphasis` is the slightly heavier stroke used on
+// surfaces that need to read as "the user's own" (my-impression card) or
+// "active selection" (reaction button mine-state). Most other surfaces
+// use 1px directly via Tailwind utilities or inline style.
+export const borderWidth = {
+  emphasis: "1.5px",
+} as const;
+
 /*
  * Motion shorthands. Currently a single entry — the LIVE-status pulse
  * shared by `<StatusBadge status="ongoing">` (the `● LIVE` dot in

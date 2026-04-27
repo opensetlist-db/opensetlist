@@ -9,7 +9,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
-import { colors, motion, radius } from "@/styles/tokens";
+import { borderWidth, colors, motion, radius } from "@/styles/tokens";
 
 export interface Impression {
   id: string;
@@ -340,7 +340,7 @@ export function EventImpressions({
   // the new-impression input + others-list rows use neutral chrome.
   const myImpressionCardStyle: React.CSSProperties = {
     background: colors.primaryBg,
-    border: `1.5px solid ${colors.primaryBorder}`,
+    border: `${borderWidth.emphasis} solid ${colors.primaryBorder}`,
     borderRadius: radius.card,
   };
   const neutralCardStyle: React.CSSProperties = {
