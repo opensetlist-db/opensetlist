@@ -23,16 +23,21 @@ export function SectionLabel({ children, as = "h2" }: Props) {
   return (
     <Tag
       style={{
+        // Reset the browser default <h2> margins via longhand
+        // declarations only — a shorthand `margin: 0` later in the
+        // object would otherwise overwrite `marginBottom: 12` and
+        // collapse the intentional 12px gap above the underline.
+        marginTop: 0,
+        marginRight: 0,
+        marginBottom: 12,
+        marginLeft: 0,
+        paddingBottom: 8,
         fontSize: 11,
         fontWeight: 700,
         color: colors.textMuted,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
-        marginBottom: 12,
-        paddingBottom: 8,
         borderBottom: `1px solid ${colors.borderLight}`,
-        margin: 0,
-        marginInlineEnd: 0,
         lineHeight: 1.4,
       }}
     >
