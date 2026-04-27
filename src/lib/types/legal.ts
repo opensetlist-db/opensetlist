@@ -39,6 +39,12 @@ export interface LegalContent {
    */
   intro?: string;
   sections: Section[];
-  /** Locale-formatted, hand-authored — e.g. "2026년 4월 22일". */
-  lastUpdated: string;
+  /**
+   * Last-revision instant as an ISO 8601 UTC string
+   * (e.g. "2026-04-22T00:00:00Z"). Stored in UTC per CLAUDE.md;
+   * `formatDate()` renders it to the viewer's locale at display time.
+   * Optional so the missing-locale empty-content fallback doesn't
+   * have to fabricate an empty string.
+   */
+  lastUpdated?: string;
 }

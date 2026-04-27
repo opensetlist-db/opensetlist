@@ -230,6 +230,7 @@
     "openSetlistLabel": "OPENSETLIST",
     "lastUpdated": "최종 수정일",
     "tocLabel": "목차",
+    "legalNavLabel": "약관 페이지 전환",
     "bottomLinkPrivacyToTerms": "서비스 이용 규정도 확인해보세요",
     "bottomLinkTermsToPrivacy": "개인정보 처리 방침도 확인해보세요",
     "bottomLinkViewTerms": "이용약관 보기 ›",

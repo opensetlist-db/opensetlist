@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Block, Section } from "@/lib/types/legal";
-import { colors, layout } from "@/styles/tokens";
+import { colors } from "@/styles/tokens";
 
 /**
  * Tokenize backtick-delimited spans into `<code>` elements so the
@@ -146,10 +146,12 @@ export function LegalSection({ section }: Props) {
       id={section.id}
       style={{
         marginBottom: 32,
-        // Anchor-link offset: clear the sticky `<Nav>` plus a 24px
-        // breathing room so the heading isn't flush against the
-        // navbar bottom edge after the jump.
-        scrollMarginTop: layout.navHeight.desktop + 24,
+        // Anchor-link offset: clears the sticky `<Nav>` plus 24px
+        // breathing room. The CSS variable `--legal-anchor-offset`
+        // is breakpoint-aware (76px mobile / 80px desktop, defined in
+        // globals.css), so a TOC click on either viewport scrolls the
+        // heading to a position that doesn't sit under the navbar.
+        scrollMarginTop: "var(--legal-anchor-offset)",
       }}
     >
       <h2

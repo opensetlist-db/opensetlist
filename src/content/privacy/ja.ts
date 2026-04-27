@@ -4,7 +4,7 @@ import { CONTACT_EMAIL } from "@/lib/config";
 const content: LegalContent = {
   intro:
     "OpenSetlist（以下「本サービス」）は、ユーザーの個人情報を重視し、個人情報保護法を遵守します。",
-  lastUpdated: "2026年4月22日",
+  lastUpdated: "2026-04-22T00:00:00Z",
   sections: [
     {
       id: "collection",
@@ -12,7 +12,7 @@ const content: LegalContent = {
       blocks: [
         {
           kind: "subgroup",
-          label: "自動収集情報（第三者処理者による)",
+          label: "自動収集情報（第三者処理者による）",
           intro:
             "以下の情報は、ウェブサービスを提供する過程でホスティング・分析・CDN提供者(Vercel、Google Analytics、Cloudflare)によって収集されます。OpenSetlist 自身のデータベースには保存されません。",
           items: [
@@ -23,16 +23,16 @@ const content: LegalContent = {
         },
         {
           kind: "subgroup",
-          label: "ブラウザのローカルストレージ（localStorage)",
+          label: "ブラウザのローカルストレージ（localStorage）",
           items: [
-            "`opensetlist_first_visit`: 初回訪問日時（再訪問案内用)",
-            "`opensetlist_anon_id`: 匿名識別子（UUID)。投稿の重複防止および将来の会員登録時に匿名で作成した投稿を会員アカウントに紐付ける目的で使用します。この識別子はサーバーに保存されますが、IPアドレスやその他の個人情報とは関連付けられません。",
+            "`opensetlist_first_visit`: 初回訪問日時（再訪問案内用）",
+            "`opensetlist_anon_id`: 匿名識別子（UUID）。投稿の重複防止および将来の会員登録時に匿名で作成した投稿を会員アカウントに紐付ける目的で使用します。この識別子はサーバーに保存されますが、IPアドレスやその他の個人情報とは関連付けられません。",
             "ブラウザ設定でサイトデータを削除すると識別子はリセットされ、それ以前の匿名投稿との関連付けは解除されます。",
           ],
         },
         {
           kind: "subgroup",
-          label: "会員登録時（Phase 2以降)",
+          label: "会員登録時（Phase 2以降）",
           items: ["メールアドレス", "ニックネーム"],
         },
       ],

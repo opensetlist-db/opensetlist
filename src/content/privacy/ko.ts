@@ -4,7 +4,7 @@ import { CONTACT_EMAIL } from "@/lib/config";
 const content: LegalContent = {
   intro:
     "OpenSetlist(이하 \"서비스\")는 이용자의 개인정보를 중요시하며, 「개인정보 보호법」을 준수합니다.",
-  lastUpdated: "2026년 4월 22일",
+  lastUpdated: "2026-04-22T00:00:00Z",
   sections: [
     {
       id: "collection",

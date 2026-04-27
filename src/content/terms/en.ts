@@ -2,7 +2,7 @@ import type { LegalContent } from "@/lib/types/legal";
 import { CONTACT_EMAIL } from "@/lib/config";
 
 const content: LegalContent = {
-  lastUpdated: "April 17, 2026",
+  lastUpdated: "2026-04-17T00:00:00Z",
   sections: [
     {
       id: "intro",
