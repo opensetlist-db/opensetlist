@@ -251,9 +251,12 @@ describe("ReactionButtons", () => {
       fireEvent.click(fireButton);
     });
 
-    // Visual state should revert: count back to 0, bg back to white.
+    // Visual state should revert: count back to 0 (no digit text), bg
+    // back to white. Asserting both — bg-only would miss a regression
+    // where the optimistic +1 count survives the rollback.
     await waitFor(() => {
       expect(fireButton.style.background).toBe("white");
+      expect(fireButton.textContent).not.toMatch(/\d/);
     });
     // localStorage must NOT contain the OPTIMISTIC_PENDING sentinel.
     expect(localStorage.getItem("reactions-1")).toBeNull();

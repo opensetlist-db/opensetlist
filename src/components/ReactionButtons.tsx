@@ -58,7 +58,16 @@ function isReactionPostResponse(
   if (!v.counts || typeof v.counts !== "object" || Array.isArray(v.counts)) {
     return false;
   }
-  return Object.values(v.counts).every((n) => typeof n === "number");
+  // Tighter than `typeof n === "number"` — NaN, Infinity, negatives and
+  // decimals shouldn't ever land in `setCounts(data.counts)` and would
+  // produce corrupted UI (negative count badges, NaN labels).
+  return Object.values(v.counts).every(
+    (n) =>
+      typeof n === "number" &&
+      Number.isFinite(n) &&
+      Number.isInteger(n) &&
+      n >= 0,
+  );
 }
 
 function readMyReactions(setlistItemId: string): Record<string, string> {
