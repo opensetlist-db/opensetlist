@@ -32,10 +32,12 @@ const REACTION_BORDER_DASHED = "#d1d5db";
 const REACTION_COUNT_INACTIVE_COLOR = "#475569";
 
 // Mirrors the durations in globals.css `@keyframes emoji-activate` /
-// `@keyframes emoji-deactivate`. Source of truth for the inline animation
-// strings AND the post-animation reset timer below — keep them in lockstep.
+// `@keyframes emoji-deactivate` / `@keyframes count-slide`. Source of
+// truth for the inline animation strings AND the post-animation reset
+// timer below — keep them in lockstep.
 const EMOJI_ACTIVATE_DURATION_MS = 350;
 const EMOJI_DEACTIVATE_DURATION_MS = 300;
+const COUNT_SLIDE_DURATION_MS = 220;
 
 // Reset window so the next tap can re-trigger; 50ms safety margin past
 // whichever animation runs longer. Derives from the durations above so a
@@ -384,7 +386,10 @@ function ReactionButton({
             minWidth: 14,
             display: "inline-block",
             transition: "color 0.18s ease",
-            animation: animKey > 0 ? "count-slide 0.22s ease" : undefined,
+            animation:
+              animKey > 0
+                ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
+                : undefined,
           }}
         >
           {count}
