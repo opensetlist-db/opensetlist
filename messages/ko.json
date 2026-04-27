@@ -111,7 +111,7 @@
     "noEvents": "표시할 이벤트가 없습니다",
     "filter": {
       "all": "전체",
-      "ongoing": "진행중",
+      "ongoing": "진행 중",
       "upcoming": "예정",
       "completed": "종료"
     },
