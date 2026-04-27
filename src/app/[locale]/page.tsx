@@ -64,6 +64,10 @@ const RECENT_MONTH_FORMAT: Intl.DateTimeFormatOptions = {
   month: "short",
   timeZone: "UTC",
 };
+const RECENT_DAY_FORMAT: Intl.DateTimeFormatOptions = {
+  day: "numeric",
+  timeZone: "UTC",
+};
 
 // UTC day boundary — never use server-local time to bucket UTC-stored
 // dates (CLAUDE.md §"Date & Time"). Both `now` and `event.startTime`
@@ -158,10 +162,21 @@ async function getRecentEvents(now: Date) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      startTime: { gte: windowStart },
+      // Each OR branch carries its own startTime range so an event
+      // tagged `completed` with a future startTime (data anomaly) can't
+      // leak into Recent. The scheduled branch's upper bound stays at
+      // `completedCutoff` (now - 12h) to mirror getEventStatus's ongoing
+      // buffer; the completed branch is bounded by `now` so a manual
+      // mark-as-completed inside the buffer still surfaces here.
       OR: [
-        { status: "completed" },
-        { status: "scheduled", startTime: { lte: completedCutoff } },
+        {
+          status: "completed",
+          startTime: { gte: windowStart, lte: now },
+        },
+        {
+          status: "scheduled",
+          startTime: { gte: windowStart, lte: completedCutoff },
+        },
       ],
     },
     include: {
@@ -324,7 +339,7 @@ export default async function HomePage({
       venue: projectVenue(e, locale),
       songCountLabel: t("songCount", { count: e._count.setlistItems }),
       monthLabel: formatDate(start, locale, RECENT_MONTH_FORMAT),
-      dayNumber: String(start.getUTCDate()),
+      dayNumber: formatDate(start, locale, RECENT_DAY_FORMAT),
     };
   });
 

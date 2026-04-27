@@ -119,6 +119,9 @@ export const motion = {
  * at runtime.
  */
 export function rgbaFromHex(hex: string, alpha: number): string {
+  if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+    throw new Error(`rgbaFromHex: invalid alpha "${alpha}"`);
+  }
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (!m) throw new Error(`rgbaFromHex: invalid hex "${hex}"`);
   const r = parseInt(m[1], 16);
