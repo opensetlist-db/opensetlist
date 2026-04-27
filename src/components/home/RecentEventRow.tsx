@@ -25,19 +25,23 @@ export function RecentEventRow({
   dayNumber,
   isLast,
 }: Props) {
-  // Hover via React state (not Tailwind `hover:bg-[#...]`) so the bg
-  // reads from `colors.bgSubtle` and a token change propagates here.
-  const [hovered, setHovered] = useState(false);
+  // Hover/focus via React state (not Tailwind `hover:bg-[#...]`) so the
+  // bg reads from `colors.bgSubtle` and a token change propagates here.
+  // Focus handlers mirror hover so keyboard-only navigation gets the
+  // same row highlight that mouse users see.
+  const [active, setActive] = useState(false);
   return (
     <Link
       href={href}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
       className="flex items-center gap-3 transition-colors"
       style={{
         padding: "12px 16px",
         borderBottom: isLast ? "none" : `1px solid ${colors.borderLight}`,
-        background: hovered ? colors.bgSubtle : "transparent",
+        background: active ? colors.bgSubtle : "transparent",
       }}
     >
       <div

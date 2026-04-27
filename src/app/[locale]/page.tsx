@@ -467,15 +467,6 @@ export default async function HomePage({
                       variant="stack"
                     />
                   ))}
-                  <div className="mt-1 text-center">
-                    <Link
-                      href={`/${locale}/events`}
-                      className="text-[13px] font-semibold"
-                      style={{ color: colors.primary }}
-                    >
-                      {t("viewAllSchedule")}
-                    </Link>
-                  </div>
                 </div>
               </aside>
             )}

@@ -31,21 +31,25 @@ export function UpcomingCard({
   dDayLabel,
   variant = "stack",
 }: Props) {
-  // Hover via React state (not a Tailwind arbitrary `hover:bg-[#...]`)
-  // so the bg color reads from `colors.primaryHoverBg` and a token
-  // change propagates here automatically.
-  const [hovered, setHovered] = useState(false);
+  // Hover/focus via React state (not a Tailwind arbitrary
+  // `hover:bg-[#...]`) so the bg color reads from `colors.primaryHoverBg`
+  // and a token change propagates here automatically. Focus handlers
+  // mirror hover so keyboard-only navigation gets the same card
+  // highlight that mouse users see.
+  const [active, setActive] = useState(false);
   return (
     <Link
       href={href}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
       className={[
         "block transition-colors",
         variant === "scroll" ? "w-[200px] flex-shrink-0" : "w-full",
       ].join(" ")}
       style={{
-        background: hovered ? colors.primaryHoverBg : colors.bgCard,
+        background: active ? colors.primaryHoverBg : colors.bgCard,
         border: `1.5px solid ${colors.border}`,
         borderRadius: radius.cardSm,
         padding: "14px 16px",
