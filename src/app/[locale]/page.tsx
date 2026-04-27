@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, nonBlank, slugify } from "@/lib/utils";
+import { serializeBigInt, nonBlank, slugify, formatDate } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { LiveHeroCard } from "@/components/home/LiveHeroCard";
 import { UpcomingCard } from "@/components/home/UpcomingCard";
@@ -50,11 +50,19 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // long-tail events that would otherwise dominate take(5).
 const HOME_WINDOW_DAYS = 30;
 
-const LOCALE_MAP: Record<string, string> = {
-  ko: "ko-KR",
-  ja: "ja-JP",
-  en: "en-US",
-  "zh-CN": "zh-CN",
+// Card-specific date formats. UpcomingCard shows the full day with a
+// weekday tag ("5월 23일 (토)"); RecentEventRow date pill shows just
+// the abbreviated month. Both are anchored to UTC so the rendered day
+// matches the stored UTC startTime.
+const UPCOMING_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+  timeZone: "UTC",
+};
+const RECENT_MONTH_FORMAT: Intl.DateTimeFormatOptions = {
+  month: "short",
+  timeZone: "UTC",
 };
 
 // UTC day boundary — never use server-local time to bucket UTC-stored
@@ -262,17 +270,6 @@ export default async function HomePage({
   // Single `now` shared across all three queries so an event near a
   // bucket boundary can't get classified inconsistently between sections.
   const now = new Date();
-  const intlLocale = LOCALE_MAP[locale] ?? locale;
-  const upcomingDateFmt = new Intl.DateTimeFormat(intlLocale, {
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    timeZone: "UTC",
-  });
-  const recentMonthFmt = new Intl.DateTimeFormat(intlLocale, {
-    month: "short",
-    timeZone: "UTC",
-  });
 
   const [ongoingEvents, upcomingEvents, recentEvents] = await Promise.all([
     getOngoingEvents(now),
@@ -311,7 +308,7 @@ export default async function HomePage({
         seriesName,
         eventName: eventName || evT("unknownEvent"),
         venue: projectVenue(e, locale),
-        formattedDate: upcomingDateFmt.format(start),
+        formattedDate: formatDate(start, locale, UPCOMING_DATE_FORMAT),
         dDayLabel: t("dDay", { days: daysUntilUTC(start, now) }),
       };
     }
@@ -326,7 +323,7 @@ export default async function HomePage({
       eventName: eventName || evT("unknownEvent"),
       venue: projectVenue(e, locale),
       songCountLabel: t("songCount", { count: e._count.setlistItems }),
-      monthLabel: recentMonthFmt.format(start),
+      monthLabel: formatDate(start, locale, RECENT_MONTH_FORMAT),
       dayNumber: String(start.getUTCDate()),
     };
   });
@@ -343,12 +340,21 @@ export default async function HomePage({
     >
       <div className="mx-auto max-w-[480px] px-4 pb-15 pt-4 lg:max-w-[960px] lg:px-10 lg:pt-7 lg:pb-15">
         {isEmpty ? (
-          <p
-            className="py-20 text-center text-sm"
-            style={{ color: colors.textMuted }}
-          >
-            {t("noEvents")}
-          </p>
+          <div className="py-20 text-center">
+            <p
+              className="mb-3 text-sm"
+              style={{ color: colors.textMuted }}
+            >
+              {t("noEvents")}
+            </p>
+            <Link
+              href={`/${locale}/events`}
+              className="text-[13px] font-semibold"
+              style={{ color: colors.primary }}
+            >
+              {t("viewAllEvents")}
+            </Link>
+          </div>
         ) : (
           <div className="lg:grid lg:grid-cols-[1fr_340px] lg:items-start lg:gap-6">
             <div>

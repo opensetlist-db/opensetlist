@@ -65,10 +65,24 @@ export function pickLocaleTranslation<T extends { locale: string }>(
 
 /**
  * Format a date for display. Returns locale-appropriate date string.
+ *
+ * `options` lets callers override the default `{year, month, day}`
+ * shape — needed for surfaces that want only month, or weekday +
+ * month + day (home cards). The default preserves the original
+ * behavior so existing call sites don't change. When formatting a
+ * UTC-stored date for display, callers should pass
+ * `{ ..., timeZone: "UTC" }` so the rendered day matches how the
+ * value is stored (CLAUDE.md §"Date & Time").
  */
+const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+};
 export function formatDate(
   date: Date | string | null | undefined,
-  locale: string
+  locale: string,
+  options: Intl.DateTimeFormatOptions = DEFAULT_FORMAT_OPTIONS
 ): string {
   if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -78,9 +92,5 @@ export function formatDate(
     en: "en-US",
     "zh-CN": "zh-CN",
   };
-  return d.toLocaleDateString(localeMap[locale] ?? locale, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return d.toLocaleDateString(localeMap[locale] ?? locale, options);
 }

@@ -109,3 +109,20 @@ export const breakpoint = {
 export const motion = {
   livePulse: "live-pulse 1.2s ease-in-out infinite",
 } as const;
+
+/*
+ * Compose a partially-transparent CSS color from a hex token. Lets
+ * decorative surfaces (e.g. blob backgrounds, glows) reference a
+ * `colors.*` token directly without keeping a parallel `r,g,b` string
+ * that can drift out of sync. Throws on invalid hex so a malformed
+ * token fails loud at boot, not silently as `rgba(NaN,NaN,NaN,...)`
+ * at runtime.
+ */
+export function rgbaFromHex(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) throw new Error(`rgbaFromHex: invalid hex "${hex}"`);
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
