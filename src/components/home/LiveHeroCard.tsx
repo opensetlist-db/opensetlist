@@ -1,6 +1,6 @@
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
-import { colors, radius, shadows } from "@/styles/tokens";
+import { colors, motion, radius, shadows } from "@/styles/tokens";
 
 interface Props {
   href: string;
@@ -79,7 +79,7 @@ export function LiveHeroCard({
               height: 7,
               borderRadius: "50%",
               background: "white",
-              animation: "live-pulse 1.2s ease-in-out infinite",
+              animation: motion.livePulse,
             }}
           />
           <span

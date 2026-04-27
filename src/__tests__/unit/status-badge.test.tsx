@@ -18,7 +18,7 @@ describe("StatusBadge", () => {
     const ongoingDot = container.querySelector('span[aria-hidden="true"]');
     expect(ongoingDot).not.toBeNull();
     // Animation must reference the global `live-pulse` keyframe (defined in
-    // globals.css, PR #141 renamed it from `status-badge-pulse`).
+    // globals.css).
     expect((ongoingDot as HTMLElement).style.animation).toContain("live-pulse");
 
     rerender(<StatusBadge status="upcoming" label="Upcoming" />);

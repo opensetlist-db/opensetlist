@@ -92,3 +92,14 @@ export const radius = {
 export const breakpoint = {
   desktop: 1024,
 } as const;
+
+/*
+ * Motion shorthands. Currently a single entry — the LIVE-status pulse
+ * shared by `<StatusBadge status="ongoing">` (the `● LIVE` dot in
+ * row-shaped surfaces) and `<LiveHeroCard>` (the dot inside the dark
+ * gradient hero). Both must agree on the keyframe + cadence so a
+ * design tweak doesn't fall out of sync between surfaces.
+ */
+export const motion = {
+  livePulse: "live-pulse 1.2s ease-in-out infinite",
+} as const;
