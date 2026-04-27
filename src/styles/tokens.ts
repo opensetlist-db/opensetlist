@@ -55,6 +55,17 @@ export const colors = {
   live: "#dc2626",
   liveBg: "#fef2f2",
   liveBorder: "#fecaca",
+
+  // Error feedback (validation + submission failures). Same red as `live`
+  // today, but semantically distinct: a future brand shift moving live to
+  // orange (rare but possible per CR) shouldn't recolor error text. Keep
+  // both hexes here so the divergence is one-line easy if it happens.
+  error: "#dc2626",
+
+  // Soft-warning feedback (e.g. edit-cooldown countdown). Distinct from
+  // `error` (hard fail) and from trending-UI tokens (semantically
+  // unrelated despite the same amber family).
+  warning: "#d97706",
   upcoming: "#16a34a",
   upcomingBg: "#f0fdf4",
   upcomingBorder: "#bbf7d0",
@@ -97,6 +108,14 @@ export const radius = {
 
 export const breakpoint = {
   desktop: 1024,
+} as const;
+
+// Border-width scale. `emphasis` is the slightly heavier stroke used on
+// surfaces that need to read as "the user's own" (my-impression card) or
+// "active selection" (reaction button mine-state). Most other surfaces
+// use 1px directly via Tailwind utilities or inline style.
+export const borderWidth = {
+  emphasis: "1.5px",
 } as const;
 
 /*
