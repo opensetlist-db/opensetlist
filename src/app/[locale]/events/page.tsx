@@ -96,8 +96,9 @@ export default async function EventsPage({
   };
   // The ongoing badge uses the dedicated `Event.live` ("LIVE") label
   // rather than `Event.status.ongoing` ("진행 중") — matches the mockup
-  // and the home page's hero pill, and avoids a confusing collision
-  // with the FilterBar's "진행중" button text in Korean.
+  // and the home page's hero pill, and stays visually distinct from
+  // the FilterBar's "진행 중" chip text (same locale string post-#159
+  // i18n unification, so a separate "LIVE" word keeps badge ≠ chip).
   const liveLabel = t("live");
   const ungroupedName = t("ungrouped");
   const unknownEventName = t("unknownEvent");
