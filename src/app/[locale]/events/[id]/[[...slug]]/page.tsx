@@ -343,14 +343,11 @@ export default async function EventPage({ params }: Props) {
         "short",
       )
     : null;
-  const seriesFullName = event.eventSeries
-    ? displayNameWithFallback(
-        event.eventSeries,
-        event.eventSeries.translations,
-        locale,
-        "full"
-      )
-    : null;
+  // (Round-4 dropped `seriesFullName` here — `headerTitle` now
+  // cascades through `eventFullName || seriesShortName`, so the
+  // full series form is no longer consumed by the page render
+  // path. `generateMetadata`'s own `seriesFullName` declaration
+  // stays — that one IS used for the OG title.)
   // Short event name for the breadcrumb tail. Cascades the same way as
   // every other display-name resolution: localized shortName → localized
   // name → originalShortName → originalName.
@@ -530,7 +527,7 @@ export default async function EventPage({ params }: Props) {
     for (const link of links) {
       if (
         link.endDate &&
-        new Date(String(link.endDate)).getTime() < referenceNow.getTime()
+        new Date(link.endDate).getTime() < referenceNow.getTime()
       ) {
         continue;
       }
@@ -547,7 +544,7 @@ export default async function EventPage({ params }: Props) {
       for (const link of links) {
         if (
           link.endDate &&
-          new Date(String(link.endDate)).getTime() < referenceNow.getTime()
+          new Date(link.endDate).getTime() < referenceNow.getTime()
         ) {
           continue;
         }
