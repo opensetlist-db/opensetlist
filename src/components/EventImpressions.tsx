@@ -9,7 +9,7 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
-import { borderWidth, colors, motion, radius } from "@/styles/tokens";
+import { borderWidth, colors, motion, radius, shadows } from "@/styles/tokens";
 
 export interface Impression {
   id: string;
@@ -360,10 +360,36 @@ export function EventImpressions({
   };
 
   return (
-    <section className="mt-10">
-      <div className="mb-3 flex items-baseline justify-between">
+    <section
+      className="mt-10"
+      style={{
+        background: colors.bgCard,
+        borderRadius: radius.card,
+        boxShadow: shadows.card,
+        overflow: "hidden",
+      }}
+    >
+      {/* Card header — title + count + optional LIVE pill. Bottom
+          border separates it from the impressions body, matching
+          the mockup `event-page-desktop-mockup-v2.jsx:695-702`. */}
+      <div
+        className="flex items-baseline justify-between gap-2"
+        style={{
+          padding: "16px 20px 12px",
+          borderBottom: `1px solid ${colors.borderLight}`,
+        }}
+      >
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">{t("title")}</h2>
+          <h2
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: colors.textPrimary,
+              margin: 0,
+            }}
+          >
+            {t("title")}
+          </h2>
           {isOngoing && (
             <span
               className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
@@ -384,7 +410,7 @@ export function EventImpressions({
             </span>
           )}
         </div>
-        <span className="text-xs" style={{ color: colors.textSecondary }}>
+        <span className="text-xs" style={{ color: colors.textMuted }}>
           {t("count", { count: impressions.length })}
         </span>
       </div>
@@ -394,8 +420,23 @@ export function EventImpressions({
         Desktop (lg): 2-col grid `[my-impression | list]` per handoff §3-6.
         Grid's natural single-col on mobile means no extra layout branching.
       */}
-      <div className="lg:grid lg:grid-cols-2 lg:gap-6 lg:items-start">
+      <div
+        className="lg:grid lg:grid-cols-2 lg:items-start"
+        style={{ padding: "16px 20px", gap: 24 }}
+      >
         <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: colors.textMuted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 10,
+            }}
+          >
+            {t("myLabel")}
+          </div>
           {mode === "new" && (
             <div className="mb-4 p-3" style={neutralCardStyle}>
               <textarea
@@ -439,14 +480,16 @@ export function EventImpressions({
           {mode === "submitted" && saved && (
             <div className="mb-4 p-3" style={myImpressionCardStyle}>
               <div
-                className="text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: colors.primary }}
-              >
-                {t("submitted")}
-              </div>
-              <div
-                className="mt-1 text-sm"
-                style={{ color: colors.textPrimary }}
+                className="text-sm"
+                style={{
+                  color: colors.textPrimary,
+                  // `break-words` so a single-token-long impression
+                  // can't overflow the card horizontally on narrow
+                  // viewports. `whitespace-pre-wrap` preserves the
+                  // user's manual line breaks.
+                  overflowWrap: "break-word",
+                  whiteSpace: "pre-wrap",
+                }}
               >
                 {saved.content}
               </div>
@@ -465,12 +508,6 @@ export function EventImpressions({
 
           {mode === "editing" && saved && (
             <div className="mb-4 p-3" style={myImpressionCardStyle}>
-              <div
-                className="mb-2 text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: colors.primary }}
-              >
-                {t("editing")}
-              </div>
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -532,6 +569,18 @@ export function EventImpressions({
         </div>
 
         <div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: colors.textMuted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 10,
+            }}
+          >
+            {t("allLabel")}
+          </div>
           {impressions.length === 0 ? (
             <p className="text-sm" style={{ color: colors.textSecondary }}>
               {t("empty")}

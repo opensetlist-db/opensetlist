@@ -267,7 +267,9 @@
     "translate": "Translate",
     "showOriginal": "Show original",
     "translating": "Translating...",
-    "translateFailed": "Translation unavailable. Try again."
+    "translateFailed": "Translation unavailable. Try again.",
+    "myLabel": "Your impression",
+    "allLabel": "All impressions"
   },
   "Header": {
     "brandName": "OpenSetlist",

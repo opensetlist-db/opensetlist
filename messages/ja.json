@@ -267,7 +267,9 @@
     "translate": "翻訳",
     "showOriginal": "原文を表示",
     "translating": "翻訳中...",
-    "translateFailed": "翻訳できませんでした。もう一度お試しください。"
+    "translateFailed": "翻訳できませんでした。もう一度お試しください。",
+    "myLabel": "私のひとこと",
+    "allLabel": "すべてのひとこと"
   },
   "Header": {
     "brandName": "OpenSetlist",

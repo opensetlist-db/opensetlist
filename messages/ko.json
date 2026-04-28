@@ -267,7 +267,9 @@
     "translate": "번역",
     "showOriginal": "원문 보기",
     "translating": "번역 중...",
-    "translateFailed": "번역할 수 없습니다. 다시 시도하세요."
+    "translateFailed": "번역할 수 없습니다. 다시 시도하세요.",
+    "myLabel": "내 한줄평",
+    "allLabel": "모든 한줄평"
   },
   "Header": {
     "brandName": "OpenSetlist",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
+import { colors } from "@/styles/tokens";
 import type { Impression } from "./EventImpressions";
 
 interface Props {
@@ -82,7 +83,19 @@ export function ImpressionCell({
 
   return (
     <div>
-      <div className="whitespace-pre-wrap">{displayText}</div>
+      <div
+        // Explicit color + overflowWrap so the impression body is
+        // always legible and never overflows its parent card on
+        // narrow viewports — operator's mockup pass flagged both.
+        // `whitespace-pre-wrap` preserves manual line breaks.
+        style={{
+          color: colors.textPrimary,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "break-word",
+        }}
+      >
+        {displayText}
+      </div>
       <div className="mt-1 flex items-center justify-between text-xs text-zinc-400">
         <span>{formatDate(impression.createdAt, locale)}</span>
         <div className="flex items-center gap-3">
