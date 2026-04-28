@@ -122,18 +122,23 @@ async function getSongAppearances(completedEventIds: bigint[]) {
     },
   });
 
-  const byId = new Map(
-    serializeBigInt(songs).map((s) => [String(s.id), s] as const),
-  );
+  // Build the lookup map keyed off the RAW BigInt rows. `String(BigInt)`
+  // is exact for any magnitude; `String(serializedNumber)` would lose
+  // bits for IDs > 2^53 because `serializeBigInt` narrows to JS
+  // `number` first. Both `c.songId` (groupBy result) and `s.id` (raw
+  // row) are BigInt at this point, so the keys match by construction.
+  const rawById = new Map(songs.map((s) => [String(s.id), s] as const));
 
-  return counts.map((c) => ({
-    // String preserves precision for IDs > 2^53 — Prisma BigInt narrowed
-    // to `number` would silently lose bits at scale. The Map key
-    // already uses `String(...)` so this matches by construction.
-    songId: String(c.songId),
-    count: c._count.songId,
-    song: byId.get(String(c.songId)) ?? null,
-  }));
+  return counts.map((c) => {
+    const raw = rawById.get(String(c.songId));
+    return {
+      songId: String(c.songId),
+      count: c._count.songId,
+      // Per-row serialize: cheap (small song counts at Phase 1A scale)
+      // and keeps the lookup key precision-safe.
+      song: raw ? (serializeBigInt(raw) as unknown as SongRowHydrated) : null,
+    };
+  });
 }
 
 type SongRowHydrated = {
@@ -694,7 +699,7 @@ export default async function EventSeriesPage({
                     className="mb-3 flex items-center gap-3"
                     style={{
                       background: gradients.liveBanner,
-                      borderRadius: 14,
+                      borderRadius: radius.cardSm,
                       padding: "14px 16px",
                       textDecoration: "none",
                     }}

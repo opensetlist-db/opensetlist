@@ -8,7 +8,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
-import { colors } from "@/styles/tokens";
+import { colors, radius } from "@/styles/tokens";
 
 export interface PreparedLegEvent {
   id: number | string;
@@ -66,7 +66,7 @@ export function LegCard({
       className="mb-2.5 overflow-hidden"
       style={{
         background: colors.bgCard,
-        borderRadius: 14,
+        borderRadius: radius.cardSm,
         border: `1px solid ${colors.border}`,
       }}
     >
