@@ -8,19 +8,20 @@ export type OgPaletteSource =
   | "anchored"
   | "fallback";
 
+const BASE_COLOR = "#0f172a" as const;
+const BRAND_ANCHOR_COLOR = "#0277BD" as const;
+
 export type OgPalette = {
-  base: "#0f172a";
-  brandAnchor: "#0277BD";
+  base: typeof BASE_COLOR;
+  brandAnchor: typeof BRAND_ANCHOR_COLOR;
   mesh: [string, string, string];
   source: OgPaletteSource;
   fingerprint: string;
 };
 
-const BASE_COLOR = "#0f172a" as const;
-
 const BRAND_FALLBACK: [string, string, string] = [
   "#4FC3F7",
-  "#0277BD",
+  BRAND_ANCHOR_COLOR,
   "#7B1FA2",
 ];
 
@@ -31,7 +32,7 @@ function fallbackPalette(): OgPalette {
   const mesh = BRAND_FALLBACK;
   return {
     base: BASE_COLOR,
-    brandAnchor: "#0277BD",
+    brandAnchor: BRAND_ANCHOR_COLOR,
     mesh,
     source: "fallback",
     fingerprint: computeFingerprint("fallback", mesh),
@@ -122,7 +123,7 @@ export function paletteFromAnchorAndFrequency(
       const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
       return {
         base: BASE_COLOR,
-        brandAnchor: "#0277BD",
+        brandAnchor: BRAND_ANCHOR_COLOR,
         mesh,
         source: "faithful",
         fingerprint: computeFingerprint("faithful", mesh),
@@ -131,7 +132,7 @@ export function paletteFromAnchorAndFrequency(
     const mesh = harmonize(ordered);
     return {
       base: BASE_COLOR,
-      brandAnchor: "#0277BD",
+      brandAnchor: BRAND_ANCHOR_COLOR,
       mesh,
       source: "harmonized",
       fingerprint: computeFingerprint("harmonized", mesh),
@@ -159,7 +160,7 @@ export function paletteFromAnchorAndFrequency(
 
   return {
     base: BASE_COLOR,
-    brandAnchor: "#0277BD",
+    brandAnchor: BRAND_ANCHOR_COLOR,
     mesh,
     source: "anchored",
     fingerprint: computeFingerprint("anchored", mesh),
