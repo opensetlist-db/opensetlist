@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ArtistBadge } from "@/components/events/ArtistBadge";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
@@ -66,18 +67,7 @@ export function SeriesSection({
           {(artistShortName || hasOngoing) && (
             <div className="mb-1.5 flex items-center gap-1.5">
               {artistShortName && (
-                <span
-                  className="text-[11px] font-bold"
-                  style={{
-                    color: colors.primary,
-                    background: colors.primaryBg,
-                    borderRadius: radius.tag,
-                    padding: "1px 7px",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {artistShortName}
-                </span>
+                <ArtistBadge label={artistShortName} size="sm" />
               )}
               {hasOngoing && (
                 <StatusBadge

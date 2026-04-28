@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ArtistBadge } from "@/components/events/ArtistBadge";
 import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -71,18 +72,7 @@ export function SeriesBlock({
         <div className="flex-1">
           <div className="mb-1.5 flex items-center gap-2">
             {artistShortName && (
-              <span
-                className="text-[11px] font-bold"
-                style={{
-                  color: colors.primary,
-                  background: colors.primaryBg,
-                  borderRadius: radius.tag,
-                  padding: "2px 9px",
-                  lineHeight: 1.4,
-                }}
-              >
-                {artistShortName}
-              </span>
+              <ArtistBadge label={artistShortName} size="md" />
             )}
             {hasOngoing && (
               <StatusBadge
