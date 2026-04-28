@@ -29,8 +29,15 @@ interface Props {
    */
   artist: { id: string; slug: string; name: string } | null;
   organizerName: string | null;
-  /** Caller-resolved series link target — null when the event has no series. */
-  series: { id: number | bigint; slug: string; shortName: string } | null;
+  /**
+   * Caller-resolved series link target — null when the event has
+   * no series. `id` is `string` (not `number | bigint`) for the
+   * same reason `artist.id` is: `EventHeader` is a client
+   * component, and BigInt is outside the RSC serializable subset.
+   * The page stringifies at the boundary; high-id series (≥ 2^53)
+   * survive the round-trip without precision loss.
+   */
+  series: { id: string; slug: string; shortName: string } | null;
   /** Display title — series full name takes precedence; falls back to event full name then `unknownEvent`. */
   title: string;
   venue: string | null;

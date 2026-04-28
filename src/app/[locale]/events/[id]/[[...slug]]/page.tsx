@@ -675,7 +675,10 @@ export default async function EventPage({ params }: Props) {
             series={
               event.eventSeries && seriesShortName
                 ? {
-                    id: event.eventSeries.id,
+                    // String() at the boundary — EventHeader is a
+                    // client component and BigInt isn't serializable
+                    // across RSC. Same convention as `artist.id`.
+                    id: String(event.eventSeries.id),
                     slug: event.eventSeries.slug,
                     shortName: seriesShortName,
                   }
