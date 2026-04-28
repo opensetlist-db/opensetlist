@@ -23,8 +23,14 @@ interface Props {
    * to the artist detail page. Null when the series has no artistId
    * (multi-artist festivals) — the page should set `organizerName`
    * instead in that case.
+   *
+   * `id` is typed as `string` so the page can stringify the raw
+   * BigInt at the boundary. `Number(bigint)` would silently truncate
+   * for autoincrement IDs ≥ 2^53, breaking the rendered href on
+   * any future high-id artist (mirrors the precision-preservation
+   * convention used for `series.id`).
    */
-  artist: { id: number; slug: string; name: string } | null;
+  artist: { id: string; slug: string; name: string } | null;
   /**
    * Multi-artist festival fallback — rendered as plain text when
    * `artist` is null. Mirrors the `series.organizerName` field.

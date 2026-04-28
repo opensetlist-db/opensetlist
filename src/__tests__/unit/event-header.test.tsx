@@ -126,7 +126,7 @@ describe("EventHeader", () => {
     render(
       <EventHeader
         {...baseProps}
-        artist={{ id: 42, slug: "hasunosora", name: "蓮ノ空" }}
+        artist={{ id: "42", slug: "hasunosora", name: "蓮ノ空" }}
       />,
     );
     const artistLink = screen.getByText("蓮ノ空");

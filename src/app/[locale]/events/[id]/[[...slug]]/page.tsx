@@ -351,7 +351,11 @@ export default async function EventPage({ params }: Props) {
       : null;
   const headerArtist = seriesArtist
     ? {
-        id: Number(seriesArtist.id),
+        // String() — `Artist.id` is BigInt; `Number(bigint)` truncates
+        // precision for IDs >= 2^53. Mirrors the policy on
+        // `series.id` (which `EventHeader` accepts as `number |
+        // bigint` for the same reason).
+        id: String(seriesArtist.id),
         slug: seriesArtist.slug,
         name:
           displayNameWithFallback(
