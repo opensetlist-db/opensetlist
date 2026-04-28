@@ -34,12 +34,18 @@ interface Props {
  * Sidebar card listing the units that performed any song in this
  * event, deduped by `Artist.id`. Per
  * `event-page-desktop-mockup-v2.jsx:559-582`: each row is a
- * 3px-wide vertical color bar + unit name colored by the bar.
+ * 3px-wide vertical color bar + unit name colored by the bar +
+ * an optional members sublist (`花帆 · 銀子 · …`).
  *
- * The mockup also lists members per unit; resolving that requires
- * `stageIdentity.artistLinks` joins that aren't in the current
- * page query — deferred. The card still ships the unit names so
- * the operator can see who's on the lineup at a glance.
+ * The members array is populated by the caller from
+ * `stageIdentity.artistLinks` — the events page walks each
+ * setlist item's performers, looks up which units each
+ * StageIdentity belongs to (via the artistLinks rows it just
+ * fetched), skips graduated members (links whose `endDate`
+ * predates `referenceNow`), and pushes the resulting short names
+ * onto the matching unit's `members[]`. This component just
+ * renders whatever the caller passes; an empty array
+ * short-circuits the sublist render so the row stays compact.
  */
 export function UnitsCard({ locale, units }: Props) {
   const t = useTranslations("Event");
