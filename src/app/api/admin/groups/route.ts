@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GroupType, GroupCategory } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
@@ -52,33 +53,37 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  // Slug is a @unique column. Surface a duplicate as 409 with an
-  // operator-readable message instead of a generic 500 — the form
-  // shows the alert to the user without losing input state.
-  const conflict = await prisma.group.findUnique({
-    where: { slug: slug.value },
-    select: { id: true },
-  });
-  if (conflict) {
-    return NextResponse.json(
-      { error: `슬러그 "${slug.value}"가 이미 사용 중입니다.` },
-      { status: 409 },
-    );
+  // Slug is a @unique column. Catch P2002 from `create` rather than
+  // pre-flighting `findUnique` + `create` (TOCTOU: a concurrent
+  // request for the same slug would slip past the pre-check and hit
+  // the constraint anyway as a 500). Same idempotency-via-catch
+  // pattern used in `api/reactions/route.ts`.
+  try {
+    const group = await prisma.group.create({
+      data: {
+        slug: slug.value,
+        type: typeCheck.value,
+        category: categoryCheck.value,
+        hasBoard: hasBoardCheck.value ?? false,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalDescription: description.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
+      },
+      include: { translations: true },
+    });
+    return NextResponse.json(serializeBigInt(group), { status: 201 });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: `슬러그 "${slug.value}"가 이미 사용 중입니다.` },
+        { status: 409 },
+      );
+    }
+    throw e;
   }
-
-  const group = await prisma.group.create({
-    data: {
-      slug: slug.value,
-      type: typeCheck.value,
-      category: categoryCheck.value,
-      hasBoard: hasBoardCheck.value ?? false,
-      originalName: name.value,
-      originalShortName: shortName.value,
-      originalDescription: description.value,
-      originalLanguage: language.value,
-      translations: { create: translations.value },
-    },
-    include: { translations: true },
-  });
-  return NextResponse.json(serializeBigInt(group), { status: 201 });
 }

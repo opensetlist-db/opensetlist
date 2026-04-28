@@ -285,42 +285,40 @@ async function importArtists(rows: Record<string, string>[]) {
 async function importGroups(rows: Record<string, string>[]) {
   const results: string[] = [];
 
+  // Pre-shape every row so the per-row mutation below has no parsing
+  // left to do. Skip rows missing a slug — they have no upsert key
+  // and would be silently dropped.
+  type Prepared = {
+    slug: string;
+    type: GroupType | null;
+    category: GroupCategory | null;
+    hasBoard: boolean;
+    originals: Record<string, string | null>;
+    translations: Array<{
+      locale: string;
+      name: string;
+      shortName: string | null;
+      description: string | null;
+    }>;
+    originalLanguage: string;
+  };
+  const prepared: Prepared[] = [];
   for (const row of rows) {
     const slug = row.slug;
     if (!slug) continue;
 
     const jaTranslation = row.ja_name
-      ? {
-          locale: "ja",
-          name: row.ja_name,
-          shortName: row.ja_shortName || null,
-          description: row.ja_description || null,
-        }
+      ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null, description: row.ja_description || null }
       : null;
     const koTranslation = row.ko_name
-      ? {
-          locale: "ko",
-          name: row.ko_name,
-          shortName: row.ko_shortName || null,
-          description: row.ko_description || null,
-        }
+      ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null, description: row.ko_description || null }
       : null;
     const enTranslation = row.en_name
-      ? {
-          locale: "en",
-          name: row.en_name,
-          shortName: row.en_shortName || null,
-          description: row.en_description || null,
-        }
+      ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null, description: row.en_description || null }
       : null;
     const translations = [jaTranslation, koTranslation, enTranslation].filter(
       Boolean,
-    ) as {
-      locale: string;
-      name: string;
-      shortName: string | null;
-      description: string | null;
-    }[];
+    ) as Prepared["translations"];
 
     const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const source = pickOriginalSource(translations, originalLanguage);
@@ -330,55 +328,86 @@ async function importGroups(rows: Record<string, string>[]) {
       { override: "originalDescription", sourceKey: "description", out: "originalDescription" },
     ]);
 
-    const category = parseGroupCategory(row.category, slug);
-    const type = parseGroupType(row.type, slug);
-    const hasBoard = parseBooleanFlag(row.hasBoard);
+    prepared.push({
+      slug,
+      type: parseGroupType(row.type, slug),
+      category: parseGroupCategory(row.category, slug),
+      hasBoard: parseBooleanFlag(row.hasBoard),
+      originals,
+      translations,
+      originalLanguage,
+    });
+  }
+  if (prepared.length === 0) return { count: 0, log: results };
 
-    const existing = await prisma.group.findUnique({ where: { slug } });
+  // Single round trip to learn which slugs already exist; everything
+  // else fans out on top of the result. Mirrors the pattern in
+  // `importArtists`'s third pass.
+  const existingRows = await prisma.group.findMany({
+    where: { slug: { in: prepared.map((p) => p.slug) } },
+    select: { id: true, slug: true },
+  });
+  const existingByslug = new Map(
+    existingRows
+      .filter((g): g is { id: string; slug: string } => g.slug != null)
+      .map((g) => [g.slug, g.id]),
+  );
 
-    if (existing) {
+  // Updates run in parallel: per-row update + translation upserts in
+  // a single Promise.all. Each row is independent so contention
+  // between them on the connection pool is fine. No transaction —
+  // CSV import is tolerant of partial failures (operator re-runs).
+  const toUpdate = prepared.filter((p) => existingByslug.has(p.slug));
+  await Promise.all(
+    toUpdate.map(async (p) => {
+      const id = existingByslug.get(p.slug)!;
       await prisma.group.update({
-        where: { id: existing.id },
+        where: { id },
         data: {
-          type,
-          category,
-          hasBoard,
-          ...originals,
+          type: p.type,
+          category: p.category,
+          hasBoard: p.hasBoard,
+          ...p.originals,
         },
       });
-      // Parallel-fan the translation upserts. Each upsert is a single
-      // round trip; running them in series unnecessarily stretches
-      // the import wall-clock for groups with multiple locales. The
-      // deleteMany+createMany alternative would alter semantics
-      // (drop missing locales instead of preserving), which the
-      // sister importers (importArtists, importMembers) deliberately
-      // don't do.
       await Promise.all(
-        translations.map((t) =>
+        p.translations.map((t) =>
           prisma.groupTranslation.upsert({
-            where: { groupId_locale: { groupId: existing.id, locale: t.locale } },
-            create: { groupId: existing.id, ...t },
+            where: { groupId_locale: { groupId: id, locale: t.locale } },
+            create: { groupId: id, ...t },
             update: { name: t.name, shortName: t.shortName, description: t.description },
           }),
         ),
       );
-      results.push(`UPDATED: ${slug} → ${existing.id}`);
-    } else {
-      const originalName = ensureOriginalName(originals, slug, "Group", originalLanguage);
+      results.push(`UPDATED: ${p.slug} → ${id}`);
+    }),
+  );
+
+  // Creates: emit the nested-create form (translations created in
+  // the same statement as the Group), Promise.all in parallel.
+  const toCreate = prepared.filter((p) => !existingByslug.has(p.slug));
+  await Promise.all(
+    toCreate.map(async (p) => {
+      const originalName = ensureOriginalName(
+        p.originals,
+        p.slug,
+        "Group",
+        p.originalLanguage,
+      );
       const group = await prisma.group.create({
         data: {
-          slug,
-          type,
-          category,
-          hasBoard,
-          ...originals,
+          slug: p.slug,
+          type: p.type,
+          category: p.category,
+          hasBoard: p.hasBoard,
+          ...p.originals,
           originalName,
-          translations: { create: translations },
+          translations: { create: p.translations },
         },
       });
-      results.push(`CREATED: ${slug} → ${group.id}`);
-    }
-  }
+      results.push(`CREATED: ${p.slug} → ${group.id}`);
+    }),
+  );
 
   return { count: results.length, log: results };
 }
