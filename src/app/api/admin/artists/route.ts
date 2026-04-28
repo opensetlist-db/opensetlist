@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { ArtistType } from "@/generated/prisma/enums";
+import { ArtistType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { generateSlug, resolveAdminSlug } from "@/lib/slug";
@@ -9,6 +9,7 @@ import {
   enumValue,
   nullableBigIntId,
   nullableBoolean,
+  nullableEnumValue,
   nullableString,
   nullableStringArray,
   originalLanguage as parseOriginalLanguage,
@@ -60,6 +61,16 @@ export async function POST(request: NextRequest) {
   const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
   if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
+  const categoryCheck = nullableEnumValue(
+    body.category,
+    "category",
+    Object.values(GroupCategory),
+  );
+  if (!categoryCheck.ok) return badRequest(categoryCheck.message);
+
+  const isMainUnitCheck = nullableBoolean(body.isMainUnit, "isMainUnit");
+  if (!isMainUnitCheck.ok) return badRequest(isMainUnitCheck.message);
+
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
 
@@ -87,6 +98,8 @@ export async function POST(request: NextRequest) {
       type: typeCheck.value,
       parentArtistId: parentArtistIdCheck.value,
       hasBoard: hasBoardCheck.value ?? true,
+      category: categoryCheck.value,
+      isMainUnit: isMainUnitCheck.value ?? false,
       originalName: name.value,
       originalShortName: shortName.value,
       originalBio: bio.value,

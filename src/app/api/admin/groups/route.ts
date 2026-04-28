@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
+  const slug = requireString(body.slug, "slug");
+  if (!slug.ok) return badRequest(slug.message);
+
   const typeCheck = nullableEnumValue(body.type, "type", Object.values(GroupType));
   if (!typeCheck.ok) return badRequest(typeCheck.message);
 
@@ -49,8 +52,23 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
+  // Slug is a @unique column. Surface a duplicate as 409 with an
+  // operator-readable message instead of a generic 500 — the form
+  // shows the alert to the user without losing input state.
+  const conflict = await prisma.group.findUnique({
+    where: { slug: slug.value },
+    select: { id: true },
+  });
+  if (conflict) {
+    return NextResponse.json(
+      { error: `슬러그 "${slug.value}"가 이미 사용 중입니다.` },
+      { status: 409 },
+    );
+  }
+
   const group = await prisma.group.create({
     data: {
+      slug: slug.value,
       type: typeCheck.value,
       category: categoryCheck.value,
       hasBoard: hasBoardCheck.value ?? false,

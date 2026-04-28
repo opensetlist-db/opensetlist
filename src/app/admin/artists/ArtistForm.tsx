@@ -42,6 +42,8 @@ type ArtistFormProps = {
     type: string;
     parentArtistId: number | null;
     hasBoard: boolean;
+    category: string | null;
+    isMainUnit: boolean;
     originalName: string;
     originalShortName: string;
     originalBio: string;
@@ -53,6 +55,11 @@ type ArtistFormProps = {
 };
 
 const ARTIST_TYPES = ["solo", "group", "unit"];
+// Mirror of `GroupCategory` enum (kept in sync with prisma/schema.prisma).
+// Drives the ungrouped-artist fallback chip on the public list page —
+// only meaningful when this artist is NOT linked to a hasBoard=true
+// Group; the Group's category wins otherwise.
+const ARTIST_CATEGORIES = ["animegame", "kpop", "jpop", "cpop", "others"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
@@ -64,6 +71,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     initialData?.parentArtistId?.toString() ?? ""
   );
   const [hasBoard, setHasBoard] = useState(initialData?.hasBoard ?? true);
+  const [category, setCategory] = useState(initialData?.category ?? "");
+  const [isMainUnit, setIsMainUnit] = useState(initialData?.isMainUnit ?? false);
   const [originalLanguage, setOriginalLanguage] = useState(
     initialData?.originalLanguage ?? "ja"
   );
@@ -303,6 +312,8 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       type,
       parentArtistId: parentArtistId || null,
       hasBoard,
+      category: category || null,
+      isMainUnit,
       originalName: originalName.trim(),
       originalShortName: originalShortName.trim() || null,
       originalBio: originalBio.trim() || null,
@@ -393,6 +404,43 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           onChange={(e) => setHasBoard(e.target.checked)}
         />
         게시판 활성화
+      </label>
+
+      {/* Category fallback for ungrouped artists. Only meaningful when
+         this artist isn't linked to a hasBoard=true Group; the Group's
+         category wins otherwise. */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">
+          카테고리 (그룹 미연결 fallback)
+        </label>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+        >
+          <option value="">선택 안 함</option>
+          {ARTIST_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Main-unit flag — only takes effect for type=unit. The chip
+         strip on the public artists list page filters on this so a
+         parent artist's row stays readable. */}
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={isMainUnit}
+          disabled={type !== "unit"}
+          onChange={(e) => setIsMainUnit(e.target.checked)}
+        />
+        대표 유닛 (isMainUnit)
+        {type !== "unit" && (
+          <span className="text-xs text-zinc-400">— type=unit에만 적용</span>
+        )}
       </label>
 
       {/* Groups */}
