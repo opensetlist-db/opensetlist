@@ -50,6 +50,7 @@ type RealPersonRef = {
 
 type SongRef = {
   id: number;
+  slug: string;
   originalTitle: string;
   originalLanguage: string;
   variantLabel: string | null;

@@ -36,6 +36,7 @@ function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
       {
         song: {
           id: 100,
+          slug: "test-song",
           originalTitle: "Test Song",
           originalLanguage: "en",
           variantLabel: null,
@@ -67,7 +68,7 @@ describe("SetlistRow", () => {
     expect(screen.getByTitle("best")).toBeInTheDocument();
   });
 
-  it("dims and hides reactions for non-song variants (mc/video/interval)", () => {
+  it("hides reactions for non-song variants (mc/video/interval) and renders the type label in muted gray (no row-level opacity dim)", () => {
     const { container, rerender } = render(
       <SetlistRow
         item={makeItem({ type: "mc", songs: [] })}
@@ -78,8 +79,12 @@ describe("SetlistRow", () => {
       />,
     );
     const li = container.querySelector("li");
-    expect(li?.style.opacity).toBe("0.38");
+    // Row chrome stays at full opacity (border, hover state, position
+    // number must remain legible). Only the type label is grayed.
+    expect(li?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
+    const mcLabel = screen.getByText("itemType.mc");
+    expect(mcLabel.style.color).toBe(hexToRgbString("#94a3b8"));
 
     rerender(
       <SetlistRow
@@ -90,7 +95,7 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    expect(container.querySelector("li")?.style.opacity).toBe("0.38");
+    expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
 
     rerender(
@@ -102,8 +107,43 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    expect(container.querySelector("li")?.style.opacity).toBe("0.38");
+    expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
+  });
+
+  it("uses the canonical song.slug from DB (not a runtime re-slugify of the title)", () => {
+    const item = makeItem({
+      songs: [
+        {
+          song: {
+            id: 999,
+            slug: "canonical-stored-slug",
+            // Localized title that would slugify to something different
+            // — the link must still use the DB slug.
+            originalTitle: "Original Title",
+            originalLanguage: "ja",
+            variantLabel: null,
+            translations: [{ locale: "en", title: "Localized Title!" }],
+            artists: [],
+          },
+        },
+      ],
+    });
+    render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    // Resolve the link via the rendered title text — `displayOriginalTitle`
+    // returns the originalTitle as `main` for non-en originalLanguage.
+    const link = screen.getByText("Original Title").closest("a");
+    expect(link?.getAttribute("href")).toBe(
+      "/en/songs/999/canonical-stored-slug",
+    );
   });
 
   it("uses Artist.color for unit badge background + text when present", () => {
