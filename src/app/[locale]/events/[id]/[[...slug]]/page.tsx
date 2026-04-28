@@ -334,7 +334,12 @@ export default async function EventPage({ params }: Props) {
     ? displayNameWithFallback(
         event.eventSeries,
         event.eventSeries.translations,
-        locale
+        locale,
+        // `displayNameWithFallback` defaults to `"full"` — passing
+        // `"short"` explicitly is what makes this variable actually
+        // resolve to the localized shortName cascade. Without it,
+        // breadcrumb + EventHeader were rendering the full name.
+        "short",
       )
     : null;
   const seriesFullName = event.eventSeries
@@ -395,20 +400,44 @@ export default async function EventPage({ params }: Props) {
     "venue",
     "originalVenue"
   );
-  const city = resolveLocalizedField(
+  const cityBase = resolveLocalizedField(
     event,
     event.translations,
     locale,
     "city",
     "originalCity"
   );
+  // Mockup `event-page-desktop-mockup-v2.jsx:542` puts city next
+  // to country (e.g. `Fukuoka, Japan`). `Event.country` is an
+  // ISO-3166 code (`KR` / `JP` / `US`); resolve to the locale-
+  // appropriate display name via `Intl.DisplayNames`. Server-only
+  // call — Node.js bundles full ICU on Vercel, so the lookup is
+  // deterministic and matches what the browser would produce.
+  const countryName = event.country
+    ? (() => {
+        try {
+          return (
+            new Intl.DisplayNames(locale, { type: "region" }).of(
+              event.country,
+            ) ?? null
+          );
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const city =
+    cityBase && countryName
+      ? `${cityBase}, ${countryName}`
+      : (cityBase ?? countryName);
 
-  // Display title: series full name takes precedence (most concert events
-  // brand by series, e.g. "Hasunosora 6th Live"); falls back to the event's
-  // own full name then "unknown event" if both are missing. The previous
-  // `subtitle` slot is gone — venue + city now live in their own icon
-  // rows on the redesigned sidebar card.
-  const headerTitle = seriesFullName || eventFullName || t("unknownEvent");
+  // Display title: series SHORT name takes precedence (cleaner for
+  // the sidebar card — full series names like "러브라이브! 하스노소라
+  // 여학원 스쿨 아이돌 클럽 6th Live Dream Bloom Garden Party Stage"
+  // overflow the 300px sidebar). Falls back to the event short
+  // name then "unknown event" if both are missing.
+  const headerTitle =
+    seriesShortName || eventShortName || t("unknownEvent");
 
   // Sidebar count rows: `songsCount` mirrors `<LiveSetlist>`'s
   // subtitle predicate exactly — `type === "song"` AND a song row
@@ -521,6 +550,11 @@ export default async function EventPage({ params }: Props) {
   // items by `stageIdentity.id`. Personal color (`StageIdentity.color`)
   // is the pill tint — different field from `Artist.color` (unit
   // color) used by the Units card.
+  //
+  // Names use the FULL cascade (not "short") per operator preference
+  // — the sidebar pills have room for the longer character name
+  // (e.g. "林田乃理" rather than "ノリ"), and the full form reads
+  // unambiguously when the user is scanning the lineup at a glance.
   const sidebarPerformers: PerformersCardItem[] = (() => {
     const seen = new Map<string, PerformersCardItem>();
     for (const item of event.setlistItems) {
@@ -532,7 +566,7 @@ export default async function EventPage({ params }: Props) {
             p.stageIdentity,
             p.stageIdentity.translations,
             locale,
-            "short",
+            "full",
           ) || t("unknownPerformer");
         seen.set(id, {
           id,

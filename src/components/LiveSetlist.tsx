@@ -158,11 +158,17 @@ export function LiveSetlist({
       >
         <div className="flex items-center gap-2">
           <h2
+            // `text-transform: uppercase` is locale-safe — CJK
+            // characters pass through unchanged ("セットリスト",
+            // "세트리스트" stay as-is); only Latin-script
+            // ("Setlist" → "SETLIST") gets the all-caps treatment
+            // per the operator's preference for English headers.
             style={{
               fontSize: 15,
               fontWeight: 700,
               color: colors.textPrimary,
               letterSpacing: "0.02em",
+              textTransform: "uppercase",
               margin: 0,
             }}
           >
