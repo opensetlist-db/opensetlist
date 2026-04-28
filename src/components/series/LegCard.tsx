@@ -11,7 +11,7 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors, radius } from "@/styles/tokens";
 
 export interface PreparedLegEvent {
-  id: number | string;
+  id: number | string | bigint;
   href: string;
   status: ResolvedEventStatus;
   /** Pre-formatted short-form date (e.g. "4월 25일"). */

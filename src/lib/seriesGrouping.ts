@@ -2,20 +2,19 @@ import { resolveLocalizedField } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 
 /**
- * Post-`serializeBigInt` event shape consumed by `groupByCity` and
- * `getSeriesStats`. BigInt has been narrowed to JS `number` and Date
- * to ISO string at runtime (JSON round-trip in serializeBigInt). The
- * page caller hoists ONE `as unknown as SeriesEventInput[]` cast at
- * fetch time — the `unknown` step is intentional because Prisma's
- * pre-serialize type still says `bigint`/`Date` even though runtime
- * is `number`/`string`. Single cast > scattered ones.
+ * Event shape accepted by `groupByCity` and `getSeriesStats`. Unions
+ * cover both the raw Prisma row (BigInt id, Date startTime/date) and
+ * the post-`serializeBigInt` shape (number/string/string). The page
+ * passes the RAW Prisma row to preserve precision on autoincrementing
+ * BigInt IDs that would lose bits during `Number(BigInt)` narrowing
+ * for IDs > 2^53.
  */
 export interface SeriesEventInput {
-  id: number;
+  id: number | string | bigint;
   slug: string;
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
-  date: string | null;
-  startTime: string;
+  date: string | Date | null;
+  startTime: string | Date;
   // Identity-name fields needed by `displayNameWithFallback` so the
   // page doesn't have to fabricate synthetic objects with hard-coded
   // `originalLanguage: "ja"` (wrong for non-Japanese series).
@@ -80,11 +79,12 @@ export function groupByCity(
 
   const legs: Leg[] = [];
   for (const [city, bucketEvents] of buckets) {
-    // Stable: preserve input order. earliest = first event's startTime;
-    // latest = last event's startTime (input is already date-sorted).
-    const startTimes = bucketEvents.map((e) => e.startTime);
-    const start = startTimes.reduce((min, t) => (t < min ? t : min));
-    const end = startTimes.reduce((max, t) => (t > max ? t : max));
+    // Normalize to epoch ms so comparison works regardless of whether
+    // `startTime` is a Date (raw Prisma row) or an ISO string (post-
+    // serialize). Output stays as ISO string for `formatDateRange`.
+    const startMs = bucketEvents.map((e) => new Date(e.startTime).getTime());
+    const start = new Date(Math.min(...startMs)).toISOString();
+    const end = new Date(Math.max(...startMs)).toISOString();
     const venue = resolveLocalizedField(
       bucketEvents[0] as unknown as Record<string, unknown>,
       bucketEvents[0].translations,

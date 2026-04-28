@@ -63,8 +63,11 @@ describe("groupByCity", () => {
     );
     expect(legs).toHaveLength(1);
     expect(legs[0].events).toHaveLength(2);
-    expect(legs[0].dateRange.start).toBe("2026-04-25T00:00:00Z");
-    expect(legs[0].dateRange.end).toBe("2026-04-26T00:00:00Z");
+    // `groupByCity` normalizes inputs to epoch ms then back to ISO via
+    // `Date.toISOString()`, which always emits milliseconds even when
+    // the input lacked them. Compare against the canonical form.
+    expect(legs[0].dateRange.start).toBe("2026-04-25T00:00:00.000Z");
+    expect(legs[0].dateRange.end).toBe("2026-04-26T00:00:00.000Z");
   });
 
   it("creates separate legs for distinct cities", () => {

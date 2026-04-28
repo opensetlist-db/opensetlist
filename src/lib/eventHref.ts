@@ -10,7 +10,12 @@ import { slugify } from "@/lib/utils";
  */
 export function eventHref(
   locale: string,
-  id: number | bigint,
+  // Accept all three forms so callers don't have to coerce: `number`
+  // is the post-`serializeBigInt` shape, `bigint` is raw Prisma, and
+  // `string` is the precision-safe form used when an autoincrement
+  // ID exceeds 2^53. Template-literal interpolation produces the
+  // exact digit string in all three cases.
+  id: number | bigint | string,
   slugSource: string | null,
 ): string {
   const slug = slugSource ? slugify(slugSource) : "";

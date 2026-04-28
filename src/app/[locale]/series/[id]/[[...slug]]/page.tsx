@@ -79,8 +79,16 @@ async function getEventSeries(id: bigint) {
       },
     },
   });
-  if (!series) return null;
-  return serializeBigInt(series);
+  // Returns the raw Prisma row — NOT `serializeBigInt(series)` — so that
+  // BigInt IDs (parentSeries / childSeries / events) survive intact for
+  // link construction. `serializeBigInt` narrows BigInt to JS `number`,
+  // which loses bits for autoincrementing IDs > 2^53. `eventHref()`
+  // accepts both `number | bigint` and template-literal interpolation
+  // (`${id}`) renders BigInt as the exact digit string. Server
+  // components can render BigInt-typed values directly without
+  // hydration-payload concerns since this page has no client-state
+  // bridge that would JSON-serialize the row.
+  return series;
 }
 
 /**
@@ -195,9 +203,10 @@ export async function generateMetadata({
   params,
 }: Props): Promise<Metadata> {
   const { locale, id } = await params;
-  if (!/^\d+$/.test(id)) return { title: "Not Found" };
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const series = await getEventSeries(BigInt(id));
-  if (!series) return { title: "Not Found" };
+  if (!series) return { title: metaT("notFound") };
   const seriesName = displayNameWithFallback(
     series,
     series.translations,
@@ -233,6 +242,7 @@ export default async function EventSeriesPage({
   const t = await getTranslations("EventSeries");
   const ct = await getTranslations("Common");
   const evT = await getTranslations("Event");
+  const aT = await getTranslations("Artist");
 
   // Pin one reference instant so every getEventStatus() call within
   // this render uses the same `now`. Otherwise an event near a
@@ -316,18 +326,29 @@ export default async function EventSeriesPage({
       : prisma.setlistItemSong
           .groupBy({
             by: ["songId"],
+            // Only count songs that are still visible: a soft-deleted
+            // song (`song.isDeleted = true`) wouldn't render in the
+            // songs tab, so it shouldn't inflate the tab-label count.
             where: {
               setlistItem: {
                 eventId: { in: completedEventIds },
                 isDeleted: false,
               },
+              song: { isDeleted: false },
             },
           })
           .then((rows) => rows.length),
   ]);
 
   const uniqueSongCount =
-    activeTab === "songs" ? songAppearances.length : scheduleSongCount;
+    activeTab === "songs"
+      ? // Same "displayable songs only" rule on the songs tab: the
+        // hydration query in `getSongAppearances` filters by
+        // `song.isDeleted: false`, so a row with `song === null`
+        // means the song was soft-deleted between the groupBy and
+        // hydrate steps (rare race) — exclude from the count.
+        songAppearances.filter((row) => row.song !== null).length
+      : scheduleSongCount;
 
   const tabs = [
     { key: "schedule", label: t("tabSchedule") },
@@ -658,7 +679,7 @@ export default async function EventSeriesPage({
                     {units.map((u) => {
                       const unitName =
                         displayNameWithFallback(u, u.translations, locale) ||
-                        t("unknownSeries");
+                        aT("unknown");
                       const unitColor = u.color ?? colors.textSubtle;
                       return (
                         <span
