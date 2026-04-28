@@ -6,15 +6,16 @@ import { colors, radius, shadows } from "@/styles/tokens";
 export interface PerformersCardItem {
   /** StageIdentity uuid — already a string, used directly as React key. */
   id: string;
-  /** Resolved character name — caller passes `displayNameWithFallback(..., "short")`. */
+  /** Resolved character name — caller passes `displayNameWithFallback(..., "full")`. */
   name: string;
   /**
-   * Personal color from `StageIdentity.color`. Null when not set —
-   * pill falls back to `colors.textSubtle` + `colors.bgSubtle` so
-   * un-colored characters render legibly without inventing a brand
-   * color for them.
+   * Tint color for this character's pill — the resolved color of
+   * their primary unit (caller passes `resolveUnitColor(unit)`,
+   * which substitutes `UNIT_COLOR_FALLBACK = colors.primary` when
+   * the unit's own `Artist.color` is null). Always set so every
+   * pill renders with a visible accent.
    */
-  color: string | null;
+  color: string;
 }
 
 interface Props {
@@ -63,42 +64,43 @@ export function PerformersCard({ performers }: Props) {
           margin: 0,
         }}
       >
-        {performers.map((p) => {
-          const colored = p.color != null;
-          return (
-            <li
-              key={p.id}
+        {performers.map((p) => (
+          <li
+            key={p.id}
+            // Pill bg uses the unit color at ~7% alpha (`#RRGGBB12`)
+            // per the desktop mockup; dot + text use it at full
+            // opacity. `color` is always set (`UNIT_COLOR_FALLBACK`
+            // applied upstream), so no null branch.
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              background: `${p.color}12`,
+              borderRadius: 20,
+              padding: "4px 10px 4px 6px",
+            }}
+          >
+            <span
+              aria-hidden="true"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                background: colored ? `${p.color}12` : colors.bgSubtle,
-                borderRadius: 20,
-                padding: "4px 10px 4px 6px",
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: p.color,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: p.color,
               }}
             >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: colored ? p.color! : colors.textSubtle,
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: colored ? p.color! : colors.textSubtle,
-                }}
-              >
-                {p.name}
-              </span>
-            </li>
-          );
-        })}
+              {p.name}
+            </span>
+          </li>
+        ))}
       </ul>
     </section>
   );

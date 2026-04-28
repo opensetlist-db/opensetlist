@@ -147,8 +147,8 @@ export function EventHeader({
             {artist ? (
               <Link
                 href={`/${locale}/artists/${artist.id}/${artist.slug}`}
-                className="text-[12px] font-medium hover:underline"
-                style={{ color: colors.textSubtle }}
+                className="text-[12px] font-semibold hover:underline"
+                style={{ color: colors.primary }}
               >
                 {artist.name}
               </Link>

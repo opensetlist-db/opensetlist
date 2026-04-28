@@ -245,7 +245,8 @@
     "best": "最高",
     "surprise": "サプライズ",
     "moved": "感動",
-    "trending": "この公演の話題曲"
+    "trending": "この公演の話題曲",
+    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
   },
   "Impression": {
     "title": "一言感想",

@@ -21,3 +21,26 @@ export function getArtistColor(artist: {
 }): string | null {
   return artist.color ?? null;
 }
+
+/**
+ * Solid color used when a unit has no `Artist.color` set yet.
+ * Distinct from `BRAND_GRADIENT` (which is for avatars / stripes
+ * that need a gradient shape) — this is a flat color suitable for
+ * inline tints, vertical bars, and small pills. The event page's
+ * `<UnitsCard>` and `<PerformersCard>` (for performers whose unit
+ * lacks a color) both use it so a "no-color" unit still renders
+ * with a visible brand-tinted accent rather than a neutral gray.
+ *
+ * `colors.primary` is the right pick: it's already the
+ * "primary action" surface across the app, so a not-yet-themed
+ * unit reads as "color pending, default to brand" instead of
+ * inventing a new neutral.
+ */
+export const UNIT_COLOR_FALLBACK = colors.primary;
+
+/** Resolved unit color — `Artist.color` if set, else the brand fallback. */
+export function resolveUnitColor(artist: {
+  color?: string | null;
+}): string {
+  return artist.color ?? UNIT_COLOR_FALLBACK;
+}

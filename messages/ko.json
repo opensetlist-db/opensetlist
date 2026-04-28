@@ -245,7 +245,8 @@
     "best": "최고",
     "surprise": "깜짝",
     "moved": "감동",
-    "trending": "이번 공연 화제의 곡"
+    "trending": "이번 공연 화제의 곡",
+    "trendingEmpty": "아직 반응이 없어요 — 셋리스트에서 반응을 추가해보세요!"
   },
   "Impression": {
     "title": "한줄평",

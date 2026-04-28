@@ -245,7 +245,8 @@
     "best": "Amazing",
     "surprise": "Surprise",
     "moved": "Emotional",
-    "trending": "Trending songs"
+    "trending": "Trending songs",
+    "trendingEmpty": "No reactions yet — try adding one from the setlist!"
   },
   "Impression": {
     "title": "One-line impressions",

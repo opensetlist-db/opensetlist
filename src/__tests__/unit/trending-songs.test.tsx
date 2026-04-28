@@ -33,9 +33,17 @@ const sample: TrendingSong[] = [
 ];
 
 describe("TrendingSongs", () => {
-  it("renders null when songs is empty (card hidden until first reaction)", () => {
-    const { container } = render(<TrendingSongs songs={[]} />);
-    expect(container.firstChild).toBeNull();
+  it("renders the card with an empty-state nudge when songs is empty", () => {
+    // Mockup `event-page-desktop-mockup-v2.jsx:626-629` keeps the
+    // card visible with a "no reactions yet" line so the trending
+    // section explains itself even before the first reaction lands.
+    // Previously the card returned null on empty — that hid the
+    // surface entirely.
+    render(<TrendingSongs songs={[]} />);
+    // The title still renders.
+    expect(screen.getByText("trending")).toBeInTheDocument();
+    // The empty-state copy renders via the `trendingEmpty` key.
+    expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });
 
   it("renders each song with title, medal, and top-reaction count", () => {
@@ -46,10 +54,16 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("🥇")).toBeInTheDocument();
     expect(screen.getByText("🥈")).toBeInTheDocument();
     expect(screen.getByText("🥉")).toBeInTheDocument();
-    // Top-reaction emoji + count rendered together for each row.
-    expect(screen.getByText(/🔥6/)).toBeInTheDocument();
-    expect(screen.getByText(/🩷5/)).toBeInTheDocument();
-    expect(screen.getByText(/😱3/)).toBeInTheDocument();
+    // Top-reaction emoji + count render in separate spans (the
+    // emoji at 14px, the count at 12px) per the mockup's two-line
+    // item layout — query each independently rather than as a
+    // single concatenated string.
+    expect(screen.getByText("🔥")).toBeInTheDocument();
+    expect(screen.getByText("6")).toBeInTheDocument();
+    expect(screen.getByText("🩷")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("😱")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("uses the trending tokens for background and border", () => {

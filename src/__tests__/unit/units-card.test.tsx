@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { UnitsCard } from "@/components/event/UnitsCard";
+import { hexToRgbString } from "@/__tests__/utils/color";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -59,8 +60,17 @@ describe("UnitsCard", () => {
   it("uses unit.color for the colored row when present", () => {
     render(<UnitsCard locale="ko" units={[sample[0]]} />);
     const link = screen.getByText("Cerise Bouquet");
-    // color is rendered as inline style; jsdom returns it as rgb(...)
-    expect(link.style.color).not.toBe("");
+    expect(link.style.color).toBe(hexToRgbString("#e91e8c"));
+  });
+
+  it("falls back to UNIT_COLOR_FALLBACK (= colors.primary) when unit.color is null", () => {
+    // `resolveUnitColor` substitutes `colors.primary` (#0277BD)
+    // when the unit has no `Artist.color` set yet — so the no-color
+    // unit's name and bar both render with the brand-default tint
+    // rather than a neutral gray.
+    render(<UnitsCard locale="ko" units={[sample[1]]} />);
+    const link = screen.getByText("DOLLCHESTRA");
+    expect(link.style.color).toBe(hexToRgbString("#0277BD"));
   });
 
   it("renders the joined members sublist when members exist", () => {

@@ -24,6 +24,7 @@ import {
   type PerformersCardItem,
 } from "@/components/event/PerformersCard";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { resolveUnitColor } from "@/lib/artistColor";
 import { colors } from "@/styles/tokens";
 import type { Metadata } from "next";
 
@@ -431,13 +432,15 @@ export default async function EventPage({ params }: Props) {
       ? `${cityBase}, ${countryName}`
       : (cityBase ?? countryName);
 
-  // Display title: series SHORT name takes precedence (cleaner for
-  // the sidebar card — full series names like "러브라이브! 하스노소라
-  // 여학원 스쿨 아이돌 클럽 6th Live Dream Bloom Garden Party Stage"
-  // overflow the 300px sidebar). Falls back to the event short
-  // name then "unknown event" if both are missing.
+  // Display title: event FULL name. The series short name already
+  // renders as a small blue link above the title (in EventHeader's
+  // series slot), so making the h1 *also* show the series name
+  // would be redundant — the operator flagged this in round 3.
+  // The h1 now carries the event identifier (e.g. "Day 2 ·
+  // Marine Messe Fukuoka"), with the series link providing the
+  // parent context above it.
   const headerTitle =
-    seriesShortName || eventShortName || t("unknownEvent");
+    eventFullName || seriesShortName || t("unknownEvent");
 
   // Sidebar count rows: `songsCount` mirrors `<LiveSetlist>`'s
   // subtitle predicate exactly — `type === "song"` AND a song row
@@ -464,97 +467,127 @@ export default async function EventPage({ params }: Props) {
     maximumFractionDigits: 1,
   }).format(reactionsCount);
 
-  // Sidebar Units card: derive unique units that performed any song
-  // in this event's setlist. `setlistItems[].artists[].artist` only
-  // populates when the row is a unit/solo/special stage type, so the
-  // type === "unit" filter is what scopes the list correctly. Dedupe
-  // by id and preserve first-seen order (mirrors the setlist order).
+  // ───────────────────────────────────────────────────────────
+  // Sidebar Units + Performers data prep
   //
-  // `members` per unit is derived from the same setlist items'
-  // `performers` list: each StageIdentity carries `artistLinks` with
-  // `artistId` pointing at the artists they belong to. We collect
-  // distinct StageIdentities per unit (skipping ones whose link has
-  // an `endDate` before the event date — graduated members) and use
-  // their short display names. Result is ordered by first-seen.
-  const sidebarUnits: UnitsCardItem[] = (() => {
-    type UnitDraft = Omit<UnitsCardItem, "members"> & {
-      members: { id: string; name: string }[];
-    };
-    const seen = new Map<string, UnitDraft>();
-    const memberSeen = new Map<string, Set<string>>();
-    for (const item of event.setlistItems) {
-      for (const a of item.artists) {
-        if (a.artist.type !== "unit") continue;
-        const id = String(a.artist.id);
-        if (!seen.has(id)) {
-          const name =
-            displayNameWithFallback(
-              a.artist,
-              a.artist.translations,
-              locale,
-              "short",
-            ) || aT("unknown");
-          seen.set(id, {
-            id,
-            slug: a.artist.slug,
-            name,
-            color: a.artist.color ?? null,
-            members: [],
-          });
-          memberSeen.set(id, new Set());
-        }
-      }
-    }
-    for (const item of event.setlistItems) {
-      for (const p of item.performers) {
-        const links = p.stageIdentity.artistLinks ?? [];
-        for (const link of links) {
-          // `link.endDate` non-null + before "now" means the
-          // membership lapsed before this event was indexed —
-          // skip so the sublist reflects the active lineup.
-          if (
-            link.endDate &&
-            new Date(String(link.endDate)).getTime() < referenceNow.getTime()
-          ) {
-            continue;
-          }
-          const unitId = String(link.artistId);
-          const draft = seen.get(unitId);
-          if (!draft) continue;
-          const members = memberSeen.get(unitId)!;
-          if (members.has(p.stageIdentity.id)) continue;
-          members.add(p.stageIdentity.id);
-          draft.members.push({
-            id: p.stageIdentity.id,
-            name:
-              displayNameWithFallback(
-                p.stageIdentity,
-                p.stageIdentity.translations,
-                locale,
-                "short",
-              ) || t("unknownPerformer"),
-          });
-        }
-      }
-    }
-    return [...seen.values()].map((draft) => ({
-      id: draft.id,
-      slug: draft.slug,
-      name: draft.name,
-      color: draft.color,
-      members: draft.members.map((m) => m.name),
-    }));
-  })();
+  // 1. Walk `setlistItems[].artists` once to build the unique unit
+  //    list (deduped by `Artist.id`, type === "unit" only, first-
+  //    seen order preserved). Each unit's color is resolved here:
+  //    `Artist.color` if set, else `UNIT_COLOR_FALLBACK` — the same
+  //    rule applies to both the Units card's color bar and the
+  //    Performers card's pill tint, so resolving once keeps them
+  //    in lockstep.
+  //
+  // 2. Walk `setlistItems[].performers` once to build the unit→
+  //    members map. Each StageIdentity carries `artistLinks` with
+  //    `artistId, endDate`; we look up `artistId` against the unit
+  //    map. Membership rows whose `endDate` predates `referenceNow`
+  //    are skipped (graduated members shouldn't show up on a
+  //    current-event lineup).
+  //
+  // 3. Walk `setlistItems[].performers` once more to build the
+  //    Performers card list — each character's pill tint is the
+  //    color of their *primary* unit (first matching active link
+  //    against the unit map). Falls back to `UNIT_COLOR_FALLBACK`
+  //    if no unit link resolves at all.
+  type SidebarUnit = UnitsCardItem & {
+    /** Resolved color (`Artist.color` or `UNIT_COLOR_FALLBACK`). Always set. */
+    resolvedColor: string;
+  };
 
-  // Sidebar Performers card: dedupe characters across all setlist
-  // items by `stageIdentity.id`. Personal color (`StageIdentity.color`)
-  // is the pill tint — different field from `Artist.color` (unit
-  // color) used by the Units card.
-  //
-  // Names use the FULL cascade (not "short") per operator preference
-  // — the sidebar pills have room for the longer character name
-  // (e.g. "林田乃理" rather than "ノリ"), and the full form reads
-  // unambiguously when the user is scanning the lineup at a glance.
+  const unitsById = new Map<string, SidebarUnit>();
+  const memberSeen = new Map<string, Set<string>>();
+  for (const item of event.setlistItems) {
+    for (const a of item.artists) {
+      if (a.artist.type !== "unit") continue;
+      const id = String(a.artist.id);
+      if (unitsById.has(id)) continue;
+      const name =
+        displayNameWithFallback(
+          a.artist,
+          a.artist.translations,
+          locale,
+          "short",
+        ) || aT("unknown");
+      unitsById.set(id, {
+        id,
+        slug: a.artist.slug,
+        name,
+        color: a.artist.color ?? null,
+        resolvedColor: resolveUnitColor(a.artist),
+        members: [],
+      });
+      memberSeen.set(id, new Set());
+    }
+  }
+
+  // Helper: pick the primary (first-active) unit for a performer's
+  // artist links. Returns null when no link points at one of the
+  // event's unit set — caller then falls back to the global default.
+  const pickPrimaryUnit = (
+    links: { artistId: number | bigint; endDate: Date | string | null }[],
+  ): SidebarUnit | null => {
+    for (const link of links) {
+      if (
+        link.endDate &&
+        new Date(String(link.endDate)).getTime() < referenceNow.getTime()
+      ) {
+        continue;
+      }
+      const u = unitsById.get(String(link.artistId));
+      if (u) return u;
+    }
+    return null;
+  };
+
+  // Pass 2: populate per-unit member lists.
+  for (const item of event.setlistItems) {
+    for (const p of item.performers) {
+      const links = p.stageIdentity.artistLinks ?? [];
+      for (const link of links) {
+        if (
+          link.endDate &&
+          new Date(String(link.endDate)).getTime() < referenceNow.getTime()
+        ) {
+          continue;
+        }
+        const unitId = String(link.artistId);
+        const u = unitsById.get(unitId);
+        if (!u) continue;
+        const members = memberSeen.get(unitId)!;
+        if (members.has(p.stageIdentity.id)) continue;
+        members.add(p.stageIdentity.id);
+        u.members.push(
+          displayNameWithFallback(
+            p.stageIdentity,
+            p.stageIdentity.translations,
+            locale,
+            "short",
+          ) || t("unknownPerformer"),
+        );
+      }
+    }
+  }
+  // Drop `resolvedColor` from the Units card payload — the card
+  // resolves its own fallback per row from `color`. The unit-color
+  // map keeps `resolvedColor` for the Performers card lookup.
+  const sidebarUnits: UnitsCardItem[] = [...unitsById.values()].map(
+    ({ id, slug, name, color, members }) => ({
+      id,
+      slug,
+      name,
+      color,
+      members,
+    }),
+  );
+
+  // Sidebar Performers card: each pill tint is the primary unit's
+  // resolved color. Personal `StageIdentity.color` is intentionally
+  // NOT used — operator wants the lineup to read as "members of
+  // these units" rather than "individual character palette".
+  // Names use the FULL cascade (not "short") per operator
+  // preference — sidebar pills have room for "林田乃理" (vs the
+  // short "ノリ"), and the full form is unambiguous when scanning.
   const sidebarPerformers: PerformersCardItem[] = (() => {
     const seen = new Map<string, PerformersCardItem>();
     for (const item of event.setlistItems) {
@@ -568,10 +601,15 @@ export default async function EventPage({ params }: Props) {
             locale,
             "full",
           ) || t("unknownPerformer");
+        const primaryUnit = pickPrimaryUnit(p.stageIdentity.artistLinks ?? []);
         seen.set(id, {
           id,
           name,
-          color: p.stageIdentity.color ?? null,
+          // Always set — `resolveUnitColor` covers the case where
+          // the primary unit's own color is null, and a missing
+          // primary unit (rare) falls through to the same fallback.
+          color:
+            primaryUnit?.resolvedColor ?? resolveUnitColor({ color: null }),
         });
       }
     }

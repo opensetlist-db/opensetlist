@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { resolveUnitColor } from "@/lib/artistColor";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 export interface UnitsCardItem {
@@ -66,7 +67,12 @@ export function UnitsCard({ locale, units }: Props) {
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {units.map((unit) => {
-          const accent = unit.color ?? colors.borderSubtle;
+          // Resolve once per row — `resolveUnitColor` returns the
+          // unit's `Artist.color` when set, else the brand fallback
+          // (`UNIT_COLOR_FALLBACK = colors.primary`). Same rule that
+          // tints the Performers card pills, so a "no-color" unit
+          // and its members render with one consistent accent.
+          const accent = resolveUnitColor(unit);
           return (
             <li
               key={unit.id}
@@ -94,10 +100,14 @@ export function UnitsCard({ locale, units }: Props) {
                 <Link
                   href={`/${locale}/artists/${unit.id}/${unit.slug}`}
                   className="hover:underline"
+                  // Same `accent` token as the color bar so the
+                  // unit name and its bar share one tint — including
+                  // the brand-fallback color when `Artist.color`
+                  // hasn't been backfilled.
                   style={{
                     fontSize: 13,
                     fontWeight: 700,
-                    color: unit.color ?? colors.textPrimary,
+                    color: accent,
                     textDecoration: "none",
                   }}
                 >
