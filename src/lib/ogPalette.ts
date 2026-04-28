@@ -169,9 +169,13 @@ export function paletteFromAnchorAndFrequency(
   } else {
     // Harmonize: anchor + as many supporting as we have; the
     // existing OKLCH rotation fills mesh[1..2] from anchor's hue
-    // when the supporting list is short. With supporting.length 0
-    // we get [anchor, anchor+30°, anchor-30°]; with length 1 we
-    // get [anchor, supporting[0], supporting[0]-30°].
+    // because `harmonize` seeds via `realColors[i % length]` and
+    // i starts at 0 — so the rotation source is always
+    // realColors[0] (= anchor) for the first fill, and again
+    // anchor (i=1, length=1) when we only have the anchor itself.
+    // With supporting.length 0 we get [anchor, anchor+30°,
+    // anchor-30°]; with length 1 we get [anchor, supporting[0],
+    // anchor-30°].
     mesh = harmonize([validAnchor, ...supporting]);
   }
 
