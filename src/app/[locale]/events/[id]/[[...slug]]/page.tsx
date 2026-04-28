@@ -18,6 +18,11 @@ import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventHeader } from "@/components/EventHeader";
+import { UnitsCard, type UnitsCardItem } from "@/components/event/UnitsCard";
+import {
+  PerformersCard,
+  type PerformersCardItem,
+} from "@/components/event/PerformersCard";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { colors } from "@/styles/tokens";
 import type { Metadata } from "next";
@@ -401,6 +406,63 @@ export default async function EventPage({ params }: Props) {
     0,
   );
 
+  // Sidebar Units card: derive unique units that performed any song
+  // in this event's setlist. `setlistItems[].artists[].artist` only
+  // populates when the row is a unit/solo/special stage type, so the
+  // type === "unit" filter is what scopes the list correctly. Dedupe
+  // by id and preserve first-seen order (mirrors the setlist order).
+  const sidebarUnits: UnitsCardItem[] = (() => {
+    const seen = new Map<string, UnitsCardItem>();
+    for (const item of event.setlistItems) {
+      for (const a of item.artists) {
+        if (a.artist.type !== "unit") continue;
+        const id = String(a.artist.id);
+        if (seen.has(id)) continue;
+        const name =
+          displayNameWithFallback(
+            a.artist,
+            a.artist.translations,
+            locale,
+            "short",
+          ) || aT("unknown");
+        seen.set(id, {
+          id,
+          slug: a.artist.slug,
+          name,
+          color: a.artist.color ?? null,
+        });
+      }
+    }
+    return [...seen.values()];
+  })();
+
+  // Sidebar Performers card: dedupe characters across all setlist
+  // items by `stageIdentity.id`. Personal color (`StageIdentity.color`)
+  // is the pill tint — different field from `Artist.color` (unit
+  // color) used by the Units card.
+  const sidebarPerformers: PerformersCardItem[] = (() => {
+    const seen = new Map<string, PerformersCardItem>();
+    for (const item of event.setlistItems) {
+      for (const p of item.performers) {
+        const id = p.stageIdentity.id;
+        if (seen.has(id)) continue;
+        const name =
+          displayNameWithFallback(
+            p.stageIdentity,
+            p.stageIdentity.translations,
+            locale,
+            "short",
+          ) || t("unknownPerformer");
+        seen.set(id, {
+          id,
+          name,
+          color: p.stageIdentity.color ?? null,
+        });
+      }
+    }
+    return [...seen.values()];
+  })();
+
   // Breadcrumb: short series → short event when both exist. When the
   // event has no series, fall back to Home → event so a single
   // non-clickable item doesn't render as a useless one-link bar.
@@ -438,8 +500,13 @@ export default async function EventPage({ params }: Props) {
         renders above the main column without any extra layout branching.
       */}
       <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
-        {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room */}
-        <aside className="lg:sticky lg:top-[72px]">
+        {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room.
+            Three sidebar cards stacked with consistent gap; flex column wraps
+            the stack so sticky positioning still applies to the topmost edge. */}
+        <aside
+          className="lg:sticky lg:top-[72px]"
+          style={{ display: "flex", flexDirection: "column", gap: 16 }}
+        >
           <EventHeader
             status={resolvedStatus}
             statusLabel={t(`status.${resolvedStatus}`)}
@@ -463,6 +530,8 @@ export default async function EventPage({ params }: Props) {
             venue={venue}
             city={city}
           />
+          <UnitsCard locale={locale} units={sidebarUnits} />
+          <PerformersCard performers={sidebarPerformers} />
         </aside>
 
         <div className="mt-6 lg:mt-0 min-w-0">

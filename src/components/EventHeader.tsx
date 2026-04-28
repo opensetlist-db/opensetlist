@@ -111,7 +111,6 @@ export function EventHeader({
 
   return (
     <header
-      className="mb-6 lg:mb-0"
       style={{
         background: colors.bgCard,
         borderRadius: radius.card,
