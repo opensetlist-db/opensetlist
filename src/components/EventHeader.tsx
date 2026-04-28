@@ -1,7 +1,12 @@
+"use client";
+
+import type { ReactNode } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { StatusBadge } from "@/components/StatusBadge";
-import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
+import { EventStartTime } from "@/components/EventStartTime";
+import { formatVenueDate } from "@/lib/eventDateTime";
 import { colors, radius, shadows } from "@/styles/tokens";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
@@ -12,43 +17,51 @@ interface Props {
   startTime: Date | string | null;
   /**
    * Active locale, used to build artist + series link hrefs as
-   * `/${locale}/...`. Required: `next/link` does NOT auto-prefix the
-   * way `@/i18n/navigation`'s wrapper does, so callers must pass the
-   * locale explicitly. Matches the convention every other detail
-   * page uses for `next/link` hrefs.
+   * `/${locale}/...` and to pre-format the venue-date string in the
+   * locale-correct shape (e.g. `2026년 5월 2일` / `May 2, 2026`).
    */
   locale: string;
   /**
-   * Caller-resolved owning artist (via the series). Renders as a Link
-   * to the artist detail page. Null when the series has no artistId
-   * (multi-artist festivals) — the page should set `organizerName`
-   * instead in that case.
-   *
-   * `id` is typed as `string` so the page can stringify the raw
-   * BigInt at the boundary. `Number(bigint)` would silently truncate
-   * for autoincrement IDs ≥ 2^53, breaking the rendered href on
-   * any future high-id artist (mirrors the precision-preservation
-   * convention used for `series.id`).
+   * Caller-resolved owning artist (via the series). When present, the
+   * artist line renders as a Link to the artist detail page; when
+   * null, `organizerName` (multi-artist festival) renders as plain
+   * text instead. `id` is `string` so the page can stringify the raw
+   * BigInt at the boundary — `Number(bigint)` truncates ≥ 2^53.
    */
   artist: { id: string; slug: string; name: string } | null;
-  /**
-   * Multi-artist festival fallback — rendered as plain text when
-   * `artist` is null. Mirrors the `series.organizerName` field.
-   */
   organizerName: string | null;
-  /** Caller-resolved series link target — null when the event has no series. */
-  series: { id: number | bigint; slug: string; shortName: string } | null;
-  /** Display title — series full name takes precedence; falls back to event full name then `unknownEventLabel`. */
+  /**
+   * Caller-resolved series link target — null when the event has
+   * no series. `id` is `string` (not `number | bigint`) for the
+   * same reason `artist.id` is: `EventHeader` is a client
+   * component, and BigInt is outside the RSC serializable subset.
+   * The page stringifies at the boundary; high-id series (≥ 2^53)
+   * survive the round-trip without precision loss.
+   */
+  series: { id: string; slug: string; shortName: string } | null;
+  /** Display title — series full name takes precedence; falls back to event full name then `unknownEvent`. */
   title: string;
-  /** Subtitle — shown only when distinct from `title`. */
-  subtitle: string | null;
   venue: string | null;
   city: string | null;
+  /** Total number of song-typed setlist items (excludes mc/video/interval). */
+  songsCount: number;
+  /**
+   * Pre-formatted reaction count string (e.g. `"1.2K"` / `"1.2천"`).
+   * The page formats with `Intl.NumberFormat(locale, { notation:
+   * "compact", maximumFractionDigits: 1 })` so the locale-correct
+   * suffix is rendered server-side — passing a string instead of a
+   * raw number avoids any SSR-vs-client `Intl` divergence (different
+   * ICU versions could produce slightly different output).
+   */
+  reactionsValue: string;
 }
 
-// Card-styled event detail header per shared-components-handoff §3-1.
-// Renders identically on mobile and desktop; the page-level layout
-// decides whether it sits at the top or in a sticky sidebar.
+// Card-styled event detail header per
+// `event-page-desktop-mockup-v2.jsx:501-557`. Renders as the top
+// sidebar card on desktop and stacks above the main column on mobile.
+// The icon-row body (📅/🕐/📍/🏙️/🎵/💬) replaces the previous flat
+// status+date+venue stack so the operator's at-a-glance summary
+// matches the mockup verbatim.
 export function EventHeader({
   status,
   statusLabel,
@@ -59,96 +72,184 @@ export function EventHeader({
   organizerName,
   series,
   title,
-  subtitle,
   venue,
   city,
+  songsCount,
+  reactionsValue,
 }: Props) {
-  // EventStatusTicker is a client island that schedules a router.refresh
-  // at the next status boundary; mounting it here keeps the ticker logic
-  // co-located with the badge it ultimately invalidates.
+  const t = useTranslations("Event");
+
   const startTimeIso =
     typeof startTime === "string"
       ? startTime
       : startTime?.toISOString() ?? null;
-  const venueLine =
-    venue && city ? `${venue}, ${city}` : venue ?? city ?? null;
+
+  // `formatVenueDate` is timezone-agnostic — its `extractVenueYMD`
+  // helper uses `getUTCFullYear / getUTCMonth / getUTCDate` for
+  // `Date` inputs and slices the ISO string directly for `string`
+  // inputs (`src/lib/eventDateTime.ts:16-32`). Server and client
+  // always derive the same y/m/d for the same input, so this client
+  // component can call it on first render without a `useMounted`
+  // guard — no hydration mismatch is possible.
+  const dateLabel = formatVenueDate(date, locale);
+
+  const iconRows: Array<{
+    icon: string;
+    labelKey: "iconLabelDate" | "iconLabelStart" | "iconLabelVenue" | "iconLabelCity" | "iconLabelSongs" | "iconLabelReactions";
+    value: ReactNode | null;
+  }> = [
+    { icon: "📅", labelKey: "iconLabelDate", value: dateLabel || null },
+    {
+      icon: "🕐",
+      labelKey: "iconLabelStart",
+      value: startTime ? (
+        <EventStartTime date={date} startTime={startTime} />
+      ) : null,
+    },
+    { icon: "📍", labelKey: "iconLabelVenue", value: venue },
+    { icon: "🏙️", labelKey: "iconLabelCity", value: city },
+    {
+      icon: "🎵",
+      labelKey: "iconLabelSongs",
+      value: t("songsValue", { count: songsCount }),
+    },
+    {
+      icon: "💬",
+      labelKey: "iconLabelReactions",
+      // Pre-formatted to a string so the page-side count work isn't
+      // duplicated here. `1.2k` shows in every locale; the suffix is
+      // universal and the surrounding label is i18n'd.
+      value: reactionsValue,
+    },
+  ];
 
   return (
     <header
-      className="mb-6 lg:mb-0"
       style={{
         background: colors.bgCard,
         borderRadius: radius.card,
         boxShadow: shadows.card,
-        padding: "20px",
+        overflow: "hidden",
       }}
     >
       <EventStatusTicker startTime={startTimeIso} />
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={status} label={statusLabel} size="md" />
-        {date && (
-          <span style={{ color: colors.textSecondary, fontSize: 13 }}>
-            <EventDateTime
-              date={date ?? null}
-              startTime={startTime ?? null}
-              variant="inline"
-            />
-          </span>
+      {/* Gradient header strip — matches mockup
+          `event-page-desktop-mockup-v2.jsx:508-511`. The three stops
+          come from existing semantic tokens: `primaryLight` (sky)
+          → `primary` (brand blue) → `variant` (song-variant purple).
+          Hard-coding the hex would duplicate values that already have
+          token names. */}
+      <div
+        aria-hidden="true"
+        style={{
+          height: 6,
+          background: `linear-gradient(90deg, ${colors.primaryLight}, ${colors.primary}, ${colors.variant})`,
+        }}
+      />
+      <div style={{ padding: "20px 20px 24px" }}>
+        <div className="mb-3">
+          <StatusBadge status={status} label={statusLabel} size="md" />
+        </div>
+        {(artist || organizerName) && (
+          <div style={{ marginBottom: 4 }}>
+            {artist ? (
+              <Link
+                href={`/${locale}/artists/${artist.id}/${artist.slug}`}
+                className="text-[12px] font-semibold hover:underline"
+                style={{ color: colors.primary }}
+              >
+                {artist.name}
+              </Link>
+            ) : (
+              <span
+                className="text-[12px] font-medium"
+                style={{ color: colors.textSubtle }}
+              >
+                {organizerName}
+              </span>
+            )}
+          </div>
         )}
-      </div>
-      {(artist || organizerName) && (
-        <div className="mt-2">
-          {artist ? (
+        {series && (
+          <div style={{ marginBottom: 6 }}>
             <Link
-              href={`/${locale}/artists/${artist.id}/${artist.slug}`}
-              className="text-[12px] font-medium hover:underline"
-              style={{ color: colors.textSubtle }}
+              // Mockup `event-page-desktop-mockup-v2.jsx:525` —
+              // `fontWeight: 600`. Tailwind's `font-medium` is 500;
+              // use the bracketed semibold equivalent or inline.
+              href={`/${locale}/series/${series.id}/${series.slug}`}
+              className="text-[11px] font-semibold hover:underline"
+              style={{ color: colors.primary }}
             >
-              {artist.name}
+              {series.shortName}
             </Link>
-          ) : (
-            <span
-              className="text-[12px] font-medium"
-              style={{ color: colors.textSubtle }}
-            >
-              {organizerName}
-            </span>
-          )}
-        </div>
-      )}
-      {series && (
-        <div className="mt-1">
-          <Link
-            href={`/${locale}/series/${series.id}/${series.slug}`}
-            className="text-[11px] font-medium hover:underline"
-            style={{ color: colors.primary }}
-          >
-            {series.shortName}
-          </Link>
-        </div>
-      )}
-      <h1
-        className="mt-1 text-lg font-bold leading-snug"
-        style={{ color: colors.textPrimary }}
-      >
-        {title}
-      </h1>
-      {subtitle && (
-        <p
-          className="mt-1 text-sm"
-          style={{ color: colors.textSecondary }}
+          </div>
+        )}
+        <h1
+          className="font-bold leading-snug"
+          style={{
+            fontSize: 17,
+            color: colors.textPrimary,
+            letterSpacing: "-0.01em",
+            // Mockup `:532` — `marginBottom: 20` between title
+            // and the icon-row dl below.
+            marginBottom: 20,
+          }}
         >
-          {subtitle}
-        </p>
-      )}
-      {venueLine && (
-        <p
-          className="mt-2 text-sm"
-          style={{ color: colors.textSecondary }}
-        >
-          {venueLine}
-        </p>
-      )}
+          {title}
+        </h1>
+
+        <dl style={{ margin: 0 }}>
+          {iconRows
+            .filter((row) => row.value != null && row.value !== "")
+            .map((row) => (
+              <div
+                key={row.labelKey}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  marginBottom: 10,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}
+                >
+                  {row.icon}
+                </span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <dt
+                    style={{
+                      fontSize: 10,
+                      color: colors.textMuted,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {t(row.labelKey)}
+                  </dt>
+                  <dd
+                    // `margin: "1px 0 0 0"` — the previous version
+                    // listed `marginTop: 1` followed by `margin: 0`,
+                    // and the shorthand silently overrode the
+                    // longhand, killing the 1px breathing room
+                    // above the value. Single shorthand keeps both
+                    // intents in one line.
+                    style={{
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      fontWeight: 500,
+                      margin: "1px 0 0 0",
+                    }}
+                  >
+                    {row.value}
+                  </dd>
+                </div>
+              </div>
+            ))}
+        </dl>
+      </div>
     </header>
   );
 }

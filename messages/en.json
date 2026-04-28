@@ -186,6 +186,21 @@
     "live": "LIVE",
     "unknownPerformer": "Unknown",
     "performers": "Performers",
+    "iconLabelDate": "Date",
+    "iconLabelStart": "Start",
+    "iconLabelVenue": "Venue",
+    "iconLabelCity": "City",
+    "iconLabelSongs": "Songs",
+    "iconLabelReactions": "Reactions",
+    "songsValue": "{count, plural, one {# song} other {# songs}}",
+    "itemsLabel": "{count, plural, one {# item} other {# items}}",
+    "tapToAddReaction": "Tap to add reaction",
+    "colPosition": "#",
+    "colSong": "Song",
+    "colPerformers": "Performers",
+    "colReactions": "Reactions",
+    "unitsLabel": "Units",
+    "performersLabel": "Performers",
     "status": {
       "upcoming": "Upcoming",
       "ongoing": "Ongoing",
@@ -249,7 +264,8 @@
     "best": "Amazing",
     "surprise": "Surprise",
     "moved": "Emotional",
-    "trending": "Trending songs"
+    "trending": "Trending songs",
+    "trendingEmpty": "No reactions yet — try adding one from the setlist!"
   },
   "Impression": {
     "title": "One-line impressions",
@@ -270,7 +286,9 @@
     "translate": "Translate",
     "showOriginal": "Show original",
     "translating": "Translating...",
-    "translateFailed": "Translation unavailable. Try again."
+    "translateFailed": "Translation unavailable. Try again.",
+    "myLabel": "Your impression",
+    "allLabel": "All impressions"
   },
   "Header": {
     "brandName": "OpenSetlist",

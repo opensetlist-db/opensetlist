@@ -33,9 +33,17 @@ const sample: TrendingSong[] = [
 ];
 
 describe("TrendingSongs", () => {
-  it("renders null when songs is empty (card hidden until first reaction)", () => {
-    const { container } = render(<TrendingSongs songs={[]} />);
-    expect(container.firstChild).toBeNull();
+  it("renders the card with an empty-state nudge when songs is empty", () => {
+    // Mockup `event-page-desktop-mockup-v2.jsx:626-629` keeps the
+    // card visible with a "no reactions yet" line so the trending
+    // section explains itself even before the first reaction lands.
+    // Previously the card returned null on empty — that hid the
+    // surface entirely.
+    render(<TrendingSongs songs={[]} />);
+    // The title still renders.
+    expect(screen.getByText("trending")).toBeInTheDocument();
+    // The empty-state copy renders via the `trendingEmpty` key.
+    expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });
 
   it("renders each song with title, medal, and top-reaction count", () => {
@@ -46,10 +54,16 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("🥇")).toBeInTheDocument();
     expect(screen.getByText("🥈")).toBeInTheDocument();
     expect(screen.getByText("🥉")).toBeInTheDocument();
-    // Top-reaction emoji + count rendered together for each row.
-    expect(screen.getByText(/🔥6/)).toBeInTheDocument();
-    expect(screen.getByText(/🩷5/)).toBeInTheDocument();
-    expect(screen.getByText(/😱3/)).toBeInTheDocument();
+    // Top-reaction emoji + count render in separate spans (the
+    // emoji at 14px, the count at 12px) per the mockup's two-line
+    // item layout — query each independently rather than as a
+    // single concatenated string.
+    expect(screen.getByText("🔥")).toBeInTheDocument();
+    expect(screen.getByText("6")).toBeInTheDocument();
+    expect(screen.getByText("🩷")).toBeInTheDocument();
+    expect(screen.getByText("5")).toBeInTheDocument();
+    expect(screen.getByText("😱")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("uses the trending tokens for background and border", () => {
@@ -62,14 +76,18 @@ describe("TrendingSongs", () => {
     );
   });
 
-  it("uses the lg:flex utility so desktop lays out 3-across", () => {
+  it("uses responsive flex utilities so mobile stacks vertically and desktop lays out 3-across", () => {
     const { container } = render(<TrendingSongs songs={sample} />);
     const ul = container.querySelector("ul");
     // Tailwind class names live on the element regardless of viewport;
-    // the actual layout switch is media-query driven. Asserting presence
-    // of `lg:flex` ensures the responsive intent is wired.
-    expect(ul?.className).toContain("lg:flex");
-    expect(ul?.className).toContain("lg:gap-4");
+    // the actual layout switch is media-query driven. Asserting both
+    // mobile (column flex with 9px gap) and desktop (row flex with
+    // 32px / lg:gap-8 gap) classes are wired confirms the responsive
+    // intent.
+    expect(ul?.className).toContain("flex-col");
+    expect(ul?.className).toContain("gap-y-[9px]");
+    expect(ul?.className).toContain("lg:flex-row");
+    expect(ul?.className).toContain("lg:gap-x-8");
   });
 
   it("hides medal emojis from assistive tech (decorative)", () => {

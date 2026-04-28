@@ -186,6 +186,21 @@
     "live": "LIVE",
     "unknownPerformer": "不明",
     "performers": "出演者",
+    "iconLabelDate": "日付",
+    "iconLabelStart": "開演",
+    "iconLabelVenue": "会場",
+    "iconLabelCity": "都市",
+    "iconLabelSongs": "曲",
+    "iconLabelReactions": "リアクション",
+    "songsValue": "{count, plural, other {#曲}}",
+    "itemsLabel": "{count, plural, other {#項目}}",
+    "tapToAddReaction": "タップしてリアクションを追加",
+    "colPosition": "#",
+    "colSong": "楽曲",
+    "colPerformers": "出演",
+    "colReactions": "リアクション",
+    "unitsLabel": "ユニット",
+    "performersLabel": "出演者",
     "status": {
       "upcoming": "予定",
       "ongoing": "進行中",
@@ -249,7 +264,8 @@
     "best": "最高",
     "surprise": "サプライズ",
     "moved": "感動",
-    "trending": "この公演の話題曲"
+    "trending": "この公演の話題曲",
+    "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
   },
   "Impression": {
     "title": "一言感想",
@@ -270,7 +286,9 @@
     "translate": "翻訳",
     "showOriginal": "原文を表示",
     "translating": "翻訳中...",
-    "translateFailed": "翻訳できませんでした。もう一度お試しください。"
+    "translateFailed": "翻訳できませんでした。もう一度お試しください。",
+    "myLabel": "私のひとこと",
+    "allLabel": "すべてのひとこと"
   },
   "Header": {
     "brandName": "OpenSetlist",

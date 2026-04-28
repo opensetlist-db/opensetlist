@@ -260,9 +260,11 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Cerise Bouquet");
-    // No inline backgroundColor when artist.color is null — falls to zinc class.
-    expect(badge.style.backgroundColor).toBe("");
-    expect(badge.className).toContain("bg-zinc-100");
+    // Brand-tinted fallback when artist.color is null (operator hasn't
+    // backfilled). primaryBg = #e8f4fd; primary = #0277BD. Reads as
+    // "unit pending color" rather than zinc-gray "no unit".
+    expect(badge.style.backgroundColor).toBe(hexToRgbString("#e8f4fd"));
+    expect(badge.style.color).toBe(hexToRgbString("#0277BD"));
   });
 
   it("uses primary color for the song link (sourced from tokens)", () => {
@@ -281,7 +283,7 @@ describe("SetlistRow", () => {
     expect(link.style.color).toBe(hexToRgbString("#0277BD"));
   });
 
-  it("renders the position number top-aligned (paddingTop 1px), not center", () => {
+  it("uses a CSS grid with `items-start` so position + title align at the top, not vertically centered", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem()}
@@ -291,11 +293,12 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Position number is the first <span> in the row's flex container.
-    // Critical per mockup §3-2: alignItems flex-start + paddingTop on
-    // position. We verify via the Tailwind utility class.
+    // Mockup `event-page-desktop-mockup-v2.jsx:185` uses
+    // `alignItems: "start"` on the row grid so the position number
+    // sits flush with the first line of the title (not centered
+    // vertically against the unit badge).
     const li = container.querySelector("li");
-    const flexInner = li?.querySelector(":scope > div");
-    expect(flexInner?.className).toContain("items-start");
+    expect(li?.className).toContain("grid");
+    expect(li?.className).toContain("items-start");
   });
 });
