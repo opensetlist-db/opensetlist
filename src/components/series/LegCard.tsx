@@ -11,7 +11,11 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors, radius } from "@/styles/tokens";
 
 export interface PreparedLegEvent {
-  id: number | string | bigint;
+  // Narrow to JSON-serializable types only — `LegCard` is a `"use
+  // client"` component, and Next.js refuses to pass BigInt across the
+  // server→client boundary. Page-side mapper must `String(ev.id)` at
+  // construction time.
+  id: number | string;
   href: string;
   status: ResolvedEventStatus;
   /** Pre-formatted short-form date (e.g. "4월 25일"). */
@@ -151,7 +155,7 @@ export function LegCard({
           const isLast = i === leg.events.length - 1;
           return (
             <Link
-              key={event.id}
+              key={String(event.id)}
               href={event.href}
               className="flex items-center gap-2.5 row-hover-bg"
               style={{

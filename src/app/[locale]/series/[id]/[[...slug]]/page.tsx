@@ -375,7 +375,11 @@ export default async function EventSeriesPage({
         displayNameWithFallback(ev, ev.translations, locale, "short") ||
         evT("unknownEvent");
       return {
-        id: ev.id,
+        // String at the server→client boundary: `LegCard` is a client
+        // component and Next.js can't serialize BigInt props. `String(
+        // BigInt)` is precision-safe; `eventHref` accepts the raw
+        // BigInt directly so href construction stays exact.
+        id: String(ev.id),
         href: eventHref(locale, ev.id, evName),
         status,
         formattedDate: formatDate(ev.date ?? ev.startTime, locale, SHORT_DATE_FORMAT),
