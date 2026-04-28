@@ -60,9 +60,15 @@ export type EventsListGroup = {
   seriesName: string | null;
   /**
    * Resolved short name of the root series's artist for the requested
-   * locale, or null when the series has no `artistId` (multi-artist
-   * festival). Drives the small artist pill at the start of each
-   * series-header badge row.
+   * locale. Drives the small artist pill at the start of each
+   * series-header badge row. Null in two distinct cases:
+   *   1. The series has no `artistId` (multi-artist festival — the
+   *      relation is null end-to-end).
+   *   2. The fallback chain in `displayNameWithFallback` exhausts
+   *      without finding a non-empty value (locale shortName → locale
+   *      name → originalShortName → originalName all blank); the
+   *      empty-string return is coerced to null below so the
+   *      consuming components can branch on a single nullish check.
    */
   artistShortName: string | null;
   events: EventForList[];
