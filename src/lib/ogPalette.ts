@@ -2,21 +2,26 @@ import { createHash } from "node:crypto";
 import { converter, formatHex, parse } from "culori";
 import { prisma } from "@/lib/prisma";
 
-export type OgPaletteSource = "faithful" | "harmonized" | "fallback";
+export type OgPaletteSource =
+  | "faithful"
+  | "harmonized"
+  | "anchored"
+  | "fallback";
+
+const BASE_COLOR = "#0f172a" as const;
+const BRAND_ANCHOR_COLOR = "#0277BD" as const;
 
 export type OgPalette = {
-  base: "#0f172a";
-  brandAnchor: "#0277BD";
+  base: typeof BASE_COLOR;
+  brandAnchor: typeof BRAND_ANCHOR_COLOR;
   mesh: [string, string, string];
   source: OgPaletteSource;
   fingerprint: string;
 };
 
-const BASE_COLOR = "#0f172a" as const;
-
 const BRAND_FALLBACK: [string, string, string] = [
   "#4FC3F7",
-  "#0277BD",
+  BRAND_ANCHOR_COLOR,
   "#7B1FA2",
 ];
 
@@ -27,7 +32,7 @@ function fallbackPalette(): OgPalette {
   const mesh = BRAND_FALLBACK;
   return {
     base: BASE_COLOR,
-    brandAnchor: "#0277BD",
+    brandAnchor: BRAND_ANCHOR_COLOR,
     mesh,
     source: "fallback",
     fingerprint: computeFingerprint("fallback", mesh),
@@ -92,30 +97,170 @@ export function buildMeshBackground(palette: OgPalette): string {
   ].join(", ");
 }
 
-function paletteFromFrequency(frequency: Map<string, number>): OgPalette {
-  if (frequency.size === 0) return fallbackPalette();
+// Build a palette, optionally anchored on an explicit color (the
+// artist/group/unit's own brand color from `Artist.color`). When the
+// anchor is set, it takes mesh[0] and the supporting stops are drawn
+// from the frequency map — but with the anchor REMOVED from the
+// candidate pool first, so a member whose personal color matches the
+// unit's brand color doesn't produce a duplicate stop. When the
+// anchor is null/invalid, behavior collapses to the original
+// frequency-only path (faithful → harmonized → fallback).
+//
+// Exported for unit testing — the DB-layer getters that produce the
+// anchor + frequency are integration-tested manually via the OG
+// preview routes, but the palette assembly logic deserves
+// automated coverage of every branch.
+export function paletteFromAnchorAndFrequency(
+  anchor: string | null,
+  frequency: Map<string, number>,
+): OgPalette {
+  const validAnchor = isValidHex(anchor) ? anchor.toLowerCase() : null;
 
-  const ordered = pickTopColors(frequency);
+  // Defensive lowercase normalization. The internal collectors
+  // (collectRosterColorsByArtistId, collectEventSetlistColors, etc.)
+  // already store lowercased keys, but this function is exported
+  // and could be called by tests/future callers with mixed-case
+  // input. Without normalization, `remaining.delete(validAnchor)`
+  // would silently miss a "#ABC" entry against an "#abc" anchor
+  // and the anchor would appear twice in the mesh as different
+  // strings. Sum counts on collision so a map with both "#ABC"
+  // and "#abc" doesn't lose data.
+  const normalizedFreq = new Map<string, number>();
+  for (const [color, count] of frequency) {
+    const key = color.toLowerCase();
+    normalizedFreq.set(key, (normalizedFreq.get(key) ?? 0) + count);
+  }
 
-  if (ordered.length >= 3) {
-    const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
+  if (!validAnchor) {
+    if (normalizedFreq.size === 0) return fallbackPalette();
+    const ordered = pickTopColors(normalizedFreq);
+    if (ordered.length >= 3) {
+      const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
+      return {
+        base: BASE_COLOR,
+        brandAnchor: BRAND_ANCHOR_COLOR,
+        mesh,
+        source: "faithful",
+        fingerprint: computeFingerprint("faithful", mesh),
+      };
+    }
+    const mesh = harmonize(ordered);
     return {
       base: BASE_COLOR,
-      brandAnchor: "#0277BD",
+      brandAnchor: BRAND_ANCHOR_COLOR,
       mesh,
-      source: "faithful",
-      fingerprint: computeFingerprint("faithful", mesh),
+      source: "harmonized",
+      fingerprint: computeFingerprint("harmonized", mesh),
     };
   }
 
-  const mesh = harmonize(ordered);
+  // Anchor set. Drop it from the supporting candidate pool so we
+  // never end up with [anchor, anchor, anything] when a member's
+  // personal color matches the unit's brand color. Reads from
+  // `normalizedFreq` (not the raw `frequency`) so the delete hits
+  // regardless of the input casing.
+  const remaining = new Map(normalizedFreq);
+  remaining.delete(validAnchor);
+  const supporting = pickTopColors(remaining);
+
+  let mesh: [string, string, string];
+  if (supporting.length >= 2) {
+    mesh = [validAnchor, supporting[0], supporting[1]];
+  } else {
+    // Harmonize: anchor + as many supporting as we have; the
+    // existing OKLCH rotation fills mesh[1..2] from anchor's hue
+    // because `harmonize` seeds via `realColors[i % length]` and
+    // i starts at 0 — so the rotation source is always
+    // realColors[0] (= anchor) for the first fill, and again
+    // anchor (i=1, length=1) when we only have the anchor itself.
+    // With supporting.length 0 we get [anchor, anchor+30°,
+    // anchor-30°]; with length 1 we get [anchor, supporting[0],
+    // anchor-30°].
+    mesh = harmonize([validAnchor, ...supporting]);
+  }
+
   return {
     base: BASE_COLOR,
-    brandAnchor: "#0277BD",
+    brandAnchor: BRAND_ANCHOR_COLOR,
     mesh,
-    source: "harmonized",
-    fingerprint: computeFingerprint("harmonized", mesh),
+    source: "anchored",
+    fingerprint: computeFingerprint("anchored", mesh),
   };
+}
+
+
+// ── ANCHOR COLOR GETTERS ───────────────────────────────────────
+//
+// Each derive*() now seeds the palette with an explicit "anchor"
+// color drawn from the entity's own brand color (Artist.color),
+// taking mesh[0] when set. Member personal colors fill mesh[1..2].
+// When the anchor is null, the existing frequency-only logic runs
+// unchanged. See paletteFromAnchorAndFrequency for the assembly.
+
+// Walks Artist.color → root parent's Artist.color (in that order)
+// and returns the first valid hex. Visited-set guards against any
+// pathological parentArtistId cycle.
+async function getArtistAnchorColor(
+  artistId: bigint,
+): Promise<string | null> {
+  const visited = new Set<string>();
+  let currentId: bigint | null = artistId;
+  while (currentId !== null && !visited.has(currentId.toString())) {
+    visited.add(currentId.toString());
+    const artist: { color: string | null; parentArtistId: bigint | null } | null =
+      await prisma.artist.findUnique({
+        where: { id: currentId },
+        select: { color: true, parentArtistId: true },
+      });
+    if (!artist) return null;
+    if (isValidHex(artist.color)) return artist.color;
+    currentId = artist.parentArtistId;
+  }
+  return null;
+}
+
+// event.eventSeries.artist.color. Multi-artist festivals
+// (series.artistId: null, organizerName set) return null and fall
+// through to roster-frequency logic.
+async function getEventAnchorColor(
+  eventId: bigint,
+): Promise<string | null> {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      eventSeries: {
+        select: {
+          artist: { select: { color: true } },
+        },
+      },
+    },
+  });
+  const color = event?.eventSeries?.artist?.color;
+  return isValidHex(color) ? color : null;
+}
+
+// Primary SongArtist's artist.color. Falls through if no role:
+// "primary" entry exists or the primary artist's color is null.
+//
+// orderBy is required: a song can have multiple `role: "primary"`
+// rows (a collab credited equally to two artists), and findFirst
+// without orderBy returns whichever row the DB happened to scan
+// first. That nondeterminism would propagate into the fingerprint
+// hash and break CDN cache on every render. `artistId asc` picks
+// the lowest-id artist (semantically: the earlier-created entry,
+// usually the lead) as the canonical primary; `id asc` on the
+// junction is the tie-break for the unlikely two-rows-same-artist
+// case so the choice is fully deterministic.
+async function getSongAnchorColor(
+  songId: bigint,
+): Promise<string | null> {
+  const link = await prisma.songArtist.findFirst({
+    where: { songId, role: "primary" },
+    select: { artist: { select: { color: true } } },
+    orderBy: [{ artistId: "asc" }, { id: "asc" }],
+  });
+  const color = link?.artist?.color;
+  return isValidHex(color) ? color : null;
 }
 
 // Climbs the Artist.parentArtistId chain and returns the root ancestor id.
@@ -259,11 +404,20 @@ export async function deriveOgPaletteFromEvent(
   eventId: bigint
 ): Promise<OgPalette> {
   try {
-    let frequency = await collectEventSetlistColors(eventId);
-    if (frequency.size === 0) {
-      frequency = await collectEventArtistRosterColors(eventId);
-    }
-    return paletteFromFrequency(frequency);
+    // Anchor + initial frequency in parallel — independent queries.
+    // The fallback to artist-roster frequency runs only if the
+    // setlist-color map is empty; nothing about that branch is
+    // worth parallelizing with anchor since anchor was already
+    // settled in the first round.
+    const [anchor, setlistFrequency] = await Promise.all([
+      getEventAnchorColor(eventId),
+      collectEventSetlistColors(eventId),
+    ]);
+    const frequency =
+      setlistFrequency.size > 0
+        ? setlistFrequency
+        : await collectEventArtistRosterColors(eventId);
+    return paletteFromAnchorAndFrequency(anchor, frequency);
   } catch (err) {
     console.error("[ogPalette] event derivation failed, using fallback", err);
     return fallbackPalette();
@@ -274,11 +428,15 @@ export async function deriveOgPaletteFromSong(
   songId: bigint
 ): Promise<OgPalette> {
   try {
-    let frequency = await collectSongPerformerColors(songId);
-    if (frequency.size === 0) {
-      frequency = await collectSongCreditedArtistColors(songId);
-    }
-    return paletteFromFrequency(frequency);
+    const [anchor, performerFrequency] = await Promise.all([
+      getSongAnchorColor(songId),
+      collectSongPerformerColors(songId),
+    ]);
+    const frequency =
+      performerFrequency.size > 0
+        ? performerFrequency
+        : await collectSongCreditedArtistColors(songId);
+    return paletteFromAnchorAndFrequency(anchor, frequency);
   } catch (err) {
     console.error("[ogPalette] song derivation failed, using fallback", err);
     return fallbackPalette();
@@ -289,14 +447,18 @@ export async function deriveOgPaletteFromArtist(
   artistId: bigint
 ): Promise<OgPalette> {
   try {
-    let frequency = await collectRosterColorsByArtistId(artistId);
+    const [anchor, rosterFrequency] = await Promise.all([
+      getArtistAnchorColor(artistId),
+      collectRosterColorsByArtistId(artistId),
+    ]);
+    let frequency = rosterFrequency;
     if (frequency.size === 0) {
       const rootId = await findRootArtistId(artistId);
       if (rootId !== artistId) {
         frequency = await collectRosterColorsByArtistId(rootId);
       }
     }
-    return paletteFromFrequency(frequency);
+    return paletteFromAnchorAndFrequency(anchor, frequency);
   } catch (err) {
     console.error("[ogPalette] artist derivation failed, using fallback", err);
     return fallbackPalette();
