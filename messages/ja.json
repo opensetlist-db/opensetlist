@@ -105,6 +105,20 @@
     "statsTours": "ツアー",
     "releaseYearLabel": "発売",
     "albumLabel": "収録",
+    "albumTypeLabel": "アルバム種別",
+    "albumType": {
+      "single": "シングル",
+      "album": "アルバム",
+      "ep": "EP",
+      "live_album": "ライブアルバム",
+      "soundtrack": "サウンドトラック"
+    },
+    "tableHeader": {
+      "status": "ステータス",
+      "date": "日付",
+      "event": "公演名",
+      "position": "位置"
+    },
     "role": {
       "primary": "メイン",
       "featured": "フィーチャリング",

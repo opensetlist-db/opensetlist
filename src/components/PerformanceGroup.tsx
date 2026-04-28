@@ -12,15 +12,31 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  *
  * Series header: clickable, toggles expand/collapse (default expanded).
  * `›` arrow rotates 0°→90° in 0.15s.
- * Event rows: `[StatusBadge size="sm"]` + date 48-52px + event name
- * (blue, bold, flex-1, truncate) + custom trailing cells via
- * `renderTrailing` + `›`.
  *
- * The page passes its own `renderTrailing(event)` callback so each
- * detail page can add page-specific cells (artist: song count;
- * member: 전출연 / unit badge; song: encore + position + note;
- * series: leg-grouped, song-count). This way the same component
- * renders four different page styles without prop explosions.
+ * Event rows: a 5-track CSS grid (`PERFORMANCE_ROW_GRID`):
+ *   [60px status] [100px date] [minmax(0,1fr) name] [auto trailing] [auto chevron]
+ *
+ * Why grid (not flex): with flex + variable-width date strings (Korean
+ * year format runs ~90px) and variable-width trailing chips, the
+ * leading columns drift across rows so the visual table looks ragged.
+ * Grid pins the leading columns so status/date/name align cleanly down
+ * every group. `minmax(0, 1fr)` is the canonical fix for "1fr column
+ * refuses to shrink", which is what produced the mobile horizontal
+ * scroll bar before this refactor — without it the long name pushes
+ * the row wider than the viewport. The row's `overflow: hidden`
+ * clips overlong trailing rather than scrolling.
+ *
+ * Page-specific trailing cells come in via the consumer-built
+ * `event.trailing` ReactNode (artist: song count; member: 전출연 /
+ * unit badge; song: encore + position + note; series: leg-grouped,
+ * song-count). The grid renders them in a single `auto` cell so each
+ * page keeps its own per-row presentation without coupling to the
+ * shared grid template.
+ *
+ * The exported `PERFORMANCE_ROW_GRID` constant lets a page (e.g.
+ * the song-page history tab) render a desktop column-header strip
+ * above the groups using the exact same column tracks, so header
+ * labels line up with the row content.
  *
  * Series ordering (ongoing-pinned + sort key) is the consumer's
  * responsibility — this component renders one group at the position
@@ -30,6 +46,9 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * Server-rendering the closed state would require a full page reload
  * to flip — not acceptable for a navigation-secondary control.
  */
+
+export const PERFORMANCE_ROW_GRID =
+  "60px 100px minmax(0, 1fr) auto auto";
 
 export interface PerformanceEvent {
   id: string | number;
@@ -155,7 +174,8 @@ export function PerformanceGroup({
             href={event.href}
             className="row-hover-bg"
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: PERFORMANCE_ROW_GRID,
               alignItems: "center",
               gap: 10,
               padding: "9px 16px 9px 36px",
@@ -165,6 +185,11 @@ export function PerformanceGroup({
                   : `1px solid ${colors.borderLight}`,
               textDecoration: "none",
               color: "inherit",
+              // Belt-and-braces with `minmax(0, 1fr)` on the name
+              // track — clips long trailing chips on narrow mobile
+              // viewports rather than letting the row push the page
+              // into a horizontal scroll.
+              overflow: "hidden",
             }}
           >
             <StatusBadge
@@ -176,8 +201,6 @@ export function PerformanceGroup({
               style={{
                 fontSize: 12,
                 color: colors.textMuted,
-                flexShrink: 0,
-                width: 52,
               }}
             >
               {event.formattedDate}
@@ -187,7 +210,6 @@ export function PerformanceGroup({
                 fontSize: 13,
                 fontWeight: 600,
                 color: colors.primary,
-                flex: 1,
                 minWidth: 0,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -196,13 +218,14 @@ export function PerformanceGroup({
             >
               {event.name}
             </span>
-            {event.trailing}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {event.trailing}
+            </div>
             <span
               aria-hidden="true"
               style={{
                 fontSize: 13,
                 color: colors.borderSubtle,
-                flexShrink: 0,
               }}
             >
               ›
