@@ -16,6 +16,16 @@ type SeriesAncestor = {
   originalShortName: string | null;
   originalLanguage: string;
   translations: SeriesTranslation[];
+  artist: {
+    originalName: string | null;
+    originalShortName: string | null;
+    originalLanguage: string;
+    translations: {
+      locale: string;
+      name: string;
+      shortName: string | null;
+    }[];
+  } | null;
 };
 
 type EventTranslation = {
@@ -48,6 +58,19 @@ export type EventForList = {
 export type EventsListGroup = {
   seriesId: string | null;
   seriesName: string | null;
+  /**
+   * Resolved short name of the root series's artist for the requested
+   * locale. Drives the small artist pill at the start of each
+   * series-header badge row. Null in two distinct cases:
+   *   1. The series has no `artistId` (multi-artist festival — the
+   *      relation is null end-to-end).
+   *   2. The fallback chain in `displayNameWithFallback` exhausts
+   *      without finding a non-empty value (locale shortName → locale
+   *      name → originalShortName → originalName all blank); the
+   *      empty-string return is coerced to null below so the
+   *      consuming components can branch on a single nullish check.
+   */
+  artistShortName: string | null;
   events: EventForList[];
   earliestStart: number;
   latestStart: number;
@@ -133,6 +156,19 @@ export async function getEventsListGrouped(
         translations: {
           select: { locale: true, name: true, shortName: true },
         },
+        // The artist pill in each series header reads the locale-resolved
+        // shortName. `artistId` is nullable for multi-artist festivals —
+        // the relation falls through to null and the pill is hidden.
+        artist: {
+          select: {
+            originalName: true,
+            originalShortName: true,
+            originalLanguage: true,
+            translations: {
+              select: { locale: true, name: true, shortName: true },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -162,9 +198,23 @@ export async function getEventsListGrouped(
       const name = root
         ? displayNameWithFallback(root, root.translations, locale) || null
         : null;
+      // Coerce empty-string returns from displayNameWithFallback to null
+      // so the consuming components can branch on a single
+      // `artistShortName != null` check. The fallback chain
+      // (locale shortName → locale name → originalShortName →
+      // originalName → "") only yields "" when every layer is missing.
+      const artistShortName = root?.artist
+        ? displayNameWithFallback(
+            root.artist,
+            root.artist.translations,
+            locale,
+            "short",
+          ) || null
+        : null;
       groupsMap.set(key, {
         seriesId: rootId != null ? String(rootId) : null,
         seriesName: name,
+        artistShortName,
         events: [ev],
         earliestStart: 0,
         latestStart: 0,

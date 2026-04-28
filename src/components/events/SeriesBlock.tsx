@@ -2,11 +2,19 @@
 
 import { useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ArtistBadge } from "@/components/events/ArtistBadge";
 import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
   seriesName: string;
+  /**
+   * Locale-resolved short name of the root series's artist, or null
+   * when the series has no `artistId` (multi-artist festival). Mirrors
+   * the same prop on `SeriesSection`; rendered as a small primary-tinted
+   * pill at the start of the header badge row.
+   */
+  artistShortName: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
   liveLabel: string;
@@ -24,6 +32,7 @@ interface Props {
 
 export function SeriesBlock({
   seriesName,
+  artistShortName,
   hasOngoing,
   eventCountLabel,
   liveLabel,
@@ -62,6 +71,9 @@ export function SeriesBlock({
       >
         <div className="flex-1">
           <div className="mb-1.5 flex items-center gap-2">
+            {artistShortName && (
+              <ArtistBadge label={artistShortName} size="md" />
+            )}
             {hasOngoing && (
               <StatusBadge
                 status="ongoing"
