@@ -126,13 +126,17 @@ export function EventHeader({
       }}
     >
       <EventStatusTicker startTime={startTimeIso} />
-      {/* Gradient header strip — matches mockup `linear-gradient(90deg, …)`. */}
+      {/* Gradient header strip — matches mockup
+          `event-page-desktop-mockup-v2.jsx:508-511`. The three stops
+          come from existing semantic tokens: `primaryLight` (sky)
+          → `primary` (brand blue) → `variant` (song-variant purple).
+          Hard-coding the hex would duplicate values that already have
+          token names. */}
       <div
         aria-hidden="true"
         style={{
           height: 6,
-          background:
-            "linear-gradient(90deg, #4FC3F7, #0277BD, #7B1FA2)",
+          background: `linear-gradient(90deg, ${colors.primaryLight}, ${colors.primary}, ${colors.variant})`,
         }}
       />
       <div style={{ padding: "20px 20px 24px" }}>
