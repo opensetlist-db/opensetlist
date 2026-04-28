@@ -25,12 +25,26 @@ export const colors = {
   textSecondary: "#475569",
   textMuted: "#94a3b8",
   textSubtle: "#64748b",
+  // On-dark text variants for surfaces that sit on a dark gradient
+  // (e.g. the series-page LIVE banner). These read as alpha-blended
+  // white because the dark backgrounds vary per surface — a static
+  // hex would tie the variant to one specific gradient. Add more
+  // entries (e.g. `onDarkMuted` at 0.5) only when a second consumer
+  // needs them; today the only consumer is the LIVE banner CTA.
+  onDarkSubtle: "rgba(255,255,255,0.65)",
 
   // Backgrounds
   bgPage: "#f0f4f8",
   bgCard: "#ffffff",
   bgSubtle: "#f8fafc",
   bgFaint: "#fafbfc",
+
+  // Deeper navy used as the mid-stop on the LIVE-banner gradient and
+  // the home `LiveHeroCard` mid-stop. Sits between `textPrimary`
+  // (#0f172a, near-black) and `primary` (#0277BD, brand blue) on the
+  // hue ramp; without it the gradient jumps too abruptly between the
+  // two endpoints.
+  navyDeep: "#1e3a5f",
 
   // Borders
   border: "#e2e8f0",
@@ -142,6 +156,16 @@ export const borderWidth = {
  */
 export const motion = {
   livePulse: "live-pulse 1.2s ease-in-out infinite",
+} as const;
+
+/*
+ * Composite gradients beyond `colors.brandGradient` /
+ * `colors.darkGradient`. `liveBanner` is the dark-navy ramp used by
+ * the series-page LIVE banner — same `textPrimary` → deeper-navy
+ * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
+ */
+export const gradients = {
+  liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, ${colors.navyDeep})`,
 } as const;
 
 /*
