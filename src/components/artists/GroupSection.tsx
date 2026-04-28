@@ -27,22 +27,28 @@ interface Props {
 
 const CATEGORY_LABEL_KEY: Record<NonNullable<GroupForList["category"]>, string> =
   {
-    anime: "categoryAnime",
-    game: "categoryGame",
+    animegame: "categoryAnimegame",
     kpop: "categoryKpop",
     jpop: "categoryJpop",
     cpop: "categoryCpop",
+    others: "categoryOthers",
   };
 
 export default async function GroupSection({ group, locale }: Props) {
   const t = await getTranslations("Artist");
 
-  // Cascade: localized shortName → localized name → originalShortName
-  // → originalName → t("unknownGroup"). Final i18n fallback prevents
-  // an empty <h2> from rendering when every name field is null.
-  const displayedName =
-    displayNameWithFallback(group, group.translations, locale, "short") ||
-    t("unknownGroup");
+  // For real Groups: localized shortName → localized name →
+  // originalShortName → originalName → t("unknownGroup"). For
+  // synthetic ungrouped sections: skip the displayNameWithFallback
+  // path entirely (no Group row exists) and render the section's
+  // i18n label — `ungroupedSection` for any-category buckets,
+  // `ungroupedNoCategorySection` for the null-category bucket.
+  const displayedName = group.isSynthetic
+    ? group.category
+      ? t("ungroupedSection")
+      : t("ungroupedNoCategorySection")
+    : displayNameWithFallback(group, group.translations, locale, "short") ||
+      t("unknownGroup");
 
   const artistCount = group.artists.length;
   const categoryLabel = group.category

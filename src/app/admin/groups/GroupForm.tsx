@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { GROUP_CATEGORY_VALUES } from "@/lib/admin-constants";
 
 type Translation = {
   locale: string;
@@ -13,6 +14,7 @@ type Translation = {
 type GroupFormProps = {
   initialData?: {
     id: string;
+    slug: string | null;
     type: string | null;
     category: string | null;
     hasBoard: boolean;
@@ -25,13 +27,13 @@ type GroupFormProps = {
 };
 
 const GROUP_TYPES = ["franchise", "label", "agency", "series"];
-const GROUP_CATEGORIES = ["anime", "kpop", "jpop", "cpop", "game"];
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 export default function GroupForm({ initialData }: GroupFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [type, setType] = useState(initialData?.type ?? "");
   const [category, setCategory] = useState(initialData?.category ?? "");
   const [hasBoard, setHasBoard] = useState(initialData?.hasBoard ?? false);
@@ -83,6 +85,11 @@ export default function GroupForm({ initialData }: GroupFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    if (!slug.trim()) {
+      alert("슬러그(slug)는 필수입니다.");
+      return;
+    }
+
     if (!originalName.trim()) {
       alert("원본 이름(originalName)은 필수입니다.");
       return;
@@ -91,6 +98,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
     setLoading(true);
 
     const payload = {
+      slug: slug.trim(),
       type: type || null,
       category: category || null,
       hasBoard,
@@ -115,6 +123,10 @@ export default function GroupForm({ initialData }: GroupFormProps) {
     if (res.ok) {
       router.push("/admin/groups");
       router.refresh();
+    } else if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      alert(body?.error ?? "이미 사용 중인 슬러그입니다.");
+      setLoading(false);
     } else {
       alert("저장에 실패했습니다.");
       setLoading(false);
@@ -123,6 +135,20 @@ export default function GroupForm({ initialData }: GroupFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-xl space-y-6">
+      {/* slug — required upsert key for CSV import. Place above
+         type/category so the operator picks it first; collisions
+         surface as a 409 with operator-readable message. */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">슬러그 (slug)</label>
+        <input
+          placeholder="예: love-live"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          required
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="mb-1 block text-sm font-medium">타입</label>
@@ -147,7 +173,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2"
           >
             <option value="">선택 안 함</option>
-            {GROUP_CATEGORIES.map((c) => (
+            {GROUP_CATEGORY_VALUES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>

@@ -53,13 +53,19 @@ export default async function ArtistsPage({
   ]);
 
   return (
-    <main
-      className="mx-auto"
-      style={{
-        maxWidth: PAGE_MAX_WIDTH,
-        padding: "24px 0 48px",
-      }}
-    >
+    <main className="flex-1" style={{ background: colors.bgPage }}>
+      {/* The light-blue `bgPage` token is the project-wide page-frame
+          color (home, events, etc. all use the same pattern). The
+          inner div carries the max-width + padding so the bg extends
+          full viewport width while content stays in a reading-comfort
+          column. */}
+      <div
+        className="mx-auto"
+        style={{
+          maxWidth: PAGE_MAX_WIDTH,
+          padding: "24px 0 48px",
+        }}
+      >
       <header style={{ padding: "0 16px 16px" }}>
         <h1
           style={{
@@ -93,6 +99,7 @@ export default async function ArtistsPage({
           ))}
         </div>
       )}
+      </div>
     </main>
   );
 }

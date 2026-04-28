@@ -21,6 +21,7 @@ export default async function EditGroupPage({ params }: Props) {
       <GroupForm
         initialData={{
           id: data.id,
+          slug: data.slug,
           type: data.type,
           category: data.category,
           hasBoard: data.hasBoard,

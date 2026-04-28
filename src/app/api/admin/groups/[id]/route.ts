@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GroupType, GroupCategory } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
@@ -20,6 +21,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
+  const slug = requireString(body.slug, "slug");
+  if (!slug.ok) return badRequest(slug.message);
+
   const typeCheck = nullableEnumValue(body.type, "type", Object.values(GroupType));
   if (!typeCheck.ok) return badRequest(typeCheck.message);
 
@@ -44,25 +48,42 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  // Atomic delete-then-update: a failed update would otherwise leave the group with no translation rows.
-  const group = await prisma.$transaction(async (tx) => {
-    await tx.groupTranslation.deleteMany({ where: { groupId: id } });
-    return tx.group.update({
-      where: { id },
-      data: {
-        type: typeCheck.value,
-        category: categoryCheck.value,
-        hasBoard: hasBoardCheck.value ?? false,
-        originalName: name.value,
-        originalShortName: shortName.value,
-        originalDescription: description.value,
-        originalLanguage: language.value,
-        translations: { create: translations.value },
-      },
-      include: { translations: true },
+  // Atomic delete-then-update: a failed update would otherwise leave
+  // the group with no translation rows. Catch P2002 (unique violation
+  // on `slug`) and surface as 409 — pre-flight findFirst would race
+  // against concurrent edits.
+  try {
+    const group = await prisma.$transaction(async (tx) => {
+      await tx.groupTranslation.deleteMany({ where: { groupId: id } });
+      return tx.group.update({
+        where: { id },
+        data: {
+          slug: slug.value,
+          type: typeCheck.value,
+          category: categoryCheck.value,
+          hasBoard: hasBoardCheck.value ?? false,
+          originalName: name.value,
+          originalShortName: shortName.value,
+          originalDescription: description.value,
+          originalLanguage: language.value,
+          translations: { create: translations.value },
+        },
+        include: { translations: true },
+      });
     });
-  });
-  return NextResponse.json(serializeBigInt(group));
+    return NextResponse.json(serializeBigInt(group));
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: `슬러그 "${slug.value}"가 이미 사용 중입니다.` },
+        { status: 409 },
+      );
+    }
+    throw e;
+  }
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {

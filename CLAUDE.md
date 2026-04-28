@@ -148,10 +148,34 @@ Locales: ko (launch), ja (Phase 2), en (Phase 3), zh-CN (Phase 3)
 ```
 
 Hard rules:
-- Never hardcode text — always use i18n keys
+- Never hardcode text in **public-facing surfaces** — always use i18n keys
 - Store dates/times in UTC, convert on display
 - Use Noto Sans self-hosted (supports all 4 languages) — never load from Google Fonts (China firewall)
 - `lang` attribute on `<html>` must match locale
+
+### Admin UI exemption — operator-only routes are Korean-only
+
+Routes under `src/app/admin/**`, `src/app/api/admin/**`, and any other
+operator-only surface are **exempt from the "never hardcode text" rule**
+and intentionally written in Korean only. The operator is the sole user;
+they speak Korean; threading `useTranslations` through every form label,
+table header, alert, and placeholder is pure overhead with no payoff.
+This is a deliberate, project-wide decision — not technical debt — and
+applies to:
+
+- `<th>` headers in admin tables (`이름`, `타입`, `슬러그`, etc.)
+- form labels, placeholders, and helper text in admin forms
+- `alert(...)` / confirm dialog strings shown only to admins
+- 409 / 4xx error message bodies returned by `/api/admin/**` routes
+
+Reviewers (CodeRabbit, the local push-review hook) should NOT flag
+hardcoded Korean strings in these paths as i18n violations. New admin
+features should follow the same convention — match the existing
+labels' style and language.
+
+The user-facing surfaces (everything under `src/app/[locale]/**`,
+`src/components/**` rendered there, public API responses) remain
+strictly i18n-keyed; the rule only relaxes inside the admin scope.
 
 ---
 
