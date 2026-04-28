@@ -123,9 +123,15 @@ export async function getArtistGroupsForList(
       ? {}
       : { category: { in: FILTER_TO_CATEGORIES[filter] } };
 
+  // `hasBoard` was the previous filter here, but it's a discussion-board
+  // admin flag (Phase 2 community), not a "show on the artists list"
+  // flag. Filtering on it hid every group whose operator hadn't toggled
+  // hasBoard=true — including the Phase 1 Hasunosora group, which left
+  // the page rendering empty. The list page is content navigation,
+  // independent of board state.
   const [groupsRaw, seriesRaw, eventsRaw] = await Promise.all([
     prisma.group.findMany({
-      where: { hasBoard: true, ...categoryClause },
+      where: { ...categoryClause },
       include: {
         translations: {
           select: {
@@ -288,11 +294,11 @@ export async function getAvailableArtistFilters(): Promise<
 > {
   const groupsWithArtists = await prisma.group.findMany({
     where: {
-      hasBoard: true,
+      // `hasBoard` is intentionally NOT in this clause — it's a
+      // discussion-board admin flag, not a list-visibility flag.
+      // Mirrors the `where` shape in `getArtistGroupsForList` so the
+      // two queries can't disagree on what counts as a populated group.
       artistLinks: {
-        // At least one non-deleted top-level artist linked. Mirrors the
-        // `where` shape inside `getArtistGroupsForList` so the two
-        // queries can't disagree on what counts as a populated group.
         some: { artist: { isDeleted: false, parentArtistId: null } },
       },
     },
