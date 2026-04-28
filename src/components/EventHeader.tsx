@@ -1,4 +1,4 @@
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
@@ -10,6 +10,32 @@ interface Props {
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
+  /**
+   * Active locale, used to build artist + series link hrefs as
+   * `/${locale}/...`. Required: `next/link` does NOT auto-prefix the
+   * way `@/i18n/navigation`'s wrapper does, so callers must pass the
+   * locale explicitly. Matches the convention every other detail
+   * page uses for `next/link` hrefs.
+   */
+  locale: string;
+  /**
+   * Caller-resolved owning artist (via the series). Renders as a Link
+   * to the artist detail page. Null when the series has no artistId
+   * (multi-artist festivals) — the page should set `organizerName`
+   * instead in that case.
+   *
+   * `id` is typed as `string` so the page can stringify the raw
+   * BigInt at the boundary. `Number(bigint)` would silently truncate
+   * for autoincrement IDs ≥ 2^53, breaking the rendered href on
+   * any future high-id artist (mirrors the precision-preservation
+   * convention used for `series.id`).
+   */
+  artist: { id: string; slug: string; name: string } | null;
+  /**
+   * Multi-artist festival fallback — rendered as plain text when
+   * `artist` is null. Mirrors the `series.organizerName` field.
+   */
+  organizerName: string | null;
   /** Caller-resolved series link target — null when the event has no series. */
   series: { id: number | bigint; slug: string; shortName: string } | null;
   /** Display title — series full name takes precedence; falls back to event full name then `unknownEventLabel`. */
@@ -28,6 +54,9 @@ export function EventHeader({
   statusLabel,
   date,
   startTime,
+  locale,
+  artist,
+  organizerName,
   series,
   title,
   subtitle,
@@ -67,10 +96,30 @@ export function EventHeader({
           </span>
         )}
       </div>
-      {series && (
+      {(artist || organizerName) && (
         <div className="mt-2">
+          {artist ? (
+            <Link
+              href={`/${locale}/artists/${artist.id}/${artist.slug}`}
+              className="text-[12px] font-medium hover:underline"
+              style={{ color: colors.textSubtle }}
+            >
+              {artist.name}
+            </Link>
+          ) : (
+            <span
+              className="text-[12px] font-medium"
+              style={{ color: colors.textSubtle }}
+            >
+              {organizerName}
+            </span>
+          )}
+        </div>
+      )}
+      {series && (
+        <div className="mt-1">
           <Link
-            href={`/series/${series.id}/${series.slug}`}
+            href={`/${locale}/series/${series.id}/${series.slug}`}
             className="text-[11px] font-medium hover:underline"
             style={{ color: colors.primary }}
           >

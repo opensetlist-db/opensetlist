@@ -41,42 +41,41 @@ export interface PerformanceEvent {
   name: string;
   /** Click target. Renders the row as a link wrapper. */
   href: string;
+  /**
+   * Optional pre-rendered trailing cells (encore badge / unit pill /
+   * #position chip / etc.). The consumer builds the JSX server-side
+   * — passing a server-side `renderTrailing` callback through this
+   * client component would cross the RSC boundary as a function,
+   * which React refuses to serialize. Pre-rendered ReactNode trees
+   * serialize cleanly so each consumer can keep its own per-row
+   * presentation without coupling PerformanceGroup to page-specific
+   * data shapes.
+   */
+  trailing?: React.ReactNode;
 }
 
-// Generic over the event row type so consumers can extend
-// PerformanceEvent with page-specific fields (e.g. encore + position
-// + note for the song page) and have those fields flow through to
-// `renderTrailing` without an unsafe `as` cast at the call site.
-// `T extends PerformanceEvent` keeps the base contract intact.
-export interface PerformanceSeries<T extends PerformanceEvent = PerformanceEvent> {
+export interface PerformanceSeries {
   seriesId: string | number;
   /** Series header label, locale-resolved. */
   seriesShort: string;
   /** True when at least one event in the series is currently ongoing — drives the right-edge LIVE badge on the series header. */
   hasOngoing: boolean;
-  events: T[];
+  events: PerformanceEvent[];
 }
 
-interface Props<T extends PerformanceEvent = PerformanceEvent> {
-  series: PerformanceSeries<T>;
+interface Props {
+  series: PerformanceSeries;
   /** Map from resolved event status to its already-translated label. The consumer supplies labels so the component stays out of next-intl. */
   statusLabels: Record<ResolvedEventStatus, string>;
   /** Total-events-count label (e.g. "3공연" / "3 events" / "3公演"). Consumer formats via i18n + count. */
   eventCountLabel: string;
-  /**
-   * Custom trailing cells for each event row. The event argument is
-   * typed as `T` (which extends PerformanceEvent), so consumers that
-   * carry extra fields can read them directly without casting.
-   */
-  renderTrailing?: (event: T) => React.ReactNode;
 }
 
-export function PerformanceGroup<T extends PerformanceEvent = PerformanceEvent>({
+export function PerformanceGroup({
   series,
   statusLabels,
   eventCountLabel,
-  renderTrailing,
-}: Props<T>) {
+}: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -197,7 +196,7 @@ export function PerformanceGroup<T extends PerformanceEvent = PerformanceEvent>(
             >
               {event.name}
             </span>
-            {renderTrailing?.(event)}
+            {event.trailing}
             <span
               aria-hidden="true"
               style={{

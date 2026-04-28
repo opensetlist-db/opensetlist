@@ -19,6 +19,7 @@ import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
 import { EventHeader } from "@/components/EventHeader";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { colors } from "@/styles/tokens";
 import type { Metadata } from "next";
 
 type Props = {
@@ -31,7 +32,13 @@ async function getEvent(id: bigint, locale: string) {
     include: {
       translations: true,
       eventSeries: {
-        include: { translations: true },
+        include: {
+          translations: true,
+          // Pulled in so EventHeader can render an artist link.
+          // `artistId` is nullable on EventSeries (multi-artist
+          // festivals fall back to `organizerName`).
+          artist: { include: { translations: true } },
+        },
       },
       setlistItems: {
         where: { isDeleted: false },
@@ -280,10 +287,11 @@ export default async function EventPage({ params }: Props) {
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
 
-  const [t, ct, st, reactionCounts, impressions] = await Promise.all([
+  const [t, ct, st, aT, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
     getTranslations("Song"),
+    getTranslations("Artist"),
     getReactionCounts(eventId),
     getEventImpressions(eventId),
   ]);
@@ -318,6 +326,49 @@ export default async function EventPage({ params }: Props) {
         "full"
       )
     : null;
+  // Short event name for the breadcrumb tail. Cascades the same way as
+  // every other display-name resolution: localized shortName → localized
+  // name → originalShortName → originalName.
+  const eventShortName = displayNameWithFallback(
+    event,
+    event.translations,
+    locale,
+    "short"
+  );
+
+  // Artist context for EventHeader: prefer the series artist (link
+  // target → /artists/{id}/{slug}); fall back to the series'
+  // `organizerName` for multi-artist festivals where artistId is null.
+  // Mirrors the cascade in the series detail page header.
+  //
+  // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
+  // 404 on `/artists/{id}` (the artist page calls notFound()), so
+  // linking to them would dead-end. Treat as absent and fall through
+  // to the organizerName branch.
+  const seriesArtist =
+    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
+      ? event.eventSeries.artist
+      : null;
+  const headerArtist = seriesArtist
+    ? {
+        // String() — `Artist.id` is BigInt; `Number(bigint)` truncates
+        // precision for IDs >= 2^53. Mirrors the policy on
+        // `series.id` (which `EventHeader` accepts as `number |
+        // bigint` for the same reason).
+        id: String(seriesArtist.id),
+        slug: seriesArtist.slug,
+        name:
+          displayNameWithFallback(
+            seriesArtist,
+            seriesArtist.translations,
+            locale
+          ) || aT("unknown"),
+      }
+    : null;
+  const headerOrganizerName =
+    !headerArtist && event.eventSeries?.organizerName
+      ? event.eventSeries.organizerName
+      : null;
   const venue = resolveLocalizedField(
     event,
     event.translations,
@@ -343,22 +394,35 @@ export default async function EventPage({ params }: Props) {
       ? eventName
       : null;
 
+  // Breadcrumb: short series → short event when both exist. When the
+  // event has no series, fall back to Home → event so a single
+  // non-clickable item doesn't render as a useless one-link bar.
+  // Hrefs are fully locale-prefixed (`/${locale}/...`) — `Breadcrumb`
+  // uses `next/link` which does NOT auto-prefix the locale.
+  const breadcrumbItems: BreadcrumbItem[] =
+    event.eventSeries && seriesShortName
+      ? [
+          {
+            label: seriesShortName,
+            href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+          },
+          { label: eventShortName || t("unknownEvent") },
+        ]
+      : [
+          { label: ct("backToHome"), href: `/${locale}` },
+          { label: eventShortName || t("unknownEvent") },
+        ];
+
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 lg:max-w-[1280px] lg:px-8">
-      <Breadcrumb
-        ariaLabel={ct("breadcrumb")}
-        items={[
-          { label: ct("backToHome"), href: "/" },
-          ...(event.eventSeries && seriesShortName
-            ? [
-                {
-                  label: seriesShortName,
-                  href: `/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
-                } satisfies BreadcrumbItem,
-              ]
-            : []),
-        ]}
-      />
+    <main
+      className="mx-auto max-w-3xl px-4 py-8 lg:max-w-[1280px] lg:px-8"
+      // Match the slate-tinted page surface every other top-level page
+      // uses (home, events list, artists, series, legal). Without it,
+      // the white EventHeader card has no contrast against the body and
+      // the sticky desktop sidebar reads as "missing".
+      style={{ background: colors.bgPage }}
+    >
+      <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
 
       {/*
         Mobile: single column (header on top, setlist + impressions below).
@@ -374,6 +438,9 @@ export default async function EventPage({ params }: Props) {
             statusLabel={t(`status.${resolvedStatus}`)}
             date={event.date}
             startTime={event.startTime}
+            locale={locale}
+            artist={headerArtist}
+            organizerName={headerOrganizerName}
             series={
               event.eventSeries && seriesShortName
                 ? {

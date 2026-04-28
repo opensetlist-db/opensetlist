@@ -316,6 +316,36 @@ export default async function MemberPage({ params, searchParams }: Props) {
     };
   };
 
+  // Trailing cell for a member-page event row: 전출연 pill (full-group
+  // default) or unit-name pill (specific song-level appearance).
+  // Pre-built per event because PerformanceGroup is a client component
+  // and React refuses to serialize a function prop across the RSC
+  // boundary; ReactNode trees serialize fine, so the JSX lives here.
+  const buildTrailing = (isFullGroup: boolean): React.ReactNode => {
+    const labelText = isFullGroup
+      ? t("fullGroupBadge")
+      : (primaryUnitName ?? "");
+    if (!labelText) return null;
+    return (
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          flexShrink: 0,
+          color: isFullGroup ? unitColor : colors.textMuted,
+          background: isFullGroup
+            ? `${unitColor}1f` // ~12% alpha; matches mockup hex+15
+            : colors.bgSubtle,
+          border: isFullGroup ? `1px solid ${unitColor}33` : "none",
+          borderRadius: radius.chip,
+          padding: "1px 6px",
+        }}
+      >
+        {labelText}
+      </span>
+    );
+  };
+
   const eventViewsById = new Map<number, EventView>();
   for (const perf of member.performances) {
     const event = perf.setlistItem.event;
@@ -335,6 +365,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
         // EventPerformer-only check overrides it (it doesn't, but the
         // explicit default makes the rule readable).
         isFullGroup: false,
+        trailing: buildTrailing(false),
       });
     }
   }
@@ -357,6 +388,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       status: info.status,
       href: info.href,
       isFullGroup: true,
+      trailing: buildTrailing(true),
     });
   }
 
@@ -545,49 +577,18 @@ export default async function MemberPage({ params, searchParams }: Props) {
 
   const heroGradient = `linear-gradient(135deg, ${memberColor}30 0%, ${memberColor}08 100%)`;
 
-  // Trailing cell renderer for <PerformanceGroup>. Looks up the EventView
-  // by id, renders the 전출연 pill (full-group default) or the unit
-  // name pill (specific song-level appearance).
-  const renderEventTrailing = (event: PerformanceEvent) => {
-    const view = eventViewsById.get(Number(event.id));
-    if (!view) return null;
-    const fg = view.isFullGroup;
-    const labelText = fg
-      ? t("fullGroupBadge")
-      : (primaryUnitName ?? "");
-    if (!labelText) return null;
-    return (
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          flexShrink: 0,
-          color: fg ? unitColor : colors.textMuted,
-          background: fg
-            ? `${unitColor}1f` // ~12% alpha; matches mockup hex+15
-            : colors.bgSubtle,
-          border: fg ? `1px solid ${unitColor}33` : "none",
-          borderRadius: radius.chip,
-          padding: "1px 6px",
-        }}
-      >
-        {labelText}
-      </span>
-    );
-  };
-
   return (
     <main style={{ minHeight: "100vh", background: colors.bgPage }}>
       <div className="mx-auto" style={{ maxWidth: 1100, padding: "0 16px" }}>
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
-            { label: ct("backToHome"), href: "/" },
+            { label: ct("backToHome"), href: `/${locale}` },
             ...(parentArtist && parentName
               ? [
                   {
                     label: parentName,
-                    href: `/artists/${parentArtist.id}/${parentArtist.slug}`,
+                    href: `/${locale}/artists/${parentArtist.id}/${parentArtist.slug}`,
                   } satisfies BreadcrumbItem,
                 ]
               : []),
@@ -1070,7 +1071,6 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       eventCountLabel={at("eventCount", {
                         count: sv.events.length,
                       })}
-                      renderTrailing={renderEventTrailing}
                     />
                   ))
                 )}

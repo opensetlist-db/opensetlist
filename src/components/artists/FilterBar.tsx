@@ -39,10 +39,25 @@ const FILTERS: ReadonlyArray<FilterDef> = [
 
 interface Props {
   active: ArtistsListFilter;
+  /**
+   * Categories that have at least one matching artist in the current
+   * catalog. Chips outside this set are hidden so the user can't land
+   * on a guaranteed-empty filter state. `all` is always rendered.
+   * Resolved server-side by `getAvailableArtistFilters()`.
+   */
+  available: Set<ArtistsListFilter>;
 }
 
-export default async function FilterBar({ active }: Props) {
+export default async function FilterBar({ active, available }: Props) {
   const t = await getTranslations("Artist");
+  const visibleFilters = FILTERS.filter(
+    (f) => f.value === "all" || available.has(f.value),
+  );
+
+  // Don't render the bar at all when only the unconditional `all` chip
+  // remains — a single chip is uninformative and just wastes vertical
+  // space. The page still renders a header + the artist list below.
+  if (visibleFilters.length <= 1) return null;
 
   return (
     <nav
@@ -54,7 +69,7 @@ export default async function FilterBar({ active }: Props) {
         flexWrap: "wrap",
       }}
     >
-      {FILTERS.map(({ value, key }) => {
+      {visibleFilters.map(({ value, key }) => {
         const isActive = active === value;
         const href =
           value === "all"

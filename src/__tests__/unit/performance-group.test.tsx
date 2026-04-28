@@ -128,15 +128,36 @@ describe("<PerformanceGroup />", () => {
     expect(screen.getByText("예정")).toBeTruthy();
   });
 
-  it("invokes renderTrailing for each event when supplied", () => {
+  it("renders the per-event `trailing` JSX in each row", () => {
+    // `trailing` replaced the previous `renderTrailing` callback prop.
+    // The callback couldn't be passed across the RSC boundary because
+    // PerformanceGroup is a client component and React refuses to
+    // serialize functions; pre-rendered ReactNode trees serialize fine.
+    const series = makeSeries({
+      events: [
+        {
+          id: "e1",
+          status: "ongoing",
+          formattedDate: "5/2",
+          name: "Event 1",
+          href: "/events/1",
+          trailing: <span data-testid="trail-e1">·e1</span>,
+        },
+        {
+          id: "e2",
+          status: "upcoming",
+          formattedDate: "5/3",
+          name: "Event 2",
+          href: "/events/2",
+          trailing: <span data-testid="trail-e2">·e2</span>,
+        },
+      ],
+    });
     render(
       <PerformanceGroup
-        series={makeSeries()}
+        series={series}
         statusLabels={STATUS_LABELS}
         eventCountLabel="2 events"
-        renderTrailing={(event) => (
-          <span data-testid={`trail-${event.id}`}>·{event.id}</span>
-        )}
       />,
     );
     expect(screen.getByTestId("trail-e1")).toBeTruthy();

@@ -347,12 +347,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
-            { label: ct("backToHome"), href: "/" },
+            { label: ct("backToHome"), href: `/${locale}` },
             ...(artist.parentArtist && parentName
               ? [
                   {
                     label: parentName,
-                    href: `/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
+                    href: `/${locale}/artists/${artist.parentArtist.id}/${artist.parentArtist.slug}`,
                   } satisfies BreadcrumbItem,
                 ]
               : []),

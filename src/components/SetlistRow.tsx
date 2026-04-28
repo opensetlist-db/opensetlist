@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { slugify } from "@/lib/utils";
 import {
   displayNameWithFallback,
   displayOriginalTitle,
@@ -18,9 +17,10 @@ import { colors } from "@/styles/tokens";
 // needlessly run setState every poll for those items.
 const EMPTY_COUNTS: Record<string, number> = {};
 
-// Non-song variants render dimmed without reaction buttons (mockup §3-2).
+// Non-song variants render their type label in a muted gray color
+// (instead of opacity-dimming the whole row, which used to wash out
+// borders and hover states too) and don't get reaction buttons.
 const NON_SONG_TYPES = new Set(["mc", "video", "interval"]);
-const NON_SONG_OPACITY = 0.38;
 
 interface Props {
   item: LiveSetlistItem;
@@ -45,8 +45,15 @@ export function SetlistRow({
       s.song.translations,
       locale,
     );
+    // Build the canonical href segment once. Schema declares
+    // `Song.slug` as required + unique, but defensively handle the
+    // empty-string case (some pre-redesign imports left it blank) by
+    // dropping the slug segment entirely — the `[[...slug]]` catch-all
+    // resolves on id alone, so `/songs/{id}` still routes correctly.
+    const slugSegment = s.song.slug ? `/${s.song.slug}` : "";
     return {
       id: s.song.id,
+      href: `/${locale}/songs/${s.song.id}${slugSegment}`,
       main,
       sub,
       variantLabel: variant,
@@ -78,14 +85,9 @@ export function SetlistRow({
 
   return (
     <li
-      className="border-b border-zinc-100 pb-2 lg:grid lg:grid-cols-[36px_1fr_180px_260px] lg:gap-3 lg:px-2 lg:py-2 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      className="border-b border-zinc-100 pb-2 lg:grid lg:grid-cols-[36px_1fr_180px] lg:gap-3 lg:px-2 lg:py-2 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
       // CSS variable funnels colors.bgSubtle into the hover Tailwind class.
-      style={
-        {
-          "--row-hover-bg": colors.bgSubtle,
-          ...(isNonSong ? { opacity: NON_SONG_OPACITY } : {}),
-        } as React.CSSProperties
-      }
+      style={{ "--row-hover-bg": colors.bgSubtle } as React.CSSProperties}
     >
       <div className="flex items-start gap-3 lg:col-span-2">
         <span
@@ -94,14 +96,39 @@ export function SetlistRow({
           {index + 1}
         </span>
         <div className="flex-1 min-w-0">
-          <SongTitleBlock
-            songNames={songNames}
-            itemType={item.type}
-            position={item.position}
-            locale={locale}
-            eventId={eventId}
-            t={t}
-          />
+          {/*
+            Title row + reactions on one wrapping flex line. The
+            ReactionButtons render inline at the row's end on wide
+            viewports and wrap below the title on narrow ones — that's
+            what `flex-wrap` is for. Non-song items skip the reactions
+            entirely (early-return inside the conditional).
+          */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="min-w-0 flex-1">
+              <SongTitleBlock
+                songNames={songNames}
+                itemType={item.type}
+                position={item.position}
+                eventId={eventId}
+                t={t}
+              />
+            </div>
+            {/*
+              Reactions only render for song-typed items that actually
+              have at least one song attached. An admin-created song
+              row with no song assigned (placeholder) would otherwise
+              POST reactions with an empty `songId`, breaking analytics
+              tracking and the per-song aggregation downstream.
+            */}
+            {!isNonSong && songNames.length > 0 && (
+              <ReactionButtons
+                setlistItemId={String(item.id)}
+                songId={String(item.songs[0].song.id)}
+                eventId={eventId}
+                initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
+              />
+            )}
+          </div>
           {!isNonSong && unitArtist && unitArtistName && (
             <UnitBadge
               artistColor={unitArtist.artist.color}
@@ -122,25 +149,12 @@ export function SetlistRow({
         </div>
       </div>
 
-      {/* Performers column (desktop only — mobile shows below the title) */}
+      {/* Performers column — desktop only. Mobile drops the line
+          entirely per operator preference (the title + reactions row
+          carries enough context on narrow viewports). */}
       <div className="mt-1 hidden text-sm text-zinc-500 lg:block">
         {performers.length > 0 ? performers.join(", ") : null}
       </div>
-      <div className="mt-1 flex flex-wrap gap-2 text-sm text-zinc-500 lg:hidden">
-        {performers.length > 0 && <span>{performers.join(", ")}</span>}
-      </div>
-
-      {/* Reactions column — hidden for non-song variants per mockup §3-2 */}
-      {!isNonSong && (
-        <div className="lg:pl-0 pl-[34px]">
-          <ReactionButtons
-            setlistItemId={String(item.id)}
-            songId={String(item.songs[0]?.song.id ?? "")}
-            eventId={eventId}
-            initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
-          />
-        </div>
-      )}
     </li>
   );
 }
@@ -149,19 +163,18 @@ function SongTitleBlock({
   songNames,
   itemType,
   position,
-  locale,
   eventId,
   t,
 }: {
   songNames: Array<{
     id: number;
+    href: string;
     main: string;
     sub: string | null;
     variantLabel: string | null;
   }>;
   itemType: string;
   position: number;
-  locale: string;
   eventId: string;
   t: ReturnType<typeof useTranslations<"Event">>;
 }) {
@@ -169,11 +182,14 @@ function SongTitleBlock({
     return (
       <div className="flex flex-wrap items-center gap-1">
         {itemType !== "song" ? (
-          <span className="font-medium text-zinc-500 italic">
+          <span
+            className="font-medium italic"
+            style={{ color: colors.textMuted }}
+          >
             {t(`itemType.${itemType}` as Parameters<typeof t>[0])}
           </span>
         ) : (
-          <span className="text-zinc-400">{t("noSongAssigned")}</span>
+          <span style={{ color: colors.textMuted }}>{t("noSongAssigned")}</span>
         )}
       </div>
     );
@@ -185,7 +201,7 @@ function SongTitleBlock({
         <span key={song.id}>
           {i > 0 && <span className="mx-1 text-zinc-400">+</span>}
           <Link
-            href={`/${locale}/songs/${song.id}/${slugify(song.main)}`}
+            href={song.href}
             onClick={() =>
               trackEvent("setlist_item_click", {
                 song_id: String(song.id),
