@@ -115,6 +115,16 @@ export const breakpoint = {
   desktop: 1024,
 } as const;
 
+/*
+ * Layout-scale constants. `navHeight` is the sticky `<Nav>` height
+ * (mobile/desktop) — surfaces below the nav that need to clear it
+ * (sticky sidebars, anchor-link `scroll-margin-top`) derive from
+ * here so a future nav-height change propagates to all consumers.
+ */
+export const layout = {
+  navHeight: { mobile: 52, desktop: 56 },
+} as const;
+
 // Border-width scale. `emphasis` is the slightly heavier stroke used on
 // surfaces that need to read as "the user's own" (my-impression card) or
 // "active selection" (reaction button mine-state). Most other surfaces

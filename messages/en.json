@@ -224,6 +224,19 @@
     "contact": "Contact",
     "copyright": "© {year} OpenSetlist"
   },
+  "legal": {
+    "privacyTitle": "Privacy Policy",
+    "termsTitle": "Terms of Service",
+    "openSetlistLabel": "OPENSETLIST",
+    "lastUpdated": "Last updated",
+    "tocLabel": "Contents",
+    "legalNavLabel": "Legal pages",
+    "bottomLinkPrivacyToTerms": "You may also want to review our terms",
+    "bottomLinkTermsToPrivacy": "You may also want to review our privacy policy",
+    "bottomLinkViewTerms": "View terms ›",
+    "bottomLinkViewPrivacy": "View privacy ›",
+    "unavailableInLocale": "Available in Korean only"
+  },
   "Meta": {
     "description": "Open setlist database for live events (JP/EN/KR)",
     "setlistDb": "setlist database",

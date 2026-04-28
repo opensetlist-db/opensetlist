@@ -224,6 +224,19 @@
     "contact": "문의",
     "copyright": "© {year} OpenSetlist"
   },
+  "legal": {
+    "privacyTitle": "개인정보처리방침",
+    "termsTitle": "이용약관",
+    "openSetlistLabel": "OPENSETLIST",
+    "lastUpdated": "최종 수정일",
+    "tocLabel": "목차",
+    "legalNavLabel": "약관 페이지 전환",
+    "bottomLinkPrivacyToTerms": "서비스 이용 규정도 확인해보세요",
+    "bottomLinkTermsToPrivacy": "개인정보 처리 방침도 확인해보세요",
+    "bottomLinkViewTerms": "이용약관 보기 ›",
+    "bottomLinkViewPrivacy": "개인정보처리방침 보기 ›",
+    "unavailableInLocale": "이 페이지는 한국어로만 제공됩니다"
+  },
   "Meta": {
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
     "setlistDb": "공연 세트리스트 데이터베이스",

@@ -8,6 +8,17 @@
      Consumed by `.row-hover-bg:hover` below; available as a Tailwind
      arbitrary-value `bg-[var(--bg-subtle)]` if needed elsewhere. */
   --bg-subtle: #f8fafc;
+  /* Anchor-jump offset for `scroll-margin-top` on legal section
+     headings. Mobile = `layout.navHeight.mobile` (52) + 24 breathing
+     room; desktop overrides below. Keep in lockstep with
+     `layout.navHeight` in `src/styles/tokens.ts`. */
+  --legal-anchor-offset: 76px;
+}
+@media (min-width: 1024px) {
+  :root {
+    /* Desktop = `layout.navHeight.desktop` (56) + 24 breathing room. */
+    --legal-anchor-offset: 80px;
+  }
 }
 
 @theme inline {
