@@ -105,6 +105,20 @@
     "statsTours": "투어",
     "releaseYearLabel": "발매",
     "albumLabel": "수록",
+    "albumTypeLabel": "앨범 유형",
+    "albumType": {
+      "single": "싱글",
+      "album": "앨범",
+      "ep": "EP",
+      "live_album": "라이브 앨범",
+      "soundtrack": "OST"
+    },
+    "tableHeader": {
+      "status": "상태",
+      "date": "날짜",
+      "event": "공연명",
+      "position": "위치"
+    },
     "role": {
       "primary": "메인",
       "featured": "피처링",

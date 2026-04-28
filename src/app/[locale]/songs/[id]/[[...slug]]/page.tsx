@@ -25,9 +25,12 @@ import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import {
   PerformanceGroup,
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
@@ -237,7 +240,7 @@ export default async function SongPage({ params, searchParams }: Props) {
     ? (() => {
         const tr = pickLocaleTranslation(albumTrack.album.translations, locale);
         const albumName = tr?.title ?? albumTrack.album.originalTitle;
-        return { name: albumName };
+        return { name: albumName, type: albumTrack.album.type };
       })()
     : null;
 
@@ -392,6 +395,33 @@ export default async function SongPage({ params, searchParams }: Props) {
     });
   }
 
+  // Per-variant active-performance counts. Mirrors the filter from
+  // getPerformanceCount() (excludes deleted setlist items + deleted
+  // events), but batched into a single round-trip via groupBy so
+  // each variant row can show "{N}회 공연" without N extra queries.
+  const variantSongIds = variationList.map((v) => BigInt(v.id));
+  const variantCountRows =
+    variantSongIds.length === 0
+      ? []
+      : await prisma.setlistItemSong.groupBy({
+          by: ["songId"],
+          where: {
+            songId: { in: variantSongIds },
+            setlistItem: {
+              isDeleted: false,
+              event: { isDeleted: false },
+            },
+          },
+          _count: { _all: true },
+        });
+  const variantCountBySongId = new Map<string, number>(
+    variantCountRows.map((row) => [String(row.songId), row._count._all]),
+  );
+  const variationListWithCounts = variationList.map((v) => ({
+    ...v,
+    timesPerformed: variantCountBySongId.get(String(v.id)) ?? 0,
+  }));
+
   const hasVariations = variationList.length > 1;
 
   const tabs = [
@@ -409,8 +439,24 @@ export default async function SongPage({ params, searchParams }: Props) {
       : []),
   ];
 
+  // Exhaustive AlbumType → label map. Using a Record keyed on the
+  // Prisma enum (rather than a dynamic `t(\`albumType.${type}\`)`
+  // template) means a future enum addition (e.g. `compilation`) is a
+  // TypeScript error here, not a silent missing-key fallback in the
+  // info-card render.
+  const albumTypeLabels: Record<AlbumType, string> = {
+    single: t("albumType.single"),
+    album: t("albumType.album"),
+    ep: t("albumType.ep"),
+    live_album: t("albumType.live_album"),
+    soundtrack: t("albumType.soundtrack"),
+  };
+
   const statusLabels: Record<ResolvedEventStatus, string> = {
-    ongoing: et("status.ongoing"),
+    // Mirror events list / home hero — the ongoing pill on row-shaped
+    // surfaces reads "LIVE" rather than the locale "진행중" /
+    // "開催中" / "Live now". Same `Event.live` key used by both.
+    ongoing: et("live"),
     upcoming: et("status.upcoming"),
     completed: et("status.completed"),
     cancelled: et("status.cancelled"),
@@ -433,7 +479,13 @@ export default async function SongPage({ params, searchParams }: Props) {
         >
           {/* Sidebar */}
           <div
-            className="lg:sticky lg:top-[72px]"
+            // `min-w-0` overrides the grid-item default `min-width: auto`
+            // so the sidebar (and its children) can shrink to the column
+            // track instead of expanding the column to fit min-content.
+            // Mirrored on the Main grid item below — without this the
+            // history-tab row's grid-intrinsic width pushes the page
+            // wider than the mobile viewport (horizontal scroll bar).
+            className="lg:sticky lg:top-[72px] min-w-0"
             style={{ marginBottom: 12 }}
           >
             <InfoCard artist={primaryArtist}>
@@ -558,6 +610,23 @@ export default async function SongPage({ params, searchParams }: Props) {
                       >
                         {albumInfo.name}
                       </dd>
+                      <dt
+                        style={{
+                          color: colors.textMuted,
+                          fontWeight: 600,
+                          fontSize: 11,
+                        }}
+                      >
+                        {t("albumTypeLabel")}
+                      </dt>
+                      <dd
+                        style={{
+                          color: colors.textPrimary,
+                          margin: 0,
+                        }}
+                      >
+                        {albumTypeLabels[albumInfo.type]}
+                      </dd>
                     </>
                   )}
                 </dl>
@@ -612,7 +681,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           </div>
 
           {/* Main */}
-          <div>
+          <div className="min-w-0">
             <TabBar
               tabs={tabs}
               active={activeTab}
@@ -646,6 +715,44 @@ export default async function SongPage({ params, searchParams }: Props) {
                     {t("recentPerformances")}
                   </span>
                 </div>
+                {/* Desktop column-header strip — uses the exact same
+                    grid template as the row beneath, so the header
+                    labels line up with their respective columns.
+                    Mobile keeps the existing layout (no strip) — the
+                    column header is desktop-only per the mockup. */}
+                {seriesViews.length > 0 && (
+                  <div
+                    className="hidden lg:grid"
+                    style={{
+                      gridTemplateColumns: PERFORMANCE_ROW_GRID,
+                      gap: 10,
+                      padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
+                      background: colors.bgFaint,
+                      borderBottom: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    {[
+                      t("tableHeader.status"),
+                      t("tableHeader.date"),
+                      t("tableHeader.event"),
+                      t("tableHeader.position"),
+                      "",
+                    ].map((label, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: colors.textMuted,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {seriesViews.length === 0 ? (
                   <p
                     style={{
@@ -682,8 +789,8 @@ export default async function SongPage({ params, searchParams }: Props) {
                 }}
               >
                 <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                  {variationList.map((v, i) => {
-                    const isLast = i === variationList.length - 1;
+                  {variationListWithCounts.map((v, i) => {
+                    const isLast = i === variationListWithCounts.length - 1;
                     const rowStyle = {
                       display: "flex",
                       alignItems: "center",
@@ -696,68 +803,91 @@ export default async function SongPage({ params, searchParams }: Props) {
                         ? colors.primaryHoverBg
                         : "transparent",
                     } as const;
+                    // Wrap title + pills in a single flex:1 container
+                    // so the pills hug the title on the left instead
+                    // of being pushed to the row's right edge by the
+                    // title's own flex:1. The right-side count then
+                    // sits on its own column at the row's end.
                     const inner = (
                       <>
-                        <span
+                        <div
                           style={{
                             flex: 1,
                             minWidth: 0,
-                            fontSize: 14,
-                            fontWeight: 700,
-                            color: v.isCurrent
-                              ? colors.primary
-                              : colors.textPrimary,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
                           }}
                         >
-                          {v.title}
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 700,
+                              color: v.isCurrent
+                                ? colors.primary
+                                : colors.textPrimary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {v.title}
+                          </span>
+                          {v.variantLabel ? (
+                            <span
+                              style={{
+                                color: colors.variant,
+                                background: colors.variantBg,
+                                borderRadius: 10,
+                                padding: "2px 8px",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {v.variantLabel}
+                            </span>
+                          ) : v.isBase ? (
+                            <span
+                              style={{
+                                color: colors.primary,
+                                background: colors.primaryBg,
+                                borderRadius: 10,
+                                padding: "2px 8px",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {t("baseVariant")}
+                            </span>
+                          ) : null}
+                          {v.isCurrent && (
+                            <span
+                              style={{
+                                color: colors.primary,
+                                background: colors.primaryBg,
+                                borderRadius: 10,
+                                padding: "2px 8px",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {t("currentVariant")}
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: colors.textMuted,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {t("performanceCount", { count: v.timesPerformed })}
                         </span>
-                        {v.variantLabel ? (
-                          <span
-                            style={{
-                              color: colors.variant,
-                              background: colors.variantBg,
-                              borderRadius: 10,
-                              padding: "2px 8px",
-                              fontSize: 10,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {v.variantLabel}
-                          </span>
-                        ) : v.isBase ? (
-                          <span
-                            style={{
-                              color: colors.primary,
-                              background: colors.primaryBg,
-                              borderRadius: 10,
-                              padding: "2px 8px",
-                              fontSize: 10,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {t("baseVariant")}
-                          </span>
-                        ) : null}
-                        {v.isCurrent && (
-                          <span
-                            style={{
-                              color: colors.primary,
-                              background: colors.primaryBg,
-                              borderRadius: 10,
-                              padding: "2px 8px",
-                              fontSize: 10,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                            }}
-                          >
-                            {t("currentVariant")}
-                          </span>
-                        )}
                         {!v.isCurrent && (
                           <span
                             aria-hidden="true"

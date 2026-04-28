@@ -12,15 +12,31 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  *
  * Series header: clickable, toggles expand/collapse (default expanded).
  * `›` arrow rotates 0°→90° in 0.15s.
- * Event rows: `[StatusBadge size="sm"]` + date 48-52px + event name
- * (blue, bold, flex-1, truncate) + custom trailing cells via
- * `renderTrailing` + `›`.
  *
- * The page passes its own `renderTrailing(event)` callback so each
- * detail page can add page-specific cells (artist: song count;
- * member: 전출연 / unit badge; song: encore + position + note;
- * series: leg-grouped, song-count). This way the same component
- * renders four different page styles without prop explosions.
+ * Event rows: a 5-track CSS grid (`PERFORMANCE_ROW_GRID`):
+ *   [60px status] [100px date] [minmax(0,1fr) name] [auto trailing] [auto chevron]
+ *
+ * Why grid (not flex): with flex + variable-width date strings (Korean
+ * year format runs ~90px) and variable-width trailing chips, the
+ * leading columns drift across rows so the visual table looks ragged.
+ * Grid pins the leading columns so status/date/name align cleanly down
+ * every group. `minmax(0, 1fr)` is the canonical fix for "1fr column
+ * refuses to shrink", which is what produced the mobile horizontal
+ * scroll bar before this refactor — without it the long name pushes
+ * the row wider than the viewport. The row's `overflow: hidden`
+ * clips overlong trailing rather than scrolling.
+ *
+ * Page-specific trailing cells come in via the consumer-built
+ * `event.trailing` ReactNode (artist: song count; member: 전출연 /
+ * unit badge; song: encore + position + note; series: leg-grouped,
+ * song-count). The grid renders them in a single `auto` cell so each
+ * page keeps its own per-row presentation without coupling to the
+ * shared grid template.
+ *
+ * The exported `PERFORMANCE_ROW_GRID` constant lets a page (e.g.
+ * the song-page history tab) render a desktop column-header strip
+ * above the groups using the exact same column tracks, so header
+ * labels line up with the row content.
  *
  * Series ordering (ongoing-pinned + sort key) is the consumer's
  * responsibility — this component renders one group at the position
@@ -30,6 +46,36 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * Server-rendering the closed state would require a full page reload
  * to flip — not acceptable for a navigation-secondary control.
  */
+
+/**
+ * Desktop grid template for an event row inside `<PerformanceGroup>`.
+ * All five tracks are fixed (or `minmax(0, 1fr)` for name) so a
+ * consumer's column-header strip rendered above the groups —
+ * a separate grid with the same template — has identically-sized
+ * column tracks. Without this, `auto`-sized trailing/chevron tracks
+ * would size to per-grid content (header text vs. row chips), and
+ * the header label "위치" would land at a different x-coordinate
+ * than the row's trailing chips.
+ *
+ * Mobile rows use `auto auto` for trailing/chevron via a Tailwind
+ * responsive class on the row (see below) — the column-header strip
+ * is desktop-only (`hidden lg:grid` on consumer pages), so mobile
+ * has no alignment requirement and `auto` saves horizontal space
+ * for the wider chip combos that don't fit a 180px box on a 360px
+ * viewport.
+ */
+export const PERFORMANCE_ROW_GRID =
+  "60px 100px minmax(0, 1fr) 180px 16px";
+
+/**
+ * Left padding of every event row, in pixels. The column-header strip
+ * a consumer page renders above its `<PerformanceGroup>` list (e.g.
+ * the song-page history tab) MUST use the same indent so the header
+ * column tracks line up with the row column tracks. Exported as a
+ * constant so the two values stay in sync — bumping the row indent
+ * here propagates to every consumer header automatically.
+ */
+export const PERFORMANCE_ROW_INDENT_PX = 36;
 
 export interface PerformanceEvent {
   id: string | number;
@@ -153,18 +199,33 @@ export function PerformanceGroup({
           <Link
             key={event.id}
             href={event.href}
-            className="row-hover-bg"
+            // Mobile uses `auto auto` for trailing/chevron — chips size
+            // to their content and the row clips at its right edge if
+            // they overflow. Desktop swaps in the fixed-width tracks
+            // (`180px 16px`) so the page's column-header strip lines
+            // up with the row columns. The grid container itself gets
+            // `min-width: 0` so its grid-intrinsic min-content (which
+            // can exceed the viewport once `flexShrink: 0` chips refuse
+            // to shrink) doesn't force the parent box wider than the
+            // mobile viewport — combined with the row's `overflow:
+            // hidden`, this is what kills the page-level horizontal
+            // scroll bar on narrow screens.
+            //
+            // ⚠️ The `lg:grid-cols-[...]` value MUST stay in sync with
+            // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
+            // requires literal class strings, so the constant can't be
+            // interpolated here — if you change one, change the other.
+            className="row-hover-bg grid items-center gap-2.5 grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_16px]"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "9px 16px 9px 36px",
+              padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               borderBottom:
                 i < series.events.length - 1
                   ? `1px solid ${colors.borderFaint}`
                   : `1px solid ${colors.borderLight}`,
               textDecoration: "none",
               color: "inherit",
+              overflow: "hidden",
+              minWidth: 0,
             }}
           >
             <StatusBadge
@@ -176,8 +237,6 @@ export function PerformanceGroup({
               style={{
                 fontSize: 12,
                 color: colors.textMuted,
-                flexShrink: 0,
-                width: 52,
               }}
             >
               {event.formattedDate}
@@ -187,7 +246,6 @@ export function PerformanceGroup({
                 fontSize: 13,
                 fontWeight: 600,
                 color: colors.primary,
-                flex: 1,
                 minWidth: 0,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -196,13 +254,14 @@ export function PerformanceGroup({
             >
               {event.name}
             </span>
-            {event.trailing}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {event.trailing}
+            </div>
             <span
               aria-hidden="true"
               style={{
                 fontSize: 13,
                 color: colors.borderSubtle,
-                flexShrink: 0,
               }}
             >
               ›

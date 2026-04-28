@@ -105,6 +105,20 @@
     "statsTours": "tours",
     "releaseYearLabel": "Released",
     "albumLabel": "On",
+    "albumTypeLabel": "Type",
+    "albumType": {
+      "single": "Single",
+      "album": "Album",
+      "ep": "EP",
+      "live_album": "Live Album",
+      "soundtrack": "Soundtrack"
+    },
+    "tableHeader": {
+      "status": "Status",
+      "date": "Date",
+      "event": "Event",
+      "position": "Position"
+    },
     "role": {
       "primary": "Primary",
       "featured": "Featured",
