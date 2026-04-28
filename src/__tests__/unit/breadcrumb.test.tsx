@@ -2,11 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Breadcrumb } from "@/components/Breadcrumb";
 
-// next-intl's `Link` is a thin wrapper around next/link that auto-prefixes
-// the locale; the test renderer doesn't have an active locale, so swap it
-// for a plain anchor that just preserves the href + children verbatim.
-vi.mock("@/i18n/navigation", () => ({
-  Link: ({
+// next/link's prefetch + router-context behavior isn't useful in
+// jsdom; swap it for a plain anchor that preserves the href +
+// children verbatim so href-shape assertions stay readable.
+vi.mock("next/link", () => ({
+  default: ({
     href,
     children,
     ...rest

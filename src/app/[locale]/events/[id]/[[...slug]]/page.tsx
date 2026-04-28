@@ -393,17 +393,19 @@ export default async function EventPage({ params }: Props) {
   // Breadcrumb: short series → short event when both exist. When the
   // event has no series, fall back to Home → event so a single
   // non-clickable item doesn't render as a useless one-link bar.
+  // Hrefs are fully locale-prefixed (`/${locale}/...`) — `Breadcrumb`
+  // uses `next/link` which does NOT auto-prefix the locale.
   const breadcrumbItems: BreadcrumbItem[] =
     event.eventSeries && seriesShortName
       ? [
           {
             label: seriesShortName,
-            href: `/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+            href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
           },
           { label: eventShortName || t("unknownEvent") },
         ]
       : [
-          { label: ct("backToHome"), href: "/" },
+          { label: ct("backToHome"), href: `/${locale}` },
           { label: eventShortName || t("unknownEvent") },
         ];
 
@@ -432,6 +434,7 @@ export default async function EventPage({ params }: Props) {
             statusLabel={t(`status.${resolvedStatus}`)}
             date={event.date}
             startTime={event.startTime}
+            locale={locale}
             artist={headerArtist}
             organizerName={headerOrganizerName}
             series={

@@ -1,4 +1,4 @@
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
@@ -10,6 +10,14 @@ interface Props {
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
+  /**
+   * Active locale, used to build artist + series link hrefs as
+   * `/${locale}/...`. Required: `next/link` does NOT auto-prefix the
+   * way `@/i18n/navigation`'s wrapper does, so callers must pass the
+   * locale explicitly. Matches the convention every other detail
+   * page uses for `next/link` hrefs.
+   */
+  locale: string;
   /**
    * Caller-resolved owning artist (via the series). Renders as a Link
    * to the artist detail page. Null when the series has no artistId
@@ -40,6 +48,7 @@ export function EventHeader({
   statusLabel,
   date,
   startTime,
+  locale,
   artist,
   organizerName,
   series,
@@ -85,7 +94,7 @@ export function EventHeader({
         <div className="mt-2">
           {artist ? (
             <Link
-              href={`/artists/${artist.id}/${artist.slug}`}
+              href={`/${locale}/artists/${artist.id}/${artist.slug}`}
               className="text-[12px] font-medium hover:underline"
               style={{ color: colors.textSubtle }}
             >
@@ -104,7 +113,7 @@ export function EventHeader({
       {series && (
         <div className="mt-1">
           <Link
-            href={`/series/${series.id}/${series.slug}`}
+            href={`/${locale}/series/${series.id}/${series.slug}`}
             className="text-[11px] font-medium hover:underline"
             style={{ color: colors.primary }}
           >

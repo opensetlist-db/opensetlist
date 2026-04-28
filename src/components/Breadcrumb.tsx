@@ -1,4 +1,4 @@
-import { Link } from "@/i18n/navigation";
+import Link from "next/link";
 import { colors } from "@/styles/tokens";
 
 export interface BreadcrumbItem {
@@ -8,6 +8,14 @@ export interface BreadcrumbItem {
    * a non-clickable span. Per handoff §4 the current page is always the
    * last item in the list, but the component doesn't enforce that
    * (callers can render any subset; this keeps the API permissive).
+   *
+   * Hrefs must be **fully locale-prefixed** (e.g. `/ko/series/7/...`).
+   * Earlier this component used the auto-prefixing `Link` from
+   * `@/i18n/navigation`, but the prefix-on-render contract was hard to
+   * audit (every static-analysis pass on every PR misread it as a
+   * locale-stripping bug). Switched to `next/link` — callers pass
+   * `/${locale}/...` explicitly, matching every other detail-page
+   * link convention in the codebase.
    */
   href?: string;
 }

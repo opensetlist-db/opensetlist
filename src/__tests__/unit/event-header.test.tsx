@@ -7,9 +7,9 @@ vi.mock("next-intl", () => ({
   useLocale: () => "en",
 }));
 
-// next-intl `Link` → plain anchor for jsdom.
-vi.mock("@/i18n/navigation", () => ({
-  Link: ({
+// next/link → plain anchor for jsdom.
+vi.mock("next/link", () => ({
+  default: ({
     href,
     children,
     ...rest
@@ -46,6 +46,7 @@ describe("EventHeader", () => {
     statusLabel: "Upcoming",
     date: new Date("2026-05-02T19:00:00Z"),
     startTime: new Date("2026-05-02T19:00:00Z"),
+    locale: "ko",
     artist: null,
     organizerName: null,
     series: null,
@@ -73,8 +74,11 @@ describe("EventHeader", () => {
     );
     const seriesLink = screen.getByText("6th Live");
     expect(seriesLink.tagName).toBe("A");
+    // Locale-prefixed: EventHeader uses `next/link` which does not
+    // auto-prefix; callers (and tests) must include `${locale}` in
+    // the rendered href.
     expect(seriesLink.getAttribute("href")).toBe(
-      "/series/7/6th-live-fukuoka",
+      "/ko/series/7/6th-live-fukuoka",
     );
   });
 
@@ -118,7 +122,7 @@ describe("EventHeader", () => {
     expect(screen.queryByTestId("event-date-time")).toBeNull();
   });
 
-  it("renders the artist as a link to /artists/{id}/{slug}", () => {
+  it("renders the artist as a link to /{locale}/artists/{id}/{slug}", () => {
     render(
       <EventHeader
         {...baseProps}
@@ -127,7 +131,7 @@ describe("EventHeader", () => {
     );
     const artistLink = screen.getByText("蓮ノ空");
     expect(artistLink.tagName).toBe("A");
-    expect(artistLink.getAttribute("href")).toBe("/artists/42/hasunosora");
+    expect(artistLink.getAttribute("href")).toBe("/ko/artists/42/hasunosora");
   });
 
   it("renders organizerName as plain text (no link) when artist is null", () => {

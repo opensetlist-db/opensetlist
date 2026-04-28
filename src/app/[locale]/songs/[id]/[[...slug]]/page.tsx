@@ -421,7 +421,10 @@ export default async function SongPage({ params, searchParams }: Props) {
       <div className="mx-auto" style={{ maxWidth: 1100, padding: "0 16px" }}>
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
-          items={[{ label: ct("backToHome"), href: "/" }, { label: main }]}
+          items={[
+            { label: ct("backToHome"), href: `/${locale}` },
+            { label: main },
+          ]}
         />
 
         <div

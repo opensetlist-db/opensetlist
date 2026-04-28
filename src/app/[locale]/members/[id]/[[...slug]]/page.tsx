@@ -583,12 +583,12 @@ export default async function MemberPage({ params, searchParams }: Props) {
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
-            { label: ct("backToHome"), href: "/" },
+            { label: ct("backToHome"), href: `/${locale}` },
             ...(parentArtist && parentName
               ? [
                   {
                     label: parentName,
-                    href: `/artists/${parentArtist.id}/${parentArtist.slug}`,
+                    href: `/${locale}/artists/${parentArtist.id}/${parentArtist.slug}`,
                   } satisfies BreadcrumbItem,
                 ]
               : []),
