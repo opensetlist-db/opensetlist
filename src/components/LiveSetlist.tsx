@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistRow } from "@/components/SetlistRow";
@@ -275,7 +276,7 @@ function SetlistColumnHeader({
     reactions: string;
   };
 }) {
-  const headerStyle: React.CSSProperties = {
+  const headerStyle: CSSProperties = {
     fontSize: 11,
     color: colors.textMuted,
     fontWeight: 700,
