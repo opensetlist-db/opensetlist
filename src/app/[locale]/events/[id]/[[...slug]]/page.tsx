@@ -521,13 +521,22 @@ export default async function EventPage({ params }: Props) {
   // Helper: pick the primary (first-active) unit for a performer's
   // artist links. Returns null when no link points at one of the
   // event's unit set — caller then falls back to the global default.
+  //
+  // Active-membership cutoff is the EVENT's date (not "now"): a
+  // member who graduated AFTER this event but BEFORE today should
+  // still surface on the lineup, since they were active when the
+  // event happened. Use `event.date` when available, fall back to
+  // `referenceNow` if the event somehow has no date set.
+  const membershipCutoffMs = event.date
+    ? new Date(event.date).getTime()
+    : referenceNow.getTime();
   const pickPrimaryUnit = (
     links: { artistId: number | bigint; endDate: Date | string | null }[],
   ): SidebarUnit | null => {
     for (const link of links) {
       if (
         link.endDate &&
-        new Date(link.endDate).getTime() < referenceNow.getTime()
+        new Date(link.endDate).getTime() < membershipCutoffMs
       ) {
         continue;
       }
@@ -544,7 +553,7 @@ export default async function EventPage({ params }: Props) {
       for (const link of links) {
         if (
           link.endDate &&
-          new Date(link.endDate).getTime() < referenceNow.getTime()
+          new Date(link.endDate).getTime() < membershipCutoffMs
         ) {
           continue;
         }
@@ -657,10 +666,7 @@ export default async function EventPage({ params }: Props) {
         {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room.
             Three sidebar cards stacked with consistent gap; flex column wraps
             the stack so sticky positioning still applies to the topmost edge. */}
-        <aside
-          className="lg:sticky lg:top-[72px]"
-          style={{ display: "flex", flexDirection: "column", gap: 16 }}
-        >
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-[72px]">
           <EventHeader
             status={resolvedStatus}
             statusLabel={t(`status.${resolvedStatus}`)}

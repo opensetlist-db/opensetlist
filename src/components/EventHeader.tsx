@@ -230,12 +230,17 @@ export function EventHeader({
                     {t(row.labelKey)}
                   </dt>
                   <dd
+                    // `margin: "1px 0 0 0"` — the previous version
+                    // listed `marginTop: 1` followed by `margin: 0`,
+                    // and the shorthand silently overrode the
+                    // longhand, killing the 1px breathing room
+                    // above the value. Single shorthand keeps both
+                    // intents in one line.
                     style={{
                       fontSize: 13,
                       color: colors.textSecondary,
                       fontWeight: 500,
-                      marginTop: 1,
-                      margin: 0,
+                      margin: "1px 0 0 0",
                     }}
                   >
                     {row.value}
