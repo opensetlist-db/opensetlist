@@ -26,9 +26,11 @@ import { TabBar } from "@/components/TabBar";
 import {
   PerformanceGroup,
   PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
@@ -437,6 +439,19 @@ export default async function SongPage({ params, searchParams }: Props) {
       : []),
   ];
 
+  // Exhaustive AlbumType → label map. Using a Record keyed on the
+  // Prisma enum (rather than a dynamic `t(\`albumType.${type}\`)`
+  // template) means a future enum addition (e.g. `compilation`) is a
+  // TypeScript error here, not a silent missing-key fallback in the
+  // info-card render.
+  const albumTypeLabels: Record<AlbumType, string> = {
+    single: t("albumType.single"),
+    album: t("albumType.album"),
+    ep: t("albumType.ep"),
+    live_album: t("albumType.live_album"),
+    soundtrack: t("albumType.soundtrack"),
+  };
+
   const statusLabels: Record<ResolvedEventStatus, string> = {
     // Mirror events list / home hero — the ongoing pill on row-shaped
     // surfaces reads "LIVE" rather than the locale "진행중" /
@@ -604,7 +619,7 @@ export default async function SongPage({ params, searchParams }: Props) {
                           margin: 0,
                         }}
                       >
-                        {t(`albumType.${albumInfo.type}`)}
+                        {albumTypeLabels[albumInfo.type]}
                       </dd>
                     </>
                   )}
@@ -705,7 +720,7 @@ export default async function SongPage({ params, searchParams }: Props) {
                     style={{
                       gridTemplateColumns: PERFORMANCE_ROW_GRID,
                       gap: 10,
-                      padding: "8px 16px 8px 36px",
+                      padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
                       background: colors.bgFaint,
                       borderBottom: `1px solid ${colors.border}`,
                     }}

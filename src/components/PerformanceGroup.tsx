@@ -50,6 +50,16 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 export const PERFORMANCE_ROW_GRID =
   "60px 100px minmax(0, 1fr) auto auto";
 
+/**
+ * Left padding of every event row, in pixels. The column-header strip
+ * a consumer page renders above its `<PerformanceGroup>` list (e.g.
+ * the song-page history tab) MUST use the same indent so the header
+ * column tracks line up with the row column tracks. Exported as a
+ * constant so the two values stay in sync — bumping the row indent
+ * here propagates to every consumer header automatically.
+ */
+export const PERFORMANCE_ROW_INDENT_PX = 36;
+
 export interface PerformanceEvent {
   id: string | number;
   /** Resolved status from getEventStatus(); the badge label is provided by the consumer via the `statusLabels` map. */
@@ -178,7 +188,7 @@ export function PerformanceGroup({
               gridTemplateColumns: PERFORMANCE_ROW_GRID,
               alignItems: "center",
               gap: 10,
-              padding: "9px 16px 9px 36px",
+              padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               borderBottom:
                 i < series.events.length - 1
                   ? `1px solid ${colors.borderFaint}`
