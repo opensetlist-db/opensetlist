@@ -365,6 +365,7 @@ async function importGroups(rows: Record<string, string>[]) {
           type: p.type,
           category: p.category,
           hasBoard: p.hasBoard,
+          originalLanguage: p.originalLanguage,
           ...p.originals,
         },
       });
@@ -398,6 +399,7 @@ async function importGroups(rows: Record<string, string>[]) {
           type: p.type,
           category: p.category,
           hasBoard: p.hasBoard,
+          originalLanguage: p.originalLanguage,
           ...p.originals,
           originalName,
           translations: { create: p.translations },
