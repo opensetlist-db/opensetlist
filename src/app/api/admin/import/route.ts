@@ -247,23 +247,35 @@ async function importArtists(rows: Record<string, string>[]) {
         .map((g) => [g.slug, g.id]),
     );
 
+    // Collect every (artist, group) pair we plan to create, then issue
+    // ONE deleteMany + ONE createMany at the end. Per-row deleteMany +
+    // per-link create would be O(rows + rows×links) round trips; the
+    // batched form is 2 round trips total.
+    const artistIdsToReplace: bigint[] = [];
+    const linksToCreate: Array<{ artistId: bigint; groupId: string }> = [];
     for (const row of rows) {
       if (!row.slug) continue;
       if (row.group_slugs === undefined) continue;
       const artistId = artistBySlug.get(row.slug);
       if (artistId == null) continue;
+      artistIdsToReplace.push(artistId);
       const groupSlugs = parseArtistSlugs(row.group_slugs);
-      await prisma.artistGroup.deleteMany({ where: { artistId } });
       for (const groupSlug of groupSlugs) {
         const groupId = groupBySlug.get(groupSlug);
         if (groupId == null) {
           results.push(`WARN: artists.csv group_slug "${groupSlug}" not found (artist ${row.slug})`);
           continue;
         }
-        await prisma.artistGroup.create({
-          data: { artistId, groupId },
-        });
+        linksToCreate.push({ artistId, groupId });
       }
+    }
+    if (artistIdsToReplace.length > 0) {
+      await prisma.artistGroup.deleteMany({
+        where: { artistId: { in: artistIdsToReplace } },
+      });
+    }
+    if (linksToCreate.length > 0) {
+      await prisma.artistGroup.createMany({ data: linksToCreate });
     }
   }
 
