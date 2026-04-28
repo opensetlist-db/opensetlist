@@ -68,6 +68,39 @@ describe("paletteFromAnchorAndFrequency", () => {
       );
       expect(palette.mesh[0]).toBe("#e91e8c");
     });
+
+    it("dedupes anchor against mixed-case frequency keys", () => {
+      // Frequency map has the anchor color in uppercase; without
+      // defensive normalization, the lowercase anchor wouldn't
+      // match the uppercase entry and the mesh would carry
+      // ["#e91e8c", "#E91E8C", ...] — two stops that look the
+      // same but render against different cache fingerprints.
+      // The function lowercases all frequency keys before delete.
+      const rawFreq = new Map<string, number>([
+        ["#E91E8C", 10],
+        ["#ff6b9d", 5],
+        ["#0277bd", 3],
+      ]);
+      const palette = paletteFromAnchorAndFrequency("#e91e8c", rawFreq);
+      expect(palette.mesh[0]).toBe("#e91e8c");
+      // Anchor's uppercase twin is gone from the supporting pool.
+      expect(palette.mesh[1]).toBe("#ff6b9d");
+      expect(palette.mesh[2]).toBe("#0277bd");
+      expect(new Set(palette.mesh.map((c) => c.toLowerCase())).size).toBe(3);
+    });
+
+    it("merges mixed-case frequency entries before picking top-2", () => {
+      // Two casings of the same color should sum their counts so
+      // the merged entry can outrank a singleton.
+      const rawFreq = new Map<string, number>([
+        ["#FF6B9D", 3],
+        ["#ff6b9d", 4], // 3 + 4 = 7, beats #0277bd's 5
+        ["#0277bd", 5],
+      ]);
+      const palette = paletteFromAnchorAndFrequency("#e91e8c", rawFreq);
+      expect(palette.mesh[1]).toBe("#ff6b9d");
+      expect(palette.mesh[2]).toBe("#0277bd");
+    });
   });
 
   describe("with null/invalid anchor (regression — existing behavior)", () => {

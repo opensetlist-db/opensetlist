@@ -116,9 +116,24 @@ export function paletteFromAnchorAndFrequency(
 ): OgPalette {
   const validAnchor = isValidHex(anchor) ? anchor.toLowerCase() : null;
 
+  // Defensive lowercase normalization. The internal collectors
+  // (collectRosterColorsByArtistId, collectEventSetlistColors, etc.)
+  // already store lowercased keys, but this function is exported
+  // and could be called by tests/future callers with mixed-case
+  // input. Without normalization, `remaining.delete(validAnchor)`
+  // would silently miss a "#ABC" entry against an "#abc" anchor
+  // and the anchor would appear twice in the mesh as different
+  // strings. Sum counts on collision so a map with both "#ABC"
+  // and "#abc" doesn't lose data.
+  const normalizedFreq = new Map<string, number>();
+  for (const [color, count] of frequency) {
+    const key = color.toLowerCase();
+    normalizedFreq.set(key, (normalizedFreq.get(key) ?? 0) + count);
+  }
+
   if (!validAnchor) {
-    if (frequency.size === 0) return fallbackPalette();
-    const ordered = pickTopColors(frequency);
+    if (normalizedFreq.size === 0) return fallbackPalette();
+    const ordered = pickTopColors(normalizedFreq);
     if (ordered.length >= 3) {
       const mesh: [string, string, string] = [ordered[0], ordered[1], ordered[2]];
       return {
@@ -141,8 +156,10 @@ export function paletteFromAnchorAndFrequency(
 
   // Anchor set. Drop it from the supporting candidate pool so we
   // never end up with [anchor, anchor, anything] when a member's
-  // personal color matches the unit's brand color.
-  const remaining = new Map(frequency);
+  // personal color matches the unit's brand color. Reads from
+  // `normalizedFreq` (not the raw `frequency`) so the delete hits
+  // regardless of the input casing.
+  const remaining = new Map(normalizedFreq);
   remaining.delete(validAnchor);
   const supporting = pickTopColors(remaining);
 
