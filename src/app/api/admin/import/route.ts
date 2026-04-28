@@ -214,22 +214,56 @@ async function importArtists(rows: Record<string, string>[]) {
   // recreate from the resolved Group ids. This makes re-imports
   // idempotent and lets the operator move an artist between Groups by
   // editing the CSV.
+  //
+  // Batch-fetch all referenced Group slugs once at the top so the
+  // per-row loop is O(rows + linkages) round trips instead of
+  // O(rows × group_slugs). Same applies to the per-row Artist lookup.
+  const allGroupSlugs = new Set<string>();
+  const allArtistSlugs = new Set<string>();
   for (const row of rows) {
-    if (!row.slug) continue;
-    if (row.group_slugs === undefined) continue;
-    const groupSlugs = parseArtistSlugs(row.group_slugs);
-    const artist = await prisma.artist.findUnique({ where: { slug: row.slug } });
-    if (!artist) continue;
-    await prisma.artistGroup.deleteMany({ where: { artistId: artist.id } });
-    for (const groupSlug of groupSlugs) {
-      const group = await prisma.group.findUnique({ where: { slug: groupSlug } });
-      if (!group) {
-        results.push(`WARN: artists.csv group_slug "${groupSlug}" not found (artist ${row.slug})`);
-        continue;
+    if (!row.slug || row.group_slugs === undefined) continue;
+    allArtistSlugs.add(row.slug);
+    for (const slug of parseArtistSlugs(row.group_slugs)) {
+      allGroupSlugs.add(slug);
+    }
+  }
+  if (allArtistSlugs.size > 0) {
+    const [artistRows, groupRows] = await Promise.all([
+      prisma.artist.findMany({
+        where: { slug: { in: [...allArtistSlugs] } },
+        select: { id: true, slug: true },
+      }),
+      allGroupSlugs.size > 0
+        ? prisma.group.findMany({
+            where: { slug: { in: [...allGroupSlugs] } },
+            select: { id: true, slug: true },
+          })
+        : Promise.resolve([] as Array<{ id: string; slug: string | null }>),
+    ]);
+    const artistBySlug = new Map(artistRows.map((a) => [a.slug, a.id]));
+    const groupBySlug = new Map(
+      groupRows
+        .filter((g): g is { id: string; slug: string } => g.slug != null)
+        .map((g) => [g.slug, g.id]),
+    );
+
+    for (const row of rows) {
+      if (!row.slug) continue;
+      if (row.group_slugs === undefined) continue;
+      const artistId = artistBySlug.get(row.slug);
+      if (artistId == null) continue;
+      const groupSlugs = parseArtistSlugs(row.group_slugs);
+      await prisma.artistGroup.deleteMany({ where: { artistId } });
+      for (const groupSlug of groupSlugs) {
+        const groupId = groupBySlug.get(groupSlug);
+        if (groupId == null) {
+          results.push(`WARN: artists.csv group_slug "${groupSlug}" not found (artist ${row.slug})`);
+          continue;
+        }
+        await prisma.artistGroup.create({
+          data: { artistId, groupId },
+        });
       }
-      await prisma.artistGroup.create({
-        data: { artistId: artist.id, groupId: group.id },
-      });
     }
   }
 
@@ -300,13 +334,22 @@ async function importGroups(rows: Record<string, string>[]) {
           ...originals,
         },
       });
-      for (const t of translations) {
-        await prisma.groupTranslation.upsert({
-          where: { groupId_locale: { groupId: existing.id, locale: t.locale } },
-          create: { groupId: existing.id, ...t },
-          update: { name: t.name, shortName: t.shortName, description: t.description },
-        });
-      }
+      // Parallel-fan the translation upserts. Each upsert is a single
+      // round trip; running them in series unnecessarily stretches
+      // the import wall-clock for groups with multiple locales. The
+      // deleteMany+createMany alternative would alter semantics
+      // (drop missing locales instead of preserving), which the
+      // sister importers (importArtists, importMembers) deliberately
+      // don't do.
+      await Promise.all(
+        translations.map((t) =>
+          prisma.groupTranslation.upsert({
+            where: { groupId_locale: { groupId: existing.id, locale: t.locale } },
+            create: { groupId: existing.id, ...t },
+            update: { name: t.name, shortName: t.shortName, description: t.description },
+          }),
+        ),
+      );
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
       const originalName = ensureOriginalName(originals, slug, "Group", originalLanguage);
