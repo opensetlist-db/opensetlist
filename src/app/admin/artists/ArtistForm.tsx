@@ -311,7 +311,13 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       parentArtistId: parentArtistId || null,
       hasBoard,
       category: category || null,
-      isMainUnit,
+      // Strip isMainUnit unless this is a unit artist. The checkbox
+      // is already disabled in the UI for non-unit types, but a
+      // stale `true` could survive a type flip if the operator
+      // re-checks after switching back. Server enforces the same
+      // rule; this is defense in depth so the wire payload matches
+      // the persisted shape.
+      isMainUnit: type === "unit" ? isMainUnit : false,
       originalName: originalName.trim(),
       originalShortName: originalShortName.trim() || null,
       originalBio: originalBio.trim() || null,
