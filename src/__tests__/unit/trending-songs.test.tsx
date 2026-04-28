@@ -69,7 +69,7 @@ describe("TrendingSongs", () => {
     // the actual layout switch is media-query driven. Asserting presence
     // of `lg:flex` ensures the responsive intent is wired.
     expect(ul?.className).toContain("lg:flex");
-    expect(ul?.className).toContain("lg:gap-4");
+    expect(ul?.className).toContain("lg:gap-8");
   });
 
   it("hides medal emojis from assistive tech (decorative)", () => {

@@ -463,28 +463,32 @@ export default async function EventPage({ params }: Props) {
     return [...seen.values()];
   })();
 
-  // Breadcrumb: short series → short event when both exist. When the
-  // event has no series, fall back to Home → event so a single
-  // non-clickable item doesn't render as a useless one-link bar.
-  // Hrefs are fully locale-prefixed (`/${locale}/...`) — `Breadcrumb`
-  // uses `next/link` which does NOT auto-prefix the locale.
-  const breadcrumbItems: BreadcrumbItem[] =
-    event.eventSeries && seriesShortName
+  // Breadcrumb: always [Home › seriesShort › eventShort] when a series
+  // exists; falls back to [Home › eventShort] otherwise. Operator
+  // confirmed "Home › series › event" as the canonical shape (mockup
+  // `event-page-desktop-mockup-v2.jsx:481-485`); the prior 2-item
+  // shape (series → event) dropped Home and was inconsistent with
+  // every other detail page's breadcrumb. Hrefs are fully
+  // locale-prefixed since `Breadcrumb` uses `next/link`.
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: ct("backToHome"), href: `/${locale}` },
+    ...(event.eventSeries && seriesShortName
       ? [
           {
             label: seriesShortName,
             href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
-          },
-          { label: eventShortName || t("unknownEvent") },
+          } satisfies BreadcrumbItem,
         ]
-      : [
-          { label: ct("backToHome"), href: `/${locale}` },
-          { label: eventShortName || t("unknownEvent") },
-        ];
+      : []),
+    { label: eventShortName || t("unknownEvent") },
+  ];
 
   return (
     <main
-      className="mx-auto max-w-3xl px-4 py-8 lg:max-w-[1280px] lg:px-8"
+      // Fluid width — operator wants the page to flow without a fixed
+      // cap. The inner sidebar+main grid governs natural width via
+      // `lg:grid-cols-[300px_1fr]`. Page padding still applies.
+      className="px-4 py-8 lg:px-8"
       // Match the slate-tinted page surface every other top-level page
       // uses (home, events list, artists, series, legal). Without it,
       // the white EventHeader card has no contrast against the body and

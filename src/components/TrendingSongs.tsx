@@ -44,7 +44,7 @@ export function TrendingSongs({ songs }: Props) {
       >
         {t("trending")}
       </h3>
-      <ul className="space-y-1.5 lg:flex lg:gap-4 lg:space-y-0">
+      <ul className="space-y-1.5 lg:flex lg:gap-8 lg:space-y-0">
         {rankedSongs.map((song, i) => (
           <li
             key={song.setlistItemId}
