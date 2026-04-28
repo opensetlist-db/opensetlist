@@ -176,7 +176,6 @@
     "iconLabelReactions": "Reactions",
     "songsValue": "{count, plural, one {# song} other {# songs}}",
     "itemsLabel": "{count, plural, one {# item} other {# items}}",
-    "songsCountLabel": "{count, plural, one {# song} other {# songs}}",
     "tapToAddReaction": "Tap to add reaction",
     "colSong": "Song",
     "colPerformers": "Performers",

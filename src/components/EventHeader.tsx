@@ -69,6 +69,13 @@ export function EventHeader({
       ? startTime
       : startTime?.toISOString() ?? null;
 
+  // `formatVenueDate` is timezone-agnostic — its `extractVenueYMD`
+  // helper uses `getUTCFullYear / getUTCMonth / getUTCDate` for
+  // `Date` inputs and slices the ISO string directly for `string`
+  // inputs (`src/lib/eventDateTime.ts:16-32`). Server and client
+  // always derive the same y/m/d for the same input, so this client
+  // component can call it on first render without a `useMounted`
+  // guard — no hydration mismatch is possible.
   const dateLabel = formatVenueDate(date, locale);
 
   // `${(n/1000).toFixed(1)}k total` for ≥ 1000, plain integer otherwise.

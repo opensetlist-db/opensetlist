@@ -176,7 +176,6 @@
     "iconLabelReactions": "リアクション",
     "songsValue": "{count, plural, other {#曲}}",
     "itemsLabel": "{count, plural, other {#項目}}",
-    "songsCountLabel": "{count, plural, other {#曲}}",
     "tapToAddReaction": "タップしてリアクションを追加",
     "colSong": "楽曲",
     "colPerformers": "出演",
