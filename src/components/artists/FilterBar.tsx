@@ -4,15 +4,14 @@ import { colors, radius } from "@/styles/tokens";
 import type { ArtistsListFilter } from "@/lib/artists";
 
 /*
- * Four-chip category filter for the artists list page.
+ * Six-chip category filter for the artists list page.
  *
- * Anime + Game are intentionally merged into a single chip per
- * operator decision (2026-04-27): the catalog hasn't grown big enough
- * to justify two separate chips, and most users think of them
- * together. The DB enum keeps `anime` and `game` distinct because the
- * detail/admin layer still cares about the difference; the merged
- * filter just maps to `category IN ('anime','game')` in the query
- * (see FILTER_TO_CATEGORIES in lib/artists.ts).
+ * Each chip maps 1:1 to a `GroupCategory` enum value after the v2
+ * reshape that merged the former `anime` + `game` enum values into a
+ * single `animegame` (the chip already conflated them in UI; the DB
+ * distinction was vestigial). Plus `all` (no filter) and `others`
+ * (catch-all for groups that don't fit any of the named music-scene
+ * categories).
  *
  * Each chip is a plain navigation link (not a button) — clicking
  * triggers a normal Next.js navigation that re-runs the server
@@ -26,7 +25,9 @@ type FilterTranslationKey =
   | "filterAll"
   | "filterAnimeGame"
   | "filterKpop"
-  | "filterJpop";
+  | "filterJpop"
+  | "filterCpop"
+  | "filterOthers";
 
 type FilterDef = { value: ArtistsListFilter; key: FilterTranslationKey };
 
@@ -35,6 +36,8 @@ const FILTERS: ReadonlyArray<FilterDef> = [
   { value: "animegame", key: "filterAnimeGame" },
   { value: "kpop", key: "filterKpop" },
   { value: "jpop", key: "filterJpop" },
+  { value: "cpop", key: "filterCpop" },
+  { value: "others", key: "filterOthers" },
 ];
 
 interface Props {
