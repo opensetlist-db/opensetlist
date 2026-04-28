@@ -304,7 +304,6 @@ export default async function EventPage({ params }: Props) {
     ? []
     : await getTrendingSongs(eventId, locale, st("unknown"));
 
-  const eventName = displayNameWithFallback(event, event.translations, locale);
   const eventFullName = displayNameWithFallback(
     event,
     event.translations,
@@ -386,13 +385,21 @@ export default async function EventPage({ params }: Props) {
 
   // Display title: series full name takes precedence (most concert events
   // brand by series, e.g. "Hasunosora 6th Live"); falls back to the event's
-  // own full name then "unknown event" if both are missing. Subtitle shown
-  // only when distinct from the title — avoids duplication.
+  // own full name then "unknown event" if both are missing. The previous
+  // `subtitle` slot is gone — venue + city now live in their own icon
+  // rows on the redesigned sidebar card.
   const headerTitle = seriesFullName || eventFullName || t("unknownEvent");
-  const headerSubtitle =
-    seriesFullName && eventName && eventName !== seriesFullName
-      ? eventName
-      : null;
+
+  // Sidebar count rows: songsCount excludes mc/video/interval; reactions
+  // total sums every reaction across every setlist item.
+  const songsCount = event.setlistItems.filter(
+    (i) => i.type === "song",
+  ).length;
+  const reactionsCount = Object.values(reactionCounts).reduce(
+    (sum, perItem) =>
+      sum + Object.values(perItem).reduce((s, n) => s + n, 0),
+    0,
+  );
 
   // Breadcrumb: short series → short event when both exist. When the
   // event has no series, fall back to Home → event so a single
@@ -451,7 +458,8 @@ export default async function EventPage({ params }: Props) {
                 : null
             }
             title={headerTitle}
-            subtitle={headerSubtitle}
+            songsCount={songsCount}
+            reactionsCount={reactionsCount}
             venue={venue}
             city={city}
           />

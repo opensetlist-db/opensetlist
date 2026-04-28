@@ -31,13 +31,11 @@ vi.mock("@/components/EventStatusTicker", () => ({
   default: () => null,
 }));
 
-// EventDateTime resolves an i18n-aware date string; tests don't need to
-// validate that path here (it has its own coverage). Render the date in
-// `data-testid` form so assertions can locate the slot.
-vi.mock("@/components/EventDateTime", () => ({
-  EventDateTime: ({ date }: { date: Date | string | null }) => (
-    <span data-testid="event-date-time">{date ? "DATE" : ""}</span>
-  ),
+// EventStartTime hits `useMounted` + Intl.DateTimeFormat; the time-row
+// rendering is exercised by its own test. Stub it so the icon-row
+// assertions stay focused on EventHeader's structural concerns.
+vi.mock("@/components/EventStartTime", () => ({
+  EventStartTime: () => <span data-testid="event-start-time">START</span>,
 }));
 
 describe("EventHeader", () => {
@@ -51,21 +49,47 @@ describe("EventHeader", () => {
     organizerName: null,
     series: null,
     title: "Hasunosora 6th Live Fukuoka Day 1",
-    subtitle: null,
     venue: "Marine Messe Fukuoka",
     city: "Fukuoka",
+    songsCount: 18,
+    reactionsCount: 1234,
   };
 
-  it("renders the title, status badge, and venue + city", () => {
+  it("renders the title and status badge label", () => {
     render(<EventHeader {...baseProps} />);
     expect(screen.getByText(baseProps.title)).toBeInTheDocument();
     expect(screen.getByText(baseProps.statusLabel)).toBeInTheDocument();
-    expect(
-      screen.getByText("Marine Messe Fukuoka, Fukuoka"),
-    ).toBeInTheDocument();
   });
 
-  it("renders the series link when series is present", () => {
+  it("renders venue and city in their own icon rows (not joined)", () => {
+    render(<EventHeader {...baseProps} />);
+    // Each value sits in its own `<dd>` next to its labelled `<dt>`.
+    expect(screen.getByText("Marine Messe Fukuoka")).toBeInTheDocument();
+    expect(screen.getByText("Fukuoka")).toBeInTheDocument();
+    // No joined "Venue, City" string from the previous flat layout.
+    expect(screen.queryByText("Marine Messe Fukuoka, Fukuoka")).toBeNull();
+  });
+
+  it("renders the songs-count icon row via the songsValue ICU plural", () => {
+    render(<EventHeader {...baseProps} songsCount={18} />);
+    // The mocked translator returns the key verbatim — `songsValue`
+    // is the ICU plural template; the assertion confirms the icon
+    // row is being rendered (key resolves) without depending on the
+    // locale-specific output shape.
+    expect(screen.getByText("songsValue")).toBeInTheDocument();
+  });
+
+  it("formats reactionsCount as 'X.Yk' when ≥ 1000", () => {
+    render(<EventHeader {...baseProps} reactionsCount={1234} />);
+    expect(screen.getByText("1.2k")).toBeInTheDocument();
+  });
+
+  it("formats reactionsCount as the plain integer when < 1000", () => {
+    render(<EventHeader {...baseProps} reactionsCount={42} />);
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
+  it("renders the series link locale-prefixed when series is present", () => {
     render(
       <EventHeader
         {...baseProps}
@@ -74,52 +98,9 @@ describe("EventHeader", () => {
     );
     const seriesLink = screen.getByText("6th Live");
     expect(seriesLink.tagName).toBe("A");
-    // Locale-prefixed: EventHeader uses `next/link` which does not
-    // auto-prefix; callers (and tests) must include `${locale}` in
-    // the rendered href.
     expect(seriesLink.getAttribute("href")).toBe(
       "/ko/series/7/6th-live-fukuoka",
     );
-  });
-
-  it("omits the series link when series is null", () => {
-    render(<EventHeader {...baseProps} series={null} />);
-    // No <a> elements at all (status badge doesn't link, EventStatusTicker
-    // is mocked to null). Title is an h1, not an anchor.
-    expect(screen.queryByRole("link")).toBeNull();
-  });
-
-  it("renders subtitle only when distinct from title", () => {
-    const { rerender } = render(
-      <EventHeader {...baseProps} subtitle="Day 1" />,
-    );
-    expect(screen.getByText("Day 1")).toBeInTheDocument();
-
-    // null subtitle → not rendered
-    rerender(<EventHeader {...baseProps} subtitle={null} />);
-    expect(screen.queryByText("Day 1")).toBeNull();
-  });
-
-  it("falls back gracefully when only one of venue/city is present", () => {
-    const { rerender } = render(
-      <EventHeader {...baseProps} venue="Some Hall" city={null} />,
-    );
-    expect(screen.getByText("Some Hall")).toBeInTheDocument();
-
-    rerender(<EventHeader {...baseProps} venue={null} city="Tokyo" />);
-    expect(screen.getByText("Tokyo")).toBeInTheDocument();
-
-    // Both null — no venue line
-    rerender(<EventHeader {...baseProps} venue={null} city={null} />);
-    expect(screen.queryByText(/Hall|Tokyo|,/)).toBeNull();
-  });
-
-  it("renders the date slot only when date is non-null", () => {
-    const { rerender } = render(<EventHeader {...baseProps} />);
-    expect(screen.getByTestId("event-date-time")).toBeInTheDocument();
-
-    rerender(<EventHeader {...baseProps} date={null} />);
-    expect(screen.queryByTestId("event-date-time")).toBeNull();
   });
 
   it("renders the artist as a link to /{locale}/artists/{id}/{slug}", () => {
@@ -151,5 +132,22 @@ describe("EventHeader", () => {
     render(<EventHeader {...baseProps} artist={null} organizerName={null} />);
     // No anchor links at all (series and artist both null in baseProps).
     expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("renders the start-time slot only when startTime is non-null", () => {
+    const { rerender } = render(<EventHeader {...baseProps} />);
+    expect(screen.getByTestId("event-start-time")).toBeInTheDocument();
+
+    rerender(<EventHeader {...baseProps} startTime={null} />);
+    expect(screen.queryByTestId("event-start-time")).toBeNull();
+  });
+
+  it("hides empty venue / city rows entirely (no orphan dt label)", () => {
+    render(
+      <EventHeader {...baseProps} venue={null} city={null} />,
+    );
+    // Venue + city rows omitted; their labels never render.
+    expect(screen.queryByText("iconLabelVenue")).toBeNull();
+    expect(screen.queryByText("iconLabelCity")).toBeNull();
   });
 });
