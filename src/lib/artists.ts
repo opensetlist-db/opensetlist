@@ -205,11 +205,14 @@ export async function getArtistGroupsForList(
       where: { isDeleted: false, eventSeriesId: { not: null } },
       select: { eventSeriesId: true, status: true, startTime: true },
     }),
-    // Ungrouped artists: top-level Artists with no `hasBoard=true`
-    // ArtistGroup link. `groupLinks: { none: { group: { hasBoard: true } } }`
-    // matches both "no group at all" and "linked only to non-board
-    // groups" — neither would surface under a real Group section
-    // anyway, so they belong in the synthetic bucket.
+    // Ungrouped artists: top-level Artists with NO ArtistGroup link
+    // at all. The real-Groups query above doesn't filter on hasBoard
+    // — it surfaces every Group regardless of board state — so the
+    // "ungrouped" predicate has to mirror that and exclude any artist
+    // already reachable through a real Group section. Otherwise an
+    // artist linked only to a `hasBoard=false` Group renders TWICE:
+    // once under the real Group's card and again under the synthetic
+    // ungrouped section (this exact bug shipped to preview).
     //
     // Apply the SAME `categoryClause` here so the filter chip is
     // consistent: the chip filters the union of grouped + ungrouped.
@@ -220,7 +223,7 @@ export async function getArtistGroupsForList(
       where: {
         isDeleted: false,
         parentArtistId: null,
-        groupLinks: { none: { group: { hasBoard: true } } },
+        groupLinks: { none: {} },
         ...categoryClause,
       },
       include: {
@@ -482,7 +485,11 @@ export async function getAvailableArtistFilters(): Promise<
         isDeleted: false,
         parentArtistId: null,
         category: { not: null },
-        groupLinks: { none: { group: { hasBoard: true } } },
+        // Mirror the `groupLinks: { none: {} }` predicate from
+        // getArtistGroupsForList so this helper agrees on what
+        // "ungrouped" means. Otherwise the chip set could include
+        // categories that won't actually surface anywhere.
+        groupLinks: { none: {} },
       },
       select: { category: true },
     }),
