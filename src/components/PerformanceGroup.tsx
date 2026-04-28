@@ -47,8 +47,25 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * to flip — not acceptable for a navigation-secondary control.
  */
 
+/**
+ * Desktop grid template for an event row inside `<PerformanceGroup>`.
+ * All five tracks are fixed (or `minmax(0, 1fr)` for name) so a
+ * consumer's column-header strip rendered above the groups —
+ * a separate grid with the same template — has identically-sized
+ * column tracks. Without this, `auto`-sized trailing/chevron tracks
+ * would size to per-grid content (header text vs. row chips), and
+ * the header label "위치" would land at a different x-coordinate
+ * than the row's trailing chips.
+ *
+ * Mobile rows use `auto auto` for trailing/chevron via a Tailwind
+ * responsive class on the row (see below) — the column-header strip
+ * is desktop-only (`hidden lg:grid` on consumer pages), so mobile
+ * has no alignment requirement and `auto` saves horizontal space
+ * for the wider chip combos that don't fit a 180px box on a 360px
+ * viewport.
+ */
 export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) auto auto";
+  "60px 100px minmax(0, 1fr) 180px 16px";
 
 /**
  * Left padding of every event row, in pixels. The column-header strip
@@ -182,12 +199,19 @@ export function PerformanceGroup({
           <Link
             key={event.id}
             href={event.href}
-            className="row-hover-bg"
+            // Mobile uses `auto auto` for trailing/chevron — chips size
+            // to their content and the row clips at its right edge if
+            // they overflow. Desktop swaps in the fixed-width tracks
+            // (`180px 16px`) so the page's column-header strip lines
+            // up with the row columns. The grid container itself gets
+            // `min-width: 0` so its grid-intrinsic min-content (which
+            // can exceed the viewport once `flexShrink: 0` chips refuse
+            // to shrink) doesn't force the parent box wider than the
+            // mobile viewport — combined with the row's `overflow:
+            // hidden`, this is what kills the page-level horizontal
+            // scroll bar on narrow screens.
+            className="row-hover-bg grid items-center gap-2.5 grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_16px]"
             style={{
-              display: "grid",
-              gridTemplateColumns: PERFORMANCE_ROW_GRID,
-              alignItems: "center",
-              gap: 10,
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               borderBottom:
                 i < series.events.length - 1
@@ -195,11 +219,8 @@ export function PerformanceGroup({
                   : `1px solid ${colors.borderLight}`,
               textDecoration: "none",
               color: "inherit",
-              // Belt-and-braces with `minmax(0, 1fr)` on the name
-              // track — clips long trailing chips on narrow mobile
-              // viewports rather than letting the row push the page
-              // into a horizontal scroll.
               overflow: "hidden",
+              minWidth: 0,
             }}
           >
             <StatusBadge

@@ -479,7 +479,13 @@ export default async function SongPage({ params, searchParams }: Props) {
         >
           {/* Sidebar */}
           <div
-            className="lg:sticky lg:top-[72px]"
+            // `min-w-0` overrides the grid-item default `min-width: auto`
+            // so the sidebar (and its children) can shrink to the column
+            // track instead of expanding the column to fit min-content.
+            // Mirrored on the Main grid item below — without this the
+            // history-tab row's grid-intrinsic width pushes the page
+            // wider than the mobile viewport (horizontal scroll bar).
+            className="lg:sticky lg:top-[72px] min-w-0"
             style={{ marginBottom: 12 }}
           >
             <InfoCard artist={primaryArtist}>
@@ -675,7 +681,7 @@ export default async function SongPage({ params, searchParams }: Props) {
           </div>
 
           {/* Main */}
-          <div>
+          <div className="min-w-0">
             <TabBar
               tabs={tabs}
               active={activeTab}
