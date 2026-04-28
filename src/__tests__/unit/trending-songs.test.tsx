@@ -62,14 +62,18 @@ describe("TrendingSongs", () => {
     );
   });
 
-  it("uses the lg:flex utility so desktop lays out 3-across", () => {
+  it("uses responsive flex utilities so mobile stacks vertically and desktop lays out 3-across", () => {
     const { container } = render(<TrendingSongs songs={sample} />);
     const ul = container.querySelector("ul");
     // Tailwind class names live on the element regardless of viewport;
-    // the actual layout switch is media-query driven. Asserting presence
-    // of `lg:flex` ensures the responsive intent is wired.
-    expect(ul?.className).toContain("lg:flex");
-    expect(ul?.className).toContain("lg:gap-8");
+    // the actual layout switch is media-query driven. Asserting both
+    // mobile (column flex with 9px gap) and desktop (row flex with
+    // 32px / lg:gap-8 gap) classes are wired confirms the responsive
+    // intent.
+    expect(ul?.className).toContain("flex-col");
+    expect(ul?.className).toContain("gap-y-[9px]");
+    expect(ul?.className).toContain("lg:flex-row");
+    expect(ul?.className).toContain("lg:gap-x-8");
   });
 
   it("hides medal emojis from assistive tech (decorative)", () => {
