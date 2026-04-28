@@ -196,7 +196,12 @@ async function getSeriesUnits(allEventIds: bigint[]) {
     where: { id: { in: links.map((l) => l.artistId) }, isDeleted: false },
     include: { translations: true },
   });
-  return serializeBigInt(units);
+  // Return raw Prisma rows (BigInt id intact). Units are consumed only
+  // by this server component — they never cross the server→client
+  // boundary — so there is no reason to narrow `id` to a JS number and
+  // risk precision loss for autoincrement IDs > 2^53. Mirrors the
+  // raw-row return policy of `getEventSeries`.
+  return units;
 }
 
 export async function generateMetadata({
@@ -340,15 +345,18 @@ export default async function EventSeriesPage({
           .then((rows) => rows.length),
   ]);
 
+  // Drop rows whose song was soft-deleted between the groupBy and the
+  // hydrate query (rare race). Hoisted so the empty-state branch,
+  // `<ul>` map, and `isLast` computation in the songs tab all agree
+  // on the same length — otherwise the empty branch could open while
+  // we render zero items, or the last visible row could keep its
+  // bottom border because `isLast` is checked against the unfiltered
+  // length.
+  const visibleSongAppearances = songAppearances.filter(
+    (row): row is typeof row & { song: SongRowHydrated } => row.song !== null,
+  );
   const uniqueSongCount =
-    activeTab === "songs"
-      ? // Same "displayable songs only" rule on the songs tab: the
-        // hydration query in `getSongAppearances` filters by
-        // `song.isDeleted: false`, so a row with `song === null`
-        // means the song was soft-deleted between the groupBy and
-        // hydrate steps (rare race) — exclude from the count.
-        songAppearances.filter((row) => row.song !== null).length
-      : scheduleSongCount;
+    activeTab === "songs" ? visibleSongAppearances.length : scheduleSongCount;
 
   const tabs = [
     { key: "schedule", label: t("tabSchedule") },
@@ -832,7 +840,7 @@ export default async function EventSeriesPage({
                   overflow: "hidden",
                 }}
               >
-                {songAppearances.length === 0 ? (
+                {visibleSongAppearances.length === 0 ? (
                   <p
                     style={{
                       fontSize: 13,
@@ -846,8 +854,7 @@ export default async function EventSeriesPage({
                 ) : (
                   <>
                     <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-                      {songAppearances.map((row, i) => {
-                        if (!row.song) return null;
+                      {visibleSongAppearances.map((row, i) => {
                         const titleDisplay = displayOriginalTitle(
                           row.song,
                           row.song.translations,
@@ -861,7 +868,7 @@ export default async function EventSeriesPage({
                               locale,
                             )
                           : null;
-                        const isLast = i === songAppearances.length - 1;
+                        const isLast = i === visibleSongAppearances.length - 1;
                         return (
                           <li
                             key={row.songId}

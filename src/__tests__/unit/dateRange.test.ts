@@ -68,6 +68,26 @@ describe("formatDateRange", () => {
     expect(result).toContain("24");
   });
 
+  it("collapses same UTC day even when options render different times", () => {
+    // Hour/minute in the format options would produce two distinct
+    // strings for two times on the same UTC day. The UTC-day pre-check
+    // should still collapse them.
+    const WITH_TIME: Intl.DateTimeFormatOptions = {
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC",
+    };
+    const result = formatDateRange(
+      "2026-04-25T03:00:00Z",
+      "2026-04-25T20:00:00Z",
+      "ko",
+      WITH_TIME,
+    );
+    expect(result.includes("~")).toBe(false);
+  });
+
   it("falls back when one side is empty", () => {
     expect(formatDateRange("", "2026-05-23T00:00:00Z", "ko", SHORT)).not.toBe(
       "",
