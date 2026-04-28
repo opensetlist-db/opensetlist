@@ -45,12 +45,15 @@ export function SetlistRow({
       s.song.translations,
       locale,
     );
+    // Build the canonical href segment once. Schema declares
+    // `Song.slug` as required + unique, but defensively handle the
+    // empty-string case (some pre-redesign imports left it blank) by
+    // dropping the slug segment entirely — the `[[...slug]]` catch-all
+    // resolves on id alone, so `/songs/{id}` still routes correctly.
+    const slugSegment = s.song.slug ? `/${s.song.slug}` : "";
     return {
       id: s.song.id,
-      // Canonical slug from the DB. Was previously re-slugified from
-      // `main` at render time, which produced locale-dependent slugs
-      // that drifted from the canonical row in `Song.slug`.
-      slug: s.song.slug,
+      href: `/${locale}/songs/${s.song.id}${slugSegment}`,
       main,
       sub,
       variantLabel: variant,
@@ -106,15 +109,21 @@ export function SetlistRow({
                 songNames={songNames}
                 itemType={item.type}
                 position={item.position}
-                locale={locale}
                 eventId={eventId}
                 t={t}
               />
             </div>
-            {!isNonSong && (
+            {/*
+              Reactions only render for song-typed items that actually
+              have at least one song attached. An admin-created song
+              row with no song assigned (placeholder) would otherwise
+              POST reactions with an empty `songId`, breaking analytics
+              tracking and the per-song aggregation downstream.
+            */}
+            {!isNonSong && songNames.length > 0 && (
               <ReactionButtons
                 setlistItemId={String(item.id)}
-                songId={String(item.songs[0]?.song.id ?? "")}
+                songId={String(item.songs[0].song.id)}
                 eventId={eventId}
                 initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
               />
@@ -154,20 +163,18 @@ function SongTitleBlock({
   songNames,
   itemType,
   position,
-  locale,
   eventId,
   t,
 }: {
   songNames: Array<{
     id: number;
-    slug: string;
+    href: string;
     main: string;
     sub: string | null;
     variantLabel: string | null;
   }>;
   itemType: string;
   position: number;
-  locale: string;
   eventId: string;
   t: ReturnType<typeof useTranslations<"Event">>;
 }) {
@@ -194,7 +201,7 @@ function SongTitleBlock({
         <span key={song.id}>
           {i > 0 && <span className="mx-1 text-zinc-400">+</span>}
           <Link
-            href={`/${locale}/songs/${song.id}/${song.slug}`}
+            href={song.href}
             onClick={() =>
               trackEvent("setlist_item_click", {
                 song_id: String(song.id),

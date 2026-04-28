@@ -138,12 +138,57 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // Resolve the link via the rendered title text — `displayOriginalTitle`
-    // returns the originalTitle as `main` for non-en originalLanguage.
     const link = screen.getByText("Original Title").closest("a");
     expect(link?.getAttribute("href")).toBe(
       "/en/songs/999/canonical-stored-slug",
     );
+  });
+
+  it("falls back to id-only href when song.slug is empty (defensive — schema requires slug, but legacy imports may have left it blank)", () => {
+    const item = makeItem({
+      songs: [
+        {
+          song: {
+            id: 555,
+            slug: "",
+            originalTitle: "Slug-less Song",
+            originalLanguage: "ja",
+            variantLabel: null,
+            translations: [],
+            artists: [],
+          },
+        },
+      ],
+    });
+    render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    const link = screen.getByText("Slug-less Song").closest("a");
+    // No trailing slash — the href is `/en/songs/555` exactly.
+    expect(link?.getAttribute("href")).toBe("/en/songs/555");
+  });
+
+  it("does not render reactions for a song-typed item that has no songs attached (placeholder rows)", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ type: "song", songs: [] })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    // The empty-songs branch renders the noSongAssigned label instead
+    // of any title; reactions must be suppressed because there's no
+    // valid songId to attach POSTs to.
+    expect(screen.queryByTitle("best")).toBeNull();
+    expect(screen.getByText("noSongAssigned")).toBeInTheDocument();
   });
 
   it("uses Artist.color for unit badge background + text when present", () => {
