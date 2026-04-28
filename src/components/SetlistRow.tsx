@@ -11,6 +11,10 @@ import { ReactionButtons } from "@/components/ReactionButtons";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
+import {
+  SETLIST_DESKTOP_GRID_COLS,
+  SETLIST_DESKTOP_GRID_GAP,
+} from "@/components/setlistLayout";
 
 // Stable reference for items with no reactions yet — without this, every
 // render produces a fresh `{}` and ReactionButtons' prev-prop guard would
@@ -100,10 +104,18 @@ export function SetlistRow({
 
   return (
     <li
-      style={{
-        borderBottom: `1px solid ${colors.borderLight}`,
-        ...({ "--row-hover-bg": colors.bgSubtle } as React.CSSProperties),
-      }}
+      style={
+        {
+          borderBottom: `1px solid ${colors.borderLight}`,
+          // CSS var carries the desktop grid template into the
+          // Tailwind arbitrary-value class below — single source of
+          // truth shared with `<SetlistColumnHeader>` (see
+          // `setlistLayout.ts`).
+          "--setlist-cols": SETLIST_DESKTOP_GRID_COLS,
+          "--setlist-gap": `${SETLIST_DESKTOP_GRID_GAP}px`,
+          "--row-hover-bg": colors.bgSubtle,
+        } as React.CSSProperties
+      }
       // Single responsive grid for both viewports — render the
       // reactions ONCE and let CSS relocate them via `grid-column`
       // overrides. Two-render approach (mobile copy + desktop copy)
@@ -114,10 +126,11 @@ export function SetlistRow({
       // visual + 12px gap). Title spans col 2 row 1; reactions span
       // col 2 row 2.
       //
-      // Desktop (≥ lg): 4-col grid `[36px_1fr_180px_260px]` per
-      // `event-page-desktop-mockup-v2.jsx:178-187`. Position col 1,
-      // title col 2, performers col 3, reactions col 4 — single row.
-      className="grid grid-cols-[34px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[36px_1fr_180px_260px] lg:gap-3 lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      // Desktop (≥ lg): pulls the column template from the shared
+      // CSS var so `<SetlistColumnHeader>` and `<SetlistRow>` can't
+      // drift. Position col 1, title col 2, performers col 3,
+      // reactions col 4 — single row.
+      className="grid grid-cols-[34px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
     >
       {/* Position number — col 1, row 1. */}
       <span

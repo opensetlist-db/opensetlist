@@ -9,6 +9,10 @@ import {
 } from "@/hooks/useSetlistPolling";
 import { deriveTrendingSongs } from "@/lib/trending";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
+import {
+  SETLIST_DESKTOP_GRID_COLS,
+  SETLIST_DESKTOP_GRID_GAP,
+} from "@/components/setlistLayout";
 
 type NameTranslation = {
   locale: string;
@@ -116,8 +120,11 @@ export function LiveSetlist({
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
   // Items + songs counters for the desktop subtitle. Songs filter
-  // matches `event.setlistItems.filter(i => i.type === "song")` —
-  // mc/video/interval rows are not "songs" for this count.
+  // matches the page-level `songsCount` (passed to `EventHeader`)
+  // exactly: `type === "song"` AND a song row attached. An
+  // admin-created placeholder song-typed item with no song picked
+  // yet doesn't get counted — keeps the sidebar's "X songs" pill
+  // and this subtitle in sync.
   const itemCount = items.length;
   const songCount = items.filter(
     (i) => i.type === "song" && i.songs.length > 0,
@@ -268,12 +275,10 @@ function SetlistColumnHeader({
       aria-hidden="true"
       className="hidden lg:grid"
       style={{
-        // Mirror `<SetlistRow>`'s desktop grid so each column label
-        // sits directly above its data column. The row uses Tailwind
-        // `lg:gap-3` (= 12px); replicating the same gap here keeps
-        // header + body aligned across viewport widths.
-        gridTemplateColumns: "36px 1fr 180px 260px",
-        columnGap: 12,
+        // Single source of truth for the column template + gap so
+        // header and body can't drift. See `setlistLayout.ts`.
+        gridTemplateColumns: SETLIST_DESKTOP_GRID_COLS,
+        columnGap: SETLIST_DESKTOP_GRID_GAP,
         padding: "8px 20px",
         background: colors.bgFaint,
         borderBottom: `2px solid ${colors.border}`,

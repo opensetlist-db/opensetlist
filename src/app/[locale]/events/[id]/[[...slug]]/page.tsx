@@ -395,10 +395,15 @@ export default async function EventPage({ params }: Props) {
   // rows on the redesigned sidebar card.
   const headerTitle = seriesFullName || eventFullName || t("unknownEvent");
 
-  // Sidebar count rows: songsCount excludes mc/video/interval; reactions
-  // total sums every reaction across every setlist item.
+  // Sidebar count rows: `songsCount` mirrors `<LiveSetlist>`'s
+  // subtitle predicate exactly — `type === "song"` AND a song row
+  // is actually attached. An admin-created song-typed placeholder
+  // with no song picked yet would inflate the EventHeader count
+  // above the setlist subtitle, which the operator would read as
+  // a bug. Reactions total sums every reaction across every setlist
+  // item.
   const songsCount = event.setlistItems.filter(
-    (i) => i.type === "song",
+    (i) => i.type === "song" && i.songs.length > 0,
   ).length;
   const reactionsCount = Object.values(reactionCounts).reduce(
     (sum, perItem) =>
