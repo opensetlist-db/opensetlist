@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -95,7 +96,7 @@ export function EventHeader({
   const iconRows: Array<{
     icon: string;
     labelKey: "iconLabelDate" | "iconLabelStart" | "iconLabelVenue" | "iconLabelCity" | "iconLabelSongs" | "iconLabelReactions";
-    value: React.ReactNode | null;
+    value: ReactNode | null;
   }> = [
     { icon: "📅", labelKey: "iconLabelDate", value: dateLabel || null },
     {
