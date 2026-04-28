@@ -47,9 +47,13 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
     !!artist.originalName &&
     primaryName !== artist.originalName;
 
+  // Sub-unit chips use full name (not shortName). The chip strip
+  // sits under the parent name and a long label like "DOLLCHESTRA"
+  // reads better than its truncation. Operator preference per
+  // visual review.
   const subUnitNames = artist.subArtists.map(
     (s) =>
-      displayNameWithFallback(s, s.translations, locale, "short") ||
+      displayNameWithFallback(s, s.translations, locale, "full") ||
       t("unknown"),
   );
 
@@ -71,7 +75,15 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
           color: "inherit",
         }}
       >
-        <ArtistAvatar artist={artist} size={48} />
+        {/* `ArtistRowData` carries `originalName` + `translations`, not
+            the flat `name`/`shortName` fields the avatar component
+            expects — pass the already-resolved primaryName as `name`
+            so the glyph picks the localized label's first character
+            instead of falling through to "?". */}
+        <ArtistAvatar
+          artist={{ color: artist.color, name: primaryName }}
+          size={48}
+        />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div

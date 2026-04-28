@@ -49,9 +49,11 @@ export default async function ArtistTableRow({
     !!artist.originalName &&
     primaryName !== artist.originalName;
 
+  // Sub-unit chips use full name (not shortName). See ArtistCard
+  // for the same rule.
   const subUnitNames = artist.subArtists.map(
     (s) =>
-      displayNameWithFallback(s, s.translations, locale, "short") ||
+      displayNameWithFallback(s, s.translations, locale, "full") ||
       t("unknown"),
   );
 
@@ -75,7 +77,11 @@ export default async function ArtistTableRow({
         }}
       >
         {/* col 1: avatar */}
-        <ArtistAvatar artist={artist} size={40} />
+        {/* See ArtistCard for the avatar prop-shape rationale. */}
+        <ArtistAvatar
+          artist={{ color: artist.color, name: primaryName }}
+          size={40}
+        />
 
         {/* col 2: name stack */}
         <div style={{ minWidth: 0 }}>
