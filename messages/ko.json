@@ -181,6 +181,7 @@
     "liveBannerTitle": "지금 진행 중인 공연이 있어요",
     "liveBannerCta": "실시간 셋리스트 확인하기 ›",
     "songsFooter": "공연이 완료될수록 더 많은 곡이 추가됩니다",
+    "songsEmpty": "아직 등록된 곡이 없습니다",
     "tourProgressLabel": "투어 진행",
     "tourProgress": "{completed} / {total}",
     "tourCompletedLabel": "완료 {count}회",

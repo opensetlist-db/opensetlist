@@ -112,6 +112,12 @@ async function getSongAppearances(completedEventIds: bigint[]) {
         eventId: { in: completedEventIds },
         isDeleted: false,
       },
+      // Exclude soft-deleted songs at the aggregation step so the
+      // hydration query below has fewer ids to fetch and the
+      // post-hydrate `visibleSongAppearances` filter is a true
+      // race-condition safety net rather than a primary filter.
+      // Mirrors the schedule-tab `scheduleSongCount` query.
+      song: { isDeleted: false },
     },
     _count: { songId: true },
     orderBy: { _count: { songId: "desc" } },
@@ -856,7 +862,7 @@ export default async function EventSeriesPage({
                       padding: "24px 0",
                     }}
                   >
-                    {t("songsFooter")}
+                    {t("songsEmpty")}
                   </p>
                 ) : (
                   <>
