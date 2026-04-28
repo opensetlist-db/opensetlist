@@ -66,7 +66,22 @@ async function getEvent(id: bigint, locale: string) {
           },
           performers: {
             include: {
-              stageIdentity: { include: { translations: true } },
+              stageIdentity: {
+                include: {
+                  translations: true,
+                  // `artistLinks` carries the StageIdentity → Artist
+                  // membership rows. Needed by the page to build the
+                  // per-unit members sublist on `<UnitsCard>` (each
+                  // performer's links tell us which units they
+                  // belong to).
+                  artistLinks: {
+                    select: {
+                      artistId: true,
+                      endDate: true,
+                    },
+                  },
+                },
+              },
               realPerson: { include: { translations: true } },
             },
           },
@@ -425,29 +440,81 @@ export default async function EventPage({ params }: Props) {
   // populates when the row is a unit/solo/special stage type, so the
   // type === "unit" filter is what scopes the list correctly. Dedupe
   // by id and preserve first-seen order (mirrors the setlist order).
+  //
+  // `members` per unit is derived from the same setlist items'
+  // `performers` list: each StageIdentity carries `artistLinks` with
+  // `artistId` pointing at the artists they belong to. We collect
+  // distinct StageIdentities per unit (skipping ones whose link has
+  // an `endDate` before the event date — graduated members) and use
+  // their short display names. Result is ordered by first-seen.
   const sidebarUnits: UnitsCardItem[] = (() => {
-    const seen = new Map<string, UnitsCardItem>();
+    type UnitDraft = Omit<UnitsCardItem, "members"> & {
+      members: { id: string; name: string }[];
+    };
+    const seen = new Map<string, UnitDraft>();
+    const memberSeen = new Map<string, Set<string>>();
     for (const item of event.setlistItems) {
       for (const a of item.artists) {
         if (a.artist.type !== "unit") continue;
         const id = String(a.artist.id);
-        if (seen.has(id)) continue;
-        const name =
-          displayNameWithFallback(
-            a.artist,
-            a.artist.translations,
-            locale,
-            "short",
-          ) || aT("unknown");
-        seen.set(id, {
-          id,
-          slug: a.artist.slug,
-          name,
-          color: a.artist.color ?? null,
-        });
+        if (!seen.has(id)) {
+          const name =
+            displayNameWithFallback(
+              a.artist,
+              a.artist.translations,
+              locale,
+              "short",
+            ) || aT("unknown");
+          seen.set(id, {
+            id,
+            slug: a.artist.slug,
+            name,
+            color: a.artist.color ?? null,
+            members: [],
+          });
+          memberSeen.set(id, new Set());
+        }
       }
     }
-    return [...seen.values()];
+    for (const item of event.setlistItems) {
+      for (const p of item.performers) {
+        const links = p.stageIdentity.artistLinks ?? [];
+        for (const link of links) {
+          // `link.endDate` non-null + before "now" means the
+          // membership lapsed before this event was indexed —
+          // skip so the sublist reflects the active lineup.
+          if (
+            link.endDate &&
+            new Date(String(link.endDate)).getTime() < referenceNow.getTime()
+          ) {
+            continue;
+          }
+          const unitId = String(link.artistId);
+          const draft = seen.get(unitId);
+          if (!draft) continue;
+          const members = memberSeen.get(unitId)!;
+          if (members.has(p.stageIdentity.id)) continue;
+          members.add(p.stageIdentity.id);
+          draft.members.push({
+            id: p.stageIdentity.id,
+            name:
+              displayNameWithFallback(
+                p.stageIdentity,
+                p.stageIdentity.translations,
+                locale,
+                "short",
+              ) || t("unknownPerformer"),
+          });
+        }
+      }
+    }
+    return [...seen.values()].map((draft) => ({
+      id: draft.id,
+      slug: draft.slug,
+      name: draft.name,
+      color: draft.color,
+      members: draft.members.map((m) => m.name),
+    }));
   })();
 
   // Sidebar Performers card: dedupe characters across all setlist

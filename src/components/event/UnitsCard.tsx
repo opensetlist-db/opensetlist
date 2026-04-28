@@ -15,6 +15,13 @@ export interface UnitsCardItem {
    * "no unit".
    */
   color: string | null;
+  /**
+   * Member display names that performed in this unit during the
+   * current event, joined with ` · ` at render time. Empty array
+   * if no members resolved (data gap or unit had no
+   * specific-song appearances on this event).
+   */
+  members: string[];
 }
 
 interface Props {
@@ -72,28 +79,48 @@ export function UnitsCard({ locale, units }: Props) {
             >
               <span
                 aria-hidden="true"
+                // Mockup `event-page-desktop-mockup-v2.jsx:573` —
+                // `height: 32` matches the two-line content (unit
+                // name + members sublist) without overshooting.
                 style={{
                   width: 3,
-                  height: 24,
+                  height: 32,
                   borderRadius: 2,
                   background: accent,
                   flexShrink: 0,
                 }}
               />
-              <Link
-                href={`/${locale}/artists/${unit.id}/${unit.slug}`}
-                className="hover:underline"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: unit.color ?? colors.textPrimary,
-                  textDecoration: "none",
-                  minWidth: 0,
-                  flex: 1,
-                }}
-              >
-                {unit.name}
-              </Link>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <Link
+                  href={`/${locale}/artists/${unit.id}/${unit.slug}`}
+                  className="hover:underline"
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: unit.color ?? colors.textPrimary,
+                    textDecoration: "none",
+                  }}
+                >
+                  {unit.name}
+                </Link>
+                {unit.members.length > 0 && (
+                  <div
+                    // Mockup `event-page-desktop-mockup-v2.jsx:578` —
+                    // 11px muted, 1px breathing room above. Truncates
+                    // when the joined string outruns the column.
+                    style={{
+                      fontSize: 11,
+                      color: colors.textMuted,
+                      marginTop: 1,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {unit.members.join(" · ")}
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

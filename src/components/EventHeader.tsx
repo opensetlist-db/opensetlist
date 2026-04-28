@@ -165,8 +165,11 @@ export function EventHeader({
         {series && (
           <div style={{ marginBottom: 6 }}>
             <Link
+              // Mockup `event-page-desktop-mockup-v2.jsx:525` —
+              // `fontWeight: 600`. Tailwind's `font-medium` is 500;
+              // use the bracketed semibold equivalent or inline.
               href={`/${locale}/series/${series.id}/${series.slug}`}
-              className="text-[11px] font-medium hover:underline"
+              className="text-[11px] font-semibold hover:underline"
               style={{ color: colors.primary }}
             >
               {series.shortName}
@@ -179,7 +182,9 @@ export function EventHeader({
             fontSize: 17,
             color: colors.textPrimary,
             letterSpacing: "-0.01em",
-            marginBottom: 18,
+            // Mockup `:532` — `marginBottom: 20` between title
+            // and the icon-row dl below.
+            marginBottom: 20,
           }}
         >
           {title}

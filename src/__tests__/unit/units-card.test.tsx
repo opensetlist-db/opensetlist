@@ -25,8 +25,20 @@ vi.mock("next/link", () => ({
 
 describe("UnitsCard", () => {
   const sample = [
-    { id: "10", slug: "cerise-bouquet", name: "Cerise Bouquet", color: "#e91e8c" },
-    { id: "11", slug: "dollchestra", name: "DOLLCHESTRA", color: null },
+    {
+      id: "10",
+      slug: "cerise-bouquet",
+      name: "Cerise Bouquet",
+      color: "#e91e8c",
+      members: ["花帆", "綴理"],
+    },
+    {
+      id: "11",
+      slug: "dollchestra",
+      name: "DOLLCHESTRA",
+      color: null,
+      members: [],
+    },
   ];
 
   it("renders nothing when units is empty", () => {
@@ -49,5 +61,17 @@ describe("UnitsCard", () => {
     const link = screen.getByText("Cerise Bouquet");
     // color is rendered as inline style; jsdom returns it as rgb(...)
     expect(link.style.color).not.toBe("");
+  });
+
+  it("renders the joined members sublist when members exist", () => {
+    render(<UnitsCard locale="ko" units={[sample[0]]} />);
+    expect(screen.getByText("花帆 · 綴理")).toBeInTheDocument();
+  });
+
+  it("omits the members sublist entirely when members is empty", () => {
+    render(<UnitsCard locale="ko" units={[sample[1]]} />);
+    // No `·` separator anywhere in the rendered output (the only
+    // place that pattern appears is the joined sublist).
+    expect(screen.queryByText(/·/)).toBeNull();
   });
 });
