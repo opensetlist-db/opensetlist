@@ -43,35 +43,40 @@ export interface PerformanceEvent {
   href: string;
 }
 
-export interface PerformanceSeries {
+// Generic over the event row type so consumers can extend
+// PerformanceEvent with page-specific fields (e.g. encore + position
+// + note for the song page) and have those fields flow through to
+// `renderTrailing` without an unsafe `as` cast at the call site.
+// `T extends PerformanceEvent` keeps the base contract intact.
+export interface PerformanceSeries<T extends PerformanceEvent = PerformanceEvent> {
   seriesId: string | number;
   /** Series header label, locale-resolved. */
   seriesShort: string;
   /** True when at least one event in the series is currently ongoing — drives the right-edge LIVE badge on the series header. */
   hasOngoing: boolean;
-  events: PerformanceEvent[];
+  events: T[];
 }
 
-interface Props {
-  series: PerformanceSeries;
+interface Props<T extends PerformanceEvent = PerformanceEvent> {
+  series: PerformanceSeries<T>;
   /** Map from resolved event status to its already-translated label. The consumer supplies labels so the component stays out of next-intl. */
   statusLabels: Record<ResolvedEventStatus, string>;
   /** Total-events-count label (e.g. "3공연" / "3 events" / "3公演"). Consumer formats via i18n + count. */
   eventCountLabel: string;
   /**
-   * Custom trailing cells for each event row, keyed by `event.id`.
-   * Consumer pre-renders these so the row component can stay JSX-only
-   * without re-running per-event work on every render.
+   * Custom trailing cells for each event row. The event argument is
+   * typed as `T` (which extends PerformanceEvent), so consumers that
+   * carry extra fields can read them directly without casting.
    */
-  renderTrailing?: (event: PerformanceEvent) => React.ReactNode;
+  renderTrailing?: (event: T) => React.ReactNode;
 }
 
-export function PerformanceGroup({
+export function PerformanceGroup<T extends PerformanceEvent = PerformanceEvent>({
   series,
   statusLabels,
   eventCountLabel,
   renderTrailing,
-}: Props) {
+}: Props<T>) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (

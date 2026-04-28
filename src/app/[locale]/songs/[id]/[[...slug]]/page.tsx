@@ -73,12 +73,18 @@ async function getSong(id: bigint) {
 }
 
 async function getFirstAlbumTrack(songId: bigint) {
+  // Multi-album case: pick the earliest-released album as the
+  // canonical "first" — deterministic regardless of insertion order
+  // and matches the user's mental model ("the album where this song
+  // first appeared"). Disc/track is the secondary key so re-issues
+  // and special editions don't overrule the original release.
   const track = await prisma.albumTrack.findFirst({
     where: { songId },
     include: {
       album: { include: { translations: true } },
     },
     orderBy: [
+      { album: { releaseDate: "asc" } },
       { discNumber: "asc" },
       { trackNumber: "asc" },
     ],
@@ -296,7 +302,7 @@ export default async function SongPage({ params, searchParams }: Props) {
     }
   }
 
-  type SongSeriesView = PerformanceSeries & { sortKey: number };
+  type SongSeriesView = PerformanceSeries<PerformanceView> & { sortKey: number };
   const seriesViews: SongSeriesView[] = [];
   for (const bucket of seriesBuckets.values()) {
     // Within a series, keep the desc-by-date order produced by the
@@ -644,22 +650,19 @@ export default async function SongPage({ params, searchParams }: Props) {
                   </p>
                 ) : (
                   seriesViews.map((sv) => (
-                    <PerformanceGroup
+                    <PerformanceGroup<PerformanceView>
                       key={sv.seriesId}
                       series={sv}
                       statusLabels={statusLabels}
                       eventCountLabel={at("eventCount", {
                         count: sv.events.length,
                       })}
-                      renderTrailing={(event) => {
-                        const view = event as PerformanceView;
-                        return (
-                          <SongRowTrailing
-                            cells={view.cells}
-                            encoreLabel={t("encoreBadge")}
-                          />
-                        );
-                      }}
+                      renderTrailing={(event) => (
+                        <SongRowTrailing
+                          cells={event.cells}
+                          encoreLabel={t("encoreBadge")}
+                        />
+                      )}
                     />
                   ))
                 )}
