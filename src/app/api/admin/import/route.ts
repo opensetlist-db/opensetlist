@@ -10,27 +10,18 @@ import {
   resolveOriginalLanguage,
   resolveSongTranslations,
 } from "@/lib/csv-parse";
-import type { GroupCategory, GroupType } from "@/generated/prisma/enums";
+import { GroupCategory, GroupType } from "@/generated/prisma/enums";
 
-// Active GroupCategory enum values after the v2 reshape (animegame
-// merged from anime+game; `others` added). The legacy `anime`/`game`
+// Derive the valid sets from the generated enum objects so a future
+// schema change auto-propagates here. The legacy `anime`/`game`
 // strings are explicitly rejected with a migration hint so a CSV
 // authored against the old enum fails loudly instead of silently
 // landing rows with NULL category.
-const VALID_GROUP_CATEGORIES = new Set<GroupCategory>([
-  "animegame",
-  "kpop",
-  "jpop",
-  "cpop",
-  "others",
-]);
+const VALID_GROUP_CATEGORIES = new Set<GroupCategory>(
+  Object.values(GroupCategory),
+);
 const LEGACY_GROUP_CATEGORIES = new Set(["anime", "game"]);
-const VALID_GROUP_TYPES = new Set<GroupType>([
-  "franchise",
-  "label",
-  "agency",
-  "series",
-]);
+const VALID_GROUP_TYPES = new Set<GroupType>(Object.values(GroupType));
 
 function parseGroupCategory(
   raw: string | undefined,

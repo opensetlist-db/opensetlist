@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { GroupCategory } from "@/generated/prisma/enums";
 
 type Translation = {
   locale: string;
@@ -26,10 +27,9 @@ type GroupFormProps = {
 };
 
 const GROUP_TYPES = ["franchise", "label", "agency", "series"];
-// Mirror of `GroupCategory` enum (kept in sync with prisma/schema.prisma).
-// `animegame` collapses the former separate anime+game values; `others`
-// is the catch-all for groups outside the named music-scene buckets.
-const GROUP_CATEGORIES = ["animegame", "kpop", "jpop", "cpop", "others"];
+// Sourced from the generated Prisma enum so a schema-side change
+// auto-propagates here.
+const GROUP_CATEGORIES = Object.values(GroupCategory);
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 

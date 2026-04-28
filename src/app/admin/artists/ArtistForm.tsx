@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { josa } from "es-hangul";
+import { GroupCategory } from "@/generated/prisma/enums";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 
 type Translation = { locale: string; name: string; bio: string };
@@ -55,11 +56,11 @@ type ArtistFormProps = {
 };
 
 const ARTIST_TYPES = ["solo", "group", "unit"];
-// Mirror of `GroupCategory` enum (kept in sync with prisma/schema.prisma).
 // Drives the ungrouped-artist fallback chip on the public list page —
 // only meaningful when this artist is NOT linked to a hasBoard=true
-// Group; the Group's category wins otherwise.
-const ARTIST_CATEGORIES = ["animegame", "kpop", "jpop", "cpop", "others"];
+// Group; the Group's category wins otherwise. Sourced from the
+// generated Prisma enum so a schema-side change auto-propagates.
+const ARTIST_CATEGORIES = Object.values(GroupCategory);
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
