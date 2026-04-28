@@ -93,6 +93,12 @@ export function Nav() {
                   style={{
                     color: active ? colors.primary : colors.textSubtle,
                     fontWeight: active ? 500 : 400,
+                    // 2px transparent border on inactive keeps every
+                    // link the same height — without it the active
+                    // item is 2px taller and items-center shifts the
+                    // row by 1px when navigating between sections.
+                    borderBottom: `2px solid ${active ? colors.primary : "transparent"}`,
+                    paddingBottom: 2,
                   }}
                 >
                   {t(item.key)}
