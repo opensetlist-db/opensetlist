@@ -340,7 +340,15 @@ export default async function EventPage({ params }: Props) {
   // target → /artists/{id}/{slug}); fall back to the series'
   // `organizerName` for multi-artist festivals where artistId is null.
   // Mirrors the cascade in the series detail page header.
-  const seriesArtist = event.eventSeries?.artist ?? null;
+  //
+  // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
+  // 404 on `/artists/{id}` (the artist page calls notFound()), so
+  // linking to them would dead-end. Treat as absent and fall through
+  // to the organizerName branch.
+  const seriesArtist =
+    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
+      ? event.eventSeries.artist
+      : null;
   const headerArtist = seriesArtist
     ? {
         id: Number(seriesArtist.id),
