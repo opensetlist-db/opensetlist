@@ -60,6 +60,7 @@ interface PreparedEvent {
 interface PreparedGroup {
   key: string;
   seriesName: string;
+  artistShortName: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
   events: PreparedEvent[];
@@ -173,6 +174,7 @@ export default async function EventsPage({
     return {
       key: `${keyPrefix}-${g.seriesId ?? "ungrouped"}`,
       seriesName: g.seriesName ?? ungroupedName,
+      artistShortName: g.artistShortName,
       hasOngoing: g.hasOngoing && (eventStatusFilter !== "upcoming"),
       eventCountLabel: t("eventCount", { count: filteredEvents.length }),
       events: filteredEvents.map(prepareEvent),
@@ -272,6 +274,7 @@ export default async function EventsPage({
                     <SeriesSection
                       key={g.key}
                       seriesName={g.seriesName}
+                      artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
                       liveLabel={liveLabel}
@@ -299,6 +302,7 @@ export default async function EventsPage({
                     <SeriesBlock
                       key={g.key}
                       seriesName={g.seriesName}
+                      artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
                       liveLabel={liveLabel}
@@ -330,6 +334,7 @@ export default async function EventsPage({
                     <SeriesSection
                       key={g.key}
                       seriesName={g.seriesName}
+                      artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
                       liveLabel={liveLabel}
@@ -356,6 +361,7 @@ export default async function EventsPage({
                     <SeriesBlock
                       key={g.key}
                       seriesName={g.seriesName}
+                      artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
                       liveLabel={liveLabel}

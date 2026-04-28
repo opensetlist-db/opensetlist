@@ -7,6 +7,13 @@ import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
   seriesName: string;
+  /**
+   * Locale-resolved short name of the root series's artist, or null
+   * when the series has no `artistId` (multi-artist festival). Mirrors
+   * the same prop on `SeriesSection`; rendered as a small primary-tinted
+   * pill at the start of the header badge row.
+   */
+  artistShortName: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
   liveLabel: string;
@@ -24,6 +31,7 @@ interface Props {
 
 export function SeriesBlock({
   seriesName,
+  artistShortName,
   hasOngoing,
   eventCountLabel,
   liveLabel,
@@ -62,6 +70,20 @@ export function SeriesBlock({
       >
         <div className="flex-1">
           <div className="mb-1.5 flex items-center gap-2">
+            {artistShortName && (
+              <span
+                className="text-[11px] font-bold"
+                style={{
+                  color: colors.primary,
+                  background: colors.primaryBg,
+                  borderRadius: radius.tag,
+                  padding: "2px 9px",
+                  lineHeight: 1.4,
+                }}
+              >
+                {artistShortName}
+              </span>
+            )}
             {hasOngoing && (
               <StatusBadge
                 status="ongoing"

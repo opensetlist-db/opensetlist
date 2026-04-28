@@ -6,6 +6,13 @@ import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
   seriesName: string;
+  /**
+   * Locale-resolved short name of the root series's artist, or null
+   * when the series has no `artistId` (multi-artist festival). When
+   * non-null, rendered as a small primary-tinted pill at the start of
+   * the header badge row.
+   */
+  artistShortName: string | null;
   hasOngoing: boolean;
   /** Pre-resolved label, e.g. "{count} 공연" via i18n plural rule. */
   eventCountLabel: string;
@@ -17,6 +24,7 @@ interface Props {
 
 export function SeriesSection({
   seriesName,
+  artistShortName,
   hasOngoing,
   eventCountLabel,
   liveLabel,
@@ -55,13 +63,29 @@ export function SeriesSection({
         }}
       >
         <div className="min-w-0 flex-1">
-          {hasOngoing && (
+          {(artistShortName || hasOngoing) && (
             <div className="mb-1.5 flex items-center gap-1.5">
-              <StatusBadge
-                status="ongoing"
-                label={liveLabel}
-                size="sm"
-              />
+              {artistShortName && (
+                <span
+                  className="text-[11px] font-bold"
+                  style={{
+                    color: colors.primary,
+                    background: colors.primaryBg,
+                    borderRadius: radius.tag,
+                    padding: "1px 7px",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {artistShortName}
+                </span>
+              )}
+              {hasOngoing && (
+                <StatusBadge
+                  status="ongoing"
+                  label={liveLabel}
+                  size="sm"
+                />
+              )}
             </div>
           )}
           <div
