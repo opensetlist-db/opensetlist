@@ -97,6 +97,9 @@ describe("SetlistRow", () => {
     );
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
+    expect(screen.getByText("itemType.video").style.color).toBe(
+      hexToRgbString("#94a3b8"),
+    );
 
     rerender(
       <SetlistRow
@@ -109,6 +112,9 @@ describe("SetlistRow", () => {
     );
     expect(container.querySelector("li")?.style.opacity).toBe("");
     expect(screen.queryByTitle("best")).toBeNull();
+    expect(screen.getByText("itemType.interval").style.color).toBe(
+      hexToRgbString("#94a3b8"),
+    );
   });
 
   it("uses the canonical song.slug from DB (not a runtime re-slugify of the title)", () => {
