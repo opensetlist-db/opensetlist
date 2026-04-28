@@ -99,7 +99,15 @@ export async function POST(request: NextRequest) {
       parentArtistId: parentArtistIdCheck.value,
       hasBoard: hasBoardCheck.value ?? true,
       category: categoryCheck.value,
-      isMainUnit: isMainUnitCheck.value ?? false,
+      // isMainUnit is meaningless for non-unit artists. Force to
+      // false on the server so a stale form value (operator flipped
+      // type from unit→solo without unchecking the box) can't poison
+      // the chip-strip query later. Strictly speaking the chip query
+      // also filters by parentArtistId being set, but a non-unit
+      // sub-artist could still slip through; the constraint at the
+      // schema layer is permissive, so we enforce it here.
+      isMainUnit:
+        typeCheck.value === "unit" ? (isMainUnitCheck.value ?? false) : false,
       originalName: name.value,
       originalShortName: shortName.value,
       originalBio: bio.value,

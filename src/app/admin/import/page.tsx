@@ -104,7 +104,7 @@ export default function ImportPage() {
       <h1 className="mb-6 text-2xl font-bold">CSV 가져오기</h1>
 
       <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
+        반드시 순서대로 가져오세요: 그룹 → 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
       </div>
 
       {/* Type selector */}

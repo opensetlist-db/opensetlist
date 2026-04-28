@@ -104,7 +104,13 @@ export async function PUT(request: NextRequest, { params }: Props) {
         parentArtistId: parentArtistIdCheck.value,
         hasBoard: hasBoardCheck.value ?? true,
         category: categoryCheck.value,
-        isMainUnit: isMainUnitCheck.value ?? false,
+        // See POST handler — only persist isMainUnit=true when the
+        // artist is actually a unit. Force false on every other type
+        // so a stale form value can't survive a type flip.
+        isMainUnit:
+          typeCheck.value === "unit"
+            ? (isMainUnitCheck.value ?? false)
+            : false,
         originalName: name.value,
         originalShortName: shortName.value,
         originalBio: bio.value,

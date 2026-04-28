@@ -141,21 +141,27 @@ async function importArtists(rows: Record<string, string>[]) {
     ]);
 
     const category = parseGroupCategory(row.category, slug);
-    // isMainUnit only takes effect for type=unit rows; for solo/group
-    // the chip filter never inspects this field. We still persist
-    // whatever the CSV said so a later type flip doesn't drop state.
-    const isMainUnit = parseBooleanFlag(row.isMainUnit);
     const artistType = (row.type as "solo" | "group" | "unit") || undefined;
+    // isMainUnit is only meaningful for type=unit rows. Force false
+    // on solo/group rows so a CSV with a stray `isMainUnit=true` on
+    // a non-unit doesn't poison the chip-strip query (the chip
+    // filter is `where: { isMainUnit: true }` and doesn't constrain
+    // type — the schema-level invariant is permissive). The type
+    // we apply here is `artistType` for inserts/updates of new
+    // rows; for updates of existing rows where the CSV omitted
+    // `type`, we look at the existing row's type below.
+    const csvIsMainUnit = parseBooleanFlag(row.isMainUnit);
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
+      const effectiveType = artistType ?? existing.type;
       await prisma.artist.update({
         where: { slug },
         data: {
           type: artistType,
           category,
-          isMainUnit,
+          isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
           ...originals,
         },
       });
@@ -170,13 +176,14 @@ async function importArtists(rows: Record<string, string>[]) {
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
       const originalName = ensureOriginalName(originals, slug, "Artist", originalLanguage);
+      const newType = artistType ?? "group";
       const artist = await prisma.artist.create({
         data: {
           slug,
-          type: artistType ?? "group",
+          type: newType,
           hasBoard: true,
           category,
-          isMainUnit,
+          isMainUnit: newType === "unit" ? csvIsMainUnit : false,
           ...originals,
           originalName,
           translations: { create: translations },
