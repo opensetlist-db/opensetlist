@@ -177,6 +177,7 @@
     "songsValue": "{count, plural, other {#곡}}",
     "itemsLabel": "{count, plural, other {#개 항목}}",
     "tapToAddReaction": "탭해서 반응 추가",
+    "colPosition": "#",
     "colSong": "곡",
     "colPerformers": "출연",
     "colReactions": "반응",

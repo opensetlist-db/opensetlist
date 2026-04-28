@@ -219,6 +219,7 @@ export function LiveSetlist({
           {/* Desktop column-header strip — same 4-col grid as data rows. */}
           <SetlistColumnHeader
             labels={{
+              position: t("colPosition"),
               song: t("colSong"),
               performers: t("colPerformers"),
               reactions: t("colReactions"),
@@ -267,7 +268,12 @@ export function LiveSetlist({
 function SetlistColumnHeader({
   labels,
 }: {
-  labels: { song: string; performers: string; reactions: string };
+  labels: {
+    position: string;
+    song: string;
+    performers: string;
+    reactions: string;
+  };
 }) {
   const headerStyle: React.CSSProperties = {
     fontSize: 11,
@@ -290,7 +296,7 @@ function SetlistColumnHeader({
         borderBottom: `2px solid ${colors.border}`,
       }}
     >
-      <span style={headerStyle}>#</span>
+      <span style={headerStyle}>{labels.position}</span>
       <span style={headerStyle}>{labels.song}</span>
       <span style={headerStyle}>{labels.performers}</span>
       <span style={headerStyle}>{labels.reactions}</span>

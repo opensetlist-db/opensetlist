@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import type { ReactNode, CSSProperties } from "react";
 import { render, screen } from "@testing-library/react";
 import { UnitsCard } from "@/components/event/UnitsCard";
 import { hexToRgbString } from "@/__tests__/utils/color";
@@ -14,9 +15,9 @@ vi.mock("next/link", () => ({
     ...rest
   }: {
     href: string;
-    children: React.ReactNode;
+    children: ReactNode;
     className?: string;
-    style?: React.CSSProperties;
+    style?: CSSProperties;
   }) => (
     <a href={href} {...rest}>
       {children}

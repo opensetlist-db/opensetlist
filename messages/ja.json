@@ -177,6 +177,7 @@
     "songsValue": "{count, plural, other {#曲}}",
     "itemsLabel": "{count, plural, other {#項目}}",
     "tapToAddReaction": "タップしてリアクションを追加",
+    "colPosition": "#",
     "colSong": "楽曲",
     "colPerformers": "出演",
     "colReactions": "リアクション",

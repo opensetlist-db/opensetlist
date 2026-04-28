@@ -177,6 +177,7 @@
     "songsValue": "{count, plural, one {# song} other {# songs}}",
     "itemsLabel": "{count, plural, one {# item} other {# items}}",
     "tapToAddReaction": "Tap to add reaction",
+    "colPosition": "#",
     "colSong": "Song",
     "colPerformers": "Performers",
     "colReactions": "Reactions",
