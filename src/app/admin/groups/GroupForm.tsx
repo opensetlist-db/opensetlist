@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GroupCategory } from "@/generated/prisma/enums";
+import { GROUP_CATEGORY_VALUES } from "@/lib/admin-constants";
 
 type Translation = {
   locale: string;
@@ -27,9 +27,6 @@ type GroupFormProps = {
 };
 
 const GROUP_TYPES = ["franchise", "label", "agency", "series"];
-// Sourced from the generated Prisma enum so a schema-side change
-// auto-propagates here.
-const GROUP_CATEGORIES = Object.values(GroupCategory);
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
@@ -176,7 +173,7 @@ export default function GroupForm({ initialData }: GroupFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2"
           >
             <option value="">선택 안 함</option>
-            {GROUP_CATEGORIES.map((c) => (
+            {GROUP_CATEGORY_VALUES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>

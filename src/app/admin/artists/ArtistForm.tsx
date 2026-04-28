@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { josa } from "es-hangul";
-import { GroupCategory } from "@/generated/prisma/enums";
-import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
+import {
+  ADMIN_UNKNOWN_NAME,
+  GROUP_CATEGORY_VALUES,
+} from "@/lib/admin-constants";
 
 type Translation = { locale: string; name: string; bio: string };
 type StageIdentityInput = {
@@ -56,11 +58,6 @@ type ArtistFormProps = {
 };
 
 const ARTIST_TYPES = ["solo", "group", "unit"];
-// Drives the ungrouped-artist fallback chip on the public list page —
-// only meaningful when this artist is NOT linked to a hasBoard=true
-// Group; the Group's category wins otherwise. Sourced from the
-// generated Prisma enum so a schema-side change auto-propagates.
-const ARTIST_CATEGORIES = Object.values(GroupCategory);
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
@@ -420,7 +417,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
         >
           <option value="">선택 안 함</option>
-          {ARTIST_CATEGORIES.map((c) => (
+          {GROUP_CATEGORY_VALUES.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>

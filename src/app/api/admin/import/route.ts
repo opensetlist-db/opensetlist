@@ -209,10 +209,17 @@ async function importArtists(rows: Record<string, string>[]) {
   // Batch-fetch all referenced Group slugs once at the top so the
   // per-row loop is O(rows + linkages) round trips instead of
   // O(rows × group_slugs). Same applies to the per-row Artist lookup.
+  // Truthiness check (NOT `=== undefined`) so an empty `group_slugs`
+  // value also lands as a no-op — matches the documented contract
+  // ("empty / missing column → no-op"). The CSV parser fills missing
+  // columns with `""`, so `=== undefined` only catches "header
+  // omitted entirely"; an operator who left the cell blank for a
+  // single row would otherwise see all of that artist's existing
+  // links wiped.
   const allGroupSlugs = new Set<string>();
   const allArtistSlugs = new Set<string>();
   for (const row of rows) {
-    if (!row.slug || row.group_slugs === undefined) continue;
+    if (!row.slug || !row.group_slugs) continue;
     allArtistSlugs.add(row.slug);
     for (const slug of parseArtistSlugs(row.group_slugs)) {
       allGroupSlugs.add(slug);
@@ -246,7 +253,7 @@ async function importArtists(rows: Record<string, string>[]) {
     const linksToCreate: Array<{ artistId: bigint; groupId: string }> = [];
     for (const row of rows) {
       if (!row.slug) continue;
-      if (row.group_slugs === undefined) continue;
+      if (!row.group_slugs) continue;
       const artistId = artistBySlug.get(row.slug);
       if (artistId == null) continue;
       artistIdsToReplace.push(artistId);
