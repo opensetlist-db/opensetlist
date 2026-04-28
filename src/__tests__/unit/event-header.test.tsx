@@ -46,6 +46,8 @@ describe("EventHeader", () => {
     statusLabel: "Upcoming",
     date: new Date("2026-05-02T19:00:00Z"),
     startTime: new Date("2026-05-02T19:00:00Z"),
+    artist: null,
+    organizerName: null,
     series: null,
     title: "Hasunosora 6th Live Fukuoka Day 1",
     subtitle: null,
@@ -114,5 +116,36 @@ describe("EventHeader", () => {
 
     rerender(<EventHeader {...baseProps} date={null} />);
     expect(screen.queryByTestId("event-date-time")).toBeNull();
+  });
+
+  it("renders the artist as a link to /artists/{id}/{slug}", () => {
+    render(
+      <EventHeader
+        {...baseProps}
+        artist={{ id: 42, slug: "hasunosora", name: "蓮ノ空" }}
+      />,
+    );
+    const artistLink = screen.getByText("蓮ノ空");
+    expect(artistLink.tagName).toBe("A");
+    expect(artistLink.getAttribute("href")).toBe("/artists/42/hasunosora");
+  });
+
+  it("renders organizerName as plain text (no link) when artist is null", () => {
+    render(
+      <EventHeader
+        {...baseProps}
+        artist={null}
+        organizerName="Bandai Namco / Lantis"
+      />,
+    );
+    const text = screen.getByText("Bandai Namco / Lantis");
+    expect(text.tagName).toBe("SPAN");
+    expect(text.getAttribute("href")).toBeNull();
+  });
+
+  it("omits the artist line when both artist and organizerName are null", () => {
+    render(<EventHeader {...baseProps} artist={null} organizerName={null} />);
+    // No anchor links at all (series and artist both null in baseProps).
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

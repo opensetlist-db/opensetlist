@@ -10,6 +10,18 @@ interface Props {
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
+  /**
+   * Caller-resolved owning artist (via the series). Renders as a Link
+   * to the artist detail page. Null when the series has no artistId
+   * (multi-artist festivals) — the page should set `organizerName`
+   * instead in that case.
+   */
+  artist: { id: number; slug: string; name: string } | null;
+  /**
+   * Multi-artist festival fallback — rendered as plain text when
+   * `artist` is null. Mirrors the `series.organizerName` field.
+   */
+  organizerName: string | null;
   /** Caller-resolved series link target — null when the event has no series. */
   series: { id: number | bigint; slug: string; shortName: string } | null;
   /** Display title — series full name takes precedence; falls back to event full name then `unknownEventLabel`. */
@@ -28,6 +40,8 @@ export function EventHeader({
   statusLabel,
   date,
   startTime,
+  artist,
+  organizerName,
   series,
   title,
   subtitle,
@@ -67,8 +81,28 @@ export function EventHeader({
           </span>
         )}
       </div>
-      {series && (
+      {(artist || organizerName) && (
         <div className="mt-2">
+          {artist ? (
+            <Link
+              href={`/artists/${artist.id}/${artist.slug}`}
+              className="text-[12px] font-medium hover:underline"
+              style={{ color: colors.textSubtle }}
+            >
+              {artist.name}
+            </Link>
+          ) : (
+            <span
+              className="text-[12px] font-medium"
+              style={{ color: colors.textSubtle }}
+            >
+              {organizerName}
+            </span>
+          )}
+        </div>
+      )}
+      {series && (
+        <div className="mt-1">
           <Link
             href={`/series/${series.id}/${series.slug}`}
             className="text-[11px] font-medium hover:underline"
