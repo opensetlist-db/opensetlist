@@ -56,30 +56,33 @@ export function Nav() {
         className="flex h-[52px] items-center justify-between bg-white px-4 lg:h-[56px] lg:px-8"
         style={{ borderBottom: `0.5px solid ${colors.border}` }}
       >
-        <Link href="/" className="flex items-center gap-2.5">
-          <span
-            className="inline-flex h-[34px] w-[34px] overflow-hidden"
-            style={{ borderRadius: "8px" }}
-          >
-            <Image
-              src="/images/opensetlist-symbol-40.svg"
-              alt=""
-              width={34}
-              height={34}
-              priority
-            />
-          </span>
-          <span
-            className="font-josefin text-[17px] uppercase"
-            style={{ color: colors.textPrimary, letterSpacing: 0 }}
-          >
-            {t("brandName")}
-          </span>
-        </Link>
+        {/* Desktop left side: logo + nav links */}
+        <div className="flex items-center gap-7">
+          <Link href="/" className="flex items-center gap-2.5">
+            <span
+              className="inline-flex h-[34px] w-[34px] overflow-hidden"
+              style={{ borderRadius: "8px" }}
+            >
+              <Image
+                src="/images/opensetlist-symbol-40.svg"
+                alt=""
+                width={34}
+                height={34}
+                priority
+              />
+            </span>
+            <span
+              className="font-josefin text-[17px] uppercase"
+              style={{ color: colors.textPrimary, letterSpacing: 0 }}
+            >
+              {t("brandName")}
+            </span>
+          </Link>
 
-        {/* Desktop right side */}
-        <div className="hidden lg:flex items-center gap-7">
-          <nav className="flex items-center gap-7">
+          {/* Nav links sit immediately right of the logo on desktop. The
+              `lg:flex` here mirrors the right-group's hide-on-mobile rule —
+              mobile uses the hamburger menu instead. */}
+          <nav className="hidden lg:flex items-center gap-7">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
               return (
@@ -97,7 +100,10 @@ export function Nav() {
               );
             })}
           </nav>
+        </div>
 
+        {/* Desktop right side: language switcher (+ disabled sign-in) */}
+        <div className="hidden lg:flex items-center gap-7">
           <LanguageSwitcher />
 
           {LAUNCH_FLAGS.showSignIn && (
