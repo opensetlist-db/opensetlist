@@ -293,12 +293,13 @@ export default async function EventSeriesPage({
   };
 
   // ── Stats + legs ─────────────────────────────────────────
-  // Single cast for the post-`serializeBigInt` shape. TypeScript sees
-  // Prisma's pre-serialize types (bigint id, Date startTime) through
-  // `serializeBigInt<T>(obj: T): T`'s identity signature, but at
-  // runtime BigInt is narrowed to `number` and Date round-trips to ISO
-  // string. The `as unknown as` step is intentional and acknowledged
-  // here so downstream usage stays cast-free.
+  // `series` is the RAW Prisma row (no `serializeBigInt`), so `id` is
+  // `bigint` and `startTime`/`date` are `Date`. `SeriesEventInput`
+  // unions both raw and post-serialize shapes (`bigint | number |
+  // string` for id, `Date | string` for the timestamps), so the cast
+  // is structurally safe — it just tells TS to pick the wider union
+  // even though Prisma's emitted type is narrower. Single cast site
+  // here keeps downstream usage clean.
   const events = series.events as unknown as SeriesEventInput[];
 
   const stats = getSeriesStats(events, locale, referenceNow);
@@ -468,6 +469,12 @@ export default async function EventSeriesPage({
               marginBottom: 12,
             }}
           >
+            {/* `series.artist` is a raw Prisma row (BigInt id) — passing
+                it through is safe because `InfoCard` is a server
+                component (no `"use client"` directive in
+                `src/components/InfoCard.tsx`). No server→client
+                boundary is crossed here, so Next.js never has to
+                serialize the BigInt. */}
             <InfoCard artist={series.artist}>
               <span
                 style={{
