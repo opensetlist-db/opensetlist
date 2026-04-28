@@ -1,6 +1,15 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { Link } from "@/i18n/navigation";
+// Two `Link` imports for two purposes:
+//   - `IntlLink` (`@/i18n/navigation`) for intra-app paths that are
+//     locale-FREE (the i18n Link auto-prepends locale): childSeries +
+//     parentSeries breadcrumb hops.
+//   - `Link` (`next/link`) for paths that already include the locale
+//     prefix from `eventHref(locale, ...)`: leg event rows + the LIVE
+//     banner. Using the i18n Link with a locale-prefixed href would
+//     double-prefix as `/ko/ko/events/...`.
+import { Link as IntlLink } from "@/i18n/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, formatDate } from "@/lib/utils";
@@ -30,7 +39,7 @@ import {
   type PreparedLeg,
   type PreparedLegEvent,
 } from "@/components/series/LegCard";
-import { colors, layout, radius, shadows } from "@/styles/tokens";
+import { colors, gradients, layout, radius, shadows } from "@/styles/tokens";
 
 type Props = {
   params: Promise<{ locale: string; id: string }>;
@@ -84,7 +93,7 @@ async function getEventSeries(id: bigint) {
 async function getSongAppearances(completedEventIds: bigint[]) {
   if (completedEventIds.length === 0)
     return [] as Array<{
-      songId: number;
+      songId: string;
       count: number;
       song: SongRowHydrated | null;
     }>;
@@ -118,7 +127,10 @@ async function getSongAppearances(completedEventIds: bigint[]) {
   );
 
   return counts.map((c) => ({
-    songId: Number(c.songId),
+    // String preserves precision for IDs > 2^53 — Prisma BigInt narrowed
+    // to `number` would silently lose bits at scale. The Map key
+    // already uses `String(...)` so this matches by construction.
+    songId: String(c.songId),
     count: c._count.songId,
     song: byId.get(String(c.songId)) ?? null,
   }));
@@ -261,31 +273,29 @@ export default async function EventSeriesPage({
   };
 
   // ── Stats + legs ─────────────────────────────────────────
-  const stats = getSeriesStats(
-    series.events as unknown as SeriesEventInput[],
-    locale,
-    referenceNow,
-  );
-  const legs: Leg[] = groupByCity(
-    series.events as unknown as SeriesEventInput[],
-    locale,
-    referenceNow,
-  );
+  // Single cast for the post-`serializeBigInt` shape. TypeScript sees
+  // Prisma's pre-serialize types (bigint id, Date startTime) through
+  // `serializeBigInt<T>(obj: T): T`'s identity signature, but at
+  // runtime BigInt is narrowed to `number` and Date round-trips to ISO
+  // string. The `as unknown as` step is intentional and acknowledged
+  // here so downstream usage stays cast-free.
+  const events = series.events as unknown as SeriesEventInput[];
+
+  const stats = getSeriesStats(events, locale, referenceNow);
+  const legs: Leg[] = groupByCity(events, locale, referenceNow);
 
   // ── Server-side aggregations (songs + units) ─────────────
-  const completedEventIds = (series.events as unknown as SeriesEventInput[])
+  const completedEventIds = events
     .filter((e) => getEventStatus(e, referenceNow) === "completed")
     .map((e) => BigInt(e.id));
-  const allEventIds = (series.events as unknown as SeriesEventInput[]).map((e) =>
-    BigInt(e.id),
-  );
+  const allEventIds = events.map((e) => BigInt(e.id));
 
   const [songAppearances, units] = await Promise.all([
     activeTab === "songs"
       ? getSongAppearances(completedEventIds)
       : Promise.resolve(
           [] as Array<{
-            songId: number;
+            songId: string;
             count: number;
             song: SongRowHydrated | null;
           }>,
@@ -360,7 +370,7 @@ export default async function EventSeriesPage({
   });
 
   // ── LIVE banner: pick first-by-date ongoing event ────────
-  const ongoingEvents = (series.events as unknown as SeriesEventInput[]).filter(
+  const ongoingEvents = events.filter(
     (e) => getEventStatus(e, referenceNow) === "ongoing",
   );
   const firstOngoing = ongoingEvents.length > 0 ? ongoingEvents[0] : null;
@@ -685,8 +695,7 @@ export default async function EventSeriesPage({
                     href={liveBannerHref}
                     className="mb-3 flex items-center gap-3"
                     style={{
-                      background:
-                        "linear-gradient(135deg, #0f172a, #1e3a5f)",
+                      background: gradients.liveBanner,
                       borderRadius: 14,
                       padding: "14px 16px",
                       textDecoration: "none",
@@ -741,7 +750,7 @@ export default async function EventSeriesPage({
                           ) || t("unknownSeries");
                         return (
                           <li key={child.id} style={{ marginBottom: 4 }}>
-                            <Link
+                            <IntlLink
                               href={`/series/${child.id}/${child.slug}`}
                               style={{
                                 fontSize: 13,
@@ -750,7 +759,7 @@ export default async function EventSeriesPage({
                               }}
                             >
                               {childName}
-                            </Link>
+                            </IntlLink>
                           </li>
                         );
                       })}

@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Link } from "@/i18n/navigation";
+// Raw `next/link` Link, not `@/i18n/navigation`'s — the caller passes
+// a fully-locale-prefixed `href` from `eventHref(locale, ...)` (project
+// convention used by the home + events-list redesigns). The i18n
+// navigation Link would double-prefix and produce `/ko/ko/events/...`.
+import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";

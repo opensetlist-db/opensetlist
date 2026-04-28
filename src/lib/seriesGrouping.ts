@@ -6,6 +6,15 @@ import { getEventStatus } from "@/lib/eventStatus";
  * the series page query produces after `serializeBigInt`: numeric ids,
  * stringified dates, translations array with city/venue.
  */
+/**
+ * Post-`serializeBigInt` event shape consumed by `groupByCity` and
+ * `getSeriesStats`. BigInt has been narrowed to JS `number` and Date
+ * to ISO string at runtime (JSON round-trip in serializeBigInt). The
+ * page caller hoists ONE `as unknown as SeriesEventInput[]` cast at
+ * fetch time — the `unknown` step is intentional because Prisma's
+ * pre-serialize type still says `bigint`/`Date` even though runtime
+ * is `number`/`string`. Single cast > scattered ones.
+ */
 export interface SeriesEventInput {
   id: number;
   slug: string;

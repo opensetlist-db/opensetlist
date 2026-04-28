@@ -145,6 +145,16 @@ export const motion = {
 } as const;
 
 /*
+ * Composite gradients beyond `colors.brandGradient` /
+ * `colors.darkGradient`. `liveBanner` is the dark-navy ramp used by
+ * the series-page LIVE banner — same `textPrimary` → deeper-navy
+ * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
+ */
+export const gradients = {
+  liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, #1e3a5f)`,
+} as const;
+
+/*
  * Compose a partially-transparent CSS color from a hex token. Lets
  * decorative surfaces (e.g. blob backgrounds, glows) reference a
  * `colors.*` token directly without keeping a parallel `r,g,b` string
