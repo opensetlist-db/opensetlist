@@ -60,12 +60,17 @@ export function SetlistRow({
     };
   });
 
+  // Short performer names match the mockup's compact shape — characters
+  // like 林田乃理 fit the 180px column at small font sizes only when the
+  // shortName cascade kicks in (e.g. "ノリ"). The cascade falls through
+  // to the long name when no short variant exists.
   const performers = item.performers.map(
     (p) =>
       displayNameWithFallback(
         p.stageIdentity,
         p.stageIdentity.translations,
         locale,
+        "short",
       ) || t("unknownPerformer"),
   );
 
@@ -78,83 +83,96 @@ export function SetlistRow({
         unitArtist.artist,
         unitArtist.artist.translations,
         locale,
+        "short",
       )
     : "";
 
   const isNonSong = NON_SONG_TYPES.has(item.type);
+  const showReactions = !isNonSong && songNames.length > 0;
+  const reactions = showReactions ? (
+    <ReactionButtons
+      setlistItemId={String(item.id)}
+      songId={String(item.songs[0].song.id)}
+      eventId={eventId}
+      initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
+    />
+  ) : null;
 
   return (
     <li
-      className="border-b border-zinc-100 pb-2 lg:grid lg:grid-cols-[36px_1fr_180px] lg:gap-3 lg:px-2 lg:py-2 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
-      // CSS variable funnels colors.bgSubtle into the hover Tailwind class.
-      style={{ "--row-hover-bg": colors.bgSubtle } as React.CSSProperties}
+      style={{
+        borderBottom: `1px solid ${colors.borderLight}`,
+        ...({ "--row-hover-bg": colors.bgSubtle } as React.CSSProperties),
+      }}
+      // Single responsive grid for both viewports — render the
+      // reactions ONCE and let CSS relocate them via `grid-column`
+      // overrides. Two-render approach (mobile copy + desktop copy)
+      // would double-mount the stateful `<ReactionButtons>` and let
+      // their optimistic-counts state diverge.
+      //
+      // Mobile (default): 2-col grid `[34px_1fr]` (position is 22px
+      // visual + 12px gap). Title spans col 2 row 1; reactions span
+      // col 2 row 2.
+      //
+      // Desktop (≥ lg): 4-col grid `[36px_1fr_180px_260px]` per
+      // `event-page-desktop-mockup-v2.jsx:178-187`. Position col 1,
+      // title col 2, performers col 3, reactions col 4 — single row.
+      className="grid grid-cols-[34px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[36px_1fr_180px_260px] lg:gap-3 lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
     >
-      <div className="flex items-start gap-3 lg:col-span-2">
-        <span
-          className="mt-0.5 w-6 shrink-0 pt-px text-right text-sm font-mono text-zinc-400 lg:w-9"
-        >
-          {index + 1}
-        </span>
-        <div className="flex-1 min-w-0">
-          {/*
-            Title row + reactions on one wrapping flex line. The
-            ReactionButtons render inline at the row's end on wide
-            viewports and wrap below the title on narrow ones — that's
-            what `flex-wrap` is for. Non-song items skip the reactions
-            entirely (early-return inside the conditional).
-          */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <div className="min-w-0 flex-1">
-              <SongTitleBlock
-                songNames={songNames}
-                itemType={item.type}
-                position={item.position}
-                eventId={eventId}
-                t={t}
-              />
-            </div>
-            {/*
-              Reactions only render for song-typed items that actually
-              have at least one song attached. An admin-created song
-              row with no song assigned (placeholder) would otherwise
-              POST reactions with an empty `songId`, breaking analytics
-              tracking and the per-song aggregation downstream.
-            */}
-            {!isNonSong && songNames.length > 0 && (
-              <ReactionButtons
-                setlistItemId={String(item.id)}
-                songId={String(item.songs[0].song.id)}
-                eventId={eventId}
-                initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
-              />
-            )}
-          </div>
-          {!isNonSong && unitArtist && unitArtistName && (
-            <UnitBadge
-              artistColor={unitArtist.artist.color}
-              locale={locale}
-              artistId={unitArtist.artist.id}
-              artistSlug={unitArtist.artist.slug}
-              label={unitArtistName}
-            />
-          )}
-          {!isNonSong && unitArtist && !unitArtistName && (
-            <FallbackUnitBadge
-              label={
-                item.unitName ??
-                t(`stageType.${item.stageType}` as Parameters<typeof t>[0])
-              }
-            />
-          )}
-        </div>
+      {/* Position number — col 1, row 1. */}
+      <span
+        className="mt-0.5 pt-px text-right text-sm font-mono lg:w-9"
+        style={{ color: colors.textMuted }}
+      >
+        {index + 1}
+      </span>
+
+      {/* Title block — col 2, row 1 on both viewports. */}
+      <div className="min-w-0">
+        <SongTitleBlock
+          songNames={songNames}
+          itemType={item.type}
+          position={item.position}
+          eventId={eventId}
+          t={t}
+        />
+        {!isNonSong && unitArtist && unitArtistName && (
+          <UnitBadge
+            artistColor={unitArtist.artist.color}
+            locale={locale}
+            artistId={unitArtist.artist.id}
+            artistSlug={unitArtist.artist.slug}
+            label={unitArtistName}
+          />
+        )}
+        {!isNonSong && unitArtist && !unitArtistName && (
+          <FallbackUnitBadge
+            label={
+              item.unitName ??
+              t(`stageType.${item.stageType}` as Parameters<typeof t>[0])
+            }
+          />
+        )}
       </div>
 
-      {/* Performers column — desktop only. Mobile drops the line
-          entirely per operator preference (the title + reactions row
-          carries enough context on narrow viewports). */}
-      <div className="mt-1 hidden text-sm text-zinc-500 lg:block">
+      {/* Performers — desktop col 3 only. `hidden` on mobile so the
+          mobile grid keeps just 2 cols. */}
+      <div
+        className="hidden text-sm lg:block lg:pt-0.5"
+        style={{ color: colors.textSecondary }}
+      >
         {performers.length > 0 ? performers.join(", ") : null}
       </div>
+
+      {/* Reactions — mobile spans col 2 row 2 (under the title) so the
+          emoji chips sit in their own row below per
+          `event-page-mockup.jsx:200`. Desktop pins to col 4 (the
+          fixed 260px reactions column). */}
+      {reactions && (
+        <div className="col-start-2 mt-2 lg:col-start-4 lg:mt-0 lg:pt-0.5">
+          {reactions}
+        </div>
+      )}
     </li>
   );
 }
@@ -241,17 +259,20 @@ function UnitBadge({
   artistSlug: string;
   label: string;
 }) {
-  // Per handoff §3-2: bg = `${color}18` (9% alpha), text = color at full
-  // opacity. Fallback to default zinc tokens when artist.color is null.
+  // Mockup `event-page-desktop-mockup-v2.jsx:204-212`: bg uses an
+  // 8-digit hex with 18 alpha (~9%); text uses the unit color at full
+  // opacity. When the operator hasn't backfilled the unit's color yet,
+  // fall back to a brand-tinted pill (`primaryBg` / `primary`) instead
+  // of zinc gray — matches the active reaction button's visual so the
+  // user reads it as "unit pending color" rather than a different
+  // category of badge.
   const styled = artistColor
     ? { backgroundColor: `${artistColor}18`, color: artistColor }
-    : undefined;
+    : { backgroundColor: colors.primaryBg, color: colors.primary };
   return (
     <Link
       href={`/${locale}/artists/${artistId}/${artistSlug}`}
-      className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline ${
-        styled ? "" : "bg-zinc-100 text-zinc-600"
-      }`}
+      className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline"
       style={styled}
     >
       {label}
@@ -261,7 +282,10 @@ function UnitBadge({
 
 function FallbackUnitBadge({ label }: { label: string }) {
   return (
-    <span className="mt-1 inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600">
+    <span
+      className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs"
+      style={{ background: colors.primaryBg, color: colors.primary }}
+    >
       {label}
     </span>
   );
