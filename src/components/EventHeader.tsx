@@ -37,8 +37,15 @@ interface Props {
   city: string | null;
   /** Total number of song-typed setlist items (excludes mc/video/interval). */
   songsCount: number;
-  /** Sum of every reaction across every setlist item on this event. */
-  reactionsCount: number;
+  /**
+   * Pre-formatted reaction count string (e.g. `"1.2K"` / `"1.2천"`).
+   * The page formats with `Intl.NumberFormat(locale, { notation:
+   * "compact", maximumFractionDigits: 1 })` so the locale-correct
+   * suffix is rendered server-side — passing a string instead of a
+   * raw number avoids any SSR-vs-client `Intl` divergence (different
+   * ICU versions could produce slightly different output).
+   */
+  reactionsValue: string;
 }
 
 // Card-styled event detail header per
@@ -60,7 +67,7 @@ export function EventHeader({
   venue,
   city,
   songsCount,
-  reactionsCount,
+  reactionsValue,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -77,14 +84,6 @@ export function EventHeader({
   // component can call it on first render without a `useMounted`
   // guard — no hydration mismatch is possible.
   const dateLabel = formatVenueDate(date, locale);
-
-  // `${(n/1000).toFixed(1)}k total` for ≥ 1000, plain integer otherwise.
-  // `1.0k` reads more naturally than `1k` for a transition number, so
-  // keep the one decimal even at the boundary.
-  const reactionsValue =
-    reactionsCount >= 1000
-      ? `${(reactionsCount / 1000).toFixed(1)}k`
-      : String(reactionsCount);
 
   const iconRows: Array<{
     icon: string;

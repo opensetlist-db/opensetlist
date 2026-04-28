@@ -405,6 +405,15 @@ export default async function EventPage({ params }: Props) {
       sum + Object.values(perItem).reduce((s, n) => s + n, 0),
     0,
   );
+  // Pre-format the reaction-count display string server-side so the
+  // locale-correct compact suffix (`1.2K` / `1.2천` / `1.2K`) renders
+  // identically on first paint and on hydration — no SSR-vs-client
+  // `Intl.NumberFormat` divergence even if the runtimes' ICU versions
+  // differ slightly.
+  const reactionsValue = new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(reactionsCount);
 
   // Sidebar Units card: derive unique units that performed any song
   // in this event's setlist. `setlistItems[].artists[].artist` only
@@ -530,7 +539,7 @@ export default async function EventPage({ params }: Props) {
             }
             title={headerTitle}
             songsCount={songsCount}
-            reactionsCount={reactionsCount}
+            reactionsValue={reactionsValue}
             venue={venue}
             city={city}
           />

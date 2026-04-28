@@ -268,8 +268,12 @@ function SetlistColumnHeader({
       aria-hidden="true"
       className="hidden lg:grid"
       style={{
+        // Mirror `<SetlistRow>`'s desktop grid so each column label
+        // sits directly above its data column. The row uses Tailwind
+        // `lg:gap-3` (= 12px); replicating the same gap here keeps
+        // header + body aligned across viewport widths.
         gridTemplateColumns: "36px 1fr 180px 260px",
-        gap: 0,
+        columnGap: 12,
         padding: "8px 20px",
         background: colors.bgFaint,
         borderBottom: `2px solid ${colors.border}`,

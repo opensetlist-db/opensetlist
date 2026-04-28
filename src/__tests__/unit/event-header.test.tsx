@@ -52,7 +52,7 @@ describe("EventHeader", () => {
     venue: "Marine Messe Fukuoka",
     city: "Fukuoka",
     songsCount: 18,
-    reactionsCount: 1234,
+    reactionsValue: "1.2K",
   };
 
   it("renders the title and status badge label", () => {
@@ -79,13 +79,18 @@ describe("EventHeader", () => {
     expect(screen.getByText("songsValue")).toBeInTheDocument();
   });
 
-  it("formats reactionsCount as 'X.Yk' when ≥ 1000", () => {
-    render(<EventHeader {...baseProps} reactionsCount={1234} />);
-    expect(screen.getByText("1.2k")).toBeInTheDocument();
-  });
+  it("renders the pre-formatted reactionsValue verbatim", () => {
+    // Page formats via `Intl.NumberFormat({notation: "compact"})`
+    // server-side so SSR/CSR can't diverge — EventHeader just
+    // displays whatever string the page passed in. Verify both a
+    // compact-notation value and a plain integer round-trip
+    // unchanged by rerender-ing.
+    const { rerender } = render(
+      <EventHeader {...baseProps} reactionsValue="1.2K" />,
+    );
+    expect(screen.getByText("1.2K")).toBeInTheDocument();
 
-  it("formats reactionsCount as the plain integer when < 1000", () => {
-    render(<EventHeader {...baseProps} reactionsCount={42} />);
+    rerender(<EventHeader {...baseProps} reactionsValue="42" />);
     expect(screen.getByText("42")).toBeInTheDocument();
   });
 
