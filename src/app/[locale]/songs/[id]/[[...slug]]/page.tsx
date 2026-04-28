@@ -244,11 +244,14 @@ export default async function SongPage({ params, searchParams }: Props) {
   // Build a flat per-performance view-model first, then group by
   // series for `<PerformanceGroup>`. Same shape as the artist page —
   // each entry carries enough data to render the row + sort.
+  // `trailing` is pre-rendered server-side: PerformanceGroup is a
+  // client component, and React refuses to serialize a function prop
+  // (e.g. a `renderTrailing` callback) across the RSC boundary.
+  // ReactNode trees do serialize, so the trailing JSX lives here.
   type PerformanceView = PerformanceEvent & {
     seriesId: number | null;
     seriesName: string | null;
     rawDateMs: number;
-    cells: SongPerformanceCells;
   };
 
   const performanceViews: PerformanceView[] = [];
@@ -273,6 +276,7 @@ export default async function SongPage({ params, searchParams }: Props) {
     const eventName =
       displayNameWithFallback(event, event.translations, locale) ||
       et("unknownEvent");
+    const cells = getSongPerformanceCells(p.setlistItem);
     performanceViews.push({
       id: String(event.id),
       seriesId,
@@ -282,7 +286,9 @@ export default async function SongPage({ params, searchParams }: Props) {
       name: eventName,
       href: `/${locale}/events/${event.id}/${event.slug}`,
       rawDateMs: new Date(String(event.date)).getTime(),
-      cells: getSongPerformanceCells(p.setlistItem),
+      trailing: (
+        <SongRowTrailing cells={cells} encoreLabel={t("encoreBadge")} />
+      ),
     });
   }
 
@@ -302,7 +308,7 @@ export default async function SongPage({ params, searchParams }: Props) {
     }
   }
 
-  type SongSeriesView = PerformanceSeries<PerformanceView> & { sortKey: number };
+  type SongSeriesView = PerformanceSeries & { sortKey: number };
   const seriesViews: SongSeriesView[] = [];
   for (const bucket of seriesBuckets.values()) {
     // Within a series, keep the desc-by-date order produced by the
@@ -650,19 +656,13 @@ export default async function SongPage({ params, searchParams }: Props) {
                   </p>
                 ) : (
                   seriesViews.map((sv) => (
-                    <PerformanceGroup<PerformanceView>
+                    <PerformanceGroup
                       key={sv.seriesId}
                       series={sv}
                       statusLabels={statusLabels}
                       eventCountLabel={at("eventCount", {
                         count: sv.events.length,
                       })}
-                      renderTrailing={(event) => (
-                        <SongRowTrailing
-                          cells={event.cells}
-                          encoreLabel={t("encoreBadge")}
-                        />
-                      )}
                     />
                   ))
                 )}
