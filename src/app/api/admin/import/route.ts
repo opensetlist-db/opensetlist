@@ -10,6 +10,65 @@ import {
   resolveOriginalLanguage,
   resolveSongTranslations,
 } from "@/lib/csv-parse";
+import type { GroupCategory, GroupType } from "@/generated/prisma/enums";
+
+// Active GroupCategory enum values after the v2 reshape (animegame
+// merged from anime+game; `others` added). The legacy `anime`/`game`
+// strings are explicitly rejected with a migration hint so a CSV
+// authored against the old enum fails loudly instead of silently
+// landing rows with NULL category.
+const VALID_GROUP_CATEGORIES = new Set<GroupCategory>([
+  "animegame",
+  "kpop",
+  "jpop",
+  "cpop",
+  "others",
+]);
+const LEGACY_GROUP_CATEGORIES = new Set(["anime", "game"]);
+const VALID_GROUP_TYPES = new Set<GroupType>([
+  "franchise",
+  "label",
+  "agency",
+  "series",
+]);
+
+function parseGroupCategory(
+  raw: string | undefined,
+  rowSlug: string,
+): GroupCategory | null {
+  const v = (raw ?? "").trim();
+  if (v === "") return null;
+  if (LEGACY_GROUP_CATEGORIES.has(v)) {
+    throw new ImportValidationError(
+      `Row "${rowSlug}": legacy category "${v}" is no longer supported. Use "animegame" instead.`,
+    );
+  }
+  if (!VALID_GROUP_CATEGORIES.has(v as GroupCategory)) {
+    throw new ImportValidationError(
+      `Row "${rowSlug}": unknown category "${v}". Valid: animegame, kpop, jpop, cpop, others.`,
+    );
+  }
+  return v as GroupCategory;
+}
+
+function parseGroupType(
+  raw: string | undefined,
+  rowSlug: string,
+): GroupType | null {
+  const v = (raw ?? "").trim();
+  if (v === "") return null;
+  if (!VALID_GROUP_TYPES.has(v as GroupType)) {
+    throw new ImportValidationError(
+      `Row "${rowSlug}": unknown type "${v}". Valid: franchise, label, agency, series.`,
+    );
+  }
+  return v as GroupType;
+}
+
+function parseBooleanFlag(raw: string | undefined): boolean {
+  const v = (raw ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
 
 /**
  * Pick the translation whose locale matches `originalLanguage` — that row is
@@ -90,13 +149,22 @@ async function importArtists(rows: Record<string, string>[]) {
       { override: "originalBio", sourceKey: null, out: "originalBio" },
     ]);
 
+    const category = parseGroupCategory(row.category, slug);
+    // isMainUnit only takes effect for type=unit rows; for solo/group
+    // the chip filter never inspects this field. We still persist
+    // whatever the CSV said so a later type flip doesn't drop state.
+    const isMainUnit = parseBooleanFlag(row.isMainUnit);
+    const artistType = (row.type as "solo" | "group" | "unit") || undefined;
+
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
       await prisma.artist.update({
         where: { slug },
         data: {
-          type: (row.type as "solo" | "group" | "unit") || undefined,
+          type: artistType,
+          category,
+          isMainUnit,
           ...originals,
         },
       });
@@ -114,8 +182,10 @@ async function importArtists(rows: Record<string, string>[]) {
       const artist = await prisma.artist.create({
         data: {
           slug,
-          type: (row.type as "solo" | "group" | "unit") || "group",
+          type: artistType ?? "group",
           hasBoard: true,
+          category,
+          isMainUnit,
           ...originals,
           originalName,
           translations: { create: translations },
@@ -135,6 +205,123 @@ async function importArtists(rows: Record<string, string>[]) {
         where: { id: artist.id },
         data: { parentArtistId: parent.id },
       });
+    }
+  }
+
+  // Third pass: replace ArtistGroup links from `group_slugs`. Empty /
+  // missing column → no-op (preserves existing links untouched). Any
+  // non-empty value triggers a full replace: deleteMany existing, then
+  // recreate from the resolved Group ids. This makes re-imports
+  // idempotent and lets the operator move an artist between Groups by
+  // editing the CSV.
+  for (const row of rows) {
+    if (!row.slug) continue;
+    if (row.group_slugs === undefined) continue;
+    const groupSlugs = parseArtistSlugs(row.group_slugs);
+    const artist = await prisma.artist.findUnique({ where: { slug: row.slug } });
+    if (!artist) continue;
+    await prisma.artistGroup.deleteMany({ where: { artistId: artist.id } });
+    for (const groupSlug of groupSlugs) {
+      const group = await prisma.group.findUnique({ where: { slug: groupSlug } });
+      if (!group) {
+        results.push(`WARN: artists.csv group_slug "${groupSlug}" not found (artist ${row.slug})`);
+        continue;
+      }
+      await prisma.artistGroup.create({
+        data: { artistId: artist.id, groupId: group.id },
+      });
+    }
+  }
+
+  return { count: results.length, log: results };
+}
+
+async function importGroups(rows: Record<string, string>[]) {
+  const results: string[] = [];
+
+  for (const row of rows) {
+    const slug = row.slug;
+    if (!slug) continue;
+
+    const jaTranslation = row.ja_name
+      ? {
+          locale: "ja",
+          name: row.ja_name,
+          shortName: row.ja_shortName || null,
+          description: row.ja_description || null,
+        }
+      : null;
+    const koTranslation = row.ko_name
+      ? {
+          locale: "ko",
+          name: row.ko_name,
+          shortName: row.ko_shortName || null,
+          description: row.ko_description || null,
+        }
+      : null;
+    const enTranslation = row.en_name
+      ? {
+          locale: "en",
+          name: row.en_name,
+          shortName: row.en_shortName || null,
+          description: row.en_description || null,
+        }
+      : null;
+    const translations = [jaTranslation, koTranslation, enTranslation].filter(
+      Boolean,
+    ) as {
+      locale: string;
+      name: string;
+      shortName: string | null;
+      description: string | null;
+    }[];
+
+    const originalLanguage = resolveOriginalLanguage(row.originalLanguage);
+    const source = pickOriginalSource(translations, originalLanguage);
+    const originals = buildOriginals(row, source, originalLanguage, [
+      { override: "originalName", sourceKey: "name", out: "originalName" },
+      { override: "originalShortName", sourceKey: "shortName", out: "originalShortName" },
+      { override: "originalDescription", sourceKey: "description", out: "originalDescription" },
+    ]);
+
+    const category = parseGroupCategory(row.category, slug);
+    const type = parseGroupType(row.type, slug);
+    const hasBoard = parseBooleanFlag(row.hasBoard);
+
+    const existing = await prisma.group.findUnique({ where: { slug } });
+
+    if (existing) {
+      await prisma.group.update({
+        where: { id: existing.id },
+        data: {
+          type,
+          category,
+          hasBoard,
+          ...originals,
+        },
+      });
+      for (const t of translations) {
+        await prisma.groupTranslation.upsert({
+          where: { groupId_locale: { groupId: existing.id, locale: t.locale } },
+          create: { groupId: existing.id, ...t },
+          update: { name: t.name, shortName: t.shortName, description: t.description },
+        });
+      }
+      results.push(`UPDATED: ${slug} → ${existing.id}`);
+    } else {
+      const originalName = ensureOriginalName(originals, slug, "Group", originalLanguage);
+      const group = await prisma.group.create({
+        data: {
+          slug,
+          type,
+          category,
+          hasBoard,
+          ...originals,
+          originalName,
+          translations: { create: translations },
+        },
+      });
+      results.push(`CREATED: ${slug} → ${group.id}`);
     }
   }
 
@@ -845,6 +1032,9 @@ export async function POST(request: NextRequest) {
   try {
     let result;
     switch (type) {
+      case "groups":
+        result = await importGroups(rows);
+        break;
       case "artists":
         result = await importArtists(rows);
         break;
