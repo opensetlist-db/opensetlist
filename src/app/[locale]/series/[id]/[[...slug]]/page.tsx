@@ -695,7 +695,7 @@ export default async function EventSeriesPage({
                       const unitColor = u.color ?? colors.textSubtle;
                       return (
                         <span
-                          key={u.id}
+                          key={String(u.id)}
                           style={{
                             fontSize: 11,
                             fontWeight: 700,
@@ -785,7 +785,7 @@ export default async function EventSeriesPage({
                             locale,
                           ) || t("unknownSeries");
                         return (
-                          <li key={child.id} style={{ marginBottom: 4 }}>
+                          <li key={String(child.id)} style={{ marginBottom: 4 }}>
                             <IntlLink
                               href={`/series/${child.id}/${child.slug}`}
                               style={{
