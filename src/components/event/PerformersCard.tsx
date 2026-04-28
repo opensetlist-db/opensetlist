@@ -26,9 +26,15 @@ interface Props {
  * Sidebar card listing every character who appeared in this event's
  * setlist (deduped by `StageIdentity.id`), styled per
  * `event-page-desktop-mockup-v2.jsx:584-610`. Each pill is a small
- * colored dot + character name, tinted by the character's personal
- * color (`StageIdentity.color`). Mockup uses `${color}12` (~7% alpha)
- * for the pill background — matched here via an 8-digit hex append.
+ * colored dot + character name, tinted by the character's primary
+ * unit color — caller resolves via `resolveUnitColor(primaryUnit)`,
+ * which substitutes `UNIT_COLOR_FALLBACK` (`colors.primary`) when
+ * the unit's own `Artist.color` is null. Personal `StageIdentity.color`
+ * is intentionally NOT used: operator wants the lineup to read as
+ * "members of these units" (one consistent palette per unit) rather
+ * than "individual character palette". Mockup uses `${color}12`
+ * (~7% alpha) for the pill background — matched here via an 8-digit
+ * hex append.
  */
 export function PerformersCard({ performers }: Props) {
   const t = useTranslations("Event");
