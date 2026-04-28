@@ -39,6 +39,13 @@ export const colors = {
   bgSubtle: "#f8fafc",
   bgFaint: "#fafbfc",
 
+  // Deeper navy used as the mid-stop on the LIVE-banner gradient and
+  // the home `LiveHeroCard` mid-stop. Sits between `textPrimary`
+  // (#0f172a, near-black) and `primary` (#0277BD, brand blue) on the
+  // hue ramp; without it the gradient jumps too abruptly between the
+  // two endpoints.
+  navyDeep: "#1e3a5f",
+
   // Borders
   border: "#e2e8f0",
   borderLight: "#f1f5f9",
@@ -158,7 +165,7 @@ export const motion = {
  * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
  */
 export const gradients = {
-  liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, #1e3a5f)`,
+  liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, ${colors.navyDeep})`,
 } as const;
 
 /*

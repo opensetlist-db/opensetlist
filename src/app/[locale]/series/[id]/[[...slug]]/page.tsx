@@ -346,12 +346,8 @@ export default async function EventSeriesPage({
     const preparedEvents: PreparedLegEvent[] = leg.events.map((ev) => {
       const status = getEventStatus(ev, referenceNow);
       const evName =
-        displayNameWithFallback(
-          { ...ev, originalName: null, originalShortName: null, originalLanguage: "ja" },
-          ev.translations,
-          locale,
-          "short",
-        ) || evT("unknownEvent");
+        displayNameWithFallback(ev, ev.translations, locale, "short") ||
+        evT("unknownEvent");
       return {
         id: ev.id,
         href: eventHref(locale, ev.id, evName),
@@ -386,12 +382,7 @@ export default async function EventSeriesPage({
         locale,
         firstOngoing.id,
         displayNameWithFallback(
-          {
-            ...firstOngoing,
-            originalName: null,
-            originalShortName: null,
-            originalLanguage: "ja",
-          },
+          firstOngoing,
           firstOngoing.translations,
           locale,
           "short",

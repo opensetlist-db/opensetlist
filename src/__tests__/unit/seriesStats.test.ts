@@ -15,6 +15,9 @@ function ev(
     status: partial.status ?? "scheduled",
     date: partial.date ?? partial.startTime.slice(0, 10),
     startTime: partial.startTime,
+    originalName: partial.originalName ?? null,
+    originalShortName: partial.originalShortName ?? null,
+    originalLanguage: partial.originalLanguage ?? "ja",
     originalCity: partial.originalCity ?? null,
     originalVenue: partial.originalVenue ?? null,
     translations: partial.translations ?? [

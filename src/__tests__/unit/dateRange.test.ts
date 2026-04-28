@@ -9,10 +9,6 @@ describe("formatDateRange", () => {
   };
 
   it("collapses to a single date when start === end", () => {
-    expect(
-      formatDateRange("2026-04-25T00:00:00Z", "2026-04-25T00:00:00Z", "ko", SHORT),
-    ).toBe(formatDateRange("2026-04-25T00:00:00Z", "2026-04-25T00:00:00Z", "ko", SHORT));
-    // Single-day output contains exactly one occurrence of the rendered string.
     const result = formatDateRange(
       "2026-04-25T00:00:00Z",
       "2026-04-25T00:00:00Z",
@@ -20,6 +16,7 @@ describe("formatDateRange", () => {
       SHORT,
     );
     expect(result.includes("~")).toBe(false);
+    expect(result.length).toBeGreaterThan(0);
   });
 
   it("collapses to a single date when start and end render identically", () => {

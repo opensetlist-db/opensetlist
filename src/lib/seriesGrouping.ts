@@ -16,6 +16,12 @@ export interface SeriesEventInput {
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
   date: string | null;
   startTime: string;
+  // Identity-name fields needed by `displayNameWithFallback` so the
+  // page doesn't have to fabricate synthetic objects with hard-coded
+  // `originalLanguage: "ja"` (wrong for non-Japanese series).
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
   originalCity: string | null;
   originalVenue: string | null;
   translations: Array<{
