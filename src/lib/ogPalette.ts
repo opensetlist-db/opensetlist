@@ -220,12 +220,23 @@ async function getEventAnchorColor(
 
 // Primary SongArtist's artist.color. Falls through if no role:
 // "primary" entry exists or the primary artist's color is null.
+//
+// orderBy is required: a song can have multiple `role: "primary"`
+// rows (a collab credited equally to two artists), and findFirst
+// without orderBy returns whichever row the DB happened to scan
+// first. That nondeterminism would propagate into the fingerprint
+// hash and break CDN cache on every render. `artistId asc` picks
+// the lowest-id artist (semantically: the earlier-created entry,
+// usually the lead) as the canonical primary; `id asc` on the
+// junction is the tie-break for the unlikely two-rows-same-artist
+// case so the choice is fully deterministic.
 async function getSongAnchorColor(
   songId: bigint,
 ): Promise<string | null> {
   const link = await prisma.songArtist.findFirst({
     where: { songId, role: "primary" },
     select: { artist: { select: { color: true } } },
+    orderBy: [{ artistId: "asc" }, { id: "asc" }],
   });
   const color = link?.artist?.color;
   return isValidHex(color) ? color : null;
