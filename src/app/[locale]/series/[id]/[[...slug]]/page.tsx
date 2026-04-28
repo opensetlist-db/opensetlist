@@ -290,7 +290,12 @@ export default async function EventSeriesPage({
     .map((e) => BigInt(e.id));
   const allEventIds = events.map((e) => BigInt(e.id));
 
-  const [songAppearances, units] = await Promise.all([
+  // All three queries fly in parallel. On the songs tab,
+  // `getSongAppearances` already returns the hydrated rows AND the
+  // count is `songAppearances.length` so the cheap-count groupBy is
+  // skipped. On the schedule tab, the cheap groupBy runs alongside
+  // `getSeriesUnits` instead of serially after the await.
+  const [songAppearances, units, scheduleSongCount] = await Promise.all([
     activeTab === "songs"
       ? getSongAppearances(completedEventIds)
       : Promise.resolve(
@@ -301,14 +306,9 @@ export default async function EventSeriesPage({
           }>,
         ),
     getSeriesUnits(allEventIds),
-  ]);
-
-  const uniqueSongCount =
     activeTab === "songs"
-      ? songAppearances.length
-      : // For the schedule tab we still need the count for the tab label
-        // and the stats grid. Cheap groupBy with no hydration.
-        await prisma.setlistItemSong
+      ? Promise.resolve(0)
+      : prisma.setlistItemSong
           .groupBy({
             by: ["songId"],
             where: {
@@ -318,7 +318,11 @@ export default async function EventSeriesPage({
               },
             },
           })
-          .then((rows) => rows.length);
+          .then((rows) => rows.length),
+  ]);
+
+  const uniqueSongCount =
+    activeTab === "songs" ? songAppearances.length : scheduleSongCount;
 
   const tabs = [
     { key: "schedule", label: t("tabSchedule") },
@@ -336,7 +340,10 @@ export default async function EventSeriesPage({
       locale,
       SHORT_DATE_FORMAT,
     );
-    const events: PreparedLegEvent[] = leg.events.map((ev) => {
+    // Renamed to avoid shadowing the outer `events` (post-serialize
+    // tour-level array) — accidentally referencing the outer name
+    // inside this mapper would silently yield the wrong array.
+    const preparedEvents: PreparedLegEvent[] = leg.events.map((ev) => {
       const status = getEventStatus(ev, referenceNow);
       const evName =
         displayNameWithFallback(
@@ -365,7 +372,7 @@ export default async function EventSeriesPage({
       venue: leg.venue,
       dateRangeLabel,
       hasOngoing: leg.hasOngoing,
-      events,
+      events: preparedEvents,
     };
   });
 

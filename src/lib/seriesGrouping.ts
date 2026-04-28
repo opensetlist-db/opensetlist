@@ -2,11 +2,6 @@ import { resolveLocalizedField } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 
 /**
- * Minimal event shape consumed by `groupByCity`. Mirrors the shape
- * the series page query produces after `serializeBigInt`: numeric ids,
- * stringified dates, translations array with city/venue.
- */
-/**
  * Post-`serializeBigInt` event shape consumed by `groupByCity` and
  * `getSeriesStats`. BigInt has been narrowed to JS `number` and Date
  * to ISO string at runtime (JSON round-trip in serializeBigInt). The
