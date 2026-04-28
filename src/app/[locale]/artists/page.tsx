@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import {
   getArtistGroupsForList,
+  getAvailableArtistFilters,
   isArtistsListFilter,
   type ArtistsListFilter,
 } from "@/lib/artists";
@@ -46,7 +47,10 @@ export default async function ArtistsPage({
   // `getEventStatus` helper compares absolute instants so there is no
   // local-TZ drift.
   const referenceNow = new Date();
-  const groups = await getArtistGroupsForList(category, referenceNow);
+  const [groups, availableFilters] = await Promise.all([
+    getArtistGroupsForList(category, referenceNow),
+    getAvailableArtistFilters(),
+  ]);
 
   return (
     <main
@@ -69,7 +73,7 @@ export default async function ArtistsPage({
         </h1>
       </header>
 
-      <FilterBar active={category} />
+      <FilterBar active={category} available={availableFilters} />
 
       {groups.length === 0 ? (
         <p

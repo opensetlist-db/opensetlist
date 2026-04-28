@@ -273,3 +273,42 @@ export async function getArtistGroupsForList(
     return (a.originalName ?? "").localeCompare(b.originalName ?? "");
   });
 }
+
+// Categories that have at least one matching board-enabled group with at
+// least one non-deleted top-level artist. Drives FilterBar so we don't
+// render chips that lead to an empty page (Phase 1 seed is anime/game
+// only — K-POP / J-POP chips currently dead-end).
+//
+// Returns a Set keyed on `ArtistsListFilter`: `all` is always present;
+// `animegame` is present if the catalog has any anime OR game entries;
+// `kpop` / `jpop` per direct match. The shape mirrors the FilterBar
+// chip set so the consumer is a one-line `available.has(value)`.
+export async function getAvailableArtistFilters(): Promise<
+  Set<ArtistsListFilter>
+> {
+  const groupsWithArtists = await prisma.group.findMany({
+    where: {
+      hasBoard: true,
+      artistLinks: {
+        // At least one non-deleted top-level artist linked. Mirrors the
+        // `where` shape inside `getArtistGroupsForList` so the two
+        // queries can't disagree on what counts as a populated group.
+        some: { artist: { isDeleted: false, parentArtistId: null } },
+      },
+    },
+    select: { category: true },
+  });
+
+  const categories = new Set<GroupCategory>();
+  for (const g of groupsWithArtists) {
+    if (g.category != null) categories.add(g.category);
+  }
+
+  const available = new Set<ArtistsListFilter>(["all"]);
+  if (categories.has("anime") || categories.has("game")) {
+    available.add("animegame");
+  }
+  if (categories.has("kpop")) available.add("kpop");
+  if (categories.has("jpop")) available.add("jpop");
+  return available;
+}
