@@ -25,6 +25,13 @@ export const colors = {
   textSecondary: "#475569",
   textMuted: "#94a3b8",
   textSubtle: "#64748b",
+  // On-dark text variants for surfaces that sit on a dark gradient
+  // (e.g. the series-page LIVE banner). These read as alpha-blended
+  // white because the dark backgrounds vary per surface — a static
+  // hex would tie the variant to one specific gradient. Add more
+  // entries (e.g. `onDarkMuted` at 0.5) only when a second consumer
+  // needs them; today the only consumer is the LIVE banner CTA.
+  onDarkSubtle: "rgba(255,255,255,0.65)",
 
   // Backgrounds
   bgPage: "#f0f4f8",

@@ -726,7 +726,7 @@ export default async function EventSeriesPage({
                       <div
                         style={{
                           fontSize: 11,
-                          color: "rgba(255,255,255,0.65)",
+                          color: colors.onDarkSubtle,
                           marginTop: 2,
                         }}
                       >
