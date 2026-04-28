@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
   pickLocaleTranslation,
-  slugify,
   formatDate,
 } from "@/lib/utils";
 import {
@@ -775,7 +774,7 @@ export default async function SongPage({ params, searchParams }: Props) {
                           </div>
                         ) : (
                           <Link
-                            href={`/${locale}/songs/${v.id}/${slugify(v.title)}`}
+                            href={`/${locale}/songs/${v.id}/${v.slug}`}
                             className="row-hover-bg"
                             style={{
                               ...rowStyle,
