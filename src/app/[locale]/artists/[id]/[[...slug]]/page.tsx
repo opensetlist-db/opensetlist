@@ -3,7 +3,11 @@ import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  HISTORY_ROW_DATE_FORMAT,
+} from "@/lib/utils";
 import {
   displayNameWithFallback,
   resolveLocalizedField,
@@ -416,7 +420,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       id: eventIdStr,
       seriesId: Number(event.eventSeriesId),
       status,
-      formattedDate: formatDate(event.date, locale),
+      formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),

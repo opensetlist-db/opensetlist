@@ -3,7 +3,7 @@ import { getEventsListGrouped, type EventsListGroup } from "@/lib/events";
 import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
-import { formatDate, nonBlank } from "@/lib/utils";
+import { formatDate, nonBlank, HISTORY_ROW_DATE_FORMAT } from "@/lib/utils";
 import { FilterBar } from "@/components/events/FilterBar";
 import {
   FILTER_VALUES,
@@ -27,11 +27,10 @@ const MOBILE_DAY_FORMAT: Intl.DateTimeFormatOptions = {
   day: "numeric",
   timeZone: "UTC",
 };
-const DESKTOP_DATE_FORMAT: Intl.DateTimeFormatOptions = {
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-};
+// Desktop format hoisted to `HISTORY_ROW_DATE_FORMAT` in lib/utils so
+// the artist / member / song history surfaces share one definition
+// with the event list. Mobile formats stay local — they're a unique
+// two-row month-and-day split that no other surface uses.
 
 function parseFilter(raw: string | undefined): EventListFilter {
   return (FILTER_VALUES as readonly string[]).includes(raw ?? "")
@@ -151,7 +150,7 @@ export default async function EventsPage({
         status === "ongoing" ? t("live") : t(`status.${status}`),
       monthLabel: formatDate(start, locale, MOBILE_MONTH_FORMAT),
       dayNumber: formatDate(start, locale, MOBILE_DAY_FORMAT),
-      shortDate: formatDate(start, locale, DESKTOP_DATE_FORMAT),
+      shortDate: formatDate(start, locale, HISTORY_ROW_DATE_FORMAT),
       eventName,
       venueCity,
       songCountLabel:
