@@ -4,40 +4,46 @@ import { useState } from "react";
 
 const IMPORT_TYPES = [
   {
+    value: "groups",
+    label: "1. 그룹 (Groups)",
+    columns: ["slug*", "type", "category", "hasBoard", "originalLanguage", "originalName", "originalShortName", "originalDescription", "ja_name", "ja_shortName", "ja_description", "ko_name", "ko_shortName", "ko_description", "en_name", "en_shortName", "en_description"],
+    note: "type: franchise/label/agency/series · category: animegame/kpop/jpop/cpop/others · hasBoard: true/false (기본 false) · 슬러그는 upsert 키 · ja/ko/en_name 최소 1개 권장",
+  },
+  {
     value: "artists",
-    label: "1. 아티스트 (Artists)",
-    columns: ["slug*", "type*", "parentArtist_slug", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio"],
-    note: "ja/ko/en_name 최소 1개 필수 · originalLanguage 기본값 ja · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 (예: ja면 ja_name → originalName)",
+    label: "2. 아티스트 (Artists)",
+    columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit"],
+    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
   },
   {
     value: "members",
-    label: "2. 멤버 (Members)",
+    label: "3. 멤버 (Members)",
     columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
     note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
   },
   {
     value: "albums",
-    label: "3. 앨범 (Albums)",
+    label: "4. 앨범 (Albums)",
     columns: ["slug*", "type*", "artist_slugs", "releaseDate", "originalTitle*", "originalLanguage", "ja_title", "ko_title", "en_title", "labelName"],
     note: "originalLanguage: ja(기본값), en, ko, zh 등 · type: single, album, ep, live_album, soundtrack · artist_slugs: 공백 구분 (스플릿 싱글: 여러 아티스트, 컴필레이션: 비워두기)",
   },
   {
     value: "songs",
-    label: "4. 곡 (Songs)",
+    label: "5. 곡 (Songs)",
     columns: ["slug*", "originalTitle*", "originalLanguage", "artist_slugs", "releaseDate", "variantLabel", "baseVersion_slug", "ja_title", "ja_variantLabel", "ko_title", "ko_variantLabel", "en_title", "en_variantLabel", "sourceNote", "album_slug", "disc_number", "track_number"],
     note: "originalLanguage: ja(기본값), en, ko, zh 등 · artist_slugs: 공백 구분 (콜라보곡: 여러 아티스트) · album_slug + track_number: 앨범 트랙 연결 · disc_number: 멀티디스크 앨범용 (기본값 1)",
   },
   {
     value: "events",
-    label: "5. 이벤트 (Events)",
+    label: "6. 이벤트 (Events)",
     columns: ["series_slug", "series_ja_name", "series_ja_shortName", "series_ko_name", "series_ko_shortName", "series_en_name", "series_en_shortName", "series_type", "event_slug*", "event_type", "date", "startTime*", "country", "ja_name", "ja_shortName", "ja_city", "ja_venue", "ko_name", "ko_shortName", "ko_city", "ko_venue", "en_name", "en_shortName", "en_city", "en_venue", "artist_slug", "event_performer_slugs", "event_guest_slugs", "originalLanguage", "originalName", "originalShortName", "originalCity", "originalVenue", "series_originalLanguage", "series_originalName", "series_originalShortName", "series_originalDescription"],
     note: "ja/ko/en_name 최소 1개 필수 · event_performer_slugs: 공백 구분 정규 출연진 · event_guest_slugs: 공백 구분 게스트 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · 시리즈는 series_* 접두사",
   },
   {
     value: "setlistitems",
-    label: "6. 세트리스트 (SetlistItems)",
+    label: "7. 세트리스트 (SetlistItems)",
     columns: ["event_slug*", "position*", "song_slug", "isEncore", "itemType", "performanceType", "stageType", "artist_slugs", "unitName", "performer_slugs", "note", "status"],
-    note: "artist_slugs: 공백 구분 artist slug · performer_slugs: 공백 구분 character slug (SI name 매칭) · 가져오기 시 해당 이벤트의 기존 셋리스트가 모두 삭제되고 새로 생성됩니다",
+    note: "artist_slugs: 공백 구분 artist slug · performer_slugs: 공백 구분 character slug (SI name 매칭) · 가져오기 시 해당 이벤트의 기존 세트리스트가 모두 삭제되고 새로 생성됩니다",
   },
 ];
 
@@ -98,7 +104,7 @@ export default function ImportPage() {
       <h1 className="mb-6 text-2xl font-bold">CSV 가져오기</h1>
 
       <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        반드시 순서대로 가져오세요: 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
+        반드시 순서대로 가져오세요: 그룹 → 아티스트 → 멤버 → 앨범 → 곡 → 이벤트 → 세트리스트
       </div>
 
       {/* Type selector */}

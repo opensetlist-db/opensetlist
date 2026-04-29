@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ArtistType } from "@/generated/prisma/enums";
+import { ArtistType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
@@ -7,6 +7,7 @@ import {
   enumValue,
   nullableBigIntId,
   nullableBoolean,
+  nullableEnumValue,
   nullableString,
   nullableStringArray,
   originalLanguage as parseOriginalLanguage,
@@ -67,6 +68,16 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const hasBoardCheck = nullableBoolean(body.hasBoard, "hasBoard");
   if (!hasBoardCheck.ok) return badRequest(hasBoardCheck.message);
 
+  const categoryCheck = nullableEnumValue(
+    body.category,
+    "category",
+    Object.values(GroupCategory),
+  );
+  if (!categoryCheck.ok) return badRequest(categoryCheck.message);
+
+  const isMainUnitCheck = nullableBoolean(body.isMainUnit, "isMainUnit");
+  if (!isMainUnitCheck.ok) return badRequest(isMainUnitCheck.message);
+
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
 
@@ -92,6 +103,14 @@ export async function PUT(request: NextRequest, { params }: Props) {
         type: typeCheck.value,
         parentArtistId: parentArtistIdCheck.value,
         hasBoard: hasBoardCheck.value ?? true,
+        category: categoryCheck.value,
+        // See POST handler — only persist isMainUnit=true when the
+        // artist is actually a unit. Force false on every other type
+        // so a stale form value can't survive a type flip.
+        isMainUnit:
+          typeCheck.value === "unit"
+            ? (isMainUnitCheck.value ?? false)
+            : false,
         originalName: name.value,
         originalShortName: shortName.value,
         originalBio: bio.value,

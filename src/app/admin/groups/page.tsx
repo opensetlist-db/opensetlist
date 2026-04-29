@@ -26,6 +26,7 @@ export default async function GroupsListPage() {
         <thead className="border-b border-zinc-200 text-zinc-500">
           <tr>
             <th className="pb-2">이름</th>
+            <th className="pb-2">슬러그</th>
             <th className="pb-2">타입</th>
             <th className="pb-2">카테고리</th>
             <th className="pb-2">게시판</th>
@@ -42,6 +43,9 @@ export default async function GroupsListPage() {
             return (
               <tr key={group.id} className="border-b border-zinc-100">
                 <td className="py-2 font-medium">{name || "—"}</td>
+                <td className="py-2 font-mono text-xs text-zinc-600">
+                  {group.slug ?? "—"}
+                </td>
                 <td className="py-2">{group.type ?? "—"}</td>
                 <td className="py-2">{group.category ?? "—"}</td>
                 <td className="py-2">{group.hasBoard ? "O" : "X"}</td>
@@ -59,7 +63,7 @@ export default async function GroupsListPage() {
           })}
           {data.length === 0 && (
             <tr>
-              <td colSpan={5} className="py-4 text-center text-zinc-400">
+              <td colSpan={6} className="py-4 text-center text-zinc-400">
                 등록된 그룹이 없습니다.
               </td>
             </tr>

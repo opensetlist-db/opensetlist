@@ -25,6 +25,7 @@ function makeItem(
           {
             song: {
               id: id * 100,
+              slug: `song-${id}`,
               originalTitle: songTitle,
               originalLanguage: locale,
               variantLabel: null,
@@ -102,6 +103,7 @@ describe("deriveTrendingSongs", () => {
           {
             song: {
               id: 100,
+              slug: "original",
               originalTitle: "Original",
               originalLanguage: "ja",
               variantLabel: null,
@@ -133,6 +135,7 @@ describe("deriveTrendingSongs", () => {
           {
             song: {
               id: 100,
+              slug: "empty-title",
               originalTitle: "",
               originalLanguage: "ja",
               variantLabel: null,

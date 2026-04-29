@@ -65,10 +65,44 @@ export function pickLocaleTranslation<T extends { locale: string }>(
 
 /**
  * Format a date for display. Returns locale-appropriate date string.
+ *
+ * `options` lets callers override the default `{year, month, day}`
+ * shape — needed for surfaces that want only month, or weekday +
+ * month + day (home cards). The default preserves the original
+ * behavior so existing call sites don't change. When formatting a
+ * UTC-stored date for display, callers should pass
+ * `{ ..., timeZone: "UTC" }` so the rendered day matches how the
+ * value is stored (CLAUDE.md §"Date & Time").
  */
+const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+};
+
+/**
+ * Desktop format used by every "list of events grouped by series"
+ * surface — event list (`/[locale]/events`), artist history tab,
+ * song / member history pages. `month: "long"` + `day: "numeric"`
+ * keeps the per-row date compact ("April 25" / "4월 25일" / "4月25日"),
+ * and the series header above each block carries the year context.
+ *
+ * `timeZone: "UTC"` is mandatory: stored dates are UTC, and
+ * formatting in the server-local TZ silently shifts the rendered
+ * date by hours-to-days depending on where the request happens to
+ * land (Vercel edge region / dev laptop / CI). Per CLAUDE.md
+ * UTC-only rule, every comparison/render of a stored date must
+ * pass through `timeZone: "UTC"`.
+ */
+export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+};
 export function formatDate(
   date: Date | string | null | undefined,
-  locale: string
+  locale: string,
+  options: Intl.DateTimeFormatOptions = DEFAULT_FORMAT_OPTIONS
 ): string {
   if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -78,9 +112,5 @@ export function formatDate(
     en: "en-US",
     "zh-CN": "zh-CN",
   };
-  return d.toLocaleDateString(localeMap[locale] ?? locale, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return d.toLocaleDateString(localeMap[locale] ?? locale, options);
 }

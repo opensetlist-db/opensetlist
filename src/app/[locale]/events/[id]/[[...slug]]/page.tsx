@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -11,15 +10,22 @@ import {
   displayNameWithFallback,
   resolveLocalizedField,
 } from "@/lib/display";
-import { getEventStatus, EVENT_STATUS_BADGE } from "@/lib/eventStatus";
+import { getEventStatus } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { EMOJI_MAP } from "@/lib/reactions";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import { EventImpressions, type Impression } from "@/components/EventImpressions";
-import { EventDateTime } from "@/components/EventDateTime";
-import EventStatusTicker from "@/components/EventStatusTicker";
+import { EventHeader } from "@/components/EventHeader";
+import { UnitsCard, type UnitsCardItem } from "@/components/event/UnitsCard";
+import {
+  PerformersCard,
+  type PerformersCardItem,
+} from "@/components/event/PerformersCard";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { resolveUnitColor } from "@/lib/artistColor";
+import { colors } from "@/styles/tokens";
 import type { Metadata } from "next";
 
 type Props = {
@@ -32,7 +38,28 @@ async function getEvent(id: bigint, locale: string) {
     include: {
       translations: true,
       eventSeries: {
-        include: { translations: true },
+        include: {
+          translations: true,
+          // Pulled in so EventHeader can render an artist link.
+          // `artistId` is nullable on EventSeries (multi-artist
+          // festivals fall back to `organizerName`).
+          artist: { include: { translations: true } },
+        },
+      },
+      // Event-level performer roster — used to source the guest set
+      // for D10a (Phase 1A): characters flagged here as guests are
+      // skipped from host-unit member sublists in Pass-2 below, and
+      // marked with the "· 게스트" suffix in the sidebar Performers
+      // card. Cheap select-only join; no relation traversal beyond
+      // the flag. NOTE: the relation name on the Event model is
+      // `performers` (per `prisma/schema.prisma:480`) — distinct from
+      // `setlistItems[].performers` (which is `SetlistItemMember[]`).
+      // Using the schema name here.
+      performers: {
+        select: {
+          stageIdentityId: true,
+          isGuest: true,
+        },
       },
       setlistItems: {
         where: { isDeleted: false },
@@ -55,7 +82,22 @@ async function getEvent(id: bigint, locale: string) {
           },
           performers: {
             include: {
-              stageIdentity: { include: { translations: true } },
+              stageIdentity: {
+                include: {
+                  translations: true,
+                  // `artistLinks` carries the StageIdentity → Artist
+                  // membership rows. Needed by the page to build the
+                  // per-unit members sublist on `<UnitsCard>` (each
+                  // performer's links tell us which units they
+                  // belong to). We don't filter on dates — see the
+                  // "Pass 2" comment block in the page body.
+                  artistLinks: {
+                    select: {
+                      artistId: true,
+                    },
+                  },
+                },
+              },
               realPerson: { include: { translations: true } },
             },
           },
@@ -270,12 +312,22 @@ export default async function EventPage({ params }: Props) {
   const event = await getEvent(eventId, locale);
   if (!event) notFound();
 
-  const isOngoing = getEventStatus(event) === "ongoing";
+  // Anchor every per-request status read to the same `now`. Two
+  // `getEventStatus(event)` calls without this would each construct
+  // their own `new Date()` and could disagree at a boundary tick (e.g.
+  // status flips ongoing → completed between the polling-gate
+  // computation and the header-badge computation). Pass `referenceNow`
+  // through to the second call below so the page is internally
+  // consistent.
+  const referenceNow = new Date();
+  const resolvedStatus = getEventStatus(event, referenceNow);
+  const isOngoing = resolvedStatus === "ongoing";
 
-  const [t, ct, st, reactionCounts, impressions] = await Promise.all([
+  const [t, ct, st, aT, reactionCounts, impressions] = await Promise.all([
     getTranslations("Event"),
     getTranslations("Common"),
     getTranslations("Song"),
+    getTranslations("Artist"),
     getReactionCounts(eventId),
     getEventImpressions(eventId),
   ]);
@@ -288,7 +340,6 @@ export default async function EventPage({ params }: Props) {
     ? []
     : await getTrendingSongs(eventId, locale, st("unknown"));
 
-  const eventName = displayNameWithFallback(event, event.translations, locale);
   const eventFullName = displayNameWithFallback(
     event,
     event.translations,
@@ -299,17 +350,62 @@ export default async function EventPage({ params }: Props) {
     ? displayNameWithFallback(
         event.eventSeries,
         event.eventSeries.translations,
-        locale
-      )
-    : null;
-  const seriesFullName = event.eventSeries
-    ? displayNameWithFallback(
-        event.eventSeries,
-        event.eventSeries.translations,
         locale,
-        "full"
+        // `displayNameWithFallback` defaults to `"full"` — passing
+        // `"short"` explicitly is what makes this variable actually
+        // resolve to the localized shortName cascade. Without it,
+        // breadcrumb + EventHeader were rendering the full name.
+        "short",
       )
     : null;
+  // (Round-4 dropped `seriesFullName` here — `headerTitle` now
+  // cascades through `eventFullName || seriesShortName`, so the
+  // full series form is no longer consumed by the page render
+  // path. `generateMetadata`'s own `seriesFullName` declaration
+  // stays — that one IS used for the OG title.)
+  // Short event name for the breadcrumb tail. Cascades the same way as
+  // every other display-name resolution: localized shortName → localized
+  // name → originalShortName → originalName.
+  const eventShortName = displayNameWithFallback(
+    event,
+    event.translations,
+    locale,
+    "short"
+  );
+
+  // Artist context for EventHeader: prefer the series artist (link
+  // target → /artists/{id}/{slug}); fall back to the series'
+  // `organizerName` for multi-artist festivals where artistId is null.
+  // Mirrors the cascade in the series detail page header.
+  //
+  // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
+  // 404 on `/artists/{id}` (the artist page calls notFound()), so
+  // linking to them would dead-end. Treat as absent and fall through
+  // to the organizerName branch.
+  const seriesArtist =
+    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
+      ? event.eventSeries.artist
+      : null;
+  const headerArtist = seriesArtist
+    ? {
+        // String() — `Artist.id` is BigInt; `Number(bigint)` truncates
+        // precision for IDs >= 2^53. Mirrors the policy on
+        // `series.id` (which `EventHeader` accepts as `number |
+        // bigint` for the same reason).
+        id: String(seriesArtist.id),
+        slug: seriesArtist.slug,
+        name:
+          displayNameWithFallback(
+            seriesArtist,
+            seriesArtist.translations,
+            locale
+          ) || aT("unknown"),
+      }
+    : null;
+  const headerOrganizerName =
+    !headerArtist && event.eventSeries?.organizerName
+      ? event.eventSeries.organizerName
+      : null;
   const venue = resolveLocalizedField(
     event,
     event.translations,
@@ -317,101 +413,386 @@ export default async function EventPage({ params }: Props) {
     "venue",
     "originalVenue"
   );
-  const city = resolveLocalizedField(
+  const cityBase = resolveLocalizedField(
     event,
     event.translations,
     locale,
     "city",
     "originalCity"
   );
+  // Mockup `event-page-desktop-mockup-v2.jsx:542` puts city next
+  // to country (e.g. `Fukuoka, Japan`). `Event.country` is an
+  // ISO-3166 code (`KR` / `JP` / `US`); resolve to the locale-
+  // appropriate display name via `Intl.DisplayNames`. Server-only
+  // call — Node.js bundles full ICU on Vercel, so the lookup is
+  // deterministic and matches what the browser would produce.
+  const countryName = event.country
+    ? (() => {
+        try {
+          return (
+            new Intl.DisplayNames(locale, { type: "region" }).of(
+              event.country,
+            ) ?? null
+          );
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const city =
+    cityBase && countryName
+      ? `${cityBase}, ${countryName}`
+      : (cityBase ?? countryName);
+
+  // Display title: event FULL name. The series short name already
+  // renders as a small blue link above the title (in EventHeader's
+  // series slot), so making the h1 *also* show the series name
+  // would be redundant — the operator flagged this in round 3.
+  // The h1 now carries the event identifier (e.g. "Day 2 ·
+  // Marine Messe Fukuoka"), with the series link providing the
+  // parent context above it.
+  const headerTitle =
+    eventFullName || seriesShortName || t("unknownEvent");
+
+  // Sidebar count rows: `songsCount` mirrors `<LiveSetlist>`'s
+  // subtitle predicate exactly — `type === "song"` AND a song row
+  // is actually attached. An admin-created song-typed placeholder
+  // with no song picked yet would inflate the EventHeader count
+  // above the setlist subtitle, which the operator would read as
+  // a bug. Reactions total sums every reaction across every setlist
+  // item.
+  const songsCount = event.setlistItems.filter(
+    (i) => i.type === "song" && i.songs.length > 0,
+  ).length;
+  const reactionsCount = Object.values(reactionCounts).reduce(
+    (sum, perItem) =>
+      sum + Object.values(perItem).reduce((s, n) => s + n, 0),
+    0,
+  );
+  // Pre-format the reaction-count display string server-side so the
+  // locale-correct compact suffix (`1.2K` / `1.2천` / `1.2K`) renders
+  // identically on first paint and on hydration — no SSR-vs-client
+  // `Intl.NumberFormat` divergence even if the runtimes' ICU versions
+  // differ slightly.
+  const reactionsValue = new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(reactionsCount);
+
+  // ───────────────────────────────────────────────────────────
+  // Sidebar Units + Performers data prep
+  //
+  // 1. Walk `setlistItems[].artists` once to build the unique unit
+  //    list (deduped by `Artist.id`, type === "unit" only, first-
+  //    seen order preserved). Each unit's color is resolved here
+  //    via `resolveUnitColor`: `Artist.color` if set, else a
+  //    deterministic palette pick keyed on the unit's slug — same
+  //    rule applies to both the Units card's color bar and the
+  //    Performers card's pill tint, so resolving once keeps them
+  //    in lockstep.
+  //
+  // 2. Walk `setlistItems[].performers` once to build the unit→
+  //    members map. Each StageIdentity carries `artistLinks` with
+  //    `artistId`; we look up `artistId` against the unit map.
+  //    Phase 1A — D10a: guest StageIdentities (sourced from
+  //    `event.eventPerformers.isGuest = true`) are *skipped* from
+  //    the member-sublist building. A guest's stale `artistLinks`
+  //    to a host unit (e.g. a graduated member returning as a
+  //    guest with their old unit) shouldn't list them as a current
+  //    member of that unit at this event. Guests still surface in
+  //    the PerformersCard with the D9 "· 게스트" suffix.
+  //    No membership-date filter (D12=no): real-world `artistLinks`
+  //    dates often don't align with event dates due to operator
+  //    data entry imperfections + retroactive corrections, so
+  //    `EventPerformer.isGuest` is the only filtering signal.
+  //
+  // 3. Walk `setlistItems[].performers` once more to build the
+  //    Performers card list — each character's pill tint is the
+  //    color of their *primary* unit (first link that points at one
+  //    of the event's units). Falls back via `resolveUnitColor`
+  //    (Artist.color → palette pick on slug → last-resort
+  //    `colors.primary`) when no unit link resolves at all. Each
+  //    pill is also tagged with `isGuest` so the card can append
+  //    the suffix and sort hosts before guests.
+  //
+  // Guest set (D10a + D9 source). Built once and consulted by Pass-2
+  // (filter) and the PerformersCard data prep (mark + sort). Sourced
+  // from `event.performers` (the `EventPerformer[]` relation on
+  // Event — see Prisma include note above; this is a different
+  // relation from `setlistItems[].performers`, which is the
+  // per-song `SetlistItemMember[]`).
+  const guestStageIdentityIds = new Set<string>(
+    event.performers
+      .filter((p) => p.isGuest)
+      .map((p) => p.stageIdentityId),
+  );
+
+  type SidebarUnit = UnitsCardItem & {
+    /** Resolved color via `resolveUnitColor` (Artist.color → palette
+     *  pick on slug → last-resort `colors.primary`). Always set. */
+    resolvedColor: string;
+  };
+
+  const unitsById = new Map<string, SidebarUnit>();
+  const memberSeen = new Map<string, Set<string>>();
+  for (const item of event.setlistItems) {
+    for (const a of item.artists) {
+      if (a.artist.type !== "unit") continue;
+      const id = String(a.artist.id);
+      if (unitsById.has(id)) continue;
+      // Full unit name on the sidebar card — operator preference: the
+      // sidebar has the room for the full title (`蓮ノ空女学院 …`)
+      // and the short name reads as too compressed for a label that
+      // also serves as the section header for its members sublist.
+      const name =
+        displayNameWithFallback(
+          a.artist,
+          a.artist.translations,
+          locale,
+          "full",
+        ) || aT("unknown");
+      unitsById.set(id, {
+        id,
+        slug: a.artist.slug,
+        name,
+        color: a.artist.color ?? null,
+        resolvedColor: resolveUnitColor(a.artist),
+        members: [],
+      });
+      memberSeen.set(id, new Set());
+    }
+  }
+
+  // Helper: pick the primary unit for a performer's artist links —
+  // first link that points at one of the event's units. Returns null
+  // when no link resolves; caller then falls back to the global
+  // default tint.
+  const pickPrimaryUnit = (
+    links: { artistId: number | bigint }[],
+  ): SidebarUnit | null => {
+    for (const link of links) {
+      const u = unitsById.get(String(link.artistId));
+      if (u) return u;
+    }
+    return null;
+  };
+
+  // Pass 2: populate per-unit member lists.
+  // Track per-unit `hasHostMember` (any non-guest performer with a
+  // link to this unit at this event). A unit ending up with no host
+  // member is marked `isGuest: true` for the sidebar suffix — covers
+  // the case where a visiting unit is credited via SetlistItemArtist
+  // (e.g. opener band) and only its own members performed under it.
+  const unitHasHostMember = new Map<string, boolean>();
+  for (const id of unitsById.keys()) unitHasHostMember.set(id, false);
+
+  for (const item of event.setlistItems) {
+    for (const p of item.performers) {
+      // D10a: skip guests entirely from member-sublist building.
+      // They still surface in the PerformersCard with the D9
+      // "· 게스트" suffix; they just don't pollute host-unit
+      // sublists when their `artistLinks` happen to match a host
+      // unit (returning graduate, cross-affiliation).
+      if (guestStageIdentityIds.has(p.stageIdentity.id)) continue;
+      const links = p.stageIdentity.artistLinks ?? [];
+      for (const link of links) {
+        const unitId = String(link.artistId);
+        const u = unitsById.get(unitId);
+        if (!u) continue;
+        unitHasHostMember.set(unitId, true);
+        const members = memberSeen.get(unitId)!;
+        if (members.has(p.stageIdentity.id)) continue;
+        members.add(p.stageIdentity.id);
+        // Full member name to match the sidebar's full unit name —
+        // the members sublist uses ` · ` joins and ellipsis-clips
+        // when it overruns the column, so longer names degrade
+        // gracefully without breaking the row layout.
+        u.members.push(
+          displayNameWithFallback(
+            p.stageIdentity,
+            p.stageIdentity.translations,
+            locale,
+            "full",
+          ) || t("unknownPerformer"),
+        );
+      }
+    }
+  }
+  // Drop `resolvedColor` from the Units card payload — the card
+  // resolves its own fallback per row from `color`. The unit-color
+  // map keeps `resolvedColor` for the Performers card lookup.
+  // Each unit is tagged with `isGuest` (D9): a unit is a guest unit
+  // when none of the non-guest performers at this event linked to it
+  // (`unitHasHostMember` stayed false). Hosts sort first, guests
+  // last — relative first-appearance order preserved within each
+  // group.
+  const allUnits: UnitsCardItem[] = [...unitsById.values()].map(
+    ({ id, slug, name, color, members }) => ({
+      id,
+      slug,
+      name,
+      color,
+      members,
+      isGuest: !unitHasHostMember.get(id),
+    }),
+  );
+  const sidebarUnits: UnitsCardItem[] = [
+    ...allUnits.filter((u) => !u.isGuest),
+    ...allUnits.filter((u) => u.isGuest),
+  ];
+
+  // Sidebar Performers card: each pill tint is the primary unit's
+  // resolved color. Personal `StageIdentity.color` is intentionally
+  // NOT used — operator wants the lineup to read as "members of
+  // these units" rather than "individual character palette".
+  // Names use the FULL cascade (not "short") per operator
+  // preference — sidebar pills have room for "林田乃理" (vs the
+  // short "ノリ"), and the full form is unambiguous when scanning.
+  const sidebarPerformers: PerformersCardItem[] = (() => {
+    const seen = new Map<string, PerformersCardItem>();
+    for (const item of event.setlistItems) {
+      for (const p of item.performers) {
+        const id = p.stageIdentity.id;
+        if (seen.has(id)) continue;
+        const name =
+          displayNameWithFallback(
+            p.stageIdentity,
+            p.stageIdentity.translations,
+            locale,
+            "full",
+          ) || t("unknownPerformer");
+        const primaryUnit = pickPrimaryUnit(p.stageIdentity.artistLinks ?? []);
+        seen.set(id, {
+          id,
+          name,
+          // Always set — `resolveUnitColor` covers the case where
+          // the primary unit's own color is null, and a missing
+          // primary unit (rare) falls through to the same fallback.
+          color:
+            primaryUnit?.resolvedColor ?? resolveUnitColor({ color: null }),
+          isGuest: guestStageIdentityIds.has(id),
+        });
+      }
+    }
+    // Hosts first (preserving first-appearance order), then guests.
+    // PerformersCard renders a hairline divider between the groups
+    // when both are non-empty.
+    const all = [...seen.values()];
+    return [
+      ...all.filter((p) => !p.isGuest),
+      ...all.filter((p) => p.isGuest),
+    ];
+  })();
+
+  // Breadcrumb: always [Home › seriesShort › eventShort] when a series
+  // exists; falls back to [Home › eventShort] otherwise. Operator
+  // confirmed "Home › series › event" as the canonical shape (mockup
+  // `event-page-desktop-mockup-v2.jsx:481-485`); the prior 2-item
+  // shape (series → event) dropped Home and was inconsistent with
+  // every other detail page's breadcrumb. Hrefs are fully
+  // locale-prefixed since `Breadcrumb` uses `next/link`.
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: ct("home"), href: `/${locale}` },
+    ...(event.eventSeries && seriesShortName
+      ? [
+          {
+            label: seriesShortName,
+            href: `/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`,
+          } satisfies BreadcrumbItem,
+        ]
+      : []),
+    { label: eventShortName || t("unknownEvent") },
+  ];
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
-      {/* Breadcrumb */}
-      <nav className="mb-4 flex flex-wrap items-center gap-1 text-sm text-zinc-500">
-        <Link href={`/${locale}`} className="hover:underline">
-          {ct("backToHome")}
-        </Link>
-        {event.eventSeries && seriesShortName && (
-          <>
-            {" / "}
-            <Link
-              href={`/${locale}/series/${event.eventSeries.id}/${event.eventSeries.slug}`}
-              className="hover:underline"
-            >
-              {seriesShortName}
-            </Link>
-          </>
-        )}
-      </nav>
+    <main
+      // Fluid width — operator wants the page to flow without a fixed
+      // cap. The inner sidebar+main grid governs natural width via
+      // `lg:grid-cols-[300px_1fr]`. Page padding still applies.
+      className="px-4 py-8 lg:px-8"
+      // Match the slate-tinted page surface every other top-level page
+      // uses (home, events list, artists, series, legal). Without it,
+      // the white EventHeader card has no contrast against the body and
+      // the sticky desktop sidebar reads as "missing".
+      style={{ background: colors.bgPage }}
+    >
+      <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
 
-      {/* Header */}
-      <header className="mb-8">
-        <EventStatusTicker
-          startTime={
-            typeof event.startTime === "string"
-              ? event.startTime
-              : event.startTime?.toISOString() ?? null
-          }
-        />
-        <h1 className="text-3xl font-bold">
-          {seriesFullName || eventFullName || t("unknownEvent")}
-        </h1>
-        {seriesFullName && eventName && eventName !== seriesFullName && (
-          <p className="mt-1 text-lg text-zinc-600">{eventName}</p>
-        )}
-        <div className="mt-2 space-y-1 text-sm text-zinc-600">
-          <div className="flex items-center gap-2">
-            {(() => {
-              const badge = EVENT_STATUS_BADGE[getEventStatus(event)];
-              return (
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.color}`}
-                >
-                  {t(badge.labelKey)}
-                </span>
-              );
-            })()}
-            {event.date && (
-              <EventDateTime
-                date={event.date ?? null}
-                startTime={event.startTime ?? null}
-                variant="inline"
-              />
-            )}
-          </div>
-          {(venue || city) && (
-            <div>
-              {venue ?? city}
-              {venue && city && `, ${city}`}
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Setlist (renders TrendingSongs at the top, derived from polling state
-          while ongoing so trending refreshes alongside per-item counts). */}
       {/*
-        serializeBigInt() converts BigInt → Number at runtime, but its generic
-        signature preserves the input's TS types, so `setlistItems` still reports
-        bigint ids. Cast at the boundary — LiveSetlistItem mirrors the runtime
-        (Number) shape.
+        Mobile: single column (header on top, setlist + impressions below).
+        Desktop (lg ≥ 1024px): 2-col grid 300px / 1fr with sticky sidebar at
+        top: 72px. Grid's natural single-col on mobile means EventHeader
+        renders above the main column without any extra layout branching.
       */}
-      <LiveSetlist
-        eventId={id}
-        initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
-        initialReactionCounts={reactionCounts}
-        initialTrendingSongs={trendingSongs}
-        unknownSongLabel={st("unknown")}
-        isOngoing={isOngoing}
-        locale={locale}
-      />
+      <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-6 lg:items-start">
+        {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room.
+            Three sidebar cards stacked with consistent gap; flex column wraps
+            the stack so sticky positioning still applies to the topmost edge. */}
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-[72px]">
+          <EventHeader
+            status={resolvedStatus}
+            // Match the rest of the codebase's badge convention: `LIVE`
+            // for ongoing events (home, event list, artist/member/series
+            // detail all use t("live")), localized status text for
+            // upcoming/completed/cancelled. Without this, the same
+            // ongoing event reads as "LIVE" in the event list but
+            // "진행 중" / "Ongoing" / "進行中" on its own detail page.
+            statusLabel={
+              resolvedStatus === "ongoing"
+                ? t("live")
+                : t(`status.${resolvedStatus}`)
+            }
+            date={event.date}
+            startTime={event.startTime}
+            locale={locale}
+            artist={headerArtist}
+            organizerName={headerOrganizerName}
+            series={
+              event.eventSeries && seriesShortName
+                ? {
+                    // String() at the boundary — EventHeader is a
+                    // client component and BigInt isn't serializable
+                    // across RSC. Same convention as `artist.id`.
+                    id: String(event.eventSeries.id),
+                    slug: event.eventSeries.slug,
+                    shortName: seriesShortName,
+                  }
+                : null
+            }
+            title={headerTitle}
+            songsCount={songsCount}
+            reactionsValue={reactionsValue}
+            venue={venue}
+            city={city}
+          />
+          <UnitsCard locale={locale} units={sidebarUnits} />
+          <PerformersCard performers={sidebarPerformers} />
+        </aside>
 
-      <EventImpressions
-        eventId={id}
-        initialImpressions={impressions}
-        isOngoing={isOngoing}
-      />
+        <div className="mt-6 lg:mt-0 min-w-0">
+          {/*
+            serializeBigInt() converts BigInt → Number at runtime, but its
+            generic signature preserves the input's TS types, so
+            `setlistItems` still reports bigint ids. Cast at the boundary —
+            LiveSetlistItem mirrors the runtime (Number) shape.
+          */}
+          <LiveSetlist
+            eventId={id}
+            initialItems={event.setlistItems as unknown as LiveSetlistItem[]}
+            initialReactionCounts={reactionCounts}
+            initialTrendingSongs={trendingSongs}
+            unknownSongLabel={st("unknown")}
+            isOngoing={isOngoing}
+            locale={locale}
+          />
+
+          <EventImpressions
+            eventId={id}
+            initialImpressions={impressions}
+            isOngoing={isOngoing}
+          />
+        </div>
+      </div>
     </main>
   );
 }

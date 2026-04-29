@@ -3,6 +3,22 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Mirrors `colors.bgSubtle` in src/styles/tokens.ts. Keep in lockstep
+     so a palette change is one edit, not a grep across components.
+     Consumed by `.row-hover-bg:hover` below; available as a Tailwind
+     arbitrary-value `bg-[var(--bg-subtle)]` if needed elsewhere. */
+  --bg-subtle: #f8fafc;
+  /* Anchor-jump offset for `scroll-margin-top` on legal section
+     headings. Mobile = `layout.navHeight.mobile` (52) + 24 breathing
+     room; desktop overrides below. Keep in lockstep with
+     `layout.navHeight` in `src/styles/tokens.ts`. */
+  --legal-anchor-offset: 76px;
+}
+@media (min-width: 1024px) {
+  :root {
+    /* Desktop = `layout.navHeight.desktop` (56) + 24 breathing room. */
+    --legal-anchor-offset: 80px;
+  }
 }
 
 @theme inline {
@@ -18,4 +34,62 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/*
+ * Event-page redesign animations (used by ReactionButtons and the LIVE
+ * status badge). Consumers apply these via inline `style={{ animation }}`
+ * keyed by component state; the emoji wrapper must NOT be remounted on
+ * state change (would render twice mid-animation).
+ */
+@keyframes emoji-activate {
+  0%   { transform: scale(1)    translateY(0); }
+  30%  { transform: scale(1.55) translateY(-4px); }
+  55%  { transform: scale(0.9)  translateY(1px); }
+  75%  { transform: scale(1.15) translateY(-2px); }
+  100% { transform: scale(1)    translateY(0); }
+}
+
+@keyframes emoji-deactivate {
+  0%   { transform: scale(1)    rotate(0deg); }
+  25%  { transform: scale(0.75) rotate(-8deg); }
+  60%  { transform: scale(1.05) rotate(4deg); }
+  100% { transform: scale(1)    rotate(0deg); }
+}
+
+@keyframes count-slide {
+  0%   { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0);   opacity: 1; }
+}
+
+/*
+ * Used by the LIVE dot in `<StatusBadge status="ongoing">` (handoff §5).
+ * 1.2s ease-in-out infinite at the call site.
+ */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/*
+ * Subtle hover/focus background for full-row clickable lists
+ * (artists list card + table rows, event list rows, performance
+ * group rows). Reads `--bg-subtle` from the `:root` block above so
+ * the hex lives in exactly one place. The transition is on the
+ * base rule (not just `:hover`) so the fade runs on both enter and
+ * leave; pairing both rules here keeps the effect a single class
+ * consumers can apply without restating the timing.
+ *
+ * `:focus-visible` is paired with `:hover` so keyboard users get
+ * the same row highlight as mouse users when they tab onto a row.
+ * Some consumers used to roll their own `useState` + onMouseEnter /
+ * onFocus handlers to achieve this; folding the focus rule in here
+ * lets them drop the bookkeeping entirely.
+ */
+.row-hover-bg {
+  transition: background 0.12s ease;
+}
+.row-hover-bg:hover,
+.row-hover-bg:focus-visible {
+  background: var(--bg-subtle);
 }

@@ -74,7 +74,7 @@ NOT applied to: Junction tables, Translation tables
 All fixed-value string fields use Prisma enums (PostgreSQL enum types):
 ```
 GroupType          franchise | label | agency | series
-GroupCategory      anime | kpop | jpop | cpop | game
+GroupCategory      animegame | kpop | jpop | cpop | others
 ArtistType         solo | group | unit
 StageIdentityType  character | persona
 EventSeriesType    concert_tour | standalone | festival | fan_meeting
@@ -148,10 +148,34 @@ Locales: ko (launch), ja (Phase 2), en (Phase 3), zh-CN (Phase 3)
 ```
 
 Hard rules:
-- Never hardcode text — always use i18n keys
+- Never hardcode text in **public-facing surfaces** — always use i18n keys
 - Store dates/times in UTC, convert on display
 - Use Noto Sans self-hosted (supports all 4 languages) — never load from Google Fonts (China firewall)
 - `lang` attribute on `<html>` must match locale
+
+### Admin UI exemption — operator-only routes are Korean-only
+
+Routes under `src/app/admin/**`, `src/app/api/admin/**`, and any other
+operator-only surface are **exempt from the "never hardcode text" rule**
+and intentionally written in Korean only. The operator is the sole user;
+they speak Korean; threading `useTranslations` through every form label,
+table header, alert, and placeholder is pure overhead with no payoff.
+This is a deliberate, project-wide decision — not technical debt — and
+applies to:
+
+- `<th>` headers in admin tables (`이름`, `타입`, `슬러그`, etc.)
+- form labels, placeholders, and helper text in admin forms
+- `alert(...)` / confirm dialog strings shown only to admins
+- 409 / 4xx error message bodies returned by `/api/admin/**` routes
+
+Reviewers (CodeRabbit, the local push-review hook) should NOT flag
+hardcoded Korean strings in these paths as i18n violations. New admin
+features should follow the same convention — match the existing
+labels' style and language.
+
+The user-facing surfaces (everything under `src/app/[locale]/**`,
+`src/components/**` rendered there, public API responses) remain
+strictly i18n-keyed; the rule only relaxes inside the admin scope.
 
 ---
 
@@ -195,6 +219,30 @@ User-visible dates should be formatted with the viewer's locale via
 `formatDate(date, locale)` in `src/lib/utils.ts`. That helper is the
 single conversion point from UTC-stored → locale-rendered. Do not
 reinvent it inline.
+
+---
+
+## Code Comments
+
+Detailed multi-line comments are **encouraged** when they explain WHY:
+rationale, design decisions, edge cases, workarounds, subtle invariants,
+non-obvious constraints. The Claude Code default of "one short line max"
+is **overridden for this project** — write the comments you'd want when
+re-reading the code in 6 months.
+
+What's worth commenting:
+- Non-obvious design decisions and the reasoning behind them
+- Edge cases the code handles, and why they matter
+- Workarounds, with a pointer to the underlying issue
+- Subtle invariants, ordering requirements, or hidden coupling
+
+Still skip:
+- Restating what well-named code already says (`// increment i`)
+- References to the current task / PR / fix — those rot fast and
+  belong in the PR description, not the source
+
+Code reviewers (CodeRabbit and the local review hooks) should NOT flag
+multi-line comment blocks as a style violation in this project.
 
 ---
 
@@ -244,9 +292,19 @@ Hard rules:
 - NEVER commit directly to main — always PR from dev or hotfix/*
 - NEVER use production DB locally — .env must point to dev DB
 - NEVER merge a PR yourself — always open the PR, then ask the owner to merge. This applies to every PR including dev → main release PRs and feature → dev PRs
-- NEVER commit automatically. Always stop and ask the owner before running `git commit`, even when the work is clearly complete, tests pass, and a commit feels like the obvious next step. Stage and show the diff, then wait for explicit approval. This applies regardless of branch, scope, or urgency — no exceptions.
+- Run `git add ...` and `git commit -m "..."` as **two separate Bash tool calls**, not chained with `&&`. The owner runs a `PreToolUse` hook (`~/.claude/hooks/review-staged.js`) that calls `git diff --cached` to review the staged change against this CLAUDE.md before each commit. Chained `add && commit` leaves the index empty at hook time, the hook logs `exit:empty-diff`, and the review never runs. Splitting the calls puts staging done before the commit Bash invocation so the hook actually reviews. Committing without a manual approval pause is fine — the hook is the safety net; if it finds issues it blocks the commit, otherwise the commit proceeds and the owner sees the result.
+- Run `git push` as **its own Bash tool call** when any HEAD-mutating git command precedes it in the same chain (`commit`, `rebase`, `merge`, `reset`, `cherry-pick`, `revert`, `pull`, `am`). The push-review hook (`~/.claude/hooks/review-prepush.js`) computes the branch-vs-base diff from HEAD before the chain runs, so a chained `commit && push` would review pre-commit HEAD and miss the new commits — the hook auto-blocks these chains. Non-mutating chains like `git fetch && git push` or `git push && echo done` are fine.
 - Always create a version tag for production releases
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
+
+### Local review hooks
+
+Two `PreToolUse` hooks (owner-level, in `~/.claude/hooks/`) review changes before they leave the machine:
+
+- **Commit-time** — `review-staged.js`, Haiku 4.5, against `git diff --cached`. Fast hard-rule + bug/security check on the staged change. Bypass: include `[skip-review]` in the commit command.
+- **Push-time** — `review-prepush.js`, Sonnet 4.6, against the full branch-vs-base diff (base picked from `.coderabbit.yaml` `auto_review.base_branches`). Mirrors `.coderabbit.yaml` focus areas so CodeRabbit-class findings (cross-file, N+1, layering) surface before push, not after the ~10-min PR-time wait. Chunks diffs >400KB per-file and reviews in parallel; skips entirely above 1.5MB and defers to CodeRabbit. Bypass: `SKIP_PUSH_REVIEW=1 git push` or `git push --no-verify`.
+
+Both block on findings and on timeout; both degrade gracefully on infra failures (network/API down). Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
 
 ---
 

@@ -37,11 +37,17 @@ enum GroupType {
 }
 
 enum GroupCategory {
-  anime
+  // animegame collapses the former separate `anime` + `game` values: the
+  // user-facing filter chip already conflated them as 애니/게임, and no
+  // domain logic distinguishes the two scenes. `others` is the explicit
+  // catch-all for groups that don't fit any of the established
+  // music-scene buckets — distinct from a NULL category, which means
+  // "not yet classified" (data-hygiene state).
+  animegame
   kpop
   jpop
   cpop
-  game
+  others
 }
 
 enum ArtistType {
@@ -181,6 +187,11 @@ enum ScopeType {
 // UUID: groups don't appear directly in public URLs.
 model Group {
   id                  String             @id @default(uuid())
+  // slug: required upsert key for CSV import. Aligns with the
+  // Artist/Song/Event/EventSeries.slug @unique pattern even though
+  // Group's id stays UUID (groups don't appear in public URLs, so the
+  // slug is for import keying only).
+  slug                String             @unique
   type                GroupType?
   category            GroupCategory?
   hasBoard            Boolean            @default(false)
@@ -220,6 +231,27 @@ model Artist {
   type              ArtistType
   hasBoard          Boolean             @default(true)
   imageUrl          String?
+  color             String?                    // unit badge color e.g. "#e91e8c" — nullable, falls back to zinc tokens
+  // category: only meaningful for top-level artists (parentArtistId IS NULL)
+  // that are NOT linked to any hasBoard=true Group. Drives the filter
+  // chip + section badge for the synthetic "ungrouped" bucket on the
+  // artists list page. When the artist IS linked to a hasBoard=true
+  // Group, Group.category remains the source of truth and this field
+  // is ignored. Nullable so unclassified artists land in the
+  // "분류 미정" bucket (only visible under ?category=all) — distinct
+  // from explicit `others`.
+  category          GroupCategory?
+  // isMainUnit: only meaningful for type=unit artists. Flags whether
+  // this is a canonical/headline unit (e.g. DOLLCHESTRA, Mira-Cra Park!,
+  // Cerise Bouquet) vs a derivative or event-specific sub-configuration.
+  // The artists list page chip-renders only main units next to the
+  // parent artist's row, since otherwise the chip strip becomes
+  // unreadable for franchises with many incidental sub-units. Defaults
+  // to false so the filter immediately collapses post-migration —
+  // operator opts canonical units in rather than opting many out.
+  // No-op for type=solo|group (the chip filter only runs over
+  // sub-artists, which by construction are units).
+  isMainUnit        Boolean             @default(false)
   originalName      String
   originalShortName String?
   originalBio       String?

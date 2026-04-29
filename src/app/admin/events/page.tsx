@@ -4,9 +4,9 @@ import { serializeBigInt, formatDate } from "@/lib/utils";
 import { displayNameWithFallback } from "@/lib/display";
 import {
   getEventStatus,
-  EVENT_STATUS_BADGE,
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
+import { StatusBadge } from "@/components/StatusBadge";
 import DeleteButton from "../DeleteButton";
 
 // Admin UI is Korean-only and lives outside /[locale]/, so we can't use
@@ -67,7 +67,6 @@ export default async function EventsListPage() {
                 )
               : "";
             const resolved = getEventStatus(event);
-            const badge = EVENT_STATUS_BADGE[resolved];
             return (
               <tr key={event.id} className="border-b border-zinc-100">
                 <td className="py-2 text-zinc-400">{event.id}</td>
@@ -79,9 +78,10 @@ export default async function EventsListPage() {
                   {seriesName || "—"}
                 </td>
                 <td className="py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${badge.color}`}>
-                    {STATUS_LABEL_KO[resolved]}
-                  </span>
+                  <StatusBadge
+                    status={resolved}
+                    label={STATUS_LABEL_KO[resolved]}
+                  />
                   {event.status !== resolved && (
                     <span className="ml-2 text-xs text-zinc-400">
                       (DB: {event.status})
