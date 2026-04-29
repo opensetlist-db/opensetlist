@@ -311,4 +311,66 @@ describe("SetlistRow", () => {
     expect(li?.className).toContain("grid");
     expect(li?.className).toContain("items-start");
   });
+
+  it("renders the generic stageType label for an ad-hoc unit-stage row with no Artist credit (D8)", () => {
+    // Phase 1A — D8: stageType=unit + no artists + no unitName →
+    // <FallbackUnitBadge> renders the i18n stageType label so the
+    // row still indicates "this is a unit-stage performance".
+    // Mocked useTranslations returns the i18n key verbatim, so the
+    // label text reads "stageType.unit".
+    render(
+      <SetlistRow
+        item={makeItem({ stageType: "unit", unitName: null, artists: [] })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.getByText("stageType.unit")).toBeInTheDocument();
+  });
+
+  it("hides operator-typed unitName even when set on an ad-hoc unit-stage row (D4b)", () => {
+    // Phase 1A — D4b: `item.unitName` is intentionally suppressed
+    // on public surfaces (no per-locale translations). The row
+    // shows the generic stageType label, never the operator's
+    // typed string.
+    render(
+      <SetlistRow
+        item={makeItem({
+          stageType: "unit",
+          unitName: "Sakura × Maya",
+          artists: [],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.queryByText("Sakura × Maya")).toBeNull();
+    // The generic stageType fallback still renders.
+    expect(screen.getByText("stageType.unit")).toBeInTheDocument();
+  });
+
+  it("does not render a unit badge for full_group rows even when unitName is set", () => {
+    // The new ad-hoc branch is gated on stageType !== "full_group"
+    // — full-group rows shouldn't surface a "유닛" badge under any
+    // circumstance.
+    render(
+      <SetlistRow
+        item={makeItem({
+          stageType: "full_group",
+          unitName: "Should Be Ignored",
+          artists: [],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.queryByText("stageType.full_group")).toBeNull();
+    expect(screen.queryByText("Should Be Ignored")).toBeNull();
+  });
 });

@@ -87,7 +87,32 @@ describe("UnitsCard", () => {
   it("omits the members sublist entirely when members is empty", () => {
     render(<UnitsCard locale="ko" units={[sample[1]]} />);
     // No `·` separator anywhere in the rendered output (the only
-    // place that pattern appears is the joined sublist).
+    // place that pattern appears is the joined sublist; guest
+    // suffix path is also `·`-prefixed but isGuest is unset here).
     expect(screen.queryByText(/·/)).toBeNull();
+  });
+
+  it("appends the guest suffix when isGuest is true", () => {
+    // D9: a guest unit (no host members at this event) gets a muted
+    // "· {guestLabel}" suffix appended to its name. The mocked
+    // useTranslations returns the i18n key verbatim, so the suffix
+    // text reads "· guestLabel" in this test.
+    const guestUnit = {
+      id: "20",
+      slug: "visiting-unit",
+      name: "ヤママ娘",
+      color: "#3949AB",
+      members: [],
+      isGuest: true,
+    };
+    render(<UnitsCard locale="ko" units={[guestUnit]} />);
+    // The suffix renders as a child span of the unit Link.
+    expect(screen.getByText(/·\s*guestLabel/)).toBeInTheDocument();
+  });
+
+  it("does not append the guest suffix when isGuest is false / unset", () => {
+    render(<UnitsCard locale="ko" units={[sample[0]]} />);
+    // sample[0] has no isGuest field — treated as host; no suffix.
+    expect(screen.queryByText(/·\s*guestLabel/)).toBeNull();
   });
 });
