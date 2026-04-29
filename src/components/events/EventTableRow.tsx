@@ -67,7 +67,17 @@ export function EventTableRow({
         {venueCity ?? ""}
       </span>
       <span
-        className="text-right text-[12px]"
+        // Left-aligned so the 🎵 emoji pins to the left edge of
+        // the 60px cell and lines up cleanly across rows. The
+        // mockup originally specified text-right, which kept the
+        // digit's right edge fixed but floated the emoji's x with
+        // digit count (8 → 28 → 100 each shifted the emoji a few
+        // px). User feedback: "rows are not aligned if the song
+        // number digit count is different" — left-aligning fixes
+        // it because the emoji is the visually salient column
+        // marker; the digit then ranges within the cell, which
+        // reads as natural variation rather than misalignment.
+        className="text-left text-[12px]"
         style={{ color: colors.textMuted }}
       >
         {songCountLabel ?? ""}

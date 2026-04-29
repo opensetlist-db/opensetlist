@@ -131,14 +131,12 @@ export function SeriesBlock({
             ].map((label, i) => (
               <span
                 key={i}
-                // Match per-column alignment to the row body —
-                // EventTableRow right-aligns the songs cell (its
-                // `text-right` on the song-count <span>), so the
-                // SONGS header column (i=4) does too. Without this
-                // the label sits left-of-center and the count value
-                // sits right-of-center → visible drift between
-                // header strip and row.
-                className={`text-[11px] font-bold uppercase ${i === 4 ? "text-right" : ""}`}
+                // All cells left-align (default) so the SONGS header
+                // pins to the same x as the row's `🎵` emoji. The
+                // earlier per-column `text-right` on i=4 floated the
+                // emoji left/right with digit count (8 → 28 → 100),
+                // making rows look ragged.
+                className="text-[11px] font-bold uppercase"
                 style={{
                   color: colors.textMuted,
                   letterSpacing: "0.05em",
