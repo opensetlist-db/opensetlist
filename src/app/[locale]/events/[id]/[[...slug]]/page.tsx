@@ -74,11 +74,11 @@ async function getEvent(id: bigint, locale: string) {
                   // membership rows. Needed by the page to build the
                   // per-unit members sublist on `<UnitsCard>` (each
                   // performer's links tell us which units they
-                  // belong to).
+                  // belong to). We don't filter on dates — see the
+                  // "Pass 2" comment block in the page body.
                   artistLinks: {
                     select: {
                       artistId: true,
-                      endDate: true,
                     },
                   },
                 },
@@ -478,16 +478,23 @@ export default async function EventPage({ params }: Props) {
   //
   // 2. Walk `setlistItems[].performers` once to build the unit→
   //    members map. Each StageIdentity carries `artistLinks` with
-  //    `artistId, endDate`; we look up `artistId` against the unit
-  //    map. Membership rows whose `endDate` predates `referenceNow`
-  //    are skipped (graduated members shouldn't show up on a
-  //    current-event lineup).
+  //    `artistId`; we look up `artistId` against the unit map.
+  //    **Every link counts** — no membership-date filter. The
+  //    `setlistItem.performers` set is already self-narrowing: only
+  //    characters who actually performed a song slot at this event
+  //    appear, and a guest's unit links are usually disjoint from
+  //    the event's headlining units anyway. The historical case
+  //    we used to gate on (a graduated member returning as a guest
+  //    with their old unit on this same event) reads as "they
+  //    performed here under that unit" — the date check would have
+  //    hidden them, which the operator considered less accurate.
   //
   // 3. Walk `setlistItems[].performers` once more to build the
   //    Performers card list — each character's pill tint is the
-  //    color of their *primary* unit (first matching active link
-  //    against the unit map). Falls back via `resolveUnitColor`
-  //    when no unit link resolves at all.
+  //    color of their *primary* unit (first link that points at one
+  //    of the event's units). Falls back via `resolveUnitColor`
+  //    (Artist.color → palette pick on slug → last-resort
+  //    `colors.primary`) when no unit link resolves at all.
   type SidebarUnit = UnitsCardItem & {
     /** Resolved color via `resolveUnitColor` (Artist.color → palette
      *  pick on slug → last-resort `colors.primary`). Always set. */
@@ -524,45 +531,27 @@ export default async function EventPage({ params }: Props) {
     }
   }
 
-  // Helper: pick the primary (first-active) unit for a performer's
-  // artist links. Returns null when no link points at one of the
-  // event's unit set — caller then falls back to the global default.
-  //
-  // Active-membership cutoff is the EVENT's date (not "now"): a
-  // member who graduated AFTER this event but BEFORE today should
-  // still surface on the lineup, since they were active when the
-  // event happened. Use `event.date` when available, fall back to
-  // `referenceNow` if the event somehow has no date set.
-  const membershipCutoffMs = event.date
-    ? new Date(event.date).getTime()
-    : referenceNow.getTime();
+  // Helper: pick the primary unit for a performer's artist links —
+  // first link that points at one of the event's units. Returns null
+  // when no link resolves; caller then falls back to the global
+  // default tint.
   const pickPrimaryUnit = (
-    links: { artistId: number | bigint; endDate: Date | string | null }[],
+    links: { artistId: number | bigint }[],
   ): SidebarUnit | null => {
     for (const link of links) {
-      if (
-        link.endDate &&
-        new Date(link.endDate).getTime() < membershipCutoffMs
-      ) {
-        continue;
-      }
       const u = unitsById.get(String(link.artistId));
       if (u) return u;
     }
     return null;
   };
 
-  // Pass 2: populate per-unit member lists.
+  // Pass 2: populate per-unit member lists. Every membership link
+  // counts (see header comment) — the input set is already narrowed
+  // to characters who performed a song slot at this event.
   for (const item of event.setlistItems) {
     for (const p of item.performers) {
       const links = p.stageIdentity.artistLinks ?? [];
       for (const link of links) {
-        if (
-          link.endDate &&
-          new Date(link.endDate).getTime() < membershipCutoffMs
-        ) {
-          continue;
-        }
         const unitId = String(link.artistId);
         const u = unitsById.get(unitId);
         if (!u) continue;
