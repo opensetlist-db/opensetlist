@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { colors } from "@/styles/tokens";
 
 /*
@@ -32,15 +32,39 @@ export function UnitsToggle({
 }: Props) {
   const [showOthers, setShowOthers] = useState(false);
   const hasOthers = otherCards.length > 0;
+  // Stable id pairs the disclosure button with its controlled region
+  // for `aria-controls`. `useId` is React's collision-safe generator;
+  // multiple <UnitsToggle> instances on a page get distinct ids
+  // automatically.
+  const otherCardsId = useId();
   return (
     <>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {mainCards}
-        {showOthers && otherCards}
       </div>
+      {hasOthers && (
+        <div
+          id={otherCardsId}
+          // Use the `hidden` attribute (not `display: none` via CSS)
+          // so the controlled region stays in the DOM tree at a stable
+          // id; assistive tech still resolves `aria-controls` even
+          // while the region is collapsed.
+          hidden={!showOthers}
+          style={{
+            display: showOthers ? "flex" : undefined,
+            gap: 10,
+            flexWrap: "wrap",
+            marginTop: 10,
+          }}
+        >
+          {otherCards}
+        </div>
+      )}
       {hasOthers && (
         <button
           type="button"
+          aria-expanded={showOthers}
+          aria-controls={otherCardsId}
           onClick={() => setShowOthers((v) => !v)}
           style={{
             marginTop: 12,

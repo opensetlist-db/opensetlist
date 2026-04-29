@@ -42,23 +42,31 @@ interface Props {
 
 export function UnitCard({ href, unitName, unitColor, stripeBg, members }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Mirror the hover treatment for keyboard focus so tab-navigated
+  // users get the same visual signal of "this card is the active
+  // target." The Link is natively focusable (anchor tag), so we
+  // just need to wire onFocus/onBlur.
+  const active = hovered || focused;
   return (
     <Link
       href={href}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
         display: "block",
         textDecoration: "none",
         color: "inherit",
-        // Hover: paint border in the unit's color and tint the bg
-        // with an alpha-overlay of the same color (matches mockup
-        // `unit.color + "08"`). Resting state is neutral gray border
-        // on a white card.
-        border: `1.5px solid ${hovered ? unitColor : colors.border}`,
+        // Active (hover or focus): paint border in the unit's color
+        // and tint the bg with an alpha-overlay of the same color
+        // (matches mockup `unit.color + "08"`). Resting state is
+        // neutral gray border on a white card.
+        border: `1.5px solid ${active ? unitColor : colors.border}`,
         borderRadius: 14,
         padding: "14px 16px",
-        background: hovered ? `${unitColor}08` : colors.bgCard,
+        background: active ? `${unitColor}08` : colors.bgCard,
         flex: "1 1 140px",
         minWidth: 0,
         transition: "border-color 0.12s ease, background 0.12s ease",

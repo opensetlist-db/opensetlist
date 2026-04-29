@@ -34,20 +34,27 @@ interface Props {
 
 export function MemberChip({ href, memberName, unitName, unitColor }: Props) {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Keyboard focus mirrors hover so tab-navigated users see the same
+  // unit-color emphasis. See UnitCard for the same pattern.
+  const active = hovered || focused;
   return (
     <Link
       href={href}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 8,
-        // Hover paints both border and bg with the unit color at low
-        // alpha. Resting state stays in the project's neutral chip
-        // palette so a long row of chips reads cleanly.
-        background: hovered ? `${unitColor}12` : colors.bgSubtle,
-        border: `1px solid ${hovered ? `${unitColor}40` : colors.borderLight}`,
+        // Active (hover or focus) paints both border and bg with the
+        // unit color at low alpha. Resting state stays in the
+        // project's neutral chip palette so a long row of chips
+        // reads cleanly.
+        background: active ? `${unitColor}12` : colors.bgSubtle,
+        border: `1px solid ${active ? `${unitColor}40` : colors.borderLight}`,
         borderRadius: 12,
         padding: "8px 12px",
         flex: "1 1 140px",

@@ -221,10 +221,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // Split by `isMainUnit` so the overview tab can default to showing
   // only canonical units; non-main configurations sit behind a toggle
   // (mockup-fidelity feedback, 2026-04-28).
-  const allSubUnits = artist.subArtists.filter((s) => s.type === "unit");
-  const mainSubUnits = allSubUnits.filter((s) => s.isMainUnit);
-  const otherSubUnits = allSubUnits.filter((s) => !s.isMainUnit);
-  const subUnits = allSubUnits;
+  const subUnits = artist.subArtists.filter((s) => s.type === "unit");
+  const mainSubUnits = subUnits.filter((s) => s.isMainUnit);
+  const otherSubUnits = subUnits.filter((s) => !s.isMainUnit);
 
   // Stats: total events + completed events across all eventSeries.
   // `getEventStatus()` resolves the displayed status from raw status
@@ -397,6 +396,42 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       trailing: e.trailing,
     }));
 
+  // Pre-render a sub-unit card to a ReactNode so <UnitsToggle>
+  // (client) can compose the main/other split without re-running the
+  // server-side resolution. Closure over `locale`, `t`, and color
+  // constants keeps the call sites compact.
+  type SubUnit = (typeof subUnits)[number];
+  const renderUnitCard = (unit: SubUnit) => {
+    const unitName =
+      displayNameWithFallback(unit, unit.translations, locale) || t("unknown");
+    // Color fallback chain (mockup-fidelity, see
+    // `raw/artist-color-handoff.md`):
+    //   - solid color (text + hover/focus border):
+    //       unit.color → colors.primary
+    //   - stripe background:
+    //       unit.color → BRAND_GRADIENT
+    const unitColor = unit.color ?? colors.primary;
+    const stripeBg = unit.color ?? BRAND_GRADIENT;
+    const members = unit.stageLinks.map(
+      (sl) =>
+        displayNameWithFallback(
+          sl.stageIdentity,
+          sl.stageIdentity.translations,
+          locale,
+        ) || t("unknownMember"),
+    );
+    return (
+      <UnitCard
+        key={unit.id}
+        href={`/${locale}/artists/${unit.id}/${unit.slug}`}
+        unitName={unitName}
+        unitColor={unitColor}
+        stripeBg={stripeBg}
+        members={members}
+      />
+    );
+  };
+
   return (
     <main
       style={{
@@ -553,59 +588,14 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     }}
                   >
                     <SectionLabel>{t("subUnits")}</SectionLabel>
-                    {(() => {
-                      // Pre-render each unit card to a ReactNode so
-                      // <UnitsToggle> (client) can compose the
-                      // main/other split without re-running the
-                      // server-side resolution. The cards themselves
-                      // are also client components (hover state) — the
-                      // ReactNode bag is the boundary.
-                      type Unit = (typeof allSubUnits)[number];
-                      const renderCard = (unit: Unit) => {
-                        const unitName =
-                          displayNameWithFallback(
-                            unit,
-                            unit.translations,
-                            locale,
-                          ) || t("unknown");
-                        // Color fallback chain (mockup-fidelity, see
-                        // `raw/artist-color-handoff.md`):
-                        //   - solid color (text + hover border):
-                        //       unit.color → colors.primary
-                        //   - stripe background:
-                        //       unit.color → BRAND_GRADIENT
-                        const unitColor = unit.color ?? colors.primary;
-                        const stripeBg = unit.color ?? BRAND_GRADIENT;
-                        const members = unit.stageLinks.map(
-                          (sl) =>
-                            displayNameWithFallback(
-                              sl.stageIdentity,
-                              sl.stageIdentity.translations,
-                              locale,
-                            ) || t("unknownMember"),
-                        );
-                        return (
-                          <UnitCard
-                            key={unit.id}
-                            href={`/${locale}/artists/${unit.id}/${unit.slug}`}
-                            unitName={unitName}
-                            unitColor={unitColor}
-                            stripeBg={stripeBg}
-                            members={members}
-                          />
-                        );
-                      };
-                      return (
-                        <UnitsToggle
-                          mainCards={mainSubUnits.map(renderCard)}
-                          otherCards={otherSubUnits.map(renderCard)}
-                          showLabel={t("showOtherUnits", {
-                            count: otherSubUnits.length,
-                          })}
-                          hideLabel={t("hideOtherUnits")}
-                        />
-                      );
-                    })()}
+                    <UnitsToggle
+                      mainCards={mainSubUnits.map(renderUnitCard)}
+                      otherCards={otherSubUnits.map(renderUnitCard)}
+                      showLabel={t("showOtherUnits", {
+                        count: otherSubUnits.length,
+                      })}
+                      hideLabel={t("hideOtherUnits")}
+                    />
                   </section>
                 )}
 
