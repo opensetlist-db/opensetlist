@@ -174,20 +174,19 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artist-page pattern).
   const referenceNow = new Date();
 
-  // Member-page name display intentionally inverts the Song / Artist
-  // convention. `displayOriginalName` returns `main = originalName`
-  // (Japanese in the Hasunosora seed) and `sub = locale translation`,
-  // which makes the original-language name the prominent label —
-  // correct for canonical entities like songs/albums where the
-  // original is the canonical identity. Characters & personas are the
-  // opposite: a Korean viewer scans for "오사와 루리노", not "大沢瑠璃乃".
-  // So flip — locale translation as primary (big), original as
-  // secondary (small). Falls through to original-only when there's
-  // no distinct translation row (sub is null).
-  const { main: characterOriginal, sub: characterLocale } =
+  // `displayOriginalName` is now translation-primary at the helper
+  // level (since the refactor on `src/lib/display.ts`) — `main`
+  // holds the viewer's locale translation, `sub` holds the original-
+  // language name (or null when locale matches origin / no
+  // translation row exists). So the page renders `main` as the h1
+  // and `sub` as the secondary line, no call-site swap needed.
+  // The avatar still wants the original-language first character to
+  // match the mockup (canonical script regardless of viewer locale)
+  // — `sub` is that string when present, otherwise `main` (which
+  // already IS the original when there's no translation to flip).
+  const { main: characterPrimary, sub: characterSecondary } =
     displayOriginalName(member, member.translations, locale);
-  const characterPrimary = characterLocale ?? characterOriginal;
-  const characterSecondary = characterLocale ? characterOriginal : null;
+  const characterOriginal = characterSecondary ?? characterPrimary;
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape
@@ -253,20 +252,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // is already sorted desc by startDate in the query.
   const currentVa =
     member.voicedBy.find((v) => v.endDate === null) ?? member.voicedBy[0];
-  // Same translation-as-primary swap as the character name above —
-  // VA names follow the convention for people, where the locale
-  // translation reads more naturally for the viewer than the
-  // original-language romaji/kanji string.
-  const vaRaw = currentVa
+  // VA name follows the same translation-primary rule as the
+  // character name. Helper now returns `main` = locale translation
+  // and `sub` = original; consume directly.
+  const vaDisplay = currentVa
     ? displayOriginalName(
         currentVa.realPerson,
         currentVa.realPerson.translations,
         locale,
       )
     : null;
-  const vaPrimary = vaRaw ? (vaRaw.sub ?? vaRaw.main) : null;
-  const vaSecondary = vaRaw && vaRaw.sub ? vaRaw.main : null;
-  const vaOriginal = vaRaw?.main ?? null;
+  const vaPrimary = vaDisplay?.main ?? null;
+  const vaSecondary = vaDisplay?.sub ?? null;
+  // Original-language string for the VA avatar initial; same
+  // `sub ?? main` rule the character avatar above uses.
+  const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
   // when the VA is currently active, since the trailing label adds
