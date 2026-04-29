@@ -24,7 +24,7 @@ describe("<SectionLabel />", () => {
     // assert the property rather than the rendered text so a future
     // a11y change keeping the source casing intact is fine.
     expect(el.style.textTransform).toBe("uppercase");
-    expect(el.style.letterSpacing).toBe("0.08em");
+    expect(el.style.letterSpacing).toBe("0.06em");
     expect(el.style.fontWeight).toBe("700");
   });
 });

@@ -83,7 +83,10 @@
     "colEvents": "Events",
     "empty": "No artists match",
     "ungroupedSection": "Other artists",
-    "ungroupedNoCategorySection": "Uncategorized"
+    "ungroupedNoCategorySection": "Uncategorized",
+    "showOtherUnits": "Show other units ({count})",
+    "hideOtherUnits": "Hide other units",
+    "songCount": "🎵 {count}"
   },
   "Song": {
     "title": "Songs",

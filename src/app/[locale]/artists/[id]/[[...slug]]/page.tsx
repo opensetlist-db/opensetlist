@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt, formatDate } from "@/lib/utils";
 import {
   displayNameWithFallback,
-  displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
 import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
@@ -16,7 +15,6 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
-import { InitialAvatar } from "@/components/InitialAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   PerformanceGroup,
@@ -24,6 +22,10 @@ import {
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
 import { colors, radius, shadows } from "@/styles/tokens";
+import { BRAND_GRADIENT } from "@/lib/artistColor";
+import { UnitCard } from "@/components/artists/UnitCard";
+import { UnitsToggle } from "@/components/artists/UnitsToggle";
+import { MemberChip } from "@/components/artists/MemberChip";
 
 type Props = {
   params: Promise<{ locale: string; id: string }>;
@@ -172,11 +174,21 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artists-list-redesign pattern).
   const referenceNow = new Date();
 
-  const { main: artistMain, sub: artistSub } = displayOriginalName(
-    artist,
-    artist.translations,
-    locale,
-  );
+  // Sidebar H1: localized name BIG, original name SMALL (operator
+  // preference, 2026-04-28). Previously used `displayOriginalName`
+  // which put the original-language name as `main` — flipped here so
+  // `displayNameWithFallback("full")` (localized cascade) drives the
+  // primary heading and the JA/EN original drops below as a sub-line
+  // when it differs.
+  const localizedFullName =
+    displayNameWithFallback(artist, artist.translations, locale, "full") ||
+    t("unknown");
+  const originalSubName =
+    artist.originalLanguage !== locale &&
+    artist.originalName &&
+    artist.originalName !== localizedFullName
+      ? artist.originalName
+      : null;
   const bio = resolveLocalizedField(
     artist,
     artist.translations,
@@ -206,7 +218,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
 
   // Sub-unit list (units only — solos rendered separately if/when
   // we add a Songs tab). Empty for unit-type artists themselves.
-  const subUnits = artist.subArtists.filter((s) => s.type === "unit");
+  // Split by `isMainUnit` so the overview tab can default to showing
+  // only canonical units; non-main configurations sit behind a toggle
+  // (mockup-fidelity feedback, 2026-04-28).
+  const allSubUnits = artist.subArtists.filter((s) => s.type === "unit");
+  const mainSubUnits = allSubUnits.filter((s) => s.isMainUnit);
+  const otherSubUnits = allSubUnits.filter((s) => !s.isMainUnit);
+  const subUnits = allSubUnits;
 
   // Stats: total events + completed events across all eventSeries.
   // `getEventStatus()` resolves the displayed status from raw status
@@ -216,6 +234,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // `completed` per the 12h window in eventStatus.ts).
   let totalEvents = 0;
   let totalCompleted = 0;
+  const completedEventIds: bigint[] = [];
   for (const series of artist.eventSeries) {
     for (const event of series.events) {
       totalEvents += 1;
@@ -226,7 +245,32 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         ) === "completed"
       ) {
         totalCompleted += 1;
+        completedEventIds.push(BigInt(event.id));
       }
+    }
+  }
+
+  // Per-event setlist-item count for completed events. Used to render
+  // the trailing "🎵 N" badge on each row (mockup line 226-230).
+  // Counts SetlistItem rows that have at least one song attached
+  // (`songs: { some: {} }`) — covers both single-song slots and
+  // medley slots equally. Only completed events get the count;
+  // ongoing/upcoming have partial data and the mockup omits the
+  // badge for them too.
+  const songCountByEvent = new Map<string, number>();
+  if (completedEventIds.length > 0) {
+    const groups = await prisma.setlistItem.groupBy({
+      by: ["eventId"],
+      where: {
+        eventId: { in: completedEventIds },
+        isDeleted: false,
+        songs: { some: {} },
+      },
+      _count: { _all: true },
+    });
+    for (const g of groups) {
+      if (g.eventId == null) continue;
+      songCountByEvent.set(String(g.eventId), g._count._all);
     }
   }
 
@@ -259,11 +303,26 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         { status: event.status, startTime: event.startTime },
         referenceNow,
       );
+      const eventIdStr = String(event.id);
+      const songCount = songCountByEvent.get(eventIdStr);
+      const trailing =
+        status === "completed" && songCount !== undefined && songCount > 0 ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: colors.textMuted,
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t("songCount", { count: songCount })}
+          </span>
+        ) : null;
       eventViews.push({
         // serializeBigInt coerces every id to number at runtime; the
         // String() cast satisfies PerformanceEvent's id contract
         // without leaking the bigint type out of the JSON shape.
-        id: String(event.id),
+        id: eventIdStr,
         seriesId: Number(series.id),
         status,
         formattedDate: formatDate(event.date, locale),
@@ -271,6 +330,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           displayNameWithFallback(event, event.translations, locale) ||
           evT("unknownEvent"),
         href: `/${locale}/events/${event.id}/${event.slug}`,
+        trailing,
         // serializeBigInt also runs JSON.stringify, which converts
         // Date columns to ISO strings — so the runtime value is a
         // string here even though Prisma's type still says Date.
@@ -334,6 +394,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       formattedDate: e.formattedDate,
       name: e.name,
       href: e.href,
+      trailing: e.trailing,
     }));
 
   return (
@@ -343,11 +404,20 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         background: colors.bgPage,
       }}
     >
-      <div className="mx-auto" style={{ maxWidth: 1100, padding: "0 16px" }}>
+      <div
+        className="mx-auto px-4 lg:px-10"
+        style={{ maxWidth: 1100 }}
+      >
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
             { label: ct("backToHome"), href: `/${locale}` },
+            // Always include the Artists list link as the second crumb
+            // (operator feedback, 2026-04-28). Sub-units of a
+            // top-level artist still get their parent crumb between
+            // Artists and the leaf — so a sub-unit reads
+            // `Home > Artists > 蓮ノ空 > Cerise Bouquet`.
+            { label: ct("artists"), href: `/${locale}/artists` },
             ...(artist.parentArtist && parentName
               ? [
                   {
@@ -356,7 +426,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: artistMain || t("unknown") },
+            { label: localizedFullName },
           ]}
         />
 
@@ -379,18 +449,19 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                 {t(`type.${artist.type}`)}
               </span>
               <h1
+                className="lg:text-[17px]"
                 style={{
                   fontSize: 18,
                   fontWeight: 700,
                   color: colors.textPrimary,
                   lineHeight: 1.35,
                   marginTop: 10,
-                  marginBottom: artistSub ? 6 : 14,
+                  marginBottom: originalSubName ? 6 : 14,
                 }}
               >
-                {artistMain || t("unknown")}
+                {localizedFullName}
               </h1>
-              {artistSub && (
+              {originalSubName && (
                 <div
                   style={{
                     fontSize: 12,
@@ -398,7 +469,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     marginBottom: 14,
                   }}
                 >
-                  {artistSub}
+                  {originalSubName}
                 </div>
               )}
               {bio && (
@@ -482,88 +553,59 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     }}
                   >
                     <SectionLabel>{t("subUnits")}</SectionLabel>
-                    <div
-                      style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
-                    >
-                      {subUnits.map((unit) => {
+                    {(() => {
+                      // Pre-render each unit card to a ReactNode so
+                      // <UnitsToggle> (client) can compose the
+                      // main/other split without re-running the
+                      // server-side resolution. The cards themselves
+                      // are also client components (hover state) — the
+                      // ReactNode bag is the boundary.
+                      type Unit = (typeof allSubUnits)[number];
+                      const renderCard = (unit: Unit) => {
                         const unitName =
                           displayNameWithFallback(
                             unit,
                             unit.translations,
                             locale,
                           ) || t("unknown");
-                        const unitColor = unit.color ?? colors.textMuted;
-                        const unitMembers = unit.stageLinks.map((sl) => {
-                          const memberName =
+                        // Color fallback chain (mockup-fidelity, see
+                        // `raw/artist-color-handoff.md`):
+                        //   - solid color (text + hover border):
+                        //       unit.color → colors.primary
+                        //   - stripe background:
+                        //       unit.color → BRAND_GRADIENT
+                        const unitColor = unit.color ?? colors.primary;
+                        const stripeBg = unit.color ?? BRAND_GRADIENT;
+                        const members = unit.stageLinks.map(
+                          (sl) =>
                             displayNameWithFallback(
                               sl.stageIdentity,
                               sl.stageIdentity.translations,
                               locale,
-                            ) || t("unknownMember");
-                          return memberName;
-                        });
+                            ) || t("unknownMember"),
+                        );
                         return (
-                          <Link
+                          <UnitCard
                             key={unit.id}
                             href={`/${locale}/artists/${unit.id}/${unit.slug}`}
-                            style={{
-                              display: "block",
-                              textDecoration: "none",
-                              color: "inherit",
-                              border: `1.5px solid ${colors.border}`,
-                              borderRadius: 14,
-                              padding: "14px 16px",
-                              background: colors.bgCard,
-                              flex: "1 1 140px",
-                              minWidth: 0,
-                              transition: "border-color 0.12s ease",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: 4,
-                                height: 18,
-                                borderRadius: 2,
-                                background: unitColor,
-                                marginBottom: 10,
-                              }}
-                            />
-                            <div
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 700,
-                                color: unitColor,
-                                marginBottom: 6,
-                              }}
-                            >
-                              {unitName}
-                            </div>
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 4,
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              {unitMembers.map((m, i) => (
-                                <span
-                                  key={i}
-                                  style={{
-                                    fontSize: 11,
-                                    color: colors.textSecondary,
-                                    background: colors.bgSubtle,
-                                    borderRadius: radius.chip,
-                                    padding: "2px 7px",
-                                  }}
-                                >
-                                  {m}
-                                </span>
-                              ))}
-                            </div>
-                          </Link>
+                            unitName={unitName}
+                            unitColor={unitColor}
+                            stripeBg={stripeBg}
+                            members={members}
+                          />
                         );
-                      })}
-                    </div>
+                      };
+                      return (
+                        <UnitsToggle
+                          mainCards={mainSubUnits.map(renderCard)}
+                          otherCards={otherSubUnits.map(renderCard)}
+                          showLabel={t("showOtherUnits", {
+                            count: otherSubUnits.length,
+                          })}
+                          hideLabel={t("hideOtherUnits")}
+                        />
+                      );
+                    })()}
                   </section>
                 )}
 
@@ -588,6 +630,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         const owningUnit = memberToUnit.get(
                           sl.stageIdentity.id,
                         );
+                        // Color cascade: owning sub-unit's color
+                        // (members inherit their unit's brand) →
+                        // member's own SI color → muted gray. Same
+                        // chain as before; the hover treatment in
+                        // MemberChip is what activates the unit
+                        // identity on interaction.
                         const unitColor =
                           owningUnit?.color ??
                           sl.stageIdentity.color ??
@@ -606,55 +654,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             locale,
                           ) || t("unknownMember");
                         return (
-                          <Link
+                          <MemberChip
                             key={sl.id}
                             href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              background: colors.bgSubtle,
-                              border: `1px solid ${colors.borderLight}`,
-                              borderRadius: 12,
-                              padding: "8px 12px",
-                              flex: "1 1 140px",
-                              minWidth: 0,
-                              textDecoration: "none",
-                              color: "inherit",
-                              transition: "all 0.12s ease",
-                            }}
-                          >
-                            <InitialAvatar
-                              label={memberName}
-                              color={unitColor}
-                              size={32}
-                            />
-                            <div style={{ minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  color: colors.textPrimary,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {memberName}
-                              </div>
-                              {unitName && (
-                                <div
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    color: unitColor,
-                                  }}
-                                >
-                                  {unitName}
-                                </div>
-                              )}
-                            </div>
-                          </Link>
+                            memberName={memberName}
+                            unitName={unitName}
+                            unitColor={unitColor}
+                          />
                         );
                       })}
                     </div>
@@ -680,10 +686,10 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   >
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 13,
                         fontWeight: 700,
                         color: colors.textMuted,
-                        letterSpacing: "0.08em",
+                        letterSpacing: "0.06em",
                         textTransform: "uppercase",
                       }}
                     >
@@ -762,6 +768,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         >
                           {event.name}
                         </span>
+                        {event.trailing}
                         <span
                           aria-hidden="true"
                           style={{
@@ -795,10 +802,10 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                 >
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: 700,
                       color: colors.textMuted,
-                      letterSpacing: "0.08em",
+                      letterSpacing: "0.06em",
                       textTransform: "uppercase",
                     }}
                   >
