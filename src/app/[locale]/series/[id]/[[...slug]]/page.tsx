@@ -848,7 +848,6 @@ export default async function EventSeriesPage({
                 style={{
                   background: colors.bgCard,
                   borderRadius: radius.card,
-                  padding: "20px",
                   boxShadow: shadows.card,
                   overflow: "hidden",
                 }}
@@ -859,14 +858,23 @@ export default async function EventSeriesPage({
                       fontSize: 13,
                       color: colors.textMuted,
                       textAlign: "center",
-                      padding: "24px 0",
+                      padding: "24px 16px",
                     }}
                   >
                     {t("songsEmpty")}
                   </p>
                 ) : (
                   <>
-                    <ul style={{ paddingLeft: 0, listStyle: "none" }}>
+                    {/* Basis header — "완료 공연 기준 — N공연에서 등장한 곡".
+                        Wrapped in its own padding box so the label sits
+                        inset from the card edge while the row list below
+                        keeps full-width borders. */}
+                    <div style={{ padding: "16px 16px 0" }}>
+                      <SectionLabel noBorder>
+                        {t("songsBasisLabel", { count: stats.completed })}
+                      </SectionLabel>
+                    </div>
+                    <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
                       {visibleSongAppearances.map((row, i) => {
                         const titleDisplay = displayOriginalTitle(
                           row.song,
@@ -889,10 +897,10 @@ export default async function EventSeriesPage({
                               display: "flex",
                               alignItems: "center",
                               gap: 12,
-                              padding: "10px 4px",
+                              padding: "11px 16px",
                               borderBottom: isLast
                                 ? "none"
-                                : `1px solid ${colors.borderLight}`,
+                                : `1px solid ${colors.borderFaint}`,
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -916,7 +924,7 @@ export default async function EventSeriesPage({
                                   </span>
                                 )}
                               </div>
-                              {(titleDisplay.sub || unitName) && (
+                              {titleDisplay.sub && (
                                 <div
                                   style={{
                                     fontSize: 11,
@@ -924,36 +932,84 @@ export default async function EventSeriesPage({
                                     marginTop: 2,
                                   }}
                                 >
-                                  {[titleDisplay.sub, unitName]
-                                    .filter(Boolean)
-                                    .join(" · ")}
+                                  {titleDisplay.sub}
                                 </div>
                               )}
+                              {unitName && (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    color: colors.textSecondary,
+                                    background: colors.borderLight,
+                                    borderRadius: 10,
+                                    padding: "1px 7px",
+                                    display: "inline-block",
+                                    marginTop: 3,
+                                  }}
+                                >
+                                  {unitName}
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                flexShrink: 0,
+                                textAlign: "right",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 14,
+                                  fontWeight: 700,
+                                  color: colors.textPrimary,
+                                }}
+                              >
+                                {row.count}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: colors.textMuted,
+                                }}
+                              >
+                                {t("songAppearancesUnit", { count: row.count })}
+                              </div>
                             </div>
                             <span
+                              aria-hidden="true"
                               style={{
-                                fontSize: 11,
-                                color: colors.textMuted,
+                                fontSize: 13,
+                                color: colors.borderSubtle,
                                 flexShrink: 0,
                               }}
                             >
-                              {t("songAppearances", { count: row.count })}
+                              ›
                             </span>
                           </li>
                         );
                       })}
                     </ul>
-                    <p
+                    {/* Footer divider — top border separates the
+                        explanatory caption from the last row. Mockup
+                        styles the divider with the lighter borderLight
+                        token (vs. row borderFaint) so it reads as a
+                        section break, not a row separator. */}
+                    <div
                       style={{
-                        fontSize: 11,
-                        fontStyle: "italic",
-                        color: colors.textMuted,
+                        padding: "14px 16px",
+                        borderTop: `1px solid ${colors.borderLight}`,
                         textAlign: "center",
-                        marginTop: 16,
                       }}
                     >
-                      {t("songsFooter")}
-                    </p>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          color: colors.textMuted,
+                        }}
+                      >
+                        {t("songsFooter")}
+                      </span>
+                    </div>
                   </>
                 )}
               </section>

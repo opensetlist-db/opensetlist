@@ -255,6 +255,8 @@
     "statsUnitsValue": "{count}팀",
     "unitsLabel": "참여 유닛",
     "songAppearances": "{count}회 등장",
+    "songAppearancesUnit": "회 등장",
+    "songsBasisLabel": "완료 공연 기준 — {count}공연에서 등장한 곡",
     "eventCountInLeg": "{count}공연",
     "childSeriesLabel": "하위 시리즈",
     "unknownCity": "위치 미정"

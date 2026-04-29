@@ -255,6 +255,8 @@
     "statsUnitsValue": "{count, plural, one {# unit} other {# units}}",
     "unitsLabel": "Participating units",
     "songAppearances": "{count, plural, one {# appearance} other {# appearances}}",
+    "songAppearancesUnit": "{count, plural, one {appearance} other {appearances}}",
+    "songsBasisLabel": "{count, plural, one {Based on # completed performance} other {Based on # completed performances}}",
     "eventCountInLeg": "{count, plural, one {# event} other {# events}}",
     "childSeriesLabel": "Sub-series",
     "unknownCity": "Location TBA"
