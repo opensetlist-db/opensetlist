@@ -72,17 +72,24 @@ body {
 }
 
 /*
- * Subtle hover background for full-row clickable lists (artists list
- * card + table rows, future list pages). Reads `--bg-subtle` from the
- * `:root` block above so the hex lives in exactly one place. The
- * transition is on the base rule (not just `:hover`) so the fade
- * runs on both enter and leave; pairing both rules here keeps the
- * effect a single class consumers can apply without restating the
- * timing.
+ * Subtle hover/focus background for full-row clickable lists
+ * (artists list card + table rows, event list rows, performance
+ * group rows). Reads `--bg-subtle` from the `:root` block above so
+ * the hex lives in exactly one place. The transition is on the
+ * base rule (not just `:hover`) so the fade runs on both enter and
+ * leave; pairing both rules here keeps the effect a single class
+ * consumers can apply without restating the timing.
+ *
+ * `:focus-visible` is paired with `:hover` so keyboard users get
+ * the same row highlight as mouse users when they tab onto a row.
+ * Some consumers used to roll their own `useState` + onMouseEnter /
+ * onFocus handlers to achieve this; folding the focus rule in here
+ * lets them drop the bookkeeping entirely.
  */
 .row-hover-bg {
   transition: background 0.12s ease;
 }
-.row-hover-bg:hover {
+.row-hover-bg:hover,
+.row-hover-bg:focus-visible {
   background: var(--bg-subtle);
 }
