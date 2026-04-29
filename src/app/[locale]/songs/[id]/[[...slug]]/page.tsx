@@ -25,11 +25,20 @@ import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import {
   PerformanceGroup,
-  PERFORMANCE_ROW_GRID,
-  PERFORMANCE_ROW_INDENT_PX,
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+// Layout primitives import directly from the server-safe module — NOT
+// from `PerformanceGroup.tsx` (which carries `"use client"`). Crossing
+// the RSC boundary for plain values can resolve them to `undefined` at
+// SSR, which produces invalid CSS like `padding: 8px 16px 8px undefinedpx`
+// — silently rejected by the browser, dropping padding to 0 and
+// breaking the column-header strip's alignment with the row tracks.
+import {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+} from "@/components/performance-row-layout";
 import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -725,7 +734,7 @@ export default async function SongPage({ params, searchParams }: Props) {
                     className="hidden lg:grid"
                     style={{
                       gridTemplateColumns: PERFORMANCE_ROW_GRID,
-                      gap: 10,
+                      gap: PERFORMANCE_ROW_GAP_PX,
                       padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
                       background: colors.bgFaint,
                       borderBottom: `1px solid ${colors.border}`,

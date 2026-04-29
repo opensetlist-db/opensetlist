@@ -47,46 +47,17 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * to flip — not acceptable for a navigation-secondary control.
  */
 
-/**
- * Desktop grid template for an event row inside `<PerformanceGroup>`.
- * All five tracks are fixed (or `minmax(0, 1fr)` for name) so a
- * consumer's column-header strip rendered above the groups —
- * a separate grid with the same template — has identically-sized
- * column tracks. Without this, `auto`-sized trailing/chevron tracks
- * would size to per-grid content (header text vs. row chips), and
- * the header label "위치" would land at a different x-coordinate
- * than the row's trailing chips.
- *
- * Mobile rows use `auto auto` for trailing/chevron via a Tailwind
- * responsive class on the row (see below) — the column-header strip
- * is desktop-only (`hidden lg:grid` on consumer pages), so mobile
- * has no alignment requirement and `auto` saves horizontal space
- * for the wider chip combos that don't fit a 180px box on a 360px
- * viewport.
- */
-export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) 180px 16px";
-
-/**
- * Left padding of every event row, in pixels. The column-header strip
- * a consumer page renders above its `<PerformanceGroup>` list (e.g.
- * the song-page history tab) MUST use the same indent so the header
- * column tracks line up with the row column tracks. Exported as a
- * constant so the two values stay in sync — bumping the row indent
- * here propagates to every consumer header automatically.
- */
-export const PERFORMANCE_ROW_INDENT_PX = 36;
-
-/**
- * Grid column-gap of every event row, in pixels. Same alignment
- * concern as `PERFORMANCE_ROW_INDENT_PX`: a consumer's column-header
- * strip MUST use this exact value or the labels drift relative to
- * row content. Pinned to a literal `px` value — the row className
- * uses `gap-[10px]` (not Tailwind's `gap-2.5`) so the gap stays
- * absolute regardless of root font-size; consumers that don't load
- * Tailwind classes (inline `style={{}}` blocks) need a px number.
- */
-export const PERFORMANCE_ROW_GAP_PX = 10;
+// Layout constants live in a server-safe module so server-component
+// consumers (e.g. the song detail page's column-header strip) can
+// import them without the value resolving to `undefined` through the
+// RSC client-boundary. Re-exported here for backward compatibility
+// with existing call sites that import from `@/components/PerformanceGroup`.
+export {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+} from "./performance-row-layout";
+import { PERFORMANCE_ROW_INDENT_PX } from "./performance-row-layout";
 
 export interface PerformanceEvent {
   id: string | number;
