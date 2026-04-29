@@ -83,7 +83,10 @@
     "colEvents": "公演数",
     "empty": "該当するアーティストはいません",
     "ungroupedSection": "その他のアーティスト",
-    "ungroupedNoCategorySection": "未分類"
+    "ungroupedNoCategorySection": "未分類",
+    "showOtherUnits": "その他のユニットを表示 ({count})",
+    "hideOtherUnits": "その他のユニットを隠す",
+    "songCount": "🎵 {count}"
   },
   "Song": {
     "title": "楽曲",
