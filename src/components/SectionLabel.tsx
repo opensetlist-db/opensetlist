@@ -3,9 +3,10 @@ import { colors } from "@/styles/tokens";
 /*
  * Small uppercase section label with a bottom border. Used inside
  * info-card sections (subunits / members / 최근 공연) and impression
- * sections per shared-components handoff §6. Visual: 11px, weight 700,
- * `colors.textMuted`, letter-spacing 0.08em — distinct from a regular
- * <h2> (which is 16-20px and not all-caps).
+ * sections per shared-components handoff §6. Visual: 13px, weight 700,
+ * `colors.textMuted`, letter-spacing 0.06em — distinct from a regular
+ * <h2> (which is 16-20px and not all-caps). Sized per the artist-page
+ * mockup; other detail pages inherit the same scale.
  *
  * Renders a real <h2> for accessibility (the bottom border + uppercase
  * is purely visual — screen readers still get a section heading).
@@ -39,10 +40,10 @@ export function SectionLabel({ children, as = "h2", noBorder = false }: Props) {
         marginBottom: noBorder ? 8 : 12,
         marginLeft: 0,
         paddingBottom: noBorder ? 0 : 8,
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: 700,
         color: colors.textMuted,
-        letterSpacing: "0.08em",
+        letterSpacing: "0.06em",
         textTransform: "uppercase",
         borderBottom: noBorder ? "none" : `1px solid ${colors.borderLight}`,
         lineHeight: 1.4,

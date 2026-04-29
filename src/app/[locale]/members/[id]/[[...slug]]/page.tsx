@@ -174,11 +174,20 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // UTC-only rule + matches the artist-page pattern).
   const referenceNow = new Date();
 
-  const { main: characterMain, sub: characterSub } = displayOriginalName(
-    member,
-    member.translations,
-    locale,
-  );
+  // Member-page name display intentionally inverts the Song / Artist
+  // convention. `displayOriginalName` returns `main = originalName`
+  // (Japanese in the Hasunosora seed) and `sub = locale translation`,
+  // which makes the original-language name the prominent label —
+  // correct for canonical entities like songs/albums where the
+  // original is the canonical identity. Characters & personas are the
+  // opposite: a Korean viewer scans for "오사와 루리노", not "大沢瑠璃乃".
+  // So flip — locale translation as primary (big), original as
+  // secondary (small). Falls through to original-only when there's
+  // no distinct translation row (sub is null).
+  const { main: characterOriginal, sub: characterLocale } =
+    displayOriginalName(member, member.translations, locale);
+  const characterPrimary = characterLocale ?? characterOriginal;
+  const characterSecondary = characterLocale ? characterOriginal : null;
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape
@@ -244,17 +253,28 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // is already sorted desc by startDate in the query.
   const currentVa =
     member.voicedBy.find((v) => v.endDate === null) ?? member.voicedBy[0];
-  const vaDisplay = currentVa
+  // Same translation-as-primary swap as the character name above —
+  // VA names follow the convention for people, where the locale
+  // translation reads more naturally for the viewer than the
+  // original-language romaji/kanji string.
+  const vaRaw = currentVa
     ? displayOriginalName(
         currentVa.realPerson,
         currentVa.realPerson.translations,
         locale,
       )
     : null;
+  const vaPrimary = vaRaw ? (vaRaw.sub ?? vaRaw.main) : null;
+  const vaSecondary = vaRaw && vaRaw.sub ? vaRaw.main : null;
+  const vaOriginal = vaRaw?.main ?? null;
+  // Activity period: full range when ended, just the start date when
+  // still active (per user feedback — no `~ 현재` / `~ Present` suffix
+  // when the VA is currently active, since the trailing label adds
+  // visual noise without conveying new information).
   const vaPeriod = currentVa
-    ? `${formatDate(currentVa.startDate, locale)} ~ ${
-        currentVa.endDate ? formatDate(currentVa.endDate, locale) : t("present")
-      }`
+    ? currentVa.endDate
+      ? `${formatDate(currentVa.startDate, locale)} ~ ${formatDate(currentVa.endDate, locale)}`
+      : formatDate(currentVa.startDate, locale)
     : null;
 
   // Pre-translated status labels passed to <PerformanceGroup>; the
@@ -592,7 +612,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: characterMain || t("unknown") },
+            { label: characterPrimary || t("unknown") },
           ]}
         />
 
@@ -626,14 +646,18 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 }}
               >
                 <InitialAvatar
-                  label={characterMain || "?"}
+                  // Avatar initial keeps the original-language first
+                  // character — matches the mockup which intentionally
+                  // shows the canonical script (e.g. 大 for 大沢瑠璃乃)
+                  // regardless of the displayed name's language.
+                  label={characterOriginal || "?"}
                   color={memberColor}
                   size={72}
                 />
                 <h1
                   style={{
                     marginTop: 12,
-                    marginBottom: characterSub ? 3 : 10,
+                    marginBottom: characterSecondary ? 3 : 10,
                     fontSize: 18,
                     fontWeight: 700,
                     color: colors.textPrimary,
@@ -641,9 +665,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     lineHeight: 1.35,
                   }}
                 >
-                  {characterMain || t("unknown")}
+                  {characterPrimary || t("unknown")}
                 </h1>
-                {characterSub && (
+                {characterSecondary && (
                   <div
                     style={{
                       marginBottom: 10,
@@ -652,7 +676,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       textAlign: "center",
                     }}
                   >
-                    {characterSub}
+                    {characterSecondary}
                   </div>
                 )}
                 {primaryUnit && primaryUnitName && (
@@ -678,7 +702,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                   has no description column today — when one is added,
                   render a `<p>` block here above the VA section.) */}
               <div style={{ padding: "16px 20px" }}>
-                {currentVa && vaDisplay && (
+                {currentVa && vaPrimary && (
                   <div style={{ marginBottom: 14 }}>
                     <div
                       style={{
@@ -700,7 +724,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       }}
                     >
                       <InitialAvatar
-                        label={vaDisplay.main || "?"}
+                        // Original-language first character — matches
+                        // the character avatar's logic (mockup intent).
+                        label={vaOriginal || "?"}
                         color={memberColor}
                         size={36}
                       />
@@ -712,16 +738,16 @@ export default async function MemberPage({ params, searchParams }: Props) {
                             color: colors.textPrimary,
                           }}
                         >
-                          {vaDisplay.main}
+                          {vaPrimary}
                         </div>
-                        {vaDisplay.sub && (
+                        {vaSecondary && (
                           <div
                             style={{
                               fontSize: 11,
                               color: colors.textMuted,
                             }}
                           >
-                            {vaDisplay.sub}
+                            {vaSecondary}
                           </div>
                         )}
                         {vaPeriod && (

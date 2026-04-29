@@ -83,7 +83,10 @@
     "colEvents": "공연 수",
     "empty": "해당하는 아티스트가 없어요",
     "ungroupedSection": "기타 아티스트",
-    "ungroupedNoCategorySection": "분류 미정"
+    "ungroupedNoCategorySection": "분류 미정",
+    "showOtherUnits": "기타 유닛 보기 ({count})",
+    "hideOtherUnits": "기타 유닛 숨기기",
+    "songCount": "🎵 {count}"
   },
   "Song": {
     "title": "곡",
