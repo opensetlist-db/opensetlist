@@ -408,11 +408,23 @@ export default async function EventSeriesPage({
         songCountLabel: null,
       };
     });
+    // Roll-up: pick the most salient status across the leg's events.
+    // ongoing > upcoming > completed > cancelled. A leg with one
+    // completed Day.1 + one upcoming Day.2 reads as "upcoming" — the
+    // viewer cares about the next show, not the past one.
+    const statuses = preparedEvents.map((e) => e.status);
+    const legStatus: ResolvedEventStatus = statuses.includes("ongoing")
+      ? "ongoing"
+      : statuses.includes("upcoming")
+        ? "upcoming"
+        : statuses.includes("completed")
+          ? "completed"
+          : "cancelled";
     return {
       city: leg.city,
       venue: leg.venue,
       dateRangeLabel,
-      hasOngoing: leg.hasOngoing,
+      legStatus,
       events: preparedEvents,
     };
   });
