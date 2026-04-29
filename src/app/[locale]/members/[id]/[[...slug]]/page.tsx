@@ -3,7 +3,11 @@ import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  HISTORY_ROW_DATE_FORMAT,
+} from "@/lib/utils";
 import {
   displayNameWithFallback,
   displayOriginalName,
@@ -327,7 +331,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       // strings — runtime is `string` even though the type still says
       // Date. Wrap in String() before parseing.
       rawDateMs: new Date(String(event.date)).getTime(),
-      formattedDate: formatDate(event.date, locale),
+      formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),

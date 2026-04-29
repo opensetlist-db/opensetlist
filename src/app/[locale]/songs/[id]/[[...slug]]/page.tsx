@@ -7,6 +7,7 @@ import {
   serializeBigInt,
   pickLocaleTranslation,
   formatDate,
+  HISTORY_ROW_DATE_FORMAT,
 } from "@/lib/utils";
 import {
   displayNameWithFallback,
@@ -294,7 +295,7 @@ export default async function SongPage({ params, searchParams }: Props) {
       seriesId,
       seriesName,
       status,
-      formattedDate: formatDate(event.date, locale),
+      formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name: eventName,
       href: `/${locale}/events/${event.id}/${event.slug}`,
       rawDateMs: new Date(String(event.date)).getTime(),
