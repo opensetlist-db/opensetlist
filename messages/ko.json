@@ -64,6 +64,7 @@
     "recentEvents": "최근 공연",
     "viewAll": "전체 보기 ›",
     "historyHeader": "공연 이력 — {count}공연",
+    "standaloneEvents": "단독 공연",
     "filterAriaLabel": "카테고리 필터",
     "filterAll": "전체",
     "filterAnimeGame": "애니메이션/게임",

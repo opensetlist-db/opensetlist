@@ -123,7 +123,14 @@ async function getArtistEvents(artistId: bigint) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      eventSeries: { isDeleted: false },
+      // Series soft-delete filter is conditional: standalone events
+      // (eventSeriesId IS NULL) skip it. Without this NOT clause, an
+      // implicit `eventSeries: { isDeleted: false }` filter at the top
+      // level would have excluded ALL standalone events from the
+      // result regardless of which OR branch matched — sub-units that
+      // performed only at non-series-attached events were silently
+      // missing from totalEvents / recent / history.
+      NOT: { eventSeries: { isDeleted: true } },
       OR: [
         { eventSeries: { artistId } },
         {
@@ -144,9 +151,9 @@ async function getArtistEvents(artistId: bigint) {
   });
   // serializeBigInt narrows BigInt → number at runtime + JSON.stringify
   // coerces Date → string. The static type still references the raw
-  // Prisma row shape, so cast through `unknown`. Prisma's include also
-  // types `eventSeries` as nullable; the `where` filter above
-  // guarantees a non-null row at runtime, which the cast asserts.
+  // Prisma row shape, so cast through `unknown`. `eventSeries` is
+  // genuinely nullable now (standalone events) — the type below
+  // matches.
   return serializeBigInt(events) as unknown as ArtistEvent[];
 }
 
@@ -159,7 +166,11 @@ type ArtistEvent = {
   originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
-  eventSeriesId: number;
+  // Nullable — standalone events have no series. Sub-units that
+  // performed only at standalone events would have been excluded
+  // entirely without this; render-side bucketing surfaces them
+  // under a synthetic "Standalone events" group.
+  eventSeriesId: number | null;
   translations: Array<{
     locale: string;
     name: string;
@@ -175,7 +186,7 @@ type ArtistEvent = {
     originalName: string | null;
     originalShortName: string | null;
     originalLanguage: string;
-  };
+  } | null;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -378,22 +389,31 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // Doing it this way means the recent-3 list (Overview tab) and the
   // per-series collapsible groups (History tab) read from the same
   // source — no duplicated date-formatting / status-resolving logic.
+  //
+  // Standalone events (eventSeriesId IS NULL) collapse into one
+  // synthetic group keyed `"standalone"` — kept distinct from any
+  // numeric seriesId since real BigInt IDs serialize to numbers.
+  // The render branch below labels this group with
+  // `t("standaloneEvents")`.
+  const STANDALONE_KEY = "standalone";
   type EventView = PerformanceEvent & {
-    seriesId: number;
+    seriesKey: string;
     rawDateMs: number;
   };
   // First, dedupe series surfaced via `artistEvents`. Each event row
-  // carries its EventSeries, so a series is `seen` the first time
-  // any of its events shows up. Order matches the events query
-  // (date desc), so the first-event-seen-per-series order roughly
-  // matches recent-activity order — refined by the explicit sort
-  // below.
+  // carries its EventSeries (or null for standalone events), so a
+  // series is `seen` the first time any of its events shows up.
+  // Order matches the events query (date desc), so the first-event-
+  // seen-per-series order roughly matches recent-activity order —
+  // refined by the explicit sort below.
   const seriesById = new Map<
     string,
     ArtistEvent["eventSeries"]
   >();
   for (const ev of artistEvents) {
-    const key = String(ev.eventSeriesId);
+    const key = ev.eventSeriesId == null
+      ? STANDALONE_KEY
+      : String(ev.eventSeriesId);
     if (!seriesById.has(key)) seriesById.set(key, ev.eventSeries);
   }
 
@@ -423,7 +443,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       // String() cast satisfies PerformanceEvent's id contract
       // without leaking the bigint type out of the JSON shape.
       id: eventIdStr,
-      seriesId: Number(event.eventSeriesId),
+      seriesKey: event.eventSeriesId == null
+        ? STANDALONE_KEY
+        : String(event.eventSeriesId),
       status,
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name:
@@ -443,9 +465,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // ongoing event to the top; remainder by most-recent event date
   // desc.
   const seriesViews: PerformanceSeries[] = [...seriesById.entries()]
-    .map(([seriesIdStr, series]) => {
+    .map(([seriesKey, series]) => {
       const seriesEvents = eventViews.filter(
-        (ev) => ev.seriesId === Number(seriesIdStr),
+        (ev) => ev.seriesKey === seriesKey,
       );
       // Within a series, keep the operator-specified date-desc order.
       seriesEvents.sort((a, b) => b.rawDateMs - a.rawDateMs);
@@ -454,11 +476,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         (m, e) => (e.rawDateMs > m ? e.rawDateMs : m),
         0,
       );
+      // Standalone group (no series): label via i18n, use the
+      // synthetic key as the React key. PerformanceGroup doesn't
+      // know or care that this group is synthetic.
+      const isStandalone = series == null;
       return {
-        seriesId: String(series.id),
-        seriesShort:
-          displayNameWithFallback(series, series.translations, locale) ||
-          evT("unknownEvent"),
+        seriesId: isStandalone ? STANDALONE_KEY : String(series.id),
+        seriesShort: isStandalone
+          ? t("standaloneEvents")
+          : displayNameWithFallback(series, series.translations, locale) ||
+            evT("unknownEvent"),
         hasOngoing,
         events: seriesEvents,
         sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
