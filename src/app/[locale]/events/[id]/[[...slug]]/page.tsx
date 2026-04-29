@@ -499,12 +499,16 @@ export default async function EventPage({ params }: Props) {
       if (a.artist.type !== "unit") continue;
       const id = String(a.artist.id);
       if (unitsById.has(id)) continue;
+      // Full unit name on the sidebar card — operator preference: the
+      // sidebar has the room for the full title (`蓮ノ空女学院 …`)
+      // and the short name reads as too compressed for a label that
+      // also serves as the section header for its members sublist.
       const name =
         displayNameWithFallback(
           a.artist,
           a.artist.translations,
           locale,
-          "short",
+          "full",
         ) || aT("unknown");
       unitsById.set(id, {
         id,
@@ -563,12 +567,16 @@ export default async function EventPage({ params }: Props) {
         const members = memberSeen.get(unitId)!;
         if (members.has(p.stageIdentity.id)) continue;
         members.add(p.stageIdentity.id);
+        // Full member name to match the sidebar's full unit name —
+        // the members sublist uses ` · ` joins and ellipsis-clips
+        // when it overruns the column, so longer names degrade
+        // gracefully without breaking the row layout.
         u.members.push(
           displayNameWithFallback(
             p.stageIdentity,
             p.stageIdentity.translations,
             locale,
-            "short",
+            "full",
           ) || t("unknownPerformer"),
         );
       }
