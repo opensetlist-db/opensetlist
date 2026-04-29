@@ -17,9 +17,16 @@ import { colors } from "@/styles/tokens";
 interface Props {
   children: React.ReactNode;
   as?: "h2" | "h3" | "h4";
+  /**
+   * Drop the bottom border + paddingBottom and shrink the bottom margin
+   * to 8px. Use when the label sits inside a tighter section (e.g. the
+   * "참여 유닛" pill cloud, or the songs-tab "basis" header) where the
+   * mockup never shows a divider line under the label.
+   */
+  noBorder?: boolean;
 }
 
-export function SectionLabel({ children, as = "h2" }: Props) {
+export function SectionLabel({ children, as = "h2", noBorder = false }: Props) {
   const Tag = as;
   return (
     <Tag
@@ -30,15 +37,15 @@ export function SectionLabel({ children, as = "h2" }: Props) {
         // collapse the intentional 12px gap above the underline.
         marginTop: 0,
         marginRight: 0,
-        marginBottom: 12,
+        marginBottom: noBorder ? 8 : 12,
         marginLeft: 0,
-        paddingBottom: 8,
+        paddingBottom: noBorder ? 0 : 8,
         fontSize: 13,
         fontWeight: 700,
         color: colors.textMuted,
         letterSpacing: "0.06em",
         textTransform: "uppercase",
-        borderBottom: `1px solid ${colors.borderLight}`,
+        borderBottom: noBorder ? "none" : `1px solid ${colors.borderLight}`,
         lineHeight: 1.4,
       }}
     >

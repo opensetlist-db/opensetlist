@@ -185,15 +185,15 @@ describe("displayOriginalTitle", () => {
 });
 
 describe("displayOriginalName", () => {
-  it("shows sub when ja entity has different ko translation", () => {
+  it("translation-primary: ko viewer sees ko name as main, ja original as sub", () => {
     const result = displayOriginalName(
       { originalName: "蓮ノ空女学院スクールアイドルクラブ", originalLanguage: "ja" },
       [{ locale: "ko", name: "하스노소라 여학원 스쿨 아이돌 클럽" }],
       "ko"
     );
     expect(result).toEqual({
-      main: "蓮ノ空女学院スクールアイドルクラブ",
-      sub: "하스노소라 여학원 스쿨 아이돌 클럽",
+      main: "하스노소라 여학원 스쿨 아이돌 클럽",
+      sub: "蓮ノ空女学院スクールアイドルクラブ",
       shortName: null,
     });
   });
@@ -209,8 +209,8 @@ describe("displayOriginalName", () => {
       "ko"
     );
     expect(result).toEqual({
-      main: "蓮ノ空女学院スクールアイドルクラブ",
-      sub: "하스노소라 여학원 스쿨 아이돌 클럽",
+      main: "하스노소라 여학원 스쿨 아이돌 클럽",
+      sub: "蓮ノ空女学院スクールアイドルクラブ",
       shortName: "蓮ノ空",
     });
   });

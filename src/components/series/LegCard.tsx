@@ -33,8 +33,14 @@ export interface PreparedLeg {
   venue: string | null;
   /** Pre-formatted date range (e.g. "4월 25일 ~ 4월 26일" or single day). */
   dateRangeLabel: string;
-  /** Drives the LIVE badge on the header + the leg's sort priority. */
-  hasOngoing: boolean;
+  /**
+   * Roll-up status across the leg's events, picked by priority:
+   * ongoing → upcoming → completed → cancelled. Drives both the
+   * header badge and the city-icon background tint, so a leg that
+   * mixes a completed Day.1 with an upcoming Day.2 reads as
+   * "upcoming" (the salient state for the viewer).
+   */
+  legStatus: ResolvedEventStatus;
   events: PreparedLegEvent[];
 }
 
@@ -50,6 +56,19 @@ interface Props {
   unknownCityLabel: string;
 }
 
+/**
+ * Map a leg-level status to the icon-tile background tint. Mirrors
+ * the same red/green/neutral wash the mockup applies. `cancelled`
+ * collapses to the same neutral tile as completed — the per-row
+ * badge already conveys cancellation, and a fourth tile color
+ * would just dilute the visual hierarchy.
+ */
+function legIconBackground(status: ResolvedEventStatus): string {
+  if (status === "ongoing") return colors.liveBg;
+  if (status === "upcoming") return colors.upcomingBg;
+  return colors.bgSubtle;
+}
+
 export function LegCard({
   leg,
   statusLabels,
@@ -58,11 +77,6 @@ export function LegCard({
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const expanded = !collapsed;
-
-  // Derive a leg-level status pill — only show when the leg has an
-  // ongoing event (mockup pins this to legStatus="ongoing"; we don't
-  // bother surfacing upcoming/completed leg-level status since the
-  // per-row badges already convey it).
   const cityLabel = leg.city.length > 0 ? leg.city : unknownCityLabel;
 
   return (
@@ -86,8 +100,10 @@ export function LegCard({
           fontFamily: "inherit",
         }}
       >
-        {/* City icon. Background tint matches the leg's status — red
-            wash when ongoing, neutral otherwise. */}
+        {/* City icon. Background tint matches the leg's roll-up
+            status — red for ongoing, green for upcoming, neutral
+            for completed/cancelled. Mirrors the mockup's per-status
+            tile color. */}
         <div
           aria-hidden="true"
           className="flex flex-shrink-0 items-center justify-center text-lg"
@@ -95,7 +111,7 @@ export function LegCard({
             width: 36,
             height: 36,
             borderRadius: 10,
-            background: leg.hasOngoing ? colors.liveBg : colors.bgSubtle,
+            background: legIconBackground(leg.legStatus),
           }}
         >
           📍
@@ -109,10 +125,14 @@ export function LegCard({
             >
               {cityLabel}
             </span>
-            {leg.hasOngoing && (
+            {/* Always-present leg badge (ongoing / upcoming /
+                completed). Cancelled is the one status we suppress
+                here — a cancelled leg has nothing left to advertise,
+                and the per-row badges already mark each event. */}
+            {leg.legStatus !== "cancelled" && (
               <StatusBadge
-                status="ongoing"
-                label={statusLabels.ongoing}
+                status={leg.legStatus}
+                label={statusLabels[leg.legStatus]}
                 size="sm"
               />
             )}

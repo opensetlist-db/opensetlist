@@ -24,13 +24,23 @@ interface NameDisplay {
  * parent-level originalName/originalShortName/originalLanguage
  * (Artist, Group, EventSeries, Event, StageIdentity, RealPerson).
  *
- * main      = parent originalName, always shown
- * sub       = locale-specific translation.name (only when displayLocale != originalLanguage AND the names differ)
- * shortName = strict locale shortName, falling back to parent originalShortName
+ * Translation-primary: the viewer's locale name is the main label,
+ * the original-language name is the secondary `sub` line. Song /
+ * album titles stay original-primary via `displayOriginalTitle`
+ * (artwork identity is the original title); identity names of
+ * people / groups / events / series flip here so a Korean viewer
+ * sees the Korean rendering on top of a Japanese tour.
  *
- * Strict locale lookup — no ko/en fallback. A missing locale row falls
- * through to the parent originals, so a viewer never sees a wrong-locale
- * value bleed in.
+ * main      = locale translation when present and locale differs
+ *             from originalLanguage; otherwise the original
+ * sub       = original-language name (only when displayLocale !=
+ *             originalLanguage AND the two names differ)
+ * shortName = strict locale shortName, falling back to parent
+ *             originalShortName
+ *
+ * Strict locale lookup — no ko/en fallback. A missing locale row
+ * falls through to the original, so a viewer never sees a
+ * wrong-locale value bleed in.
  */
 export function displayOriginalName<
   T extends { locale: string; name: string; shortName?: string | null },
@@ -47,12 +57,11 @@ export function displayOriginalName<
     translations.find((t) => t.locale === displayLocale) ?? null;
   const originalTranslation =
     translations.find((t) => t.locale === item.originalLanguage) ?? null;
-  // During PR A's nullable transition: if `originalName` is missing, prefer
-  // the row in the entity's declared `originalLanguage` (strict — never an
-  // arbitrary translations[0]), then the viewer's locale, then "". PR B
-  // flips `originalName` to NOT NULL so this fallback becomes dead code,
-  // but it keeps headers from rendering blank in the meantime.
-  const main =
+  // Resolve the original-language string. During PR A's nullable
+  // transition `originalName` may be missing — fall through to the
+  // row in the entity's declared `originalLanguage` (strict — never
+  // an arbitrary translations[0]), then the viewer's locale, then "".
+  const original =
     item.originalName ??
     originalTranslation?.name ??
     translation?.name ??
@@ -60,16 +69,24 @@ export function displayOriginalName<
   const shortName =
     translation?.shortName || item.originalShortName || null;
 
+  // Same locale as origin: nothing to flip — original *is* the
+  // viewer's language.
   if (item.originalLanguage === displayLocale) {
-    return { main, sub: null, shortName };
+    return { main: original, sub: null, shortName };
   }
 
+  // No translation for the viewer's locale (or it matches the
+  // original byte-for-byte): fall back to original-only display, no
+  // sub. Never bleeds a non-matching locale into either slot.
   const localeName = translation?.name ?? null;
-  if (!localeName || localeName === main) {
-    return { main, sub: null, shortName };
+  if (!localeName || localeName === original) {
+    return { main: original, sub: null, shortName };
   }
 
-  return { main, sub: localeName, shortName };
+  // Cross-locale + distinct translation: viewer's language is the
+  // headline; original-language name reads as the parenthetical
+  // below.
+  return { main: localeName, sub: original, shortName };
 }
 
 /**

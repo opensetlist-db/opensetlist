@@ -258,6 +258,8 @@
     "statsUnitsValue": "{count}チーム",
     "unitsLabel": "参加ユニット",
     "songAppearances": "{count}回登場",
+    "songAppearancesUnit": "回登場",
+    "songsBasisLabel": "完了公演基準 — {count}公演で登場した楽曲",
     "eventCountInLeg": "{count}公演",
     "childSeriesLabel": "サブシリーズ",
     "unknownCity": "場所未定"
