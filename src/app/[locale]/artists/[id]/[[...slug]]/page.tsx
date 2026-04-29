@@ -548,7 +548,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
-            { label: ct("backToHome"), href: `/${locale}` },
+            { label: ct("home"), href: `/${locale}` },
             // Always include the Artists list link as the second crumb
             // (operator feedback, 2026-04-28). Sub-units of a
             // top-level artist still get their parent crumb between

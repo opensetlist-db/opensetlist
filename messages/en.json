@@ -16,6 +16,7 @@
   "Common": {
     "notFound": "Page not found.",
     "backToHome": "Back to Home",
+    "home": "Home",
     "noData": "No data available.",
     "tabsAriaLabel": "Tabs",
     "event": "Event",

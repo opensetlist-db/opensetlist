@@ -692,7 +692,7 @@ export default async function EventPage({ params }: Props) {
   // every other detail page's breadcrumb. Hrefs are fully
   // locale-prefixed since `Breadcrumb` uses `next/link`.
   const breadcrumbItems: BreadcrumbItem[] = [
-    { label: ct("backToHome"), href: `/${locale}` },
+    { label: ct("home"), href: `/${locale}` },
     ...(event.eventSeries && seriesShortName
       ? [
           {
@@ -731,7 +731,17 @@ export default async function EventPage({ params }: Props) {
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[72px]">
           <EventHeader
             status={resolvedStatus}
-            statusLabel={t(`status.${resolvedStatus}`)}
+            // Match the rest of the codebase's badge convention: `LIVE`
+            // for ongoing events (home, event list, artist/member/series
+            // detail all use t("live")), localized status text for
+            // upcoming/completed/cancelled. Without this, the same
+            // ongoing event reads as "LIVE" in the event list but
+            // "진행 중" / "Ongoing" / "進行中" on its own detail page.
+            statusLabel={
+              resolvedStatus === "ongoing"
+                ? t("live")
+                : t(`status.${resolvedStatus}`)
+            }
             date={event.date}
             startTime={event.startTime}
             locale={locale}
