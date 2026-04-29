@@ -24,6 +24,7 @@ import { BRAND_GRADIENT } from "@/lib/artistColor";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
+import { SectionLabel } from "@/components/SectionLabel";
 import {
   PerformanceGroup,
   type PerformanceSeries,
@@ -713,17 +714,9 @@ export default async function SongPage({ params, searchParams }: Props) {
                     borderBottom: `1px solid ${colors.borderLight}`,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: colors.textMuted,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                    }}
-                  >
+                  <SectionLabel noBorder style={{ marginBottom: 0 }}>
                     {t("recentPerformances")}
-                  </span>
+                  </SectionLabel>
                 </div>
                 {/* Desktop column-header strip — uses the exact same
                     grid template as the row beneath, so the header

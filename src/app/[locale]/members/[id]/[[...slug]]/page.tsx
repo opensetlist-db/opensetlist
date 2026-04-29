@@ -848,17 +848,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       borderBottom: `1px solid ${colors.borderLight}`,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: colors.textMuted,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                      }}
-                    >
+                    <SectionLabel noBorder style={{ marginBottom: 0 }}>
                       {t("topSongs")}
-                    </span>
+                    </SectionLabel>
                     {totalSongs > songsTop3.length && (
                       <Link
                         href={`/${locale}/members/${id}/${member.slug}?tab=songs`}
@@ -916,17 +908,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       borderBottom: `1px solid ${colors.borderLight}`,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: colors.textMuted,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                      }}
-                    >
+                    <SectionLabel noBorder style={{ marginBottom: 0 }}>
                       {t("recentEvents")}
-                    </span>
+                    </SectionLabel>
                     {totalEvents > recentEvents.length && (
                       <Link
                         href={`/${locale}/members/${id}/${member.slug}?tab=history`}

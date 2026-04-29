@@ -12,7 +12,11 @@ import { Link as IntlLink } from "@/i18n/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  HISTORY_ROW_DATE_FORMAT,
+} from "@/lib/utils";
 import {
   displayNameWithFallback,
   displayOriginalName,
@@ -53,12 +57,6 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   const v = Array.isArray(value) ? value[0] : value;
   return TABS.includes(v as TabKey) ? (v as TabKey) : "schedule";
 }
-
-const SHORT_DATE_FORMAT: Intl.DateTimeFormatOptions = {
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-};
 
 async function getEventSeries(id: bigint) {
   const series = await prisma.eventSeries.findFirst({
@@ -379,7 +377,7 @@ export default async function EventSeriesPage({
       leg.dateRange.start,
       leg.dateRange.end,
       locale,
-      SHORT_DATE_FORMAT,
+      HISTORY_ROW_DATE_FORMAT,
     );
     // Renamed to avoid shadowing the outer `events` (post-serialize
     // tour-level array) — accidentally referencing the outer name
@@ -397,7 +395,7 @@ export default async function EventSeriesPage({
         id: String(ev.id),
         href: eventHref(locale, ev.id, evName),
         status,
-        formattedDate: formatDate(ev.date ?? ev.startTime, locale, SHORT_DATE_FORMAT),
+        formattedDate: formatDate(ev.date ?? ev.startTime, locale, HISTORY_ROW_DATE_FORMAT),
         name: evName,
         // Song count rendered only on completed events per task §4-3
         // / mockup. Unfortunately we don't have per-event setlist counts
@@ -902,8 +900,11 @@ export default async function EventSeriesPage({
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 12,
-                              padding: "11px 16px",
+                              // 10px gap + 10px/20px padding matches the
+                              // artist + member list row spacing — same
+                              // bullet-row-inside-a-card visual shape.
+                              gap: 10,
+                              padding: "10px 20px",
                               borderBottom: isLast
                                 ? "none"
                                 : `1px solid ${colors.borderFaint}`,
