@@ -4,6 +4,7 @@ import { displayNameWithFallback } from "@/lib/display";
 import { colors, radius } from "@/styles/tokens";
 import ArtistAvatar from "@/components/ArtistAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { StatsSubLabel } from "@/components/StatsSubLabel";
 import type { ArtistRowData } from "@/lib/artists";
 
 /*
@@ -170,16 +171,7 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
             >
               {artist.totalEvents}
             </div>
-            <div
-              style={{
-                fontSize: 10,
-                color: colors.textMuted,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-              }}
-            >
-              {t("eventsLabel")}
-            </div>
+            <StatsSubLabel>{t("eventsLabel")}</StatsSubLabel>
           </div>
           <span
             aria-hidden="true"
