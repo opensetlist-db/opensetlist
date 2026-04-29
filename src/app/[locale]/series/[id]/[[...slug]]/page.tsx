@@ -902,8 +902,11 @@ export default async function EventSeriesPage({
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 12,
-                              padding: "11px 16px",
+                              // 10px gap + 10px/20px padding matches the
+                              // artist + member list row spacing — same
+                              // bullet-row-inside-a-card visual shape.
+                              gap: 10,
+                              padding: "10px 20px",
                               borderBottom: isLast
                                 ? "none"
                                 : `1px solid ${colors.borderFaint}`,
