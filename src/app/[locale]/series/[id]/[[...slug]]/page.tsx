@@ -460,7 +460,7 @@ export default async function EventSeriesPage({
         <Breadcrumb
           ariaLabel={ct("breadcrumb")}
           items={[
-            { label: ct("backToHome"), href: `/${locale}` },
+            { label: ct("home"), href: `/${locale}` },
             ...(series.parentSeries
               ? [
                   {

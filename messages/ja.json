@@ -16,6 +16,7 @@
   "Common": {
     "notFound": "ページが見つかりません。",
     "backToHome": "ホームに戻る",
+    "home": "ホーム",
     "noData": "データがありません。",
     "tabsAriaLabel": "タブ",
     "event": "イベント",
