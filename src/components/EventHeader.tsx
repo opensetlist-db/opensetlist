@@ -142,7 +142,11 @@ export function EventHeader({
       <div
         aria-hidden="true"
         style={{
-          height: 6,
+          // 5px matches the shared <ColorStripe> component used on
+          // artist / song / series sidebar info cards. Side-by-side
+          // (e.g. clicking artist → event link), the strip height
+          // shouldn't shift by 1px between detail pages.
+          height: 5,
           background: `linear-gradient(90deg, ${colors.primaryLight}, ${colors.primary}, ${colors.variant})`,
         }}
       />
