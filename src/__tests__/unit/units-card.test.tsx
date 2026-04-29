@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ReactNode, CSSProperties } from "react";
 import { render, screen } from "@testing-library/react";
 import { UnitsCard } from "@/components/event/UnitsCard";
+import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
 vi.mock("next-intl", () => ({
@@ -64,14 +65,18 @@ describe("UnitsCard", () => {
     expect(link.style.color).toBe(hexToRgbString("#e91e8c"));
   });
 
-  it("falls back to UNIT_COLOR_FALLBACK (= colors.primary) when unit.color is null", () => {
-    // `resolveUnitColor` substitutes `colors.primary` (#0277BD)
-    // when the unit has no `Artist.color` set yet — so the no-color
-    // unit's name and bar both render with the brand-default tint
-    // rather than a neutral gray.
+  it("falls back to a deterministic palette color when unit.color is null", () => {
+    // `resolveUnitColor` substitutes a palette pick keyed on the
+    // unit's slug when `Artist.color` is null — so the no-color unit
+    // gets a distinct hue rather than colliding with every other
+    // color-pending unit on the same page. Test asserts the
+    // rendered color matches the resolver's output for the same
+    // input shape (slug + null color), which decouples the test
+    // from any specific palette ordering / hash output.
+    const expected = resolveUnitColor({ slug: "dollchestra", color: null });
     render(<UnitsCard locale="ko" units={[sample[1]]} />);
     const link = screen.getByText("DOLLCHESTRA");
-    expect(link.style.color).toBe(hexToRgbString("#0277BD"));
+    expect(link.style.color).toBe(hexToRgbString(expected));
   });
 
   it("renders the joined members sublist when members exist", () => {

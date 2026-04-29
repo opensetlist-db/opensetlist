@@ -469,8 +469,9 @@ export default async function EventPage({ params }: Props) {
   //
   // 1. Walk `setlistItems[].artists` once to build the unique unit
   //    list (deduped by `Artist.id`, type === "unit" only, first-
-  //    seen order preserved). Each unit's color is resolved here:
-  //    `Artist.color` if set, else `UNIT_COLOR_FALLBACK` — the same
+  //    seen order preserved). Each unit's color is resolved here
+  //    via `resolveUnitColor`: `Artist.color` if set, else a
+  //    deterministic palette pick keyed on the unit's slug — same
   //    rule applies to both the Units card's color bar and the
   //    Performers card's pill tint, so resolving once keeps them
   //    in lockstep.
@@ -485,10 +486,11 @@ export default async function EventPage({ params }: Props) {
   // 3. Walk `setlistItems[].performers` once more to build the
   //    Performers card list — each character's pill tint is the
   //    color of their *primary* unit (first matching active link
-  //    against the unit map). Falls back to `UNIT_COLOR_FALLBACK`
-  //    if no unit link resolves at all.
+  //    against the unit map). Falls back via `resolveUnitColor`
+  //    when no unit link resolves at all.
   type SidebarUnit = UnitsCardItem & {
-    /** Resolved color (`Artist.color` or `UNIT_COLOR_FALLBACK`). Always set. */
+    /** Resolved color via `resolveUnitColor` (Artist.color → palette
+     *  pick on slug → last-resort `colors.primary`). Always set. */
     resolvedColor: string;
   };
 

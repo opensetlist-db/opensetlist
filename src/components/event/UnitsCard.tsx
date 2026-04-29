@@ -74,10 +74,11 @@ export function UnitsCard({ locale, units }: Props) {
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         {units.map((unit) => {
           // Resolve once per row — `resolveUnitColor` returns the
-          // unit's `Artist.color` when set, else the brand fallback
-          // (`UNIT_COLOR_FALLBACK = colors.primary`). Same rule that
-          // tints the Performers card pills, so a "no-color" unit
-          // and its members render with one consistent accent.
+          // unit's `Artist.color` when set, else a deterministic
+          // pick from `unitFallbackPalette` keyed on the slug (so
+          // multiple color-pending units in the sidebar render with
+          // distinguishable hues, and the same unit's color matches
+          // its setlist-row pill and its artist-page card).
           const accent = resolveUnitColor(unit);
           return (
             <li

@@ -18,24 +18,26 @@ import { colors, radius } from "@/styles/tokens";
  * color — a dynamic-class Tailwind variant would still pin to a
  * fixed palette, so a state-driven inline style is the cleanest fit.
  *
- * Color fallback chain (matches `<ArtistAvatar>`):
- *   - `stripeBg`: solid `unit.color` OR `BRAND_GRADIENT`
- *   - `unitColor` (text + hover border): solid `unit.color` OR
- *     `colors.primary`
- * The page resolves both before passing them in so the chain stays
- * in one place per `raw/artist-color-handoff.md`.
+ * Color fallback chain: caller resolves via `resolveUnitColor(unit)`
+ * which returns `Artist.color` if set, else a deterministic pick
+ * from `unitFallbackPalette` keyed on the unit's slug. The same
+ * resolved color drives both the 4×18 left-stripe and the
+ * text/hover-border, so multiple color-pending sub-units on the
+ * same artist page render with distinguishable hues — and the same
+ * unit's color matches its event-page setlist-row pill since both
+ * surfaces consume the same resolver.
  */
 
 interface Props {
   href: string;
   unitName: string;
   /** Solid color used for the unit name text and the hover-state
-   *  border. Pass `colors.primary` as fallback when `unit.color`
-   *  is null. */
+   *  border. Always set — caller resolves via `resolveUnitColor`. */
   unitColor: string;
-  /** Background of the 4×18 left-stripe. Can be a solid hex (when
-   *  `unit.color` is set) or a gradient string (BRAND_GRADIENT
-   *  fallback when null). */
+  /** Background of the 4×18 left-stripe. Caller may pass the same
+   *  resolved color as `unitColor` (most consumers do); a different
+   *  value is allowed if a future call site wants a distinct stripe
+   *  treatment without forking the prop shape. */
   stripeBg: string;
   members: string[];
 }

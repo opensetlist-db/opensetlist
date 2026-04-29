@@ -11,9 +11,10 @@ export interface PerformersCardItem {
   /**
    * Tint color for this character's pill — the resolved color of
    * their primary unit (caller passes `resolveUnitColor(unit)`,
-   * which substitutes `UNIT_COLOR_FALLBACK = colors.primary` when
-   * the unit's own `Artist.color` is null). Always set so every
-   * pill renders with a visible accent.
+   * which substitutes a deterministic palette pick keyed on the
+   * unit's slug when `Artist.color` is null, so multiple
+   * color-pending units render with distinguishable hues). Always
+   * set so every pill renders with a visible accent.
    */
   color: string;
 }
@@ -28,8 +29,8 @@ interface Props {
  * `event-page-desktop-mockup-v2.jsx:584-610`. Each pill is a small
  * colored dot + character name, tinted by the character's primary
  * unit color — caller resolves via `resolveUnitColor(primaryUnit)`,
- * which substitutes `UNIT_COLOR_FALLBACK` (`colors.primary`) when
- * the unit's own `Artist.color` is null. Personal `StageIdentity.color`
+ * which substitutes a deterministic palette pick (keyed on the
+ * unit's slug) when `Artist.color` is null. Personal `StageIdentity.color`
  * is intentionally NOT used: operator wants the lineup to read as
  * "members of these units" (one consistent palette per unit) rather
  * than "individual character palette". Mockup uses `${color}12`
@@ -75,7 +76,7 @@ export function PerformersCard({ performers }: Props) {
             key={p.id}
             // Pill bg uses the unit color at ~7% alpha (`#RRGGBB12`)
             // per the desktop mockup; dot + text use it at full
-            // opacity. `color` is always set (`UNIT_COLOR_FALLBACK`
+            // opacity. `color` is always set (`resolveUnitColor`
             // applied upstream), so no null branch.
             style={{
               display: "flex",
