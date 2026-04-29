@@ -74,7 +74,7 @@ NOT applied to: Junction tables, Translation tables
 All fixed-value string fields use Prisma enums (PostgreSQL enum types):
 ```
 GroupType          franchise | label | agency | series
-GroupCategory      anime | kpop | jpop | cpop | game
+GroupCategory      animegame | kpop | jpop | cpop | others
 ArtistType         solo | group | unit
 StageIdentityType  character | persona
 EventSeriesType    concert_tour | standalone | festival | fan_meeting
