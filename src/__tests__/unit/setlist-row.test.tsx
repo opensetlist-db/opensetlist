@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SetlistRow } from "@/components/SetlistRow";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
+import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
 vi.mock("next-intl", () => ({
@@ -233,7 +234,7 @@ describe("SetlistRow", () => {
     expect(badge.style.backgroundColor).not.toBe("");
   });
 
-  it("falls back to default zinc badge when Artist.color is null", () => {
+  it("falls back to a deterministic palette color when Artist.color is null", () => {
     const item = makeItem({
       stageType: "unit",
       artists: [
@@ -260,11 +261,20 @@ describe("SetlistRow", () => {
       />,
     );
     const badge = screen.getByText("Cerise Bouquet");
-    // Brand-tinted fallback when artist.color is null (operator hasn't
-    // backfilled). primaryBg = #e8f4fd; primary = #0277BD. Reads as
-    // "unit pending color" rather than zinc-gray "no unit".
-    expect(badge.style.backgroundColor).toBe(hexToRgbString("#e8f4fd"));
-    expect(badge.style.color).toBe(hexToRgbString("#0277BD"));
+    // `resolveUnitColor` substitutes a palette pick keyed on the
+    // unit's slug when `Artist.color` is null — multiple
+    // color-pending units render with distinguishable hues instead
+    // of all collapsing to brand blue. Test asserts the rendered
+    // text color matches the resolver's output (decoupled from the
+    // specific palette index). Background is the same color at ~9%
+    // alpha (`${color}18`), normalized inconsistently by jsdom, so
+    // we only assert it's non-empty (not the old zinc-fallback path).
+    const expected = resolveUnitColor({
+      slug: "cerise-bouquet",
+      color: null,
+    });
+    expect(badge.style.color).toBe(hexToRgbString(expected));
+    expect(badge.style.backgroundColor).not.toBe("");
   });
 
   it("uses primary color for the song link (sourced from tokens)", () => {

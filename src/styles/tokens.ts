@@ -99,6 +99,48 @@ export const colors = {
   variantBg: "#F3E5F5",
 } as const;
 
+/*
+ * Fallback palette for unit-type artists whose `Artist.color` hasn't
+ * been backfilled yet. Picked to read as distinct hues at small pill
+ * sizes while staying out of the semantic color territory:
+ *   - no pure red (collides with `live`), green (`upcoming`), or
+ *     `colors.primary` blue
+ *   - mid saturation — readable both as a background tint at ~12%
+ *     alpha (`${color}18`) and as foreground text at full opacity
+ *   - 17 entries — empirically the smallest palette size at which
+ *     the FNV-1a + Murmur3-fmix hash in
+ *     `src/lib/artistColor.ts#hashUnitSlug` distributes the nine
+ *     Hasunosora sub-unit slugs onto distinct buckets. Smaller
+ *     palettes (10, 12, 16) collapse 2–4 pairs because the hash's
+ *     mod-N output isn't uniform on short ASCII slugs. Bigger
+ *     palettes are fine but waste curated entries.
+ *
+ * Indexed by a stable hash of the unit's slug (see
+ * `src/lib/artistColor.ts#resolveUnitColor`). DO NOT reorder
+ * existing entries — order changes shift every unit's auto-color
+ * until operators backfill explicit values, which would look like a
+ * surprise re-skin to anyone watching.
+ */
+export const unitFallbackPalette = [
+  "#E91E8C", // 0 rose
+  "#F57C00", // 1 orange
+  "#7B1FA2", // 2 royal purple
+  "#00897B", // 3 teal
+  "#FBC02D", // 4 amber gold
+  "#3949AB", // 5 indigo
+  "#C2185B", // 6 magenta
+  "#5D4037", // 7 warm brown
+  "#827717", // 8 olive
+  "#00ACC1", // 9 cyan
+  "#FF6F00", // 10 deep orange
+  "#512DA8", // 11 deep purple
+  "#006064", // 12 deep teal
+  "#AD1457", // 13 deep pink
+  "#9E9D24", // 14 lime-olive
+  "#BF360C", // 15 rust
+  "#455A64", // 16 slate
+] as const;
+
 export const shadows = {
   card: "0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(2,119,189,0.06)",
   nav: "0 1px 3px rgba(0,0,0,0.04)",

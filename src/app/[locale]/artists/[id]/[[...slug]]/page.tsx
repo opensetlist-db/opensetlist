@@ -23,7 +23,7 @@ import {
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
 import { colors, radius, shadows } from "@/styles/tokens";
-import { BRAND_GRADIENT } from "@/lib/artistColor";
+import { resolveUnitColor } from "@/lib/artistColor";
 import { UnitCard } from "@/components/artists/UnitCard";
 import { UnitsToggle } from "@/components/artists/UnitsToggle";
 import { MemberChip } from "@/components/artists/MemberChip";
@@ -405,14 +405,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   const renderUnitCard = (unit: SubUnit) => {
     const unitName =
       displayNameWithFallback(unit, unit.translations, locale) || t("unknown");
-    // Color fallback chain (mockup-fidelity, see
-    // `raw/artist-color-handoff.md`):
-    //   - solid color (text + hover/focus border):
-    //       unit.color → colors.primary
-    //   - stripe background:
-    //       unit.color → BRAND_GRADIENT
-    const unitColor = unit.color ?? colors.primary;
-    const stripeBg = unit.color ?? BRAND_GRADIENT;
+    // Color: `Artist.color` if set, else a deterministic pick from
+    // `unitFallbackPalette` keyed on `unit.slug` (so multiple
+    // color-pending sub-units render with distinguishable hues
+    // instead of all collapsing to brand blue). One resolved color
+    // drives both the text/hover-border and the 4×18 left stripe —
+    // dropping the prior `BRAND_GRADIENT` two-stop variant since at
+    // 4×18 a solid hue reads identically while keeping the resolver
+    // surface (one input, one output) simple.
+    const unitColor = resolveUnitColor(unit);
+    const stripeBg = unitColor;
     const members = unit.stageLinks.map(
       (sl) =>
         displayNameWithFallback(

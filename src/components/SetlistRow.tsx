@@ -11,6 +11,7 @@ import { ReactionButtons } from "@/components/ReactionButtons";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
+import { resolveUnitColor } from "@/lib/artistColor";
 import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
@@ -278,14 +279,20 @@ function UnitBadge({
 }) {
   // Mockup `event-page-desktop-mockup-v2.jsx:204-212`: bg uses an
   // 8-digit hex with 18 alpha (~9%); text uses the unit color at full
-  // opacity. When the operator hasn't backfilled the unit's color yet,
-  // fall back to a brand-tinted pill (`primaryBg` / `primary`) instead
-  // of zinc gray — matches the active reaction button's visual so the
-  // user reads it as "unit pending color" rather than a different
-  // category of badge.
-  const styled = artistColor
-    ? { backgroundColor: `${artistColor}18`, color: artistColor }
-    : { backgroundColor: colors.primaryBg, color: colors.primary };
+  // opacity. When the operator hasn't backfilled `Artist.color`,
+  // `resolveUnitColor` substitutes a deterministic palette pick keyed
+  // on the slug — multiple color-pending units in the same setlist
+  // render with distinguishable hues instead of all collapsing to
+  // brand blue (and also matching the unit chip color on the artist
+  // detail page, since that surface uses the same resolver).
+  const resolved = resolveUnitColor({
+    slug: artistSlug,
+    color: artistColor,
+  });
+  const styled = {
+    backgroundColor: `${resolved}18`,
+    color: resolved,
+  };
   return (
     <Link
       href={`/${locale}/artists/${artistId}/${artistSlug}`}
