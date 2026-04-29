@@ -82,12 +82,16 @@ export function SetlistRow({
     item.stageType !== "full_group" && item.artists?.[0]
       ? item.artists[0]
       : null;
+  // Full unit name on setlist rows — operator preference. UnitBadge
+  // already constrains horizontal width via the row's grid column,
+  // so a longer label clips with ellipsis rather than reflowing the
+  // row.
   const unitArtistName = unitArtist
     ? displayNameWithFallback(
         unitArtist.artist,
         unitArtist.artist.translations,
         locale,
-        "short",
+        "full",
       )
     : "";
 
