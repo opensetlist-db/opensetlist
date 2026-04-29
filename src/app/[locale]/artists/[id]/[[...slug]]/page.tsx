@@ -738,7 +738,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                           style={{
                             fontSize: 12,
                             color: colors.textMuted,
-                            width: 52,
+                            // Match the history tab's date column
+                            // (`PERFORMANCE_ROW_GRID` second track at
+                            // 100px) so a long-form locale date like
+                            // "2026년 4월 25일" doesn't truncate. The
+                            // 52px width was inherited from the
+                            // mockup's `formatDateShort` helper, which
+                            // we don't use — `formatDate` produces the
+                            // full year-month-day string.
+                            width: 100,
                             flexShrink: 0,
                           }}
                         >
