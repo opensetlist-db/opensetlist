@@ -28,7 +28,6 @@ import {
 } from "@/lib/seriesGrouping";
 import { getSeriesStats } from "@/lib/seriesStats";
 import { formatDateRange } from "@/lib/dateRange";
-import { BRAND_GRADIENT } from "@/lib/artistColor";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
@@ -606,7 +605,7 @@ export default async function EventSeriesPage({
                       style={{
                         width: `${progressPct}%`,
                         height: "100%",
-                        background: BRAND_GRADIENT,
+                        background: gradients.progressBar,
                         borderRadius: 10,
                         transition: "width 0.5s ease",
                       }}
@@ -705,7 +704,7 @@ export default async function EventSeriesPage({
               {/* Participating units */}
               {units.length > 0 && (
                 <div style={{ marginTop: 18 }}>
-                  <SectionLabel>{t("unitsLabel")}</SectionLabel>
+                  <SectionLabel noBorder>{t("unitsLabel")}</SectionLabel>
                   <div
                     style={{
                       display: "flex",
@@ -780,7 +779,7 @@ export default async function EventSeriesPage({
                       <div
                         style={{
                           fontSize: 11,
-                          color: colors.onDarkSubtle,
+                          color: colors.onDarkMuted,
                           marginTop: 2,
                         }}
                       >

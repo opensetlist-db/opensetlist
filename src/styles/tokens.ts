@@ -28,10 +28,12 @@ export const colors = {
   // On-dark text variants for surfaces that sit on a dark gradient
   // (e.g. the series-page LIVE banner). These read as alpha-blended
   // white because the dark backgrounds vary per surface — a static
-  // hex would tie the variant to one specific gradient. Add more
-  // entries (e.g. `onDarkMuted` at 0.5) only when a second consumer
-  // needs them; today the only consumer is the LIVE banner CTA.
+  // hex would tie the variant to one specific gradient.
+  //   onDarkSubtle (0.65) — secondary helper text on a brand surface.
+  //   onDarkMuted  (0.50) — fainter caption tone, used by the
+  //                          series-page LIVE banner CTA per mockup.
   onDarkSubtle: "rgba(255,255,255,0.65)",
+  onDarkMuted: "rgba(255,255,255,0.5)",
 
   // Backgrounds
   bgPage: "#f0f4f8",
@@ -163,9 +165,16 @@ export const motion = {
  * `colors.darkGradient`. `liveBanner` is the dark-navy ramp used by
  * the series-page LIVE banner — same `textPrimary` → deeper-navy
  * `#1e3a5f` arc that the home `LiveHeroCard` mid-stop already pins.
+ *
+ * `progressBar` is the horizontal (90deg) brand ramp used by the
+ * series-page tour-progress fill. Distinct from `colors.brandGradient`
+ * (135deg) because a horizontal gradient reads cleanly as "fill from
+ * left" on a 6px-tall bar, whereas a 135deg diagonal banding looks
+ * smudged at that height.
  */
 export const gradients = {
   liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, ${colors.navyDeep})`,
+  progressBar: `linear-gradient(90deg, ${colors.primaryLight}, ${colors.primary})`,
 } as const;
 
 /*
