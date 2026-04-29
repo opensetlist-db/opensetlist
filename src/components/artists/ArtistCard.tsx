@@ -173,9 +173,8 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
             <div
               style={{
                 fontSize: 10,
-                fontWeight: 700,
                 color: colors.textMuted,
-                letterSpacing: "0.06em",
+                letterSpacing: "0.04em",
                 textTransform: "uppercase",
               }}
             >

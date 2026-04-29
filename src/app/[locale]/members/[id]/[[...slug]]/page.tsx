@@ -802,9 +802,8 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       <div
                         style={{
                           fontSize: 10,
-                          fontWeight: 700,
                           color: colors.textMuted,
-                          letterSpacing: "0.06em",
+                          letterSpacing: "0.04em",
                           textTransform: "uppercase",
                         }}
                       >

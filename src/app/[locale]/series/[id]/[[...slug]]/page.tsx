@@ -691,9 +691,8 @@ export default async function EventSeriesPage({
                     <div
                       style={{
                         fontSize: 10,
-                        fontWeight: 700,
                         color: colors.textMuted,
-                        letterSpacing: "0.06em",
+                        letterSpacing: "0.04em",
                         textTransform: "uppercase",
                         marginTop: 1,
                       }}
