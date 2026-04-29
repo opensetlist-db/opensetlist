@@ -530,7 +530,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   >
                     {totalEvents}
                   </div>
-                  <div style={{ fontSize: 11, color: colors.textMuted }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: colors.textMuted,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {t("statsTotalEvents")}
                   </div>
                 </div>
@@ -544,7 +552,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   >
                     {totalCompleted}
                   </div>
-                  <div style={{ fontSize: 11, color: colors.textMuted }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: colors.textMuted,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
                     {t("statsCompleted")}
                   </div>
                 </div>
@@ -559,7 +575,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     >
                       {subUnits.length}
                     </div>
-                    <div style={{ fontSize: 11, color: colors.textMuted }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: colors.textMuted,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                      }}
+                    >
                       {t("statsSubUnits")}
                     </div>
                   </div>

@@ -800,7 +800,13 @@ export default async function MemberPage({ params, searchParams }: Props) {
                         {stat.value}
                       </div>
                       <div
-                        style={{ fontSize: 10, color: colors.textMuted }}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: colors.textMuted,
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                        }}
                       >
                         {stat.label}
                       </div>
