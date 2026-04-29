@@ -154,8 +154,13 @@ export default async function EventsPage({
       shortDate: formatDate(start, locale, DESKTOP_DATE_FORMAT),
       eventName,
       venueCity,
+      // Show the song count for both completed events (final
+       // tally) and ongoing events (running tally — matches the
+       // home page's LiveHeroCard, which displays the same count
+       // for the in-progress show). Upcoming and cancelled rows
+       // stay null since there's no meaningful count yet.
       songCountLabel:
-        status === "completed"
+        status === "completed" || status === "ongoing"
           ? t("songCount", { count: ev._count.setlistItems })
           : null,
     };

@@ -14,7 +14,8 @@ interface Props {
   dayNumber: string;
   eventName: string;
   venueCity: string | null;
-  /** Pre-formatted "🎵 N" — only set for completed events. */
+  /** Pre-formatted "🎵 N" — set for completed and ongoing events
+   *  (final / running tally). Null for upcoming / cancelled. */
   songCountLabel: string | null;
   isLast: boolean;
 }

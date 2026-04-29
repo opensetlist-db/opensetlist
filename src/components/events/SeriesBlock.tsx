@@ -131,7 +131,14 @@ export function SeriesBlock({
             ].map((label, i) => (
               <span
                 key={i}
-                className="text-[11px] font-bold uppercase"
+                // Match per-column alignment to the row body —
+                // EventTableRow right-aligns the songs cell (its
+                // `text-right` on the song-count <span>), so the
+                // SONGS header column (i=4) does too. Without this
+                // the label sits left-of-center and the count value
+                // sits right-of-center → visible drift between
+                // header strip and row.
+                className={`text-[11px] font-bold uppercase ${i === 4 ? "text-right" : ""}`}
                 style={{
                   color: colors.textMuted,
                   letterSpacing: "0.05em",
