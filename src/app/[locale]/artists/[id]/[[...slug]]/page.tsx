@@ -80,27 +80,94 @@ async function getArtist(id: bigint) {
           },
         },
       },
-      // Performance history grouped by series. Each event includes
-      // status + startTime so getEventStatus() can resolve the
-      // ongoing/upcoming/completed/cancelled bucket without an extra
-      // round trip.
-      eventSeries: {
-        where: { isDeleted: false },
-        include: {
-          translations: true,
-          events: {
-            where: { isDeleted: false },
-            include: { translations: true },
-            orderBy: { date: "desc" },
-          },
-        },
-        orderBy: { id: "desc" },
-      },
+      // (eventSeries + events fetched separately via
+      // `getArtistEvents` so a sub-unit — which doesn't *own* any
+      // EventSeries but appears in setlist items via
+      // SetlistItemArtist — surfaces its parent's series + events.
+      // Counting only `EventSeries.artistId === id` would yield 0/0
+      // stats and an empty history tab on every sub-unit page.)
     },
   });
   if (!artist) return null;
   return serializeBigInt(artist);
 }
+
+/**
+ * Events attributable to this artist via either of two paths:
+ *
+ *   1. Owned EventSeries (`EventSeries.artistId === artistId`) — the
+ *      original behavior. A parent group like Hasunosora owns its
+ *      tour series; events under those series count regardless of
+ *      whether the parent appears in any specific setlist item.
+ *
+ *   2. SetlistItemArtist appearance — a sub-unit (e.g. Cerise
+ *      Bouquet) doesn't own any EventSeries; it surfaces in
+ *      `SetlistItemArtist.artistId` for the unit-stage songs it
+ *      performs at parent-owned events. Without this branch, every
+ *      sub-unit page would show 0/0 stats + empty history.
+ *
+ * The `OR` query unions both paths in a single round trip; the
+ * post-serialize hydrate then groups events by their EventSeries
+ * for the History tab. Soft-deleted events and series are excluded.
+ */
+async function getArtistEvents(artistId: bigint) {
+  const events = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      eventSeries: { isDeleted: false },
+      OR: [
+        { eventSeries: { artistId } },
+        {
+          setlistItems: {
+            some: {
+              isDeleted: false,
+              artists: { some: { artistId } },
+            },
+          },
+        },
+      ],
+    },
+    include: {
+      translations: true,
+      eventSeries: { include: { translations: true } },
+    },
+    orderBy: { date: "desc" },
+  });
+  // serializeBigInt narrows BigInt → number at runtime + JSON.stringify
+  // coerces Date → string. The static type still references the raw
+  // Prisma row shape, so cast through `unknown`. Prisma's include also
+  // types `eventSeries` as nullable; the `where` filter above
+  // guarantees a non-null row at runtime, which the cast asserts.
+  return serializeBigInt(events) as unknown as ArtistEvent[];
+}
+
+type ArtistEvent = {
+  id: number;
+  slug: string;
+  status: "scheduled" | "ongoing" | "completed" | "cancelled";
+  date: string;
+  startTime: string;
+  originalName: string | null;
+  originalShortName: string | null;
+  originalLanguage: string;
+  eventSeriesId: number;
+  translations: Array<{
+    locale: string;
+    name: string;
+    shortName: string | null;
+  }>;
+  eventSeries: {
+    id: number;
+    translations: Array<{
+      locale: string;
+      name: string;
+      shortName: string | null;
+    }>;
+    originalName: string | null;
+    originalShortName: string | null;
+    originalLanguage: string;
+  };
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
@@ -161,7 +228,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  const artist = await getArtist(artistId);
+  // Fetch artist + events in parallel — events query traverses
+  // SetlistItemArtist via `OR` so sub-units (which don't own any
+  // EventSeries) still surface their parent-series events.
+  const [artist, artistEvents] = await Promise.all([
+    getArtist(artistId),
+    getArtistEvents(artistId),
+  ]);
   if (!artist) notFound();
 
   const [t, ct, evT] = await Promise.all([
@@ -226,7 +299,8 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   const mainSubUnits = subUnits.filter((s) => s.isMainUnit);
   const otherSubUnits = subUnits.filter((s) => !s.isMainUnit);
 
-  // Stats: total events + completed events across all eventSeries.
+  // Stats: total events + completed events across all events
+  // attributable to this artist (owned-series + appearance union).
   // `getEventStatus()` resolves the displayed status from raw status
   // + startTime — never trust raw `event.status === "completed"`,
   // which is wrong for events whose DB status is `scheduled` but
@@ -235,18 +309,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   let totalEvents = 0;
   let totalCompleted = 0;
   const completedEventIds: bigint[] = [];
-  for (const series of artist.eventSeries) {
-    for (const event of series.events) {
-      totalEvents += 1;
-      if (
-        getEventStatus(
-          { status: event.status, startTime: event.startTime },
-          referenceNow,
-        ) === "completed"
-      ) {
-        totalCompleted += 1;
-        completedEventIds.push(BigInt(event.id));
-      }
+  for (const event of artistEvents) {
+    totalEvents += 1;
+    if (
+      getEventStatus(
+        { status: event.status, startTime: event.startTime },
+        referenceNow,
+      ) === "completed"
+    ) {
+      totalCompleted += 1;
+      completedEventIds.push(BigInt(event.id));
     }
   }
 
@@ -296,57 +368,70 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     seriesId: number;
     rawDateMs: number;
   };
+  // First, dedupe series surfaced via `artistEvents`. Each event row
+  // carries its EventSeries, so a series is `seen` the first time
+  // any of its events shows up. Order matches the events query
+  // (date desc), so the first-event-seen-per-series order roughly
+  // matches recent-activity order — refined by the explicit sort
+  // below.
+  const seriesById = new Map<
+    string,
+    ArtistEvent["eventSeries"]
+  >();
+  for (const ev of artistEvents) {
+    const key = String(ev.eventSeriesId);
+    if (!seriesById.has(key)) seriesById.set(key, ev.eventSeries);
+  }
+
   const eventViews: EventView[] = [];
-  for (const series of artist.eventSeries) {
-    for (const event of series.events) {
-      const status = getEventStatus(
-        { status: event.status, startTime: event.startTime },
-        referenceNow,
-      );
-      const eventIdStr = String(event.id);
-      const songCount = songCountByEvent.get(eventIdStr);
-      const trailing =
-        status === "completed" && songCount !== undefined && songCount > 0 ? (
-          <span
-            style={{
-              fontSize: 11,
-              color: colors.textMuted,
-              flexShrink: 0,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {t("songCount", { count: songCount })}
-          </span>
-        ) : null;
-      eventViews.push({
-        // serializeBigInt coerces every id to number at runtime; the
-        // String() cast satisfies PerformanceEvent's id contract
-        // without leaking the bigint type out of the JSON shape.
-        id: eventIdStr,
-        seriesId: Number(series.id),
-        status,
-        formattedDate: formatDate(event.date, locale),
-        name:
-          displayNameWithFallback(event, event.translations, locale) ||
-          evT("unknownEvent"),
-        href: `/${locale}/events/${event.id}/${event.slug}`,
-        trailing,
-        // serializeBigInt also runs JSON.stringify, which converts
-        // Date columns to ISO strings — so the runtime value is a
-        // string here even though Prisma's type still says Date.
-        // String() coerces uniformly without an `as` cast.
-        rawDateMs: new Date(String(event.date)).getTime(),
-      });
-    }
+  for (const event of artistEvents) {
+    const status = getEventStatus(
+      { status: event.status, startTime: event.startTime },
+      referenceNow,
+    );
+    const eventIdStr = String(event.id);
+    const songCount = songCountByEvent.get(eventIdStr);
+    const trailing =
+      status === "completed" && songCount !== undefined && songCount > 0 ? (
+        <span
+          style={{
+            fontSize: 11,
+            color: colors.textMuted,
+            flexShrink: 0,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {t("songCount", { count: songCount })}
+        </span>
+      ) : null;
+    eventViews.push({
+      // serializeBigInt coerces every id to number at runtime; the
+      // String() cast satisfies PerformanceEvent's id contract
+      // without leaking the bigint type out of the JSON shape.
+      id: eventIdStr,
+      seriesId: Number(event.eventSeriesId),
+      status,
+      formattedDate: formatDate(event.date, locale),
+      name:
+        displayNameWithFallback(event, event.translations, locale) ||
+        evT("unknownEvent"),
+      href: `/${locale}/events/${event.id}/${event.slug}`,
+      trailing,
+      // serializeBigInt also runs JSON.stringify, which converts
+      // Date columns to ISO strings — so the runtime value is a
+      // string here even though Prisma's type still says Date.
+      // String() coerces uniformly without an `as` cast.
+      rawDateMs: new Date(String(event.date)).getTime(),
+    });
   }
 
   // Group by series for the History tab. Pin any series with an
   // ongoing event to the top; remainder by most-recent event date
   // desc.
-  const seriesViews: PerformanceSeries[] = artist.eventSeries
-    .map((series) => {
+  const seriesViews: PerformanceSeries[] = [...seriesById.entries()]
+    .map(([seriesIdStr, series]) => {
       const seriesEvents = eventViews.filter(
-        (ev) => ev.seriesId === Number(series.id),
+        (ev) => ev.seriesId === Number(seriesIdStr),
       );
       // Within a series, keep the operator-specified date-desc order.
       seriesEvents.sort((a, b) => b.rawDateMs - a.rawDateMs);
