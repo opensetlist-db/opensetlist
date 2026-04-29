@@ -109,7 +109,7 @@ export default async function ArtistTableRow({
               <StatusBadge
                 status="ongoing"
                 size="sm"
-                label={tEvent("status.ongoing")}
+                label={tEvent("live")}
               />
             )}
           </div>

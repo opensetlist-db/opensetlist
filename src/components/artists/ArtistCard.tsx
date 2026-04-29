@@ -108,7 +108,7 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
               <StatusBadge
                 status="ongoing"
                 size="sm"
-                label={tEvent("status.ongoing")}
+                label={tEvent("live")}
               />
             )}
           </div>

@@ -280,8 +280,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
 
   // Pre-translated status labels passed to <PerformanceGroup>; the
   // component itself stays out of next-intl.
+  // Ongoing badge uses the marketing "LIVE" label (matching the home,
+  // event list, series, and song detail surfaces).
   const statusLabels: Record<ResolvedEventStatus, string> = {
-    ongoing: evT("status.ongoing"),
+    ongoing: evT("live"),
     upcoming: evT("status.upcoming"),
     completed: evT("status.completed"),
     cancelled: evT("status.cancelled"),

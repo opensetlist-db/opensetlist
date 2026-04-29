@@ -353,8 +353,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
 
   // Resolved status labels passed to <PerformanceGroup>; the component
   // itself is locale-free so the label dictionary lives here.
+  // Ongoing badge uses the marketing "LIVE" label (matching the home,
+  // event list, series, and song detail surfaces) — keeps the
+  // ongoing-event affordance one consistent string across the app
+  // instead of mixing "진행 중" / "LIVE" / "Ongoing" depending on
+  // which page surfaces the badge.
   const statusLabels: Record<ResolvedEventStatus, string> = {
-    ongoing: evT("status.ongoing"),
+    ongoing: evT("live"),
     upcoming: evT("status.upcoming"),
     completed: evT("status.completed"),
     cancelled: evT("status.cancelled"),
