@@ -204,6 +204,7 @@
     "colReactions": "반응",
     "unitsLabel": "유닛",
     "performersLabel": "출연진",
+    "guestLabel": "게스트",
     "status": {
       "upcoming": "예정",
       "ongoing": "진행 중",

@@ -204,6 +204,7 @@
     "colReactions": "Reactions",
     "unitsLabel": "Units",
     "performersLabel": "Performers",
+    "guestLabel": "Guest",
     "status": {
       "upcoming": "Upcoming",
       "ongoing": "Ongoing",

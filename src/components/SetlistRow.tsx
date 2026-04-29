@@ -163,12 +163,33 @@ export function SetlistRow({
             label={unitArtistName}
           />
         )}
+        {/* Backed unit credited but no resolvable name (rare — Artist
+            with empty translations + null originalName). Falls back
+            to the i18n stageType label so the row still reads as
+            "this is a unit-stage performance". */}
         {!isNonSong && unitArtist && !unitArtistName && (
           <FallbackUnitBadge
-            label={
-              item.unitName ??
-              t(`stageType.${item.stageType}` as Parameters<typeof t>[0])
-            }
+            label={t(
+              `stageType.${item.stageType}` as Parameters<typeof t>[0],
+            )}
+          />
+        )}
+        {/* No backed unit at all (ad-hoc one-time unit OR operator
+            hasn't filled the credit yet). Per Phase 1A decision D4b,
+            the operator-typed `item.unitName` is intentionally
+            suppressed on public surfaces — the field has no
+            translations and rendering one locale's text to viewers
+            in another locale was the original gap. Show the generic
+            stageType label instead so the row still indicates
+            "this is a unit-stage performance" without leaking
+            unlocalized operator text. Replaces the previously
+            unreachable `?? stageType.{x}` fallback that lived inside
+            the unitArtist-required branch above. */}
+        {!isNonSong && !unitArtist && item.stageType !== "full_group" && (
+          <FallbackUnitBadge
+            label={t(
+              `stageType.${item.stageType}` as Parameters<typeof t>[0],
+            )}
           />
         )}
       </div>

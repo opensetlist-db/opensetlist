@@ -46,6 +46,21 @@ async function getEvent(id: bigint, locale: string) {
           artist: { include: { translations: true } },
         },
       },
+      // Event-level performer roster — used to source the guest set
+      // for D10a (Phase 1A): characters flagged here as guests are
+      // skipped from host-unit member sublists in Pass-2 below, and
+      // marked with the "· 게스트" suffix in the sidebar Performers
+      // card. Cheap select-only join; no relation traversal beyond
+      // the flag. NOTE: the relation name on the Event model is
+      // `performers` (per `prisma/schema.prisma:480`) — distinct from
+      // `setlistItems[].performers` (which is `SetlistItemMember[]`).
+      // Using the schema name here.
+      performers: {
+        select: {
+          stageIdentityId: true,
+          isGuest: true,
+        },
+      },
       setlistItems: {
         where: { isDeleted: false },
         omit: { note: true },
@@ -479,22 +494,39 @@ export default async function EventPage({ params }: Props) {
   // 2. Walk `setlistItems[].performers` once to build the unit→
   //    members map. Each StageIdentity carries `artistLinks` with
   //    `artistId`; we look up `artistId` against the unit map.
-  //    **Every link counts** — no membership-date filter. The
-  //    `setlistItem.performers` set is already self-narrowing: only
-  //    characters who actually performed a song slot at this event
-  //    appear, and a guest's unit links are usually disjoint from
-  //    the event's headlining units anyway. The historical case
-  //    we used to gate on (a graduated member returning as a guest
-  //    with their old unit on this same event) reads as "they
-  //    performed here under that unit" — the date check would have
-  //    hidden them, which the operator considered less accurate.
+  //    Phase 1A — D10a: guest StageIdentities (sourced from
+  //    `event.eventPerformers.isGuest = true`) are *skipped* from
+  //    the member-sublist building. A guest's stale `artistLinks`
+  //    to a host unit (e.g. a graduated member returning as a
+  //    guest with their old unit) shouldn't list them as a current
+  //    member of that unit at this event. Guests still surface in
+  //    the PerformersCard with the D9 "· 게스트" suffix.
+  //    No membership-date filter (D12=no): real-world `artistLinks`
+  //    dates often don't align with event dates due to operator
+  //    data entry imperfections + retroactive corrections, so
+  //    `EventPerformer.isGuest` is the only filtering signal.
   //
   // 3. Walk `setlistItems[].performers` once more to build the
   //    Performers card list — each character's pill tint is the
   //    color of their *primary* unit (first link that points at one
   //    of the event's units). Falls back via `resolveUnitColor`
   //    (Artist.color → palette pick on slug → last-resort
-  //    `colors.primary`) when no unit link resolves at all.
+  //    `colors.primary`) when no unit link resolves at all. Each
+  //    pill is also tagged with `isGuest` so the card can append
+  //    the suffix and sort hosts before guests.
+  //
+  // Guest set (D10a + D9 source). Built once and consulted by Pass-2
+  // (filter) and the PerformersCard data prep (mark + sort). Sourced
+  // from `event.performers` (the `EventPerformer[]` relation on
+  // Event — see Prisma include note above; this is a different
+  // relation from `setlistItems[].performers`, which is the
+  // per-song `SetlistItemMember[]`).
+  const guestStageIdentityIds = new Set<string>(
+    event.performers
+      .filter((p) => p.isGuest)
+      .map((p) => p.stageIdentityId),
+  );
+
   type SidebarUnit = UnitsCardItem & {
     /** Resolved color via `resolveUnitColor` (Artist.color → palette
      *  pick on slug → last-resort `colors.primary`). Always set. */
@@ -545,16 +577,29 @@ export default async function EventPage({ params }: Props) {
     return null;
   };
 
-  // Pass 2: populate per-unit member lists. Every membership link
-  // counts (see header comment) — the input set is already narrowed
-  // to characters who performed a song slot at this event.
+  // Pass 2: populate per-unit member lists.
+  // Track per-unit `hasHostMember` (any non-guest performer with a
+  // link to this unit at this event). A unit ending up with no host
+  // member is marked `isGuest: true` for the sidebar suffix — covers
+  // the case where a visiting unit is credited via SetlistItemArtist
+  // (e.g. opener band) and only its own members performed under it.
+  const unitHasHostMember = new Map<string, boolean>();
+  for (const id of unitsById.keys()) unitHasHostMember.set(id, false);
+
   for (const item of event.setlistItems) {
     for (const p of item.performers) {
+      // D10a: skip guests entirely from member-sublist building.
+      // They still surface in the PerformersCard with the D9
+      // "· 게스트" suffix; they just don't pollute host-unit
+      // sublists when their `artistLinks` happen to match a host
+      // unit (returning graduate, cross-affiliation).
+      if (guestStageIdentityIds.has(p.stageIdentity.id)) continue;
       const links = p.stageIdentity.artistLinks ?? [];
       for (const link of links) {
         const unitId = String(link.artistId);
         const u = unitsById.get(unitId);
         if (!u) continue;
+        unitHasHostMember.set(unitId, true);
         const members = memberSeen.get(unitId)!;
         if (members.has(p.stageIdentity.id)) continue;
         members.add(p.stageIdentity.id);
@@ -576,15 +621,25 @@ export default async function EventPage({ params }: Props) {
   // Drop `resolvedColor` from the Units card payload — the card
   // resolves its own fallback per row from `color`. The unit-color
   // map keeps `resolvedColor` for the Performers card lookup.
-  const sidebarUnits: UnitsCardItem[] = [...unitsById.values()].map(
+  // Each unit is tagged with `isGuest` (D9): a unit is a guest unit
+  // when none of the non-guest performers at this event linked to it
+  // (`unitHasHostMember` stayed false). Hosts sort first, guests
+  // last — relative first-appearance order preserved within each
+  // group.
+  const allUnits: UnitsCardItem[] = [...unitsById.values()].map(
     ({ id, slug, name, color, members }) => ({
       id,
       slug,
       name,
       color,
       members,
+      isGuest: !unitHasHostMember.get(id),
     }),
   );
+  const sidebarUnits: UnitsCardItem[] = [
+    ...allUnits.filter((u) => !u.isGuest),
+    ...allUnits.filter((u) => u.isGuest),
+  ];
 
   // Sidebar Performers card: each pill tint is the primary unit's
   // resolved color. Personal `StageIdentity.color` is intentionally
@@ -615,10 +670,18 @@ export default async function EventPage({ params }: Props) {
           // primary unit (rare) falls through to the same fallback.
           color:
             primaryUnit?.resolvedColor ?? resolveUnitColor({ color: null }),
+          isGuest: guestStageIdentityIds.has(id),
         });
       }
     }
-    return [...seen.values()];
+    // Hosts first (preserving first-appearance order), then guests.
+    // PerformersCard renders a hairline divider between the groups
+    // when both are non-empty.
+    const all = [...seen.values()];
+    return [
+      ...all.filter((p) => !p.isGuest),
+      ...all.filter((p) => p.isGuest),
+    ];
   })();
 
   // Breadcrumb: always [Home › seriesShort › eventShort] when a series
