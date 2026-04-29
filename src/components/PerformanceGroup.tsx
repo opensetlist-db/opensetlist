@@ -77,6 +77,17 @@ export const PERFORMANCE_ROW_GRID =
  */
 export const PERFORMANCE_ROW_INDENT_PX = 36;
 
+/**
+ * Grid column-gap of every event row, in pixels. Same alignment
+ * concern as `PERFORMANCE_ROW_INDENT_PX`: a consumer's column-header
+ * strip MUST use this exact value or the labels drift relative to
+ * row content. Pinned to a literal `px` value — the row className
+ * uses `gap-[10px]` (not Tailwind's `gap-2.5`) so the gap stays
+ * absolute regardless of root font-size; consumers that don't load
+ * Tailwind classes (inline `style={{}}` blocks) need a px number.
+ */
+export const PERFORMANCE_ROW_GAP_PX = 10;
+
 export interface PerformanceEvent {
   id: string | number;
   /** Resolved status from getEventStatus(); the badge label is provided by the consumer via the `statusLabels` map. */
@@ -215,7 +226,7 @@ export function PerformanceGroup({
             // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
             // requires literal class strings, so the constant can't be
             // interpolated here — if you change one, change the other.
-            className="row-hover-bg grid items-center gap-2.5 grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_16px]"
+            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_16px]"
             style={{
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               borderBottom:
