@@ -23,6 +23,15 @@ export interface UnitsCardItem {
    * specific-song appearances on this event).
    */
   members: string[];
+  /**
+   * True when this unit is a "guest unit" at this event: it was
+   * credited via `SetlistItemArtist` but no non-guest performer at
+   * this event linked to it (page-side derives this from the
+   * `unitHasHostMember` Pass-2 tracker). Drives the muted "· 게스트"
+   * suffix appended to the unit name. Optional for backward-compat —
+   * treated as `false` when missing.
+   */
+  isGuest?: boolean;
 }
 
 interface Props {
@@ -119,6 +128,23 @@ export function UnitsCard({ locale, units }: Props) {
                   }}
                 >
                   {unit.name}
+                  {unit.isGuest && (
+                    <span
+                      // Muted "· 게스트" / "· ゲスト" / "· Guest" suffix
+                      // (D9). Rendered inside the <Link> so it stays
+                      // visually grouped with the name, but with its
+                      // own color/weight so the suffix doesn't take
+                      // on the unit's accent — reads as a small
+                      // metadata tag, not part of the unit name.
+                      style={{
+                        color: colors.textMuted,
+                        fontWeight: 500,
+                        marginLeft: 4,
+                      }}
+                    >
+                      · {t("guestLabel")}
+                    </span>
+                  )}
                 </Link>
                 {unit.members.length > 0 && (
                   <div

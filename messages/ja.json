@@ -204,6 +204,7 @@
     "colReactions": "リアクション",
     "unitsLabel": "ユニット",
     "performersLabel": "出演者",
+    "guestLabel": "ゲスト",
     "status": {
       "upcoming": "予定",
       "ongoing": "進行中",
