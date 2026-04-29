@@ -15,6 +15,7 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   PerformanceGroup,
@@ -530,9 +531,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   >
                     {totalEvents}
                   </div>
-                  <div style={{ fontSize: 11, color: colors.textMuted }}>
+                  <StatsSubLabel>
                     {t("statsTotalEvents")}
-                  </div>
+                  </StatsSubLabel>
                 </div>
                 <div>
                   <div
@@ -544,9 +545,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   >
                     {totalCompleted}
                   </div>
-                  <div style={{ fontSize: 11, color: colors.textMuted }}>
+                  <StatsSubLabel>
                     {t("statsCompleted")}
-                  </div>
+                  </StatsSubLabel>
                 </div>
                 {subUnits.length > 0 && (
                   <div>
@@ -559,9 +560,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     >
                       {subUnits.length}
                     </div>
-                    <div style={{ fontSize: 11, color: colors.textMuted }}>
+                    <StatsSubLabel>
                       {t("statsSubUnits")}
-                    </div>
+                    </StatsSubLabel>
                   </div>
                 )}
               </div>

@@ -13,6 +13,7 @@ import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { InitialAvatar } from "@/components/InitialAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -799,11 +800,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       >
                         {stat.value}
                       </div>
-                      <div
-                        style={{ fontSize: 10, color: colors.textMuted }}
-                      >
-                        {stat.label}
-                      </div>
+                      <StatsSubLabel>{stat.label}</StatsSubLabel>
                     </div>
                   ))}
                 </div>

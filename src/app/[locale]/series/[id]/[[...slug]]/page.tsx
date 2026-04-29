@@ -32,6 +32,7 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
   LegCard,
@@ -688,15 +689,9 @@ export default async function EventSeriesPage({
                     >
                       {s.value}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: colors.textMuted,
-                        marginTop: 1,
-                      }}
-                    >
+                    <StatsSubLabel style={{ marginTop: 1 }}>
                       {s.label}
-                    </div>
+                    </StatsSubLabel>
                   </div>
                 ))}
               </div>
