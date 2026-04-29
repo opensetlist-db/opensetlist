@@ -32,7 +32,7 @@ interface Props {
    * Empty-state message shown when no songs have any reactions
    * yet. Caller resolves via `getTranslations("Reaction")` →
    * `t("trendingEmpty")` so the locale-correct nudge ("아직 반응이
-   * 없어요 — 셋리스트에서 반응을 추가해보세요!") renders.
+   * 없어요 — 세트리스트에서 반응을 추가해보세요!") renders.
    */
   emptyLabel?: string;
 }

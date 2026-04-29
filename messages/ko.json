@@ -1,9 +1,9 @@
 {
   "Home": {
-    "title": "오픈셋리스트",
+    "title": "오픈세트리스트",
     "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
     "ongoingTitle": "🔴 지금 진행 중",
-    "ongoingSubtitle": "실시간 셋리스트 업데이트 중",
+    "ongoingSubtitle": "실시간 세트리스트 업데이트 중",
     "upcomingTitle": "다가오는 공연",
     "recentTitle": "최근 공연",
     "viewAllSchedule": "전체 일정 보기 ›",
@@ -160,7 +160,7 @@
   "Event": {
     "title": "이벤트",
     "allEvents": "이벤트 목록",
-    "subtitle": "공연 셋리스트와 반응을 확인하세요",
+    "subtitle": "공연 세트리스트와 반응을 확인하세요",
     "ongoing": "지금 공연 중",
     "upcoming": "예정된 이벤트",
     "past": "지난 이벤트",
@@ -240,7 +240,7 @@
     "tabSchedule": "일정",
     "tabSongs": "등장 곡 ({count}+)",
     "liveBannerTitle": "지금 진행 중인 공연이 있어요",
-    "liveBannerCta": "실시간 셋리스트 확인하기 ›",
+    "liveBannerCta": "실시간 세트리스트 확인하기 ›",
     "songsFooter": "공연이 완료될수록 더 많은 곡이 추가됩니다",
     "songsEmpty": "아직 등록된 곡이 없습니다",
     "tourProgressLabel": "투어 진행",
@@ -270,7 +270,7 @@
     "surprise": "깜짝",
     "moved": "감동",
     "trending": "이번 공연 화제의 곡",
-    "trendingEmpty": "아직 반응이 없어요 — 셋리스트에서 반응을 추가해보세요!"
+    "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
   },
   "Impression": {
     "title": "한줄평",
