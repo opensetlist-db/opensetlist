@@ -1,22 +1,22 @@
-slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName,originalLanguage,originalName,originalShortName,originalBio
-hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라 여학원 스쿨 아이돌 클럽,하스노소라,Hasunosora Girls' High Scholl Idol Club,Hasunosora
-cerise-bouquet,unit,hasunosora,スリーズブーケ,スリブ,스리즈 부케,스리부,Cerise Bouquet,Cerise Bouquet
-dollchestra,unit,hasunosora,DOLLCHESTRA,ドルケ,DOLLCHESTRA,돌케,DOLLCHESTRA,Dollchestra
-mira-cra-park,unit,hasunosora,みらくらぱーく！,みらぱ,미라쿠라파크!,미라파,Mira Cra Park!,Mira Cra Park!
-edel-note,unit,hasunosora,Edel Note,Edel Note,Edel Note,Edel Note,Edel Note,Edel Note
-rurino-to-yukai-na-tsuzuri-tachi,unit,hasunosora,るりのとゆかいなつづりたち,瑠璃乃と綴理たち,루리노와 유쾌한 츠즈리들,루리노와 츠즈리들,Rurino to Yukai na Tsuzuri-tachi,Rurino and Tsuzuris
-kaho-megu-gelato,unit,hasunosora,かほめぐ♡じぇらーと,かほめぐ,카호메구♡젤라토,카호메구,KahoMegu♡Gelato,KahoMegu
-hasuno-kyuujitsu,unit,hasunosora,蓮ノ休日,蓮ノ休日,하스의휴일,하스의휴일,Hasuno Kyuujitsu,Hasuno Kyuujitsu
-ritorurito,unit,hasunosora,Ruri&To,Ruri&To,Ruri&To,Ruri&To,Ruri&To,Ruri&To
-princess,unit,hasunosora,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>
-kaho-solo,solo,hasunosora,日野下花帆,花帆,히노시타 카호,카호,Kaho Hinoshita,Kaho
-sayaka-solo,solo,hasunosora,村野さやか,さやか,무라노 사야카,사야카,Sayaka Murano,Sayaka
-kozue-solo,solo,hasunosora,乙宗梢,梢,오토무네 코즈에,코즈에,Kozue Otomune,Kozue
-tsuzuri-solo,solo,hasunosora,夕霧綴理,綴理,유기리 츠즈리,츠즈리,Tsuzuri Yugiri,Tsuzuri
-rurino-solo,solo,hasunosora,大沢瑠璃乃,璃乃,오사와 루리노,루리노,Rurino Osawa,Rurino
-megumi-solo,solo,hasunosora,藤島慈,慈,후지시마 메구미,메구미,Megumi Fujishima,Megumi
-ginko-solo,solo,hasunosora,百生吟子,吟子,모모세 긴코,긴코,Ginko Momose,Ginko
-kosuzu-solo,solo,hasunosora,徒町小鈴,小鈴,카치마치 코스즈,코스즈,Kosuzu Kachimachi,Kosuzu
-hime-solo,solo,hasunosora,安養寺姫芽,姫芽,안요지 히메,히메,Hime Anyoji,Hime
-izumi-solo,solo,hasunosora,桂城泉,泉,카츠라기 이즈미,이즈미,Izumi Katsuragi ,Izume
-ceras-solo,solo,hasunosora,セラス柳田リリエンフェルト,セラス,세라스 야나기다 릴리엔펠트,세라스,Ceras Yanagida Lilienfeld,Ceras
+slug,type,parentArtist_slug,ja_name,ja_shortName,ko_name,ko_shortName,en_name,en_shortName,originalLanguage,originalName,originalShortName,originalBio,category,isMainUnit,group_slugs
+hasunosora,group,,蓮ノ空女学院スクールアイドルクラブ,蓮ノ空,하스노소라 여학원 스쿨 아이돌 클럽,하스노소라,Hasunosora Girls' High Scholl Idol Club,Hasunosora,,,,,animegame,false,lovelive hasunosora-club
+cerise-bouquet,unit,hasunosora,スリーズブーケ,スリブ,스리즈 부케,스리부,Cerise Bouquet,Cerise Bouquet,,,,,animegame,true,
+dollchestra,unit,hasunosora,DOLLCHESTRA,ドルケ,DOLLCHESTRA,돌케,DOLLCHESTRA,Dollchestra,,,,,animegame,true,
+mira-cra-park,unit,hasunosora,みらくらぱーく！,みらぱ,미라쿠라파크!,미라파,Mira Cra Park!,Mira Cra Park!,,,,,animegame,true,
+edel-note,unit,hasunosora,Edel Note,Edel Note,Edel Note,Edel Note,Edel Note,Edel Note,,,,,animegame,false,
+rurino-to-yukai-na-tsuzuri-tachi,unit,hasunosora,るりのとゆかいなつづりたち,瑠璃乃と綴理たち,루리노와 유쾌한 츠즈리들,루리노와 츠즈리들,Rurino to Yukai na Tsuzuri-tachi,Rurino and Tsuzuris,,,,,animegame,false,
+kaho-megu-gelato,unit,hasunosora,かほめぐ♡じぇらーと,かほめぐ,카호메구♡젤라토,카호메구,KahoMegu♡Gelato,KahoMegu,,,,,animegame,false,
+hasuno-kyuujitsu,unit,hasunosora,蓮ノ休日,蓮ノ休日,하스의휴일,하스의휴일,Hasuno Kyuujitsu,Hasuno Kyuujitsu,,,,,animegame,false,
+ritorurito,unit,hasunosora,Ruri&To,Ruri&To,Ruri&To,Ruri&To,Ruri&To,Ruri&To,,,,,animegame,false,
+princess,unit,hasunosora,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,PRINCEε>ε>,,,,,animegame,false,
+kaho-solo,solo,hasunosora,日野下花帆,花帆,히노시타 카호,카호,Kaho Hinoshita,Kaho,,,,,animegame,false,
+sayaka-solo,solo,hasunosora,村野さやか,さやか,무라노 사야카,사야카,Sayaka Murano,Sayaka,,,,,animegame,false,
+kozue-solo,solo,hasunosora,乙宗梢,梢,오토무네 코즈에,코즈에,Kozue Otomune,Kozue,,,,,animegame,false,
+tsuzuri-solo,solo,hasunosora,夕霧綴理,綴理,유기리 츠즈리,츠즈리,Tsuzuri Yugiri,Tsuzuri,,,,,animegame,false,
+rurino-solo,solo,hasunosora,大沢瑠璃乃,璃乃,오사와 루리노,루리노,Rurino Osawa,Rurino,,,,,animegame,false,
+megumi-solo,solo,hasunosora,藤島慈,慈,후지시마 메구미,메구미,Megumi Fujishima,Megumi,,,,,animegame,false,
+ginko-solo,solo,hasunosora,百生吟子,吟子,모모세 긴코,긴코,Ginko Momose,Ginko,,,,,animegame,false,
+kosuzu-solo,solo,hasunosora,徒町小鈴,小鈴,카치마치 코스즈,코스즈,Kosuzu Kachimachi,Kosuzu,,,,,animegame,false,
+hime-solo,solo,hasunosora,安養寺姫芽,姫芽,안요지 히메,히메,Hime Anyoji,Hime,,,,,animegame,false,
+izumi-solo,solo,hasunosora,桂城泉,泉,카츠라기 이즈미,이즈미,Izumi Katsuragi ,Izume,,,,,animegame,false,
+ceras-solo,solo,hasunosora,セラス柳田リリエンフェルト,セラス,세라스 야나기다 릴리엔펠트,세라스,Ceras Yanagida Lilienfeld,Ceras,,,,,animegame,false,
