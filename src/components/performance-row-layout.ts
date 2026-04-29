@@ -21,9 +21,16 @@
  * consumer's column-header strip rendered above the groups —
  * a separate grid with the same template — has identically-sized
  * column tracks.
+ *
+ * The trailing 28px is the chevron column. Matches the event list
+ * row template (`EVENT_TABLE_COLUMNS` ends with `28px`) so the two
+ * surfaces — both showing "list of events grouped by series" — read
+ * the same density at the right edge. Was 16px before; the bump
+ * gives the chevron glyph more breathing room without forcing a
+ * narrower name column.
  */
 export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) 180px 16px";
+  "60px 100px minmax(0, 1fr) 180px 28px";
 
 /**
  * Left padding of every event row, in pixels. The column-header strip

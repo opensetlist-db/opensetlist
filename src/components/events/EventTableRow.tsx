@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
@@ -28,20 +25,19 @@ export function EventTableRow({
   venueCity,
   songCountLabel,
 }: Props) {
-  const [active, setActive] = useState(false);
+  // Hover + focus highlight is handled by the global `.row-hover-bg`
+  // CSS rule (globals.css). Replaces the previous useState + four
+  // event handlers — same hover *and* keyboard-focus behavior, less
+  // local plumbing. Server component now (no `"use client"`) since
+  // there's no client-side state left.
   return (
     <Link
       href={href}
-      onMouseEnter={() => setActive(true)}
-      onMouseLeave={() => setActive(false)}
-      onFocus={() => setActive(true)}
-      onBlur={() => setActive(false)}
-      className="grid items-center transition-colors"
+      className="row-hover-bg grid items-center"
       style={{
         gridTemplateColumns: EVENT_TABLE_COLUMNS,
         padding: "10px 20px",
         borderBottom: `1px solid ${colors.borderLight}`,
-        background: active ? colors.bgSubtle : "transparent",
       }}
     >
       <span

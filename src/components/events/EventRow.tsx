@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -30,19 +27,17 @@ export function EventRow({
   songCountLabel,
   isLast,
 }: Props) {
-  const [active, setActive] = useState(false);
+  // Hover + focus highlight is handled by the global `.row-hover-bg`
+  // CSS rule (globals.css). Same pattern as EventTableRow + the
+  // PerformanceGroup rows; replaces the previous useState + four
+  // event handlers and lets this stay a server component.
   return (
     <Link
       href={href}
-      onMouseEnter={() => setActive(true)}
-      onMouseLeave={() => setActive(false)}
-      onFocus={() => setActive(true)}
-      onBlur={() => setActive(false)}
-      className="flex items-start gap-3 transition-colors"
+      className="row-hover-bg flex items-start gap-3"
       style={{
         padding: "11px 16px",
         borderBottom: isLast ? "none" : `1px solid ${colors.borderLight}`,
-        background: active ? colors.bgSubtle : "transparent",
       }}
     >
       <div

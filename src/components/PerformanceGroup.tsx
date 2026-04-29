@@ -177,14 +177,14 @@ export function PerformanceGroup({
           so app-internal navigation stays soft (no full document
           reload) and Next.js can prefetch the linked event page. */}
       {!collapsed &&
-        series.events.map((event, i) => (
+        series.events.map((event) => (
           <Link
             key={event.id}
             href={event.href}
             // Mobile uses `auto auto` for trailing/chevron — chips size
             // to their content and the row clips at its right edge if
             // they overflow. Desktop swaps in the fixed-width tracks
-            // (`180px 16px`) so the page's column-header strip lines
+            // (`180px 28px`) so the page's column-header strip lines
             // up with the row columns. The grid container itself gets
             // `min-width: 0` so its grid-intrinsic min-content (which
             // can exceed the viewport once `flexShrink: 0` chips refuse
@@ -197,13 +197,17 @@ export function PerformanceGroup({
             // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
             // requires literal class strings, so the constant can't be
             // interpolated here — if you change one, change the other.
-            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_16px]"
+            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_28px]"
             style={{
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
-              borderBottom:
-                i < series.events.length - 1
-                  ? `1px solid ${colors.borderFaint}`
-                  : `1px solid ${colors.borderLight}`,
+              // Per-row separator uses borderLight uniformly — matches
+              // the event list's `EventTableRow` (always `borderLight`,
+              // not a different color on the last row). The previous
+              // mixed-tone scheme (`borderFaint` inter-row +
+              // `borderLight` on the last) created an inconsistent
+              // bottom edge between the two surfaces showing the same
+              // shape of data.
+              borderBottom: `1px solid ${colors.borderLight}`,
               textDecoration: "none",
               color: "inherit",
               overflow: "hidden",
