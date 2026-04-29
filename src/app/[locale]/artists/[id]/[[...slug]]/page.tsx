@@ -3,7 +3,11 @@ import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt, formatDate } from "@/lib/utils";
+import {
+  serializeBigInt,
+  formatDate,
+  HISTORY_ROW_DATE_FORMAT,
+} from "@/lib/utils";
 import {
   displayNameWithFallback,
   resolveLocalizedField,
@@ -22,6 +26,11 @@ import {
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+import {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+} from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { UnitCard } from "@/components/artists/UnitCard";
@@ -353,8 +362,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
 
   // Resolved status labels passed to <PerformanceGroup>; the component
   // itself is locale-free so the label dictionary lives here.
+  // Ongoing badge uses the marketing "LIVE" label (matching the home,
+  // event list, series, and song detail surfaces) — keeps the
+  // ongoing-event affordance one consistent string across the app
+  // instead of mixing "진행 중" / "LIVE" / "Ongoing" depending on
+  // which page surfaces the badge.
   const statusLabels: Record<ResolvedEventStatus, string> = {
-    ongoing: evT("status.ongoing"),
+    ongoing: evT("live"),
     upcoming: evT("status.upcoming"),
     completed: evT("status.completed"),
     cancelled: evT("status.cancelled"),
@@ -411,7 +425,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       id: eventIdStr,
       seriesId: Number(event.eventSeriesId),
       status,
-      formattedDate: formatDate(event.date, locale),
+      formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name:
         displayNameWithFallback(event, event.translations, locale) ||
         evT("unknownEvent"),
@@ -910,16 +924,56 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     {t("noEvents")}
                   </p>
                 ) : (
-                  seriesViews.map((sv) => (
-                    <PerformanceGroup
-                      key={sv.seriesId}
-                      series={sv}
-                      statusLabels={statusLabels}
-                      eventCountLabel={t("eventCount", {
-                        count: sv.events.length,
-                      })}
-                    />
-                  ))
+                  <>
+                    {/* Desktop-only column-header strip — same grid
+                        template as the rows below so headers line up
+                        with row tracks. Mirrors the song detail
+                        page's history tab pattern (which uses the
+                        identical PERFORMANCE_ROW_GRID export). Hidden
+                        on mobile via `hidden lg:grid`; mobile rows
+                        carry no column header. */}
+                    <div
+                      className="hidden lg:grid"
+                      style={{
+                        gridTemplateColumns: PERFORMANCE_ROW_GRID,
+                        gap: PERFORMANCE_ROW_GAP_PX,
+                        padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
+                        background: colors.bgFaint,
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      {[
+                        evT("tableHeader.status"),
+                        evT("tableHeader.date"),
+                        evT("tableHeader.name"),
+                        evT("tableHeader.songs"),
+                        "",
+                      ].map((label, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: colors.textMuted,
+                            letterSpacing: "0.06em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    {seriesViews.map((sv) => (
+                      <PerformanceGroup
+                        key={sv.seriesId}
+                        series={sv}
+                        statusLabels={statusLabels}
+                        eventCountLabel={t("eventCount", {
+                          count: sv.events.length,
+                        })}
+                      />
+                    ))}
+                  </>
                 )}
               </div>
             )}
