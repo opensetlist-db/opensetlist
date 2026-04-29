@@ -776,17 +776,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                       borderBottom: `1px solid ${colors.borderLight}`,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: colors.textMuted,
-                        letterSpacing: "0.06em",
-                        textTransform: "uppercase",
-                      }}
-                    >
+                    <SectionLabel noBorder style={{ marginBottom: 0 }}>
                       {t("recentEvents")}
-                    </span>
+                    </SectionLabel>
                     {totalEvents > recentEvents.length && (
                       <Link
                         href={`/${locale}/artists/${artist.id}/${artist.slug}?tab=history`}
@@ -900,17 +892,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     borderBottom: `1px solid ${colors.borderLight}`,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: colors.textMuted,
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                    }}
-                  >
+                  <SectionLabel noBorder style={{ marginBottom: 0 }}>
                     {t("historyHeader", { count: totalEvents })}
-                  </span>
+                  </SectionLabel>
                 </div>
                 {seriesViews.length === 0 ? (
                   <p

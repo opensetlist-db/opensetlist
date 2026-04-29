@@ -24,9 +24,24 @@ interface Props {
    * mockup never shows a divider line under the label.
    */
   noBorder?: boolean;
+  /**
+   * Optional style override merged on top of the component's defaults.
+   * Used when the label sits inside a flex row that owns its own
+   * spacing (e.g. the artist recent-events header, where the parent
+   * <div> already provides padding + bottom border around the label
+   * + a sibling "View all" link), so the component's default
+   * marginBottom would create extra vertical room. Pass
+   * `style={{ marginBottom: 0 }}` in those cases.
+   */
+  style?: React.CSSProperties;
 }
 
-export function SectionLabel({ children, as = "h2", noBorder = false }: Props) {
+export function SectionLabel({
+  children,
+  as = "h2",
+  noBorder = false,
+  style,
+}: Props) {
   const Tag = as;
   return (
     <Tag
@@ -47,6 +62,7 @@ export function SectionLabel({ children, as = "h2", noBorder = false }: Props) {
         textTransform: "uppercase",
         borderBottom: noBorder ? "none" : `1px solid ${colors.borderLight}`,
         lineHeight: 1.4,
+        ...style,
       }}
     >
       {children}
