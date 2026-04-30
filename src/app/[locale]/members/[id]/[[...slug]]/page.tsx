@@ -12,6 +12,7 @@ import {
   displayNameWithFallback,
   displayOriginalName,
   displayOriginalTitle,
+  resolveOriginalShortLabel,
 } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
@@ -217,6 +218,19 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const { main: characterPrimary, sub: characterSecondary } =
     displayOriginalName(member, member.translations, locale);
   const characterOriginal = characterSecondary ?? characterPrimary;
+  // Avatar initial sources the *original-language short name* first
+  // (e.g. 瑠 for 瑠璃乃 rather than 大 for 大沢瑠璃乃) so the round
+  // chip reads as the character's curated handle, not the surname-
+  // first first-character of a Japanese-style full name. The
+  // resolution chain (parent shortName → original-language
+  // translation shortName → full original → "?") lives in
+  // `resolveOriginalShortLabel` so the order is testable and a future
+  // canonical-script avatar surface can reuse it without re-inlining.
+  const characterAvatarLabel = resolveOriginalShortLabel(
+    member,
+    member.translations,
+    characterOriginal,
+  );
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape
@@ -306,7 +320,14 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const vaPrimary = vaDisplay?.main ?? null;
   const vaSecondary = vaDisplay?.sub ?? null;
   // Original-language string for the VA avatar initial; same
-  // `sub ?? main` rule the character avatar above uses.
+  // `sub ?? main` rule the character avatar above uses. Note: the VA
+  // intentionally keeps the *full* original-language first character
+  // even though the character avatar (above) prefers the short-name
+  // first character — operator preference. A real-person VA name is
+  // typically rendered in full anyway (e.g. 楡井希実 → 楡), and the
+  // surname's first character is the canonical reading; switching to
+  // a short-name initial would yield the given-name's first character,
+  // which is too informal a handle for a credited performer's chip.
   const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
@@ -737,11 +758,13 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 }}
               >
                 <InitialAvatar
-                  // Avatar initial keeps the original-language first
-                  // character — matches the mockup which intentionally
-                  // shows the canonical script (e.g. 大 for 大沢瑠璃乃)
-                  // regardless of the displayed name's language.
-                  label={characterOriginal || "?"}
+                  // Original-language short name's first character —
+                  // shows the curated handle's lead glyph (e.g. 瑠 for
+                  // 瑠璃乃) instead of the full-name lead (which would
+                  // surface a Japanese surname's first kanji). See
+                  // `characterAvatarLabel` resolution above for the
+                  // shortName → fullName fallback chain.
+                  label={characterAvatarLabel}
                   color={memberColor}
                   size={72}
                 />
@@ -815,8 +838,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       }}
                     >
                       <InitialAvatar
-                        // Original-language first character — matches
-                        // the character avatar's logic (mockup intent).
+                        // Original-language full-name first character
+                        // — intentionally distinct from the character
+                        // avatar above (which uses the short name's
+                        // first character). See `vaOriginal` for
+                        // rationale.
                         label={vaOriginal || "?"}
                         color={memberColor}
                         size={36}
