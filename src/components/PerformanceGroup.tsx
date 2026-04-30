@@ -197,7 +197,7 @@ export function PerformanceGroup({
             // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
             // requires literal class strings, so the constant can't be
             // interpolated here — if you change one, change the other.
-            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_100px_28px]"
+            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[80px_100px_minmax(0,1fr)_100px_28px]"
             style={{
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               // Per-row separator uses borderLight uniformly — matches

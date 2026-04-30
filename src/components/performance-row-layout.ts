@@ -22,6 +22,15 @@
  * a separate grid with the same template — has identically-sized
  * column tracks.
  *
+ * The leading 80px holds the StatusBadge. Was 60px and the English
+ * "Upcoming" pill (~70-75px) overflowed into track 2, leaving the
+ * date column visually flush with the badge — operator feedback
+ * 2026-04-29: "spacing between status and date column are too narrow.
+ * Can't you use the same spacing used in RECENT EVENTS?". 80px fits
+ * the widest realistic badge with ~5-10px breathing room before the
+ * 10px column gap, mirroring the recent-events flex layout's natural
+ * `gap: 10` between content-sized badge and date span.
+ *
  * The trailing 100px holds per-row chips (artist: `🎵 N`; member:
  * 전출연 / unit-name; song: encore + #position). Was 180px and gave
  * too much air on rows with short content while squeezing the name
@@ -40,7 +49,7 @@
  * the same density at the right edge.
  */
 export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) 100px 28px";
+  "80px 100px minmax(0, 1fr) 100px 28px";
 
 /**
  * Left padding of every event row, in pixels. The column-header strip
