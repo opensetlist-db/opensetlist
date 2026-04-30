@@ -26,6 +26,18 @@ import {
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+// Layout primitives import directly from the server-safe module —
+// NOT from `PerformanceGroup.tsx` (which carries `"use client"`).
+// See `src/components/performance-row-layout.ts` header for the
+// boundary-corruption rationale.
+import {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
+} from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
@@ -325,6 +337,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
   type EventInfo = {
     seriesId: number;
     seriesShort: string;
+    /** Standalone variant of `seriesShort`: null when event has no
+     *  series (so the recent-events block can show series subtitle
+     *  only when it differs from the event name). */
+    seriesNameOrNull: string | null;
     rawDateMs: number;
     formattedDate: string;
     name: string;
@@ -333,6 +349,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
   };
   type EventView = PerformanceEvent & {
     seriesId: number;
+    /** Pre-resolved series translated name. Used by the recent-events
+     *  subtitle (overview tab) — null for standalone events so the
+     *  subtitle line is suppressed. The history-tab grouping reads
+     *  `seriesShort` (which falls back to event name) instead. */
+    seriesName: string | null;
     rawDateMs: number;
     isFullGroup: boolean;
   };
@@ -340,17 +361,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const buildInfo = (
     event: (typeof member.performances)[number]["setlistItem"]["event"],
   ): EventInfo => {
-    const seriesShort = event.eventSeries
+    const seriesNameOrNull = event.eventSeries
       ? displayNameWithFallback(
           event.eventSeries,
           event.eventSeries.translations,
           locale,
-        ) || evT("unknownEvent")
-      : displayNameWithFallback(event, event.translations, locale) ||
-        evT("unknownEvent");
+        ) || null
+      : null;
+    const seriesShort =
+      seriesNameOrNull ??
+      displayNameWithFallback(event, event.translations, locale) ??
+      evT("unknownEvent");
     return {
       seriesId: event.eventSeries ? Number(event.eventSeries.id) : 0,
       seriesShort,
+      seriesNameOrNull,
       // serializeBigInt's JSON.stringify converts Date columns to ISO
       // strings — runtime is `string` even though the type still says
       // Date. Wrap in String() before parseing.
@@ -434,6 +459,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       eventViewsById.set(eid, {
         id: String(event.id),
         seriesId: info.seriesId,
+        seriesName: info.seriesNameOrNull,
         rawDateMs: info.rawDateMs,
         formattedDate: info.formattedDate,
         name: info.name,
@@ -461,6 +487,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
     eventViewsById.set(eid, {
       id: String(ep.event.id),
       seriesId: info.seriesId,
+      seriesName: info.seriesNameOrNull,
       rawDateMs: info.rawDateMs,
       formattedDate: info.formattedDate,
       name: info.name,
@@ -569,8 +596,12 @@ export default async function MemberPage({ params, searchParams }: Props) {
       events: s.events,
     }));
 
-  // Recent-3 across all series for the overview tab.
-  const recentEvents: PerformanceEvent[] = [...eventViewsById.values()]
+  // Recent-3 across all series for the overview tab. Carries
+  // `seriesName` as a subtitle line below the event name (operator
+  // feedback 2026-04-29 — the flat list lost the series context that
+  // history-tab grouping conveys via group headers).
+  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
+  const recentEvents: RecentEventRow[] = [...eventViewsById.values()]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
     .map((e) => ({
@@ -579,6 +610,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       formattedDate: e.formattedDate,
       name: e.name,
       href: e.href,
+      seriesName: e.seriesName,
     }));
 
   // ─── Songs aggregation ───────────────────────────────────────────
@@ -1016,26 +1048,51 @@ export default async function MemberPage({ params, searchParams }: Props) {
                           style={{
                             fontSize: 12,
                             color: colors.textMuted,
-                            width: 52,
+                            // 100px to fit `HISTORY_ROW_DATE_FORMAT`
+                            // year-included strings ("2026년 4월 25일")
+                            // — matches the artist page recent-events
+                            // and PerformanceGroup history rows.
+                            width: 100,
                             flexShrink: 0,
                           }}
                         >
                           {event.formattedDate}
                         </span>
-                        <span
+                        <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: colors.primary,
                             flex: 1,
                             minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
                           }}
                         >
-                          {event.name}
-                        </span>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: colors.primary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {event.name}
+                          </span>
+                          {event.seriesName && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {event.seriesName}
+                            </span>
+                          )}
+                        </div>
                         <span
                           aria-hidden="true"
                           style={{
@@ -1128,16 +1185,74 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     {t("noEvents")}
                   </p>
                 ) : (
-                  seriesViews.map((sv) => (
-                    <PerformanceGroup
-                      key={sv.seriesId}
-                      series={sv}
-                      statusLabels={statusLabels}
-                      eventCountLabel={at("eventCount", {
-                        count: sv.events.length,
-                      })}
-                    />
-                  ))
+                  <>
+                    {/* Desktop-only column-header strip — same grid
+                        template as the rows below so headers line up
+                        with row tracks. Mirrors the artist + song
+                        detail history tabs (operator feedback
+                        2026-04-29: "member page history has no column
+                        title, which is inconsistent with artist
+                        history"). Hidden on mobile via `hidden lg:grid`
+                        — mobile rows carry no column header. */}
+                    <div
+                      className="hidden lg:grid"
+                      style={{
+                        gridTemplateColumns: PERFORMANCE_ROW_GRID,
+                        gap: PERFORMANCE_ROW_GAP_PX,
+                        padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
+                        background: colors.bgFaint,
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      {[
+                        evT("tableHeader.status"),
+                        evT("tableHeader.date"),
+                        evT("tableHeader.name"),
+                        // Trailing column on member page shows either
+                        // a 전출연 pill or a unit-name pill — no clean
+                        // single label captures both. Leave empty;
+                        // reads as a "chip column" by visual context
+                        // alone (artist + song history use a real
+                        // label because their column has stable
+                        // semantics — `🎵 N` and #position).
+                        "",
+                        "",
+                      ].map((label, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: colors.textMuted,
+                            letterSpacing: "0.06em",
+                            textTransform: "uppercase",
+                            // Anchor trailing column with row chips
+                            // (right-aligned), and pad STATUS by the
+                            // badge's internal padding so the header
+                            // text aligns with the badge text. See
+                            // performance-row-layout.ts for the
+                            // detailed rationale.
+                            textAlign:
+                              i === TRAILING_COL_IDX ? "right" : "left",
+                            paddingLeft:
+                              i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
+                          }}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    {seriesViews.map((sv) => (
+                      <PerformanceGroup
+                        key={sv.seriesId}
+                        series={sv}
+                        statusLabels={statusLabels}
+                        eventCountLabel={at("eventCount", {
+                          count: sv.events.length,
+                        })}
+                      />
+                    ))}
+                  </>
                 )}
               </div>
             )}

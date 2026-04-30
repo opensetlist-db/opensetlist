@@ -31,6 +31,9 @@ import {
   PERFORMANCE_ROW_GRID,
   PERFORMANCE_ROW_INDENT_PX,
   PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
 } from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
@@ -537,17 +540,33 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // Strip the temporary `rawDateMs` and `seriesId` fields back to the
   // declared PerformanceEvent shape — explicit field copy avoids the
   // unused `_` discard pattern that triggers no-unused-vars.
-  const recentEvents: PerformanceEvent[] = [...eventViews]
+  // Resolve a series-name subtitle for each recent-events row. The
+  // history tab already conveys the series via PerformanceGroup
+  // headers, but the flat 3-row recent-events block on the overview
+  // tab loses that context — operator feedback (2026-04-29):
+  // "Recent event should show series name if exist as performance
+  // history does. Event name does not include full information."
+  // Pull from the existing `seriesById` map so this stays one extra
+  // string per row, no extra query.
+  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
+  const recentEvents: RecentEventRow[] = [...eventViews]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
-    .map((e) => ({
-      id: e.id,
-      status: e.status,
-      formattedDate: e.formattedDate,
-      name: e.name,
-      href: e.href,
-      trailing: e.trailing,
-    }));
+    .map((e) => {
+      const series = seriesById.get(e.seriesKey);
+      const seriesName = series
+        ? displayNameWithFallback(series, series.translations, locale) || null
+        : null;
+      return {
+        id: e.id,
+        status: e.status,
+        formattedDate: e.formattedDate,
+        name: e.name,
+        href: e.href,
+        trailing: e.trailing,
+        seriesName,
+      };
+    });
 
   // Pre-render a sub-unit card to a ReactNode so <UnitsToggle>
   // (client) can compose the main/other split without re-running the
@@ -899,20 +918,41 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         >
                           {event.formattedDate}
                         </span>
-                        <span
+                        <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: colors.primary,
                             flex: 1,
                             minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
                           }}
                         >
-                          {event.name}
-                        </span>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: colors.primary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {event.name}
+                          </span>
+                          {event.seriesName && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {event.seriesName}
+                            </span>
+                          )}
+                        </div>
                         {event.trailing}
                         <span
                           aria-hidden="true"
@@ -994,6 +1034,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             color: colors.textMuted,
                             letterSpacing: "0.06em",
                             textTransform: "uppercase",
+                            // Anchor trailing column with row chips
+                            // (right-aligned), and pad STATUS by the
+                            // badge's internal padding so the header
+                            // text aligns with the badge text. See
+                            // performance-row-layout.ts for the
+                            // detailed rationale.
+                            textAlign:
+                              i === TRAILING_COL_IDX ? "right" : "left",
+                            paddingLeft:
+                              i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
                           }}
                         >
                           {label}
