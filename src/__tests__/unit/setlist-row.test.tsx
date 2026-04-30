@@ -136,7 +136,7 @@ describe("SetlistRow", () => {
         },
       ],
     });
-    render(
+    const { container } = render(
       <SetlistRow
         item={item}
         index={0}
@@ -145,7 +145,13 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    const link = screen.getByText("Original Title").closest("a");
+    // Locate the song link by href prefix instead of by display text.
+    // The previous getByText approach couples the test to the
+    // title-display policy — if the row ever switches to rendering
+    // the localized title (or some other transformation) the test
+    // breaks for a reason unrelated to slug correctness. Querying
+    // by href targets only the slug logic this test asserts on.
+    const link = container.querySelector('a[href^="/en/songs/"]');
     expect(link?.getAttribute("href")).toBe(
       "/en/songs/999/canonical-stored-slug",
     );
@@ -167,7 +173,7 @@ describe("SetlistRow", () => {
         },
       ],
     });
-    render(
+    const { container } = render(
       <SetlistRow
         item={item}
         index={0}
@@ -176,7 +182,8 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    const link = screen.getByText("Slug-less Song").closest("a");
+    // Same display-string-decoupled link locator as above.
+    const link = container.querySelector('a[href^="/en/songs/"]');
     // No trailing slash — the href is `/en/songs/555` exactly.
     expect(link?.getAttribute("href")).toBe("/en/songs/555");
   });
