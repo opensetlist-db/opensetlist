@@ -217,6 +217,25 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const { main: characterPrimary, sub: characterSecondary } =
     displayOriginalName(member, member.translations, locale);
   const characterOriginal = characterSecondary ?? characterPrimary;
+  // Avatar initial sources the *original-language short name* first
+  // (e.g. 瑠 for 瑠璃乃 rather than 大 for 大沢瑠璃乃) so the round
+  // chip reads as the character's curated handle, not the surname-
+  // first first-character of a Japanese-style full name. Resolution
+  // mirrors the `originalName` chain in `displayOriginalName`: prefer
+  // the parent column, then the translation row matching
+  // `originalLanguage` (strict — never bleeds in a non-original-locale
+  // shortName), then fall through to the full original. The fallback
+  // matters when an entry has no `originalShortName` set yet; the old
+  // "first char of full name" behavior is preserved in that case so
+  // un-curated rows still get *some* identity glyph.
+  const memberOriginalLangTranslation = member.translations.find(
+    (t) => t.locale === member.originalLanguage,
+  );
+  const characterAvatarLabel =
+    member.originalShortName ||
+    memberOriginalLangTranslation?.shortName ||
+    characterOriginal ||
+    "?";
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape
@@ -308,6 +327,22 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // Original-language string for the VA avatar initial; same
   // `sub ?? main` rule the character avatar above uses.
   const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
+  // VA avatar initial: same original-language short-name preference
+  // the character avatar applies above. Resolved against the VA's own
+  // `originalLanguage` (RealPerson can declare its own — a Japanese
+  // VA on a Korean rendering still draws from the JP shortName). Falls
+  // through to the full original when no shortName exists.
+  const vaOriginalLangTranslation = currentVa
+    ? currentVa.realPerson.translations.find(
+        (t) => t.locale === currentVa.realPerson.originalLanguage,
+      )
+    : null;
+  const vaAvatarLabel = currentVa
+    ? currentVa.realPerson.originalShortName ||
+      vaOriginalLangTranslation?.shortName ||
+      vaOriginal ||
+      "?"
+    : "?";
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
   // when the VA is currently active, since the trailing label adds
@@ -737,11 +772,13 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 }}
               >
                 <InitialAvatar
-                  // Avatar initial keeps the original-language first
-                  // character — matches the mockup which intentionally
-                  // shows the canonical script (e.g. 大 for 大沢瑠璃乃)
-                  // regardless of the displayed name's language.
-                  label={characterOriginal || "?"}
+                  // Original-language short name's first character —
+                  // shows the curated handle's lead glyph (e.g. 瑠 for
+                  // 瑠璃乃) instead of the full-name lead (which would
+                  // surface a Japanese surname's first kanji). See
+                  // `characterAvatarLabel` resolution above for the
+                  // shortName → fullName fallback chain.
+                  label={characterAvatarLabel}
                   color={memberColor}
                   size={72}
                 />
@@ -815,9 +852,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       }}
                     >
                       <InitialAvatar
-                        // Original-language first character — matches
-                        // the character avatar's logic (mockup intent).
-                        label={vaOriginal || "?"}
+                        // Same original-language shortName-first rule
+                        // the character avatar uses; see
+                        // `vaAvatarLabel` resolution above.
+                        label={vaAvatarLabel}
                         color={memberColor}
                         size={36}
                       />
