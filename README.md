@@ -30,6 +30,9 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.9.3 (2026-04-30)
+- Member-page data-correctness fix: `getMember`'s `performances` and `eventPerformers` includes had no soft-delete `where` filter, so junction rows (`SetlistItemMember`, `SetlistItemSong`, `EventPerformer`) attached to soft-deleted parents still leaked into the songs / history aggregations. Symptom in prod: a variant song that had never been performed live surfaced on a member's 자주 부른 곡 list with `timesPerformed: 1` because the only `SetlistItemSong` row referencing it sat under a retracted (soft-deleted) `SetlistItem`. Three-tier filter added on `performances` (`setlistItem.isDeleted=false` + `event.isDeleted=false` + `songs.song.isDeleted=false`) plus matching `event.isDeleted=false` on `eventPerformers`. Other detail pages (artist / song / series) already filtered correctly — leak was isolated to `getMember`.
+
 ### v0.9.2 (2026-04-30)
 - Mobile horizontal-overflow fix on the four detail pages (artist / member / song / series). Their sidebar+main wrapper was `grid lg:grid-cols-[280px_1fr]`, which on mobile fell back to implicit `grid-auto-columns: auto` and grew the track to fit the widest nowrap descendant's `min-content`. Long song titles, series subtitles, or event names therefore stretched the cards wider than the viewport while `<main>`'s `bgPage` only painted to the viewport edge — visible as a colored gutter beside every card and horizontal page scroll. Adding `grid-cols-1` clamps the mobile track to `minmax(0, 1fr)` so cards fit the viewport and the existing ellipsis truncation engages as designed. Event detail page already used `lg:grid` (block on mobile) and was unaffected.
 
