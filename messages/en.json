@@ -4,14 +4,16 @@
     "description": "Open setlist database for live events (JP/EN/KR)",
     "ongoingTitle": "🔴 Live Now",
     "ongoingSubtitle": "Setlist updating in real time",
-    "upcomingTitle": "Upcoming Shows",
-    "recentTitle": "Recent Shows",
+    "upcomingTitle": "Upcoming Events",
+    "recentTitle": "Recent Events",
     "viewAllSchedule": "View full schedule ›",
     "viewAllEvents": "View all events ›",
     "songCountOngoing": "{count, plural, one {🎵 # song so far} other {🎵 # songs so far}}",
     "songCount": "{count, plural, one {🎵 # song} other {🎵 # songs}}",
     "dDay": "D-{days}",
-    "noEvents": "Event listings coming soon."
+    "noEvents": "Event listings coming soon.",
+    "noUpcoming": "No upcoming events in the next 30 days.",
+    "noRecent": "No recent events in the last 30 days."
   },
   "Common": {
     "notFound": "Page not found.",
@@ -162,7 +164,7 @@
   "Event": {
     "title": "Events",
     "allEvents": "All Events",
-    "subtitle": "Check setlists and reactions for each show",
+    "subtitle": "Check setlists and reactions for each event",
     "ongoing": "Live Now",
     "upcoming": "Upcoming Events",
     "past": "Past Events",
@@ -242,7 +244,7 @@
     "unknownSeries": "Untitled Series",
     "tabSchedule": "Schedule",
     "tabSongs": "Songs ({count}+)",
-    "liveBannerTitle": "A live show is happening now",
+    "liveBannerTitle": "A live event is happening now",
     "liveBannerCta": "Watch the live setlist ›",
     "songsFooter": "More songs are added as performances complete",
     "songsEmpty": "No songs have been recorded yet",
@@ -277,7 +279,7 @@
   },
   "Impression": {
     "title": "One-line impressions",
-    "placeholder": "How was the show? (up to 200 chars)",
+    "placeholder": "How was the event? (up to 200 chars)",
     "submit": "Post",
     "submitted": "Your impression",
     "edit": "Edit",
