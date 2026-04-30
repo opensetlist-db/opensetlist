@@ -639,7 +639,18 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           ]}
         />
 
-        <div className="grid lg:grid-cols-[280px_1fr] lg:gap-7" style={{ alignItems: "start", paddingBottom: 60 }}>
+        {/* `grid-cols-1` is required on mobile — without it, the
+            implicit grid track defaults to `minmax(min-content,
+            max-content)` and the track grows to fit the widest
+            descendant's `min-content`. Cards containing `whiteSpace:
+            nowrap` titles (long song names, series subtitles)
+            therefore stretch the grid wider than the viewport on
+            small screens, with the page background only painting to
+            the viewport edge — visible as a colored gutter beside
+            the over-wide cards. `minmax(0, 1fr)` (which Tailwind's
+            `grid-cols-1` compiles to) clamps the track to viewport
+            and lets the inner ellipsis truncation actually engage. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] lg:gap-7" style={{ alignItems: "start", paddingBottom: 60 }}>
           {/* Sidebar (mobile: stacked above tabs; desktop: sticky 280px column) */}
           <div className="lg:sticky lg:top-[72px]" style={{ marginBottom: 12 }}>
             <InfoCard artist={artist}>
