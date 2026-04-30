@@ -442,15 +442,17 @@ function ReactionButton({
           widths equal across 0-9, and right-align pins the rightmost
           digit to the same x in every button — the visually salient
           anchor when a column of counts is meant to read like a
-          leaderboard. `minWidth: 18` fits two digits cleanly within
-          the 260px setlist reactions column (4 buttons × ~52px +
-          3 × 6px gaps ≅ 226px) — going wider (e.g. 22 to fit three
-          digits) overflows the column and forces one button to wrap
-          to a second line. Three-digit counts will stretch their
-          own button by a few px and visibly drift in that one row,
-          which is acceptable for the rare case at Phase 1A scale —
-          column-fit beats absolute alignment when push comes to
-          shove. */}
+          leaderboard. `minWidth: 18` fits two digits cleanly inside
+          the 280px setlist reactions column (each button is
+          ~63–65px on Windows / Segoe UI Emoji where emoji glyphs
+          render wider than macOS Apple Color Emoji; 4 × 65 + 3 ×
+          6px gaps ≅ 278px, with a small buffer in the column).
+          Going wider here (e.g. 22 to fit three digits) re-introduces
+          the wrap onto a second line. Three-digit counts will stretch
+          their own button by a few px and visibly drift in that one
+          row, which is acceptable for the rare case at Phase 1A
+          scale — column-fit beats absolute alignment when push comes
+          to shove. See `setlistLayout.ts` for the 260 → 280 history. */}
       <span
         key={animKey}
         style={{

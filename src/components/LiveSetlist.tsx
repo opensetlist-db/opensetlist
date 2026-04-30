@@ -262,9 +262,10 @@ export function LiveSetlist({
   );
 }
 
-// Desktop column-name row — `# / SONG / PERFORMERS / REACTIONS`. Same
-// `36px 1fr 180px 260px` grid as `<SetlistRow>`'s desktop body so
-// every label sits directly above its column. Mobile hides via
+// Desktop column-name row — `# / SONG / PERFORMERS / REACTIONS`.
+// Pulls `SETLIST_DESKTOP_GRID_COLS` so every label sits directly
+// above its data column on the row below; the constant is the only
+// source of truth for the four-column template. Mobile hides via
 // `hidden lg:grid` since mobile rows are stacked, not gridded.
 function SetlistColumnHeader({
   labels,
