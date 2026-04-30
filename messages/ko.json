@@ -154,6 +154,7 @@
     "statsCompleted": "완료",
     "statsSongs": "곡",
     "songCount": "{count, plural, other {#회 공연}}",
+    "songCountUnit": "회 공연",
     "recentEvents": "최근 공연",
     "topSongs": "자주 부른 곡",
     "voiceActor": "담당 성우",

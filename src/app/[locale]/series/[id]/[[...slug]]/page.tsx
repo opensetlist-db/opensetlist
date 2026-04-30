@@ -38,6 +38,7 @@ import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CountCell } from "@/components/CountCell";
 import {
   LegCard,
   type PreparedLeg,
@@ -979,30 +980,12 @@ export default async function EventSeriesPage({
                                   </span>
                                 )}
                               </div>
-                              <div
-                                style={{
-                                  flexShrink: 0,
-                                  textAlign: "right",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontSize: 14,
-                                    fontWeight: 700,
-                                    color: colors.textPrimary,
-                                  }}
-                                >
-                                  {row.count}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 10,
-                                    color: colors.textMuted,
-                                  }}
-                                >
-                                  {t("songAppearancesUnit", { count: row.count })}
-                                </div>
-                              </div>
+                              <CountCell
+                                count={row.count}
+                                unit={t("songAppearancesUnit", {
+                                  count: row.count,
+                                })}
+                              />
                               <span
                                 aria-hidden="true"
                                 style={{

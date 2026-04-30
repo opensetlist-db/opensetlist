@@ -20,6 +20,7 @@ import { SectionLabel } from "@/components/SectionLabel";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { InitialAvatar } from "@/components/InitialAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CountCell } from "@/components/CountCell";
 import {
   PerformanceGroup,
   type PerformanceSeries,
@@ -922,7 +923,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                         key={song.id}
                         song={song}
                         isLast={i === songsTop3.length - 1}
-                        countLabel={t("songCount", {
+                        countUnit={t("songCountUnit", {
                           count: song.timesPerformed,
                         })}
                       />
@@ -1076,7 +1077,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       key={song.id}
                       song={song}
                       isLast={i === songsAll.length - 1}
-                      countLabel={t("songCount", {
+                      countUnit={t("songCountUnit", {
                         count: song.timesPerformed,
                       })}
                     />
@@ -1147,10 +1148,14 @@ interface SongRowProps {
     timesPerformed: number;
   };
   isLast: boolean;
-  countLabel: string;
+  /** Unit-only label (e.g. "회 공연" / "performances") — the count
+   *  goes in the bare-number slot of `<CountCell>`. Don't pass an
+   *  already-formatted "{count}회 공연" string here; that double-
+   *  rendered the number prior to 2026-04-29. */
+  countUnit: string;
 }
 
-function SongRow({ song, isLast, countLabel }: SongRowProps) {
+function SongRow({ song, isLast, countUnit }: SongRowProps) {
   return (
     <Link
       href={song.href}
@@ -1217,22 +1222,8 @@ function SongRow({ song, isLast, countLabel }: SongRowProps) {
           </span>
         )}
       </div>
-      <div
-        style={{ flexShrink: 0, textAlign: "right", marginRight: 4 }}
-      >
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: colors.textPrimary,
-            lineHeight: 1.2,
-          }}
-        >
-          {song.timesPerformed}
-        </div>
-        <div style={{ fontSize: 10, color: colors.textMuted }}>
-          {countLabel}
-        </div>
+      <div style={{ marginRight: 4 }}>
+        <CountCell count={song.timesPerformed} unit={countUnit} />
       </div>
       <span
         aria-hidden="true"
