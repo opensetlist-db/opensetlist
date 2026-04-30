@@ -11,7 +11,7 @@ Crowdsourced setlist database for East Asian live music — K-POP, J-POP, C-POP,
 - **Per-event setlists** with per-song unit/member credits — the thing setlist.fm doesn't model.
 - **Artist hierarchy** for groups, sub-units, and solo acts; stage identities (characters / personas) kept separate from voice actors so VA changes don't rewrite history.
 - **Real-time setlist polling** during ongoing events with a pulsing LIVE badge.
-- **One-line impressions** ("한줄평") per event with on-demand translation between viewer locales.
+- **One-line impressions** ("한줄감상") per event with on-demand translation between viewer locales.
 - **Dynamic OG cards** with data-derived glassmorphism palettes and self-hosted CJK fonts for Twitter / KakaoTalk / Discord previews.
 - **i18n from day one**: Korean (launch), Japanese, English, Simplified Chinese (Phase 3).
 

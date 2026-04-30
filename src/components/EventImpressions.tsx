@@ -381,7 +381,7 @@ export function EventImpressions({
       >
         <div className="flex items-center gap-2">
           <h2
-            // Locale-safe uppercase — CJK characters ("한줄평",
+            // Locale-safe uppercase — CJK characters ("한줄감상",
             // "ひとこと") render unchanged; English ("Impressions")
             // gets the all-caps treatment per operator preference.
             style={{
