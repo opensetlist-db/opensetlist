@@ -437,25 +437,27 @@ function ReactionButton({
       </span>
       {/* Always render the count slot so every reaction button
           across every setlist row has the same width regardless of
-          the count value. Without this, a button with no reactions
-          (no count span) is narrower than one with reactions, and a
-          1-digit count is narrower than a 3-digit count — both
-          shifts compound across the four reaction columns and the
-          column drifts visibly across rows when scanning the
-          setlist. `tabular-nums` keeps individual digit widths
-          equal across the 0-9 set; `minWidth: 22px` fits up to
-          three digits comfortably; right-aligned so the rightmost
-          digit pins to the same x in every button (the visually
-          salient anchor when a column of counts is meant to read
-          like a leaderboard). Empty string when count is 0 so the
-          slot reserves space without showing a literal "0". */}
+          the count value (no count → empty string, the slot still
+          reserves space). `tabular-nums` keeps individual digit
+          widths equal across 0-9, and right-align pins the rightmost
+          digit to the same x in every button — the visually salient
+          anchor when a column of counts is meant to read like a
+          leaderboard. `minWidth: 18` fits two digits cleanly within
+          the 260px setlist reactions column (4 buttons × ~52px +
+          3 × 6px gaps ≅ 226px) — going wider (e.g. 22 to fit three
+          digits) overflows the column and forces one button to wrap
+          to a second line. Three-digit counts will stretch their
+          own button by a few px and visibly drift in that one row,
+          which is acceptable for the rare case at Phase 1A scale —
+          column-fit beats absolute alignment when push comes to
+          shove. */}
       <span
         key={animKey}
         style={{
           fontSize: 12,
           fontWeight: 700,
           color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
-          minWidth: 22,
+          minWidth: 18,
           display: "inline-block",
           textAlign: "right",
           fontVariantNumeric: "tabular-nums",
