@@ -448,6 +448,14 @@ export default async function SongPage({ params, searchParams }: Props) {
   }));
 
   const hasVariations = variationList.length > 1;
+  // Clamp `requestedTab` against what's actually available. The
+  // <TabBar> hides the variations tab when `hasVariations` is false,
+  // so leaving activeTab pinned to "variations" would render an
+  // empty body with the history tab visually unselected.
+  const activeTab: TabKey =
+    requestedTab === "variations" && !hasVariations
+      ? "history"
+      : requestedTab;
 
   const tabs = [
     {
