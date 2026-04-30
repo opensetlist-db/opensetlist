@@ -325,24 +325,15 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const vaPrimary = vaDisplay?.main ?? null;
   const vaSecondary = vaDisplay?.sub ?? null;
   // Original-language string for the VA avatar initial; same
-  // `sub ?? main` rule the character avatar above uses.
+  // `sub ?? main` rule the character avatar above uses. Note: the VA
+  // intentionally keeps the *full* original-language first character
+  // even though the character avatar (above) prefers the short-name
+  // first character — operator preference. A real-person VA name is
+  // typically rendered in full anyway (e.g. 楡井希実 → 楡), and the
+  // surname's first character is the canonical reading; switching to
+  // a short-name initial would yield the given-name's first character,
+  // which is too informal a handle for a credited performer's chip.
   const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
-  // VA avatar initial: same original-language short-name preference
-  // the character avatar applies above. Resolved against the VA's own
-  // `originalLanguage` (RealPerson can declare its own — a Japanese
-  // VA on a Korean rendering still draws from the JP shortName). Falls
-  // through to the full original when no shortName exists.
-  const vaOriginalLangTranslation = currentVa
-    ? currentVa.realPerson.translations.find(
-        (t) => t.locale === currentVa.realPerson.originalLanguage,
-      )
-    : null;
-  const vaAvatarLabel = currentVa
-    ? currentVa.realPerson.originalShortName ||
-      vaOriginalLangTranslation?.shortName ||
-      vaOriginal ||
-      "?"
-    : "?";
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
   // when the VA is currently active, since the trailing label adds
@@ -852,10 +843,12 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       }}
                     >
                       <InitialAvatar
-                        // Same original-language shortName-first rule
-                        // the character avatar uses; see
-                        // `vaAvatarLabel` resolution above.
-                        label={vaAvatarLabel}
+                        // Original-language full-name first character
+                        // — intentionally distinct from the character
+                        // avatar above (which uses the short name's
+                        // first character). See `vaOriginal` for
+                        // rationale.
+                        label={vaOriginal || "?"}
                         color={memberColor}
                         size={36}
                       />
