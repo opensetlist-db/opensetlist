@@ -274,13 +274,28 @@ async function importArtists(rows: Record<string, string>[]) {
         linksToCreate.push({ artistId, groupId });
       }
     }
+    // Atomic replace: deleteMany + createMany must run inside the same
+    // transaction so a failure in createMany doesn't leave the affected
+    // artists with their previous ArtistGroup links wiped out and
+    // nothing in their place. Without `$transaction`, a partial-failure
+    // batch could orphan multiple artists from their groups
+    // simultaneously (the import operates over many artists at once).
+    // Both branches gated on length > 0 so we don't enter the
+    // transaction with no work — Prisma allows it, but skipping is
+    // cheaper and more explicit.
+    const txOps = [];
     if (artistIdsToReplace.length > 0) {
-      await prisma.artistGroup.deleteMany({
-        where: { artistId: { in: artistIdsToReplace } },
-      });
+      txOps.push(
+        prisma.artistGroup.deleteMany({
+          where: { artistId: { in: artistIdsToReplace } },
+        }),
+      );
     }
     if (linksToCreate.length > 0) {
-      await prisma.artistGroup.createMany({ data: linksToCreate });
+      txOps.push(prisma.artistGroup.createMany({ data: linksToCreate }));
+    }
+    if (txOps.length > 0) {
+      await prisma.$transaction(txOps);
     }
   }
 
