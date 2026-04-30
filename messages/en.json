@@ -64,6 +64,7 @@
     "recentEvents": "Recent events",
     "viewAll": "View all ›",
     "historyHeader": "{count, plural, one {Performance history — # event} other {Performance history — # events}}",
+    "standaloneEvents": "Standalone events",
     "filterAriaLabel": "Category filter",
     "filterAll": "All",
     "filterAnimeGame": "Anime / Game",

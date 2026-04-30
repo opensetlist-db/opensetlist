@@ -64,6 +64,7 @@
     "recentEvents": "最近の公演",
     "viewAll": "すべて見る ›",
     "historyHeader": "公演履歴 — {count}公演",
+    "standaloneEvents": "単独公演",
     "filterAriaLabel": "カテゴリーフィルター",
     "filterAll": "すべて",
     "filterAnimeGame": "アニメ/ゲーム",

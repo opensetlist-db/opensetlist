@@ -100,6 +100,18 @@ async function getMember(id: string) {
                   },
                 },
               },
+              // SetlistItemArtist on the row itself — drives the
+              // history-tab trailing chip's per-event unit label.
+              // Without this, the chip falls back to the member's
+              // CURRENT primary unit name even when the member
+              // performed under a different unit on that specific
+              // event (e.g. a member who moved between sub-units, or
+              // appeared in a one-time configuration).
+              artists: {
+                include: {
+                  artist: { include: { translations: true } },
+                },
+              },
             },
           },
         },
@@ -348,10 +360,23 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // Pre-built per event because PerformanceGroup is a client component
   // and React refuses to serialize a function prop across the RSC
   // boundary; ReactNode trees serialize fine, so the JSX lives here.
-  const buildTrailing = (isFullGroup: boolean): React.ReactNode => {
+  //
+  // Per-event unit resolution: when the row is a specific song-level
+  // appearance (`isFullGroup=false`), the caller passes
+  // `perEventUnitName` derived from THIS setlist item's
+  // SetlistItemArtist credit. Without it, the chip would fall back
+  // to `primaryUnitName` (the member's CURRENT primary unit) for
+  // every event — wrong for members who moved between sub-units or
+  // appeared in one-time configurations. `primaryUnitName` is still
+  // the last-resort fallback when the setlist item has no unit
+  // credit at all.
+  const buildTrailing = (
+    isFullGroup: boolean,
+    perEventUnitName?: string | null,
+  ): React.ReactNode => {
     const labelText = isFullGroup
       ? t("fullGroupBadge")
-      : (primaryUnitName ?? "");
+      : (perEventUnitName ?? primaryUnitName ?? "");
     if (!labelText) return null;
     return (
       <span
@@ -378,6 +403,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
     const event = perf.setlistItem.event;
     const eid = Number(event.id);
     if (!eventViewsById.has(eid)) {
+      // Resolve the per-event unit chip label from THIS setlist item's
+      // SetlistItemArtist credit (first unit-type artist; other types
+      // skipped — solo/group don't fit a "unit" chip). First-seen
+      // performance wins when the member sang multiple unit-stage
+      // songs at the same event; that matches the existing "first
+      // performance per event" iteration order. Falls back to
+      // `primaryUnitName` inside `buildTrailing` when the setlist
+      // item has no unit credit (e.g. solo song with no unit
+      // attribution).
+      const itemUnit = perf.setlistItem.artists.find(
+        (a) => a.artist.type === "unit",
+      )?.artist;
+      const perEventUnitName = itemUnit
+        ? displayNameWithFallback(itemUnit, itemUnit.translations, locale)
+        : null;
       const info = buildInfo(event);
       eventViewsById.set(eid, {
         id: String(event.id),
@@ -392,7 +432,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
         // EventPerformer-only check overrides it (it doesn't, but the
         // explicit default makes the rule readable).
         isFullGroup: false,
-        trailing: buildTrailing(false),
+        trailing: buildTrailing(false, perEventUnitName),
       });
     }
   }
