@@ -155,6 +155,11 @@ async function getSongAppearances(completedEventIds: bigint[]) {
 
 type SongRowHydrated = {
   id: number;
+  // Required for the IntlLink href on each row in the songs tab —
+  // takes the viewer to the song detail page. Returned by the
+  // findMany at line 125 by default (base columns aren't stripped
+  // unless explicitly omitted).
+  slug: string;
   originalTitle: string;
   originalLanguage: string;
   variantLabel: string | null;
@@ -898,100 +903,117 @@ export default async function EventSeriesPage({
                           <li
                             key={row.songId}
                             style={{
-                              display: "flex",
-                              alignItems: "center",
-                              // 10px gap + 10px/20px padding matches the
-                              // artist + member list row spacing — same
-                              // bullet-row-inside-a-card visual shape.
-                              gap: 10,
-                              padding: "10px 20px",
                               borderBottom: isLast
                                 ? "none"
                                 : `1px solid ${colors.borderFaint}`,
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  fontWeight: 600,
-                                  color: colors.textPrimary,
-                                }}
-                              >
-                                {titleDisplay.main}
-                                {titleDisplay.variant && (
-                                  <span
+                            {/* Whole-row link to song detail. The chevron
+                                on the right was visible signage suggesting
+                                this row was clickable, but the previous
+                                static <li> didn't act on it. Wrapping in
+                                IntlLink (auto-prepends locale) closes the
+                                discoverability gap. `row-hover-bg` matches
+                                the hover/focus treatment on every other
+                                clickable list row in the codebase. */}
+                            <IntlLink
+                              href={`/songs/${row.songId}/${row.song.slug}`}
+                              className="row-hover-bg"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                // 10px gap + 10px/20px padding matches the
+                                // artist + member list row spacing — same
+                                // bullet-row-inside-a-card visual shape.
+                                gap: 10,
+                                padding: "10px 20px",
+                                textDecoration: "none",
+                                color: "inherit",
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    color: colors.textPrimary,
+                                  }}
+                                >
+                                  {titleDisplay.main}
+                                  {titleDisplay.variant && (
+                                    <span
+                                      style={{
+                                        fontSize: 11,
+                                        color: colors.textMuted,
+                                        marginLeft: 6,
+                                      }}
+                                    >
+                                      {titleDisplay.variant}
+                                    </span>
+                                  )}
+                                </div>
+                                {titleDisplay.sub && (
+                                  <div
                                     style={{
                                       fontSize: 11,
                                       color: colors.textMuted,
-                                      marginLeft: 6,
+                                      marginTop: 2,
                                     }}
                                   >
-                                    {titleDisplay.variant}
+                                    {titleDisplay.sub}
+                                  </div>
+                                )}
+                                {unitName && (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      color: colors.textSecondary,
+                                      background: colors.borderLight,
+                                      borderRadius: 10,
+                                      padding: "1px 7px",
+                                      display: "inline-block",
+                                      marginTop: 3,
+                                    }}
+                                  >
+                                    {unitName}
                                   </span>
                                 )}
                               </div>
-                              {titleDisplay.sub && (
+                              <div
+                                style={{
+                                  flexShrink: 0,
+                                  textAlign: "right",
+                                }}
+                              >
                                 <div
                                   style={{
-                                    fontSize: 11,
-                                    color: colors.textMuted,
-                                    marginTop: 2,
+                                    fontSize: 14,
+                                    fontWeight: 700,
+                                    color: colors.textPrimary,
                                   }}
                                 >
-                                  {titleDisplay.sub}
+                                  {row.count}
                                 </div>
-                              )}
-                              {unitName && (
-                                <span
+                                <div
                                   style={{
-                                    fontSize: 11,
-                                    color: colors.textSecondary,
-                                    background: colors.borderLight,
-                                    borderRadius: 10,
-                                    padding: "1px 7px",
-                                    display: "inline-block",
-                                    marginTop: 3,
+                                    fontSize: 10,
+                                    color: colors.textMuted,
                                   }}
                                 >
-                                  {unitName}
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              style={{
-                                flexShrink: 0,
-                                textAlign: "right",
-                              }}
-                            >
-                              <div
+                                  {t("songAppearancesUnit", { count: row.count })}
+                                </div>
+                              </div>
+                              <span
+                                aria-hidden="true"
                                 style={{
-                                  fontSize: 14,
-                                  fontWeight: 700,
-                                  color: colors.textPrimary,
+                                  fontSize: 13,
+                                  color: colors.borderSubtle,
+                                  flexShrink: 0,
                                 }}
                               >
-                                {row.count}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 10,
-                                  color: colors.textMuted,
-                                }}
-                              >
-                                {t("songAppearancesUnit", { count: row.count })}
-                              </div>
-                            </div>
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                fontSize: 13,
-                                color: colors.borderSubtle,
-                                flexShrink: 0,
-                              }}
-                            >
-                              ›
-                            </span>
+                                ›
+                              </span>
+                            </IntlLink>
                           </li>
                         );
                       })}
