@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils";
 import {
   displayNameWithFallback,
+  displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
 import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
@@ -269,20 +270,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   const referenceNow = new Date();
 
   // Sidebar H1: localized name BIG, original name SMALL (operator
-  // preference, 2026-04-28). Previously used `displayOriginalName`
-  // which put the original-language name as `main` — flipped here so
-  // `displayNameWithFallback("full")` (localized cascade) drives the
-  // primary heading and the JA/EN original drops below as a sub-line
-  // when it differs.
-  const localizedFullName =
-    displayNameWithFallback(artist, artist.translations, locale, "full") ||
-    t("unknown");
-  const originalSubName =
-    artist.originalLanguage !== locale &&
-    artist.originalName &&
-    artist.originalName !== localizedFullName
-      ? artist.originalName
-      : null;
+  // preference). `displayOriginalName` is now translation-primary at
+  // the helper level (since the 2026-04-28 refactor of
+  // `src/lib/display.ts`), so consume `.main` directly as the
+  // headline and `.sub` as the secondary line — same call used by
+  // every other identity surface (members, series, breadcrumb
+  // labels) so the page can't drift from the rest of the app.
+  const { main: artistPrimaryName, sub: artistSecondaryName } =
+    displayOriginalName(artist, artist.translations, locale);
+  const localizedFullName = artistPrimaryName || t("unknown");
   const bio = resolveLocalizedField(
     artist,
     artist.translations,
@@ -290,13 +286,27 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     "bio",
     "originalBio",
   );
+  // Breadcrumb crumbs always render the short variant (project rule:
+  // breadcrumbs prefer compact labels; the same artist's full name
+  // shows in the page header anyway). `displayNameWithFallback` with
+  // `mode: "short"` walks the locale-shortName → locale-name →
+  // original-shortName → original-name cascade so we never blank out
+  // the crumb when the operator hasn't backfilled a short variant.
   const parentName = artist.parentArtist
     ? displayNameWithFallback(
         artist.parentArtist,
         artist.parentArtist.translations,
         locale,
+        "short",
       )
     : null;
+  // Leaf crumb uses the same short cascade. The h1 above shows the
+  // localized full name; keeping the breadcrumb leaf short avoids the
+  // ribbon overflowing on long names like "蓮ノ空女学院スクール
+  // アイドルクラブ".
+  const breadcrumbLeafName =
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    t("unknown");
 
   // Map: stageIdentityId → owning sub-unit. Powers the per-member
   // unit-color treatment without a second pass over subArtists at
@@ -606,7 +616,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: localizedFullName },
+            { label: breadcrumbLeafName },
           ]}
         />
 
@@ -636,12 +646,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   color: colors.textPrimary,
                   lineHeight: 1.35,
                   marginTop: 10,
-                  marginBottom: originalSubName ? 6 : 14,
+                  marginBottom: artistSecondaryName ? 6 : 14,
                 }}
               >
                 {localizedFullName}
               </h1>
-              {originalSubName && (
+              {artistSecondaryName && (
                 <div
                   style={{
                     fontSize: 12,
@@ -649,7 +659,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     marginBottom: 14,
                   }}
                 >
-                  {originalSubName}
+                  {artistSecondaryName}
                 </div>
               )}
               {bio && (

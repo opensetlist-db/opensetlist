@@ -284,13 +284,19 @@ export default async function EventSeriesPage({
         locale,
       )
     : null;
+  // Breadcrumb parent + leaf use short variants (project rule);
+  // `seriesMain` keeps the full form for the page H1 below.
   const parentName = series.parentSeries
     ? displayNameWithFallback(
         series.parentSeries,
         series.parentSeries.translations,
         locale,
+        "short",
       )
     : null;
+  const seriesBreadcrumbName =
+    displayNameWithFallback(series, series.translations, locale, "short") ||
+    t("unknownSeries");
 
   // Status labels used by both LegCard and inline badges. `ongoing`
   // uses `Event.live` ("LIVE") to match the home + events-list
@@ -475,7 +481,7 @@ export default async function EventSeriesPage({
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: seriesMain || t("unknownSeries") },
+            { label: seriesBreadcrumbName },
           ]}
         />
 

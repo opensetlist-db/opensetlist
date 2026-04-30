@@ -32,13 +32,16 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
     getTranslations("Event"),
   ]);
 
-  // `displayNameWithFallback` cascades: localized shortName → localized
-  // name → originalShortName → originalName → "". When everything is
-  // null the cascade ends in "" (Prisma types original* as nullable
-  // even though the schema is non-null), so add t("unknown") as the
-  // last-resort label so a row never renders as a nameless link.
+  // Full localized name (project rule: `full` is the default for
+  // every user-facing surface that isn't a breadcrumb or a "short
+  // because page already shows full" exception). Long names wrap or
+  // truncate per the row's CSS — the artists list isn't a
+  // setlist-row chip; readability beats compactness here.
+  // `displayNameWithFallback` cascades: localized name →
+  // originalName → "". `t("unknown")` is the last-resort label so a
+  // row never renders as a nameless link when the cascade collapses.
   const primaryName =
-    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    displayNameWithFallback(artist, artist.translations, locale) ||
     t("unknown");
   // Show the original (typically Japanese) name as a sub-line only when
   // the viewer's locale differs from the artist's original-language and

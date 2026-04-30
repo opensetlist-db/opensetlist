@@ -262,9 +262,20 @@ export default async function MemberPage({ params, searchParams }: Props) {
     }
     return null;
   })();
+  // Breadcrumb crumbs always render the short variant — the page
+  // header already shows the full member name, so the crumb staying
+  // compact keeps the ribbon tidy.
   const parentName = parentArtist
-    ? displayNameWithFallback(parentArtist, parentArtist.translations, locale)
+    ? displayNameWithFallback(
+        parentArtist,
+        parentArtist.translations,
+        locale,
+        "short",
+      )
     : null;
+  const breadcrumbLeafName =
+    displayNameWithFallback(member, member.translations, locale, "short") ||
+    t("unknown");
 
   // Voice actor (active first, else most recent ended). `voicedBy`
   // is already sorted desc by startDate in the query.
@@ -660,7 +671,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: characterPrimary || t("unknown") },
+            { label: breadcrumbLeafName },
           ]}
         />
 

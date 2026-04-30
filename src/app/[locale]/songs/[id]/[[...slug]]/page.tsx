@@ -5,7 +5,6 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickLocaleTranslation,
   formatDate,
   HISTORY_ROW_DATE_FORMAT,
 } from "@/lib/utils";
@@ -156,14 +155,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     deriveOgPaletteFromSong(songId),
   ]);
   if (!song) return { title: metaT("notFound") };
-  const tr = pickLocaleTranslation(song.translations, locale);
+  // Songs are work-primary: OG title shows the original-language
+  // title with the locale-resolved variant label. Going through
+  // `displayOriginalTitle` instead of hand-resolving via
+  // `pickLocaleTranslation` keeps the OG meta in lockstep with the
+  // detail-page H1 (which already uses the helper) — so a shared
+  // OG card never reads a different title than the page itself.
+  const { main: songTitle, variant: metaVariant } = displayOriginalTitle(
+    song,
+    song.translations,
+    locale,
+  );
   const firstArtist = song.artists[0]?.artist ?? null;
   const artistName = firstArtist
     ? displayNameWithFallback(firstArtist, firstArtist.translations, locale)
     : null;
 
-  const songTitle = tr?.title ?? song.originalTitle;
-  const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
   const description = artistName
     ? `${artistName} · ${metaT("performanceHistory")}`
@@ -260,8 +267,16 @@ export default async function SongPage({ params, searchParams }: Props) {
   // multi-album list is a Phase 2 concern).
   const albumInfo = albumTrack
     ? (() => {
-        const tr = pickLocaleTranslation(albumTrack.album.translations, locale);
-        const albumName = tr?.title ?? albumTrack.album.originalTitle;
+        // Albums are work-primary too — same helper as song titles
+        // so the sidebar reads the same original-language label that
+        // the song detail H1 reads above. `displayOriginalTitle.main`
+        // is the original; the locale subtitle (`.sub`) is dropped
+        // here because the sidebar row only carries one line.
+        const { main: albumName } = displayOriginalTitle(
+          albumTrack.album,
+          albumTrack.album.translations,
+          locale,
+        );
         return { name: albumName, type: albumTrack.album.type };
       })()
     : null;
@@ -386,26 +401,34 @@ export default async function SongPage({ params, searchParams }: Props) {
     isCurrent: boolean;
     isBase: boolean;
   }> = [];
+  // Each variant is a Song; resolve via `displayOriginalTitle` so
+  // the variants list is internally consistent with the page H1
+  // (both work-primary). `.main` is the original title; `.variant`
+  // is the locale-resolved variant label that powers the row's
+  // "기본" / variant pill.
   if (song.baseVersion) {
     // Current song is itself a variant — list base + siblings.
-    const baseTr = pickLocaleTranslation(song.baseVersion.translations, locale);
+    const baseDisplay = displayOriginalTitle(
+      song.baseVersion,
+      song.baseVersion.translations,
+      locale,
+    );
     variationList.push({
       id: Number(song.baseVersion.id),
       slug: song.baseVersion.slug,
-      title: baseTr?.title ?? song.baseVersion.originalTitle,
-      variantLabel:
-        baseTr?.variantLabel || song.baseVersion.variantLabel || null,
+      title: baseDisplay.main,
+      variantLabel: baseDisplay.variant,
       isCurrent: false,
       isBase: true,
     });
   }
   for (const v of variantSiblings) {
-    const vTr = pickLocaleTranslation(v.translations, locale);
+    const vDisplay = displayOriginalTitle(v, v.translations, locale);
     variationList.push({
       id: Number(v.id),
       slug: v.slug,
-      title: vTr?.title ?? v.originalTitle,
-      variantLabel: vTr?.variantLabel || v.variantLabel || null,
+      title: vDisplay.main,
+      variantLabel: vDisplay.variant,
       isCurrent: Number(v.id) === Number(song.id),
       isBase: false,
     });
