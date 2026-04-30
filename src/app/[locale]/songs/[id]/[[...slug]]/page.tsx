@@ -39,6 +39,9 @@ import {
   PERFORMANCE_ROW_GRID,
   PERFORMANCE_ROW_INDENT_PX,
   PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
 } from "@/components/performance-row-layout";
 import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
@@ -798,6 +801,16 @@ export default async function SongPage({ params, searchParams }: Props) {
                           color: colors.textMuted,
                           letterSpacing: "0.06em",
                           textTransform: "uppercase",
+                          // Anchor trailing column with row chips
+                          // (right-aligned), and pad STATUS by the
+                          // badge's internal padding so the header
+                          // text aligns with the badge text. See
+                          // performance-row-layout.ts for the
+                          // detailed rationale.
+                          textAlign:
+                            i === TRAILING_COL_IDX ? "right" : "left",
+                          paddingLeft:
+                            i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
                         }}
                       >
                         {label}

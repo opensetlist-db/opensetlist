@@ -57,3 +57,25 @@ export const PERFORMANCE_ROW_INDENT_PX = 36;
  * row content.
  */
 export const PERFORMANCE_ROW_GAP_PX = 10;
+
+/**
+ * Internal `padding-left` of the `<StatusBadge>` pill (matches the
+ * `padding: 2px 8px` declaration on the badge component). The
+ * column-header strip applies this as `paddingLeft` on the STATUS
+ * label so the header TEXT aligns with the badge TEXT (rather than
+ * with the badge's BG left edge, which is 8px earlier). Without
+ * this, eyes read the 8px text-to-text gap as "badge not aligned
+ * with column title" — operator feedback 2026-04-29.
+ */
+export const STATUS_BADGE_INDENT_PX = 8;
+
+/**
+ * Indices into the column-header label array consumers map over.
+ * Track 0 = STATUS (badge), track 3 = trailing (chips, right-aligned).
+ * Pulled out to constants so the alignment rules — `paddingLeft` on
+ * STATUS to match badge indent, `textAlign: right` on trailing to
+ * anchor with row chips — don't repeat magic indices across artist /
+ * member / song history-tab implementations.
+ */
+export const STATUS_COL_IDX = 0;
+export const TRAILING_COL_IDX = 3;
