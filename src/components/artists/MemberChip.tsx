@@ -23,6 +23,14 @@ import { colors } from "@/styles/tokens";
 interface Props {
   href: string;
   memberName: string;
+  /** Optional short-name string used as the avatar's initial source.
+   *  When omitted, falls back to `memberName`. Lets the page pre-pick
+   *  a recognized handle (locale shortName cascade) so the round chip
+   *  reads as e.g. `K` for `Kaho` instead of the full-name lead
+   *  character (which on Japanese-style names is the surname's first
+   *  kanji — too formal for a mini chip). The body text below the
+   *  avatar still shows the full name. */
+  avatarLabel?: string | null;
   /** Sub-unit name shown below the member name (e.g. "DOLLCHESTRA"),
    *  or null if the member has no owning sub-unit. */
   unitName: string | null;
@@ -32,7 +40,13 @@ interface Props {
   unitColor: string;
 }
 
-export function MemberChip({ href, memberName, unitName, unitColor }: Props) {
+export function MemberChip({
+  href,
+  memberName,
+  avatarLabel,
+  unitName,
+  unitColor,
+}: Props) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   // Keyboard focus mirrors hover so tab-navigated users see the same
@@ -64,7 +78,11 @@ export function MemberChip({ href, memberName, unitName, unitColor }: Props) {
         transition: "background 0.12s ease, border-color 0.12s ease",
       }}
     >
-      <InitialAvatar label={memberName} color={unitColor} size={32} />
+      <InitialAvatar
+        label={avatarLabel || memberName}
+        color={unitColor}
+        size={32}
+      />
       <div style={{ minWidth: 0 }}>
         <div
           style={{
