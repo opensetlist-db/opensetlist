@@ -468,23 +468,45 @@ export default async function MemberPage({ params, searchParams }: Props) {
     );
   };
 
+  // Pre-compute the member's unit-link IDs once. The intersection
+  // check inside the per-performance loop below would otherwise
+  // rebuild the Set on every iteration even though `unitLinks`
+  // doesn't change between performances.
+  const memberUnitIds = new Set(unitLinks.map((l) => String(l.artist.id)));
+
   const eventViewsById = new Map<number, EventView>();
   for (const perf of member.performances) {
     const event = perf.setlistItem.event;
     const eid = Number(event.id);
     if (!eventViewsById.has(eid)) {
       // Resolve the per-event unit chip label from THIS setlist item's
-      // SetlistItemArtist credit (first unit-type artist; other types
-      // skipped — solo/group don't fit a "unit" chip). First-seen
-      // performance wins when the member sang multiple unit-stage
-      // songs at the same event; that matches the existing "first
-      // performance per event" iteration order. Falls back to
-      // `primaryUnitName` inside `buildTrailing` when the setlist
-      // item has no unit credit (e.g. solo song with no unit
-      // attribution).
-      const itemUnit = perf.setlistItem.artists.find(
-        (a) => a.artist.type === "unit",
-      )?.artist;
+      // SetlistItemArtist credit. First-seen performance wins when
+      // the member sang multiple unit-stage songs at the same event;
+      // that matches the existing "first performance per event"
+      // iteration order. Falls back to `primaryUnitName` inside
+      // `buildTrailing` when the setlist item has no unit credit
+      // (e.g. solo song with no unit attribution).
+      //
+      // On a setlist item with MULTIPLE unit credits (collab between
+      // two sub-units, e.g. Cerise Bouquet × DOLLCHESTRA), we want
+      // the chip to read as the unit THIS specific member performed
+      // under — not just whichever unit happens to come first in
+      // the row's `artists` array. So prefer a unit-type artist that
+      // intersects with the member's own `unitLinks` (the units this
+      // stage identity is actually linked to via
+      // StageIdentityArtist). Only when no intersection exists fall
+      // back to the original "first unit-type artist" behavior — that
+      // covers genuinely orphaned credits (e.g. an ad-hoc guest
+      // appearance under a unit the member isn't formally part of)
+      // where the row's first credit is the best signal we have.
+      const itemUnit =
+        perf.setlistItem.artists.find(
+          (a) =>
+            a.artist.type === "unit" &&
+            memberUnitIds.has(String(a.artist.id)),
+        )?.artist ??
+        perf.setlistItem.artists.find((a) => a.artist.type === "unit")
+          ?.artist;
       const perEventUnitName = itemUnit
         ? displayNameWithFallback(itemUnit, itemUnit.translations, locale)
         : null;
