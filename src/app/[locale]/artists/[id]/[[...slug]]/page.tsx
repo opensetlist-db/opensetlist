@@ -1031,6 +1031,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             color: colors.textMuted,
                             letterSpacing: "0.06em",
                             textTransform: "uppercase",
+                            // Trailing column (index 3) right-aligns
+                            // its label to anchor with the row's
+                            // right-aligned trailing chips. Other
+                            // columns left-align (default).
+                            textAlign: i === 3 ? "right" : "left",
                           }}
                         >
                           {label}

@@ -26,6 +26,15 @@ import {
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+// Layout primitives import directly from the server-safe module —
+// NOT from `PerformanceGroup.tsx` (which carries `"use client"`).
+// See `src/components/performance-row-layout.ts` header for the
+// boundary-corruption rationale.
+import {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+} from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
@@ -1173,16 +1182,68 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     {t("noEvents")}
                   </p>
                 ) : (
-                  seriesViews.map((sv) => (
-                    <PerformanceGroup
-                      key={sv.seriesId}
-                      series={sv}
-                      statusLabels={statusLabels}
-                      eventCountLabel={at("eventCount", {
-                        count: sv.events.length,
-                      })}
-                    />
-                  ))
+                  <>
+                    {/* Desktop-only column-header strip — same grid
+                        template as the rows below so headers line up
+                        with row tracks. Mirrors the artist + song
+                        detail history tabs (operator feedback
+                        2026-04-29: "member page history has no column
+                        title, which is inconsistent with artist
+                        history"). Hidden on mobile via `hidden lg:grid`
+                        — mobile rows carry no column header. */}
+                    <div
+                      className="hidden lg:grid"
+                      style={{
+                        gridTemplateColumns: PERFORMANCE_ROW_GRID,
+                        gap: PERFORMANCE_ROW_GAP_PX,
+                        padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
+                        background: colors.bgFaint,
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      {[
+                        evT("tableHeader.status"),
+                        evT("tableHeader.date"),
+                        evT("tableHeader.name"),
+                        // Trailing column on member page shows either
+                        // a 전출연 pill or a unit-name pill — no clean
+                        // single label captures both. Leave empty;
+                        // reads as a "chip column" by visual context
+                        // alone (artist + song history use a real
+                        // label because their column has stable
+                        // semantics — `🎵 N` and #position).
+                        "",
+                        "",
+                      ].map((label, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: colors.textMuted,
+                            letterSpacing: "0.06em",
+                            textTransform: "uppercase",
+                            // Trailing column right-aligns to anchor
+                            // with the row's right-aligned trailing
+                            // chips; other columns left-align.
+                            textAlign: i === 3 ? "right" : "left",
+                          }}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    {seriesViews.map((sv) => (
+                      <PerformanceGroup
+                        key={sv.seriesId}
+                        series={sv}
+                        statusLabels={statusLabels}
+                        eventCountLabel={at("eventCount", {
+                          count: sv.events.length,
+                        })}
+                      />
+                    ))}
+                  </>
                 )}
               </div>
             )}
