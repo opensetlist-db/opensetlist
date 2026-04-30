@@ -325,6 +325,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
   type EventInfo = {
     seriesId: number;
     seriesShort: string;
+    /** Standalone variant of `seriesShort`: null when event has no
+     *  series (so the recent-events block can show series subtitle
+     *  only when it differs from the event name). */
+    seriesNameOrNull: string | null;
     rawDateMs: number;
     formattedDate: string;
     name: string;
@@ -333,6 +337,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
   };
   type EventView = PerformanceEvent & {
     seriesId: number;
+    /** Pre-resolved series translated name. Used by the recent-events
+     *  subtitle (overview tab) — null for standalone events so the
+     *  subtitle line is suppressed. The history-tab grouping reads
+     *  `seriesShort` (which falls back to event name) instead. */
+    seriesName: string | null;
     rawDateMs: number;
     isFullGroup: boolean;
   };
@@ -340,17 +349,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const buildInfo = (
     event: (typeof member.performances)[number]["setlistItem"]["event"],
   ): EventInfo => {
-    const seriesShort = event.eventSeries
+    const seriesNameOrNull = event.eventSeries
       ? displayNameWithFallback(
           event.eventSeries,
           event.eventSeries.translations,
           locale,
-        ) || evT("unknownEvent")
-      : displayNameWithFallback(event, event.translations, locale) ||
-        evT("unknownEvent");
+        ) || null
+      : null;
+    const seriesShort =
+      seriesNameOrNull ??
+      displayNameWithFallback(event, event.translations, locale) ??
+      evT("unknownEvent");
     return {
       seriesId: event.eventSeries ? Number(event.eventSeries.id) : 0,
       seriesShort,
+      seriesNameOrNull,
       // serializeBigInt's JSON.stringify converts Date columns to ISO
       // strings — runtime is `string` even though the type still says
       // Date. Wrap in String() before parseing.
@@ -434,6 +447,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       eventViewsById.set(eid, {
         id: String(event.id),
         seriesId: info.seriesId,
+        seriesName: info.seriesNameOrNull,
         rawDateMs: info.rawDateMs,
         formattedDate: info.formattedDate,
         name: info.name,
@@ -461,6 +475,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
     eventViewsById.set(eid, {
       id: String(ep.event.id),
       seriesId: info.seriesId,
+      seriesName: info.seriesNameOrNull,
       rawDateMs: info.rawDateMs,
       formattedDate: info.formattedDate,
       name: info.name,
@@ -569,8 +584,12 @@ export default async function MemberPage({ params, searchParams }: Props) {
       events: s.events,
     }));
 
-  // Recent-3 across all series for the overview tab.
-  const recentEvents: PerformanceEvent[] = [...eventViewsById.values()]
+  // Recent-3 across all series for the overview tab. Carries
+  // `seriesName` as a subtitle line below the event name (operator
+  // feedback 2026-04-29 — the flat list lost the series context that
+  // history-tab grouping conveys via group headers).
+  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
+  const recentEvents: RecentEventRow[] = [...eventViewsById.values()]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
     .map((e) => ({
@@ -579,6 +598,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       formattedDate: e.formattedDate,
       name: e.name,
       href: e.href,
+      seriesName: e.seriesName,
     }));
 
   // ─── Songs aggregation ───────────────────────────────────────────
@@ -1016,26 +1036,51 @@ export default async function MemberPage({ params, searchParams }: Props) {
                           style={{
                             fontSize: 12,
                             color: colors.textMuted,
-                            width: 52,
+                            // 100px to fit `HISTORY_ROW_DATE_FORMAT`
+                            // year-included strings ("2026년 4월 25일")
+                            // — matches the artist page recent-events
+                            // and PerformanceGroup history rows.
+                            width: 100,
                             flexShrink: 0,
                           }}
                         >
                           {event.formattedDate}
                         </span>
-                        <span
+                        <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: colors.primary,
                             flex: 1,
                             minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
                           }}
                         >
-                          {event.name}
-                        </span>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: colors.primary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {event.name}
+                          </span>
+                          {event.seriesName && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {event.seriesName}
+                            </span>
+                          )}
+                        </div>
                         <span
                           aria-hidden="true"
                           style={{

@@ -22,15 +22,25 @@
  * a separate grid with the same template — has identically-sized
  * column tracks.
  *
+ * The trailing 100px holds per-row chips (artist: `🎵 N`; member:
+ * 전출연 / unit-name; song: encore + #position). Was 180px and gave
+ * too much air on rows with short content while squeezing the name
+ * column — operator feedback (2026-04-29: "songs column has too much
+ * space and the event column needs more space"). 100px fits the
+ * widest realistic chip ("Mira-Cra Park!" pill ~85px) plus padding.
+ *
+ * Mobile rows use `auto auto` for trailing+chevron via a Tailwind
+ * responsive class on the row — content-sized chips, narrower
+ * overall, which the operator already preferred ("mobile view column
+ * size looks good").
+ *
  * The trailing 28px is the chevron column. Matches the event list
  * row template (`EVENT_TABLE_COLUMNS` ends with `28px`) so the two
  * surfaces — both showing "list of events grouped by series" — read
- * the same density at the right edge. Was 16px before; the bump
- * gives the chevron glyph more breathing room without forcing a
- * narrower name column.
+ * the same density at the right edge.
  */
 export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) 180px 28px";
+  "60px 100px minmax(0, 1fr) 100px 28px";
 
 /**
  * Left padding of every event row, in pixels. The column-header strip

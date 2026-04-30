@@ -197,7 +197,7 @@ export function PerformanceGroup({
             // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
             // requires literal class strings, so the constant can't be
             // interpolated here — if you change one, change the other.
-            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_28px]"
+            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_100px_28px]"
             style={{
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               // Per-row separator uses borderLight uniformly — matches
@@ -214,11 +214,23 @@ export function PerformanceGroup({
               minWidth: 0,
             }}
           >
-            <StatusBadge
-              status={event.status}
-              size="sm"
-              label={statusLabels[event.status]}
-            />
+            {/* Center the badge within its 60px grid track. Without
+                `justifySelf: center`, the inline-flex grid item
+                stretches to fill the track and the dot+label sit at
+                flex-start (left edge), with empty BG on the right —
+                visually awkward next to the recent-events block where
+                the badge is content-sized. Centering produces equal
+                breathing room on both sides and matches the operator's
+                "looks consistent across pages" goal. Applied for every
+                consumer of PerformanceGroup (artist / member / song
+                history). */}
+            <div style={{ justifySelf: "center" }}>
+              <StatusBadge
+                status={event.status}
+                size="sm"
+                label={statusLabels[event.status]}
+              />
+            </div>
             <span
               style={{
                 fontSize: 12,
