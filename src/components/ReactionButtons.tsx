@@ -435,25 +435,39 @@ function ReactionButton({
       >
         {emoji}
       </span>
-      {count > 0 && (
-        <span
-          key={animKey}
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
-            minWidth: 14,
-            display: "inline-block",
-            transition: "color 0.18s ease",
-            animation:
-              animKey > 0
-                ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
-                : undefined,
-          }}
-        >
-          {count}
-        </span>
-      )}
+      {/* Always render the count slot so every reaction button
+          across every setlist row has the same width regardless of
+          the count value. Without this, a button with no reactions
+          (no count span) is narrower than one with reactions, and a
+          1-digit count is narrower than a 3-digit count — both
+          shifts compound across the four reaction columns and the
+          column drifts visibly across rows when scanning the
+          setlist. `tabular-nums` keeps individual digit widths
+          equal across the 0-9 set; `minWidth: 22px` fits up to
+          three digits comfortably; right-aligned so the rightmost
+          digit pins to the same x in every button (the visually
+          salient anchor when a column of counts is meant to read
+          like a leaderboard). Empty string when count is 0 so the
+          slot reserves space without showing a literal "0". */}
+      <span
+        key={animKey}
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
+          minWidth: 22,
+          display: "inline-block",
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          transition: "color 0.18s ease",
+          animation:
+            animKey > 0
+              ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
+              : undefined,
+        }}
+      >
+        {count > 0 ? count : ""}
+      </span>
     </button>
   );
 }

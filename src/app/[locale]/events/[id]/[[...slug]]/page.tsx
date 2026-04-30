@@ -358,11 +358,20 @@ export default async function EventPage({ params }: Props) {
         "short",
       )
     : null;
-  // (Round-4 dropped `seriesFullName` here — `headerTitle` now
-  // cascades through `eventFullName || seriesShortName`, so the
-  // full series form is no longer consumed by the page render
-  // path. `generateMetadata`'s own `seriesFullName` declaration
-  // stays — that one IS used for the OG title.)
+  // Full localized series name for the EventHeader sidebar card's
+  // series link (operator preference). Breadcrumb above stays on
+  // `seriesShortName`; only the prominent first sidebar card opts
+  // into the full form. Re-introduced after round-4 dropped it —
+  // `headerTitle` doesn't need it (still cascades via
+  // `eventFullName || seriesShortName`), but the EventHeader
+  // `series.name` prop does.
+  const seriesFullName = event.eventSeries
+    ? displayNameWithFallback(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale,
+      )
+    : null;
   // Short event name for the breadcrumb tail. Cascades the same way as
   // every other display-name resolution: localized shortName → localized
   // name → originalShortName → originalName.
@@ -748,14 +757,20 @@ export default async function EventPage({ params }: Props) {
             artist={headerArtist}
             organizerName={headerOrganizerName}
             series={
-              event.eventSeries && seriesShortName
+              // EventHeader's series link shows the FULL localized
+              // series name (operator preference: the sidebar's
+              // first card is the most prominent place a viewer
+              // identifies the tour, so the full canonical name is
+              // worth the line height). Breadcrumb crumbs above
+              // continue to use the short variant.
+              event.eventSeries && seriesFullName
                 ? {
                     // String() at the boundary — EventHeader is a
                     // client component and BigInt isn't serializable
                     // across RSC. Same convention as `artist.id`.
                     id: String(event.eventSeries.id),
                     slug: event.eventSeries.slug,
-                    shortName: seriesShortName,
+                    name: seriesFullName,
                   }
                 : null
             }
