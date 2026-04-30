@@ -98,7 +98,7 @@ describe("EventHeader", () => {
     render(
       <EventHeader
         {...baseProps}
-        series={{ id: "7", slug: "6th-live-fukuoka", shortName: "6th Live" }}
+        series={{ id: "7", slug: "6th-live-fukuoka", name: "6th Live" }}
       />,
     );
     const seriesLink = screen.getByText("6th Live");

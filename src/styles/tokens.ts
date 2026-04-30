@@ -105,8 +105,14 @@ export const colors = {
  * sizes while staying out of the semantic color territory:
  *   - no pure red (collides with `live`), green (`upcoming`), or
  *     `colors.primary` blue
- *   - mid saturation — readable both as a background tint at ~12%
- *     alpha (`${color}18`) and as foreground text at full opacity
+ *   - Tailwind 400-500 family — vibrant enough to feel anime-IP-flavored
+ *     (matching how Hasunosora-class catalogs lean bright in their
+ *     official branding) while still readable both as a ~12% alpha
+ *     background tint (`${color}18`) and as foreground text at full
+ *     opacity. The earlier Material 700-shade set looked noticeably
+ *     dull on `/ko/artists/1/hasunosora`'s 9 color-pending sub-units;
+ *     operator visual review (2026-04) explicitly approved lifting the
+ *     palette ~2 shade levels.
  *   - 17 entries — empirically the smallest palette size at which
  *     the FNV-1a + Murmur3-fmix hash in
  *     `src/lib/artistColor.ts#hashUnitSlug` distributes the nine
@@ -116,29 +122,34 @@ export const colors = {
  *     palettes are fine but waste curated entries.
  *
  * Indexed by a stable hash of the unit's slug (see
- * `src/lib/artistColor.ts#resolveUnitColor`). DO NOT reorder
- * existing entries — order changes shift every unit's auto-color
- * until operators backfill explicit values, which would look like a
- * surprise re-skin to anyone watching.
+ * `src/lib/artistColor.ts#resolveUnitColor`). The hash is unchanged
+ * across the re-skin, so per-slug determinism still holds: the same
+ * unit always lands on the same palette index across renders / pages.
+ * DO NOT reorder existing entries — order changes shift every unit's
+ * auto-color until operators backfill explicit values. New entries
+ * should be appended at the end, never inserted mid-list. The current
+ * values are the new baseline (replacing the prior Material 700 set);
+ * future operator-driven re-skins follow the same "approved swap"
+ * convention rather than ad-hoc tweaks.
  */
 export const unitFallbackPalette = [
-  "#E91E8C", // 0 rose
-  "#F57C00", // 1 orange
-  "#7B1FA2", // 2 royal purple
-  "#00897B", // 3 teal
-  "#FBC02D", // 4 amber gold
-  "#3949AB", // 5 indigo
-  "#C2185B", // 6 magenta
-  "#5D4037", // 7 warm brown
-  "#827717", // 8 olive
-  "#00ACC1", // 9 cyan
-  "#FF6F00", // 10 deep orange
-  "#512DA8", // 11 deep purple
-  "#006064", // 12 deep teal
-  "#AD1457", // 13 deep pink
-  "#9E9D24", // 14 lime-olive
-  "#BF360C", // 15 rust
-  "#455A64", // 16 slate
+  "#EC4899", // 0 pink-500 — hot pink
+  "#F97316", // 1 orange-500 — vivid orange
+  "#A855F7", // 2 purple-500 — bright purple
+  "#14B8A6", // 3 teal-500 — bright teal
+  "#FACC15", // 4 yellow-400 — sunny yellow
+  "#6366F1", // 5 indigo-500 — bright indigo
+  "#D946EF", // 6 fuchsia-500 — vivid fuchsia
+  "#06B6D4", // 7 cyan-500 — bright cyan
+  "#FB923C", // 8 orange-400 — light orange / coral
+  "#8B5CF6", // 9 violet-500 — bright violet
+  "#FBBF24", // 10 amber-400 — golden amber
+  "#2DD4BF", // 11 teal-400 — turquoise
+  "#C084FC", // 12 purple-400 — light purple / lilac
+  "#F472B6", // 13 pink-400 — light pink
+  "#FB7185", // 14 rose-400 — coral pink
+  "#FCD34D", // 15 amber-300 — soft yellow
+  "#A3A3A3", // 16 neutral-400 — soft gray
 ] as const;
 
 export const shadows = {

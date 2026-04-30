@@ -32,14 +32,27 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
     getTranslations("Event"),
   ]);
 
-  // `displayNameWithFallback` cascades: localized shortName → localized
-  // name → originalShortName → originalName → "". When everything is
-  // null the cascade ends in "" (Prisma types original* as nullable
-  // even though the schema is non-null), so add t("unknown") as the
-  // last-resort label so a row never renders as a nameless link.
+  // Full localized name (project rule: `full` is the default for
+  // every user-facing surface that isn't a breadcrumb or a "short
+  // because page already shows full" exception). Long names wrap or
+  // truncate per the row's CSS — the artists list isn't a
+  // setlist-row chip; readability beats compactness here.
+  // `displayNameWithFallback` cascades: localized name →
+  // originalName → "". `t("unknown")` is the last-resort label so a
+  // row never renders as a nameless link when the cascade collapses.
   const primaryName =
-    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    displayNameWithFallback(artist, artist.translations, locale) ||
     t("unknown");
+  // Avatar-initial source: locale shortName cascade. The big-glyph
+  // square reads better when keyed off a curated short handle (e.g.
+  // `C` from `Cerise Bouquet`'s shortName) instead of the full
+  // name's first character — same intent as the member-page hero,
+  // applied per the avatar policy on artist surfaces. Empty string
+  // collapses to `null` so the avatar's `??` chain falls through to
+  // `name` cleanly.
+  const primaryShortName =
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    null;
   // Show the original (typically Japanese) name as a sub-line only when
   // the viewer's locale differs from the artist's original-language and
   // an original name actually exists.
@@ -78,11 +91,17 @@ export default async function ArtistCard({ artist, locale, isLast }: Props) {
       >
         {/* `ArtistRowData` carries `originalName` + `translations`, not
             the flat `name`/`shortName` fields the avatar component
-            expects — pass the already-resolved primaryName as `name`
-            so the glyph picks the localized label's first character
-            instead of falling through to "?". */}
+            expects — pass already-resolved values so the glyph picks
+            the localized label's first character instead of falling
+            through to "?". `shortName` takes precedence inside the
+            avatar (preferred initial source); `name` is the fallback
+            when no shortName exists at any locale. */}
         <ArtistAvatar
-          artist={{ color: artist.color, name: primaryName }}
+          artist={{
+            color: artist.color,
+            name: primaryName,
+            shortName: primaryShortName,
+          }}
           size={48}
         />
 

@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils";
 import {
   displayNameWithFallback,
+  displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
 import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
@@ -30,6 +31,9 @@ import {
   PERFORMANCE_ROW_GRID,
   PERFORMANCE_ROW_INDENT_PX,
   PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
 } from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
@@ -123,7 +127,14 @@ async function getArtistEvents(artistId: bigint) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
-      eventSeries: { isDeleted: false },
+      // Series soft-delete filter is conditional: standalone events
+      // (eventSeriesId IS NULL) skip it. Without this NOT clause, an
+      // implicit `eventSeries: { isDeleted: false }` filter at the top
+      // level would have excluded ALL standalone events from the
+      // result regardless of which OR branch matched — sub-units that
+      // performed only at non-series-attached events were silently
+      // missing from totalEvents / recent / history.
+      NOT: { eventSeries: { isDeleted: true } },
       OR: [
         { eventSeries: { artistId } },
         {
@@ -144,9 +155,9 @@ async function getArtistEvents(artistId: bigint) {
   });
   // serializeBigInt narrows BigInt → number at runtime + JSON.stringify
   // coerces Date → string. The static type still references the raw
-  // Prisma row shape, so cast through `unknown`. Prisma's include also
-  // types `eventSeries` as nullable; the `where` filter above
-  // guarantees a non-null row at runtime, which the cast asserts.
+  // Prisma row shape, so cast through `unknown`. `eventSeries` is
+  // genuinely nullable now (standalone events) — the type below
+  // matches.
   return serializeBigInt(events) as unknown as ArtistEvent[];
 }
 
@@ -159,7 +170,11 @@ type ArtistEvent = {
   originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
-  eventSeriesId: number;
+  // Nullable — standalone events have no series. Sub-units that
+  // performed only at standalone events would have been excluded
+  // entirely without this; render-side bucketing surfaces them
+  // under a synthetic "Standalone events" group.
+  eventSeriesId: number | null;
   translations: Array<{
     locale: string;
     name: string;
@@ -175,7 +190,7 @@ type ArtistEvent = {
     originalName: string | null;
     originalShortName: string | null;
     originalLanguage: string;
-  };
+  } | null;
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -258,20 +273,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   const referenceNow = new Date();
 
   // Sidebar H1: localized name BIG, original name SMALL (operator
-  // preference, 2026-04-28). Previously used `displayOriginalName`
-  // which put the original-language name as `main` — flipped here so
-  // `displayNameWithFallback("full")` (localized cascade) drives the
-  // primary heading and the JA/EN original drops below as a sub-line
-  // when it differs.
-  const localizedFullName =
-    displayNameWithFallback(artist, artist.translations, locale, "full") ||
-    t("unknown");
-  const originalSubName =
-    artist.originalLanguage !== locale &&
-    artist.originalName &&
-    artist.originalName !== localizedFullName
-      ? artist.originalName
-      : null;
+  // preference). `displayOriginalName` is now translation-primary at
+  // the helper level (since the 2026-04-28 refactor of
+  // `src/lib/display.ts`), so consume `.main` directly as the
+  // headline and `.sub` as the secondary line — same call used by
+  // every other identity surface (members, series, breadcrumb
+  // labels) so the page can't drift from the rest of the app.
+  const { main: artistPrimaryName, sub: artistSecondaryName } =
+    displayOriginalName(artist, artist.translations, locale);
+  const localizedFullName = artistPrimaryName || t("unknown");
   const bio = resolveLocalizedField(
     artist,
     artist.translations,
@@ -279,23 +289,53 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     "bio",
     "originalBio",
   );
+  // Breadcrumb crumbs always render the short variant (project rule:
+  // breadcrumbs prefer compact labels; the same artist's full name
+  // shows in the page header anyway). `displayNameWithFallback` with
+  // `mode: "short"` walks the locale-shortName → locale-name →
+  // original-shortName → original-name cascade so we never blank out
+  // the crumb when the operator hasn't backfilled a short variant.
   const parentName = artist.parentArtist
     ? displayNameWithFallback(
         artist.parentArtist,
         artist.parentArtist.translations,
         locale,
+        "short",
       )
     : null;
+  // Leaf crumb uses the same short cascade. The h1 above shows the
+  // localized full name; keeping the breadcrumb leaf short avoids the
+  // ribbon overflowing on long names like "蓮ノ空女学院スクール
+  // アイドルクラブ".
+  const breadcrumbLeafName =
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    t("unknown");
 
   // Map: stageIdentityId → owning sub-unit. Powers the per-member
   // unit-color treatment without a second pass over subArtists at
   // render time. Members not in any sub-unit (group-level
   // stage-link only) get a `null` unit and render in muted gray.
+  //
+  // A StageIdentity can legitimately belong to multiple sub-units
+  // (StageIdentityArtist is N:N — e.g. a member in both a canonical
+  // unit AND a special-configuration unit). Naive `for...set` would
+  // last-wins by iteration order, producing a non-deterministic
+  // chip color/name. Resolve in two passes: main units first, then
+  // non-main; within each pass `set` only when the member doesn't
+  // already have a unit. Result: a member in a canonical unit always
+  // shows that unit's identity, regardless of any incidental other
+  // affiliations.
   type Unit = (typeof artist.subArtists)[number];
   const memberToUnit = new Map<string, Unit>();
-  for (const sub of artist.subArtists) {
+  const mainsFirst = [
+    ...artist.subArtists.filter((s) => s.isMainUnit),
+    ...artist.subArtists.filter((s) => !s.isMainUnit),
+  ];
+  for (const sub of mainsFirst) {
     for (const sl of sub.stageLinks) {
-      memberToUnit.set(sl.stageIdentity.id, sub);
+      if (!memberToUnit.has(sl.stageIdentity.id)) {
+        memberToUnit.set(sl.stageIdentity.id, sub);
+      }
     }
   }
 
@@ -378,22 +418,31 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // Doing it this way means the recent-3 list (Overview tab) and the
   // per-series collapsible groups (History tab) read from the same
   // source — no duplicated date-formatting / status-resolving logic.
+  //
+  // Standalone events (eventSeriesId IS NULL) collapse into one
+  // synthetic group keyed `"standalone"` — kept distinct from any
+  // numeric seriesId since real BigInt IDs serialize to numbers.
+  // The render branch below labels this group with
+  // `t("standaloneEvents")`.
+  const STANDALONE_KEY = "standalone";
   type EventView = PerformanceEvent & {
-    seriesId: number;
+    seriesKey: string;
     rawDateMs: number;
   };
   // First, dedupe series surfaced via `artistEvents`. Each event row
-  // carries its EventSeries, so a series is `seen` the first time
-  // any of its events shows up. Order matches the events query
-  // (date desc), so the first-event-seen-per-series order roughly
-  // matches recent-activity order — refined by the explicit sort
-  // below.
+  // carries its EventSeries (or null for standalone events), so a
+  // series is `seen` the first time any of its events shows up.
+  // Order matches the events query (date desc), so the first-event-
+  // seen-per-series order roughly matches recent-activity order —
+  // refined by the explicit sort below.
   const seriesById = new Map<
     string,
     ArtistEvent["eventSeries"]
   >();
   for (const ev of artistEvents) {
-    const key = String(ev.eventSeriesId);
+    const key = ev.eventSeriesId == null
+      ? STANDALONE_KEY
+      : String(ev.eventSeriesId);
     if (!seriesById.has(key)) seriesById.set(key, ev.eventSeries);
   }
 
@@ -423,7 +472,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       // String() cast satisfies PerformanceEvent's id contract
       // without leaking the bigint type out of the JSON shape.
       id: eventIdStr,
-      seriesId: Number(event.eventSeriesId),
+      seriesKey: event.eventSeriesId == null
+        ? STANDALONE_KEY
+        : String(event.eventSeriesId),
       status,
       formattedDate: formatDate(event.date, locale, HISTORY_ROW_DATE_FORMAT),
       name:
@@ -443,9 +494,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // ongoing event to the top; remainder by most-recent event date
   // desc.
   const seriesViews: PerformanceSeries[] = [...seriesById.entries()]
-    .map(([seriesIdStr, series]) => {
+    .map(([seriesKey, series]) => {
       const seriesEvents = eventViews.filter(
-        (ev) => ev.seriesId === Number(seriesIdStr),
+        (ev) => ev.seriesKey === seriesKey,
       );
       // Within a series, keep the operator-specified date-desc order.
       seriesEvents.sort((a, b) => b.rawDateMs - a.rawDateMs);
@@ -454,11 +505,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         (m, e) => (e.rawDateMs > m ? e.rawDateMs : m),
         0,
       );
+      // Standalone group (no series): label via i18n, use the
+      // synthetic key as the React key. PerformanceGroup doesn't
+      // know or care that this group is synthetic.
+      const isStandalone = series == null;
       return {
-        seriesId: String(series.id),
-        seriesShort:
-          displayNameWithFallback(series, series.translations, locale) ||
-          evT("unknownEvent"),
+        seriesId: isStandalone ? STANDALONE_KEY : String(series.id),
+        seriesShort: isStandalone
+          ? t("standaloneEvents")
+          : displayNameWithFallback(series, series.translations, locale) ||
+            evT("unknownEvent"),
         hasOngoing,
         events: seriesEvents,
         sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
@@ -484,17 +540,33 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // Strip the temporary `rawDateMs` and `seriesId` fields back to the
   // declared PerformanceEvent shape — explicit field copy avoids the
   // unused `_` discard pattern that triggers no-unused-vars.
-  const recentEvents: PerformanceEvent[] = [...eventViews]
+  // Resolve a series-name subtitle for each recent-events row. The
+  // history tab already conveys the series via PerformanceGroup
+  // headers, but the flat 3-row recent-events block on the overview
+  // tab loses that context — operator feedback (2026-04-29):
+  // "Recent event should show series name if exist as performance
+  // history does. Event name does not include full information."
+  // Pull from the existing `seriesById` map so this stays one extra
+  // string per row, no extra query.
+  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
+  const recentEvents: RecentEventRow[] = [...eventViews]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
-    .map((e) => ({
-      id: e.id,
-      status: e.status,
-      formattedDate: e.formattedDate,
-      name: e.name,
-      href: e.href,
-      trailing: e.trailing,
-    }));
+    .map((e) => {
+      const series = seriesById.get(e.seriesKey);
+      const seriesName = series
+        ? displayNameWithFallback(series, series.translations, locale) || null
+        : null;
+      return {
+        id: e.id,
+        status: e.status,
+        formattedDate: e.formattedDate,
+        name: e.name,
+        href: e.href,
+        trailing: e.trailing,
+        seriesName,
+      };
+    });
 
   // Pre-render a sub-unit card to a ReactNode so <UnitsToggle>
   // (client) can compose the main/other split without re-running the
@@ -563,7 +635,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: localizedFullName },
+            { label: breadcrumbLeafName },
           ]}
         />
 
@@ -593,12 +665,12 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   color: colors.textPrimary,
                   lineHeight: 1.35,
                   marginTop: 10,
-                  marginBottom: originalSubName ? 6 : 14,
+                  marginBottom: artistSecondaryName ? 6 : 14,
                 }}
               >
                 {localizedFullName}
               </h1>
-              {originalSubName && (
+              {artistSecondaryName && (
                 <div
                   style={{
                     fontSize: 12,
@@ -606,7 +678,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     marginBottom: 14,
                   }}
                 >
-                  {originalSubName}
+                  {artistSecondaryName}
                 </div>
               )}
               {bio && (
@@ -745,11 +817,26 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             sl.stageIdentity.translations,
                             locale,
                           ) || t("unknownMember");
+                        // Avatar initial source: locale shortName
+                        // cascade (locale.shortName → locale.name →
+                        // originalShortName → originalName), kept
+                        // separate from `memberName` (which is always
+                        // the full name for the body text). Empty
+                        // string normalized to null so MemberChip's
+                        // fallback chain triggers correctly.
+                        const memberAvatarLabel =
+                          displayNameWithFallback(
+                            sl.stageIdentity,
+                            sl.stageIdentity.translations,
+                            locale,
+                            "short",
+                          ) || null;
                         return (
                           <MemberChip
                             key={sl.id}
                             href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
                             memberName={memberName}
+                            avatarLabel={memberAvatarLabel}
                             unitName={unitName}
                             unitColor={unitColor}
                           />
@@ -846,20 +933,41 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                         >
                           {event.formattedDate}
                         </span>
-                        <span
+                        <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: colors.primary,
                             flex: 1,
                             minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
                           }}
                         >
-                          {event.name}
-                        </span>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: colors.primary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {event.name}
+                          </span>
+                          {event.seriesName && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {event.seriesName}
+                            </span>
+                          )}
+                        </div>
                         {event.trailing}
                         <span
                           aria-hidden="true"
@@ -941,6 +1049,16 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             color: colors.textMuted,
                             letterSpacing: "0.06em",
                             textTransform: "uppercase",
+                            // Anchor trailing column with row chips
+                            // (right-aligned), and pad STATUS by the
+                            // badge's internal padding so the header
+                            // text aligns with the badge text. See
+                            // performance-row-layout.ts for the
+                            // detailed rationale.
+                            textAlign:
+                              i === TRAILING_COL_IDX ? "right" : "left",
+                            paddingLeft:
+                              i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
                           }}
                         >
                           {label}

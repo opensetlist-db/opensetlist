@@ -11,7 +11,7 @@ Crowdsourced setlist database for East Asian live music — K-POP, J-POP, C-POP,
 - **Per-event setlists** with per-song unit/member credits — the thing setlist.fm doesn't model.
 - **Artist hierarchy** for groups, sub-units, and solo acts; stage identities (characters / personas) kept separate from voice actors so VA changes don't rewrite history.
 - **Real-time setlist polling** during ongoing events with a pulsing LIVE badge.
-- **One-line impressions** ("한줄평") per event with on-demand translation between viewer locales.
+- **One-line impressions** ("한줄감상") per event with on-demand translation between viewer locales.
 - **Dynamic OG cards** with data-derived glassmorphism palettes and self-hosted CJK fonts for Twitter / KakaoTalk / Discord previews.
 - **i18n from day one**: Korean (launch), Japanese, English, Simplified Chinese (Phase 3).
 
@@ -29,6 +29,84 @@ Crowdsourced setlist database for East Asian live music — K-POP, J-POP, C-POP,
 help@opensetlist.com
 
 ## Release Notes
+
+### v0.9.1 (2026-04-29)
+- Avatar-initial overhaul: member-page hero character avatar + artist list rows + member chips on the artist detail page now source the round/square glyph from the curated short name (canonical-script for the member hero, locale-primary for artist surfaces) instead of the full name's first character. VA avatar deliberately retained on the full-name first character (operator preference). New `resolveOriginalShortLabel` helper extracted to `src/lib/display.ts` with focused tests pinning the fallback order.
+- Vibrant fallback palette for color-pending unit-type artists — Tailwind 400-500 family replaces the muted Material 700 set; preserves length + hash + per-slug determinism, no semantic-color collisions. New `Artist.color` column wired into the artists CSV admin import (preserve-on-missing semantics — column omitted from header keeps existing color, empty cell clears it).
+- Reaction column re-tuned: 4 buttons no longer wrap on Windows / Segoe UI Emoji (260 → 280px reactions column on the desktop setlist grid). Polling race fix so a poll mid-mutation no longer overwrites the optimistic count — `pendingPollCounts` stash drains when `loading` returns to null.
+- UI polish across home, history, songs, series, member, and song surfaces: home always renders upcoming + recent boxes (no full-empty state); history badge centered + trailing column shrunk + status column widened for badge breathing room; song-count cells consistent on member + series (single-line, digit-aligned); series-songs rows clickable to song detail; song-page `?tab=variations` clamps to history when no variations; desktop event-row date format includes year.
+- i18n: 한줄평 → 한줄감상 (less old-fashioned register; postpositions preserved by ㅇ받침-final endings). Home upcoming wording fixed (앞으로, not 최근). En "show" → "event" for clarity.
+- Schema + code hygiene: `SetlistItem.note` hidden from the public event view (Japanese-only data, both SSR and `/api/setlist` polling); `displayName*` helpers unified with full-by-default; admin import wraps `ArtistGroup` replace in `prisma.$transaction` so a partial-failure batch can no longer orphan multiple artists from their groups.
+
+### v0.9.0 (2026-04-29)
+- Top-to-bottom UI redesign across home, events list, event detail, artist list/detail, song detail, member detail, series detail, and legal pages — all rebuilt on a new shared-component system (`<InfoCard>`, `<TabBar>`, `<SectionLabel>`, `<StatusBadge>`, `<Breadcrumb>`, `<PerformanceGroup>`, `<LegCard>`, `<ColorStripe>`, etc.). 53 PRs since v0.8.17.
+- Phase 1A ad-hoc unit + guest handling: operator-typed `SetlistItem.unitName` hidden from public surfaces (no per-locale translations); generic `<FallbackUnitBadge>` "유닛" / "ユニット" / "Unit" for unit-stage rows without backed Artist credit; guest performers + guest units carry "· 게스트" / "· ゲスト" / "· Guest" suffix; Pass-2 unit→members building skips guests so stale `artistLinks` from returning graduates don't pollute host-unit member sublists.
+- Cross-page consistency: `LIVE` badge unified across all surfaces, shared `HISTORY_ROW_DATE_FORMAT` between event list and every detail-page history tab, `<SectionLabel>` adopted on previously-inline section headers, stats grid sub-labels uppercased + letter-spaced for English.
+- Translation-primary identity names: `displayOriginalName` flipped — viewer's locale name is the headline (`main`), original-language name reads as the secondary `sub` line. Song / album titles kept original-primary (artwork identity).
+- Schema: `Group.slug` (`@unique`, CSV upsert key), `Artist.color`, `Artist.category`, `Artist.isMainUnit`. `GroupCategory` enum reshape: `anime` + `game` merged into `animegame`, added `others` as catch-all. Two-stage prod migration (Prisma's AlterEnum + AddColumn ordering required a transient superset enum push first; details in the v0.9.0 deploy log).
+- i18n: 세트리스트 spelling standardized across all surfaces, new `Common.home` noun for breadcrumb hierarchy crumbs (was the `backToHome` CTA), new `Event.guestLabel` key, `tourOngoingLabel` spacing fixed.
+
+### v0.8.17 (2026-04-26)
+- Reaction counts + trending TOP3 propagate via the existing 5s polling (F12 launch-blocker from rehearsal #2). `<ReactionButtons>` re-syncs when polling delivers a fresh map reference (prev-prop tracking idiom). Trending TOP3 rendered inside `<LiveSetlist>` and derived from the same `reactionCounts` driving per-item counts (single source of truth).
+- `REACTION_TYPES` + `EMOJI_MAP` consolidated to `src/lib/reactions.ts` (previously duplicated across three files).
+- SSR `getTrendingSongs()` (3 Prisma queries) skipped when `isOngoing` — `<LiveSetlist>` derives client-side on first paint anyway.
+
+### v0.8.16 (2026-04-26)
+- `SetlistItem.note` hidden from the public event view. Notes had Japanese-only data that read poorly for ko / en / zh visitors. Both SSR rendering and `/api/setlist` polling use Prisma `omit: { note: true }`. Admin SetlistBuilder unchanged — 메모 input still editable; saved data preserved.
+- Per-locale `Meta.description` + `Home.description` rewritten from anime / game-specific to multilingual "open setlist database for live events (JP/EN/KR)" positioning, with natural translations in en / ko / ja.
+- `<link rel="alternate" hreflang="…">` for ko / ja / en plus `x-default` → `/en` on the homepage. Languages derived from `routing.locales` (single source of truth); URLs built via `new URL()` for trailing-slash safety. Scoped to the homepage only — a layout-level canonical would tell Google to deprioritize translated content on every child page.
+
+### v0.8.15 (2026-04-25)
+- Soft-deleted `SetlistItem` rows no longer permanently hold their `(eventId, position)` slot — partial unique `WHERE isDeleted = false` in `post-deploy.sql`. Position auto-suggests `max + 1` for new items.
+- `<EventStatusTicker>` auto-refreshes at status boundaries via a single `setTimeout(() => router.refresh())` at the next transition (`upcoming` → `ongoing` at `startTime`; `ongoing` → `completed` at `startTime + 12h`). Mounted on the event detail header and per-card in `<EventRow>`.
+- Impression polling endpoints flipped to `private, no-store` + client hooks fetch with `cache: "no-store"`. Drops the SSR-seed remount clobber that was discarding fresh polled data on hydration.
+
+### v0.8.14 (2026-04-25)
+- JP OG cards no longer tofu out symbols like `～ ／ ★ ☆ ♡ ♥ ♪ ♫ ♬ ❀ ✿`. Eight numbered Noto Sans JP subset WOFFs registered as fallbacks in `OG_FONT_STACK` (~120 KB additional traced into the `/api/og/*` function bundle).
+- `titleFontSize()` with CJK-weighted scoring shrinks long JP / KR titles (60/72 → as low as 30/32 px) before they hit the 2-line clamp, instead of mid-word clipping. Tier table + 31 boundary tests at scores 20 / 35 / 55 / 80 / 110 for both base=60 (event) and base=72 (artist / song). Wave-dash `〜` extended into the wide-char regex.
+
+### v0.8.13 (2026-04-23)
+- Admin dashboard `/admin` gains a 한줄평 card between 세트리스트 항목 and 감정 태그. Counts head non-deleted impressions; hidden rows (auto-hidden by `reportCount ≥ 3`) stay in the total so the dashboard reflects moderation backlog. Links to `/admin/impressions`.
+- Vercel Speed Insights mounted in `[locale]/layout.tsx`. Real-user LCP / INP / CLS / TTFB alongside existing Sentry + GA4. SDK auto-detects `VERCEL_ENV` and no-ops locally. Admin area intentionally skipped to keep the RUM dataset focused on end-user experience.
+
+### v0.8.12 (2026-04-23)
+- Mobile fix: long series names now wrap instead of overflowing the viewport. `<EventGroup>` h3 and `<EventRow>` title / subtitle switched from `truncate` to `break-words`. Long Hasunosora series names ("러브라이브! 하스노소라 여학원 스쿨 아이돌 클럽 6th Live Dream Bloom Garden Party Stage") were spilling past the right edge at ~360 px on the home card variant + standalone `/ko/events` heading. Wrapping preserves full info across 2-3 lines.
+- Language switcher uses "English" instead of the short code "EN", matching the native-name style of the other two options (한국어, 日本語).
+
+### v0.8.11 (2026-04-23)
+- Translation implicit-cache rewrite. The per-event glossary + placeholder substitution pipeline replaced with a 1074-token hardcoded Hasunosora system prompt that embeds the ko / ja / en glossary inline. One LLM call now returns all three locales — both non-source target rows cache per round-trip, cutting ja + en fanout from two calls to one. The stable prompt prefix sits over the 1024-token implicit-cache threshold on both Gemini 2.5+ and OpenAI.
+- `Translator.translate(text, sourceLocale, signal?)` returns `{ ko, ja, en }` instead of a single target.
+- Read-only admin monitoring page for emotion tags at `/admin/reactions`. Prisma select objects renamed to `eventSelect` / `setlistItemSelect` for clarity.
+
+### v0.8.10 (2026-04-22)
+- React `set-state-in-effect` cleanup: 8 violations across 5 files cleared. `<Header>` drops the pathname-change `useEffect` (mobile `<Link>`s close menu via `onClick`). `<EventDateTime>` + new `src/hooks/useMounted.ts` replace the `useState` / `useEffect` mount gate with `useSyncExternalStore`. `useSetlistPolling` + `useImpressionPolling` use the `useState`-pair prev-prop tracking idiom to re-sync only on actual ID change rather than every fresh array reference (the load-bearing thrash bug).
+- CI gains a Lint step so future regressions can't land silently.
+
+### v0.8.9 (2026-04-22)
+- Server-side dedup for reactions + impressions via `opensetlist_anon_id` cookie. Schema: `anonId String? @db.VarChar(64)` on `SetlistItemReaction` and `EventImpression`. Two partial unique indexes in `post-deploy.sql`: `(setlistItemId, reactionType, anonId) WHERE anonId IS NOT NULL` for reactions; `(rootImpressionId, anonId) WHERE anonId IS NOT NULL AND supersededAt IS NULL` (head-only) for impressions, so the supersede transaction can re-insert the same `anonId` on a new head row without P2002.
+- Closes the reactions-idempotency bug (`POST /api/reactions` creating a new row on every double-click → inflated counts → skewed Phase 1A trending signal). Closes impression chain hijacking (any caller could mutate any chain by ID). Pre-builds the merge anchor for Phase 2 account signup — future signup handler claims anon-keyed rows and rewrites them to `userId` ownership.
+
+### v0.8.8 (2026-04-22)
+- Phase 1A translation glossary: auto-derived proper-noun pipeline for impression translation. New `src/lib/glossary.ts` — types + `buildArtistTerms` + cached `getArtistTerms` (1h module-scope TTL) + `assemblePairs` + `getGlossaryForEvent` (multi-artist union including guests) + `applyGlossary` / `restoreGlossary` placeholder helpers. Translate route wires glossary application around the LLM call. Fail-open: glossary fetch errors translate raw content rather than 502.
+- Admin debug page `/admin/translation-debug` for inspecting the glossary pipeline. Shows all 4 stages — pairs, substituted input, raw LLM output, restored final. Bypasses both the artist-terms cache and the `ImpressionTranslation` cache.
+
+### v0.8.7 (2026-04-21)
+- CSV import override columns for parent-level `original*` fields (`originalName`, `originalShortName`, `originalCity`, `originalVenue`, `originalBio`, `originalDescription`, `originalStageName`, `originalLanguage`). New `buildOriginals` helper centralizes the precedence rule: explicit override > `<originalLanguage>_<field>` translation > preserve existing.
+- `RealPersonTranslation.shortName` + `RealPerson.originalShortName` schema additions (prerequisite for the Phase 1A translation glossary). Plumbed through `post-deploy.sql` backfill, CSV import (`va_*_shortName` / `va_originalShortName`), admin form VA block.
+- Admin import UI lists parent-level `original*` override columns with Korean precedence-rule notes.
+
+### v0.8.6 (2026-04-21)
+- `originalName` flipped from nullable to NOT NULL on `Artist`, `Group`, `EventSeries`, `Event`, `StageIdentity`, `RealPerson`. Locks in the parent-level identity field that v0.8.4 added and v0.8.5 wired admin forms to write — every translation-backed parent now has a guaranteed identity string for the bleed-safe display fallback chain.
+- Secondary `original*` fields (`originalShortName`, `originalBio`, `originalDescription`, `originalCity`, `originalVenue`, `originalStageName`) stay nullable because their translation-table counterparts are nullable — a real event may have no short name; a real person may have no stage name.
+- Import-route create branches reworked: `requireOriginalSource()` narrows the source variable to non-null at the create site; pre-computed spread variables replaced with explicit field assignments to satisfy the new NOT NULL column.
+
+### v0.8.5 (2026-04-21)
+- Admin form scaffolding for parent-level `original*` fields. POST / PUT routes for `Artist` (incl. nested `StageIdentity` + `RealPerson`), `EventSeries`, `Event`, `Group` write parent `original*` + `originalLanguage`. Sets up v0.8.6 to flip `originalName` to NOT NULL once prod data is fully backfilled.
+- Defense-in-depth on admin POST / PUT: `parseJsonBody` normalizes malformed JSON to 400, typed validators replace `as`-casts (`enumValue`, `nullableEnumValue`, `nullableString`, `nullableBigIntId` w/ `Number.isSafeInteger`, `nullableBoolean`, `nullableStringArray`). `resolveAdminSlug` trims and normalizes admin-supplied slugs with a `prefix-{timestamp}` fallback. Stage-identity slugs append `randomUUID().slice(0,8)` to avoid unique-constraint collisions; `va-{siSlug}` inherits the suffix. Atomic transactions for delete + update flows; blank-string rejection on `performerIds` / `guestIds` / `stageIdentityId`.
+
+### v0.8.4 (2026-04-21)
+- Schema: `originalName` / `originalShortName` / `originalBio` / `originalDescription` / `originalCity` / `originalVenue` (per entity) + `originalLanguage` added to `Artist`, `Group`, `EventSeries`, `Event`, `StageIdentity`, `RealPerson`. `post-deploy.sql` backfills from the matching-locale translation row. `Album.originalLanguage` normalized (`jp` → `ja`) + `originalTitle` backfilled, plus an orphan-guard that raises a Postgres `WARNING` (never an error) for any parent row still missing its identity field.
+- New `displayOriginalName`, `displayNameWithFallback`, `resolveLocalizedField` helpers replace ~60 strict-`pickTranslation` call sites across event / artist / series / member / song pages, OG routes, and components. A ja viewer with no ja translation row now sees the parent `original*` values instead of a ko or en bleed-through.
 
 ### v0.8.3 (2026-04-21)
 - Event OG card: `EventSeries` short name is now the headline; the specific event name moves to the subtitle (matches page H1 composition).

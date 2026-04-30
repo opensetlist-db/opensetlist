@@ -12,8 +12,8 @@ const IMPORT_TYPES = [
   {
     value: "artists",
     label: "2. 아티스트 (Artists)",
-    columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit"],
-    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
+    columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit", "color"],
+    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · color: 유닛 배지 색 (예: #e91e8c). 컬럼 자체를 생략하면 기존 색 유지, 빈 셀이면 색 제거 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
   },
   {
     value: "members",
@@ -48,7 +48,11 @@ const IMPORT_TYPES = [
 ];
 
 export default function ImportPage() {
-  const [selectedType, setSelectedType] = useState("artists");
+  // Default to the first option in IMPORT_TYPES (groups, after the
+  // dependency-order reshape that put groups before artists). Keeping
+  // this in sync with `IMPORT_TYPES[0].value` avoids the form opening
+  // to a non-first option mid-list.
+  const [selectedType, setSelectedType] = useState(IMPORT_TYPES[0].value);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);

@@ -40,10 +40,19 @@ export default async function ArtistTableRow({
 
   // Same `displayNameWithFallback` + t("unknown") pattern as
   // <ArtistCard>; see the comment there for why the final fallback is
-  // a translatable label rather than empty string.
+  // a translatable label rather than empty string. Full mode by
+  // default — short variant is reserved for breadcrumbs and
+  // setlist-row chips (where the page already shows the full name).
   const primaryName =
-    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    displayNameWithFallback(artist, artist.translations, locale) ||
     t("unknown");
+  // See <ArtistCard> for the same shortName resolution + rationale —
+  // the avatar prefers a curated handle's first character over the
+  // full name's lead. `null` when no shortName exists at any locale,
+  // letting the avatar fall back to `name` cleanly.
+  const primaryShortName =
+    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    null;
   const showOriginal =
     locale !== artist.originalLanguage &&
     !!artist.originalName &&
@@ -79,7 +88,11 @@ export default async function ArtistTableRow({
         {/* col 1: avatar */}
         {/* See ArtistCard for the avatar prop-shape rationale. */}
         <ArtistAvatar
-          artist={{ color: artist.color, name: primaryName }}
+          artist={{
+            color: artist.color,
+            name: primaryName,
+            shortName: primaryShortName,
+          }}
           size={40}
         />
 

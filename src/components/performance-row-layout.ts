@@ -22,15 +22,34 @@
  * a separate grid with the same template — has identically-sized
  * column tracks.
  *
+ * The leading 80px holds the StatusBadge. Was 60px and the English
+ * "Upcoming" pill (~70-75px) overflowed into track 2, leaving the
+ * date column visually flush with the badge — operator feedback
+ * 2026-04-29: "spacing between status and date column are too narrow.
+ * Can't you use the same spacing used in RECENT EVENTS?". 80px fits
+ * the widest realistic badge with ~5-10px breathing room before the
+ * 10px column gap, mirroring the recent-events flex layout's natural
+ * `gap: 10` between content-sized badge and date span.
+ *
+ * The trailing 100px holds per-row chips (artist: `🎵 N`; member:
+ * 전출연 / unit-name; song: encore + #position). Was 180px and gave
+ * too much air on rows with short content while squeezing the name
+ * column — operator feedback (2026-04-29: "songs column has too much
+ * space and the event column needs more space"). 100px fits the
+ * widest realistic chip ("Mira-Cra Park!" pill ~85px) plus padding.
+ *
+ * Mobile rows use `auto auto` for trailing+chevron via a Tailwind
+ * responsive class on the row — content-sized chips, narrower
+ * overall, which the operator already preferred ("mobile view column
+ * size looks good").
+ *
  * The trailing 28px is the chevron column. Matches the event list
  * row template (`EVENT_TABLE_COLUMNS` ends with `28px`) so the two
  * surfaces — both showing "list of events grouped by series" — read
- * the same density at the right edge. Was 16px before; the bump
- * gives the chevron glyph more breathing room without forcing a
- * narrower name column.
+ * the same density at the right edge.
  */
 export const PERFORMANCE_ROW_GRID =
-  "60px 100px minmax(0, 1fr) 180px 28px";
+  "80px 100px minmax(0, 1fr) 100px 28px";
 
 /**
  * Left padding of every event row, in pixels. The column-header strip
@@ -47,3 +66,25 @@ export const PERFORMANCE_ROW_INDENT_PX = 36;
  * row content.
  */
 export const PERFORMANCE_ROW_GAP_PX = 10;
+
+/**
+ * Internal `padding-left` of the `<StatusBadge>` pill (matches the
+ * `padding: 2px 8px` declaration on the badge component). The
+ * column-header strip applies this as `paddingLeft` on the STATUS
+ * label so the header TEXT aligns with the badge TEXT (rather than
+ * with the badge's BG left edge, which is 8px earlier). Without
+ * this, eyes read the 8px text-to-text gap as "badge not aligned
+ * with column title" — operator feedback 2026-04-29.
+ */
+export const STATUS_BADGE_INDENT_PX = 8;
+
+/**
+ * Indices into the column-header label array consumers map over.
+ * Track 0 = STATUS (badge), track 3 = trailing (chips, right-aligned).
+ * Pulled out to constants so the alignment rules — `paddingLeft` on
+ * STATUS to match badge indent, `textAlign: right` on trailing to
+ * anchor with row chips — don't repeat magic indices across artist /
+ * member / song history-tab implementations.
+ */
+export const STATUS_COL_IDX = 0;
+export const TRAILING_COL_IDX = 3;

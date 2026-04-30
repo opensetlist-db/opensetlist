@@ -197,7 +197,7 @@ export function PerformanceGroup({
             // `PERFORMANCE_ROW_GRID` exported above. Tailwind JIT
             // requires literal class strings, so the constant can't be
             // interpolated here — if you change one, change the other.
-            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[60px_100px_minmax(0,1fr)_180px_28px]"
+            className="row-hover-bg grid items-center gap-[10px] grid-cols-[60px_100px_minmax(0,1fr)_auto_auto] lg:grid-cols-[80px_100px_minmax(0,1fr)_100px_28px]"
             style={{
               padding: `9px 16px 9px ${PERFORMANCE_ROW_INDENT_PX}px`,
               // Per-row separator uses borderLight uniformly — matches
@@ -214,11 +214,21 @@ export function PerformanceGroup({
               minWidth: 0,
             }}
           >
-            <StatusBadge
-              status={event.status}
-              size="sm"
-              label={statusLabels[event.status]}
-            />
+            {/* `justifySelf: start` pins the badge to the left edge
+                of the 60px track, matching the consumer page's
+                column-header label "STATUS" (also left-aligned).
+                Without the override, an `inline-flex` grid item
+                stretches to fill the track and the dot+label flex-
+                start inside the wider box — the badge BG extends
+                past the text and reads as misaligned with the header
+                above it. */}
+            <div style={{ justifySelf: "start" }}>
+              <StatusBadge
+                status={event.status}
+                size="sm"
+                label={statusLabels[event.status]}
+              />
+            </div>
             <span
               style={{
                 fontSize: 12,
@@ -240,7 +250,20 @@ export function PerformanceGroup({
             >
               {event.name}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* `justifySelf: end` pins the trailing chip(s) to the
+                right edge of their track, flush against the chevron's
+                10px column gap. Without it, the chips sit at the
+                track's left edge with the column's empty space hanging
+                between them and the chevron — operator feedback
+                (2026-04-29 "too much space right to songs column"). */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                justifySelf: "end",
+              }}
+            >
               {event.trailing}
             </div>
             <span

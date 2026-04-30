@@ -5,7 +5,6 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
-  pickLocaleTranslation,
   formatDate,
   HISTORY_ROW_DATE_FORMAT,
 } from "@/lib/utils";
@@ -40,6 +39,9 @@ import {
   PERFORMANCE_ROW_GRID,
   PERFORMANCE_ROW_INDENT_PX,
   PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
 } from "@/components/performance-row-layout";
 import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
@@ -117,6 +119,10 @@ async function getSongPerformances(songId: bigint) {
     },
     include: {
       setlistItem: {
+        // Setlist `note` is not surfaced on any public page (operator
+        // decision, 2026-04-29) — omitted to keep the payload small
+        // and aligned with the event detail page's same omit.
+        omit: { note: true },
         include: {
           event: {
             include: {
@@ -152,14 +158,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     deriveOgPaletteFromSong(songId),
   ]);
   if (!song) return { title: metaT("notFound") };
-  const tr = pickLocaleTranslation(song.translations, locale);
+  // Songs are work-primary: OG title shows the original-language
+  // title with the locale-resolved variant label. Going through
+  // `displayOriginalTitle` instead of hand-resolving via
+  // `pickLocaleTranslation` keeps the OG meta in lockstep with the
+  // detail-page H1 (which already uses the helper) — so a shared
+  // OG card never reads a different title than the page itself.
+  const { main: songTitle, variant: metaVariant } = displayOriginalTitle(
+    song,
+    song.translations,
+    locale,
+  );
   const firstArtist = song.artists[0]?.artist ?? null;
   const artistName = firstArtist
     ? displayNameWithFallback(firstArtist, firstArtist.translations, locale)
     : null;
 
-  const songTitle = tr?.title ?? song.originalTitle;
-  const metaVariant = tr?.variantLabel || song.variantLabel;
   const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
   const description = artistName
     ? `${artistName} · ${metaT("performanceHistory")}`
@@ -193,7 +207,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function SongPage({ params, searchParams }: Props) {
   const { locale, id } = await params;
   const sp = await searchParams;
-  const activeTab = resolveTab(sp.tab);
+  // `requestedTab` is the tab the URL asked for; `activeTab` is the
+  // tab we actually render. They diverge when the URL says
+  // `?tab=variations` on a song that doesn't have variations — the
+  // <TabBar> hides the variations tab in that case, but without
+  // this clamp the body tries to render `activeTab === "variations"`
+  // and shows nothing. Force `history` when variations isn't an
+  // option. Computed after `hasVariations` is known further down.
+  const requestedTab = resolveTab(sp.tab);
 
   let songId: bigint;
   try {
@@ -249,8 +270,16 @@ export default async function SongPage({ params, searchParams }: Props) {
   // multi-album list is a Phase 2 concern).
   const albumInfo = albumTrack
     ? (() => {
-        const tr = pickLocaleTranslation(albumTrack.album.translations, locale);
-        const albumName = tr?.title ?? albumTrack.album.originalTitle;
+        // Albums are work-primary too — same helper as song titles
+        // so the sidebar reads the same original-language label that
+        // the song detail H1 reads above. `displayOriginalTitle.main`
+        // is the original; the locale subtitle (`.sub`) is dropped
+        // here because the sidebar row only carries one line.
+        const { main: albumName } = displayOriginalTitle(
+          albumTrack.album,
+          albumTrack.album.translations,
+          locale,
+        );
         return { name: albumName, type: albumTrack.album.type };
       })()
     : null;
@@ -292,7 +321,14 @@ export default async function SongPage({ params, searchParams }: Props) {
       et("unknownEvent");
     const cells = getSongPerformanceCells(p.setlistItem);
     performanceViews.push({
-      id: String(event.id),
+      // React key. Each appearance is a SetlistItemSong row, so use
+      // its setlistItemId (unique per appearance) instead of
+      // `event.id`. A song that appears twice in one event (medley
+      // reprise, encore reprise) produces two performances with the
+      // same `event.id`, which collided as duplicate React keys and
+      // could mis-attribute trailing cells (#position, encore badge)
+      // on collapse / expand or tab switches.
+      id: String(p.setlistItemId),
       seriesId,
       seriesName,
       status,
@@ -368,26 +404,34 @@ export default async function SongPage({ params, searchParams }: Props) {
     isCurrent: boolean;
     isBase: boolean;
   }> = [];
+  // Each variant is a Song; resolve via `displayOriginalTitle` so
+  // the variants list is internally consistent with the page H1
+  // (both work-primary). `.main` is the original title; `.variant`
+  // is the locale-resolved variant label that powers the row's
+  // "기본" / variant pill.
   if (song.baseVersion) {
     // Current song is itself a variant — list base + siblings.
-    const baseTr = pickLocaleTranslation(song.baseVersion.translations, locale);
+    const baseDisplay = displayOriginalTitle(
+      song.baseVersion,
+      song.baseVersion.translations,
+      locale,
+    );
     variationList.push({
       id: Number(song.baseVersion.id),
       slug: song.baseVersion.slug,
-      title: baseTr?.title ?? song.baseVersion.originalTitle,
-      variantLabel:
-        baseTr?.variantLabel || song.baseVersion.variantLabel || null,
+      title: baseDisplay.main,
+      variantLabel: baseDisplay.variant,
       isCurrent: false,
       isBase: true,
     });
   }
   for (const v of variantSiblings) {
-    const vTr = pickLocaleTranslation(v.translations, locale);
+    const vDisplay = displayOriginalTitle(v, v.translations, locale);
     variationList.push({
       id: Number(v.id),
       slug: v.slug,
-      title: vTr?.title ?? v.originalTitle,
-      variantLabel: vTr?.variantLabel || v.variantLabel || null,
+      title: vDisplay.main,
+      variantLabel: vDisplay.variant,
       isCurrent: Number(v.id) === Number(song.id),
       isBase: false,
     });
@@ -434,6 +478,14 @@ export default async function SongPage({ params, searchParams }: Props) {
   }));
 
   const hasVariations = variationList.length > 1;
+  // Clamp `requestedTab` against what's actually available. The
+  // <TabBar> hides the variations tab when `hasVariations` is false,
+  // so leaving activeTab pinned to "variations" would render an
+  // empty body with the history tab visually unselected.
+  const activeTab: TabKey =
+    requestedTab === "variations" && !hasVariations
+      ? "history"
+      : requestedTab;
 
   const tabs = [
     {
@@ -749,6 +801,16 @@ export default async function SongPage({ params, searchParams }: Props) {
                           color: colors.textMuted,
                           letterSpacing: "0.06em",
                           textTransform: "uppercase",
+                          // Anchor trailing column with row chips
+                          // (right-aligned), and pad STATUS by the
+                          // badge's internal padding so the header
+                          // text aligns with the badge text. See
+                          // performance-row-layout.ts for the
+                          // detailed rationale.
+                          textAlign:
+                            i === TRAILING_COL_IDX ? "right" : "left",
+                          paddingLeft:
+                            i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
                         }}
                       >
                         {label}
@@ -973,18 +1035,6 @@ function SongRowTrailing({ cells, encoreLabel }: SongRowTrailingProps) {
       >
         #{cells.position}
       </span>
-      {cells.note && (
-        <span
-          style={{
-            color: colors.textMuted,
-            fontSize: 11,
-            fontStyle: "italic",
-            flexShrink: 0,
-          }}
-        >
-          {cells.note}
-        </span>
-      )}
     </>
   );
 }

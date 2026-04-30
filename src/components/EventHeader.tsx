@@ -38,7 +38,14 @@ interface Props {
    * The page stringifies at the boundary; high-id series (≥ 2^53)
    * survive the round-trip without precision loss.
    */
-  series: { id: string; slug: string; shortName: string } | null;
+  /**
+   * Caller-resolved series link target — `name` is the full
+   * localized series name (operator preference: the sidebar's
+   * top card carries the full name; breadcrumb crumbs above carry
+   * the short variant). Renamed from `shortName` since the actual
+   * value passed in is the full name now.
+   */
+  series: { id: string; slug: string; name: string } | null;
   /** Display title — series full name takes precedence; falls back to event full name then `unknownEvent`. */
   title: string;
   venue: string | null;
@@ -184,7 +191,7 @@ export function EventHeader({
               className="text-[11px] font-semibold hover:underline"
               style={{ color: colors.primary }}
             >
-              {series.shortName}
+              {series.name}
             </Link>
           </div>
         )}

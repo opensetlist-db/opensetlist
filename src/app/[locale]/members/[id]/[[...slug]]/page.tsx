@@ -12,6 +12,7 @@ import {
   displayNameWithFallback,
   displayOriginalName,
   displayOriginalTitle,
+  resolveOriginalShortLabel,
 } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
@@ -20,11 +21,24 @@ import { SectionLabel } from "@/components/SectionLabel";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { InitialAvatar } from "@/components/InitialAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CountCell } from "@/components/CountCell";
 import {
   PerformanceGroup,
   type PerformanceSeries,
   type PerformanceEvent,
 } from "@/components/PerformanceGroup";
+// Layout primitives import directly from the server-safe module —
+// NOT from `PerformanceGroup.tsx` (which carries `"use client"`).
+// See `src/components/performance-row-layout.ts` header for the
+// boundary-corruption rationale.
+import {
+  PERFORMANCE_ROW_GRID,
+  PERFORMANCE_ROW_INDENT_PX,
+  PERFORMANCE_ROW_GAP_PX,
+  STATUS_BADGE_INDENT_PX,
+  STATUS_COL_IDX,
+  TRAILING_COL_IDX,
+} from "@/components/performance-row-layout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
@@ -99,6 +113,30 @@ async function getMember(id: string) {
                     },
                   },
                 },
+              },
+              // SetlistItemArtist on the row itself — drives the
+              // history-tab trailing chip's per-event unit label.
+              // Without this, the chip falls back to the member's
+              // CURRENT primary unit name even when the member
+              // performed under a different unit on that specific
+              // event (e.g. a member who moved between sub-units, or
+              // appeared in a one-time configuration).
+              //
+              // `orderBy: artistId asc` pins a deterministic row
+              // order so the consumer's `.find((a) => a.artist.type
+              // === "unit")` (line ~473) returns the same chip label
+              // across requests when a setlist item carries multiple
+              // unit credits (e.g. a collab between two sub-units).
+              // Without an explicit ORDER BY, Postgres is free to
+              // return rows in any order and the trailing chip could
+              // flip between renders. ascending by `artistId` is
+              // arbitrary but stable — the SetlistItemArtist row has
+              // no operator-curated order column.
+              artists: {
+                include: {
+                  artist: { include: { translations: true } },
+                },
+                orderBy: { artistId: "asc" },
               },
             },
           },
@@ -192,6 +230,19 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const { main: characterPrimary, sub: characterSecondary } =
     displayOriginalName(member, member.translations, locale);
   const characterOriginal = characterSecondary ?? characterPrimary;
+  // Avatar initial sources the *original-language short name* first
+  // (e.g. 瑠 for 瑠璃乃 rather than 大 for 大沢瑠璃乃) so the round
+  // chip reads as the character's curated handle, not the surname-
+  // first first-character of a Japanese-style full name. The
+  // resolution chain (parent shortName → original-language
+  // translation shortName → full original → "?") lives in
+  // `resolveOriginalShortLabel` so the order is testable and a future
+  // canonical-script avatar surface can reuse it without re-inlining.
+  const characterAvatarLabel = resolveOriginalShortLabel(
+    member,
+    member.translations,
+    characterOriginal,
+  );
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape
@@ -249,9 +300,20 @@ export default async function MemberPage({ params, searchParams }: Props) {
     }
     return null;
   })();
+  // Breadcrumb crumbs always render the short variant — the page
+  // header already shows the full member name, so the crumb staying
+  // compact keeps the ribbon tidy.
   const parentName = parentArtist
-    ? displayNameWithFallback(parentArtist, parentArtist.translations, locale)
+    ? displayNameWithFallback(
+        parentArtist,
+        parentArtist.translations,
+        locale,
+        "short",
+      )
     : null;
+  const breadcrumbLeafName =
+    displayNameWithFallback(member, member.translations, locale, "short") ||
+    t("unknown");
 
   // Voice actor (active first, else most recent ended). `voicedBy`
   // is already sorted desc by startDate in the query.
@@ -270,7 +332,14 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const vaPrimary = vaDisplay?.main ?? null;
   const vaSecondary = vaDisplay?.sub ?? null;
   // Original-language string for the VA avatar initial; same
-  // `sub ?? main` rule the character avatar above uses.
+  // `sub ?? main` rule the character avatar above uses. Note: the VA
+  // intentionally keeps the *full* original-language first character
+  // even though the character avatar (above) prefers the short-name
+  // first character — operator preference. A real-person VA name is
+  // typically rendered in full anyway (e.g. 楡井希実 → 楡), and the
+  // surname's first character is the canonical reading; switching to
+  // a short-name initial would yield the given-name's first character,
+  // which is too informal a handle for a credited performer's chip.
   const vaOriginal = vaDisplay ? (vaDisplay.sub ?? vaDisplay.main) : null;
   // Activity period: full range when ended, just the start date when
   // still active (per user feedback — no `~ 현재` / `~ Present` suffix
@@ -301,6 +370,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
   type EventInfo = {
     seriesId: number;
     seriesShort: string;
+    /** Standalone variant of `seriesShort`: null when event has no
+     *  series (so the recent-events block can show series subtitle
+     *  only when it differs from the event name). */
+    seriesNameOrNull: string | null;
     rawDateMs: number;
     formattedDate: string;
     name: string;
@@ -309,6 +382,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
   };
   type EventView = PerformanceEvent & {
     seriesId: number;
+    /** Pre-resolved series translated name. Used by the recent-events
+     *  subtitle (overview tab) — null for standalone events so the
+     *  subtitle line is suppressed. The history-tab grouping reads
+     *  `seriesShort` (which falls back to event name) instead. */
+    seriesName: string | null;
     rawDateMs: number;
     isFullGroup: boolean;
   };
@@ -316,17 +394,21 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const buildInfo = (
     event: (typeof member.performances)[number]["setlistItem"]["event"],
   ): EventInfo => {
-    const seriesShort = event.eventSeries
+    const seriesNameOrNull = event.eventSeries
       ? displayNameWithFallback(
           event.eventSeries,
           event.eventSeries.translations,
           locale,
-        ) || evT("unknownEvent")
-      : displayNameWithFallback(event, event.translations, locale) ||
-        evT("unknownEvent");
+        ) || null
+      : null;
+    const seriesShort =
+      seriesNameOrNull ??
+      displayNameWithFallback(event, event.translations, locale) ??
+      evT("unknownEvent");
     return {
       seriesId: event.eventSeries ? Number(event.eventSeries.id) : 0,
       seriesShort,
+      seriesNameOrNull,
       // serializeBigInt's JSON.stringify converts Date columns to ISO
       // strings — runtime is `string` even though the type still says
       // Date. Wrap in String() before parseing.
@@ -348,10 +430,23 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // Pre-built per event because PerformanceGroup is a client component
   // and React refuses to serialize a function prop across the RSC
   // boundary; ReactNode trees serialize fine, so the JSX lives here.
-  const buildTrailing = (isFullGroup: boolean): React.ReactNode => {
+  //
+  // Per-event unit resolution: when the row is a specific song-level
+  // appearance (`isFullGroup=false`), the caller passes
+  // `perEventUnitName` derived from THIS setlist item's
+  // SetlistItemArtist credit. Without it, the chip would fall back
+  // to `primaryUnitName` (the member's CURRENT primary unit) for
+  // every event — wrong for members who moved between sub-units or
+  // appeared in one-time configurations. `primaryUnitName` is still
+  // the last-resort fallback when the setlist item has no unit
+  // credit at all.
+  const buildTrailing = (
+    isFullGroup: boolean,
+    perEventUnitName?: string | null,
+  ): React.ReactNode => {
     const labelText = isFullGroup
       ? t("fullGroupBadge")
-      : (primaryUnitName ?? "");
+      : (perEventUnitName ?? primaryUnitName ?? "");
     if (!labelText) return null;
     return (
       <span
@@ -373,15 +468,53 @@ export default async function MemberPage({ params, searchParams }: Props) {
     );
   };
 
+  // Pre-compute the member's unit-link IDs once. The intersection
+  // check inside the per-performance loop below would otherwise
+  // rebuild the Set on every iteration even though `unitLinks`
+  // doesn't change between performances.
+  const memberUnitIds = new Set(unitLinks.map((l) => String(l.artist.id)));
+
   const eventViewsById = new Map<number, EventView>();
   for (const perf of member.performances) {
     const event = perf.setlistItem.event;
     const eid = Number(event.id);
     if (!eventViewsById.has(eid)) {
+      // Resolve the per-event unit chip label from THIS setlist item's
+      // SetlistItemArtist credit. First-seen performance wins when
+      // the member sang multiple unit-stage songs at the same event;
+      // that matches the existing "first performance per event"
+      // iteration order. Falls back to `primaryUnitName` inside
+      // `buildTrailing` when the setlist item has no unit credit
+      // (e.g. solo song with no unit attribution).
+      //
+      // On a setlist item with MULTIPLE unit credits (collab between
+      // two sub-units, e.g. Cerise Bouquet × DOLLCHESTRA), we want
+      // the chip to read as the unit THIS specific member performed
+      // under — not just whichever unit happens to come first in
+      // the row's `artists` array. So prefer a unit-type artist that
+      // intersects with the member's own `unitLinks` (the units this
+      // stage identity is actually linked to via
+      // StageIdentityArtist). Only when no intersection exists fall
+      // back to the original "first unit-type artist" behavior — that
+      // covers genuinely orphaned credits (e.g. an ad-hoc guest
+      // appearance under a unit the member isn't formally part of)
+      // where the row's first credit is the best signal we have.
+      const itemUnit =
+        perf.setlistItem.artists.find(
+          (a) =>
+            a.artist.type === "unit" &&
+            memberUnitIds.has(String(a.artist.id)),
+        )?.artist ??
+        perf.setlistItem.artists.find((a) => a.artist.type === "unit")
+          ?.artist;
+      const perEventUnitName = itemUnit
+        ? displayNameWithFallback(itemUnit, itemUnit.translations, locale)
+        : null;
       const info = buildInfo(event);
       eventViewsById.set(eid, {
         id: String(event.id),
         seriesId: info.seriesId,
+        seriesName: info.seriesNameOrNull,
         rawDateMs: info.rawDateMs,
         formattedDate: info.formattedDate,
         name: info.name,
@@ -392,7 +525,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
         // EventPerformer-only check overrides it (it doesn't, but the
         // explicit default makes the rule readable).
         isFullGroup: false,
-        trailing: buildTrailing(false),
+        trailing: buildTrailing(false, perEventUnitName),
       });
     }
   }
@@ -409,6 +542,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
     eventViewsById.set(eid, {
       id: String(ep.event.id),
       seriesId: info.seriesId,
+      seriesName: info.seriesNameOrNull,
       rawDateMs: info.rawDateMs,
       formattedDate: info.formattedDate,
       name: info.name,
@@ -517,8 +651,12 @@ export default async function MemberPage({ params, searchParams }: Props) {
       events: s.events,
     }));
 
-  // Recent-3 across all series for the overview tab.
-  const recentEvents: PerformanceEvent[] = [...eventViewsById.values()]
+  // Recent-3 across all series for the overview tab. Carries
+  // `seriesName` as a subtitle line below the event name (operator
+  // feedback 2026-04-29 — the flat list lost the series context that
+  // history-tab grouping conveys via group headers).
+  type RecentEventRow = PerformanceEvent & { seriesName: string | null };
+  const recentEvents: RecentEventRow[] = [...eventViewsById.values()]
     .sort((a, b) => b.rawDateMs - a.rawDateMs)
     .slice(0, 3)
     .map((e) => ({
@@ -527,6 +665,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       formattedDate: e.formattedDate,
       name: e.name,
       href: e.href,
+      seriesName: e.seriesName,
     }));
 
   // ─── Songs aggregation ───────────────────────────────────────────
@@ -619,7 +758,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                   } satisfies BreadcrumbItem,
                 ]
               : []),
-            { label: characterPrimary || t("unknown") },
+            { label: breadcrumbLeafName },
           ]}
         />
 
@@ -653,11 +792,13 @@ export default async function MemberPage({ params, searchParams }: Props) {
                 }}
               >
                 <InitialAvatar
-                  // Avatar initial keeps the original-language first
-                  // character — matches the mockup which intentionally
-                  // shows the canonical script (e.g. 大 for 大沢瑠璃乃)
-                  // regardless of the displayed name's language.
-                  label={characterOriginal || "?"}
+                  // Original-language short name's first character —
+                  // shows the curated handle's lead glyph (e.g. 瑠 for
+                  // 瑠璃乃) instead of the full-name lead (which would
+                  // surface a Japanese surname's first kanji). See
+                  // `characterAvatarLabel` resolution above for the
+                  // shortName → fullName fallback chain.
+                  label={characterAvatarLabel}
                   color={memberColor}
                   size={72}
                 />
@@ -731,8 +872,11 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       }}
                     >
                       <InitialAvatar
-                        // Original-language first character — matches
-                        // the character avatar's logic (mockup intent).
+                        // Original-language full-name first character
+                        // — intentionally distinct from the character
+                        // avatar above (which uses the short name's
+                        // first character). See `vaOriginal` for
+                        // rationale.
                         label={vaOriginal || "?"}
                         color={memberColor}
                         size={36}
@@ -882,7 +1026,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                         key={song.id}
                         song={song}
                         isLast={i === songsTop3.length - 1}
-                        countLabel={t("songCount", {
+                        countUnit={t("songCountUnit", {
                           count: song.timesPerformed,
                         })}
                       />
@@ -964,26 +1108,51 @@ export default async function MemberPage({ params, searchParams }: Props) {
                           style={{
                             fontSize: 12,
                             color: colors.textMuted,
-                            width: 52,
+                            // 100px to fit `HISTORY_ROW_DATE_FORMAT`
+                            // year-included strings ("2026년 4월 25일")
+                            // — matches the artist page recent-events
+                            // and PerformanceGroup history rows.
+                            width: 100,
                             flexShrink: 0,
                           }}
                         >
                           {event.formattedDate}
                         </span>
-                        <span
+                        <div
                           style={{
-                            fontSize: 13,
-                            fontWeight: 600,
-                            color: colors.primary,
                             flex: 1,
                             minWidth: 0,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
                           }}
                         >
-                          {event.name}
-                        </span>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: colors.primary,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {event.name}
+                          </span>
+                          {event.seriesName && (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: colors.textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {event.seriesName}
+                            </span>
+                          )}
+                        </div>
                         <span
                           aria-hidden="true"
                           style={{
@@ -1036,7 +1205,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
                       key={song.id}
                       song={song}
                       isLast={i === songsAll.length - 1}
-                      countLabel={t("songCount", {
+                      countUnit={t("songCountUnit", {
                         count: song.timesPerformed,
                       })}
                     />
@@ -1076,16 +1245,74 @@ export default async function MemberPage({ params, searchParams }: Props) {
                     {t("noEvents")}
                   </p>
                 ) : (
-                  seriesViews.map((sv) => (
-                    <PerformanceGroup
-                      key={sv.seriesId}
-                      series={sv}
-                      statusLabels={statusLabels}
-                      eventCountLabel={at("eventCount", {
-                        count: sv.events.length,
-                      })}
-                    />
-                  ))
+                  <>
+                    {/* Desktop-only column-header strip — same grid
+                        template as the rows below so headers line up
+                        with row tracks. Mirrors the artist + song
+                        detail history tabs (operator feedback
+                        2026-04-29: "member page history has no column
+                        title, which is inconsistent with artist
+                        history"). Hidden on mobile via `hidden lg:grid`
+                        — mobile rows carry no column header. */}
+                    <div
+                      className="hidden lg:grid"
+                      style={{
+                        gridTemplateColumns: PERFORMANCE_ROW_GRID,
+                        gap: PERFORMANCE_ROW_GAP_PX,
+                        padding: `8px 16px 8px ${PERFORMANCE_ROW_INDENT_PX}px`,
+                        background: colors.bgFaint,
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      {[
+                        evT("tableHeader.status"),
+                        evT("tableHeader.date"),
+                        evT("tableHeader.name"),
+                        // Trailing column on member page shows either
+                        // a 전출연 pill or a unit-name pill — no clean
+                        // single label captures both. Leave empty;
+                        // reads as a "chip column" by visual context
+                        // alone (artist + song history use a real
+                        // label because their column has stable
+                        // semantics — `🎵 N` and #position).
+                        "",
+                        "",
+                      ].map((label, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: colors.textMuted,
+                            letterSpacing: "0.06em",
+                            textTransform: "uppercase",
+                            // Anchor trailing column with row chips
+                            // (right-aligned), and pad STATUS by the
+                            // badge's internal padding so the header
+                            // text aligns with the badge text. See
+                            // performance-row-layout.ts for the
+                            // detailed rationale.
+                            textAlign:
+                              i === TRAILING_COL_IDX ? "right" : "left",
+                            paddingLeft:
+                              i === STATUS_COL_IDX ? STATUS_BADGE_INDENT_PX : 0,
+                          }}
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    {seriesViews.map((sv) => (
+                      <PerformanceGroup
+                        key={sv.seriesId}
+                        series={sv}
+                        statusLabels={statusLabels}
+                        eventCountLabel={at("eventCount", {
+                          count: sv.events.length,
+                        })}
+                      />
+                    ))}
+                  </>
                 )}
               </div>
             )}
@@ -1107,10 +1334,14 @@ interface SongRowProps {
     timesPerformed: number;
   };
   isLast: boolean;
-  countLabel: string;
+  /** Unit-only label (e.g. "회 공연" / "performances") — the count
+   *  goes in the bare-number slot of `<CountCell>`. Don't pass an
+   *  already-formatted "{count}회 공연" string here; that double-
+   *  rendered the number prior to 2026-04-29. */
+  countUnit: string;
 }
 
-function SongRow({ song, isLast, countLabel }: SongRowProps) {
+function SongRow({ song, isLast, countUnit }: SongRowProps) {
   return (
     <Link
       href={song.href}
@@ -1177,22 +1408,8 @@ function SongRow({ song, isLast, countLabel }: SongRowProps) {
           </span>
         )}
       </div>
-      <div
-        style={{ flexShrink: 0, textAlign: "right", marginRight: 4 }}
-      >
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: colors.textPrimary,
-            lineHeight: 1.2,
-          }}
-        >
-          {song.timesPerformed}
-        </div>
-        <div style={{ fontSize: 10, color: colors.textMuted }}>
-          {countLabel}
-        </div>
+      <div style={{ marginRight: 4 }}>
+        <CountCell count={song.timesPerformed} unit={countUnit} />
       </div>
       <span
         aria-hidden="true"

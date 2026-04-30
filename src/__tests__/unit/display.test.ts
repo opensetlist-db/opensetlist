@@ -1,51 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
-  displayName,
   displayNameWithFallback,
   displayOriginalName,
   displayOriginalTitle,
   resolveLocalizedField,
+  resolveOriginalShortLabel,
 } from "@/lib/display";
 
-describe("displayName", () => {
-  it("returns shortName when available", () => {
-    expect(
-      displayName({
-        name: "蓮ノ空女学院スクールアイドルクラブ",
-        shortName: "蓮ノ空",
-      })
-    ).toBe("蓮ノ空");
-  });
-
-  it("falls back to name when shortName is null", () => {
-    expect(
-      displayName({
-        name: "蓮ノ空女学院スクールアイドルクラブ",
-        shortName: null,
-      })
-    ).toBe("蓮ノ空女学院スクールアイドルクラブ");
-  });
-
-  it("falls back to name when shortName is undefined", () => {
-    expect(
-      displayName({
-        name: "蓮ノ空女学院スクールアイドルクラブ",
-      })
-    ).toBe("蓮ノ空女学院スクールアイドルクラブ");
-  });
-
-  it("returns full name in full mode even when shortName exists", () => {
-    expect(
-      displayName(
-        {
-          name: "蓮ノ空女学院スクールアイドルクラブ",
-          shortName: "蓮ノ空",
-        },
-        "full"
-      )
-    ).toBe("蓮ノ空女学院スクールアイドルクラブ");
-  });
-});
+// `displayName(translation, mode)` was removed (no consumers).
+// Single-translation name resolution flows through
+// `displayNameWithFallback(item, translations, locale, mode)` now,
+// which carries the original-name fallback the legacy helper lacked.
 
 describe("displayOriginalTitle", () => {
   it("shows sub when ja song has different ko translation", () => {
@@ -392,5 +357,95 @@ describe("displayNameWithFallback", () => {
         "ja"
       )
     ).toBe("蓮ノ空");
+  });
+});
+
+// resolveOriginalShortLabel feeds the canonical-script avatar initial
+// on the member-page hero. Distinct from displayNameWithFallback's
+// "short" mode: this one is *original-language-primary* (the avatar
+// should always render the source-script glyph regardless of the
+// viewer's locale), whereas displayNameWithFallback("short") is
+// locale-primary. Tests pin the fallback order so a future
+// "consistency-fix" can't silently flip the precedence.
+describe("resolveOriginalShortLabel", () => {
+  it("prefers parent originalShortName over every translation row", () => {
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: "瑠璃乃", originalLanguage: "ja" },
+        [
+          { locale: "ja", shortName: "ja-translation-short" },
+          { locale: "ko", shortName: "루리노" },
+          { locale: "en", shortName: "Rurino" },
+        ],
+        "大沢瑠璃乃",
+      ),
+    ).toBe("瑠璃乃");
+  });
+
+  it("falls through to the original-language translation shortName when parent is null", () => {
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: null, originalLanguage: "ja" },
+        [
+          { locale: "ja", shortName: "瑠璃乃" },
+          { locale: "ko", shortName: "루리노" },
+        ],
+        "大沢瑠璃乃",
+      ),
+    ).toBe("瑠璃乃");
+  });
+
+  it("never bleeds in a non-original-locale shortName when the original-locale row is missing", () => {
+    // Strict locale lookup — a viewer landing on /ko/... where the
+    // avatar should still draw the JP canonical glyph must not get
+    // the Korean shortName painted into the chip.
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: null, originalLanguage: "ja" },
+        [
+          { locale: "ko", shortName: "루리노" },
+          { locale: "en", shortName: "Rurino" },
+        ],
+        "大沢瑠璃乃",
+      ),
+    ).toBe("大沢瑠璃乃");
+  });
+
+  it("falls through to the full-original fallback when no shortName is curated anywhere", () => {
+    // Preserves the pre-PR behavior for entries without
+    // originalShortName set yet — they still get a meaningful
+    // identity glyph (the full name's first character).
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: null, originalLanguage: "ja" },
+        [],
+        "大沢瑠璃乃",
+      ),
+    ).toBe("大沢瑠璃乃");
+  });
+
+  it("returns '?' when nothing in the chain resolves", () => {
+    // Hard floor — the avatar must never render blank.
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: null, originalLanguage: "ja" },
+        [],
+        null,
+      ),
+    ).toBe("?");
+  });
+
+  it("treats empty string in originalShortName as 'no value' (truthy fallback, not strict equality)", () => {
+    // Belt-and-suspenders against an admin import row that landed an
+    // empty string instead of null in the column. The avatar's
+    // .charAt(0) on "" would render blank — the falsy `||` chain is
+    // the correct guard.
+    expect(
+      resolveOriginalShortLabel(
+        { originalShortName: "", originalLanguage: "ja" },
+        [{ locale: "ja", shortName: "瑠璃乃" }],
+        "大沢瑠璃乃",
+      ),
+    ).toBe("瑠璃乃");
   });
 });

@@ -2,7 +2,11 @@
 // Convert hex → rgb so tests can assert against the same source-of-truth value
 // the component renders, without duplicating jsdom-converted RGB literals.
 export function hexToRgbString(hex: string): string {
-  const h = hex.replace("#", "");
+  // Anchor the strip to a leading `#` only — `hex.replace("#", "")`
+  // would have stripped a stray `#` mid-string too if it ever
+  // appeared. Six-hex validation below catches the same garbage,
+  // but the regex keeps the intent explicit.
+  const h = hex.replace(/^#/, "");
   if (!/^[0-9a-fA-F]{6}$/.test(h)) {
     // Throw rather than return `rgb(NaN, NaN, NaN)` — a stray bad hex
     // somewhere in tokens would silently turn assertions into no-ops.

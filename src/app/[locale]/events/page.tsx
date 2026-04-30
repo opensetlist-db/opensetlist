@@ -121,8 +121,12 @@ export default async function EventsPage({
   ): PreparedEvent {
     const start = new Date(ev.startTime);
     const status = getEventStatus(ev, now);
+    // Full localized event name (project rule: `full` is the
+    // default everywhere that isn't a breadcrumb or a "short
+    // because the page already shows full" exception). Long names
+    // truncate at the row's column width via the row's CSS.
     const eventName =
-      nonBlank(displayNameWithFallback(ev, ev.translations, locale, "short")) ??
+      nonBlank(displayNameWithFallback(ev, ev.translations, locale)) ??
       unknownEventName;
     const venue = resolveLocalizedField(
       ev,

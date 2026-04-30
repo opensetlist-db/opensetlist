@@ -49,7 +49,7 @@ export default async function AdminDashboard() {
     { label: "시리즈", count: counts.eventSeries, href: "/admin/event-series" },
     { label: "이벤트", count: counts.events, href: "/admin/events" },
     { label: "세트리스트 항목", count: counts.setlistItems, href: "#" },
-    { label: "한줄평", count: counts.impressions, href: "/admin/impressions" },
+    { label: "한줄감상", count: counts.impressions, href: "/admin/impressions" },
     { label: "감정 태그", count: counts.reactions, href: "/admin/reactions" },
   ];
 

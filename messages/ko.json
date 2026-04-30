@@ -11,7 +11,9 @@
     "songCountOngoing": "{count, plural, other {🎵 #곡 진행 중}}",
     "songCount": "{count, plural, other {🎵 #곡}}",
     "dDay": "D-{days}",
-    "noEvents": "곧 공연 정보가 업데이트됩니다."
+    "noEvents": "곧 공연 정보가 업데이트됩니다.",
+    "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
+    "noRecent": "최근 30일 이내 진행된 공연이 없어요."
   },
   "Common": {
     "notFound": "페이지를 찾을 수 없습니다.",
@@ -64,6 +66,7 @@
     "recentEvents": "최근 공연",
     "viewAll": "전체 보기 ›",
     "historyHeader": "공연 이력 — {count}공연",
+    "standaloneEvents": "단독 공연",
     "filterAriaLabel": "카테고리 필터",
     "filterAll": "전체",
     "filterAnimeGame": "애니메이션/게임",
@@ -151,6 +154,7 @@
     "statsCompleted": "완료",
     "statsSongs": "곡",
     "songCount": "{count, plural, other {#회 공연}}",
+    "songCountUnit": "회 공연",
     "recentEvents": "최근 공연",
     "topSongs": "자주 부른 곡",
     "voiceActor": "담당 성우",
@@ -275,27 +279,27 @@
     "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
   },
   "Impression": {
-    "title": "한줄평",
+    "title": "한줄감상",
     "placeholder": "공연은 어땠나요? (최대 200자)",
     "submit": "등록",
-    "submitted": "내 한줄평",
+    "submitted": "내 한줄감상",
     "edit": "수정",
-    "editing": "한줄평 수정 중",
+    "editing": "한줄감상 수정 중",
     "editCooldown": "{seconds}초 후에 다시 수정할 수 있어요.",
     "cancel": "취소",
     "report": "신고",
     "reported": "신고함",
     "hidden": "신고로 숨김",
-    "count": "{count, plural, =0 {한줄평 없음} other {#개의 한줄평}}",
-    "empty": "아직 등록된 한줄평이 없습니다. 첫 한줄평을 남겨보세요!",
+    "count": "{count, plural, =0 {한줄감상 없음} other {#개의 한줄감상}}",
+    "empty": "아직 등록된 한줄감상이 없습니다. 첫 한줄감상을 남겨보세요!",
     "charLimit": "{current}/200",
-    "submitError": "한줄평을 등록하지 못했어요. 다시 시도해 주세요.",
+    "submitError": "한줄감상을 등록하지 못했어요. 다시 시도해 주세요.",
     "translate": "번역",
     "showOriginal": "원문 보기",
     "translating": "번역 중...",
     "translateFailed": "번역할 수 없습니다. 다시 시도하세요.",
-    "myLabel": "내 한줄평",
-    "allLabel": "모든 한줄평"
+    "myLabel": "내 한줄감상",
+    "allLabel": "모든 한줄감상"
   },
   "Header": {
     "brandName": "OpenSetlist",

@@ -152,6 +152,16 @@ async function importArtists(rows: Record<string, string>[]) {
     // `type`, we look at the existing row's type below.
     const csvIsMainUnit = parseBooleanFlag(row.isMainUnit);
 
+    // `color` follows preserve-on-missing semantics: column omitted from
+    // the CSV header → undefined → leave existing value untouched.
+    // Column present but cell empty → "" → clear the color (set null).
+    // This differs from members.csv (which clobbers on either case)
+    // because operators routinely re-import partial artist CSVs (names,
+    // groups, types) and a name-only re-import shouldn't wipe out the
+    // sparse Artist.color backfill, which is set on a separate pass.
+    const colorUpdate =
+      row.color === undefined ? undefined : row.color || null;
+
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
@@ -162,6 +172,7 @@ async function importArtists(rows: Record<string, string>[]) {
           type: artistType,
           category,
           isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
+          color: colorUpdate,
           ...originals,
         },
       });
@@ -184,6 +195,7 @@ async function importArtists(rows: Record<string, string>[]) {
           hasBoard: true,
           category,
           isMainUnit: newType === "unit" ? csvIsMainUnit : false,
+          color: row.color || null,
           ...originals,
           originalName,
           translations: { create: translations },
@@ -274,13 +286,42 @@ async function importArtists(rows: Record<string, string>[]) {
         linksToCreate.push({ artistId, groupId });
       }
     }
+    // Atomic replace: deleteMany + createMany must run inside the same
+    // transaction so a failure in createMany doesn't leave the affected
+    // artists with their previous ArtistGroup links wiped out and
+    // nothing in their place. Without `$transaction`, a partial-failure
+    // batch could orphan multiple artists from their groups
+    // simultaneously (the import operates over many artists at once).
+    // Both branches gated on length > 0 so we don't enter the
+    // transaction with no work — Prisma allows it, but skipping is
+    // cheaper and more explicit.
+    const txOps = [];
     if (artistIdsToReplace.length > 0) {
-      await prisma.artistGroup.deleteMany({
-        where: { artistId: { in: artistIdsToReplace } },
-      });
+      txOps.push(
+        prisma.artistGroup.deleteMany({
+          where: { artistId: { in: artistIdsToReplace } },
+        }),
+      );
     }
     if (linksToCreate.length > 0) {
-      await prisma.artistGroup.createMany({ data: linksToCreate });
+      // `skipDuplicates: true` guards against `@@unique([artistId,
+      // groupId])` violations from operator data: a CSV that lists
+      // the same artist row twice, or a `group_slugs` cell with a
+      // duplicate slug like "groupA groupA", would otherwise crash
+      // the entire transaction (and the deleteMany above would have
+      // already wiped the affected artists' existing links — leaving
+      // them un-grouped on rollback). PostgreSQL backs this with
+      // `ON CONFLICT DO NOTHING`, so the dedupe happens at the DB
+      // layer rather than requiring a JS-side `Set` pass first.
+      txOps.push(
+        prisma.artistGroup.createMany({
+          data: linksToCreate,
+          skipDuplicates: true,
+        }),
+      );
+    }
+    if (txOps.length > 0) {
+      await prisma.$transaction(txOps);
     }
   }
 
