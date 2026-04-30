@@ -382,15 +382,27 @@ export default async function HomePage({
                 </section>
               )}
 
-              {upcomingViews.length > 0 && (
-                <section className="mb-6 lg:hidden">
-                  <SectionHeader
-                    title={t("upcomingTitle")}
-                    link={{
-                      href: `/${locale}/events`,
-                      label: t("viewAllEvents"),
-                    }}
-                  />
+              {/* Mobile upcoming row — always renders the section
+                  shell (header + card area) so an empty 30-day
+                  window doesn't make the page feel half-built. The
+                  per-section empty message takes the place of cards
+                  inside the same shell, and the "view all" link
+                  hides since there's nothing above it to "see all
+                  of". Same idea applied to Recent below and to the
+                  Desktop upcoming aside. */}
+              <section className="mb-6 lg:hidden">
+                <SectionHeader
+                  title={t("upcomingTitle")}
+                  link={
+                    upcomingViews.length > 0
+                      ? {
+                          href: `/${locale}/events`,
+                          label: t("viewAllEvents"),
+                        }
+                      : undefined
+                  }
+                />
+                {upcomingViews.length > 0 ? (
                   <div
                     className="flex gap-2.5 overflow-x-auto pb-1"
                     style={{
@@ -412,56 +424,66 @@ export default async function HomePage({
                       />
                     ))}
                   </div>
-                </section>
-              )}
+                ) : (
+                  <EmptySectionCard message={t("noUpcoming")} />
+                )}
+              </section>
 
-              {recentViews.length > 0 && (
-                <section>
-                  <SectionHeader title={t("recentTitle")} />
-                  <div
-                    className="overflow-hidden"
-                    style={{
-                      background: colors.bgCard,
-                      borderRadius: radius.card,
-                      boxShadow: shadows.card,
-                    }}
-                  >
-                    {recentViews.map((v, i) => (
-                      <RecentEventRow
-                        key={v.href}
-                        href={v.href}
-                        seriesName={v.seriesName}
-                        eventName={v.eventName}
-                        venue={v.venue}
-                        songCountLabel={v.songCountLabel}
-                        monthLabel={v.monthLabel}
-                        dayNumber={v.dayNumber}
-                        isLast={i === recentViews.length - 1}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-3 text-center">
-                    <Link
-                      href={`/${locale}/events`}
-                      className="text-[13px] font-semibold"
-                      style={{ color: colors.primary }}
+              <section>
+                <SectionHeader title={t("recentTitle")} />
+                {recentViews.length > 0 ? (
+                  <>
+                    <div
+                      className="overflow-hidden"
+                      style={{
+                        background: colors.bgCard,
+                        borderRadius: radius.card,
+                        boxShadow: shadows.card,
+                      }}
                     >
-                      {t("viewAllEvents")}
-                    </Link>
-                  </div>
-                </section>
-              )}
+                      {recentViews.map((v, i) => (
+                        <RecentEventRow
+                          key={v.href}
+                          href={v.href}
+                          seriesName={v.seriesName}
+                          eventName={v.eventName}
+                          venue={v.venue}
+                          songCountLabel={v.songCountLabel}
+                          monthLabel={v.monthLabel}
+                          dayNumber={v.dayNumber}
+                          isLast={i === recentViews.length - 1}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-3 text-center">
+                      <Link
+                        href={`/${locale}/events`}
+                        className="text-[13px] font-semibold"
+                        style={{ color: colors.primary }}
+                      >
+                        {t("viewAllEvents")}
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <EmptySectionCard message={t("noRecent")} />
+                )}
+              </section>
             </div>
 
-            {upcomingViews.length > 0 && (
-              <aside className="hidden lg:sticky lg:top-[72px] lg:block">
-                <SectionHeader
-                  title={t("upcomingTitle")}
-                  link={{
-                    href: `/${locale}/events`,
-                    label: t("viewAllSchedule"),
-                  }}
-                />
+            <aside className="hidden lg:sticky lg:top-[72px] lg:block">
+              <SectionHeader
+                title={t("upcomingTitle")}
+                link={
+                  upcomingViews.length > 0
+                    ? {
+                        href: `/${locale}/events`,
+                        label: t("viewAllSchedule"),
+                      }
+                    : undefined
+                }
+              />
+              {upcomingViews.length > 0 ? (
                 <div className="flex flex-col gap-2.5">
                   {upcomingViews.map((v) => (
                     <UpcomingCard
@@ -477,11 +499,36 @@ export default async function HomePage({
                     />
                   ))}
                 </div>
-              </aside>
-            )}
+              ) : (
+                <EmptySectionCard message={t("noUpcoming")} />
+              )}
+            </aside>
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * Per-section empty state used when the upcoming or recent box on the
+ * home page has zero cards in the 30-day window. Renders the same
+ * white card shell as a populated section so the page layout (mobile
+ * stack + desktop 1fr/340px grid) stays balanced — replacing the
+ * cards / rows with a single centered message inside.
+ */
+function EmptySectionCard({ message }: { message: string }) {
+  return (
+    <div
+      className="px-4 py-10 text-center text-[13px]"
+      style={{
+        background: colors.bgCard,
+        borderRadius: radius.card,
+        boxShadow: shadows.card,
+        color: colors.textMuted,
+      }}
+    >
+      {message}
+    </div>
   );
 }

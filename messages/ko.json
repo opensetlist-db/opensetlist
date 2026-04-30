@@ -11,7 +11,9 @@
     "songCountOngoing": "{count, plural, other {🎵 #곡 진행 중}}",
     "songCount": "{count, plural, other {🎵 #곡}}",
     "dDay": "D-{days}",
-    "noEvents": "곧 공연 정보가 업데이트됩니다."
+    "noEvents": "곧 공연 정보가 업데이트됩니다.",
+    "noUpcoming": "최근 30일 이내 예정된 공연이 없어요.",
+    "noRecent": "최근 30일 이내 진행된 공연이 없어요."
   },
   "Common": {
     "notFound": "페이지를 찾을 수 없습니다.",

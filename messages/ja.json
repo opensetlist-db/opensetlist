@@ -11,7 +11,9 @@
     "songCountOngoing": "{count, plural, other {🎵 #曲 進行中}}",
     "songCount": "{count, plural, other {🎵 #曲}}",
     "dDay": "D-{days}",
-    "noEvents": "もうすぐ公演情報が更新されます。"
+    "noEvents": "もうすぐ公演情報が更新されます。",
+    "noUpcoming": "今後30日以内の公演はありません。",
+    "noRecent": "過去30日以内の公演はありません。"
   },
   "Common": {
     "notFound": "ページが見つかりません。",
