@@ -84,7 +84,7 @@ export default async function ImpressionsAdminPage({
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold">한줄평 관리</h1>
+        <h1 className="text-2xl font-bold">한줄감상 관리</h1>
       </div>
       <nav className="mb-4 flex gap-2 border-b border-zinc-200">
         {TABS.map((tab) => {
@@ -175,7 +175,7 @@ export default async function ImpressionsAdminPage({
           {data.length === 0 && (
             <tr>
               <td colSpan={7} className="py-4 text-center text-zinc-400">
-                표시할 한줄평이 없습니다.
+                표시할 한줄감상이 없습니다.
               </td>
             </tr>
           )}
