@@ -44,12 +44,20 @@ export function CountCell({ count, unit }: Props) {
           fontSize: 14,
           fontWeight: 700,
           color: colors.textPrimary,
-          // tabular-nums + fixed minWidth: digits in different rows
-          // sit at the same x even when one row is single-digit and
-          // another is triple-digit. 28px is sized for 3 digits at
-          // fontSize 14 bold + a hair of breathing room.
+          // tabular-nums + fixed width (NOT minWidth): digits in
+          // different rows sit at the same x even when one row is
+          // single-digit and another is triple-digit. 28px is sized
+          // for 3 digits at fontSize 14 bold + a hair of breathing
+          // room. Using `width` (not `minWidth`) pins the box —
+          // four-digit counts overflow leftward (text-align: right
+          // anchors the rightmost digit) instead of expanding the
+          // cell and pushing the unit label rightward, which would
+          // misalign columns across stacked rows. `flexShrink: 0`
+          // prevents the flex parent from squeezing the box below
+          // 28px in tight layouts.
           fontVariantNumeric: "tabular-nums",
-          minWidth: 28,
+          width: 28,
+          flexShrink: 0,
           textAlign: "right",
         }}
       >

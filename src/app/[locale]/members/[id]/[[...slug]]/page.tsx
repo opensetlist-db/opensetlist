@@ -121,10 +121,22 @@ async function getMember(id: string) {
               // performed under a different unit on that specific
               // event (e.g. a member who moved between sub-units, or
               // appeared in a one-time configuration).
+              //
+              // `orderBy: artistId asc` pins a deterministic row
+              // order so the consumer's `.find((a) => a.artist.type
+              // === "unit")` (line ~473) returns the same chip label
+              // across requests when a setlist item carries multiple
+              // unit credits (e.g. a collab between two sub-units).
+              // Without an explicit ORDER BY, Postgres is free to
+              // return rows in any order and the trailing chip could
+              // flip between renders. ascending by `artistId` is
+              // arbitrary but stable — the SetlistItemArtist row has
+              // no operator-curated order column.
               artists: {
                 include: {
                   artist: { include: { translations: true } },
                 },
+                orderBy: { artistId: "asc" },
               },
             },
           },
