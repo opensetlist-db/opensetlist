@@ -48,7 +48,11 @@ const IMPORT_TYPES = [
 ];
 
 export default function ImportPage() {
-  const [selectedType, setSelectedType] = useState("artists");
+  // Default to the first option in IMPORT_TYPES (groups, after the
+  // dependency-order reshape that put groups before artists). Keeping
+  // this in sync with `IMPORT_TYPES[0].value` avoids the form opening
+  // to a non-first option mid-list.
+  const [selectedType, setSelectedType] = useState(IMPORT_TYPES[0].value);
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState("");
   const [loading, setLoading] = useState(false);
