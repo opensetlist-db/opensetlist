@@ -12,7 +12,7 @@
     "songCount": "{count, plural, other {🎵 #곡}}",
     "dDay": "D-{days}",
     "noEvents": "곧 공연 정보가 업데이트됩니다.",
-    "noUpcoming": "최근 30일 이내 예정된 공연이 없어요.",
+    "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
     "noRecent": "최근 30일 이내 진행된 공연이 없어요."
   },
   "Common": {
