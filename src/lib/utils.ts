@@ -82,10 +82,11 @@ const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
 
 /**
  * Desktop format used by every "list of events grouped by series"
- * surface — event list (`/[locale]/events`), artist history tab,
- * song / member history pages. `month: "long"` + `day: "numeric"`
- * keeps the per-row date compact ("April 25" / "4월 25일" / "4月25日"),
- * and the series header above each block carries the year context.
+ * surface — event list (`/[locale]/events`), artist / song / member
+ * history tabs, series LegCard. Includes year so a row carries the
+ * full calendar context without depending on the surrounding header
+ * (operator feedback 2026-04-29 — "show year in all pages,
+ * consistently").
  *
  * `timeZone: "UTC"` is mandatory: stored dates are UTC, and
  * formatting in the server-local TZ silently shifts the rendered
@@ -95,6 +96,7 @@ const DEFAULT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
  * pass through `timeZone: "UTC"`.
  */
 export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
+  year: "numeric",
   month: "long",
   day: "numeric",
   timeZone: "UTC",
