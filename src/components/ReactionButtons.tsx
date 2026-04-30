@@ -435,25 +435,41 @@ function ReactionButton({
       >
         {emoji}
       </span>
-      {count > 0 && (
-        <span
-          key={animKey}
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
-            minWidth: 14,
-            display: "inline-block",
-            transition: "color 0.18s ease",
-            animation:
-              animKey > 0
-                ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
-                : undefined,
-          }}
-        >
-          {count}
-        </span>
-      )}
+      {/* Always render the count slot so every reaction button
+          across every setlist row has the same width regardless of
+          the count value (no count → empty string, the slot still
+          reserves space). `tabular-nums` keeps individual digit
+          widths equal across 0-9, and right-align pins the rightmost
+          digit to the same x in every button — the visually salient
+          anchor when a column of counts is meant to read like a
+          leaderboard. `minWidth: 18` fits two digits cleanly within
+          the 260px setlist reactions column (4 buttons × ~52px +
+          3 × 6px gaps ≅ 226px) — going wider (e.g. 22 to fit three
+          digits) overflows the column and forces one button to wrap
+          to a second line. Three-digit counts will stretch their
+          own button by a few px and visibly drift in that one row,
+          which is acceptable for the rare case at Phase 1A scale —
+          column-fit beats absolute alignment when push comes to
+          shove. */}
+      <span
+        key={animKey}
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: isActive ? REACTION_ACTIVE_COLOR : REACTION_COUNT_INACTIVE_COLOR,
+          minWidth: 18,
+          display: "inline-block",
+          textAlign: "right",
+          fontVariantNumeric: "tabular-nums",
+          transition: "color 0.18s ease",
+          animation:
+            animKey > 0
+              ? `count-slide ${COUNT_SLIDE_DURATION_MS / 1000}s ease`
+              : undefined,
+        }}
+      >
+        {count > 0 ? count : ""}
+      </span>
     </button>
   );
 }
