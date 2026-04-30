@@ -117,6 +117,10 @@ async function getSongPerformances(songId: bigint) {
     },
     include: {
       setlistItem: {
+        // Setlist `note` is not surfaced on any public page (operator
+        // decision, 2026-04-29) — omitted to keep the payload small
+        // and aligned with the event detail page's same omit.
+        omit: { note: true },
         include: {
           event: {
             include: {
@@ -304,8 +308,8 @@ export default async function SongPage({ params, searchParams }: Props) {
       // `event.id`. A song that appears twice in one event (medley
       // reprise, encore reprise) produces two performances with the
       // same `event.id`, which collided as duplicate React keys and
-      // could mis-attribute trailing cells (#position, encore badge,
-      // note) on collapse / expand or tab switches.
+      // could mis-attribute trailing cells (#position, encore badge)
+      // on collapse / expand or tab switches.
       id: String(p.setlistItemId),
       seriesId,
       seriesName,
@@ -995,18 +999,6 @@ function SongRowTrailing({ cells, encoreLabel }: SongRowTrailingProps) {
       >
         #{cells.position}
       </span>
-      {cells.note && (
-        <span
-          style={{
-            color: colors.textMuted,
-            fontSize: 11,
-            fontStyle: "italic",
-            flexShrink: 0,
-          }}
-        >
-          {cells.note}
-        </span>
-      )}
     </>
   );
 }
