@@ -154,6 +154,7 @@
     "statsCompleted": "Completed",
     "statsSongs": "Songs",
     "songCount": "{count, plural, one {# performance} other {# performances}}",
+    "songCountUnit": "{count, plural, one {performance} other {performances}}",
     "recentEvents": "Recent events",
     "topSongs": "Top songs",
     "voiceActor": "Voice actor",

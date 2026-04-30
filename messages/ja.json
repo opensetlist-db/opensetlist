@@ -154,6 +154,7 @@
     "statsCompleted": "終了",
     "statsSongs": "楽曲",
     "songCount": "{count, plural, other {#回公演}}",
+    "songCountUnit": "回公演",
     "recentEvents": "最近の公演",
     "topSongs": "よく歌う曲",
     "voiceActor": "担当声優",
