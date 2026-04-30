@@ -47,7 +47,7 @@ export default async function GroupSection({ group, locale }: Props) {
     ? group.category
       ? t("ungroupedSection")
       : t("ungroupedNoCategorySection")
-    : displayNameWithFallback(group, group.translations, locale, "short") ||
+    : displayNameWithFallback(group, group.translations, locale) ||
       t("unknownGroup");
 
   const artistCount = group.artists.length;

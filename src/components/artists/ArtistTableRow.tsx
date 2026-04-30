@@ -40,9 +40,11 @@ export default async function ArtistTableRow({
 
   // Same `displayNameWithFallback` + t("unknown") pattern as
   // <ArtistCard>; see the comment there for why the final fallback is
-  // a translatable label rather than empty string.
+  // a translatable label rather than empty string. Full mode by
+  // default — short variant is reserved for breadcrumbs and
+  // setlist-row chips (where the page already shows the full name).
   const primaryName =
-    displayNameWithFallback(artist, artist.translations, locale, "short") ||
+    displayNameWithFallback(artist, artist.translations, locale) ||
     t("unknown");
   const showOriginal =
     locale !== artist.originalLanguage &&
