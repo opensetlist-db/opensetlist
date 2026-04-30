@@ -817,11 +817,26 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                             sl.stageIdentity.translations,
                             locale,
                           ) || t("unknownMember");
+                        // Avatar initial source: locale shortName
+                        // cascade (locale.shortName → locale.name →
+                        // originalShortName → originalName), kept
+                        // separate from `memberName` (which is always
+                        // the full name for the body text). Empty
+                        // string normalized to null so MemberChip's
+                        // fallback chain triggers correctly.
+                        const memberAvatarLabel =
+                          displayNameWithFallback(
+                            sl.stageIdentity,
+                            sl.stageIdentity.translations,
+                            locale,
+                            "short",
+                          ) || null;
                         return (
                           <MemberChip
                             key={sl.id}
                             href={`/${locale}/members/${sl.stageIdentity.id}/${sl.stageIdentity.slug}`}
                             memberName={memberName}
+                            avatarLabel={memberAvatarLabel}
                             unitName={unitName}
                             unitColor={unitColor}
                           />
