@@ -193,7 +193,11 @@ export function LegCard({
               />
               <span
                 className="flex-shrink-0 text-[12px]"
-                style={{ color: colors.textMuted, width: 48 }}
+                // 100px to fit `HISTORY_ROW_DATE_FORMAT` post-year-add
+                // (operator feedback 2026-04-29). Korean's
+                // `2026년 4월 25일` is the tightest at fontSize 12 (~95px);
+                // 100px gives a comfortable margin.
+                style={{ color: colors.textMuted, width: 100 }}
               >
                 {event.formattedDate}
               </span>
