@@ -30,6 +30,9 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.9.2 (2026-04-30)
+- Mobile horizontal-overflow fix on the four detail pages (artist / member / song / series). Their sidebar+main wrapper was `grid lg:grid-cols-[280px_1fr]`, which on mobile fell back to implicit `grid-auto-columns: auto` and grew the track to fit the widest nowrap descendant's `min-content`. Long song titles, series subtitles, or event names therefore stretched the cards wider than the viewport while `<main>`'s `bgPage` only painted to the viewport edge — visible as a colored gutter beside every card and horizontal page scroll. Adding `grid-cols-1` clamps the mobile track to `minmax(0, 1fr)` so cards fit the viewport and the existing ellipsis truncation engages as designed. Event detail page already used `lg:grid` (block on mobile) and was unaffected.
+
 ### v0.9.1 (2026-04-29)
 - Avatar-initial overhaul: member-page hero character avatar + artist list rows + member chips on the artist detail page now source the round/square glyph from the curated short name (canonical-script for the member hero, locale-primary for artist surfaces) instead of the full name's first character. VA avatar deliberately retained on the full-name first character (operator preference). New `resolveOriginalShortLabel` helper extracted to `src/lib/display.ts` with focused tests pinning the fallback order.
 - Vibrant fallback palette for color-pending unit-type artists — Tailwind 400-500 family replaces the muted Material 700 set; preserves length + hash + per-slug determinism, no semantic-color collisions. New `Artist.color` column wired into the artists CSV admin import (preserve-on-missing semantics — column omitted from header keeps existing color, empty cell clears it).
