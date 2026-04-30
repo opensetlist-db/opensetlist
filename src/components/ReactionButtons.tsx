@@ -125,18 +125,53 @@ export function ReactionButtons({
   // stabilize empty references so this guard doesn't thrash on items
   // with zero reactions; LiveSetlist hoists EMPTY_COUNTS for that.
   //
-  // Skip the sync while a mutation is in flight: otherwise a polling
-  // tick mid-roundtrip clobbers the optimistic count, and on rollback
-  // we'd restore to a snapshot taken *before* the polling update, so
-  // legitimate concurrent reactions from other users disappear from
-  // the UI for one cycle. Always advance `prevInitialCounts` so the
-  // next genuine prop change after the mutation settles re-syncs
-  // cleanly to whatever the latest server truth is.
+  // Skip the live sync while a mutation is in flight: a polling tick
+  // mid-roundtrip would clobber the optimistic count, and on rollback
+  // we'd restore to a snapshot taken *before* the polling update —
+  // legitimate concurrent reactions from other users would disappear
+  // for one cycle. But we DO need to remember the latest polled
+  // value so we can apply it when loading clears, otherwise the
+  // pending update is lost permanently (the next polling tick will
+  // pass the same `initialCounts` reference, the equality check
+  // below stays false, and the polled change never propagates).
+  // Stash into `pendingPollCounts`; the prev-loading transition
+  // block below drains it once `loading` returns to null. The
+  // mutation success path (POST) also clears the stash since the
+  // server's `data.counts` response is the authoritative state for
+  // *this* setlist item at the moment of the click + the polled
+  // snapshot is, by definition, no fresher.
+  const [pendingPollCounts, setPendingPollCounts] = useState<
+    Record<string, number> | null
+  >(null);
   const [prevInitialCounts, setPrevInitialCounts] = useState(initialCounts);
   if (prevInitialCounts !== initialCounts) {
     setPrevInitialCounts(initialCounts);
     if (loading === null) {
       setCounts(initialCounts);
+      // Clear any stash from a previous in-flight window so the
+      // prev-loading transition block below — which can fire in the
+      // same render cycle when `loading` *also* transitioned to null
+      // — can't overwrite the fresher `initialCounts` we just
+      // applied with a stale polled snapshot. React applies the
+      // last setter call in a render, so without this guard the
+      // ordering of the two blocks would otherwise determine
+      // truth.
+      setPendingPollCounts(null);
+    } else {
+      setPendingPollCounts(initialCounts);
+    }
+  }
+  // When `loading` transitions from a reaction-type back to null
+  // (mutation settled — success, failure, or rollback), apply any
+  // polling update that landed during the in-flight window. Mutation
+  // POST-success paths clear `pendingPollCounts` themselves before
+  // `loading` flips, so this block is a no-op in that case.
+  const [prevLoading, setPrevLoading] = useState(loading);
+  if (prevLoading !== loading) {
+    setPrevLoading(loading);
+    if (loading === null && pendingPollCounts !== null) {
+      setCounts(pendingPollCounts);
+      setPendingPollCounts(null);
     }
   }
   // SSR + client first render both start at EMPTY_REACTIONS so hydration
@@ -258,6 +293,12 @@ export function ReactionButtons({
             setMyReactions(finalReactions);
             persistReactions(finalReactions);
             setCounts(data.counts);
+            // Server's response is the authoritative count for this
+            // setlist item — discard any polled value stashed during
+            // the in-flight window so the prev-loading transition
+            // doesn't overwrite this fresher state with a stale
+            // polling snapshot.
+            setPendingPollCounts(null);
           }
         } else {
           setMyReactions(snapshotMyReactions);

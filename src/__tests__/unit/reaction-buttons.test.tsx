@@ -403,6 +403,182 @@ describe("ReactionButtons", () => {
     expect(fireButton.textContent).toContain("1");
   });
 
+  it("applies the polling update stashed during in-flight mutation once loading clears (rollback path)", async () => {
+    // Reaction-server returns 500 → mutation rolls back to snapshot.
+    // Without the pending-stash fix, a polling tick that arrived
+    // mid-flight is recorded only in `prevInitialCounts` (not in
+    // `counts`), and once `loading` clears, the rollback restores
+    // the *click-time* snapshot — losing whatever the polling update
+    // captured (e.g., a concurrent reaction by another viewer).
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      }) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 2 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+    expect(fireButton.textContent).toContain("2");
+
+    // Tap → optimistic increment to 3 + loading=best in flight.
+    fireEvent.click(fireButton);
+    expect(fireButton.textContent).toContain("3");
+
+    // Mid-flight polling tick: another viewer reacted, server now
+    // says count=7. Pre-fix: dropped (only prevInitialCounts moves).
+    // Post-fix: stashed in pendingPollCounts.
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 7 }}
+      />,
+    );
+    // While loading is still active the stash hasn't been drained
+    // yet; the optimistic +1 still wins on screen.
+    expect(fireButton.textContent).toContain("3");
+
+    // Mutation rolls back. The prev-loading transition block drains
+    // the stash → counts = 7 (the polled snapshot), NOT 2 (the
+    // pre-click snapshot).
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("7");
+    });
+  });
+
+  it("does not let a stale stash overwrite fresh initialCounts when both transitions land in the same render (rollback path)", async () => {
+    // Edge case from the same-render-cycle ordering hazard: if
+    // `loading` transitions to null AND a fresh `initialCounts`
+    // reference arrives in the SAME render, both prev-state blocks
+    // fire. React applies the last setter call, so without the
+    // explicit `setPendingPollCounts(null)` in the loading===null
+    // branch of block 1, the stale stash from block 2 would
+    // overwrite the fresh polling data block 1 just applied.
+    //
+    // Rollback path triggers this because the success path clears
+    // the stash inline; failure path leaves the stash to be drained
+    // by prev-loading.
+    let resolveFetch!: (value: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise((resolve) => {
+        resolveFetch = resolve;
+      })) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 2 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+
+    // Tap → optimistic +1 + loading=best.
+    fireEvent.click(fireButton);
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("3");
+    });
+
+    // Polling tick during in-flight stashes {best:7}.
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 7 }}
+      />,
+    );
+
+    // Resolve the mutation FAILURE AND deliver a fresher polling
+    // tick (10) close together. The rollback path leaves the stash
+    // intact ({best:7}); when `loading` clears, the prev-loading
+    // block tries to drain. If prev-prop ALSO fires in the same
+    // render with {best:10}, block 1's loading===null branch
+    // applies the fresh 10 — but without the explicit
+    // setPendingPollCounts(null), block 2 still sees the stale
+    // {best:7} stash and overwrites it. With the fix, block 1
+    // clears the stash so block 2 is a no-op.
+    resolveFetch({ ok: false, status: 500 });
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 10 }}
+      />,
+    );
+
+    // Final value should be 10 (latest polling), not 7 (stale stash)
+    // and not 2 (the rollback snapshot).
+    await waitFor(() => {
+      expect(fireButton.textContent).toContain("10");
+    });
+    expect(fireButton.textContent).not.toContain("7");
+  });
+
+  it("discards the polling stash on POST success (server count is authoritative)", async () => {
+    // POST resolves with `counts: {best: 3}` — server is the
+    // authoritative state for this setlist item. A polled value
+    // captured during the in-flight window must NOT overwrite the
+    // server response on the prev-loading transition.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          reactionId: "real-reaction-uuid",
+          counts: { best: 3 },
+        }),
+      }) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 2 }}
+      />,
+    );
+
+    const fireButton = screen.getByTitle("best");
+
+    fireEvent.click(fireButton);
+
+    // Mid-flight polling tick says best=99 (would-be stale). Should
+    // be stashed but discarded by the POST success path.
+    rerender(
+      <ReactionButtons
+        setlistItemId="1"
+        songId="100"
+        eventId="42"
+        initialCounts={{ best: 99 }}
+      />,
+    );
+
+    await waitFor(() => {
+      // Final value is 3 (server-returned), not 99 (polled stash).
+      expect(fireButton.textContent).toContain("3");
+    });
+    expect(fireButton.textContent).not.toContain("99");
+  });
+
   it("exposes toggle state to assistive tech via aria-pressed and aria-label", () => {
     const { rerender } = render(
       <ReactionButtons
