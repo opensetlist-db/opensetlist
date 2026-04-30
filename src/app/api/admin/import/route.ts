@@ -304,7 +304,21 @@ async function importArtists(rows: Record<string, string>[]) {
       );
     }
     if (linksToCreate.length > 0) {
-      txOps.push(prisma.artistGroup.createMany({ data: linksToCreate }));
+      // `skipDuplicates: true` guards against `@@unique([artistId,
+      // groupId])` violations from operator data: a CSV that lists
+      // the same artist row twice, or a `group_slugs` cell with a
+      // duplicate slug like "groupA groupA", would otherwise crash
+      // the entire transaction (and the deleteMany above would have
+      // already wiped the affected artists' existing links — leaving
+      // them un-grouped on rollback). PostgreSQL backs this with
+      // `ON CONFLICT DO NOTHING`, so the dedupe happens at the DB
+      // layer rather than requiring a JS-side `Set` pass first.
+      txOps.push(
+        prisma.artistGroup.createMany({
+          data: linksToCreate,
+          skipDuplicates: true,
+        }),
+      );
     }
     if (txOps.length > 0) {
       await prisma.$transaction(txOps);
