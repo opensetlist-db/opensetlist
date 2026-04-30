@@ -762,8 +762,14 @@ export default async function MemberPage({ params, searchParams }: Props) {
           ]}
         />
 
+        {/* See artist-page comment on the same wrapper — `grid-cols-1`
+            on mobile is required to clamp the implicit track to the
+            viewport, otherwise nowrap text inside the cards
+            (history-row event titles, top-songs titles) pushes the
+            grid track wider than the screen and the bg-page color
+            visibly stops short of the cards. */}
         <div
-          className="grid lg:grid-cols-[280px_1fr] lg:gap-7"
+          className="grid grid-cols-1 lg:grid-cols-[280px_1fr] lg:gap-7"
           style={{ alignItems: "start", paddingBottom: 60 }}
         >
           {/* Sidebar — inline (NOT <InfoCard>) because the personal-color

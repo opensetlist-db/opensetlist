@@ -536,8 +536,12 @@ export default async function SongPage({ params, searchParams }: Props) {
           ]}
         />
 
+        {/* See artist-page comment on the same wrapper — `grid-cols-1`
+            on mobile clamps the implicit track to viewport so nowrap
+            text inside cards can't push the grid wider than the
+            screen. */}
         <div
-          className="grid lg:grid-cols-[280px_1fr] lg:gap-7"
+          className="grid grid-cols-1 lg:grid-cols-[280px_1fr] lg:gap-7"
           style={{ alignItems: "start", paddingBottom: 60 }}
         >
           {/* Sidebar */}
