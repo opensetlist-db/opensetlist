@@ -302,11 +302,27 @@ export default async function ArtistPage({ params, searchParams }: Props) {
   // unit-color treatment without a second pass over subArtists at
   // render time. Members not in any sub-unit (group-level
   // stage-link only) get a `null` unit and render in muted gray.
+  //
+  // A StageIdentity can legitimately belong to multiple sub-units
+  // (StageIdentityArtist is N:N — e.g. a member in both a canonical
+  // unit AND a special-configuration unit). Naive `for...set` would
+  // last-wins by iteration order, producing a non-deterministic
+  // chip color/name. Resolve in two passes: main units first, then
+  // non-main; within each pass `set` only when the member doesn't
+  // already have a unit. Result: a member in a canonical unit always
+  // shows that unit's identity, regardless of any incidental other
+  // affiliations.
   type Unit = (typeof artist.subArtists)[number];
   const memberToUnit = new Map<string, Unit>();
-  for (const sub of artist.subArtists) {
+  const mainsFirst = [
+    ...artist.subArtists.filter((s) => s.isMainUnit),
+    ...artist.subArtists.filter((s) => !s.isMainUnit),
+  ];
+  for (const sub of mainsFirst) {
     for (const sl of sub.stageLinks) {
-      memberToUnit.set(sl.stageIdentity.id, sub);
+      if (!memberToUnit.has(sl.stageIdentity.id)) {
+        memberToUnit.set(sl.stageIdentity.id, sub);
+      }
     }
   }
 
