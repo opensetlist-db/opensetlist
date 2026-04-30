@@ -12,6 +12,7 @@ import {
   displayNameWithFallback,
   displayOriginalName,
   displayOriginalTitle,
+  resolveOriginalShortLabel,
 } from "@/lib/display";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
@@ -220,22 +221,16 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // Avatar initial sources the *original-language short name* first
   // (e.g. 瑠 for 瑠璃乃 rather than 大 for 大沢瑠璃乃) so the round
   // chip reads as the character's curated handle, not the surname-
-  // first first-character of a Japanese-style full name. Resolution
-  // mirrors the `originalName` chain in `displayOriginalName`: prefer
-  // the parent column, then the translation row matching
-  // `originalLanguage` (strict — never bleeds in a non-original-locale
-  // shortName), then fall through to the full original. The fallback
-  // matters when an entry has no `originalShortName` set yet; the old
-  // "first char of full name" behavior is preserved in that case so
-  // un-curated rows still get *some* identity glyph.
-  const memberOriginalLangTranslation = member.translations.find(
-    (t) => t.locale === member.originalLanguage,
+  // first first-character of a Japanese-style full name. The
+  // resolution chain (parent shortName → original-language
+  // translation shortName → full original → "?") lives in
+  // `resolveOriginalShortLabel` so the order is testable and a future
+  // canonical-script avatar surface can reuse it without re-inlining.
+  const characterAvatarLabel = resolveOriginalShortLabel(
+    member,
+    member.translations,
+    characterOriginal,
   );
-  const characterAvatarLabel =
-    member.originalShortName ||
-    memberOriginalLangTranslation?.shortName ||
-    characterOriginal ||
-    "?";
 
   // Color resolution. `member.color` is the personal color; falls back
   // to the muted text token when null so the gradient still has shape

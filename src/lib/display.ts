@@ -135,6 +135,52 @@ export function displayNameWithFallback(
   return translation?.name || item.originalName || "";
 }
 
+/**
+ * Resolve the original-language short label for a "canonical-script"
+ * avatar initial — the round member-page hero chip wants the source
+ * script's first character (e.g. 瑠 for 瑠璃乃, not the surname's 大),
+ * regardless of the viewer's locale. Distinct from
+ * `displayNameWithFallback("short")`, which is locale-primary and
+ * suitable for body text and locale-aware UI labels.
+ *
+ * Resolution order (mirrors `displayOriginalName`'s original-name
+ * cascade for shape consistency):
+ *   1. parent `originalShortName`
+ *   2. translation row matching `originalLanguage`'s `shortName`
+ *      — strict locale lookup so a non-original-locale shortName
+ *      never bleeds into the canonical glyph
+ *   3. `fullOriginalFallback` — the original-language full name string
+ *      the caller has already resolved, so an entry without a curated
+ *      `originalShortName` still gets a meaningful glyph (the legacy
+ *      "first char of full name" behavior)
+ *   4. `"?"` — last-resort literal so the avatar never renders blank
+ *
+ * Returns the entire string; the avatar component takes `.charAt(0)`.
+ * Pure / locale-agnostic — safe to unit-test as a single fallback
+ * chain. The current sole caller is the member-page character avatar;
+ * any future surface that wants the same canonical-script intent
+ * (artist hero, RealPerson detail, etc.) should reuse this helper
+ * rather than re-inlining the chain.
+ */
+export function resolveOriginalShortLabel(
+  item: {
+    originalShortName?: string | null;
+    originalLanguage: string;
+  },
+  translations: readonly { locale: string; shortName?: string | null }[],
+  fullOriginalFallback: string | null,
+): string {
+  const originalLangTranslation = translations.find(
+    (t) => t.locale === item.originalLanguage,
+  );
+  return (
+    item.originalShortName ||
+    originalLangTranslation?.shortName ||
+    fullOriginalFallback ||
+    "?"
+  );
+}
+
 interface TitleDisplay {
   main: string;
   sub: string | null;
