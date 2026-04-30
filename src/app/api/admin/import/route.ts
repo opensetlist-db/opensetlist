@@ -152,6 +152,16 @@ async function importArtists(rows: Record<string, string>[]) {
     // `type`, we look at the existing row's type below.
     const csvIsMainUnit = parseBooleanFlag(row.isMainUnit);
 
+    // `color` follows preserve-on-missing semantics: column omitted from
+    // the CSV header → undefined → leave existing value untouched.
+    // Column present but cell empty → "" → clear the color (set null).
+    // This differs from members.csv (which clobbers on either case)
+    // because operators routinely re-import partial artist CSVs (names,
+    // groups, types) and a name-only re-import shouldn't wipe out the
+    // sparse Artist.color backfill, which is set on a separate pass.
+    const colorUpdate =
+      row.color === undefined ? undefined : row.color || null;
+
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
@@ -162,6 +172,7 @@ async function importArtists(rows: Record<string, string>[]) {
           type: artistType,
           category,
           isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
+          color: colorUpdate,
           ...originals,
         },
       });
@@ -184,6 +195,7 @@ async function importArtists(rows: Record<string, string>[]) {
           hasBoard: true,
           category,
           isMainUnit: newType === "unit" ? csvIsMainUnit : false,
+          color: row.color || null,
           ...originals,
           originalName,
           translations: { create: translations },
