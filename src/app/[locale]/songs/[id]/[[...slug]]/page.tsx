@@ -193,7 +193,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function SongPage({ params, searchParams }: Props) {
   const { locale, id } = await params;
   const sp = await searchParams;
-  const activeTab = resolveTab(sp.tab);
+  // `requestedTab` is the tab the URL asked for; `activeTab` is the
+  // tab we actually render. They diverge when the URL says
+  // `?tab=variations` on a song that doesn't have variations — the
+  // <TabBar> hides the variations tab in that case, but without
+  // this clamp the body tries to render `activeTab === "variations"`
+  // and shows nothing. Force `history` when variations isn't an
+  // option. Computed after `hasVariations` is known further down.
+  const requestedTab = resolveTab(sp.tab);
 
   let songId: bigint;
   try {
@@ -292,7 +299,14 @@ export default async function SongPage({ params, searchParams }: Props) {
       et("unknownEvent");
     const cells = getSongPerformanceCells(p.setlistItem);
     performanceViews.push({
-      id: String(event.id),
+      // React key. Each appearance is a SetlistItemSong row, so use
+      // its setlistItemId (unique per appearance) instead of
+      // `event.id`. A song that appears twice in one event (medley
+      // reprise, encore reprise) produces two performances with the
+      // same `event.id`, which collided as duplicate React keys and
+      // could mis-attribute trailing cells (#position, encore badge,
+      // note) on collapse / expand or tab switches.
+      id: String(p.setlistItemId),
       seriesId,
       seriesName,
       status,
