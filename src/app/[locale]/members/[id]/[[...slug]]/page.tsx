@@ -88,7 +88,33 @@ async function getMember(id: string) {
       // per-event "did the member sing specific songs" check). Each
       // SetlistItemMember row points at one setlist item; an event with
       // many member songs has many rows here for the same event.
+      //
+      // The three-tier `where` chain is REQUIRED for correctness, not
+      // a nice-to-have:
+      //   - SetlistItemMember has no `isDeleted` of its own (it's a
+      //     junction). When the operator soft-deletes a SetlistItem
+      //     (or the parent Event), Prisma DOES NOT cascade — the
+      //     junction rows + their SetlistItemSong children stay in
+      //     the table. Without the filter, the songs-tab aggregation
+      //     downstream (`for (sis of perf.setlistItem.songs) { count++ }`)
+      //     would credit the member with songs that no longer appear
+      //     on any user-facing surface, including songs whose only
+      //     `SetlistItemSong` row is on a soft-deleted item.
+      //   - The same applies one level deeper: a soft-deleted Song
+      //     (Song.isDeleted = true) shouldn't count toward the
+      //     member's "songs sung" total even if the surrounding
+      //     setlist item is live.
+      //   - `event: { isDeleted: false }` belt + suspenders: a
+      //     soft-deleted event should already have its setlist items
+      //     soft-deleted by the operator workflow, but the filter is
+      //     cheap and protects against partial-deletion drift.
       performances: {
+        where: {
+          setlistItem: {
+            isDeleted: false,
+            event: { isDeleted: false },
+          },
+        },
         include: {
           setlistItem: {
             include: {
@@ -101,6 +127,7 @@ async function getMember(id: string) {
               // SongArtist included so the songs-tab row can resolve a
               // unit chip color/name from the song's primary artist.
               songs: {
+                where: { song: { isDeleted: false } },
                 include: {
                   song: {
                     include: {
@@ -147,7 +174,14 @@ async function getMember(id: string) {
       // EventPerformer row (per schema.prisma:475-488 — `isGuest: false`
       // means counted in the full-group fallback). We use the diff
       // between this set and `performances` to flag 전출연 events.
+      //
+      // `where: { event: { isDeleted: false } }` mirrors the
+      // performance filter above — a soft-deleted event must not
+      // surface as a 전출연 row downstream. EventPerformer itself has
+      // no `isDeleted` column (it's a junction), so the filter has
+      // to live on the parent Event.
       eventPerformers: {
+        where: { event: { isDeleted: false } },
         include: {
           event: {
             include: {
