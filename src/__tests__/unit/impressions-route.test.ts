@@ -254,7 +254,7 @@ describe("GET /api/impressions", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns full page + nextCursor when count exceeds page size", async () => {
+  it("returns full page + nextCursor + totalCount when includeTotal=1", async () => {
     const rows = makeRows(IMPRESSION_PAGE_SIZE);
     (
       prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
@@ -263,7 +263,7 @@ describe("GET /api/impressions", () => {
       prisma.eventImpression.count as ReturnType<typeof vi.fn>
     ).mockResolvedValueOnce(IMPRESSION_PAGE_SIZE * 3);
 
-    const res = await GET(makeGetRequest("eventId=1"));
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       impressions: unknown[];
@@ -277,14 +277,33 @@ describe("GET /api/impressions", () => {
     expect(body.totalCount).toBe(IMPRESSION_PAGE_SIZE * 3);
   });
 
+  it("skips count() entirely when includeTotal flag is absent (polling hot-path)", async () => {
+    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+
+    const res = await GET(makeGetRequest("eventId=1"));
+    expect(res.status).toBe(200);
+    // The count() branch must NOT execute on a polling request — that
+    // would defeat the whole point of the gate (a redundant
+    // event-wide aggregate every 5s per concurrent viewer).
+    expect(prisma.eventImpression.count).not.toHaveBeenCalled();
+    const body = (await res.json()) as Record<string, unknown>;
+    // Response must omit the field entirely (not null, not 0) so the
+    // shape mirrors the cost: nothing computed, nothing returned.
+    expect(body).not.toHaveProperty("totalCount");
+  });
+
   it("returns null nextCursor on the last (partial) page", async () => {
     const rows = makeRows(IMPRESSION_PAGE_SIZE - 5);
     (
       prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
     ).mockResolvedValueOnce(rows);
-    (
-      prisma.eventImpression.count as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(rows.length);
+    // No count() mock needed — this URL omits `?includeTotal=1`, so
+    // the count branch resolves to undefined synchronously. Leaving a
+    // stray `mockResolvedValueOnce` would leak into the next test
+    // (the queue is FIFO across tests, not reset by `clearAllMocks`).
 
     const res = await GET(makeGetRequest("eventId=1"));
     expect(res.status).toBe(200);
@@ -292,7 +311,7 @@ describe("GET /api/impressions", () => {
     expect(body.nextCursor).toBeNull();
   });
 
-  it("returns null nextCursor when the event has zero impressions", async () => {
+  it("returns null nextCursor + totalCount=0 when the event has zero impressions (includeTotal=1)", async () => {
     (
       prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
     ).mockResolvedValueOnce([]);
@@ -300,7 +319,7 @@ describe("GET /api/impressions", () => {
       prisma.eventImpression.count as ReturnType<typeof vi.fn>
     ).mockResolvedValueOnce(0);
 
-    const res = await GET(makeGetRequest("eventId=1"));
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       impressions: unknown[];
@@ -312,7 +331,7 @@ describe("GET /api/impressions", () => {
     expect(body.totalCount).toBe(0);
   });
 
-  it("applies the cursor predicate to the findMany WHERE clause", async () => {
+  it("applies the cursor predicate to findMany; count uses base WHERE when includeTotal=1", async () => {
     const rows = makeRows(IMPRESSION_PAGE_SIZE);
     (
       prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
@@ -326,7 +345,9 @@ describe("GET /api/impressions", () => {
     const cursor = encodeImpressionCursor(cursorDate, cursorId);
 
     const res = await GET(
-      makeGetRequest(`eventId=1&before=${encodeURIComponent(cursor)}`),
+      makeGetRequest(
+        `eventId=1&before=${encodeURIComponent(cursor)}&includeTotal=1`,
+      ),
     );
     expect(res.status).toBe(200);
     expect(prisma.eventImpression.findMany).toHaveBeenCalledTimes(1);

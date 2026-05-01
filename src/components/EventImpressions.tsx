@@ -161,17 +161,19 @@ export function EventImpressions({
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // Polling delivers the newest page (no cursor). Merge into the
-  // accumulated list — keeps any older pages the user has loaded
-  // visible while new impressions slide in at the top. Also refresh
-  // `totalCount` so the "X more" button stays accurate as new
-  // impressions arrive while the user is reading.
+  // Polling delivers the newest page (no cursor) and intentionally
+  // does NOT request `?includeTotal=1` — running an event-wide
+  // `count()` every 5s per concurrent viewer for a UX-only metric
+  // is wasted DB hot-path cost. Merge polled impressions into the
+  // accumulated list (older loaded pages stay put, new arrivals
+  // slide in at the top) and let `totalCount` drift slightly until
+  // the next "see older" click refreshes it. Optimistic increments
+  // in `handleSubmit` / `handleReport` cover the user's own actions.
   useImpressionPolling({
     eventId,
     enabled: isOngoing,
-    onUpdate: ({ impressions: polled, totalCount: polledTotal }) => {
+    onUpdate: ({ impressions: polled }) => {
       setImpressions((prev) => mergeImpressions(prev, polled));
-      setTotalCount(polledTotal);
     },
   });
 
@@ -180,7 +182,13 @@ export function EventImpressions({
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
-      const url = `/api/impressions?eventId=${encodeURIComponent(eventId)}&before=${encodeURIComponent(loadMoreCursor)}`;
+      // `&includeTotal=1` opts into the event-wide count() query.
+      // Polling skips that flag; load-more clicks set it so the
+      // header total + "X more" button refresh on each click.
+      // Drift between clicks (other users posting / reports
+      // hiding) is acceptable — totalCount is a UX hint, not a
+      // critical value.
+      const url = `/api/impressions?eventId=${encodeURIComponent(eventId)}&before=${encodeURIComponent(loadMoreCursor)}&includeTotal=1`;
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) {
         setLoadMoreError(t("loadMoreError"));
@@ -189,11 +197,13 @@ export function EventImpressions({
       const data = (await res.json()) as {
         impressions: Impression[];
         nextCursor: string | null;
-        totalCount: number;
+        totalCount?: number;
       };
       setImpressions((prev) => mergeImpressions(prev, data.impressions));
       setLoadMoreCursor(data.nextCursor);
-      setTotalCount(data.totalCount);
+      if (data.totalCount !== undefined) {
+        setTotalCount(data.totalCount);
+      }
     } catch {
       setLoadMoreError(t("loadMoreError"));
     } finally {

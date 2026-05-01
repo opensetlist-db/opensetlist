@@ -31,6 +31,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
   }
 
+  // `?includeTotal=1` is the opt-in flag for the event-wide
+  // `count()` query. Polling skips it (the count would run every 5s
+  // per concurrent viewer for a UX-only metric — needless DB hot-
+  // path cost). SSR seed + each "see older" click set it, so the
+  // header total + "X more" button refresh on every load-more even
+  // though they may drift slightly between clicks as other users
+  // post. Optimistic increments in `EventImpressions` cover the
+  // user's own submit/report actions in between.
+  const includeTotal = req.nextUrl.searchParams.get("includeTotal") === "1";
+
   const baseWhere = {
     eventId: eid,
     supersededAt: null,
@@ -52,17 +62,20 @@ export async function GET(req: NextRequest) {
       }
     : baseWhere;
 
-  // Parallel count + findMany. The count is total impressions for the
-  // event (not for the requested page) so the client can render
-  // "이전 보기 (X개 더)" — totalCount is the WHOLE archive size,
-  // remaining = totalCount minus what the client has accumulated.
+  // Parallel findMany + (optional) count. When `includeTotal` is
+  // false the count branch resolves to undefined synchronously and
+  // adds zero DB round trips. Without the gate, the polling hot
+  // path (5s per concurrent viewer) would fire a redundant
+  // event-wide aggregate per tick.
   const [rows, totalCount] = await Promise.all([
     prisma.eventImpression.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: IMPRESSION_PAGE_SIZE,
     }),
-    prisma.eventImpression.count({ where: baseWhere }),
+    includeTotal
+      ? prisma.eventImpression.count({ where: baseWhere })
+      : Promise.resolve(undefined),
   ]);
 
   const impressions = rows.map((r) => ({
@@ -87,14 +100,24 @@ export async function GET(req: NextRequest) {
       ? encodeImpressionCursor(lastRow.createdAt, lastRow.id)
       : null;
 
-  return NextResponse.json(
-    { impressions, nextCursor, totalCount },
-    {
-      headers: {
-        "Cache-Control": "private, no-store",
-      },
+  // Omit `totalCount` from the body entirely when not requested so
+  // the response shape mirrors the cost: a poll request gets back
+  // exactly what the server computed, no `null` placeholder. Client
+  // type is `totalCount?: number`.
+  const body: {
+    impressions: typeof impressions;
+    nextCursor: string | null;
+    totalCount?: number;
+  } = { impressions, nextCursor };
+  if (totalCount !== undefined) {
+    body.totalCount = totalCount;
+  }
+
+  return NextResponse.json(body, {
+    headers: {
+      "Cache-Control": "private, no-store",
     },
-  );
+  });
 }
 
 export async function POST(req: NextRequest) {

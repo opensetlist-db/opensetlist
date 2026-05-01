@@ -10,14 +10,13 @@ describe("useImpressionPolling", () => {
       vi.fn().mockResolvedValue({
         ok: true,
         // The /api/impressions GET response shape gained `nextCursor`
-        // and `totalCount` for cursor-paginated "see older" support;
-        // the polling hook now forwards both to its onUpdate
-        // callback. Default mock returns an empty page with no more
-        // older content.
+        // for cursor-paginated "see older" support. `totalCount` is
+        // intentionally NOT in the polling response — polling skips
+        // the `?includeTotal=1` flag to avoid an event-wide count()
+        // query on the 5s hot path.
         json: async () => ({
           impressions: [],
           nextCursor: null,
-          totalCount: 0,
         }),
       }) as unknown as typeof fetch,
     );
@@ -93,7 +92,7 @@ describe("useImpressionPolling", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("invokes onUpdate with impressions + cursor + totalCount on each tick", async () => {
+  it("invokes onUpdate with impressions + cursor on each tick (no totalCount)", async () => {
     const onUpdate = vi.fn();
     vi.stubGlobal(
       "fetch",
@@ -111,7 +110,6 @@ describe("useImpressionPolling", () => {
             },
           ],
           nextCursor: "2026-04-25T00:00:00.000Z_a",
-          totalCount: 123,
         }),
       }) as unknown as typeof fetch,
     );
@@ -130,10 +128,34 @@ describe("useImpressionPolling", () => {
     });
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
+    // Payload must NOT include totalCount — polling skips the
+    // `?includeTotal=1` flag to keep count() off the hot path.
     expect(onUpdate).toHaveBeenCalledWith({
       impressions: [expect.objectContaining({ id: "a", content: "hi" })],
       nextCursor: "2026-04-25T00:00:00.000Z_a",
-      totalCount: 123,
     });
+  });
+
+  it("does NOT request includeTotal=1 in the polling URL", async () => {
+    renderHook(() =>
+      useImpressionPolling({
+        eventId: "42",
+        enabled: true,
+        intervalMs: 5000,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const url = (global.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as string;
+    // The polling URL is the hot path. If `includeTotal=1` ever
+    // sneaks back in, the count() gate in `/api/impressions` would
+    // run on every tick and re-introduce the perf concern this
+    // separation is meant to prevent.
+    expect(url).not.toContain("includeTotal");
   });
 });
