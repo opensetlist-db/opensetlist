@@ -31,20 +31,52 @@ export function ImpressionCell({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  // Modal a11y: close on Escape, and move keyboard focus to the Cancel
-  // button when the dialog opens (WCAG 2.4.3 Focus Order). Cancel is
-  // the safe default — confirming a destructive report should require
-  // an explicit click/Tab+Enter, not a stray keystroke on first focus.
+  // Modal a11y (WAI-ARIA Dialog Pattern):
+  //   - On open, move keyboard focus to Cancel (WCAG 2.4.3 Focus
+  //     Order). Cancel is the safe default — a stray Enter on first
+  //     focus must not fire the irreversible report.
+  //   - Escape closes the dialog (WCAG 2.1.2 No Keyboard Trap, in the
+  //     "user can leave" sense).
+  //   - Tab / Shift+Tab cycle between Cancel and Report, the only two
+  //     interactive elements in the dialog. This prevents focus from
+  //     escaping into background DOM (URL bar, page footer, the next
+  //     impression's report button) while the modal is open.
+  //   - On close (any path: Escape, backdrop, Cancel, Confirm), focus
+  //     returns to the 🚨 trigger via the cleanup function. The
+  //     trigger may be `disabled` after a successful confirm, in which
+  //     case .focus() is a no-op and focus falls back to <body> —
+  //     acceptable per the dialog pattern.
   useEffect(() => {
     if (!showReportModal) return;
     cancelButtonRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowReportModal(false);
+      if (e.key === "Escape") {
+        setShowReportModal(false);
+        return;
+      }
+      if (e.key === "Tab") {
+        const first = cancelButtonRef.current;
+        const last = confirmButtonRef.current;
+        if (!first || !last) return;
+        const active = document.activeElement;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      triggerButtonRef.current?.focus();
+    };
   }, [showReportModal]);
 
   const handleTranslate = async () => {
@@ -134,6 +166,7 @@ export function ImpressionCell({
           )}
           {!isOwn && (
             <button
+              ref={triggerButtonRef}
               type="button"
               onClick={() => setShowReportModal(true)}
               disabled={hasReported}
@@ -185,6 +218,7 @@ export function ImpressionCell({
                 {t("cancel")}
               </button>
               <button
+                ref={confirmButtonRef}
                 type="button"
                 onClick={() => {
                   setShowReportModal(false);
