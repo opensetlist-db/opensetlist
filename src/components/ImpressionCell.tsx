@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { formatDate } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
@@ -31,6 +31,21 @@ export function ImpressionCell({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Modal a11y: close on Escape, and move keyboard focus to the Cancel
+  // button when the dialog opens (WCAG 2.4.3 Focus Order). Cancel is
+  // the safe default — confirming a destructive report should require
+  // an explicit click/Tab+Enter, not a stray keystroke on first focus.
+  useEffect(() => {
+    if (!showReportModal) return;
+    cancelButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowReportModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showReportModal]);
 
   const handleTranslate = async () => {
     setError(false);
@@ -162,6 +177,7 @@ export function ImpressionCell({
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
+                ref={cancelButtonRef}
                 type="button"
                 onClick={() => setShowReportModal(false)}
                 className="px-4 py-2 text-sm rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"
