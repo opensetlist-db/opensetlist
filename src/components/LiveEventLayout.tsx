@@ -129,22 +129,38 @@ export function LiveEventLayout({
   initialReactionsValue,
   initialTrendingSongs,
 }: Props) {
-  const { items, reactionCounts } = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    enabled: isOngoing,
-  });
+  const { items, reactionCounts, lastUpdated } =
+    useSetlistPolling<LiveSetlistItem>({
+      eventId,
+      initialItems,
+      initialReactionCounts,
+      enabled: isOngoing,
+    });
 
-  // Re-derive the four sidebar values whenever polling delivers new
-  // items / reactionCounts. When polling is off, short-circuit to the
-  // SSR-computed values — the server already produced the authoritative
-  // result and a client recompute would be wasted work that could
-  // also flash if the derivation drifts from the server's output.
-  // Mirrors the gate pattern in `LiveSetlist.tsx:117-119` for trending.
+  // Use the SSR-rendered sidebar values until polling delivers fresh
+  // data (`lastUpdated !== null`). This single gate covers two cases:
+  //
+  //   1. Non-ongoing events — polling is disabled, `lastUpdated` stays
+  //      null forever, sidebar always renders the server's snapshot.
+  //
+  //   2. Ongoing events on first render — before the first poll
+  //      completes, we deliberately don't recompute. Re-running
+  //      `deriveReactionsValue` on the client would call
+  //      `Intl.NumberFormat(locale, { notation: "compact", … })`,
+  //      whose output can drift subtly between Node and browser ICU
+  //      versions for the same input + locale (e.g., compact suffix
+  //      spacing or rounding). The server pre-formatted the value
+  //      precisely to avoid that hydration mismatch
+  //      (see the original comment in `page.tsx` `reactionsValue`
+  //      derivation), so we honor that until polling is the
+  //      authoritative source.
+  //
+  // After the first successful poll, all four values re-derive from
+  // the polled `items` + `reactionCounts` and keep ticking on every
+  // subsequent poll — server output is no longer the source of truth.
   const { sidebarUnits, sidebarPerformers, songsCount, reactionsValue } =
     useMemo(() => {
-      if (!isOngoing) {
+      if (lastUpdated === null) {
         return {
           sidebarUnits: initialSidebarUnits,
           sidebarPerformers: initialSidebarPerformers,
@@ -166,7 +182,7 @@ export function LiveEventLayout({
         reactionsValue: deriveReactionsValue(reactionCounts, locale),
       };
     }, [
-      isOngoing,
+      lastUpdated,
       items,
       reactionCounts,
       eventPerformers,
