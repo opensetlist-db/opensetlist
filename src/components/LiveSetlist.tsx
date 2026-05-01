@@ -4,11 +4,9 @@ import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistRow } from "@/components/SetlistRow";
-import {
-  useSetlistPolling,
-  type ReactionCountsMap,
-} from "@/hooks/useSetlistPolling";
+import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { deriveTrendingSongs } from "@/lib/trending";
+import { deriveSongsCount } from "@/lib/sidebarDerivations";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
 import {
   SETLIST_DESKTOP_GRID_COLS,
@@ -27,10 +25,16 @@ type SongTranslation = {
   variantLabel?: string | null;
 };
 
-type ArtistRef = {
+export type ArtistRef = {
   id: number;
   slug: string;
   parentArtistId?: number | null;
+  // Required by `deriveSidebarUnitsAndPerformers` to filter the
+  // setlist-item artist credits down to units only (Pass-1 of the
+  // sidebar derivation). Carried on every polled `/api/setlist`
+  // response — Prisma `findMany` returns it by default since `type`
+  // is a scalar column on `Artist`.
+  type: string;
   color: string | null;
   originalName: string | null;
   originalShortName: string | null;
@@ -38,12 +42,19 @@ type ArtistRef = {
   translations: NameTranslation[];
 };
 
-type StageIdentityRef = {
+export type StageIdentityRef = {
   id: string;
   originalName: string | null;
   originalShortName: string | null;
   originalLanguage: string;
   translations: NameTranslation[];
+  // Per-StageIdentity unit memberships (StageIdentity → Artist via
+  // StageIdentityArtist). Carried on every polled `/api/setlist`
+  // response so the live sidebar's per-unit member sublist
+  // (`UnitsCard`) can re-derive when a new performer joins the
+  // polled setlist mid-show. Empty array when the StageIdentity
+  // has no unit affiliations recorded yet.
+  artistLinks: Array<{ artistId: number }>;
 };
 
 type RealPersonRef = {
@@ -83,8 +94,14 @@ export type LiveSetlistItem = {
 
 interface Props {
   eventId: string;
-  initialItems: LiveSetlistItem[];
-  initialReactionCounts: ReactionCountsMap;
+  // Polled state — owned by the parent `LiveEventLayout` so a single
+  // `useSetlistPolling` call drives both columns. Before the lift,
+  // this component owned its own polling subscription via
+  // `useSetlistPolling(initialItems, initialReactionCounts, ...)`; now
+  // it's a pure render component for the right column and accepts the
+  // already-polled values. See `src/components/LiveEventLayout.tsx`.
+  items: LiveSetlistItem[];
+  reactionCounts: ReactionCountsMap;
   initialTrendingSongs: TrendingSong[];
   unknownSongLabel: string;
   isOngoing: boolean;
@@ -93,8 +110,8 @@ interface Props {
 
 export function LiveSetlist({
   eventId,
-  initialItems,
-  initialReactionCounts,
+  items,
+  reactionCounts,
   initialTrendingSongs,
   unknownSongLabel,
   isOngoing,
@@ -102,13 +119,6 @@ export function LiveSetlist({
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
-
-  const { items, reactionCounts } = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    enabled: isOngoing,
-  });
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -120,16 +130,13 @@ export function LiveSetlist({
 
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
-  // Items + songs counters for the desktop subtitle. Songs filter
-  // matches the page-level `songsCount` (passed to `EventHeader`)
-  // exactly: `type === "song"` AND a song row attached. An
-  // admin-created placeholder song-typed item with no song picked
-  // yet doesn't get counted — keeps the sidebar's "X songs" pill
-  // and this subtitle in sync.
+  // Items + songs counters for the desktop subtitle. `deriveSongsCount`
+  // is the single source of truth shared with the sidebar's "X songs"
+  // pill (`EventHeader.songsCount`) — an admin-created placeholder
+  // song-typed item with no song picked yet doesn't get counted, so
+  // the two surfaces can't drift.
   const itemCount = items.length;
-  const songCount = items.filter(
-    (i) => i.type === "song" && i.songs.length > 0,
-  ).length;
+  const songCount = deriveSongsCount(items);
 
   return (
     <>
