@@ -5,6 +5,7 @@ import { displayNameWithFallback } from "@/lib/display";
 import {
   getEventStatus,
   ONGOING_BUFFER_MS,
+  RESOLVED_EVENT_STATUSES,
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
@@ -20,6 +21,11 @@ type Props = { params: Promise<{ id: string }> };
 
 const DEFAULT_MAX_AGE = 3600; // 1h — ceiling for all paths
 const MIN_MAX_AGE = 60; // 1m — floor so CDN doesn't get hammered at the boundary
+// Stale-while-revalidate window for paths whose pill won't change
+// (terminal-state events + the explicit `?s=` pin). 24 h is long
+// enough to keep the CDN warm across a quiet day without trapping
+// a stale event-name rename for too long.
+const STABLE_SWR_SECONDS = 24 * 3600;
 
 // The status pill is derived from `new Date()` at render time, so a static 1h
 // Cache-Control can serve a stale status right across the upcoming→ongoing or
@@ -52,7 +58,7 @@ function cacheHeadersForStatus(
     return { "Cache-Control": `public, max-age=${maxAge}` };
   }
   return {
-    "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=86400`,
+    "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=${STABLE_SWR_SECONDS}`,
   };
 }
 
@@ -63,32 +69,25 @@ const ERROR_HEADERS = {
   "Cache-Control": "no-store",
 } as const;
 
-// Whitelist for the optional `?s=<status>` query param. When set, the
-// caller is explicitly pinning the status pill — typically because the
-// page metadata captured the resolved status at render time and embedded
-// it in the og:image URL so a freshly-shared link always reflects the
-// status that was true at share time. We accept only the four resolved
-// values; anything else (typo, stale param, hostile input) silently
-// falls back to clock-derived status. Set is structurally a Set<string>
-// (not Set<ResolvedEventStatus>) because the runtime check has to start
-// from the unknown URL string before it can narrow.
-const VALID_STATUS_PARAMS: ReadonlySet<string> = new Set([
-  "upcoming",
-  "ongoing",
-  "completed",
-  "cancelled",
-]);
+// Whitelist for the optional `?s=<status>` query param. Built from the
+// `RESOLVED_EVENT_STATUSES` tuple so adding a new status to the type
+// automatically extends the validator — no second list to keep in
+// sync. We accept only the four resolved values; anything else (typo,
+// stale param, hostile input) silently falls back to clock-derived
+// status. Typed as Set<string> so the runtime check can start from
+// the unknown URL string before narrowing via `.has()`.
+const VALID_STATUS_PARAMS: ReadonlySet<string> = new Set(
+  RESOLVED_EVENT_STATUSES,
+);
 
 // Long cache for the explicit `?s=` path — the URL is self-describing
 // (caller has already pinned the status), so the rendered image will
 // never need to invalidate at a status boundary. Mirrors the terminal-
-// state defaults from cacheHeadersForStatus(), which are also "the
-// pill won't change". 1h max-age + 24h SWR is enough headroom for
-// CDN warmth without trapping a stale event-name rename for too long
-// (a rename still doesn't bust the URL — see `&v=${palette.fingerprint}`
-// in the page metadata, which fingerprints palette only).
+// state defaults from cacheHeadersForStatus() ("the pill won't change").
+// A rename still doesn't bust the URL — see `&v=${palette.fingerprint}`
+// in the page metadata, which fingerprints palette only.
 const PINNED_STATUS_HEADERS: Record<string, string> = {
-  "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=86400`,
+  "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=${STABLE_SWR_SECONDS}`,
 };
 
 const AIRPLANE_SVG =
