@@ -301,7 +301,10 @@
     "translating": "翻訳中...",
     "translateFailed": "翻訳できませんでした。もう一度お試しください。",
     "myLabel": "私のひとこと",
-    "allLabel": "すべてのひとこと"
+    "allLabel": "すべてのひとこと",
+    "loadMore": "以前のひとことを見る (残り{remaining}件)",
+    "loadMoreLoading": "読み込み中...",
+    "loadMoreError": "以前のひとことを読み込めませんでした。もう一度お試しください。"
   },
   "Header": {
     "brandName": "OpenSetlist",

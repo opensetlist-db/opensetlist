@@ -8,3 +8,11 @@ export const IMPRESSION_EDIT_COOLDOWN_MS = 60_000;
 export const IMPRESSION_MAX_CHARS = 200;
 export const IMPRESSION_LOCALES = ["ko", "ja", "en"] as const;
 export type ImpressionLocale = (typeof IMPRESSION_LOCALES)[number];
+
+// Page size for the event impressions list — used by both the SSR
+// fetch in the event detail page and the `/api/impressions` GET
+// route (latest page + cursor-paginated "see older" requests). Single
+// source of truth so the SSR seed and polling responses can never
+// drift out of sync; changing this value adjusts both surfaces in
+// lockstep.
+export const IMPRESSION_PAGE_SIZE = 50;

@@ -9,7 +9,16 @@ describe("useImpressionPolling", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ impressions: [] }),
+        // The /api/impressions GET response shape gained `nextCursor`
+        // and `totalCount` for cursor-paginated "see older" support;
+        // the polling hook now forwards both to its onUpdate
+        // callback. Default mock returns an empty page with no more
+        // older content.
+        json: async () => ({
+          impressions: [],
+          nextCursor: null,
+          totalCount: 0,
+        }),
       }) as unknown as typeof fetch,
     );
   });
@@ -84,7 +93,7 @@ describe("useImpressionPolling", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("invokes onUpdate with the polled impressions on each tick", async () => {
+  it("invokes onUpdate with impressions + cursor + totalCount on each tick", async () => {
     const onUpdate = vi.fn();
     vi.stubGlobal(
       "fetch",
@@ -101,6 +110,8 @@ describe("useImpressionPolling", () => {
               createdAt: "2026-04-25T00:00:00.000Z",
             },
           ],
+          nextCursor: "2026-04-25T00:00:00.000Z_a",
+          totalCount: 123,
         }),
       }) as unknown as typeof fetch,
     );
@@ -119,8 +130,10 @@ describe("useImpressionPolling", () => {
     });
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
-    expect(onUpdate).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "a", content: "hi" }),
-    ]);
+    expect(onUpdate).toHaveBeenCalledWith({
+      impressions: [expect.objectContaining({ id: "a", content: "hi" })],
+      nextCursor: "2026-04-25T00:00:00.000Z_a",
+      totalCount: 123,
+    });
   });
 });

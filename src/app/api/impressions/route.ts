@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { IMPRESSION_LOCALES, IMPRESSION_MAX_CHARS } from "@/lib/config";
+import {
+  IMPRESSION_LOCALES,
+  IMPRESSION_MAX_CHARS,
+  IMPRESSION_PAGE_SIZE,
+} from "@/lib/config";
+import {
+  encodeImpressionCursor,
+  decodeImpressionCursor,
+} from "@/lib/impressionCursor";
 import { parseAnonId } from "@/lib/anonId";
 
 export async function GET(req: NextRequest) {
@@ -17,16 +25,45 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid eventId" }, { status: 400 });
   }
 
-  const rows = await prisma.eventImpression.findMany({
-    where: {
-      eventId: eid,
-      supersededAt: null,
-      isDeleted: false,
-      isHidden: false,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const beforeRaw = req.nextUrl.searchParams.get("before");
+  const cursor = beforeRaw ? decodeImpressionCursor(beforeRaw) : null;
+  if (beforeRaw && !cursor) {
+    return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
+  }
+
+  const baseWhere = {
+    eventId: eid,
+    supersededAt: null,
+    isDeleted: false,
+    isHidden: false,
+  } as const;
+
+  // Cursor predicate: rows strictly OLDER than the cursor under the
+  // composite (createdAt, id) ordering. When createdAt is equal across
+  // multiple rows (sub-millisecond bursts), the id tiebreaker keeps
+  // pagination strictly forward-progressing — no skips, no dupes.
+  const where = cursor
+    ? {
+        ...baseWhere,
+        OR: [
+          { createdAt: { lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+        ],
+      }
+    : baseWhere;
+
+  // Parallel count + findMany. The count is total impressions for the
+  // event (not for the requested page) so the client can render
+  // "이전 보기 (X개 더)" — totalCount is the WHOLE archive size,
+  // remaining = totalCount minus what the client has accumulated.
+  const [rows, totalCount] = await Promise.all([
+    prisma.eventImpression.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: IMPRESSION_PAGE_SIZE,
+    }),
+    prisma.eventImpression.count({ where: baseWhere }),
+  ]);
 
   const impressions = rows.map((r) => ({
     id: r.id,
@@ -37,8 +74,21 @@ export async function GET(req: NextRequest) {
     createdAt: r.createdAt.toISOString(),
   }));
 
+  // `nextCursor` is null when this page is the LAST one — i.e., the
+  // page returned fewer rows than the page size. Rendering the
+  // "see older" button hinges on this being non-null, so the client
+  // never needs to compute "is there more?" itself. Computed from
+  // `rows` (the raw Prisma result) rather than `impressions` so any
+  // future shape change in the response mapper can't desync the
+  // cursor-end check.
+  const lastRow = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === IMPRESSION_PAGE_SIZE && lastRow
+      ? encodeImpressionCursor(lastRow.createdAt, lastRow.id)
+      : null;
+
   return NextResponse.json(
-    { impressions },
+    { impressions, nextCursor, totalCount },
     {
       headers: {
         "Cache-Control": "private, no-store",

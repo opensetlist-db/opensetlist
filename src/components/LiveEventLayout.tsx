@@ -57,7 +57,12 @@ interface Props {
   city: string | null;
 
   // EventImpressions independent polling state (its own hook owns it).
+  // The cursor + total are computed by the SSR fetch and threaded
+  // through here so the "see older" button can render with an accurate
+  // remaining count on first paint, before the first poll lands.
   initialImpressions: Impression[];
+  initialImpressionsNextCursor: string | null;
+  initialImpressionsTotalCount: number;
 
   // SSR-derived seeds. `useSetlistPolling` consumes
   // `initialItems`/`initialReactionCounts` directly; the four
@@ -121,6 +126,8 @@ export function LiveEventLayout({
   venue,
   city,
   initialImpressions,
+  initialImpressionsNextCursor,
+  initialImpressionsTotalCount,
   initialItems,
   initialReactionCounts,
   initialSidebarUnits,
@@ -240,6 +247,8 @@ export function LiveEventLayout({
         <EventImpressions
           eventId={eventId}
           initialImpressions={initialImpressions}
+          initialNextCursor={initialImpressionsNextCursor}
+          initialTotalCount={initialImpressionsTotalCount}
           isOngoing={isOngoing}
         />
       </div>

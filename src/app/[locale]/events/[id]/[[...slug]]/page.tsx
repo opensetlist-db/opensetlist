@@ -23,6 +23,8 @@ import {
   type EventPerformerSummary,
 } from "@/lib/sidebarDerivations";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
+import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
 import type { Metadata } from "next";
 
@@ -226,13 +228,39 @@ async function getReactionCounts(eventId: bigint) {
   return result;
 }
 
-async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
-  const rows = await prisma.eventImpression.findMany({
-    where: { eventId, supersededAt: null, isDeleted: false, isHidden: false },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
-  return rows.map((r) => ({
+/**
+ * SSR seed for the event impressions list. Returns the most-recent
+ * page (size = `IMPRESSION_PAGE_SIZE`) plus the cursor for the next
+ * older page and the total impression count for the event — same
+ * shape as the `/api/impressions` GET response so the client can
+ * treat the SSR seed and the polled refresh interchangeably.
+ *
+ * Single source of truth for the page size and the cursor format
+ * lives in `src/lib/config.ts` and `src/lib/impressionCursor.ts`
+ * respectively, so this fetch and the API route can't drift. The
+ * count + findMany run in parallel; the count query is cheap
+ * (indexed on the same WHERE shape).
+ */
+async function getEventImpressions(eventId: bigint): Promise<{
+  impressions: Impression[];
+  nextCursor: string | null;
+  totalCount: number;
+}> {
+  const where = {
+    eventId,
+    supersededAt: null,
+    isDeleted: false,
+    isHidden: false,
+  } as const;
+  const [rows, totalCount] = await Promise.all([
+    prisma.eventImpression.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: IMPRESSION_PAGE_SIZE,
+    }),
+    prisma.eventImpression.count({ where }),
+  ]);
+  const impressions = rows.map((r) => ({
     id: r.id,
     rootImpressionId: r.rootImpressionId,
     eventId: r.eventId.toString(),
@@ -240,6 +268,12 @@ async function getEventImpressions(eventId: bigint): Promise<Impression[]> {
     locale: r.locale,
     createdAt: r.createdAt.toISOString(),
   }));
+  const lastRow = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === IMPRESSION_PAGE_SIZE && lastRow
+      ? encodeImpressionCursor(lastRow.createdAt, lastRow.id)
+      : null;
+  return { impressions, nextCursor, totalCount };
 }
 
 async function getTrendingSongs(
@@ -339,14 +373,20 @@ export default async function EventPage({ params }: Props) {
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
 
-  const [t, ct, st, aT, reactionCounts, impressions] = await Promise.all([
-    getTranslations("Event"),
-    getTranslations("Common"),
-    getTranslations("Song"),
-    getTranslations("Artist"),
-    getReactionCounts(eventId),
-    getEventImpressions(eventId),
-  ]);
+  const [t, ct, st, aT, reactionCounts, impressionsResult] =
+    await Promise.all([
+      getTranslations("Event"),
+      getTranslations("Common"),
+      getTranslations("Song"),
+      getTranslations("Artist"),
+      getReactionCounts(eventId),
+      getEventImpressions(eventId),
+    ]);
+  const {
+    impressions,
+    nextCursor: impressionsNextCursor,
+    totalCount: impressionsTotalCount,
+  } = impressionsResult;
 
   // Skip the 3-query SSR trending fetch when ongoing — LiveSetlist derives
   // trending client-side from `initialReactionCounts` on first paint and
@@ -611,6 +651,8 @@ export default async function EventPage({ params }: Props) {
         venue={venue}
         city={city}
         initialImpressions={impressions}
+        initialImpressionsNextCursor={impressionsNextCursor}
+        initialImpressionsTotalCount={impressionsTotalCount}
         initialItems={setlistItemsForDerivation}
         initialReactionCounts={reactionCounts}
         initialSidebarUnits={sidebarUnits}
