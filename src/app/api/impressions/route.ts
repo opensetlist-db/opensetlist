@@ -67,16 +67,34 @@ export async function GET(req: NextRequest) {
   // adds zero DB round trips. Without the gate, the polling hot
   // path (5s per concurrent viewer) would fire a redundant
   // event-wide aggregate per tick.
-  const [rows, totalCount] = await Promise.all([
+  //
+  // `take: IMPRESSION_PAGE_SIZE + 1` is the standard "fetch one
+  // extra" cursor-pagination trick. If the DB returns the +1 row,
+  // there's at least one more page; if it doesn't, this is the last
+  // page. Without the +1, we'd issue a `nextCursor` whenever the
+  // page came back exactly full and have no way to tell that the
+  // *next* fetch would return zero rows — false-positive cursor on
+  // any event whose impression count is an exact multiple of
+  // `IMPRESSION_PAGE_SIZE`. Costs one extra row per request.
+  const [rowsPlusOne, totalCount] = await Promise.all([
     prisma.eventImpression.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: IMPRESSION_PAGE_SIZE,
+      take: IMPRESSION_PAGE_SIZE + 1,
     }),
     includeTotal
       ? prisma.eventImpression.count({ where: baseWhere })
       : Promise.resolve(undefined),
   ]);
+
+  const hasMore = rowsPlusOne.length > IMPRESSION_PAGE_SIZE;
+  // Trim the lookahead row before mapping — it must NOT appear in
+  // the response page. Slice() rather than pop() so we don't mutate
+  // the Prisma result in place (defensive against any future code
+  // that re-uses `rowsPlusOne`).
+  const rows = hasMore
+    ? rowsPlusOne.slice(0, IMPRESSION_PAGE_SIZE)
+    : rowsPlusOne;
 
   const impressions = rows.map((r) => ({
     id: r.id,
@@ -87,17 +105,16 @@ export async function GET(req: NextRequest) {
     createdAt: r.createdAt.toISOString(),
   }));
 
-  // `nextCursor` is null when this page is the LAST one — i.e., the
-  // page returned fewer rows than the page size. Rendering the
-  // "see older" button hinges on this being non-null, so the client
-  // never needs to compute "is there more?" itself. Computed from
-  // `rows` (the raw Prisma result) rather than `impressions` so any
-  // future shape change in the response mapper can't desync the
-  // cursor-end check.
-  const lastRow = rows[rows.length - 1];
+  // Cursor anchors at the LAST row in the *returned page* (i.e., the
+  // `IMPRESSION_PAGE_SIZE`-th row), so the next call's `WHERE
+  // (createdAt, id) < cursor` predicate picks up at the very next
+  // row. `nextCursor` is null when the lookahead missed — that's the
+  // unambiguous "this was the last page" signal the client uses to
+  // hide the "see older" button.
+  const lastReturned = rows[rows.length - 1];
   const nextCursor =
-    rows.length === IMPRESSION_PAGE_SIZE && lastRow
-      ? encodeImpressionCursor(lastRow.createdAt, lastRow.id)
+    hasMore && lastReturned
+      ? encodeImpressionCursor(lastReturned.createdAt, lastReturned.id)
       : null;
 
   // Omit `totalCount` from the body entirely when not requested so

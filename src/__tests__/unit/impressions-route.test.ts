@@ -255,10 +255,13 @@ describe("GET /api/impressions", () => {
   });
 
   it("returns full page + nextCursor + totalCount when includeTotal=1", async () => {
-    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    // Route uses `take: IMPRESSION_PAGE_SIZE + 1` lookahead to detect
+    // "more pages exist". Mock returns the +1 row to simulate that
+    // case; the response body should be trimmed to PAGE_SIZE.
+    const rowsPlusOne = makeRows(IMPRESSION_PAGE_SIZE + 1);
     (
       prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce(rows);
+    ).mockResolvedValueOnce(rowsPlusOne);
     (
       prisma.eventImpression.count as ReturnType<typeof vi.fn>
     ).mockResolvedValueOnce(IMPRESSION_PAGE_SIZE * 3);
@@ -270,11 +273,48 @@ describe("GET /api/impressions", () => {
       nextCursor: string | null;
       totalCount: number;
     };
+    // Response must NOT include the lookahead row.
     expect(body.impressions).toHaveLength(IMPRESSION_PAGE_SIZE);
-    // Cursor anchored on the LAST returned row (oldest in this page).
-    const last = rows[rows.length - 1];
-    expect(body.nextCursor).toBe(encodeImpressionCursor(last.createdAt, last.id));
+    // Cursor anchors at the LAST RETURNED row (the PAGE_SIZE-th),
+    // not the dropped lookahead row, so `WHERE (createdAt, id) <
+    // cursor` on the next request picks up exactly at the lookahead.
+    const lastReturned = rowsPlusOne[IMPRESSION_PAGE_SIZE - 1];
+    expect(body.nextCursor).toBe(
+      encodeImpressionCursor(lastReturned.createdAt, lastReturned.id),
+    );
     expect(body.totalCount).toBe(IMPRESSION_PAGE_SIZE * 3);
+    // Sanity-check: the route asked for one extra row.
+    const findManyArgs = (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(findManyArgs.take).toBe(IMPRESSION_PAGE_SIZE + 1);
+  });
+
+  it("returns null nextCursor when total impressions is an exact multiple of page size", async () => {
+    // Regression guard for the false-positive cursor bug: with the
+    // old `take: PAGE_SIZE` + `rows.length === PAGE_SIZE` logic,
+    // an event with exactly PAGE_SIZE impressions would emit a
+    // non-null cursor pointing at an empty next page. With the
+    // lookahead, the DB returns exactly PAGE_SIZE rows (not
+    // PAGE_SIZE+1), so hasMore=false and the cursor is null.
+    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+    (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(IMPRESSION_PAGE_SIZE);
+
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      impressions: unknown[];
+      nextCursor: string | null;
+      totalCount: number;
+    };
+    expect(body.impressions).toHaveLength(IMPRESSION_PAGE_SIZE);
+    expect(body.nextCursor).toBeNull();
+    expect(body.totalCount).toBe(IMPRESSION_PAGE_SIZE);
   });
 
   it("skips count() entirely when includeTotal flag is absent (polling hot-path)", async () => {
