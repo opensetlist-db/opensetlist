@@ -301,7 +301,10 @@
     "translating": "번역 중...",
     "translateFailed": "번역할 수 없습니다. 다시 시도하세요.",
     "myLabel": "내 한줄감상",
-    "allLabel": "모든 한줄감상"
+    "allLabel": "모든 한줄감상",
+    "loadMore": "이전 한줄감상 보기 ({remaining}개 더)",
+    "loadMoreLoading": "불러오는 중...",
+    "loadMoreError": "이전 한줄감상을 불러오지 못했어요. 다시 시도해 주세요."
   },
   "Header": {
     "brandName": "OpenSetlist",

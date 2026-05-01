@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+// Type lives in `src/lib/types/setlist.ts` so pure helpers under
+// `src/lib/` can use it without crossing the lib→hooks layer
+// boundary. Re-exported below for back-compat with existing
+// `import { ReactionCountsMap } from "@/hooks/useSetlistPolling"`.
+import type { ReactionCountsMap } from "@/lib/types/setlist";
 
-export type ReactionCountsMap = Record<string, Record<string, number>>;
+export type { ReactionCountsMap };
 
 interface UseSetlistPollingOptions<T> {
   eventId: string;

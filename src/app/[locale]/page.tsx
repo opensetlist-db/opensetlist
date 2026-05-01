@@ -10,6 +10,7 @@ import { UpcomingCard } from "@/components/home/UpcomingCard";
 import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
+import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import { routing } from "@/i18n/routing";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -115,7 +116,12 @@ async function getOngoingEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      _count: { select: { setlistItems: true } },
+      // See `src/lib/setlistCounts.ts` for what `SONG_COUNT_WHERE`
+      // includes / excludes. Without a filter, `_count` sweeps in
+      // mc/video/interval rows, empty song placeholders, and
+      // soft-delete tombstones, so the home-page badge would over-
+      // report against the event-detail header.
+      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "asc" },
   });
@@ -170,7 +176,9 @@ async function getRecentEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      _count: { select: { setlistItems: true } },
+      // Same filter as the ongoing query above — see
+      // `src/lib/setlistCounts.ts` for rationale.
+      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "desc" },
     take: HOME_TAKE,

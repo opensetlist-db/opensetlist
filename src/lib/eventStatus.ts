@@ -1,10 +1,18 @@
 import type { EventStatus } from "@/generated/prisma/client";
 
-export type ResolvedEventStatus =
-  | "upcoming"
-  | "ongoing"
-  | "completed"
-  | "cancelled";
+// Source of truth for the resolved-status string set. The type is
+// derived from this tuple so adding a status in one place forces every
+// runtime consumer (e.g. the OG route's `?s=` validator) to stay in
+// sync — there's no second list to keep aligned. `as const satisfies`
+// pins the tuple's element type to the union without widening either.
+export const RESOLVED_EVENT_STATUSES = [
+  "upcoming",
+  "ongoing",
+  "completed",
+  "cancelled",
+] as const;
+
+export type ResolvedEventStatus = (typeof RESOLVED_EVENT_STATUSES)[number];
 
 export const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000; // 12h — conservative upper bound for any live event
 

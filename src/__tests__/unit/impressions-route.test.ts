@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -7,12 +8,16 @@ vi.mock("@/lib/prisma", () => ({
     },
     eventImpression: {
       create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
     },
   },
 }));
 
-import { POST } from "@/app/api/impressions/route";
+import { GET, POST } from "@/app/api/impressions/route";
 import { prisma } from "@/lib/prisma";
+import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
+import { encodeImpressionCursor } from "@/lib/impressionCursor";
 
 function makeRequest(body: unknown) {
   return new Request("http://localhost/api/impressions", {
@@ -20,6 +25,29 @@ function makeRequest(body: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+// GET handler reads `req.nextUrl.searchParams`, which is a NextRequest
+// extension — a plain `Request` lacks `nextUrl`. Construct a real
+// NextRequest so the route's URL parsing exercises the production
+// path instead of crashing on `undefined.searchParams`.
+function makeGetRequest(query: string): NextRequest {
+  return new NextRequest(`http://localhost/api/impressions?${query}`);
+}
+
+// Build N stub rows matching what `prisma.eventImpression.findMany`
+// would return for the GET handler — only the fields the route
+// actually reads off `r.*`. Newest-first ordering.
+function makeRows(n: number) {
+  const base = new Date("2026-05-02T12:00:00.000Z").getTime();
+  return Array.from({ length: n }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    rootImpressionId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    eventId: BigInt(1),
+    content: `imp ${i}`,
+    locale: "ko",
+    createdAt: new Date(base - i * 1000),
+  }));
 }
 
 describe("POST /api/impressions", () => {
@@ -208,5 +236,184 @@ describe("POST /api/impressions", () => {
     expect(res.status).toBe(400);
     expect(prisma.event.findFirst).not.toHaveBeenCalled();
     expect(prisma.eventImpression.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/impressions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects missing eventId", async () => {
+    const res = await GET(makeGetRequest(""));
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects malformed eventId", async () => {
+    const res = await GET(makeGetRequest("eventId=not-a-bigint"));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns full page + nextCursor + totalCount when includeTotal=1", async () => {
+    // Route uses `take: IMPRESSION_PAGE_SIZE + 1` lookahead to detect
+    // "more pages exist". Mock returns the +1 row to simulate that
+    // case; the response body should be trimmed to PAGE_SIZE.
+    const rowsPlusOne = makeRows(IMPRESSION_PAGE_SIZE + 1);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rowsPlusOne);
+    (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(IMPRESSION_PAGE_SIZE * 3);
+
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      impressions: unknown[];
+      nextCursor: string | null;
+      totalCount: number;
+    };
+    // Response must NOT include the lookahead row.
+    expect(body.impressions).toHaveLength(IMPRESSION_PAGE_SIZE);
+    // Cursor anchors at the LAST RETURNED row (the PAGE_SIZE-th),
+    // not the dropped lookahead row, so `WHERE (createdAt, id) <
+    // cursor` on the next request picks up exactly at the lookahead.
+    const lastReturned = rowsPlusOne[IMPRESSION_PAGE_SIZE - 1];
+    expect(body.nextCursor).toBe(
+      encodeImpressionCursor(lastReturned.createdAt, lastReturned.id),
+    );
+    expect(body.totalCount).toBe(IMPRESSION_PAGE_SIZE * 3);
+    // Sanity-check: the route asked for one extra row.
+    const findManyArgs = (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(findManyArgs.take).toBe(IMPRESSION_PAGE_SIZE + 1);
+  });
+
+  it("returns null nextCursor when total impressions is an exact multiple of page size", async () => {
+    // Regression guard for the false-positive cursor bug: with the
+    // old `take: PAGE_SIZE` + `rows.length === PAGE_SIZE` logic,
+    // an event with exactly PAGE_SIZE impressions would emit a
+    // non-null cursor pointing at an empty next page. With the
+    // lookahead, the DB returns exactly PAGE_SIZE rows (not
+    // PAGE_SIZE+1), so hasMore=false and the cursor is null.
+    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+    (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(IMPRESSION_PAGE_SIZE);
+
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      impressions: unknown[];
+      nextCursor: string | null;
+      totalCount: number;
+    };
+    expect(body.impressions).toHaveLength(IMPRESSION_PAGE_SIZE);
+    expect(body.nextCursor).toBeNull();
+    expect(body.totalCount).toBe(IMPRESSION_PAGE_SIZE);
+  });
+
+  it("skips count() entirely when includeTotal flag is absent (polling hot-path)", async () => {
+    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+
+    const res = await GET(makeGetRequest("eventId=1"));
+    expect(res.status).toBe(200);
+    // The count() branch must NOT execute on a polling request — that
+    // would defeat the whole point of the gate (a redundant
+    // event-wide aggregate every 5s per concurrent viewer).
+    expect(prisma.eventImpression.count).not.toHaveBeenCalled();
+    const body = (await res.json()) as Record<string, unknown>;
+    // Response must omit the field entirely (not null, not 0) so the
+    // shape mirrors the cost: nothing computed, nothing returned.
+    expect(body).not.toHaveProperty("totalCount");
+  });
+
+  it("returns null nextCursor on the last (partial) page", async () => {
+    const rows = makeRows(IMPRESSION_PAGE_SIZE - 5);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+    // No count() mock needed — this URL omits `?includeTotal=1`, so
+    // the count branch resolves to undefined synchronously. Leaving a
+    // stray `mockResolvedValueOnce` would leak into the next test
+    // (the queue is FIFO across tests, not reset by `clearAllMocks`).
+
+    const res = await GET(makeGetRequest("eventId=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { nextCursor: string | null };
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("returns null nextCursor + totalCount=0 when the event has zero impressions (includeTotal=1)", async () => {
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce([]);
+    (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(0);
+
+    const res = await GET(makeGetRequest("eventId=1&includeTotal=1"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      impressions: unknown[];
+      nextCursor: string | null;
+      totalCount: number;
+    };
+    expect(body.impressions).toEqual([]);
+    expect(body.nextCursor).toBeNull();
+    expect(body.totalCount).toBe(0);
+  });
+
+  it("applies the cursor predicate to findMany; count uses base WHERE when includeTotal=1", async () => {
+    const rows = makeRows(IMPRESSION_PAGE_SIZE);
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(rows);
+    (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(200);
+
+    const cursorDate = new Date("2026-05-02T11:00:00.000Z");
+    const cursorId = "00000000-0000-4000-8000-00000000abcd";
+    const cursor = encodeImpressionCursor(cursorDate, cursorId);
+
+    const res = await GET(
+      makeGetRequest(
+        `eventId=1&before=${encodeURIComponent(cursor)}&includeTotal=1`,
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(prisma.eventImpression.findMany).toHaveBeenCalledTimes(1);
+    const findManyArgs = (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    // The OR predicate is what enforces strict (createdAt, id) ordering
+    // across the cursor boundary — without the id tiebreaker, rows
+    // sharing a millisecond with the cursor's createdAt could be
+    // skipped or duplicated on subsequent pages.
+    expect(findManyArgs.where.OR).toEqual([
+      { createdAt: { lt: cursorDate } },
+      { createdAt: cursorDate, id: { lt: cursorId } },
+    ]);
+    // Count query MUST NOT include the cursor predicate — it's the
+    // event-wide total used by the "X more" UI, not the page size.
+    expect(prisma.eventImpression.count).toHaveBeenCalledTimes(1);
+    const countArgs = (
+      prisma.eventImpression.count as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(countArgs.where.OR).toBeUndefined();
+  });
+
+  it("rejects a malformed cursor with 400", async () => {
+    const res = await GET(makeGetRequest("eventId=1&before=not-a-cursor"));
+    expect(res.status).toBe(400);
+    expect(prisma.eventImpression.findMany).not.toHaveBeenCalled();
   });
 });

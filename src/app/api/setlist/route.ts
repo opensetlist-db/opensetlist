@@ -38,7 +38,19 @@ export async function GET(req: NextRequest) {
         },
         performers: {
           include: {
-            stageIdentity: { include: { translations: true } },
+            stageIdentity: {
+              include: {
+                translations: true,
+                // Required by the sidebar's per-unit member sublist
+                // re-derivation in `LiveEventLayout`. Without this,
+                // a polled setlist that introduces a new performer
+                // would render with no unit affiliation in the
+                // `<UnitsCard>` member list. Mirrors the include
+                // shape on the page-level event query
+                // (`page.tsx:88-98`).
+                artistLinks: { select: { artistId: true } },
+              },
+            },
             realPerson: { include: { translations: true } },
           },
         },

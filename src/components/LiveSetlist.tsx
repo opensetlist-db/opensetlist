@@ -4,87 +4,39 @@ import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistRow } from "@/components/SetlistRow";
-import {
-  useSetlistPolling,
-  type ReactionCountsMap,
-} from "@/hooks/useSetlistPolling";
 import { deriveTrendingSongs } from "@/lib/trending";
+import { deriveSongsCount } from "@/lib/sidebarDerivations";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
 import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
+// Setlist-shape types live in `src/lib/types/setlist.ts` so pure
+// helpers under `src/lib/` can describe them without importing from
+// `src/components/`. Re-exported below for back-compat with existing
+// import sites that pull `LiveSetlistItem` / `ArtistRef` /
+// `StageIdentityRef` from this file.
+import type {
+  LiveSetlistItem,
+  ReactionCountsMap,
+} from "@/lib/types/setlist";
 
-type NameTranslation = {
-  locale: string;
-  name: string;
-  shortName?: string | null;
-};
-
-type SongTranslation = {
-  locale: string;
-  title: string;
-  variantLabel?: string | null;
-};
-
-type ArtistRef = {
-  id: number;
-  slug: string;
-  parentArtistId?: number | null;
-  color: string | null;
-  originalName: string | null;
-  originalShortName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-};
-
-type StageIdentityRef = {
-  id: string;
-  originalName: string | null;
-  originalShortName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-};
-
-type RealPersonRef = {
-  id: string;
-  originalName: string | null;
-  originalStageName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-};
-
-type SongRef = {
-  id: number;
-  slug: string;
-  originalTitle: string;
-  originalLanguage: string;
-  variantLabel: string | null;
-  translations: SongTranslation[];
-  artists: Array<{ artist: ArtistRef }>;
-};
-
-export type LiveSetlistItem = {
-  id: number;
-  position: number;
-  isEncore: boolean;
-  stageType: string;
-  unitName: string | null;
-  status: string;
-  performanceType: string | null;
-  type: string;
-  songs: Array<{ song: SongRef }>;
-  performers: Array<{
-    stageIdentity: StageIdentityRef;
-    realPerson: RealPersonRef | null;
-  }>;
-  artists: Array<{ artist: ArtistRef }>;
-};
+export type {
+  ArtistRef,
+  StageIdentityRef,
+  LiveSetlistItem,
+} from "@/lib/types/setlist";
 
 interface Props {
   eventId: string;
-  initialItems: LiveSetlistItem[];
-  initialReactionCounts: ReactionCountsMap;
+  // Polled state — owned by the parent `LiveEventLayout` so a single
+  // `useSetlistPolling` call drives both columns. Before the lift,
+  // this component owned its own polling subscription via
+  // `useSetlistPolling(initialItems, initialReactionCounts, ...)`; now
+  // it's a pure render component for the right column and accepts the
+  // already-polled values. See `src/components/LiveEventLayout.tsx`.
+  items: LiveSetlistItem[];
+  reactionCounts: ReactionCountsMap;
   initialTrendingSongs: TrendingSong[];
   unknownSongLabel: string;
   isOngoing: boolean;
@@ -93,8 +45,8 @@ interface Props {
 
 export function LiveSetlist({
   eventId,
-  initialItems,
-  initialReactionCounts,
+  items,
+  reactionCounts,
   initialTrendingSongs,
   unknownSongLabel,
   isOngoing,
@@ -102,13 +54,6 @@ export function LiveSetlist({
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
-
-  const { items, reactionCounts } = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    enabled: isOngoing,
-  });
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -120,16 +65,13 @@ export function LiveSetlist({
 
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
-  // Items + songs counters for the desktop subtitle. Songs filter
-  // matches the page-level `songsCount` (passed to `EventHeader`)
-  // exactly: `type === "song"` AND a song row attached. An
-  // admin-created placeholder song-typed item with no song picked
-  // yet doesn't get counted — keeps the sidebar's "X songs" pill
-  // and this subtitle in sync.
+  // Items + songs counters for the desktop subtitle. `deriveSongsCount`
+  // is the single source of truth shared with the sidebar's "X songs"
+  // pill (`EventHeader.songsCount`) — an admin-created placeholder
+  // song-typed item with no song picked yet doesn't get counted, so
+  // the two surfaces can't drift.
   const itemCount = items.length;
-  const songCount = items.filter(
-    (i) => i.type === "song" && i.songs.length > 0,
-  ).length;
+  const songCount = deriveSongsCount(items);
 
   return (
     <>

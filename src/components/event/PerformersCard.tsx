@@ -2,29 +2,14 @@
 
 import { useTranslations } from "next-intl";
 import { colors, radius, shadows } from "@/styles/tokens";
+// Type lives in `src/lib/types/setlist.ts` so pure helpers under
+// `src/lib/` (`deriveSidebarUnitsAndPerformers`) can produce
+// `PerformersCardItem`-shaped output without crossing the lib→
+// component layer boundary. Re-exported below for back-compat with
+// existing `import { PerformersCardItem } from "@/components/event/PerformersCard"`.
+import type { PerformersCardItem } from "@/lib/types/setlist";
 
-export interface PerformersCardItem {
-  /** StageIdentity uuid — already a string, used directly as React key. */
-  id: string;
-  /** Resolved character name — caller passes `displayNameWithFallback(..., "full")`. */
-  name: string;
-  /**
-   * Tint color for this character's pill — the resolved color of
-   * their primary unit (caller passes `resolveUnitColor(unit)`,
-   * which substitutes a deterministic palette pick keyed on the
-   * unit's slug when `Artist.color` is null, so multiple
-   * color-pending units render with distinguishable hues). Always
-   * set so every pill renders with a visible accent.
-   */
-  color: string;
-  /**
-   * True when this character was flagged as a guest at this event
-   * (`EventPerformer.isGuest === true`). Drives the muted "· 게스트"
-   * suffix on the pill and the host/guest sort order. Optional for
-   * backward-compat — treated as `false` when missing.
-   */
-  isGuest?: boolean;
-}
+export type { PerformersCardItem };
 
 interface Props {
   performers: PerformersCardItem[];
