@@ -96,9 +96,13 @@ function getArtistName(a: { translations: { locale: string; name: string }[] }) 
 export default function SetlistBuilder({
   eventId,
   initialItems,
+  eventPerformers,
 }: {
   eventId: number;
   initialItems: SetlistItemData[];
+  // Non-guest performers from EventPerformer; pre-selected on every
+  // fresh new-item form so operators deselect rather than add.
+  eventPerformers: StageIdentityOption[];
 }) {
   const router = useRouter();
   const [items, setItems] = useState<SetlistItemData[]>(initialItems);
@@ -273,12 +277,16 @@ export default function SetlistBuilder({
     setFormPerformanceType("live_performance");
     setFormType("song");
     setFormSongIds([]);
-    setFormPerformerIds([]);
+    // Default new items to the full non-guest event roster — see the
+    // SetlistBuilder prop comment. startEdit() intentionally bypasses
+    // this path so editing an existing item doesn't silently re-seed
+    // a deliberately-empty performer list.
+    setFormPerformerIds(eventPerformers.map((p) => p.id));
     setSongSearch("");
     setSongSearchResults([]);
     setSelectedSongs([]);
     setPerformerSearch("");
-    setSelectedPerformers([]);
+    setSelectedPerformers(eventPerformers);
     setFormArtistIds([]);
     setArtistSearch("");
     setArtistSearchResults([]);

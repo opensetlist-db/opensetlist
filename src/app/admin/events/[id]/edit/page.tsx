@@ -102,7 +102,30 @@ export default async function EditEventPage({ params }: Props) {
       <div>
         <h2 className="mb-6 text-2xl font-bold">세트리스트</h2>
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <SetlistBuilder eventId={Number(data.id)} initialItems={data.setlistItems as any} />
+        <SetlistBuilder
+          eventId={Number(data.id)}
+          initialItems={data.setlistItems as any}
+          // Non-guest event performers seed the new-item form's
+          // performer field — most setlist items are full-group, so
+          // defaulting to "everyone" turns add into deselect (faster
+          // than picking 5+ from empty for every song). Guests stay
+          // explicit-only per the EventPerformer schema comment.
+          eventPerformers={(data.performers ?? [])
+            .filter((p: { isGuest: boolean }) => !p.isGuest)
+            .map(
+              (p: {
+                stageIdentity: {
+                  id: string;
+                  translations: { locale: string; name: string }[];
+                  artistLinks: {
+                    artist: {
+                      translations: { locale: string; name: string }[];
+                    };
+                  }[];
+                };
+              }) => p.stageIdentity,
+            )}
+        />
       </div>
     </div>
   );
