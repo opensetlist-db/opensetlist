@@ -20,6 +20,39 @@ export interface Impression {
   createdAt: string;
 }
 
+/**
+ * Merge a fresh page of impressions into the accumulated list,
+ * deduping by id and re-sorting newest-first. Used in two paths:
+ *
+ *   1. Polling tick — `incoming` is the newest page (no cursor).
+ *      Items the user has already loaded into older pages stay put;
+ *      genuinely new impressions slide in at the top.
+ *   2. "Load more" click — `incoming` is the next older page (cursor
+ *      = oldest currently loaded item). Strictly disjoint from the
+ *      existing list under normal flow, but the dedupe protects
+ *      against any race where polling and pagination overlap on a
+ *      boundary item.
+ *
+ * Sort: createdAt desc, id desc as tiebreaker — must match the
+ * server's ORDER BY in `/api/impressions` so cursor-based pagination
+ * advances strictly forward.
+ */
+function mergeImpressions(
+  prev: Impression[],
+  incoming: Impression[],
+): Impression[] {
+  const incomingIds = new Set(incoming.map((i) => i.id));
+  const kept = prev.filter((p) => !incomingIds.has(p.id));
+  const merged = [...incoming, ...kept];
+  merged.sort((a, b) => {
+    if (a.createdAt !== b.createdAt) {
+      return a.createdAt < b.createdAt ? 1 : -1;
+    }
+    return a.id < b.id ? 1 : -1;
+  });
+  return merged;
+}
+
 interface SavedImpression {
   chainId: string;
   content: string;
@@ -29,6 +62,22 @@ interface SavedImpression {
 interface Props {
   eventId: string;
   initialImpressions: Impression[];
+  /**
+   * Cursor for the next OLDER page than what's in `initialImpressions`.
+   * Null when SSR returned the entire archive (event has fewer than
+   * `IMPRESSION_PAGE_SIZE` impressions). The "see older" button only
+   * renders when this is non-null AND there are remaining impressions
+   * to load. Polling does NOT update this — it tracks the user's
+   * pagination position in the older half, independent of polling's
+   * view of the newest page.
+   */
+  initialNextCursor: string | null;
+  /**
+   * Total impression count for the event at SSR time. Refreshed by
+   * each polling tick AND each load-more response so the "see older
+   * (X more)" button stays accurate as new impressions arrive.
+   */
+  initialTotalCount: number;
   isOngoing: boolean;
 }
 
@@ -91,23 +140,76 @@ function initialCooldownFor(saved: SavedImpression | null): number {
 export function EventImpressions({
   eventId,
   initialImpressions,
+  initialNextCursor,
+  initialTotalCount,
   isOngoing,
 }: Props) {
   const t = useTranslations("Impression");
   const et = useTranslations("Event");
   const locale = useLocale();
   const mounted = useMounted();
-  const [impressions, setImpressions] = useState<Impression[]>(initialImpressions);
+  const [impressions, setImpressions] =
+    useState<Impression[]>(initialImpressions);
+  // Pagination state — tracks the user's position in the older half.
+  // Polling does NOT touch these; they advance only on a successful
+  // "see older" click (server response sets `loadMoreCursor` to the
+  // next page's cursor, or null when the archive is fully loaded).
+  const [loadMoreCursor, setLoadMoreCursor] = useState<string | null>(
+    initialNextCursor,
+  );
+  const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // Polling hook drives `impressions` directly via the onUpdate callback —
-  // no effect-based sync from the hook's return value. Held in a ref by
-  // useImpressionPolling so a fresh `setImpressions` identity each render
-  // doesn't tear down the polling timer.
+  // Polling delivers the newest page (no cursor) and intentionally
+  // does NOT request `?includeTotal=1` — running an event-wide
+  // `count()` every 5s per concurrent viewer for a UX-only metric
+  // is wasted DB hot-path cost. Merge polled impressions into the
+  // accumulated list (older loaded pages stay put, new arrivals
+  // slide in at the top) and let `totalCount` drift slightly until
+  // the next "see older" click refreshes it. Optimistic increments
+  // in `handleSubmit` / `handleReport` cover the user's own actions.
   useImpressionPolling({
     eventId,
     enabled: isOngoing,
-    onUpdate: setImpressions,
+    onUpdate: ({ impressions: polled }) => {
+      setImpressions((prev) => mergeImpressions(prev, polled));
+    },
   });
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMore || !loadMoreCursor) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      // `&includeTotal=1` opts into the event-wide count() query.
+      // Polling skips that flag; load-more clicks set it so the
+      // header total + "X more" button refresh on each click.
+      // Drift between clicks (other users posting / reports
+      // hiding) is acceptable — totalCount is a UX hint, not a
+      // critical value.
+      const url = `/api/impressions?eventId=${encodeURIComponent(eventId)}&before=${encodeURIComponent(loadMoreCursor)}&includeTotal=1`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        setLoadMoreError(t("loadMoreError"));
+        return;
+      }
+      const data = (await res.json()) as {
+        impressions: Impression[];
+        nextCursor: string | null;
+        totalCount?: number;
+      };
+      setImpressions((prev) => mergeImpressions(prev, data.impressions));
+      setLoadMoreCursor(data.nextCursor);
+      if (data.totalCount !== undefined) {
+        setTotalCount(data.totalCount);
+      }
+    } catch {
+      setLoadMoreError(t("loadMoreError"));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [eventId, loadingMore, loadMoreCursor, t]);
 
   const savedKey = `impression-${eventId}`;
   // SSR + client first render start at empty values so hydration matches
@@ -219,6 +321,11 @@ export function EventImpressions({
       }
       const { impression } = (await res.json()) as { impression: Impression };
       mergeImpression(impression);
+      // New chain — bump the displayed total immediately for snappy
+      // UX. The next polling tick will replace this with the
+      // server's authoritative count, but until then the header +
+      // "X more" button stay in sync with what the user just did.
+      setTotalCount((c) => c + 1);
       trackEvent("impression_submit", {
         event_id: String(eventId),
         locale,
@@ -310,6 +417,12 @@ export function EventImpressions({
         setImpressions((prev) =>
           prev.filter((p) => p.rootImpressionId !== chainId)
         );
+        // Mirror the impression-removal in the displayed total —
+        // the server's count query (`isHidden: false`) just dropped
+        // by 1, so the next polling tick will return the new total
+        // anyway, but updating immediately keeps the "X more"
+        // button consistent with the visible list.
+        setTotalCount((c) => Math.max(0, c - 1));
       }
     } catch {
       rollback();
@@ -414,8 +527,14 @@ export function EventImpressions({
             </span>
           )}
         </div>
+        {/* Header count uses `totalCount` (the server-side total), not
+            `impressions.length` (the LOADED count). Otherwise the
+            header would say "200 impressions" while the "see older"
+            button below says "1,034 more" — confusing and dishonest.
+            Both surfaces now pull from the same authoritative number,
+            refreshed on every polling tick + load-more response. */}
         <span className="text-xs" style={{ color: colors.textMuted }}>
-          {t("count", { count: impressions.length })}
+          {t("count", { count: totalCount })}
         </span>
       </div>
 
@@ -590,27 +709,70 @@ export function EventImpressions({
               {t("empty")}
             </p>
           ) : (
-            <ul className="space-y-2">
-              {impressions.map((imp) => {
-                const isOwn = saved?.chainId === imp.rootImpressionId;
-                const hasReported = reportedChainIds.has(imp.rootImpressionId);
-                return (
-                  <li
-                    key={imp.id}
-                    className="p-3 text-sm"
-                    style={otherCardStyle}
-                  >
-                    <ImpressionCell
-                      impression={imp}
-                      eventId={eventId}
-                      isOwn={isOwn}
-                      hasReported={hasReported}
-                      onReport={handleReport}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              <ul className="space-y-2">
+                {impressions.map((imp) => {
+                  const isOwn = saved?.chainId === imp.rootImpressionId;
+                  const hasReported = reportedChainIds.has(imp.rootImpressionId);
+                  return (
+                    <li
+                      key={imp.id}
+                      className="p-3 text-sm"
+                      style={otherCardStyle}
+                    >
+                      <ImpressionCell
+                        impression={imp}
+                        eventId={eventId}
+                        isOwn={isOwn}
+                        hasReported={hasReported}
+                        onReport={handleReport}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+              {/* "See older" button — renders only when there's a
+                  cursor for the next older page AND the displayed
+                  total exceeds what's loaded. The double check
+                  guards against an edge case where a polling refresh
+                  drops `totalCount` below `impressions.length` (e.g.
+                  several reports cause hidden flips concurrently)
+                  but `loadMoreCursor` lags one cycle. Hiding the
+                  button under that condition is the conservative
+                  choice — better than a click that returns zero
+                  rows. */}
+              {loadMoreCursor !== null &&
+                totalCount > impressions.length && (
+                  <div className="mt-3 flex flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleLoadMore}
+                      disabled={loadingMore}
+                      className="rounded px-3 py-1.5 text-xs hover:underline disabled:opacity-50"
+                      style={{
+                        border: `1px solid ${colors.border}`,
+                        background: colors.bgCard,
+                        color: colors.textSecondary,
+                      }}
+                    >
+                      {loadingMore
+                        ? t("loadMoreLoading")
+                        : t("loadMore", {
+                            remaining: totalCount - impressions.length,
+                          })}
+                    </button>
+                    {loadMoreError && (
+                      <span
+                        className="text-xs"
+                        role="alert"
+                        style={{ color: colors.error }}
+                      >
+                        {loadMoreError}
+                      </span>
+                    )}
+                  </div>
+                )}
+            </>
           )}
         </div>
       </div>

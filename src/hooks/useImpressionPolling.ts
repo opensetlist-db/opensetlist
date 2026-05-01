@@ -3,6 +3,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Impression } from "@/components/EventImpressions";
 
+/**
+ * Payload handed to the consumer's `onUpdate` callback.
+ *
+ * Polling intentionally fetches only the newest page (no cursor) and
+ * does NOT request `?includeTotal=1` — the count() query would run
+ * every 5s per concurrent viewer for a UX-only metric, so it's
+ * skipped on the hot path. `totalCount` is therefore omitted from
+ * the polled payload; consumers that display a total maintain it
+ * themselves via the SSR seed + load-more refresh + optimistic
+ * submit/report increments.
+ *
+ * `nextCursor` is the cursor anchored at the 50th most recent
+ * impression in this poll's response — null when the event has
+ * fewer than `IMPRESSION_PAGE_SIZE` total impressions.
+ */
+export interface ImpressionPollPayload {
+  impressions: Impression[];
+  nextCursor: string | null;
+}
+
 interface UseImpressionPollingOptions {
   eventId: string;
   enabled: boolean;
@@ -17,7 +37,7 @@ interface UseImpressionPollingOptions {
    * function identities each render without re-triggering the polling
    * setup effect.
    */
-  onUpdate?: (impressions: Impression[]) => void;
+  onUpdate?: (payload: ImpressionPollPayload) => void;
 }
 
 interface UseImpressionPollingResult {
@@ -45,15 +65,23 @@ export function useImpressionPolling({
 
   const fetchImpressions = useCallback(async () => {
     try {
+      // No `?includeTotal=1` — polling skips the event-wide count
+      // query entirely. See `ImpressionPollPayload` JSDoc above.
       const res = await fetch(
         `/api/impressions?eventId=${encodeURIComponent(eventId)}`,
         { cache: "no-store" },
       );
       if (!res.ok) return;
-      const data = (await res.json()) as { impressions: Impression[] };
+      const data = (await res.json()) as {
+        impressions: Impression[];
+        nextCursor: string | null;
+      };
       setImpressions(data.impressions);
       setLastUpdated(new Date().toISOString());
-      onUpdateRef.current?.(data.impressions);
+      onUpdateRef.current?.({
+        impressions: data.impressions,
+        nextCursor: data.nextCursor,
+      });
     } catch {
       // Silent — next tick retries.
     }
