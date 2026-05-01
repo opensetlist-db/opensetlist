@@ -213,6 +213,7 @@ describe("SetlistRow", () => {
           artist: {
             id: 7,
             slug: "cerise-bouquet",
+            type: "unit",
             color: "#e91e8c",
             originalName: "Cerise Bouquet",
             originalShortName: null,
@@ -249,6 +250,7 @@ describe("SetlistRow", () => {
           artist: {
             id: 7,
             slug: "cerise-bouquet",
+            type: "unit",
             color: null,
             originalName: "Cerise Bouquet",
             originalShortName: null,
