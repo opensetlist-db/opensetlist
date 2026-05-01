@@ -1,11 +1,12 @@
 import { ImageResponse } from "@vercel/og";
 import { prisma } from "@/lib/prisma";
 import { formatVenueDate } from "@/lib/eventDateTime";
+import { displayNameWithFallback } from "@/lib/display";
 import {
-  displayNameWithFallback,
-  resolveLocalizedField,
-} from "@/lib/display";
-import { getEventStatus, ONGOING_BUFFER_MS } from "@/lib/eventStatus";
+  getEventStatus,
+  ONGOING_BUFFER_MS,
+  type ResolvedEventStatus,
+} from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent, buildMeshBackground } from "@/lib/ogPalette";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import {
@@ -62,6 +63,34 @@ const ERROR_HEADERS = {
   "Cache-Control": "no-store",
 } as const;
 
+// Whitelist for the optional `?s=<status>` query param. When set, the
+// caller is explicitly pinning the status pill — typically because the
+// page metadata captured the resolved status at render time and embedded
+// it in the og:image URL so a freshly-shared link always reflects the
+// status that was true at share time. We accept only the four resolved
+// values; anything else (typo, stale param, hostile input) silently
+// falls back to clock-derived status. Set is structurally a Set<string>
+// (not Set<ResolvedEventStatus>) because the runtime check has to start
+// from the unknown URL string before it can narrow.
+const VALID_STATUS_PARAMS: ReadonlySet<string> = new Set([
+  "upcoming",
+  "ongoing",
+  "completed",
+  "cancelled",
+]);
+
+// Long cache for the explicit `?s=` path — the URL is self-describing
+// (caller has already pinned the status), so the rendered image will
+// never need to invalidate at a status boundary. Mirrors the terminal-
+// state defaults from cacheHeadersForStatus(), which are also "the
+// pill won't change". 1h max-age + 24h SWR is enough headroom for
+// CDN warmth without trapping a stale event-name rename for too long
+// (a rename still doesn't bust the URL — see `&v=${palette.fingerprint}`
+// in the page metadata, which fingerprints palette only).
+const PINNED_STATUS_HEADERS: Record<string, string> = {
+  "Cache-Control": `public, max-age=${DEFAULT_MAX_AGE}, stale-while-revalidate=86400`,
+};
+
 const AIRPLANE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23ffffff"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
 const AIRPLANE_URI = `data:image/svg+xml;utf8,${AIRPLANE_SVG}`;
@@ -70,6 +99,18 @@ export async function GET(req: Request, { params }: Props) {
   const { id } = await params;
   const url = new URL(req.url);
   const lang = normalizeOgLocale(url.searchParams.get("lang"));
+  // Optional pinned status. When the page metadata embeds `&s=upcoming`
+  // (or live/completed/cancelled), that value wins over the clock —
+  // a freshly-shared link captures whatever was true at share time and
+  // stays self-consistent forever after, even if a social platform's
+  // OG cache outlives our CDN's.
+  // Falsy / unknown values: fall through to the existing clock-derived
+  // path, byte-for-byte the previous behavior.
+  const statusParam = url.searchParams.get("s");
+  const pinnedStatus: ResolvedEventStatus | null =
+    statusParam && VALID_STATUS_PARAMS.has(statusParam)
+      ? (statusParam as ResolvedEventStatus)
+      : null;
 
   if (!/^\d+$/.test(id)) {
     return new Response("Not found", { status: 404 });
@@ -107,33 +148,27 @@ export async function GET(req: Request, { params }: Props) {
       : "";
     const title =
       seriesName || eventName || FALLBACK_TITLES[lang].event;
-    const city = resolveLocalizedField(
-      event,
-      event.translations,
-      lang,
-      "city",
-      "originalCity"
-    );
-    const venue = resolveLocalizedField(
-      event,
-      event.translations,
-      lang,
-      "venue",
-      "originalVenue"
-    );
-    const subtitleParts = [
-      seriesName && eventName && seriesName !== eventName ? eventName : null,
-      city,
-      venue,
-    ].filter(Boolean) as string[];
-    const subtitle = subtitleParts.join(" · ");
+    // Subtitle now carries only the alternate event name (when title
+    // falls on the series and the event has a distinct identifier).
+    // City + venue dropped — the event name typically already encodes
+    // those (e.g. "Day 2 · Marine Messe Fukuoka"), and an OG card
+    // doesn't have the room to say it twice.
+    const subtitle =
+      seriesName && eventName && seriesName !== eventName ? eventName : "";
     const dateStr = formatVenueDate(event.date, lang);
 
     const now = new Date();
-    const resolved = getEventStatus(event, now);
+    // Pinned status (from `?s=`) wins over the clock so a freshly-
+    // shared link is self-describing and frozen — same image renders
+    // months later even if the event has long since transitioned.
+    // No `?s=`: derive from clock as before, with the dynamic cache
+    // clamp that keeps the CDN honest near transitions.
+    const resolved = pinnedStatus ?? getEventStatus(event, now);
     const statusLabel = STATUS_LABELS[lang][resolved];
     const dotColor = STATUS_DOT_COLOR[resolved];
-    const cacheHeaders = cacheHeadersForStatus(resolved, event.startTime, now);
+    const cacheHeaders = pinnedStatus
+      ? PINNED_STATUS_HEADERS
+      : cacheHeadersForStatus(resolved, event.startTime, now);
     const sized = titleFontSize(title, 60);
 
     return new ImageResponse(

@@ -173,7 +173,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .filter(Boolean)
     .join(" · ");
 
-  const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
+  // Pin the status pill into the og:image URL. The crawler that scrapes
+  // this page captures the URL with `&s=<status>` baked in, and the OG
+  // route honors that value over the clock — so a link shared at T-2h
+  // continues to show the "upcoming" pill in social previews even after
+  // the event has transitioned to live/completed (cached unfurls on
+  // X/Slack/Discord can outlive our CDN's TTL by days). Pages rendered
+  // *after* the transition embed the new status, so fresh shares always
+  // reflect current state. Existing shares (no `&s=`) fall through to
+  // the route's clock-derived path — byte-for-byte the prior behavior.
+  const ogStatus = getEventStatus(event);
+  const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}&s=${ogStatus}`;
   const pageUrl = `/${locale}/events/${id}/${event.slug}`;
 
   return {
