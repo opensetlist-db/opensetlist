@@ -137,20 +137,24 @@ export function ImpressionCell({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => setShowReportModal(false)}
-          role="dialog"
-          aria-modal="true"
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-xl p-6 w-80 shadow-xl"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`report-modal-title-${impression.id}`}
+            aria-describedby={`report-modal-desc-${impression.id}`}
           >
             <p
+              id={`report-modal-title-${impression.id}`}
               className="font-semibold"
               style={{ color: colors.textPrimary }}
             >
               {t("reportConfirmTitle")}
             </p>
             <p
+              id={`report-modal-desc-${impression.id}`}
               className="mt-1 text-sm"
               style={{ color: colors.textMuted }}
             >
