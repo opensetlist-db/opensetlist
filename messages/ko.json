@@ -291,6 +291,8 @@
     "cancel": "취소",
     "report": "신고",
     "reported": "신고함",
+    "reportConfirmTitle": "이 감상을 신고하시겠습니까?",
+    "reportConfirmDescription": "신고 후 취소할 수 없습니다.",
     "hidden": "신고로 숨김",
     "count": "{count, plural, =0 {한줄감상 없음} other {#개의 한줄감상}}",
     "empty": "아직 등록된 한줄감상이 없습니다. 첫 한줄감상을 남겨보세요!",

@@ -291,6 +291,8 @@
     "cancel": "Cancel",
     "report": "Report",
     "reported": "Reported",
+    "reportConfirmTitle": "Report this impression?",
+    "reportConfirmDescription": "Reports cannot be undone.",
     "hidden": "Hidden by reports",
     "count": "{count, plural, =0 {No impressions} one {# impression} other {# impressions}}",
     "empty": "No impressions yet. Be the first to share!",
