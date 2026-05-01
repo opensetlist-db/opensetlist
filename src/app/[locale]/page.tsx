@@ -10,6 +10,7 @@ import { UpcomingCard } from "@/components/home/UpcomingCard";
 import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
+import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import { routing } from "@/i18n/routing";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -115,23 +116,12 @@ async function getOngoingEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // Match the event-detail header's song count: type=song items
-      // with at least one attached song, and not soft-deleted. The
-      // raw `_count` without a `where` over-reports because it sweeps
-      // in mc/video/interval rows, song placeholders with nothing
-      // picked yet, and soft-delete tombstones — so the home page
-      // would disagree with the detail page on the same event.
-      _count: {
-        select: {
-          setlistItems: {
-            where: {
-              isDeleted: false,
-              type: "song",
-              songs: { some: {} },
-            },
-          },
-        },
-      },
+      // See `src/lib/setlistCounts.ts` for what `SONG_COUNT_WHERE`
+      // includes / excludes. Without a filter, `_count` sweeps in
+      // mc/video/interval rows, empty song placeholders, and
+      // soft-delete tombstones, so the home-page badge would over-
+      // report against the event-detail header.
+      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "asc" },
   });
@@ -186,21 +176,9 @@ async function getRecentEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // Same filter as the ongoing query above (kept literally
-      // duplicated rather than hoisted — the two queries are likely
-      // to diverge as the home-page rules evolve, and a shared const
-      // would force premature coupling). See that block for rationale.
-      _count: {
-        select: {
-          setlistItems: {
-            where: {
-              isDeleted: false,
-              type: "song",
-              songs: { some: {} },
-            },
-          },
-        },
-      },
+      // Same filter as the ongoing query above — see
+      // `src/lib/setlistCounts.ts` for rationale.
+      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "desc" },
     take: HOME_TAKE,

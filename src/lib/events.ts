@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { displayNameWithFallback } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
+import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 
 type SeriesTranslation = {
   locale: string;
@@ -141,23 +142,11 @@ export async function getEventsListGrouped(
             venue: true,
           },
         },
-        // Match the event-detail header's song count exactly — only
-        // type=song items with at least one attached song, and never
-        // soft-deleted ones. Without a `where`, `_count` returns every
-        // row (including mc/video/interval, empty song placeholders,
-        // and tombstones), and the events-list "🎵 N" badge would
-        // disagree with the header on the same event's detail page.
-        _count: {
-          select: {
-            setlistItems: {
-              where: {
-                isDeleted: false,
-                type: "song",
-                songs: { some: {} },
-              },
-            },
-          },
-        },
+        // See `src/lib/setlistCounts.ts` for what `SONG_COUNT_WHERE`
+        // includes / excludes and why. Without a filter, `_count`
+        // returns every row, so the events-list "🎵 N" badge would
+        // disagree with the event-detail header on the same event.
+        _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
       },
       orderBy: { startTime: "asc" },
     }),
