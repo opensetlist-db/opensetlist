@@ -1,7 +1,7 @@
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import type { TrendingSong } from "@/components/TrendingSongs";
-import { pickLocaleTranslation } from "@/lib/utils";
+import { displayOriginalTitle } from "@/lib/display";
 import { EMOJI_MAP } from "@/lib/reactions";
 
 // Mirrors the SSR `getTrendingSongs` (in src/app/[locale]/events/[id]/...)
@@ -10,6 +10,12 @@ import { EMOJI_MAP } from "@/lib/reactions";
 // the order the server returns items (position asc), so two items with the
 // same total reactions appear in setlist order. Items with zero reactions
 // are dropped — server's groupBy + take(3) implicitly skips them.
+//
+// Title shape mirrors `<SetlistRow>`: original-language title is primary
+// (`mainTitle`), the localized title rides as `subTitle` when the viewer
+// locale differs and a translation exists, and `variantLabel` resolves
+// via the same locale-strict cascade. Keeps the trending card visually
+// consistent with every other song listing on the surface.
 export function deriveTrendingSongs(
   items: LiveSetlistItem[],
   reactionCounts: ReactionCountsMap,
@@ -30,12 +36,15 @@ export function deriveTrendingSongs(
 
   return scored.map(({ item, total, types }) => {
     const song = item.songs[0]?.song;
-    const sTr = song ? pickLocaleTranslation(song.translations, locale) : null;
-    const songTitle = sTr?.title ?? song?.originalTitle ?? unknownSongLabel;
+    const titleDisp = song
+      ? displayOriginalTitle(song, song.translations, locale)
+      : null;
     const topEntry = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
     return {
       setlistItemId: String(item.id),
-      songTitle,
+      mainTitle: titleDisp?.main ?? unknownSongLabel,
+      subTitle: titleDisp?.sub ?? null,
+      variantLabel: titleDisp?.variant ?? null,
       totalReactions: total,
       topReaction: topEntry
         ? {
