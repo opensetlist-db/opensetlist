@@ -4,35 +4,14 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { colors, radius, shadows } from "@/styles/tokens";
+// Type lives in `src/lib/types/setlist.ts` so pure helpers under
+// `src/lib/` (`deriveSidebarUnitsAndPerformers`) can produce
+// `UnitsCardItem`-shaped output without crossing the lib→component
+// layer boundary. Re-exported below for back-compat with existing
+// `import { UnitsCardItem } from "@/components/event/UnitsCard"`.
+import type { UnitsCardItem } from "@/lib/types/setlist";
 
-export interface UnitsCardItem {
-  id: string;
-  slug: string;
-  name: string;
-  /**
-   * Unit color (e.g. `#e91e8c`). Null when the operator hasn't
-   * backfilled the brand color yet — falls back to a brand-tinted
-   * border so the card reads as "unit, color pending" rather than
-   * "no unit".
-   */
-  color: string | null;
-  /**
-   * Member display names that performed in this unit during the
-   * current event, joined with ` · ` at render time. Empty array
-   * if no members resolved (data gap or unit had no
-   * specific-song appearances on this event).
-   */
-  members: string[];
-  /**
-   * True when this unit is a "guest unit" at this event: it was
-   * credited via `SetlistItemArtist` but no non-guest performer at
-   * this event linked to it (page-side derives this from the
-   * `unitHasHostMember` Pass-2 tracker). Drives the muted "· 게스트"
-   * suffix appended to the unit name. Optional for backward-compat —
-   * treated as `false` when missing.
-   */
-  isGuest?: boolean;
-}
+export type { UnitsCardItem };
 
 interface Props {
   locale: string;

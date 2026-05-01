@@ -1,20 +1,18 @@
 import { displayNameWithFallback } from "@/lib/display";
 import { resolveUnitColor } from "@/lib/artistColor";
-import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
-import type { LiveSetlistItem } from "@/components/LiveSetlist";
-import type { UnitsCardItem } from "@/components/event/UnitsCard";
-import type { PerformersCardItem } from "@/components/event/PerformersCard";
+import type {
+  ReactionCountsMap,
+  LiveSetlistItem,
+  UnitsCardItem,
+  PerformersCardItem,
+  EventPerformerSummary,
+} from "@/lib/types/setlist";
 
-/**
- * Event-level performer summary — the subset of `EventPerformer`
- * fields needed to mark host vs guest StageIdentities. Built once at
- * SSR (operators set the guest roster before the show; we don't poll
- * it during a live event), passed as a stable prop to `LiveEventLayout`.
- */
-export interface EventPerformerSummary {
-  stageIdentityId: string;
-  isGuest: boolean;
-}
+// Re-export so import sites that already use this module's name for
+// the event-performer summary type don't need to switch to importing
+// from `@/lib/types/setlist`. Original definition lives there to keep
+// `lib/` strictly type-layer for cross-module shapes.
+export type { EventPerformerSummary };
 
 /**
  * Combined sidebar derivation for the live event page.

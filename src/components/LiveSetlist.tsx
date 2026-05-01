@@ -4,7 +4,6 @@ import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistRow } from "@/components/SetlistRow";
-import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { deriveTrendingSongs } from "@/lib/trending";
 import { deriveSongsCount } from "@/lib/sidebarDerivations";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
@@ -12,85 +11,21 @@ import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
+// Setlist-shape types live in `src/lib/types/setlist.ts` so pure
+// helpers under `src/lib/` can describe them without importing from
+// `src/components/`. Re-exported below for back-compat with existing
+// import sites that pull `LiveSetlistItem` / `ArtistRef` /
+// `StageIdentityRef` from this file.
+import type {
+  LiveSetlistItem,
+  ReactionCountsMap,
+} from "@/lib/types/setlist";
 
-type NameTranslation = {
-  locale: string;
-  name: string;
-  shortName?: string | null;
-};
-
-type SongTranslation = {
-  locale: string;
-  title: string;
-  variantLabel?: string | null;
-};
-
-export type ArtistRef = {
-  id: number;
-  slug: string;
-  parentArtistId?: number | null;
-  // Required by `deriveSidebarUnitsAndPerformers` to filter the
-  // setlist-item artist credits down to units only (Pass-1 of the
-  // sidebar derivation). Carried on every polled `/api/setlist`
-  // response — Prisma `findMany` returns it by default since `type`
-  // is a scalar column on `Artist`.
-  type: string;
-  color: string | null;
-  originalName: string | null;
-  originalShortName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-};
-
-export type StageIdentityRef = {
-  id: string;
-  originalName: string | null;
-  originalShortName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-  // Per-StageIdentity unit memberships (StageIdentity → Artist via
-  // StageIdentityArtist). Carried on every polled `/api/setlist`
-  // response so the live sidebar's per-unit member sublist
-  // (`UnitsCard`) can re-derive when a new performer joins the
-  // polled setlist mid-show. Empty array when the StageIdentity
-  // has no unit affiliations recorded yet.
-  artistLinks: Array<{ artistId: number }>;
-};
-
-type RealPersonRef = {
-  id: string;
-  originalName: string | null;
-  originalStageName: string | null;
-  originalLanguage: string;
-  translations: NameTranslation[];
-};
-
-type SongRef = {
-  id: number;
-  slug: string;
-  originalTitle: string;
-  originalLanguage: string;
-  variantLabel: string | null;
-  translations: SongTranslation[];
-  artists: Array<{ artist: ArtistRef }>;
-};
-
-export type LiveSetlistItem = {
-  id: number;
-  position: number;
-  isEncore: boolean;
-  stageType: string;
-  unitName: string | null;
-  status: string;
-  performanceType: string | null;
-  type: string;
-  songs: Array<{ song: SongRef }>;
-  performers: Array<{
-    stageIdentity: StageIdentityRef;
-    realPerson: RealPersonRef | null;
-  }>;
-  artists: Array<{ artist: ArtistRef }>;
-};
+export type {
+  ArtistRef,
+  StageIdentityRef,
+  LiveSetlistItem,
+} from "@/lib/types/setlist";
 
 interface Props {
   eventId: string;
