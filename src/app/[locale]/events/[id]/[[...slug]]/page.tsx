@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import {
-  serializeBigInt,
-  pickLocaleTranslation,
-} from "@/lib/utils";
+import { serializeBigInt } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
+  displayOriginalTitle,
   resolveLocalizedField,
 } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
@@ -282,15 +280,23 @@ async function getTrendingSongs(
   return groups.map((g) => {
     const item = items.find((i) => i.id === g.setlistItemId);
     const song = item?.songs[0]?.song;
-    const sTr = song ? pickLocaleTranslation(song.translations, locale) : null;
-    const songTitle = sTr?.title ?? song?.originalTitle ?? unknownSongLabel;
+    // Original-primary title display — same cascade as <SetlistRow>
+    // so the trending card reads "originalTitle (sub: localizedTitle)"
+    // consistently with the main setlist below it. Items without a
+    // backed song (rare; admin-typed placeholder) fall through to the
+    // i18n unknown label on the main slot.
+    const titleDisp = song
+      ? displayOriginalTitle(song, song.translations, locale)
+      : null;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
     const topType = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
 
     return {
       setlistItemId: g.setlistItemId.toString(),
-      songTitle,
+      mainTitle: titleDisp?.main ?? unknownSongLabel,
+      subTitle: titleDisp?.sub ?? null,
+      variantLabel: titleDisp?.variant ?? null,
       totalReactions: g._count.id,
       topReaction: topType
         ? { type: topType[0], emoji: EMOJI_MAP[topType[0]] ?? "", count: topType[1] }

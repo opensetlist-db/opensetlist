@@ -5,7 +5,16 @@ import { colors, radius } from "@/styles/tokens";
 
 export interface TrendingSong {
   setlistItemId: string;
-  songTitle: string;
+  /** Original-language title (always present). */
+  mainTitle: string;
+  /** Localized title — set only when locale ≠ originalLanguage AND the
+   *  translated title differs from the original. Mirrors the `sub` slot
+   *  on `<SetlistRow>` so the trending card reads as "original · localized"
+   *  with the same visual treatment everywhere songs are listed. */
+  subTitle: string | null;
+  /** Variant label resolved per the same locale-strict cascade as the
+   *  setlist row (`displayOriginalTitle` returns this). */
+  variantLabel: string | null;
   totalReactions: number;
   topReaction: { type: string; emoji: string; count: number };
 }
@@ -115,6 +124,15 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
               {/* Two-line block: title on top, top-reaction count
                   below. Per mockup `:635-642`. */}
               <div style={{ minWidth: 0, flex: 1 }}>
+                {/* Original-primary title block — same shape as
+                    <SetlistRow>'s SongTitleBlock so the trending card
+                    reads consistently with every other song listing
+                    (event detail setlist, song detail header, member
+                    /series detail history). main = originalTitle,
+                    sub = localized title (muted, smaller weight),
+                    variantLabel in parens. Truncate runs at the row
+                    level so a long original + localized + variant
+                    triple clips with ellipsis instead of wrapping. */}
                 <div
                   className="truncate"
                   style={{
@@ -123,7 +141,30 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     color: colors.textPrimary,
                   }}
                 >
-                  {song.songTitle}
+                  {song.mainTitle}
+                  {song.subTitle && (
+                    <span
+                      className="ml-1"
+                      style={{
+                        fontWeight: 400,
+                        color: colors.textMuted,
+                      }}
+                    >
+                      {song.subTitle}
+                    </span>
+                  )}
+                  {song.variantLabel && (
+                    <span
+                      className="ml-1"
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 400,
+                        color: colors.textMuted,
+                      }}
+                    >
+                      ({song.variantLabel})
+                    </span>
+                  )}
                 </div>
                 <div
                   style={{

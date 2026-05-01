@@ -14,19 +14,25 @@ vi.mock("next-intl", () => ({
 const sample: TrendingSong[] = [
   {
     setlistItemId: "1",
-    songTitle: "First Song",
+    mainTitle: "First Song",
+    subTitle: null,
+    variantLabel: null,
     totalReactions: 10,
     topReaction: { type: "best", emoji: "🔥", count: 6 },
   },
   {
     setlistItemId: "2",
-    songTitle: "Second Song",
+    mainTitle: "Second Song",
+    subTitle: null,
+    variantLabel: null,
     totalReactions: 8,
     topReaction: { type: "moved", emoji: "🩷", count: 5 },
   },
   {
     setlistItemId: "3",
-    songTitle: "Third Song",
+    mainTitle: "Third Song",
+    subTitle: null,
+    variantLabel: null,
     totalReactions: 5,
     topReaction: { type: "surprise", emoji: "😱", count: 3 },
   },
@@ -88,6 +94,41 @@ describe("TrendingSongs", () => {
     expect(ul?.className).toContain("gap-y-[9px]");
     expect(ul?.className).toContain("lg:flex-row");
     expect(ul?.className).toContain("lg:gap-x-8");
+  });
+
+  it("renders the localized sub-title beside the original when both are provided", () => {
+    // Mirrors `<SetlistRow>`'s SongTitleBlock — original (main) is the
+    // primary slot, the localized title sits next to it as a muted
+    // sub line. This is the cross-surface consistency contract.
+    const songs: TrendingSong[] = [
+      {
+        setlistItemId: "1",
+        mainTitle: "オリジナル",
+        subTitle: "오리지널",
+        variantLabel: null,
+        totalReactions: 3,
+        topReaction: { type: "best", emoji: "🔥", count: 3 },
+      },
+    ];
+    render(<TrendingSongs songs={songs} />);
+    expect(screen.getByText("オリジナル")).toBeInTheDocument();
+    expect(screen.getByText("오리지널")).toBeInTheDocument();
+  });
+
+  it("renders the variantLabel in parentheses when present", () => {
+    const songs: TrendingSong[] = [
+      {
+        setlistItemId: "1",
+        mainTitle: "Dream Believers",
+        subTitle: null,
+        variantLabel: "SAKURA Ver.",
+        totalReactions: 3,
+        topReaction: { type: "best", emoji: "🔥", count: 3 },
+      },
+    ];
+    render(<TrendingSongs songs={songs} />);
+    expect(screen.getByText("Dream Believers")).toBeInTheDocument();
+    expect(screen.getByText("(SAKURA Ver.)")).toBeInTheDocument();
   });
 
   it("hides medal emojis from assistive tech (decorative)", () => {

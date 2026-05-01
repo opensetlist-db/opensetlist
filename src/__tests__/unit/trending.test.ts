@@ -95,7 +95,11 @@ describe("deriveTrendingSongs", () => {
     });
   });
 
-  it("uses the locale-matched translation title, falling back to originalTitle", () => {
+  it("mainTitle is always originalTitle; subTitle carries the locale-matched translation when locale differs", () => {
+    // Mirrors `<SetlistRow>`'s display: original-language title is the
+    // primary slot, the localized title sits next to it as the muted
+    // sub line. This is the cross-surface consistency contract — the
+    // trending card must read the same way as every other song listing.
     const items: LiveSetlistItem[] = [
       {
         ...makeItem(1, "Original"),
@@ -104,7 +108,7 @@ describe("deriveTrendingSongs", () => {
             song: {
               id: 100,
               slug: "original",
-              originalTitle: "Original",
+              originalTitle: "オリジナル",
               originalLanguage: "ja",
               variantLabel: null,
               translations: [
@@ -118,16 +122,24 @@ describe("deriveTrendingSongs", () => {
       },
     ];
     const counts = { "1": { best: 1 } };
-    expect(
-      deriveTrendingSongs(items, counts, "ko", "Unknown")[0].songTitle,
-    ).toBe("오리지널");
-    // Locale not present → falls back to originalTitle
-    expect(
-      deriveTrendingSongs(items, counts, "en", "Unknown")[0].songTitle,
-    ).toBe("Original");
+
+    // ko viewer: original ja title primary, ko translation as sub.
+    const ko = deriveTrendingSongs(items, counts, "ko", "Unknown")[0];
+    expect(ko.mainTitle).toBe("オリジナル");
+    expect(ko.subTitle).toBe("오리지널");
+
+    // ja viewer (locale === originalLanguage): no sub line.
+    const ja = deriveTrendingSongs(items, counts, "ja", "Unknown")[0];
+    expect(ja.mainTitle).toBe("オリジナル");
+    expect(ja.subTitle).toBeNull();
+
+    // en viewer (locale ≠ original, no en translation): no sub line.
+    const en = deriveTrendingSongs(items, counts, "en", "Unknown")[0];
+    expect(en.mainTitle).toBe("オリジナル");
+    expect(en.subTitle).toBeNull();
   });
 
-  it("preserves empty-string originalTitle (?? does not fall through to unknownSongLabel on '')", () => {
+  it("preserves empty-string originalTitle (no fallback to unknownSongLabel on '')", () => {
     const items: LiveSetlistItem[] = [
       {
         ...makeItem(1, ""),
@@ -147,11 +159,49 @@ describe("deriveTrendingSongs", () => {
       },
     ];
     const counts = { "1": { best: 1 } };
-    // pickLocaleTranslation returns undefined (no translations); originalTitle is ""
-    // — falsy, so unknownSongLabel wins via the `??` chain only when null/undefined.
-    // Empty string is preserved (not null). This documents the behavior.
+    // `displayOriginalTitle` returns `main = item.originalTitle` directly,
+    // so an empty string is preserved (not coerced to the unknown label).
+    // The unknown label is reserved for itemless rows — see the
+    // dedicated test above.
     const out = deriveTrendingSongs(items, counts, "ko", "Unknown");
-    expect(out[0].songTitle).toBe("");
+    expect(out[0].mainTitle).toBe("");
+    expect(out[0].subTitle).toBeNull();
+  });
+
+  it("propagates variantLabel via the locale-strict cascade", () => {
+    // `displayOriginalTitle` resolves the variant label per the same
+    // locale-strict rule it uses for the title's sub slot — locale-
+    // matched translation's `variantLabel` first, then the song's own
+    // `variantLabel`, otherwise null.
+    const items: LiveSetlistItem[] = [
+      {
+        ...makeItem(1, "Song"),
+        songs: [
+          {
+            song: {
+              id: 100,
+              slug: "song",
+              originalTitle: "Song",
+              originalLanguage: "ja",
+              variantLabel: "SAKURA Ver.",
+              translations: [
+                { locale: "ko", title: "노래", variantLabel: "사쿠라 ver." },
+              ],
+              artists: [],
+            },
+          },
+        ],
+      },
+    ];
+    const counts = { "1": { best: 1 } };
+
+    expect(
+      deriveTrendingSongs(items, counts, "ko", "Unknown")[0].variantLabel,
+    ).toBe("사쿠라 ver.");
+    // No ja translation row → falls through to the song's own label.
+    expect(
+      deriveTrendingSongs(items, counts, "ja", "Unknown")[0].variantLabel,
+    ).toBe("SAKURA Ver.");
   });
 
   it("caps the result to top 3", () => {
