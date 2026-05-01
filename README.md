@@ -30,6 +30,9 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.9.4 (2026-04-30)
+- Admin sidebar stacks above main on mobile so data-entry forms get the full viewport width. The `flex` body + `w-52` (208 px) fixed-width sidebar consumed 55–65 % of a 320–375 px screen, leaving the form column ~110–170 px — too narrow for artist edit, song edit, the CSV import textarea, or the event setlist builder. Pure className swap on `src/app/admin/layout.tsx`: `flex-col lg:flex-row` body, `w-full` sidebar that collapses to an `overflow-x-auto` horizontal nav strip on mobile, `border-b` instead of `border-r`. Desktop layout (lg+ ≥ 1024 px) is byte-for-byte unchanged. Operator-only surface per CLAUDE.md's admin-scope exemption — no drawer, no client component, no redesign.
+
 ### v0.9.3 (2026-04-30)
 - Member-page data-correctness fix: `getMember`'s `performances` and `eventPerformers` includes had no soft-delete `where` filter, so junction rows (`SetlistItemMember`, `SetlistItemSong`, `EventPerformer`) attached to soft-deleted parents still leaked into the songs / history aggregations. Symptom in prod: a variant song that had never been performed live surfaced on a member's 자주 부른 곡 list with `timesPerformed: 1` because the only `SetlistItemSong` row referencing it sat under a retracted (soft-deleted) `SetlistItem`. Three-tier filter added on `performances` (`setlistItem.isDeleted=false` + `event.isDeleted=false` + `songs.song.isDeleted=false`) plus matching `event.isDeleted=false` on `eventPerformers`. Other detail pages (artist / song / series) already filtered correctly — leak was isolated to `getMember`.
 
