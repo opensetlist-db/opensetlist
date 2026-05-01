@@ -115,10 +115,23 @@ async function getOngoingEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // Filter soft-deleted items out of the count — `_count` without
-      // a `where` includes every row, so the home-page "🎵 N 진행 중"
-      // badge would over-report after an admin removes an item.
-      _count: { select: { setlistItems: { where: { isDeleted: false } } } },
+      // Match the event-detail header's song count: type=song items
+      // with at least one attached song, and not soft-deleted. The
+      // raw `_count` without a `where` over-reports because it sweeps
+      // in mc/video/interval rows, song placeholders with nothing
+      // picked yet, and soft-delete tombstones — so the home page
+      // would disagree with the detail page on the same event.
+      _count: {
+        select: {
+          setlistItems: {
+            where: {
+              isDeleted: false,
+              type: "song",
+              songs: { some: {} },
+            },
+          },
+        },
+      },
     },
     orderBy: { startTime: "asc" },
   });
@@ -173,9 +186,21 @@ async function getRecentEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // Same soft-delete filter as the ongoing query above — the Recent
-      // sidebar's "🎵 N" badge must not count removed items.
-      _count: { select: { setlistItems: { where: { isDeleted: false } } } },
+      // Same filter as the ongoing query above (kept literally
+      // duplicated rather than hoisted — the two queries are likely
+      // to diverge as the home-page rules evolve, and a shared const
+      // would force premature coupling). See that block for rationale.
+      _count: {
+        select: {
+          setlistItems: {
+            where: {
+              isDeleted: false,
+              type: "song",
+              songs: { some: {} },
+            },
+          },
+        },
+      },
     },
     orderBy: { startTime: "desc" },
     take: HOME_TAKE,

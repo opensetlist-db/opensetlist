@@ -141,10 +141,23 @@ export async function getEventsListGrouped(
             venue: true,
           },
         },
-        // Filter soft-deleted items out of the count — `_count` without
-        // a `where` includes every row, so deleting a setlist item left
-        // the events-list "🎵 N" badge frozen at the pre-delete total.
-        _count: { select: { setlistItems: { where: { isDeleted: false } } } },
+        // Match the event-detail header's song count exactly — only
+        // type=song items with at least one attached song, and never
+        // soft-deleted ones. Without a `where`, `_count` returns every
+        // row (including mc/video/interval, empty song placeholders,
+        // and tombstones), and the events-list "🎵 N" badge would
+        // disagree with the header on the same event's detail page.
+        _count: {
+          select: {
+            setlistItems: {
+              where: {
+                isDeleted: false,
+                type: "song",
+                songs: { some: {} },
+              },
+            },
+          },
+        },
       },
       orderBy: { startTime: "asc" },
     }),
