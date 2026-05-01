@@ -54,6 +54,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Default the performer list to the event's non-guest roster —
+    // mirrors the client-side default in SetlistBuilder.resetForm()
+    // for the "+ Add" button. Both new-item entry points (add-at-end
+    // and insert-after) land on the same UX: full group pre-selected,
+    // operator deselects for unit/solo songs. Guests stay explicit
+    // per the EventPerformer schema comment ("isGuest=true → explicit
+    // only", schema.prisma:502-505).
+    const eventPerformers = await tx.eventPerformer.findMany({
+      where: { eventId: eid, isGuest: false },
+      select: { stageIdentityId: true },
+    });
+
     // Create a blank item at the new position
     return tx.setlistItem.create({
       data: {
@@ -64,6 +76,13 @@ export async function POST(request: NextRequest) {
         status: "confirmed",
         performanceType: "live_performance",
         type: "song",
+        performers: eventPerformers.length
+          ? {
+              create: eventPerformers.map((ep) => ({
+                stageIdentityId: ep.stageIdentityId,
+              })),
+            }
+          : undefined,
       },
       include: {
         songs: {
