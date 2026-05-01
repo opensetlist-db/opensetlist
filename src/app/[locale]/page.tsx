@@ -115,7 +115,10 @@ async function getOngoingEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      _count: { select: { setlistItems: true } },
+      // Filter soft-deleted items out of the count — `_count` without
+      // a `where` includes every row, so the home-page "🎵 N 진행 중"
+      // badge would over-report after an admin removes an item.
+      _count: { select: { setlistItems: { where: { isDeleted: false } } } },
     },
     orderBy: { startTime: "asc" },
   });
@@ -170,7 +173,9 @@ async function getRecentEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      _count: { select: { setlistItems: true } },
+      // Same soft-delete filter as the ongoing query above — the Recent
+      // sidebar's "🎵 N" badge must not count removed items.
+      _count: { select: { setlistItems: { where: { isDeleted: false } } } },
     },
     orderBy: { startTime: "desc" },
     take: HOME_TAKE,

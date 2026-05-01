@@ -141,7 +141,10 @@ export async function getEventsListGrouped(
             venue: true,
           },
         },
-        _count: { select: { setlistItems: true } },
+        // Filter soft-deleted items out of the count — `_count` without
+        // a `where` includes every row, so deleting a setlist item left
+        // the events-list "🎵 N" badge frozen at the pre-delete total.
+        _count: { select: { setlistItems: { where: { isDeleted: false } } } },
       },
       orderBy: { startTime: "asc" },
     }),
