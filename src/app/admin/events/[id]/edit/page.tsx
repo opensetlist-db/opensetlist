@@ -101,7 +101,7 @@ export default async function EditEventPage({ params }: Props) {
 
       <div>
         <h2 className="mb-6 text-2xl font-bold">세트리스트</h2>
-        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        {/* eslint-disable @typescript-eslint/no-explicit-any */}
         <SetlistBuilder
           eventId={Number(data.id)}
           initialItems={data.setlistItems as any}
@@ -126,6 +126,7 @@ export default async function EditEventPage({ params }: Props) {
               }) => p.stageIdentity,
             )}
         />
+        {/* eslint-enable @typescript-eslint/no-explicit-any */}
       </div>
     </div>
   );
