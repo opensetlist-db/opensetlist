@@ -9,6 +9,10 @@ import { colors, radius } from "@/styles/tokens";
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+// Tick fast enough that minute-precision rendering stays visually
+// honest (worst-case staleness ~30s). The "X minutes left" branch
+// is what benefits — at hour granularity even a 5min tick would do.
+const TICK_MS = 30 * 1000;
 
 interface Props {
   href: string;
@@ -81,7 +85,7 @@ export function UpcomingCard({
     };
 
     compute();
-    const interval = setInterval(compute, 30 * 1000);
+    const interval = setInterval(compute, TICK_MS);
     return () => clearInterval(interval);
   }, [startTimeIso, t]);
 
