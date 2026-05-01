@@ -252,14 +252,25 @@ async function getEventImpressions(eventId: bigint): Promise<{
     isDeleted: false,
     isHidden: false,
   } as const;
-  const [rows, totalCount] = await Promise.all([
+  // `take: IMPRESSION_PAGE_SIZE + 1` mirrors the same lookahead
+  // trick the `/api/impressions` route uses — without the +1, an
+  // event whose impression count is an exact multiple of the page
+  // size would emit a `nextCursor` that points at the start of an
+  // empty next page. The client's "see older" button condition
+  // (`loadMoreCursor !== null`) would falsely include that event
+  // until the user clicked once and got nothing back.
+  const [rowsPlusOne, totalCount] = await Promise.all([
     prisma.eventImpression.findMany({
       where,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: IMPRESSION_PAGE_SIZE,
+      take: IMPRESSION_PAGE_SIZE + 1,
     }),
     prisma.eventImpression.count({ where }),
   ]);
+  const hasMore = rowsPlusOne.length > IMPRESSION_PAGE_SIZE;
+  const rows = hasMore
+    ? rowsPlusOne.slice(0, IMPRESSION_PAGE_SIZE)
+    : rowsPlusOne;
   const impressions = rows.map((r) => ({
     id: r.id,
     rootImpressionId: r.rootImpressionId,
@@ -268,10 +279,10 @@ async function getEventImpressions(eventId: bigint): Promise<{
     locale: r.locale,
     createdAt: r.createdAt.toISOString(),
   }));
-  const lastRow = rows[rows.length - 1];
+  const lastReturned = rows[rows.length - 1];
   const nextCursor =
-    rows.length === IMPRESSION_PAGE_SIZE && lastRow
-      ? encodeImpressionCursor(lastRow.createdAt, lastRow.id)
+    hasMore && lastReturned
+      ? encodeImpressionCursor(lastReturned.createdAt, lastReturned.id)
       : null;
   return { impressions, nextCursor, totalCount };
 }
