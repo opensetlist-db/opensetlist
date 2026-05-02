@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         provider: process.env.TRANSLATION_PROVIDER ?? "gemini",
         sourceLocale,
         errorName: err instanceof Error ? err.name : typeof err,
-        textLength: impression.content.length,
+        textLength: impression?.content?.length ?? 0,
       },
     });
     console.error("Translator call failed", {
