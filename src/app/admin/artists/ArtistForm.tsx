@@ -332,26 +332,32 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       : "/api/admin/artists";
     const method = initialData ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      // Save new stage identities for existing artist
-      if (initialData && stageIdentities.length > 0) {
-        const siOk = await saveNewStageIdentities();
-        if (!siOk) {
-          alert("멤버 추가에 실패했습니다.");
-          setLoading(false);
-          return;
+      if (res.ok) {
+        // Save new stage identities for existing artist
+        if (initialData && stageIdentities.length > 0) {
+          const siOk = await saveNewStageIdentities();
+          if (!siOk) {
+            alert("멤버 추가에 실패했습니다.");
+            return;
+          }
         }
+        router.push("/admin/artists");
+        router.refresh();
+        return;
       }
-      router.push("/admin/artists");
-      router.refresh();
-    } else {
-      alert("저장에 실패했습니다.");
+
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? "저장에 실패했습니다.");
+    } catch {
+      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+    } finally {
       setLoading(false);
     }
   }

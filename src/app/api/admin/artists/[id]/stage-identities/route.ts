@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveAdminSlug } from "@/lib/slug";
+import { resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
   nullableString,
@@ -73,12 +73,13 @@ export async function POST(request: NextRequest, { params }: Props) {
   // two stage identities created with the same name (and no explicit slug)
   // would derive identical slugs and trip the @unique constraint. va-${siSlug}
   // inherits the suffix below so the VA RealPerson stays unique too.
-  const siBaseSlug = resolveAdminSlug(
+  const siBaseResult = resolveCanonicalSlug(
     body.slug,
     translations.value[0]?.name || name.value,
     "identity"
   );
-  const siSlug = `${siBaseSlug}-${randomUUID().slice(0, 8)}`;
+  if (!siBaseResult.ok) return badRequest(siBaseResult.message);
+  const siSlug = `${siBaseResult.slug}-${randomUUID().slice(0, 8)}`;
   const stageIdentity = await prisma.stageIdentity.create({
     data: {
       slug: siSlug,

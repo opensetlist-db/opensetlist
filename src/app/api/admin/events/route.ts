@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveAdminSlug } from "@/lib/slug";
+import { resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -83,7 +84,9 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slug = resolveAdminSlug(body.slug, translations[0].name, "event");
+  const slugResult = resolveCanonicalSlug(body.slug, translations[0].name, "event");
+  if (!slugResult.ok) return badRequest(slugResult.message);
+  const slug = slugResult.slug;
 
   try {
     const event = await prisma.$transaction(async (tx) => {
@@ -131,6 +134,17 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
+    }
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return NextResponse.json(
+        {
+          error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+        },
+        { status: 409 }
+      );
     }
     throw err;
   }

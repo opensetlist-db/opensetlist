@@ -13,23 +13,42 @@ export function generateSlug(input: string): string {
     .slice(0, 100);
 }
 
-// Trim + normalize an admin-supplied slug, falling back to the source string and
-// then to `${modelPrefix}-{timestamp}` when both normalize to "" (e.g. an all-
-// non-ASCII translation name like "上昇気流"). Always returns a non-empty value so
-// callers can rely on never persisting an empty slug.
-export function resolveAdminSlug(
+// Strict admin slug resolution.
+//
+// - If `rawSlug` is a non-empty string, the trimmed value MUST already
+//   be in canonical slug form (lowercase alphanumeric + hyphens, no
+//   leading/trailing hyphens, ≤100 chars). We round-trip through
+//   `generateSlug` and reject if anything changes — silent
+//   normalization is surprising, and operators should be told their
+//   slug is invalid rather than have it quietly rewritten.
+//
+// - If `rawSlug` is absent/blank, auto-derive from `fallbackSource`
+//   via `generateSlug`, falling back to `${modelPrefix}-${Date.now()}`
+//   when the source itself strips to "" (e.g. all-non-ASCII input
+//   like "上昇気流"). Always returns a non-empty slug on the auto path
+//   so callers never persist an empty value.
+//
+// Result-shape return so the caller can map `{ ok: false }` to a 400
+// response and `{ ok: true }` to a normal create.
+export function resolveCanonicalSlug(
   rawSlug: unknown,
   fallbackSource: string,
   modelPrefix: string
-): string {
-  const trimmed = typeof rawSlug === "string" ? rawSlug.trim() : "";
-  if (trimmed) {
-    const normalized = generateSlug(trimmed);
-    if (normalized) return normalized;
+): { ok: true; slug: string } | { ok: false; message: string } {
+  if (typeof rawSlug === "string" && rawSlug.trim()) {
+    const trimmed = rawSlug.trim();
+    const canonical = generateSlug(trimmed);
+    if (!canonical || canonical !== trimmed) {
+      return {
+        ok: false,
+        message:
+          "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-slug).",
+      };
+    }
+    return { ok: true, slug: trimmed };
   }
   const fromSource = generateSlug(fallbackSource);
-  if (fromSource) return fromSource;
-  return `${modelPrefix}-${Date.now()}`;
+  return { ok: true, slug: fromSource || `${modelPrefix}-${Date.now()}` };
 }
 
 type SlugModel = "artist" | "song" | "event" | "eventSeries" | "album";

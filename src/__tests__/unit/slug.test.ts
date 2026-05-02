@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateSlug, resolveAdminSlug } from "@/lib/slug";
+import { generateSlug, resolveCanonicalSlug } from "@/lib/slug";
 
 describe("generateSlug", () => {
   it("lowercases and replaces spaces with hyphens", () => {
@@ -36,41 +36,83 @@ describe("generateSlug", () => {
   });
 });
 
-describe("resolveAdminSlug", () => {
-  it("normalizes admin-supplied slug (trim + generateSlug)", () => {
-    expect(resolveAdminSlug("  My Slug  ", "fallback", "event")).toBe("my-slug");
+describe("resolveCanonicalSlug", () => {
+  describe("admin-supplied path (verbatim, strict)", () => {
+    it("accepts an already-canonical slug verbatim", () => {
+      const result = resolveCanonicalSlug("my-slug", "fallback", "event");
+      expect(result).toEqual({ ok: true, slug: "my-slug" });
+    });
+
+    it("trims surrounding whitespace before validating", () => {
+      const result = resolveCanonicalSlug("  my-slug  ", "fallback", "event");
+      expect(result).toEqual({ ok: true, slug: "my-slug" });
+    });
+
+    it("rejects uppercase input rather than silently lowercasing", () => {
+      const result = resolveCanonicalSlug("My-Slug", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects spaces in admin input", () => {
+      const result = resolveCanonicalSlug("my slug", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects non-ASCII admin input", () => {
+      const result = resolveCanonicalSlug("ミラクラ", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects leading/trailing hyphens", () => {
+      expect(resolveCanonicalSlug("-foo", "fallback", "event").ok).toBe(false);
+      expect(resolveCanonicalSlug("foo-", "fallback", "event").ok).toBe(false);
+    });
+
+    it("returns a Korean error message on rejection", () => {
+      const result = resolveCanonicalSlug("My Slug!", "fallback", "event");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.message).toMatch(/슬러그/);
+      }
+    });
   });
 
-  it("falls back to fallbackSource when rawSlug is missing", () => {
-    expect(resolveAdminSlug(undefined, "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
-  });
+  describe("auto-fallback path (no admin slug)", () => {
+    it("derives from fallbackSource when rawSlug is missing", () => {
+      const result = resolveCanonicalSlug(undefined, "Cerise Bouquet", "artist");
+      expect(result).toEqual({ ok: true, slug: "cerise-bouquet" });
+    });
 
-  it("falls back to fallbackSource when rawSlug is blank", () => {
-    expect(resolveAdminSlug("   ", "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
-  });
+    it("derives from fallbackSource when rawSlug is blank", () => {
+      const result = resolveCanonicalSlug("   ", "Cerise Bouquet", "artist");
+      expect(result).toEqual({ ok: true, slug: "cerise-bouquet" });
+    });
 
-  it("falls back to fallbackSource when rawSlug normalizes to empty (non-ASCII)", () => {
-    expect(resolveAdminSlug("ミラクラ", "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
-  });
+    it("falls back to ${modelPrefix}-{timestamp} when fallbackSource strips to empty", () => {
+      const result = resolveCanonicalSlug(undefined, "上昇気流", "event");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.slug).toMatch(/^event-\d+$/);
+      }
+    });
 
-  it("falls back to ${modelPrefix}-{timestamp} when both inputs normalize to empty", () => {
-    const result = resolveAdminSlug("ミラクラ", "上昇気流", "event");
-    expect(result).toMatch(/^event-\d+$/);
-  });
+    it("falls back to ${modelPrefix}-{timestamp} when both inputs are absent", () => {
+      const result = resolveCanonicalSlug(null, "", "series");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.slug).toMatch(/^series-\d+$/);
+      }
+    });
 
-  it("falls back to ${modelPrefix}-{timestamp} when both inputs are missing", () => {
-    const result = resolveAdminSlug(null, "", "series");
-    expect(result).toMatch(/^series-\d+$/);
-  });
+    it("ignores non-string rawSlug and uses fallbackSource", () => {
+      const result = resolveCanonicalSlug(42, "Hello World", "event");
+      expect(result).toEqual({ ok: true, slug: "hello-world" });
+    });
 
-  it("never returns an empty string", () => {
-    expect(resolveAdminSlug("", "", "x")).not.toBe("");
-    expect(resolveAdminSlug("★", "★", "x")).not.toBe("");
-    expect(resolveAdminSlug(undefined, "", "x")).not.toBe("");
-  });
-
-  it("ignores non-string rawSlug and uses fallbackSource", () => {
-    expect(resolveAdminSlug(42, "Hello World", "event")).toBe("hello-world");
-    expect(resolveAdminSlug({}, "Hello World", "event")).toBe("hello-world");
+    it("never produces an empty slug on the auto path", () => {
+      const result = resolveCanonicalSlug(undefined, "", "x");
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.slug).not.toBe("");
+    });
   });
 });
