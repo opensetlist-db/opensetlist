@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveAdminSlug } from "@/lib/slug";
+import { isSlugUniqueViolation, resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -83,7 +84,9 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slug = resolveAdminSlug(body.slug, translations[0].name, "event");
+  const slugResult = await resolveCanonicalSlug(body.slug, translations[0].name, "event");
+  if (!slugResult.ok) return badRequest(slugResult.message);
+  const slug = slugResult.slug;
 
   try {
     const event = await prisma.$transaction(async (tx) => {
@@ -131,6 +134,27 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
+    }
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      // EventTranslation has a (eventId, locale) composite unique;
+      // duplicate-locale rows in the form payload land here as
+      // P2002 with a non-slug target. Distinguish so the operator
+      // sees the real cause.
+      if (isSlugUniqueViolation(err.meta?.target)) {
+        return NextResponse.json(
+          {
+            error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
+        { status: 409 }
+      );
     }
     throw err;
   }
