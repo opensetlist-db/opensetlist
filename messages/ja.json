@@ -291,6 +291,8 @@
     "cancel": "キャンセル",
     "report": "通報",
     "reported": "通報済み",
+    "reportConfirmTitle": "この感想を通報しますか？",
+    "reportConfirmDescription": "通報後は取り消せません。",
     "hidden": "通報により非表示",
     "count": "{count, plural, =0 {感想なし} other {#件の感想}}",
     "empty": "まだ感想がありません。最初の感想を残しましょう！",
