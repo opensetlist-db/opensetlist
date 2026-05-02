@@ -126,7 +126,11 @@ export default function SongForm({ initialData }: SongFormProps) {
       router.push("/admin/songs");
       router.refresh();
     } else {
-      alert("저장에 실패했습니다.");
+      // Surface the API's `error` field (e.g. slug collision message)
+      // instead of bouncing every failure through the same generic
+      // alert and forcing the operator to dig in Sentry.
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? "저장에 실패했습니다.");
       setLoading(false);
     }
   }
