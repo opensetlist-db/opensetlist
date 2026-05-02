@@ -81,18 +81,33 @@ function buildIco(layers) {
 
 async function main() {
   const svg = await readFile(SVG_PATH);
-  // Density scales with the target so each layer is rasterized from the
-  // SVG at the correct resolution rather than upsampled from a single
-  // intermediate. The viewBox is 64 px on a side; density = px / 64 * 72
-  // keeps anti-aliasing crisp at 16 (where every pixel counts) and at
-  // 256 (where a low density would smear).
+  // Rasterize the SVG once at the largest target size, then downsample
+  // for each layer from that single high-quality intermediate. libvips
+  // 16x→1x downsampling is excellent, and reading the SVG four times
+  // would cost more than the resize. The previous per-target-density
+  // formula `max(72, (size/64) * 72)` only actually scaled for the 256
+  // layer — the 16/32/48 layers all collapsed to the floor (72), which
+  // CR caught and was right about: the comment promised something the
+  // math didn't deliver. Single-source rasterization is simpler and the
+  // intent is now obvious from the code shape.
+  //
+  // Density: viewBox is 64 px on a side; density = max_size / 64 * 72
+  // produces an intermediate at exactly max_size px (256 here, so 288
+  // DPI). Capped at the libvips default (72) so a hypothetical max_size
+  // ≤ 64 doesn't underrender.
+  const maxSize = Math.max(...SIZES);
+  const density = Math.max(72, Math.ceil((maxSize / 64) * 72));
+  const intermediate = await sharp(svg, { density })
+    .resize(maxSize, maxSize)
+    .png()
+    .toBuffer();
   const layers = await Promise.all(
     SIZES.map(async (size) => ({
       size,
-      png: await sharp(svg, { density: Math.max(72, (size / 64) * 72) })
-        .resize(size, size)
-        .png()
-        .toBuffer(),
+      png:
+        size === maxSize
+          ? intermediate
+          : await sharp(intermediate).resize(size, size).png().toBuffer(),
     })),
   );
   const ico = buildIco(layers);
