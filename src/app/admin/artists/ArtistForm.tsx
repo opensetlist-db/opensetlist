@@ -271,8 +271,22 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   async function saveNewStageIdentities() {
     if (!initialData || stageIdentities.length === 0) return true;
 
-    for (const si of stageIdentities) {
-      if (!si.translations[0]?.name.trim()) continue;
+    // Sequentially POST each new stage identity. If one fails partway
+    // through, prune the already-saved ones from form state so a retry
+    // doesn't resubmit them. Without this the operator hits "save"
+    // again, the server happily creates duplicate StageIdentity rows
+    // (every slug gets a randomUUID(8) suffix server-side, so there's
+    // nothing to dedupe on), and the artist ends up with extra
+    // ghost members the operator then has to manually unlink.
+    const completedIndices = new Set<number>();
+    for (let i = 0; i < stageIdentities.length; i++) {
+      const si = stageIdentities[i];
+      if (!si.translations[0]?.name.trim()) {
+        // Skipped-by-design entries (blank name). Treat as completed
+        // so they're cleared from the pending list on full success.
+        completedIndices.add(i);
+        continue;
+      }
       const res = await fetch(
         `/api/admin/artists/${initialData.id}/stage-identities`,
         {
@@ -281,8 +295,19 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           body: JSON.stringify(si),
         }
       );
-      if (!res.ok) return false;
+      if (!res.ok) {
+        // Prune the items that did persist so the next attempt only
+        // sends the remaining unsaved entries.
+        if (completedIndices.size > 0) {
+          setStageIdentities((prev) =>
+            prev.filter((_, idx) => !completedIndices.has(idx))
+          );
+        }
+        return false;
+      }
+      completedIndices.add(i);
     }
+    setStageIdentities([]);
     return true;
   }
 
