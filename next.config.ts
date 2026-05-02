@@ -27,12 +27,19 @@ export default withSentryConfig(withNextIntl({
   // Same shape of issue for kuroshiro: KuromojiAnalyzer reads its dictionary
   // from `node_modules/kuromoji/dict/*.dat.gz` via a runtime path that the
   // tracer can't see (`serverExternalPackages: ["kuromoji"]` covers the JS
-  // module but not the data files). The /api/admin/songs route uses
-  // generateUniqueSlug → kuroshiro for Japanese-titled songs (e.g. ペレニアル
-  // → "pereniaru"); without the dict files, init throws, the silent
-  // catch in transliterateToRomaji swallows it, and we fall back to
-  // `song-{Date.now()}`. ~17MB of compressed dict; scoped to the only
-  // route that needs it today.
+  // module but not the data files). Without the dict files, kuroshiro
+  // init throws at runtime and the deriveSlug helper falls back to "" /
+  // timestamp slugs.
+  //
+  // Every admin POST route that auto-derives a slug now flows through
+  // deriveSlug (Scope B refactor — see src/lib/slug.ts), so each one
+  // gets the dict alongside its function bundle. ~17MB compressed per
+  // matching function; explicit per-route entries instead of an umbrella
+  // /api/admin/** so routes that don't transliterate (impressions
+  // moderation, CSV import, translation debug, etc.) don't pay the
+  // bundle-size cost. The artists entry covers
+  // /api/admin/artists/[id]/stage-identities/** automatically since
+  // it's a subtree.
   outputFileTracingIncludes: {
     "/api/og/**": [
       ...OG_FONTS.map(({ file }) => `./node_modules/${file}`),
@@ -42,9 +49,11 @@ export default withSentryConfig(withNextIntl({
       "./node_modules/next/dist/compiled/@vercel/og/yoga.wasm",
       "./node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf",
     ],
-    "/api/admin/songs/**": [
-      "./node_modules/kuromoji/dict/*.dat.gz",
-    ],
+    "/api/admin/songs/**": ["./node_modules/kuromoji/dict/*.dat.gz"],
+    "/api/admin/slug-generator/**": ["./node_modules/kuromoji/dict/*.dat.gz"],
+    "/api/admin/artists/**": ["./node_modules/kuromoji/dict/*.dat.gz"],
+    "/api/admin/events/**": ["./node_modules/kuromoji/dict/*.dat.gz"],
+    "/api/admin/event-series/**": ["./node_modules/kuromoji/dict/*.dat.gz"],
   },
 }), {
   // For all available options, see:
