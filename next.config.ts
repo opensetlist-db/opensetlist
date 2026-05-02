@@ -23,6 +23,16 @@ export default withSentryConfig(withNextIntl({
   //      try/catch can run.
   //
   // Include both sets explicitly for every /api/og/* function.
+  //
+  // Same shape of issue for kuroshiro: KuromojiAnalyzer reads its dictionary
+  // from `node_modules/kuromoji/dict/*.dat.gz` via a runtime path that the
+  // tracer can't see (`serverExternalPackages: ["kuromoji"]` covers the JS
+  // module but not the data files). The /api/admin/songs route uses
+  // generateUniqueSlug → kuroshiro for Japanese-titled songs (e.g. ペレニアル
+  // → "pereniaru"); without the dict files, init throws, the silent
+  // catch in transliterateToRomaji swallows it, and we fall back to
+  // `song-{Date.now()}`. ~17MB of compressed dict; scoped to the only
+  // route that needs it today.
   outputFileTracingIncludes: {
     "/api/og/**": [
       ...OG_FONTS.map(({ file }) => `./node_modules/${file}`),
@@ -31,6 +41,9 @@ export default withSentryConfig(withNextIntl({
       "./node_modules/next/dist/compiled/@vercel/og/resvg.wasm",
       "./node_modules/next/dist/compiled/@vercel/og/yoga.wasm",
       "./node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf",
+    ],
+    "/api/admin/songs/**": [
+      "./node_modules/kuromoji/dict/*.dat.gz",
     ],
   },
 }), {

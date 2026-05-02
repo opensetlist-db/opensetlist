@@ -108,12 +108,26 @@ async function getKuroshiro(): Promise<import("kuroshiro").default> {
  * Converts Japanese text to romaji for slug generation.
  * "ハナムスビ" → "hanamusubi"
  * "上昇気流にのせて" → "joushoukiryuuninosete"
+ *
+ * Returns "" on any failure so the caller can fall through to the
+ * timestamp slug. Errors are reported to Sentry with the input text
+ * — silently swallowing was masking a Vercel dict-tracing bug
+ * (kuroshiro init failed because the kuromoji dict files weren't
+ * bundled into the function), and we want any future regression
+ * here to be visible.
  */
 async function transliterateToRomaji(input: string): Promise<string> {
   try {
     const k = await getKuroshiro();
     return await k.convert(input, { to: "romaji", mode: "spaced" });
-  } catch {
+  } catch (e) {
+    // Lazy-import Sentry so this module stays safe to import in
+    // contexts where Sentry isn't initialized (tests, scripts).
+    const Sentry = await import("@sentry/nextjs").catch(() => null);
+    Sentry?.captureException(e, {
+      tags: { source: "transliterateToRomaji" },
+      extra: { input },
+    });
     return "";
   }
 }
