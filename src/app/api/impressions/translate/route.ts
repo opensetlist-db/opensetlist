@@ -85,23 +85,27 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     // Don't log `err` directly — provider SDK errors often echo the request
     // payload (the user's impression text) in their message/cause fields.
-    // Same redaction discipline applies to the Sentry breadcrumb below: only
-    // metadata (provider, locale, error name, length), never content.
+    // The same redaction discipline applies to *every* Sentry sink below.
+    // Specifically, we deliberately do NOT call `Sentry.captureException(err)`
+    // because that would re-leak the redacted fields through err.message /
+    // err.cause / err.stack. Instead we capture a sanitized message with
+    // metadata-only tags + extras, paired with a breadcrumb so the request
+    // trail still shows the failure point.
+    const errorName = err instanceof Error ? err.name : typeof err;
+    const provider = process.env.TRANSLATION_PROVIDER ?? "gemini";
+    const textLength = impression?.content?.length ?? 0;
     Sentry.addBreadcrumb({
       category: "translator",
       level: "error",
       message: "translate_failed",
-      data: {
-        provider: process.env.TRANSLATION_PROVIDER ?? "gemini",
-        sourceLocale,
-        targetLocale,
-        errorName: err instanceof Error ? err.name : typeof err,
-        textLength: impression?.content?.length ?? 0,
-      },
+      data: { provider, sourceLocale, targetLocale, errorName, textLength },
     });
-    console.error("Translator call failed", {
-      name: err instanceof Error ? err.name : typeof err,
+    Sentry.captureMessage("translator.translate_failed", {
+      level: "error",
+      tags: { provider, sourceLocale, targetLocale, errorName },
+      extra: { textLength },
     });
+    console.error("Translator call failed", { name: errorName });
     return NextResponse.json(
       { error: "Translation unavailable" },
       { status: 502 },
