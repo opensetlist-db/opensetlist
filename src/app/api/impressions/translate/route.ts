@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
       data: {
         provider: process.env.TRANSLATION_PROVIDER ?? "gemini",
         sourceLocale,
+        targetLocale,
         errorName: err instanceof Error ? err.name : typeof err,
         textLength: impression?.content?.length ?? 0,
       },
