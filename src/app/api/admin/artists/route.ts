@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   const stageIdentities = parseStageIdentities(body.stageIdentities);
   if (!stageIdentities.ok) return badRequest(stageIdentities.message);
 
-  const slugResult = resolveCanonicalSlug(
+  const slugResult = await resolveCanonicalSlug(
     body.slug,
     translations.value[0]?.name ?? "",
     "artist"

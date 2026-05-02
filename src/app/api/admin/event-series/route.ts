@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  const slugResult = resolveCanonicalSlug(
+  const slugResult = await resolveCanonicalSlug(
     body.slug,
     translations.value[0]?.name ?? "",
     "series"

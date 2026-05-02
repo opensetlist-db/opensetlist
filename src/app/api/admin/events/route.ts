@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   const dupErr = validatePerformerGuestIds(performerIds, guestIds);
   if (dupErr) return dupErr;
 
-  const slugResult = resolveCanonicalSlug(body.slug, translations[0].name, "event");
+  const slugResult = await resolveCanonicalSlug(body.slug, translations[0].name, "event");
   if (!slugResult.ok) return badRequest(slugResult.message);
   const slug = slugResult.slug;
 

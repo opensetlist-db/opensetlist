@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug, generateUniqueSlug } from "@/lib/slug";
+import { generateUniqueSlug, validateCanonicalSlug } from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -62,15 +62,14 @@ export async function POST(request: NextRequest) {
   //
   // Why two paths share the create call: the body validation and the
   // many nested relations are identical; only the slug source differs.
+  // The canonical-input check is shared with every other admin POST
+  // route via validateCanonicalSlug (round-trips through generateSlug;
+  // returns null for non-canonical input rather than silently rewriting
+  // the operator's slug).
   let adminSlug: string | null = null;
   if (typeof body.slug === "string" && body.slug.trim().length > 0) {
-    const trimmed = body.slug.trim();
-    // generateSlug is idempotent on already-canonical input. If the
-    // round-trip changes anything, the input wasn't canonical (had
-    // uppercase, spaces, non-ASCII, leading/trailing hyphens, etc.)
-    // and we reject rather than silently rewriting it.
-    const canonical = generateSlug(trimmed);
-    if (!canonical || canonical !== trimmed) {
+    adminSlug = validateCanonicalSlug(body.slug);
+    if (!adminSlug) {
       return NextResponse.json(
         {
           error:
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    adminSlug = canonical;
   }
 
   // 3 attempts is enough headroom for the auto-gen race without

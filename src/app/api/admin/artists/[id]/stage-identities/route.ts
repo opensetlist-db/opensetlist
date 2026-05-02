@@ -73,7 +73,7 @@ export async function POST(request: NextRequest, { params }: Props) {
   // two stage identities created with the same name (and no explicit slug)
   // would derive identical slugs and trip the @unique constraint. va-${siSlug}
   // inherits the suffix below so the VA RealPerson stays unique too.
-  const siBaseResult = resolveCanonicalSlug(
+  const siBaseResult = await resolveCanonicalSlug(
     body.slug,
     translations.value[0]?.name || name.value,
     "identity"
