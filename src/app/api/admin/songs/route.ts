@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateUniqueSlug, validateCanonicalSlug } from "@/lib/slug";
+import {
+  generateUniqueSlug,
+  isSlugUniqueViolation,
+  validateCanonicalSlug,
+} from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -122,16 +126,38 @@ export async function POST(request: NextRequest) {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === "P2002"
       ) {
+        const slugConflict = isSlugUniqueViolation(e.meta?.target);
+        // SongTranslation has a (songId, locale) composite unique and
+        // SongArtist has a (songId, artistId, role) composite — both
+        // can throw P2002 if the form payload contains duplicates.
+        // Distinguish so admin sees the real cause, and so the
+        // auto-gen retry loop doesn't burn its 3 attempts re-rolling
+        // a slug for a constraint that has nothing to do with slugs.
         if (adminSlug) {
+          if (slugConflict) {
+            return NextResponse.json(
+              {
+                error: `슬러그 '${adminSlug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+              },
+              { status: 409 }
+            );
+          }
           return NextResponse.json(
-            {
-              error: `슬러그 '${adminSlug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
-            },
+            { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
             { status: 409 }
           );
         }
-        // Auto-gen lost the race — re-roll on the next iteration.
-        continue;
+        // Auto-gen path.
+        if (slugConflict) {
+          // Lost the race — re-roll on the next iteration.
+          continue;
+        }
+        // Non-slug uniqueness failure — retrying with a new slug
+        // won't help. Bail with the generic message.
+        return NextResponse.json(
+          { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
+          { status: 409 }
+        );
       }
       throw e;
     }

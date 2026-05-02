@@ -4,7 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { ArtistType, GroupCategory } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug, resolveCanonicalSlug } from "@/lib/slug";
+import { generateSlug, isSlugUniqueViolation, resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -169,19 +169,28 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(serializeBigInt(artist), { status: 201 });
   } catch (e) {
-    // P2002 here covers both the parent artist slug and the nested
-    // stage-identity / VA real-person slugs. The latter two have a
-    // randomUUID suffix so collision is statistically negligible, but
-    // the catch is defensive against the parent artist slug colliding
-    // (admin-supplied or auto-derived). Surface a 409 so the form
-    // shows a useful message instead of a generic 500.
+    // P2002 here covers many unique constraints, not just slug: the
+    // parent artist slug, the nested StageIdentity / RealPerson slugs
+    // (UUID-suffixed so practically never collide), the
+    // ArtistTranslation / StageIdentityTranslation locale composites,
+    // and the ArtistGroup / StageIdentityArtist join-table uniques.
+    // Inspect e.meta?.target so a duplicate-translation-locale or
+    // group-link error doesn't get misreported as a slug collision.
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2002"
     ) {
+      if (isSlugUniqueViolation(e.meta?.target)) {
+        return NextResponse.json(
+          {
+            error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         {
-          error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+          error: "중복된 항목이 있습니다. 입력값을 확인해 주세요.",
         },
         { status: 409 }
       );
