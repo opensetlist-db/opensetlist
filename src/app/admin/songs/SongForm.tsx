@@ -116,21 +116,30 @@ export default function SongForm({ initialData }: SongFormProps) {
       : "/api/admin/songs";
     const method = initialData ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      router.push("/admin/songs");
-      router.refresh();
-    } else {
+      if (res.ok) {
+        router.push("/admin/songs");
+        router.refresh();
+        return;
+      }
+
       // Surface the API's `error` field (e.g. slug collision message)
       // instead of bouncing every failure through the same generic
       // alert and forcing the operator to dig in Sentry.
       const body = await res.json().catch(() => null);
       alert(body?.error ?? "저장에 실패했습니다.");
+    } catch {
+      // Network error / fetch reject — without this the submit button
+      // stays locked until refresh because setLoading(false) lived on
+      // the !res.ok branch only.
+      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+    } finally {
       setLoading(false);
     }
   }

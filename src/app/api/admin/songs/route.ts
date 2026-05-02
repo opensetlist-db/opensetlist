@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateUniqueSlug, resolveAdminSlug } from "@/lib/slug";
+import { generateSlug, generateUniqueSlug } from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -43,68 +43,110 @@ export async function POST(request: NextRequest) {
     artistCredits,
   } = body;
 
-  // Slug resolution. Two failure modes the previous `generateSlug(title)`
-  // call hit in production:
-  //   1. Japanese/Korean titles (e.g. "ハナムスビ") strip to "" — every song
-  //      after the first to claim "" hits P2002 on the @unique slug.
-  //   2. Variants legitimately share originalTitle ("Dream Believers" +
-  //      "Dream Believers (SAKURA Ver.)") and would collide too.
-  // generateUniqueSlug transliterates Japanese via kuroshiro and appends
-  // -2/-3 on collision, mirroring the pattern already used by artists.
-  // resolveAdminSlug is for the explicit-override path: an admin-supplied
-  // slug is taken verbatim and surfaces a 409 below if it collides, so
-  // the operator can pick a different one rather than us silently mangling
-  // their input.
-  const slug = body.slug
-    ? resolveAdminSlug(body.slug, originalTitle, "song")
-    : await generateUniqueSlug(originalTitle, "song");
-
-  try {
-    const song = await prisma.song.create({
-      data: {
-        slug,
-        originalTitle,
-        originalLanguage: originalLanguage || "ja",
-        variantLabel: variantLabel || null,
-        sourceNote: sourceNote || null,
-        releaseDate: releaseDate ? new Date(releaseDate) : null,
-        baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
-        translations: {
-          create: translations.map(
-            (t: { locale: string; title: string }) => ({
-              locale: t.locale,
-              title: t.title,
-            })
-          ),
-        },
-        artists: artistCredits?.length
-          ? {
-              create: artistCredits.map(
-                (ac: { artistId: number; role: string }) => ({
-                  artistId: BigInt(ac.artistId),
-                  role: ac.role,
-                })
-              ),
-            }
-          : undefined,
-      },
-      include: { translations: true },
-    });
-    return NextResponse.json(serializeBigInt(song), { status: 201 });
-  } catch (e) {
-    // Defence in depth: a race between generateUniqueSlug's existence
-    // check and the create, or an admin-supplied slug that collides,
-    // both surface as P2002 here. Return a clear 409 so the form can
-    // show a useful message instead of bouncing through a generic 500.
-    if (
-      e instanceof Prisma.PrismaClientKnownRequestError &&
-      e.code === "P2002"
-    ) {
+  // Slug resolution. Two paths:
+  //
+  //   - Admin-supplied (body.slug): treat as verbatim. Validate that
+  //     the input is already in canonical slug form (lowercase
+  //     alphanumeric + hyphens) by round-tripping through generateSlug
+  //     and rejecting if it doesn't match — this avoids silently
+  //     normalizing/mangling the operator's input. If the slug
+  //     collides on the @unique constraint, surface a 409 so the
+  //     operator picks a different one.
+  //
+  //   - Auto-generated: generateUniqueSlug transliterates Japanese
+  //     via kuroshiro ("ハナムスビ" → "hanamusubi"), falls back to
+  //     song-{ts} if even that's empty, and appends -2/-3 on
+  //     existence checks. The check-then-insert is racy under
+  //     concurrent requests, so we wrap the create in a small retry
+  //     loop and re-roll the slug on P2002 instead of returning 409.
+  //
+  // Why two paths share the create call: the body validation and the
+  // many nested relations are identical; only the slug source differs.
+  let adminSlug: string | null = null;
+  if (typeof body.slug === "string" && body.slug.trim().length > 0) {
+    const trimmed = body.slug.trim();
+    // generateSlug is idempotent on already-canonical input. If the
+    // round-trip changes anything, the input wasn't canonical (had
+    // uppercase, spaces, non-ASCII, leading/trailing hyphens, etc.)
+    // and we reject rather than silently rewriting it.
+    const canonical = generateSlug(trimmed);
+    if (!canonical || canonical !== trimmed) {
       return NextResponse.json(
-        { error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.` },
-        { status: 409 }
+        {
+          error:
+            "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-song-title).",
+        },
+        { status: 400 }
       );
     }
-    throw e;
+    adminSlug = canonical;
   }
+
+  // 3 attempts is enough headroom for the auto-gen race without
+  // turning a runaway collision into an unbounded loop.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const slug = adminSlug ?? (await generateUniqueSlug(originalTitle, "song"));
+    try {
+      const song = await prisma.song.create({
+        data: {
+          slug,
+          originalTitle,
+          originalLanguage: originalLanguage || "ja",
+          variantLabel: variantLabel || null,
+          sourceNote: sourceNote || null,
+          releaseDate: releaseDate ? new Date(releaseDate) : null,
+          baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
+          translations: {
+            create: translations.map(
+              (t: { locale: string; title: string }) => ({
+                locale: t.locale,
+                title: t.title,
+              })
+            ),
+          },
+          artists: artistCredits?.length
+            ? {
+                create: artistCredits.map(
+                  (ac: { artistId: number; role: string }) => ({
+                    artistId: BigInt(ac.artistId),
+                    role: ac.role,
+                  })
+                ),
+              }
+            : undefined,
+        },
+        include: { translations: true },
+      });
+      return NextResponse.json(serializeBigInt(song), { status: 201 });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        if (adminSlug) {
+          return NextResponse.json(
+            {
+              error: `슬러그 '${adminSlug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+            },
+            { status: 409 }
+          );
+        }
+        // Auto-gen lost the race — re-roll on the next iteration.
+        continue;
+      }
+      throw e;
+    }
+  }
+
+  // All attempts collided on auto-gen. Extremely unlikely outside of
+  // a test that hammers the same title concurrently, but worth a
+  // clear response instead of a hung request.
+  return NextResponse.json(
+    {
+      error:
+        "슬러그 생성 중 충돌이 계속 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    },
+    { status: 409 }
+  );
 }
