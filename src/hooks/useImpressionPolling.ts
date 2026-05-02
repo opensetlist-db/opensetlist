@@ -8,7 +8,7 @@ import type { Impression } from "@/components/EventImpressions";
  *
  * Polling intentionally fetches only the newest page (no cursor) and
  * does NOT request `?includeTotal=1` — the count() query would run
- * every 5s per concurrent viewer for a UX-only metric, so it's
+ * every 30s per concurrent viewer for a UX-only metric, so it's
  * skipped on the hot path. `totalCount` is therefore omitted from
  * the polled payload; consumers that display a total maintain it
  * themselves via the SSR seed + load-more refresh + optimistic
@@ -17,6 +17,13 @@ import type { Impression } from "@/components/EventImpressions";
  * `nextCursor` is the cursor anchored at the 50th most recent
  * impression in this poll's response — null when the event has
  * fewer than `IMPRESSION_PAGE_SIZE` total impressions.
+ *
+ * Default cadence is 30s (was 5s before the F14 launch-day-retro
+ * mitigation). Impressions are conversational, not real-time —
+ * cross-user freshness of ≤ 33s is fine for a comment thread, and
+ * the submitter's own UX is unaffected because `EventImpressions`
+ * merges the POST response synchronously. See the F14 entry in
+ * wiki/launch-day-retros.md.
  */
 export interface ImpressionPollPayload {
   impressions: Impression[];
@@ -48,7 +55,7 @@ interface UseImpressionPollingResult {
 export function useImpressionPolling({
   eventId,
   enabled,
-  intervalMs = 5000,
+  intervalMs = 30_000,
   onUpdate,
 }: UseImpressionPollingOptions): UseImpressionPollingResult {
   const [impressions, setImpressions] = useState<Impression[] | null>(null);
