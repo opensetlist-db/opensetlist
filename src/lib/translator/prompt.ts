@@ -7,16 +7,37 @@ export const SYSTEM_PROMPT = HASUNOSORA_GLOSSARY_PROMPT;
 
 export type MultilingualOutput = { ko: string; ja: string; en: string };
 
-// The system prompt encodes direction rules and output format. We still
-// prepend a single-line `source_locale: <code>` hint because Latin-script
-// titles and short strings that exist verbatim across ko/ja/en are hard
-// for the model to detect on content alone — without the hint the source
-// row can get rewritten or the non-source rows drift.
+// The system prompt is a glossary first and a translation instruction
+// second — section [1] (고유명사 사전) consumes ~95% of its 1073 tokens.
+// On long inputs that mention dictionary entries the framing is anchored
+// and the model translates idiomatically. On inputs with zero glossary
+// matches (e.g. a generic Korean verb like `시작한다`), the model's
+// interpretation can flip to "extract glossary entries" and emit `[]`,
+// which the parser correctly rejects → 502 to the user (F13, 2026-05-02).
 //
-// The hint lives on the user turn, NOT the system prompt, so it does not
-// perturb the cached prefix (implicit cache still hits).
+// We can't edit the system prompt to clarify the task — its >1024 token
+// count is the implicit-cache invariant (see prompts/hasunosora.ts).
+// Instead, we disambiguate on the user turn, which is NOT cached, so we
+// can spend tokens here freely without perturbing cache hits:
+//   1. `source_locale:` line — the original hint. Latin-script titles and
+//      short strings that exist verbatim across ko/ja/en are hard for the
+//      model to detect on content alone; without the hint the source row
+//      can get rewritten or the non-source rows drift.
+//   2. `task:` line — names the operation explicitly ("translate ...
+//      into ko, ja, and en") and pins the output shape ("Always return
+//      one JSON object inside an array ... even when the text contains
+//      no glossary entries"). The always-array clause is the load-bearing
+//      part: it tells the model that `[]` is never a valid response.
+//   3. `text:` label — separates the task framing from user content so
+//      the model can't read the `task:` clause as part of the input.
 export function buildUserInput(text: string, sourceLocale: string): string {
-  return `source_locale: ${sourceLocale}\n${text}`;
+  return (
+    `source_locale: ${sourceLocale}\n` +
+    `task: translate the impression text below into ko, ja, and en. ` +
+    `Always return one JSON object inside an array per the format rule, ` +
+    `even when the text contains no glossary entries.\n` +
+    `text:\n${text}`
+  );
 }
 
 // Three-language JSON output ≈ 3× source length + brace/quote overhead.

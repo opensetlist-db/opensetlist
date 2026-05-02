@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, type ImpressionLocale } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
@@ -84,6 +85,20 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     // Don't log `err` directly — provider SDK errors often echo the request
     // payload (the user's impression text) in their message/cause fields.
+    // Same redaction discipline applies to the Sentry breadcrumb below: only
+    // metadata (provider, locale, error name, length), never content.
+    Sentry.addBreadcrumb({
+      category: "translator",
+      level: "error",
+      message: "translate_failed",
+      data: {
+        provider: process.env.TRANSLATION_PROVIDER ?? "gemini",
+        sourceLocale,
+        targetLocale,
+        errorName: err instanceof Error ? err.name : typeof err,
+        textLength: impression?.content?.length ?? 0,
+      },
+    });
     console.error("Translator call failed", {
       name: err instanceof Error ? err.name : typeof err,
     });
