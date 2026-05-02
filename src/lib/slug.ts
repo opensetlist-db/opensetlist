@@ -86,19 +86,69 @@ export async function resolveCanonicalSlug(
   fallbackSource: string,
   modelPrefix: string
 ): Promise<{ ok: true; slug: string } | { ok: false; message: string }> {
-  if (typeof rawSlug === "string" && rawSlug.trim()) {
-    const validated = validateCanonicalSlug(rawSlug);
-    if (!validated) {
-      return {
-        ok: false,
-        message:
-          "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-slug).",
-      };
+  // Three-way classification of rawSlug, in order of strictness:
+  //
+  //   1. Truly absent (undefined / null / empty / whitespace-only string)
+  //      → auto-path. Both `null` and `""` are common JSON conventions for
+  //      "no value", and the form layer leaves them empty when the operator
+  //      doesn't override the slug. Treat all four as "no slug provided."
+  //
+  //   2. A non-string of any other shape (number, object, array, boolean)
+  //      → 400. The contract is "if you supply a slug, it must be a
+  //      canonical string"; a stray `{ slug: 42 }` from a typo or a wrong
+  //      content-type should surface as invalid input, not silently fall
+  //      through to auto-gen.
+  //
+  //   3. A non-empty string → validate via validateCanonicalSlug; 400 if
+  //      not already canonical (no silent rewriting), pass-through if it is.
+  if (rawSlug === undefined || rawSlug === null) {
+    // Case 1.
+  } else if (typeof rawSlug === "string") {
+    if (rawSlug.trim()) {
+      // Case 3.
+      const validated = validateCanonicalSlug(rawSlug);
+      if (!validated) {
+        return {
+          ok: false,
+          message:
+            "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-slug).",
+        };
+      }
+      return { ok: true, slug: validated };
     }
-    return { ok: true, slug: validated };
+    // Empty / whitespace-only string → Case 1.
+  } else {
+    // Case 2.
+    return {
+      ok: false,
+      message:
+        "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-slug).",
+    };
   }
   const derived = await deriveSlug(fallbackSource);
   return { ok: true, slug: derived || `${modelPrefix}-${Date.now()}` };
+}
+
+/**
+ * Inspect a `PrismaClientKnownRequestError.meta.target` field to decide
+ * whether a P2002 unique-constraint violation came from the `slug`
+ * column specifically. Routes with nested creates (Artist nests
+ * StageIdentity + RealPerson + ArtistGroup link; Event/EventSeries/Song
+ * nest translations with locale composite uniques; etc.) raise P2002
+ * for many constraints, not just `slug` — so a blanket
+ * "슬러그 '${slug}'가 이미 사용 중입니다" message is misleading on those
+ * other paths.
+ *
+ * Prisma's `target` shape varies: it can be a `string[]` of column names
+ * (typical with the PG adapter), a single string with the constraint
+ * name (e.g. `"Song_slug_key"`), or unset. Substring-match `"slug"` to
+ * cover all three.
+ */
+export function isSlugUniqueViolation(target: unknown): boolean {
+  if (Array.isArray(target)) {
+    return target.some((t) => typeof t === "string" && t.includes("slug"));
+  }
+  return typeof target === "string" && target.includes("slug");
 }
 
 type SlugModel = "artist" | "song" | "event" | "eventSeries" | "album";

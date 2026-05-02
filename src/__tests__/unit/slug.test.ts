@@ -190,8 +190,22 @@ describe("resolveCanonicalSlug", () => {
       }
     });
 
-    it("ignores non-string rawSlug and uses fallbackSource", async () => {
-      const result = await resolveCanonicalSlug(42, "Hello World", "event");
+    it("rejects non-string rawSlug (number, object, array, boolean) with 400", async () => {
+      // Per CR feedback: a stray `{ slug: 42 }` from a typo should surface
+      // as invalid input, not silently fall through to auto-gen. The
+      // contract is "if you supply a slug, it must be a canonical string."
+      expect((await resolveCanonicalSlug(42, "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug({}, "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug([], "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug(true, "Hello World", "event")).ok).toBe(false);
+    });
+
+    it("treats null as 'no slug provided' (Case 1, auto-path)", async () => {
+      // null is a common JSON convention for "no value"; pair it with
+      // undefined and empty/whitespace-string as the absent class so
+      // form layers that explicitly null an unfilled field still
+      // get auto-derivation.
+      const result = await resolveCanonicalSlug(null, "Hello World", "event");
       expect(result).toEqual({ ok: true, slug: "hello-world" });
     });
 
