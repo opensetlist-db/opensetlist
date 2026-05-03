@@ -163,12 +163,18 @@ export function EventImpressions({
 
   // Polling delivers the newest page (no cursor) and intentionally
   // does NOT request `?includeTotal=1` — running an event-wide
-  // `count()` every 5s per concurrent viewer for a UX-only metric
+  // `count()` every 30s per concurrent viewer for a UX-only metric
   // is wasted DB hot-path cost. Merge polled impressions into the
   // accumulated list (older loaded pages stay put, new arrivals
   // slide in at the top) and let `totalCount` drift slightly until
   // the next "see older" click refreshes it. Optimistic increments
   // in `handleSubmit` / `handleReport` cover the user's own actions.
+  //
+  // Cadence is the hook's default (30s as of F14 — was 5s before
+  // the launch-day-retro mitigation). Cross-user impression
+  // freshness of ≤ 33s is fine for a conversational comment
+  // thread; the submitter's own comment surfaces the instant
+  // `handleSubmit` returns (no polling delay).
   useImpressionPolling({
     eventId,
     enabled: isOngoing,

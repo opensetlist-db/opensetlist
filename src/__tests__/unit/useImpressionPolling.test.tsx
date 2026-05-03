@@ -28,20 +28,25 @@ describe("useImpressionPolling", () => {
     vi.restoreAllMocks();
   });
 
-  it("polls every 5 seconds while enabled with cache: no-store", async () => {
+  it("polls at the default 30s cadence while enabled with cache: no-store", async () => {
+    // No `intervalMs` override here — exercises the hook's default,
+    // which is the load-bearing value in production. The default
+    // dropped from 5s → 30s as part of the F14 launch-day-retro
+    // mitigation (see wiki/launch-day-retros.md#F14). If a regression
+    // ever drops this back to 5s, the audience-arrival ramp would
+    // re-trigger Supabase pooler EMAXCONN.
     renderHook(() =>
       useImpressionPolling({
         eventId: "1",
         enabled: true,
-        intervalMs: 5000,
       }),
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(30_000);
     });
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(30_000);
     });
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
