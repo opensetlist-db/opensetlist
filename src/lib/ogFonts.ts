@@ -81,8 +81,10 @@ let inflight: Promise<readonly OgFont[]> | null = null;
 // negative-caches scrape failures against the URL for ~7 days, so one
 // cold-start I/O blip translates to a week of broken share previews
 // for that event. The cost-benefit is asymmetric: rendering with 10/11
-// fonts (or even 0/11, falling back to @vercel/og's bundled
-// Geist-Regular.ttf) is always better than a no-image card. F15
+// fonts (or even 0/11, falling back to the `Geist-Regular.ttf` that
+// ships inside `node_modules/next/dist/compiled/@vercel/og/` — Turbopack
+// rewrites @vercel/og imports to Next's compiled copy, which bundles
+// Geist alongside the JS) is always better than a no-image card. F15
 // retro: this exact failure mode took out the launch-day and Day-2
 // tweets on 2026-05-02 / 2026-05-03.
 async function readFontWithTimeout(
@@ -112,8 +114,10 @@ async function readFontWithTimeout(
 // Never throws. On full success returns all 11 fonts; on partial failure
 // returns the subset that loaded and emits a Sentry message so we can
 // see in production whether a specific font keeps timing out. On total
-// failure returns `[]` and `@vercel/og` falls back to its bundled
-// Geist-Regular.ttf for a Latin-only render.
+// failure returns `[]` and `@vercel/og` falls back to the
+// `Geist-Regular.ttf` Next bundles inside its compiled @vercel/og copy
+// (see the readFontWithTimeout comment above) — Latin-only render, but
+// the bare OPENSETLIST card still produces a valid PNG response.
 export async function loadOgFonts(): Promise<OgFont[]> {
   if (cachedFonts) return [...cachedFonts];
   if (!inflight) {

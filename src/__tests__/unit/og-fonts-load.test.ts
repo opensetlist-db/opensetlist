@@ -79,10 +79,13 @@ describe("loadOgFonts — cold-start hardening", () => {
   });
 
   it("skips a single failing font and reports the missing name to Sentry", async () => {
-    const { OG_FONTS } = await import("@/lib/ogFonts");
+    // Pull OG_FONTS from the same fresh module instance the test will
+    // exercise so the indices match even if the constant ever stops
+    // being structurally identical across imports. path.join normalizes
+    // `/` → `\` on Windows, so compare against the basename rather than
+    // the configured POSIX-style path.
+    const { loadOgFonts, OG_FONTS } = await importFresh();
     const failingFontName = OG_FONTS[2].name; // NotoSansJP — a critical CJK font
-    // path.join normalizes `/` → `\` on Windows, so compare against the
-    // basename rather than the configured POSIX-style path.
     const failingBasename = OG_FONTS[2].file.split("/").pop()!;
 
     readFileMock.mockImplementation((p: string) => {
@@ -92,7 +95,6 @@ describe("loadOgFonts — cold-start hardening", () => {
       return Promise.resolve(fontBuffer(p.length));
     });
 
-    const { loadOgFonts } = await importFresh();
     const fonts = await loadOgFonts();
 
     expect(fonts).toHaveLength(OG_FONTS.length - 1);
@@ -112,7 +114,7 @@ describe("loadOgFonts — cold-start hardening", () => {
   });
 
   it("treats a hung readFile as a failure once the timeout elapses", async () => {
-    const { OG_FONTS } = await import("@/lib/ogFonts");
+    const { loadOgFonts, OG_FONTS } = await importFresh();
     const hangingFontName = OG_FONTS[1].name; // NotoSansKR
     const hangingBasename = OG_FONTS[1].file.split("/").pop()!;
 
@@ -124,7 +126,6 @@ describe("loadOgFonts — cold-start hardening", () => {
       return Promise.resolve(fontBuffer(p.length));
     });
 
-    const { loadOgFonts } = await importFresh();
     const promise = loadOgFonts();
     // Drain microtasks so the 10 successful reads resolve, then advance
     // past the 5s timeout for the one hung read.
