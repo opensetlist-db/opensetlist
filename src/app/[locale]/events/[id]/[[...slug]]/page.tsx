@@ -332,27 +332,92 @@ async function getTrendingSongs(
 
   const itemIds = groups.map((g) => g.setlistItemId);
 
-  // Same `[locale, "ja"]` translation filter as `getEvent` above —
-  // trims the per-song translation join to the requested locale plus
-  // the canonical-original safety net. `displayOriginalTitle` (called
-  // below) does a strict locale lookup that falls through to the
-  // parent `originalTitle` when no row matches, so the filter is safe.
-  const items = await prisma.setlistItem.findMany({
-    where: { id: { in: itemIds } },
-    include: {
-      songs: {
-        include: {
-          song: {
-            include: {
-              translations: { where: { locale: { in: [locale, "ja"] } } },
-            },
-          },
-        },
-        orderBy: { order: "asc" },
-        take: 1,
-      },
-    },
-  });
+  // The previous Prisma `findMany` shape — `setlistItem.findMany({
+  // include: { songs: { include: { song: { include: { translations
+  // }}}, take: 1 }}})` — emitted 4 sequential SELECTs (SetlistItem,
+  // SetlistItemSong, Song, SongTranslation), each paying the per-
+  // roundtrip floor. Confirmed via `log: ["query"]` instrumentation
+  // (~624ms warm for 3 IDs against a ~155ms floor — exactly 4×).
+  //
+  // We don't render anything from SetlistItem itself in this helper;
+  // it was only acting as a parent for `songs[0]?.song`. Skipping it
+  // and querying via raw SQL with one LEFT JOIN to SongTranslation
+  // collapses the 4 SELECTs into 1 — ~470ms saved on the warm path.
+  //
+  // The DISTINCT ON + ORDER BY clause picks the lowest-`order`
+  // SetlistItemSong row per setlistItemId, mirroring the previous
+  // `take: 1` after `orderBy: { order: "asc" }` semantics.
+  type TrendingSongRow = {
+    setlistItemId: bigint;
+    songId: bigint;
+    songSlug: string;
+    songOriginalTitle: string;
+    songOriginalLanguage: string;
+    songVariantLabel: string | null;
+    translationLocale: string | null;
+    translationTitle: string | null;
+    translationVariantLabel: string | null;
+  };
+  const rows = await prisma.$queryRaw<TrendingSongRow[]>`
+    SELECT
+      first_song."setlistItemId",
+      s.id AS "songId",
+      s.slug AS "songSlug",
+      s."originalTitle" AS "songOriginalTitle",
+      s."originalLanguage" AS "songOriginalLanguage",
+      s."variantLabel" AS "songVariantLabel",
+      st.locale AS "translationLocale",
+      st.title AS "translationTitle",
+      st."variantLabel" AS "translationVariantLabel"
+    FROM (
+      SELECT DISTINCT ON ("setlistItemId") "setlistItemId", "songId"
+      FROM "SetlistItemSong"
+      WHERE "setlistItemId" = ANY(${itemIds}::bigint[])
+      ORDER BY "setlistItemId", "order" ASC
+    ) AS first_song
+    JOIN "Song" s ON s.id = first_song."songId"
+    LEFT JOIN "SongTranslation" st
+      ON st."songId" = s.id
+      AND st.locale = ANY(ARRAY[${locale}, 'ja'])
+  `;
+
+  // Reconstruct the `{ id, songs: [{ song: { ..., translations[] }}] }`
+  // shape the rest of this function expects. One row per (item, song,
+  // translation) — group by setlistItemId, dedupe translations.
+  type SongInfo = {
+    id: bigint;
+    slug: string;
+    originalTitle: string;
+    originalLanguage: string;
+    variantLabel: string | null;
+    translations: {
+      locale: string;
+      title: string;
+      variantLabel: string | null;
+    }[];
+  };
+  const songByItemId = new Map<bigint, SongInfo>();
+  for (const row of rows) {
+    let info = songByItemId.get(row.setlistItemId);
+    if (!info) {
+      info = {
+        id: row.songId,
+        slug: row.songSlug,
+        originalTitle: row.songOriginalTitle,
+        originalLanguage: row.songOriginalLanguage,
+        variantLabel: row.songVariantLabel,
+        translations: [],
+      };
+      songByItemId.set(row.setlistItemId, info);
+    }
+    if (row.translationLocale && row.translationTitle !== null) {
+      info.translations.push({
+        locale: row.translationLocale,
+        title: row.translationTitle,
+        variantLabel: row.translationVariantLabel,
+      });
+    }
+  }
 
   const typeBreakdown = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId", "reactionType"],
@@ -368,8 +433,7 @@ async function getTrendingSongs(
   }
 
   return groups.map((g) => {
-    const item = items.find((i) => i.id === g.setlistItemId);
-    const song = item?.songs[0]?.song;
+    const song = songByItemId.get(g.setlistItemId);
     // Original-primary title display — same cascade as <SetlistRow>
     // so the trending card reads "originalTitle (sub: localizedTitle)"
     // consistently with the main setlist below it. Items without a
