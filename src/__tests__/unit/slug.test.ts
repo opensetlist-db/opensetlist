@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { generateSlug, resolveAdminSlug } from "@/lib/slug";
+import {
+  deriveSlug,
+  generateSlug,
+  resolveCanonicalSlug,
+  validateCanonicalSlug,
+} from "@/lib/slug";
 
 describe("generateSlug", () => {
   it("lowercases and replaces spaces with hyphens", () => {
@@ -36,41 +41,208 @@ describe("generateSlug", () => {
   });
 });
 
-describe("resolveAdminSlug", () => {
-  it("normalizes admin-supplied slug (trim + generateSlug)", () => {
-    expect(resolveAdminSlug("  My Slug  ", "fallback", "event")).toBe("my-slug");
+describe("validateCanonicalSlug", () => {
+  it("accepts an already-canonical slug verbatim", () => {
+    expect(validateCanonicalSlug("my-slug")).toBe("my-slug");
   });
 
-  it("falls back to fallbackSource when rawSlug is missing", () => {
-    expect(resolveAdminSlug(undefined, "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
+  it("trims surrounding whitespace before validating", () => {
+    expect(validateCanonicalSlug("  my-slug  ")).toBe("my-slug");
   });
 
-  it("falls back to fallbackSource when rawSlug is blank", () => {
-    expect(resolveAdminSlug("   ", "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
+  it("returns null for uppercase input", () => {
+    expect(validateCanonicalSlug("My-Slug")).toBeNull();
   });
 
-  it("falls back to fallbackSource when rawSlug normalizes to empty (non-ASCII)", () => {
-    expect(resolveAdminSlug("ミラクラ", "Cerise Bouquet", "artist")).toBe("cerise-bouquet");
+  it("returns null for input with spaces", () => {
+    expect(validateCanonicalSlug("my slug")).toBeNull();
   });
 
-  it("falls back to ${modelPrefix}-{timestamp} when both inputs normalize to empty", () => {
-    const result = resolveAdminSlug("ミラクラ", "上昇気流", "event");
-    expect(result).toMatch(/^event-\d+$/);
+  it("returns null for non-ASCII input", () => {
+    expect(validateCanonicalSlug("ミラクラ")).toBeNull();
   });
 
-  it("falls back to ${modelPrefix}-{timestamp} when both inputs are missing", () => {
-    const result = resolveAdminSlug(null, "", "series");
-    expect(result).toMatch(/^series-\d+$/);
+  it("returns null for leading/trailing hyphens", () => {
+    expect(validateCanonicalSlug("-foo")).toBeNull();
+    expect(validateCanonicalSlug("foo-")).toBeNull();
   });
 
-  it("never returns an empty string", () => {
-    expect(resolveAdminSlug("", "", "x")).not.toBe("");
-    expect(resolveAdminSlug("★", "★", "x")).not.toBe("");
-    expect(resolveAdminSlug(undefined, "", "x")).not.toBe("");
+  it("returns null for special characters", () => {
+    expect(validateCanonicalSlug("my-slug!")).toBeNull();
   });
 
-  it("ignores non-string rawSlug and uses fallbackSource", () => {
-    expect(resolveAdminSlug(42, "Hello World", "event")).toBe("hello-world");
-    expect(resolveAdminSlug({}, "Hello World", "event")).toBe("hello-world");
+  it("returns null for blank or non-string input", () => {
+    expect(validateCanonicalSlug("")).toBeNull();
+    expect(validateCanonicalSlug("   ")).toBeNull();
+    expect(validateCanonicalSlug(undefined)).toBeNull();
+    expect(validateCanonicalSlug(null)).toBeNull();
+    expect(validateCanonicalSlug(42)).toBeNull();
+  });
+});
+
+describe("deriveSlug", () => {
+  // These tests load kuroshiro for the transliteration cases, adding
+  // ~1-2s to the suite duration. Worth it: deriveSlug is the single
+  // source of truth for "what slug does this name produce" and the
+  // contract is exactly what the slug-generator preview, every admin
+  // POST auto-path, and generateUniqueSlug all depend on.
+
+  it("returns ASCII slug directly when input is ASCII-derivable", async () => {
+    expect(await deriveSlug("Cerise Bouquet")).toBe("cerise-bouquet");
+  });
+
+  it("preserves mixed-ASCII through the ASCII path (no transliteration)", async () => {
+    expect(await deriveSlug("6th Live BGP")).toBe("6th-live-bgp");
+  });
+
+  it("transliterates Japanese katakana to romaji", async () => {
+    expect(await deriveSlug("ペレニアル")).toBe("pereniaru");
+  });
+
+  it("transliterates Japanese with mixed kanji + hiragana", async () => {
+    // The original Vercel-bug repro from the user's prod test.
+    expect(await deriveSlug("ハナムスビ")).toBe("hanamusubi");
+  });
+
+  it("transliterates Korean (Hangul) via es-hangul", async () => {
+    // Pre-KO-support these all produced empty (generateSlug strips
+    // non-ASCII; kuroshiro left Hangul as-is, which strips again).
+    // After: routed through `es-hangul.romanize` before kuroshiro.
+    expect(await deriveSlug("테스트아티스트")).toBe("teseuteuatiseuteu");
+    expect(await deriveSlug("테스트이벤트")).toBe("teseuteuibenteu");
+    expect(await deriveSlug("테스트시리즈")).toBe("teseuteusirijeu");
+  });
+
+  it("transliterates short Korean names without producing empty slugs", async () => {
+    // F19 user-visible regression case: short KO names that previously
+    // fell through to `${model}-${ts}` because ASCII strip + kuroshiro
+    // both yielded "".
+    expect(await deriveSlug("페렌")).toBe("peren");
+  });
+
+  it("does not invoke es-hangul on non-Hangul input (kuroshiro still wins for JP)", async () => {
+    // Sanity guard: KO detection must be Hangul-specific, not "any
+    // non-ASCII." Otherwise pure-JP names would route through romanize
+    // (which leaves them unchanged) and kuroshiro would never run.
+    expect(await deriveSlug("ペレニアル")).toBe("pereniaru");
+  });
+
+  it("returns empty when ASCII, Hangul, and JP transliteration all produce nothing", async () => {
+    // All-symbol input strips at every stage.
+    expect(await deriveSlug("★★★")).toBe("");
+  });
+
+  it("returns empty for empty input", async () => {
+    expect(await deriveSlug("")).toBe("");
+  });
+});
+
+describe("resolveCanonicalSlug", () => {
+  describe("admin-supplied path (verbatim, strict)", () => {
+    it("accepts an already-canonical slug verbatim", async () => {
+      const result = await resolveCanonicalSlug("my-slug", "fallback", "event");
+      expect(result).toEqual({ ok: true, slug: "my-slug" });
+    });
+
+    it("trims surrounding whitespace before validating", async () => {
+      const result = await resolveCanonicalSlug("  my-slug  ", "fallback", "event");
+      expect(result).toEqual({ ok: true, slug: "my-slug" });
+    });
+
+    it("rejects uppercase input rather than silently lowercasing", async () => {
+      const result = await resolveCanonicalSlug("My-Slug", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects spaces in admin input", async () => {
+      const result = await resolveCanonicalSlug("my slug", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects non-ASCII admin input", async () => {
+      const result = await resolveCanonicalSlug("ミラクラ", "fallback", "event");
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects leading/trailing hyphens", async () => {
+      expect((await resolveCanonicalSlug("-foo", "fallback", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug("foo-", "fallback", "event")).ok).toBe(false);
+    });
+
+    it("returns a Korean error message on rejection", async () => {
+      const result = await resolveCanonicalSlug("My Slug!", "fallback", "event");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.message).toMatch(/슬러그/);
+      }
+    });
+  });
+
+  describe("auto-fallback path (no admin slug)", () => {
+    it("derives from fallbackSource when rawSlug is missing", async () => {
+      const result = await resolveCanonicalSlug(undefined, "Cerise Bouquet", "artist");
+      expect(result).toEqual({ ok: true, slug: "cerise-bouquet" });
+    });
+
+    it("derives from fallbackSource when rawSlug is blank", async () => {
+      const result = await resolveCanonicalSlug("   ", "Cerise Bouquet", "artist");
+      expect(result).toEqual({ ok: true, slug: "cerise-bouquet" });
+    });
+
+    it("transliterates Japanese fallbackSource (Scope B behavior change)", async () => {
+      // Pre-Scope-B this would have returned `event-{ts}` because the
+      // auto-path was ASCII-only. After Scope B, every admin POST that
+      // uses resolveCanonicalSlug shares songs's transliteration logic.
+      const result = await resolveCanonicalSlug(undefined, "ペレニアル", "event");
+      expect(result).toEqual({ ok: true, slug: "pereniaru" });
+    });
+
+    it("transliterates Korean fallbackSource (KO addition closes the F19 gap)", async () => {
+      // Originally the F19 task expected es-hangul to be wired in too.
+      // Pre-KO-support this returned `artist-{ts}`. After: real slug.
+      const result = await resolveCanonicalSlug(undefined, "테스트아티스트", "artist");
+      expect(result).toEqual({ ok: true, slug: "teseuteuatiseuteu" });
+    });
+
+    it("falls back to ${modelPrefix}-{timestamp} only when even transliteration produces empty", async () => {
+      const result = await resolveCanonicalSlug(undefined, "★★★", "event");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.slug).toMatch(/^event-\d+$/);
+      }
+    });
+
+    it("falls back to ${modelPrefix}-{timestamp} when both inputs are absent", async () => {
+      const result = await resolveCanonicalSlug(null, "", "series");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.slug).toMatch(/^series-\d+$/);
+      }
+    });
+
+    it("rejects non-string rawSlug (number, object, array, boolean) with 400", async () => {
+      // Per CR feedback: a stray `{ slug: 42 }` from a typo should surface
+      // as invalid input, not silently fall through to auto-gen. The
+      // contract is "if you supply a slug, it must be a canonical string."
+      expect((await resolveCanonicalSlug(42, "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug({}, "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug([], "Hello World", "event")).ok).toBe(false);
+      expect((await resolveCanonicalSlug(true, "Hello World", "event")).ok).toBe(false);
+    });
+
+    it("treats null as 'no slug provided' (Case 1, auto-path)", async () => {
+      // null is a common JSON convention for "no value"; pair it with
+      // undefined and empty/whitespace-string as the absent class so
+      // form layers that explicitly null an unfilled field still
+      // get auto-derivation.
+      const result = await resolveCanonicalSlug(null, "Hello World", "event");
+      expect(result).toEqual({ ok: true, slug: "hello-world" });
+    });
+
+    it("never produces an empty slug on the auto path", async () => {
+      const result = await resolveCanonicalSlug(undefined, "", "x");
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.slug).not.toBe("");
+    });
   });
 });

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { EventSeriesType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { resolveAdminSlug } from "@/lib/slug";
+import { isSlugUniqueViolation, resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
   enumValue,
@@ -61,23 +62,52 @@ export async function POST(request: NextRequest) {
   const translations = parseLocalizedTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
-  const slug = resolveAdminSlug(body.slug, translations.value[0]?.name ?? "", "series");
+  const slugResult = await resolveCanonicalSlug(
+    body.slug,
+    translations.value[0]?.name ?? "",
+    "series"
+  );
+  if (!slugResult.ok) return badRequest(slugResult.message);
+  const slug = slugResult.slug;
 
-  const series = await prisma.eventSeries.create({
-    data: {
-      slug,
-      type: typeCheck.value,
-      artistId: artistIdCheck.value,
-      parentSeriesId: parentSeriesIdCheck.value,
-      organizerName: organizerName.value,
-      hasBoard: hasBoardCheck.value ?? false,
-      originalName: name.value,
-      originalShortName: shortName.value,
-      originalDescription: description.value,
-      originalLanguage: language.value,
-      translations: { create: translations.value },
-    },
-    include: { translations: true },
-  });
-  return NextResponse.json(serializeBigInt(series), { status: 201 });
+  try {
+    const series = await prisma.eventSeries.create({
+      data: {
+        slug,
+        type: typeCheck.value,
+        artistId: artistIdCheck.value,
+        parentSeriesId: parentSeriesIdCheck.value,
+        organizerName: organizerName.value,
+        hasBoard: hasBoardCheck.value ?? false,
+        originalName: name.value,
+        originalShortName: shortName.value,
+        originalDescription: description.value,
+        originalLanguage: language.value,
+        translations: { create: translations.value },
+      },
+      include: { translations: true },
+    });
+    return NextResponse.json(serializeBigInt(series), { status: 201 });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      // EventSeriesTranslation has a (seriesId, locale) composite unique
+      // that fires here for duplicate-locale rows in the payload.
+      if (isSlugUniqueViolation(e.meta?.target)) {
+        return NextResponse.json(
+          {
+            error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
+        { status: 409 }
+      );
+    }
+    throw e;
+  }
 }
