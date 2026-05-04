@@ -36,8 +36,7 @@ type Props = {
 // Wrapped in `react.cache()` so the duplicate call across
 // `generateMetadata` and `EventPage` collapses to one DB fetch per
 // request. Cache is per-request, scoped by RSC's request memoization
-// — no cross-request leakage. See task-week1-event-detail-optim.md
-// (F20) for the TTFB diagnosis that motivated this.
+// — no cross-request leakage.
 //
 // Translation locale filter: every nested `translations` block filters
 // to `[locale, "ja"]` rather than fetching all locales. Background:
