@@ -87,23 +87,27 @@ let inflight: Promise<readonly OgFont[]> | null = null;
 // Geist alongside the JS) is always better than a no-image card. F15
 // retro: this exact failure mode took out the launch-day and Day-2
 // tweets on 2026-05-02 / 2026-05-03.
+//
+// AbortController (rather than Promise.race) so the timeout actually
+// cancels Node's internal readFile buffering — a raced-but-not-aborted
+// read keeps consuming I/O after the caller has already given up,
+// extending cold-start latency for no benefit. Plain `setTimeout`
+// (rather than `AbortSignal.timeout()`) so Vitest's fake timers
+// continue to drive the timeout in unit tests.
 async function readFontWithTimeout(
   filePath: string
 ): Promise<Buffer | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FONT_READ_TIMEOUT_MS);
   try {
-    return await Promise.race([
-      readFile(filePath),
-      new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), FONT_READ_TIMEOUT_MS);
-      }),
-    ]);
+    return await readFile(filePath, { signal: controller.signal });
   } catch {
-    // ENOENT / EACCES / other I/O errors. Treat the same as a timeout:
-    // skip this font, let the render continue with whatever loaded.
+    // Covers AbortError (timeout), ENOENT, EACCES, and other I/O
+    // errors uniformly. Treat them all as "skip this font, let the
+    // render continue with whatever loaded."
     return null;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 

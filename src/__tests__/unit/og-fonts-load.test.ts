@@ -118,13 +118,21 @@ describe("loadOgFonts — cold-start hardening", () => {
     const hangingFontName = OG_FONTS[1].name; // NotoSansKR
     const hangingBasename = OG_FONTS[1].file.split("/").pop()!;
 
-    readFileMock.mockImplementation((p: string) => {
-      if (p.includes(hangingBasename)) {
-        // Never resolves — must be cut off by the 5s timeout.
-        return new Promise(() => {});
-      }
-      return Promise.resolve(fontBuffer(p.length));
-    });
+    // Honor the AbortSignal that `readFontWithTimeout` passes — when
+    // the controller fires after FONT_READ_TIMEOUT_MS the mock should
+    // reject with an AbortError, mirroring real `readFile` behavior.
+    readFileMock.mockImplementation(
+      (p: string, opts?: { signal?: AbortSignal }) => {
+        if (p.includes(hangingBasename)) {
+          return new Promise<Buffer>((_, reject) => {
+            opts?.signal?.addEventListener("abort", () => {
+              reject(new Error("AbortError"));
+            });
+          });
+        }
+        return Promise.resolve(fontBuffer(p.length));
+      },
+    );
 
     const promise = loadOgFonts();
     // Drain microtasks so the 10 successful reads resolve, then advance
@@ -167,6 +175,34 @@ describe("loadOgFonts — cold-start hardening", () => {
 
     expect(readFileMock).not.toHaveBeenCalled();
     expect(second).toHaveLength(OG_FONTS.length);
+  });
+
+  it("caches a partial load so the second call skips readFile and Sentry", async () => {
+    // Pins the cache-trade-off documented inline in `loadOgFonts`:
+    // a degraded set is cached so warm requests don't keep retrying
+    // missing files. Sentry should fire only on the first call (the
+    // load that produced the partial), not on the cache-hit second call.
+    const { loadOgFonts, OG_FONTS } = await importFresh();
+    const failingBasename = OG_FONTS[0].file.split("/").pop()!;
+
+    readFileMock.mockImplementation((p: string) => {
+      if (p.includes(failingBasename)) {
+        return Promise.reject(new Error("ENOENT"));
+      }
+      return Promise.resolve(fontBuffer(p.length));
+    });
+
+    const first = await loadOgFonts();
+    expect(first).toHaveLength(OG_FONTS.length - 1);
+    expect(captureMessageMock).toHaveBeenCalledTimes(1);
+
+    readFileMock.mockClear();
+    captureMessageMock.mockClear();
+    const second = await loadOgFonts();
+
+    expect(readFileMock).not.toHaveBeenCalled();
+    expect(captureMessageMock).not.toHaveBeenCalled();
+    expect(second).toHaveLength(OG_FONTS.length - 1);
   });
 
   it("dedups concurrent callers via the inflight promise", async () => {
