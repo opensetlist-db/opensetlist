@@ -104,8 +104,31 @@ describe("deriveSlug", () => {
     expect(await deriveSlug("ハナムスビ")).toBe("hanamusubi");
   });
 
-  it("returns empty when both ASCII and transliteration produce nothing", async () => {
-    // All-symbol input transliterates to whitespace which strips back to "".
+  it("transliterates Korean (Hangul) via es-hangul", async () => {
+    // Pre-KO-support these all produced empty (generateSlug strips
+    // non-ASCII; kuroshiro left Hangul as-is, which strips again).
+    // After: routed through `es-hangul.romanize` before kuroshiro.
+    expect(await deriveSlug("테스트아티스트")).toBe("teseuteuatiseuteu");
+    expect(await deriveSlug("테스트이벤트")).toBe("teseuteuibenteu");
+    expect(await deriveSlug("테스트시리즈")).toBe("teseuteusirijeu");
+  });
+
+  it("transliterates short Korean names without producing empty slugs", async () => {
+    // F19 user-visible regression case: short KO names that previously
+    // fell through to `${model}-${ts}` because ASCII strip + kuroshiro
+    // both yielded "".
+    expect(await deriveSlug("페렌")).toBe("peren");
+  });
+
+  it("does not invoke es-hangul on non-Hangul input (kuroshiro still wins for JP)", async () => {
+    // Sanity guard: KO detection must be Hangul-specific, not "any
+    // non-ASCII." Otherwise pure-JP names would route through romanize
+    // (which leaves them unchanged) and kuroshiro would never run.
+    expect(await deriveSlug("ペレニアル")).toBe("pereniaru");
+  });
+
+  it("returns empty when ASCII, Hangul, and JP transliteration all produce nothing", async () => {
+    // All-symbol input strips at every stage.
     expect(await deriveSlug("★★★")).toBe("");
   });
 
@@ -172,6 +195,13 @@ describe("resolveCanonicalSlug", () => {
       // uses resolveCanonicalSlug shares songs's transliteration logic.
       const result = await resolveCanonicalSlug(undefined, "ペレニアル", "event");
       expect(result).toEqual({ ok: true, slug: "pereniaru" });
+    });
+
+    it("transliterates Korean fallbackSource (KO addition closes the F19 gap)", async () => {
+      // Originally the F19 task expected es-hangul to be wired in too.
+      // Pre-KO-support this returned `artist-{ts}`. After: real slug.
+      const result = await resolveCanonicalSlug(undefined, "테스트아티스트", "artist");
+      expect(result).toEqual({ ok: true, slug: "teseuteuatiseuteu" });
     });
 
     it("falls back to ${modelPrefix}-{timestamp} only when even transliteration produces empty", async () => {

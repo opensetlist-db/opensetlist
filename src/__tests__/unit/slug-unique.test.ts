@@ -77,10 +77,19 @@ describe("generateUniqueSlug", () => {
     expect(slug).toBe("dream-believers-3");
   });
 
-  it("falls back to model-timestamp when transliteration also empty", async () => {
-    // Input that produces empty slug even after transliteration
+  it("transliterates Korean (Hangul) via es-hangul", async () => {
+    // Real `es-hangul.romanize` (not mocked here — pure-JS, sync, cheap).
+    // Pre-KO-support this fell through to `${model}-${ts}`; now produces
+    // a real slug.
     const slug = await generateUniqueSlug("한글만", "artist");
-    // Korean-only → generateSlug returns "" → transliterate returns "" → fallback
+    expect(slug).toBe("hangeulman");
+  });
+
+  it("falls back to model-timestamp when every pipeline stage produces empty", async () => {
+    // No Hangul → es-hangul step skipped. Not in the mocked kuroshiro
+    // map → mock returns "". generateSlug strips the symbols at every
+    // stage. Only then do we land on the timestamp fallback.
+    const slug = await generateUniqueSlug("★★★", "artist");
     expect(slug).toMatch(/^artist-\d+$/);
   });
 

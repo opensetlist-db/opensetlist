@@ -1,3 +1,11 @@
+import { romanize } from "es-hangul";
+
+// Hangul Syllables (U+AC00–U+D7A3) + Compatibility Jamo (U+3130–U+318F).
+// Used by `deriveSlug` to fast-path pure-KO names through `es-hangul`
+// before paying the kuroshiro init cost. Composed-syllable range only —
+// `es-hangul.romanize` targets composed Hangul, not bare Jamo (U+1100–U+11FF).
+const HANGUL_RE = /[㄰-㆏가-힣]/;
+
 /**
  * Converts a string to a URL-safe slug.
  * ASCII only — non-ASCII characters are stripped.
@@ -35,17 +43,23 @@ export function validateCanonicalSlug(rawSlug: unknown): string | null {
 }
 
 /**
- * Auto-candidate slug derivation. Returns "" if both ASCII normalization
- * and Japanese transliteration produce empty strings — caller decides
- * whether to fall back to a timestamp.
+ * Auto-candidate slug derivation. Returns "" if ASCII normalization,
+ * Korean romanization, and Japanese transliteration all produce empty
+ * strings — caller decides whether to fall back to a timestamp.
  *
  * Pipeline:
  *   1. `generateSlug(input)` — pure ASCII strip + lowercase + hyphens.
  *      For ASCII or mixed-ASCII inputs this is the answer.
- *   2. If (1) is empty (e.g. `"ハナムスビ"`, `"上昇気流"`), pass through
- *      kuroshiro to get romaji and re-run `generateSlug`. Catches CJK
- *      input that ASCII-strip alone can't handle.
- *   3. If even (2) is empty (rare — kuroshiro init failure, or all-symbol
+ *   2. If (1) is empty AND the input contains Hangul, romanize via
+ *      `es-hangul` (sync, no dict files) and re-run `generateSlug`.
+ *      `"테스트아티스트"` → `"teseuteuatiseuteu"`. Routed before kuroshiro
+ *      so pure-KO names skip the kuromoji dict load — `es-hangul` is
+ *      pure-JS rule-based and several orders of magnitude cheaper.
+ *   3. If still empty, pass through kuroshiro to get romaji and re-run
+ *      `generateSlug`. `"ハナムスビ"` → `"hanamusubi"`. Catches CJK input
+ *      that the previous steps couldn't handle (and mixed-script names
+ *      whose Hangul portion didn't yield a usable slug).
+ *   4. If even (3) is empty (rare — kuroshiro init failure, or all-symbol
  *      input that can't transliterate), return "".
  *
  * Used by:
@@ -59,8 +73,11 @@ export function validateCanonicalSlug(rawSlug: unknown): string | null {
 export async function deriveSlug(input: string): Promise<string> {
   const ascii = generateSlug(input);
   if (ascii) return ascii;
-  const romaji = await transliterateToRomaji(input);
-  return generateSlug(romaji);
+  if (HANGUL_RE.test(input)) {
+    const fromHangul = generateSlug(transliterateKoreanToRomanized(input));
+    if (fromHangul) return fromHangul;
+  }
+  return generateSlug(await transliterateToRomaji(input));
 }
 
 /**
@@ -246,6 +263,38 @@ async function transliterateToRomaji(input: string): Promise<string> {
       tags: { source: "transliterateToRomaji" },
       extra: { input },
     });
+    return "";
+  }
+}
+
+/**
+ * Converts Korean (Hangul) text to Revised Romanization for slug
+ * generation, via `es-hangul`'s `romanize`.
+ * "테스트아티스트" → "teseuteuatiseuteu"
+ * "페렌" → "peren"
+ *
+ * Sync — `es-hangul` is pure-JS with no dictionary files, so it doesn't
+ * need the kuromoji-style `outputFileTracingIncludes` entries that
+ * kuroshiro requires. Cheap to call on every auto-path POST.
+ *
+ * Returns "" on failure so the caller can fall through. Errors are
+ * reported to Sentry to mirror `transliterateToRomaji`'s contract — a
+ * future regression should surface, not be silently swallowed. The
+ * Sentry capture is fire-and-forget (`void import(...)`) so the
+ * synchronous return path stays sync.
+ */
+function transliterateKoreanToRomanized(input: string): string {
+  try {
+    return romanize(input);
+  } catch (e) {
+    void import("@sentry/nextjs")
+      .then((Sentry) =>
+        Sentry.captureException(e, {
+          tags: { source: "transliterateKoreanToRomanized" },
+          extra: { input },
+        })
+      )
+      .catch(() => {});
     return "";
   }
 }
