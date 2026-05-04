@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import * as Sentry from "@sentry/nextjs";
 
 export type OgFont = {
   readonly name: string;
@@ -7,6 +8,14 @@ export type OgFont = {
   readonly weight: 700;
   readonly style: "normal";
 };
+
+// Per-readFile timeout. Cold-start I/O on Vercel lambdas can hang if the
+// function bundle hasn't finished paging in; without a timeout, a single
+// stuck readFile blocks the entire Promise.all and the route eventually
+// 5xxes. 5s is well above warm-state read latency (single-digit ms) but
+// short enough that the request still has time to render fallback fonts
+// before the platform-level timeout.
+const FONT_READ_TIMEOUT_MS = 5_000;
 
 // The @fontsource "japanese" pre-bundle omits CJK symbols commonly used in
 // anime/K-POP/J-POP event titles (～ ／ ★ ☆ ♡ ♥ ♪ ♫ ♬ ❀ ✿ …), so they render
@@ -63,26 +72,103 @@ let cachedFonts: readonly OgFont[] | null = null;
 // requests doesn't re-read the configured WOFFs from disk once per request.
 let inflight: Promise<readonly OgFont[]> | null = null;
 
+// Read a single font file with a hard timeout. Always resolves — never
+// rejects. A `null` return signals "this font failed to load" so the
+// caller can skip it and continue building the rest of the font set.
+//
+// Why never-throw: a single Promise.all rejection over the 11 WOFFs
+// would tear down the entire OG render and surface as a 5xx. Twitter
+// negative-caches scrape failures against the URL for ~7 days, so one
+// cold-start I/O blip translates to a week of broken share previews
+// for that event. The cost-benefit is asymmetric: rendering with 10/11
+// fonts (or even 0/11, falling back to the `Geist-Regular.ttf` that
+// ships inside `node_modules/next/dist/compiled/@vercel/og/` — Turbopack
+// rewrites @vercel/og imports to Next's compiled copy, which bundles
+// Geist alongside the JS) is always better than a no-image card. F15
+// retro: this exact failure mode took out the launch-day and Day-2
+// tweets on 2026-05-02 / 2026-05-03.
+//
+// AbortController (rather than Promise.race) so the timeout actually
+// cancels Node's internal readFile buffering — a raced-but-not-aborted
+// read keeps consuming I/O after the caller has already given up,
+// extending cold-start latency for no benefit. Plain `setTimeout`
+// (rather than `AbortSignal.timeout()`) so Vitest's fake timers
+// continue to drive the timeout in unit tests.
+async function readFontWithTimeout(
+  filePath: string
+): Promise<Buffer | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FONT_READ_TIMEOUT_MS);
+  try {
+    return await readFile(filePath, { signal: controller.signal });
+  } catch {
+    // Covers AbortError (timeout), ENOENT, EACCES, and other I/O
+    // errors uniformly. Treat them all as "skip this font, let the
+    // render continue with whatever loaded."
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Public return type is a mutable array because `@vercel/og`'s `ImageResponse`
 // types its `fonts` option as `FontOptions[]`. We return a fresh shallow copy
 // so callers can't mutate the shared cache.
+//
+// Never throws. On full success returns all 11 fonts; on partial failure
+// returns the subset that loaded and emits a Sentry message so we can
+// see in production whether a specific font keeps timing out. On total
+// failure returns `[]` and `@vercel/og` falls back to the
+// `Geist-Regular.ttf` Next bundles inside its compiled @vercel/og copy
+// (see the readFontWithTimeout comment above) — Latin-only render, but
+// the bare OPENSETLIST card still produces a valid PNG response.
 export async function loadOgFonts(): Promise<OgFont[]> {
   if (cachedFonts) return [...cachedFonts];
   if (!inflight) {
     inflight = (async () => {
-      const toArrayBuffer = (b: Buffer): ArrayBuffer =>
-        b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
       const buffers = await Promise.all(
         OG_FONTS.map(({ file }) =>
-          readFile(path.join(process.cwd(), "node_modules", file))
+          readFontWithTimeout(path.join(process.cwd(), "node_modules", file))
         )
       );
-      const fonts: readonly OgFont[] = OG_FONTS.map(({ name }, i) => ({
-        name,
-        data: toArrayBuffer(buffers[i]),
-        weight: 700,
-        style: "normal",
-      }));
+      const toArrayBuffer = (b: Buffer): ArrayBuffer =>
+        b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+      const fonts: readonly OgFont[] = OG_FONTS.flatMap(({ name }, i) => {
+        const buf = buffers[i];
+        if (!buf) return [];
+        return [
+          {
+            name,
+            data: toArrayBuffer(buf),
+            weight: 700,
+            style: "normal",
+          } satisfies OgFont,
+        ];
+      });
+
+      if (fonts.length < OG_FONTS.length) {
+        const missing = OG_FONTS
+          .filter((_, i) => !buffers[i])
+          .map((f) => f.name);
+        // Cache-partial-result trade-off: caching a degraded set means
+        // warm requests on this lambda continue serving the same
+        // partial render until the process recycles, but it avoids
+        // re-reading the missing files on every request. Across the
+        // fleet, the next process boot retries from a warm filesystem
+        // and almost always gets all 11. The Sentry message is the
+        // signal that tells us if a font keeps failing across many
+        // lambdas (real bug) vs. transient cold-start I/O (expected,
+        // self-heals on recycle).
+        Sentry.captureMessage("og.fonts.partial_load", {
+          level: "warning",
+          extra: {
+            loaded: fonts.length,
+            expected: OG_FONTS.length,
+            missing,
+          },
+        });
+      }
+
       cachedFonts = fonts;
       return fonts;
     })().finally(() => {
