@@ -333,12 +333,21 @@ async function getTrendingSongs(
 
   const itemIds = groups.map((g) => g.setlistItemId);
 
+  // Same `[locale, "ja"]` translation filter as `getEvent` above —
+  // trims the per-song translation join to the requested locale plus
+  // the canonical-original safety net. `displayOriginalTitle` (called
+  // below) does a strict locale lookup that falls through to the
+  // parent `originalTitle` when no row matches, so the filter is safe.
   const items = await prisma.setlistItem.findMany({
     where: { id: { in: itemIds } },
     include: {
       songs: {
         include: {
-          song: { include: { translations: true } },
+          song: {
+            include: {
+              translations: { where: { locale: { in: [locale, "ja"] } } },
+            },
+          },
         },
         orderBy: { order: "asc" },
         take: 1,
