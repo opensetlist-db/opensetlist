@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
@@ -32,18 +33,37 @@ type Props = {
   params: Promise<{ locale: string; id: string }>;
 };
 
-async function getEvent(id: bigint, locale: string) {
+// Wrapped in `react.cache()` so the duplicate call across
+// `generateMetadata` and `EventPage` collapses to one DB fetch per
+// request. Cache is per-request, scoped by RSC's request memoization
+// — no cross-request leakage.
+//
+// Translation locale filter: every nested `translations` block filters
+// to `[locale, "ja"]` rather than fetching all locales. Background:
+// every translation table is joined as part of the larger include
+// tree, and the unfiltered shape multiplies the row count by
+// (locales-per-row × every-other-relation-fanout) — the Cartesian
+// explosion that drove the 4–5s TTFB. The "ja" half of the pair is
+// the canonical-original safety net (every model's `originalLanguage`
+// defaults to "ja"); when present it backs `displayOriginalName`'s
+// `sub`-line cascade and any future surface that wants the original-
+// script name. The display helpers (`displayNameWithFallback`,
+// `resolveLocalizedField`) still cascade through the parent's
+// `originalName` / `originalShortName` columns when neither row
+// matches, so a missing translation never renders blank.
+const getEvent = cache(async (id: bigint, locale: string) => {
+  const localeFilter = { locale: { in: [locale, "ja"] } };
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
     include: {
-      translations: true,
+      translations: { where: localeFilter },
       eventSeries: {
         include: {
-          translations: true,
+          translations: { where: localeFilter },
           // Pulled in so EventHeader can render an artist link.
           // `artistId` is nullable on EventSeries (multi-artist
           // festivals fall back to `organizerName`).
-          artist: { include: { translations: true } },
+          artist: { include: { translations: { where: localeFilter } } },
         },
       },
       // Event-level performer roster — used to source the guest set
@@ -69,10 +89,12 @@ async function getEvent(id: bigint, locale: string) {
             include: {
               song: {
                 include: {
-                  translations: true,
+                  translations: { where: localeFilter },
                   artists: {
                     include: {
-                      artist: { include: { translations: true } },
+                      artist: {
+                        include: { translations: { where: localeFilter } },
+                      },
                     },
                   },
                 },
@@ -84,7 +106,7 @@ async function getEvent(id: bigint, locale: string) {
             include: {
               stageIdentity: {
                 include: {
-                  translations: true,
+                  translations: { where: localeFilter },
                   // `artistLinks` carries the StageIdentity → Artist
                   // membership rows. Needed by the page to build the
                   // per-unit members sublist on `<UnitsCard>` (each
@@ -98,12 +120,16 @@ async function getEvent(id: bigint, locale: string) {
                   },
                 },
               },
-              realPerson: { include: { translations: true } },
+              realPerson: {
+                include: { translations: { where: localeFilter } },
+              },
             },
           },
           artists: {
             include: {
-              artist: { include: { translations: true } },
+              artist: {
+                include: { translations: { where: localeFilter } },
+              },
             },
           },
         },
@@ -113,7 +139,7 @@ async function getEvent(id: bigint, locale: string) {
   });
   if (!event) return null;
   return serializeBigInt(event);
-}
+});
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
@@ -306,12 +332,21 @@ async function getTrendingSongs(
 
   const itemIds = groups.map((g) => g.setlistItemId);
 
+  // Same `[locale, "ja"]` translation filter as `getEvent` above —
+  // trims the per-song translation join to the requested locale plus
+  // the canonical-original safety net. `displayOriginalTitle` (called
+  // below) does a strict locale lookup that falls through to the
+  // parent `originalTitle` when no row matches, so the filter is safe.
   const items = await prisma.setlistItem.findMany({
     where: { id: { in: itemIds } },
     include: {
       songs: {
         include: {
-          song: { include: { translations: true } },
+          song: {
+            include: {
+              translations: { where: { locale: { in: [locale, "ja"] } } },
+            },
+          },
         },
         orderBy: { order: "asc" },
         take: 1,
