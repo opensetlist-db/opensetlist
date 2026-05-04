@@ -469,7 +469,26 @@ export default async function EventPage({ params }: Props) {
     notFound();
   }
 
-  const event = await getEvent(eventId, locale);
+  // Launch `getEvent` in parallel with the i18n + per-event helper
+  // batch — all six only need `eventId` (already parsed from the URL
+  // above), so there's no dependency forcing `getEvent` to be serial
+  // in front. Trending stays serial after this batch because the
+  // skip-when-ongoing decision (see comment at the trending fetch
+  // below) needs `event.status` from `getEvent` first; running
+  // trending unconditionally would reintroduce ~940ms of pure DB
+  // waste during live shows that the existing skip avoids — see
+  // `LiveSetlist.tsx:62-64` for the client-side re-derivation that
+  // makes the SSR fetch dead weight when ongoing.
+  const [event, t, ct, st, aT, reactionCounts, impressionsResult] =
+    await Promise.all([
+      getEvent(eventId, locale),
+      getTranslations("Event"),
+      getTranslations("Common"),
+      getTranslations("Song"),
+      getTranslations("Artist"),
+      getReactionCounts(eventId),
+      getEventImpressions(eventId),
+    ]);
   if (!event) notFound();
 
   // Anchor every per-request status read to the same `now`. Two
@@ -482,16 +501,6 @@ export default async function EventPage({ params }: Props) {
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
-
-  const [t, ct, st, aT, reactionCounts, impressionsResult] =
-    await Promise.all([
-      getTranslations("Event"),
-      getTranslations("Common"),
-      getTranslations("Song"),
-      getTranslations("Artist"),
-      getReactionCounts(eventId),
-      getEventImpressions(eventId),
-    ]);
   const {
     impressions,
     nextCursor: impressionsNextCursor,
