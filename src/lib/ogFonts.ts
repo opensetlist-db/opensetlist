@@ -14,7 +14,7 @@ export type OgFont = {
 // stuck readFile blocks the entire Promise.all and the route eventually
 // 5xxes. 5s is well above warm-state read latency (single-digit ms) but
 // short enough that the request still has time to render fallback fonts
-// before the platform-level timeout. See task-week1-og-cold-start-hardening.md.
+// before the platform-level timeout.
 const FONT_READ_TIMEOUT_MS = 5_000;
 
 // The @fontsource "japanese" pre-bundle omits CJK symbols commonly used in
