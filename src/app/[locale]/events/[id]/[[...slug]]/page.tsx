@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
@@ -32,7 +33,12 @@ type Props = {
   params: Promise<{ locale: string; id: string }>;
 };
 
-async function getEvent(id: bigint, locale: string) {
+// Wrapped in `react.cache()` so the duplicate call across
+// `generateMetadata` and `EventPage` collapses to one DB fetch per
+// request. Cache is per-request, scoped by RSC's request memoization
+// — no cross-request leakage. See task-week1-event-detail-optim.md
+// (F20) for the TTFB diagnosis that motivated this.
+const getEvent = cache(async (id: bigint, locale: string) => {
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -113,7 +119,7 @@ async function getEvent(id: bigint, locale: string) {
   });
   if (!event) return null;
   return serializeBigInt(event);
-}
+});
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
