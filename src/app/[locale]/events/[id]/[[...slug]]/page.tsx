@@ -38,18 +38,33 @@ type Props = {
 // request. Cache is per-request, scoped by RSC's request memoization
 // — no cross-request leakage. See task-week1-event-detail-optim.md
 // (F20) for the TTFB diagnosis that motivated this.
+//
+// Translation locale filter: every nested `translations` block filters
+// to `[locale, "ja"]` rather than fetching all locales. Background:
+// every translation table is joined as part of the larger include
+// tree, and the unfiltered shape multiplies the row count by
+// (locales-per-row × every-other-relation-fanout) — the Cartesian
+// explosion that drove the 4–5s TTFB. The "ja" half of the pair is
+// the canonical-original safety net (every model's `originalLanguage`
+// defaults to "ja"); when present it backs `displayOriginalName`'s
+// `sub`-line cascade and any future surface that wants the original-
+// script name. The display helpers (`displayNameWithFallback`,
+// `resolveLocalizedField`) still cascade through the parent's
+// `originalName` / `originalShortName` columns when neither row
+// matches, so a missing translation never renders blank.
 const getEvent = cache(async (id: bigint, locale: string) => {
+  const localeFilter = { locale: { in: [locale, "ja"] } };
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
     include: {
-      translations: true,
+      translations: { where: localeFilter },
       eventSeries: {
         include: {
-          translations: true,
+          translations: { where: localeFilter },
           // Pulled in so EventHeader can render an artist link.
           // `artistId` is nullable on EventSeries (multi-artist
           // festivals fall back to `organizerName`).
-          artist: { include: { translations: true } },
+          artist: { include: { translations: { where: localeFilter } } },
         },
       },
       // Event-level performer roster — used to source the guest set
@@ -75,10 +90,12 @@ const getEvent = cache(async (id: bigint, locale: string) => {
             include: {
               song: {
                 include: {
-                  translations: true,
+                  translations: { where: localeFilter },
                   artists: {
                     include: {
-                      artist: { include: { translations: true } },
+                      artist: {
+                        include: { translations: { where: localeFilter } },
+                      },
                     },
                   },
                 },
@@ -90,7 +107,7 @@ const getEvent = cache(async (id: bigint, locale: string) => {
             include: {
               stageIdentity: {
                 include: {
-                  translations: true,
+                  translations: { where: localeFilter },
                   // `artistLinks` carries the StageIdentity → Artist
                   // membership rows. Needed by the page to build the
                   // per-unit members sublist on `<UnitsCard>` (each
@@ -104,12 +121,16 @@ const getEvent = cache(async (id: bigint, locale: string) => {
                   },
                 },
               },
-              realPerson: { include: { translations: true } },
+              realPerson: {
+                include: { translations: { where: localeFilter } },
+              },
             },
           },
           artists: {
             include: {
-              artist: { include: { translations: true } },
+              artist: {
+                include: { translations: { where: localeFilter } },
+              },
             },
           },
         },
