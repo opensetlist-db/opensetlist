@@ -123,7 +123,14 @@ jobs:
       - name: Checkout base tip
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
+          # Use the immutable base.sha captured at event time, not
+          # base.ref. With base.ref, if dev advances between the PR
+          # event firing and this step running, the base checkout
+          # races ahead of the merge commit (which is already pinned
+          # to event-time dev) and produces a mismatched comparison.
+          # base.sha matches what the merge commit was computed
+          # against, so both sides reflect the same point-in-time dev.
+          ref: ${{ github.event.pull_request.base.sha }}
           path: base
 
       - name: Setup Node

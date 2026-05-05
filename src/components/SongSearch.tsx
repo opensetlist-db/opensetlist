@@ -90,6 +90,9 @@ export function SongSearch({
   const [results, setResults] = useState<SongSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // -1 = no active descendant (input has focus, no row "highlighted").
+  // Set by ArrowDown/ArrowUp; consumed by Enter and aria-activedescendant.
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks the in-flight fetch so a newer query can abort the older
   // one. Without this, two fetches that race past the debounce window
@@ -170,6 +173,9 @@ export function SongSearch({
 
     setQuery(value);
     setOpen(true);
+    // New query → previous active row is meaningless. Reset so the
+    // user has to press Down to start navigating the new result set.
+    setActiveIndex(-1);
     if (!value.trim()) {
       setResults([]);
       setLoading(false);
@@ -192,6 +198,7 @@ export function SongSearch({
     setResults([]);
     setLoading(false);
     setOpen(false);
+    setActiveIndex(-1);
   }
 
   // Belt-and-suspenders: the API filters excludeIds, but a stale
@@ -202,6 +209,67 @@ export function SongSearch({
   );
 
   const hasQuery = query.trim().length > 0;
+  const optionId = (songId: number) => `${listboxId}-option-${songId}`;
+  // aria-activedescendant must point only at a DOM element that
+  // actually exists. The listbox renders iff `open && hasQuery`, so
+  // gate the descendant id on the same condition — otherwise a
+  // click-outside (which closes via setOpen(false) but leaves
+  // activeIndex untouched) would leave aria-activedescendant
+  // referencing an id that's no longer in the tree.
+  const activeOptionId =
+    open &&
+    hasQuery &&
+    activeIndex >= 0 &&
+    activeIndex < visibleResults.length
+      ? optionId(visibleResults[activeIndex].id)
+      : undefined;
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) setOpen(true);
+      // Wrap-around vs clamp: clamp keeps things predictable on small
+      // result sets (Down at the bottom doesn't jump back to top).
+      setActiveIndex((prev) =>
+        Math.min(prev + 1, visibleResults.length - 1),
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      if (activeIndex >= 0 && activeIndex < visibleResults.length) {
+        e.preventDefault();
+        handleSelect(visibleResults[activeIndex]);
+      }
+    } else if (e.key === "Escape") {
+      // Don't preventDefault unconditionally — if the dropdown is
+      // already closed, let Escape bubble (some parent forms wire
+      // Esc to cancel/close themselves).
+      if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setActiveIndex(-1);
+      }
+    }
+  }
+
+  // Scroll the active option into view when keyboard navigation pushes
+  // it past the listbox's max-height. `block: "nearest"` avoids the
+  // page-jump that "center" / "start" would cause. Guard for jsdom +
+  // any older runtime without scrollIntoView — falling back to no-op
+  // is fine (visual nicety, not correctness).
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    const song = visibleResults[activeIndex];
+    if (!song) return;
+    const el = document.getElementById(optionId(song.id));
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+    // optionId closes over listboxId; depending on activeIndex +
+    // visibleResults is enough to fire on every nav step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, visibleResults]);
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -210,6 +278,7 @@ export function SongSearch({
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
         placeholder={texts.placeholder}
         className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
         aria-label={texts.placeholder}
@@ -218,6 +287,7 @@ export function SongSearch({
         aria-haspopup="listbox"
         aria-controls={listboxId}
         aria-autocomplete="list"
+        aria-activedescendant={activeOptionId}
       />
       {open && hasQuery && (
         <div
@@ -236,7 +306,7 @@ export function SongSearch({
             </div>
           )}
           {!loading &&
-            visibleResults.map((song) => {
+            visibleResults.map((song, index) => {
               const title = displayOriginalTitle(
                 {
                   originalTitle: song.originalTitle,
@@ -259,14 +329,19 @@ export function SongSearch({
                     "short",
                   )
                 : null;
+              const isActive = index === activeIndex;
               return (
                 <button
                   key={song.id}
+                  id={optionId(song.id)}
                   type="button"
                   role="option"
-                  aria-selected={false}
+                  aria-selected={isActive}
+                  onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => handleSelect(song)}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                  className={`w-full text-left px-3 py-2 ${
+                    isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                  } active:bg-gray-100 border-b border-gray-100 last:border-b-0`}
                 >
                   <div className="text-sm font-medium text-gray-900">
                     {title.main}
