@@ -82,17 +82,53 @@ describe("deriveTrendingSongs", () => {
     expect(result.map((r) => r.totalReactions)).toEqual([15, 7, 3]);
   });
 
-  it("topReaction picks the highest-count reaction type per item", () => {
+  it("reactionCounts surfaces every per-type count present on the item", () => {
+    // F17 (Day-1 retro): the earlier shape collapsed `types` into a
+    // single `topReaction` (the max-count type), which made the widget
+    // under-display total engagement once any per-type count grew past
+    // rehearsal-scale single digits. Pass the full map through so the
+    // renderer can show all four counts in the canonical order.
     const items = [makeItem(1, "Song A")];
     const counts = {
       "1": { best: 2, surprise: 9, waiting: 1, moved: 4 },
     };
     const [first] = deriveTrendingSongs(items, counts, "en", "Unknown");
-    expect(first.topReaction).toEqual({
-      type: "surprise",
-      emoji: "😱",
-      count: 9,
+    expect(first.reactionCounts).toEqual({
+      best: 2,
+      surprise: 9,
+      waiting: 1,
+      moved: 4,
     });
+  });
+
+  it("reactionCounts omits types absent from the input (renderer falls back to 0)", () => {
+    // The renderer in `<TrendingSongs>` iterates REACTION_TYPES and
+    // does `reactionCounts[type] ?? 0`. The derivation should pass
+    // the raw map through without populating absent keys — keeping
+    // the shape minimal here documents the contract: missing key
+    // means zero, no need to pre-fill.
+    const items = [makeItem(1, "Song A")];
+    const counts = { "1": { best: 5, waiting: 2 } };
+    const [first] = deriveTrendingSongs(items, counts, "en", "Unknown");
+    expect(first.reactionCounts).toEqual({ best: 5, waiting: 2 });
+    expect(first.reactionCounts.surprise).toBeUndefined();
+    expect(first.reactionCounts.moved).toBeUndefined();
+  });
+
+  it("ranks by total even when a single type's max would invert the order", () => {
+    // Regression guard for F17 — pre-fix the displayed count came from
+    // max-single, so a fixture where max-single ranks differently than
+    // total catches any future drift back toward that bug. Item 1 has
+    // total=11 (max=5); item 2 has total=8 but max=8. By total, item 1
+    // wins; by max-single it would lose.
+    const items = [makeItem(1, "Song A"), makeItem(2, "Song B")];
+    const counts = {
+      "1": { best: 5, waiting: 3, surprise: 2, moved: 1 }, // total 11, max 5
+      "2": { best: 8 }, // total 8, max 8
+    };
+    const result = deriveTrendingSongs(items, counts, "en", "Unknown");
+    expect(result.map((r) => r.setlistItemId)).toEqual(["1", "2"]);
+    expect(result.map((r) => r.totalReactions)).toEqual([11, 8]);
   });
 
   it("mainTitle is always originalTitle; subTitle carries the locale-matched translation when locale differs", () => {

@@ -2,7 +2,6 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import { displayOriginalTitle } from "@/lib/display";
-import { EMOJI_MAP } from "@/lib/reactions";
 
 // Mirrors the SSR `getTrendingSongs` (in src/app/[locale]/events/[id]/...)
 // closely enough to produce equivalent rankings: items with no songs are
@@ -39,20 +38,16 @@ export function deriveTrendingSongs(
     const titleDisp = song
       ? displayOriginalTitle(song, song.translations, locale)
       : null;
-    const topEntry = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
     return {
       setlistItemId: String(item.id),
       mainTitle: titleDisp?.main ?? unknownSongLabel,
       subTitle: titleDisp?.sub ?? null,
       variantLabel: titleDisp?.variant ?? null,
       totalReactions: total,
-      topReaction: topEntry
-        ? {
-            type: topEntry[0],
-            emoji: EMOJI_MAP[topEntry[0]] ?? "",
-            count: topEntry[1],
-          }
-        : { type: "best", emoji: "🔥", count: 0 },
+      // Pass the per-type counts straight through — the renderer in
+      // `<TrendingSongs>` iterates `REACTION_TYPES` and falls back to 0
+      // for missing keys, so the shape here is just the raw map.
+      reactionCounts: types,
     };
   });
 }

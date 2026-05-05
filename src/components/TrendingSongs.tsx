@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { REACTION_TYPES } from "@/lib/reactions";
 import { colors, radius } from "@/styles/tokens";
 
 export interface TrendingSong {
@@ -16,7 +17,17 @@ export interface TrendingSong {
    *  setlist row (`displayOriginalTitle` returns this). */
   variantLabel: string | null;
   totalReactions: number;
-  topReaction: { type: string; emoji: string; count: number };
+  /** Per-reaction-type counts, indexed by Prisma `ReactionType` value
+   *  ("waiting" | "best" | "surprise" | "moved"). Missing keys mean
+   *  zero — the renderer iterates `REACTION_TYPES` so display order is
+   *  stable regardless of which keys happen to be present. Replaced
+   *  the earlier `topReaction` (single max-emotion projection) after
+   *  Day-1 surfaced F17: the widget under-displayed total engagement
+   *  because `max-single ≪ aggregate` once per-type counts grew past
+   *  rehearsal-scale single digits. The strip below mirrors the
+   *  per-row reaction display in `<ReactionButtons>` so the trending
+   *  card reads consistently with the rest of the page. */
+  reactionCounts: Record<string, number>;
 }
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -166,26 +177,68 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     </span>
                   )}
                 </div>
+                {/* Reaction-type counts in REACTION_TYPES canonical
+                    order (waiting / best / surprise / moved), filtered
+                    to only the types this song actually has — the
+                    trending card stays compact and unused types don't
+                    take visible space. Upstream `deriveTrendingSongs`
+                    already filters `total > 0`, so every song reaching
+                    here renders at least one emoji+count pair.
+
+                    Each per-type wrapper carries `role="img"` plus an
+                    `aria-label` of "<localized type> <count>" so screen
+                    readers announce the strip as type-aware data points
+                    instead of bare digits. The emoji glyph and count
+                    digit inside are `aria-hidden` — without that the
+                    AT would announce both the aria-label AND the inner
+                    content (double-read). The label reuses `t(type)`
+                    (the same Reaction-namespace key the per-row
+                    buttons use as their accessible name in
+                    `ReactionButton:405`), so labels stay translated in
+                    lockstep with the per-row UI. */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 8,
                     marginTop: 2,
                   }}
                 >
-                  <span style={{ fontSize: 14 }}>
-                    {song.topReaction.emoji}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: TOP_COUNT_COLOR,
-                    }}
-                  >
-                    {song.topReaction.count}
-                  </span>
+                  {REACTION_TYPES.filter(
+                    ({ type }) => (song.reactionCounts[type] ?? 0) > 0,
+                  ).map(({ type, emoji }) => {
+                    const count = song.reactionCounts[type] ?? 0;
+                    return (
+                      <span
+                        key={type}
+                        role="img"
+                        aria-label={`${t(type)} ${count}`}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: 14 }}
+                          aria-hidden="true"
+                        >
+                          {emoji}
+                        </span>
+                        <span
+                          className="tabular-nums"
+                          aria-hidden="true"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: TOP_COUNT_COLOR,
+                          }}
+                        >
+                          {count}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </li>
