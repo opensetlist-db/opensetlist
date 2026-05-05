@@ -92,7 +92,12 @@ export async function POST(request: NextRequest) {
 
   const slugResult = await resolveCanonicalSlug(
     body.slug,
-    translations.value[0]?.name ?? "",
+    // Same fallback chain as event-series/route.ts: when translations
+    // is absent or its first entry's name is empty, fall back to
+    // `name.value` (validated as required just above) so a JP/KO
+    // originalName still feeds `deriveSlug` for transliteration
+    // instead of the auto-path emitting `artist-${ts}`.
+    translations.value[0]?.name || name.value,
     "artist"
   );
   if (!slugResult.ok) return badRequest(slugResult.message);
