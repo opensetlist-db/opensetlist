@@ -279,30 +279,51 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     // nothing to dedupe on), and the artist ends up with extra
     // ghost members the operator then has to manually unlink.
     const completedIndices = new Set<number>();
+    const pruneCompleted = () => {
+      if (completedIndices.size > 0) {
+        setStageIdentities((prev) =>
+          prev.filter((_, idx) => !completedIndices.has(idx))
+        );
+      }
+    };
     for (let i = 0; i < stageIdentities.length; i++) {
       const si = stageIdentities[i];
-      if (!si.translations[0]?.name.trim()) {
-        // Skipped-by-design entries (blank name). Treat as completed
-        // so they're cleared from the pending list on full success.
+      // Skip rule must match the pre-submit validator's required-field
+      // check (`handleSubmit` rejects any row with an empty
+      // `originalName`). Looking at `translations[0]?.name` instead —
+      // the previous version — left dead-code skip behavior: the
+      // validator already prevents empty-originalName rows from
+      // reaching this loop, so the only rows that hit it have
+      // non-empty `originalName` regardless of translation state.
+      // Aligning the two on `originalName` keeps a defensive skip in
+      // place but with the right invariant.
+      if (!si.originalName.trim()) {
         completedIndices.add(i);
         continue;
       }
-      const res = await fetch(
-        `/api/admin/artists/${initialData.id}/stage-identities`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(si),
+      try {
+        const res = await fetch(
+          `/api/admin/artists/${initialData.id}/stage-identities`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(si),
+          }
+        );
+        if (!res.ok) {
+          // Prune the items that did persist so the next attempt only
+          // sends the remaining unsaved entries.
+          pruneCompleted();
+          return false;
         }
-      );
-      if (!res.ok) {
-        // Prune the items that did persist so the next attempt only
-        // sends the remaining unsaved entries.
-        if (completedIndices.size > 0) {
-          setStageIdentities((prev) =>
-            prev.filter((_, idx) => !completedIndices.has(idx))
-          );
-        }
+      } catch {
+        // Network failure (fetch reject) bypasses the !res.ok branch
+        // entirely. Without pruning here, the items that persisted
+        // before the failed POST would stay in form state and get
+        // resubmitted on retry — exactly the duplicate-create bug
+        // the !res.ok prune was added to prevent, just on a
+        // different failure mode.
+        pruneCompleted();
         return false;
       }
       completedIndices.add(i);
