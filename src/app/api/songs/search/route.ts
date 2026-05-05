@@ -70,36 +70,45 @@ export async function GET(request: NextRequest) {
     where.id = { notIn: excludeIds };
   }
 
-  const songs = await prisma.song.findMany({
-    where,
-    select: {
-      id: true,
-      originalTitle: true,
-      originalLanguage: true,
-      variantLabel: true,
-      baseVersionId: true,
-      translations: {
-        select: { locale: true, title: true, variantLabel: true },
-      },
-      artists: {
-        select: {
-          artist: {
-            select: {
-              id: true,
-              originalName: true,
-              originalShortName: true,
-              originalLanguage: true,
-              translations: {
-                select: { locale: true, name: true, shortName: true },
+  try {
+    const songs = await prisma.song.findMany({
+      where,
+      select: {
+        id: true,
+        originalTitle: true,
+        originalLanguage: true,
+        variantLabel: true,
+        baseVersionId: true,
+        translations: {
+          select: { locale: true, title: true, variantLabel: true },
+        },
+        artists: {
+          select: {
+            artist: {
+              select: {
+                id: true,
+                originalName: true,
+                originalShortName: true,
+                originalLanguage: true,
+                translations: {
+                  select: { locale: true, name: true, shortName: true },
+                },
               },
             },
           },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-    take: RESULT_LIMIT,
-  });
+      orderBy: { createdAt: "desc" },
+      take: RESULT_LIMIT,
+    });
 
-  return NextResponse.json(serializeBigInt(songs));
+    return NextResponse.json(serializeBigInt(songs));
+  } catch (err) {
+    // DB connection / Prisma errors. Returning a JSON 500 (instead of
+    // letting Next.js render its HTML error page) keeps the
+    // component's `await res.json()` parse path predictable: the
+    // catch branch fires and the empty-state UI shows.
+    console.error("[/api/songs/search] DB error", err);
+    return NextResponse.json([], { status: 500 });
+  }
 }

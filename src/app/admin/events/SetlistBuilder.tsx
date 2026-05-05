@@ -176,11 +176,21 @@ export default function SetlistBuilder({
   function selectSong(song: SongSearchResult) {
     if (formSongIds.includes(song.id)) return;
     setFormSongIds((prev) => [...prev, song.id]);
-    // SongSearchResult is structurally a superset of SongOption — the
-    // extra fields (originalLanguage, baseVersionId, artist.id, etc.)
-    // are ignored by getSongName and the form submit. The cast keeps
-    // the existing SongOption[] state shape without rewiring callers.
-    setSelectedSongs((prev) => [...prev, song as unknown as SongOption]);
+    // Project of SongSearchResult down to the SongOption shape that
+    // the rest of SetlistBuilder + getSongName already understand.
+    // Explicit construction (vs. a structural cast) means a future
+    // change to either type fails at the right line instead of
+    // silently propagating undefined fields.
+    const asOption: SongOption = {
+      id: song.id,
+      originalTitle: song.originalTitle,
+      variantLabel: song.variantLabel,
+      translations: song.translations,
+      artists: song.artists.map((a) => ({
+        artist: { translations: a.artist.translations },
+      })),
+    };
+    setSelectedSongs((prev) => [...prev, asOption]);
   }
 
   function removeSong(songId: number) {
