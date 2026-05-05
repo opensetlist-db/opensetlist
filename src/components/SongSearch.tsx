@@ -5,6 +5,7 @@ import {
   displayOriginalTitle,
   displayNameWithFallback,
 } from "@/lib/display";
+import { colors } from "@/styles/tokens";
 
 // UI strings the component renders. Decoupled from next-intl so
 // SongSearch works in admin contexts (`src/app/admin/**`) where the
@@ -109,6 +110,15 @@ export function SongSearch({
   // -1 = no active descendant (input has focus, no row "highlighted").
   // Set by ArrowDown/ArrowUp; consumed by Enter and aria-activedescendant.
   const [activeIndex, setActiveIndex] = useState<number>(-1);
+  // Compact-variant focus tracking. We need this only because the
+  // compact input renders its border via inline `style` (so the
+  // wishlist token values from `colors` are the single source of
+  // truth — Tailwind arbitrary values like `border-[#0277BD]` would
+  // duplicate the hex). Inline styles can't express `:focus`, so we
+  // track focus in state and toggle the border color from JS.
+  // Default variant unaffected — it stays on Tailwind classes that
+  // do support `focus:` natively.
+  const [inputFocused, setInputFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks the in-flight fetch so a newer query can abort the older
   // one. Without this, two fetches that race past the debounce window
@@ -293,21 +303,38 @@ export function SongSearch({
         type="text"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          if (isCompact) setInputFocused(true);
+        }}
+        onBlur={() => {
+          if (isCompact) setInputFocused(false);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={texts.placeholder}
         // Compact: pill-shaped 12px input matching the mockup's
-        // InlineSongSearch — fits inside the wishlist column without
-        // dominating the surface. Default: admin-form sized.
-        // Hex literals here are mirror copies of the wishlist tokens
-        // (`colors.wishlistBorder` / `colors.wishlistFocusBorder` in
-        // src/styles/tokens.ts) — Tailwind arbitrary values must be
-        // string literals at compile time so we can't reference the
-        // const directly. If you change either hex, change the token.
+        // InlineSongSearch. Border color is driven from the
+        // `colors.wishlist*` tokens via inline `style` so the hex
+        // literal lives in `tokens.ts` only — no Tailwind
+        // arbitrary-value duplication. `:focus` can't be expressed
+        // in inline style, so the focus color toggles via the
+        // `inputFocused` state set by the onFocus/onBlur handlers
+        // above.
+        // Default: admin-form sized — keeps Tailwind classes since
+        // its colors are project-grays already covered by Tailwind.
         className={
           isCompact
-            ? "w-full px-2.5 py-1 text-xs border border-[#b5d4f4] rounded-full text-slate-900 bg-white focus:outline-none focus:border-[#0277BD]"
+            ? "w-full px-2.5 py-1 text-xs border rounded-full text-slate-900 bg-white focus:outline-none"
             : "w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
+        }
+        style={
+          isCompact
+            ? {
+                borderColor: inputFocused
+                  ? colors.wishlistFocusBorder
+                  : colors.wishlistBorder,
+              }
+            : undefined
         }
         // React handles the `autoFocus` attribute as a mount-time
         // imperative `.focus()` call — no need for a ref.
@@ -326,8 +353,13 @@ export function SongSearch({
           role="listbox"
           className={
             isCompact
-              ? "absolute z-10 left-0 right-0 mt-1 bg-white border border-[#b5d4f4] rounded-lg shadow-md max-h-60 overflow-y-auto"
+              ? "absolute z-10 left-0 right-0 mt-1 bg-white border rounded-lg shadow-md max-h-60 overflow-y-auto"
               : "absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
+          }
+          style={
+            isCompact
+              ? { borderColor: colors.wishlistBorder }
+              : undefined
           }
         >
           {loading && (

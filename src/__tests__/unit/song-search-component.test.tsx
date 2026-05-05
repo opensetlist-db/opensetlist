@@ -491,7 +491,7 @@ describe("SongSearch — variant + autoFocus props", () => {
     expect(input.className).not.toContain("rounded-full");
   });
 
-  it("variant=\"compact\" swaps the input to the pill style (rounded-full, xs text, blue border)", () => {
+  it("variant=\"compact\" swaps the input to the pill style (rounded-full, xs text, wishlist border via inline style)", () => {
     render(
       <SongSearch
         onSelect={vi.fn()}
@@ -500,12 +500,15 @@ describe("SongSearch — variant + autoFocus props", () => {
         variant="compact"
       />,
     );
-    const input = screen.getByRole("combobox");
+    const input = screen.getByRole("combobox") as HTMLInputElement;
     expect(input.className).toContain("rounded-full");
     expect(input.className).toContain("text-xs");
-    // Compact uses the wishlist blue border palette from the mockup
-    // (#b5d4f4) rather than the gray default.
-    expect(input.className).toContain("border-[#b5d4f4]");
+    // Compact border color is driven from `colors.wishlistBorder`
+    // via inline style — no Tailwind arbitrary-value duplication.
+    // jsdom returns the rgb() form for border-color.
+    expect(input.style.borderColor.toLowerCase()).toContain(
+      "rgb(181, 212, 244)",
+    );
     // And drops the default class.
     expect(input.className).not.toContain("rounded-md");
   });
