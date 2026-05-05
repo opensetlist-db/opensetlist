@@ -79,9 +79,33 @@ export function SetlistRow({
       ) || t("unknownPerformer"),
   );
 
+  // Honor the row's first SetlistItemArtist as a "unit credit" for
+  // any non-`full_group` stage type, EXCEPT when the credit is a
+  // solo-type Artist on a non-solo stage type — that combination is
+  // the F18 misfire: an ad-hoc unit-stage row where the operator
+  // credited one performing member's solo Artist row (e.g. event 43,
+  // "Love it!" / "Wonderful Trip!") rendered that single solo
+  // Artist's name as a `<UnitBadge>`, tinted by `resolveUnitColor`'s
+  // slug-hashed palette fallback (because solo `Artist.color` is
+  // null) — visible as "one performer name with a mystery color"
+  // under the title.
+  //
+  // The suppression is intentionally narrow — limited to the
+  // demonstrated misfire. All other type combinations (unit-type or
+  // group-type Artist on unit/special rows; solo-type on solo rows)
+  // continue to render `<UnitBadge>` exactly as before.
+  //
+  // F18 rows fall through to the existing `<FallbackUnitBadge
+  // label={t("stageType.unit")}>` branch below (line ~188), matching
+  // PR #190 D4b: never expose half-formed unit data publicly. The
+  // desktop col-3 list (`item.performers.join(", ")`) continues to
+  // show the full lineup unchanged.
+  const firstArtist = item.artists?.[0] ?? null;
+  const isSoloArtistMisfire =
+    firstArtist?.artist.type === "solo" && item.stageType !== "solo";
   const unitArtist =
-    item.stageType !== "full_group" && item.artists?.[0]
-      ? item.artists[0]
+    item.stageType !== "full_group" && firstArtist && !isSoloArtistMisfire
+      ? firstArtist
       : null;
   // Full unit name on setlist rows — operator preference. UnitBadge
   // already constrains horizontal width via the row's grid column,
