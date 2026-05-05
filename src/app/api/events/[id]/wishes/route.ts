@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
-import type { FanTop3Entry } from "@/lib/types/setlist";
+import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -20,65 +19,10 @@ type RouteProps = { params: Promise<{ id: string }> };
  * full enforcement once accounts ship). DELETE lives in the sibling
  * `[wishId]/route.ts` so the wish-id is a path segment, not a body
  * field — matches the impressions DELETE convention.
+ *
+ * The TOP-3 query lives in `src/lib/wishes/top3.ts` so the polled
+ * `/api/setlist` channel and this standalone GET stay in lockstep.
  */
-
-async function fetchTop3(eventId: bigint, locale: string | null): Promise<FanTop3Entry[]> {
-  const groups = await prisma.songWish.groupBy({
-    by: ["songId"],
-    where: { eventId },
-    _count: { _all: true },
-    // `_count.id` is the canonical "row count" orderBy on a groupBy
-    // — Prisma's `_count: { _all: true }` shape and the orderBy
-    // count are independent fields; using `id` here mirrors the
-    // existing `getTrendingSongs` pattern in page.tsx:325.
-    orderBy: { _count: { id: "desc" } },
-    take: 3,
-  });
-
-  if (groups.length === 0) return [];
-
-  const songIds = groups.map((g) => g.songId);
-  // Same `[locale, "ja"]` translation filter as the rest of the
-  // event page — trims the join while keeping the canonical-original
-  // safety net. When no locale is provided (raw GET callers, or a
-  // tooling consumer), pull every translation; the cost is bounded
-  // (≤ 3 songs × locales).
-  const localeFilter = locale ? { locale: { in: [locale, "ja"] } } : undefined;
-  const songs = await prisma.song.findMany({
-    where: { id: { in: songIds } },
-    select: {
-      id: true,
-      originalTitle: true,
-      originalLanguage: true,
-      variantLabel: true,
-      baseVersionId: true,
-      translations: {
-        where: localeFilter,
-        select: { locale: true, title: true, variantLabel: true },
-      },
-    },
-  });
-
-  // Re-key by id so the returned order matches `groups` (the count
-  // ordering — DB might return findMany in a different order).
-  const songById = new Map(songs.map((s) => [s.id, s] as const));
-
-  // `as unknown as FanTop3Entry["song"]` mirrors the project's
-  // serializeBigInt boundary cast (see page.tsx:617). Runtime values
-  // are numbers — `serializeBigInt` JSON-round-trips with a custom
-  // BigInt replacer — but the generic preserves input types at the
-  // type level, so we widen explicitly here.
-  return groups.flatMap((g) => {
-    const song = songById.get(g.songId);
-    if (!song) return [];
-    return [
-      {
-        count: g._count._all,
-        song: serializeBigInt(song) as unknown as FanTop3Entry["song"],
-      },
-    ];
-  });
-}
 
 export async function GET(req: NextRequest, { params }: RouteProps) {
   const { id } = await params;
@@ -92,7 +36,7 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
   // plain `Request` (tests). `req.nextUrl` is NextRequest-only and
   // would crash test runners that hit the route with a `Request`.
   const locale = new URL(req.url).searchParams.get("locale");
-  const top3 = await fetchTop3(eventId, locale);
+  const top3 = await fetchEventWishlistTop3(eventId, locale);
   return NextResponse.json(
     { top3 },
     { headers: { "Cache-Control": "private, no-store" } },

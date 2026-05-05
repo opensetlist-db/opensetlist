@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { SongMatchBadge } from "@/components/SongMatchBadge";
@@ -41,14 +41,31 @@ export function EventWishSection({
   const t = useTranslations("Wishlist");
   const mounted = useMounted();
 
-  // Lock derives from a fresh `Date()` on every render. Cheap, and
-  // it lets the surface flip from pre-show → locked the moment a
-  // polling tick re-renders the parent past `startTime`. CLAUDE.md
-  // UTC rule: `new Date()` and the `Date(startTime)` constructor are
-  // both absolute instants — comparison is region-independent.
+  // Lock state strategy:
+  //   - Lazy useState initializer reads `Date.now()` ONCE at mount —
+  //     not on every render — so initial paint for an already-past
+  //     event renders the locked UI directly (no flash of pre-show
+  //     affordances). Lazy init runs in mount phase, not render
+  //     phase, so it sidesteps `react-hooks/purity`.
+  //   - useEffect schedules a one-shot setTimeout exactly at the
+  //     `startTime` boundary so the flip happens reliably even if
+  //     the parent never re-renders between SSR and the lock instant.
+  //     Setting state from a setTimeout callback is fine for
+  //     `react-hooks/set-state-in-effect` (the rule targets
+  //     synchronous-in-effect, not async-callback-in-effect).
+  // CLAUDE.md UTC rule: both `Date.now()` and the `Date(startTime)`
+  // constructor return absolute instants — comparison is
+  // region-independent.
   const startMs =
     startTime instanceof Date ? startTime.getTime() : new Date(startTime).getTime();
-  const isLocked = Date.now() >= startMs;
+  const [isLocked, setIsLocked] = useState(() => Date.now() >= startMs);
+  useEffect(() => {
+    if (isLocked) return;
+    const remaining = startMs - Date.now();
+    if (remaining <= 0) return; // lazy init already set true
+    const timer = setTimeout(() => setIsLocked(true), remaining);
+    return () => clearTimeout(timer);
+  }, [isLocked, startMs]);
 
   // Hydrate localStorage AFTER mount so SSR + first client render
   // both produce the same HTML. INTENTIONAL — mirrors the

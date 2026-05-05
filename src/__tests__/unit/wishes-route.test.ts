@@ -215,6 +215,72 @@ describe("GET /api/events/[id]/wishes", () => {
     });
   });
 
+  it("excludes soft-deleted songs (where: { isDeleted: false })", async () => {
+    (prisma.songWish.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { songId: BigInt(10), _count: { _all: 1 } },
+    ]);
+    (prisma.song.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    await GET(getRequest() as never, { params: params1 });
+    const findManyCall = (prisma.song.findMany as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0];
+    // Same soft-delete contract POST enforces — a wish pointing at a
+    // since-deleted song falls out of TOP-3 instead of rendering as
+    // "Unknown song" client-side.
+    expect(findManyCall.where).toMatchObject({ isDeleted: false });
+  });
+
+  it("orders groupBy by count desc with songId asc tie-break", async () => {
+    (prisma.songWish.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue(
+      [],
+    );
+    await GET(getRequest() as never, { params: params1 });
+    const groupByCall = (prisma.songWish.groupBy as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0];
+    // Deterministic ordering: when two songs share a count the lower
+    // songId wins. Without this, page-level rendering of ties is
+    // non-deterministic across requests.
+    expect(groupByCall.orderBy).toEqual([
+      { _count: { id: "desc" } },
+      { songId: "asc" },
+    ]);
+  });
+
+  it("race: groupBy returns 3 ids but findMany returns 2 — top3 has 2 entries (skips the missing one)", async () => {
+    (prisma.songWish.groupBy as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { songId: BigInt(10), _count: { _all: 24 } },
+      { songId: BigInt(20), _count: { _all: 18 } },
+      { songId: BigInt(30), _count: { _all: 12 } },
+    ]);
+    // Concurrent delete: song 20 vanished between the groupBy and the
+    // findMany. The flatMap-empty path drops it; results stay
+    // ordered, just shorter.
+    (prisma.song.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: BigInt(10),
+        originalTitle: "残陽",
+        originalLanguage: "ja",
+        variantLabel: null,
+        baseVersionId: null,
+        translations: [],
+      },
+      {
+        id: BigInt(30),
+        originalTitle: "ペレニアル",
+        originalLanguage: "ja",
+        variantLabel: null,
+        baseVersionId: null,
+        translations: [],
+      },
+    ]);
+    const res = await GET(getRequest() as never, { params: params1 });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.top3).toHaveLength(2);
+    expect(body.top3.map((e: { song: { id: number } }) => e.song.id)).toEqual([
+      10, 30,
+    ]);
+  });
+
   it("returns 400 for invalid eventId path segment", async () => {
     const res = await GET(getRequest() as never, {
       params: Promise.resolve({ id: "abc" }),
@@ -231,15 +297,17 @@ describe("DELETE /api/events/[id]/wishes/[wishId]", () => {
     );
   });
 
-  it("deletes by wishId and returns { ok: true }", async () => {
+  it("deletes by (wishId, eventId) and returns { ok: true }", async () => {
     const res = await DELETE(new Request("http://localhost/x"), {
       params: Promise.resolve({ id: "1", wishId: "wish-uuid-abc" }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true });
+    // Scoped delete: a wishId from another event passed via this URL
+    // would no-op (count: 0) instead of cross-event deleting.
     expect(prisma.songWish.deleteMany).toHaveBeenCalledWith({
-      where: { id: "wish-uuid-abc" },
+      where: { id: "wish-uuid-abc", eventId: BigInt(1) },
     });
   });
 
@@ -258,6 +326,14 @@ describe("DELETE /api/events/[id]/wishes/[wishId]", () => {
   it("returns 400 for empty wishId", async () => {
     const res = await DELETE(new Request("http://localhost/x"), {
       params: Promise.resolve({ id: "1", wishId: "" }),
+    });
+    expect(res.status).toBe(400);
+    expect(prisma.songWish.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for invalid eventId path segment", async () => {
+    const res = await DELETE(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "abc", wishId: "wish-uuid-abc" }),
     });
     expect(res.status).toBe(400);
     expect(prisma.songWish.deleteMany).not.toHaveBeenCalled();

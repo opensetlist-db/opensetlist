@@ -56,7 +56,11 @@ interface StoredShape {
   wishes: WishEntry[];
 }
 
-const EMPTY: WishEntry[] = [];
+// (Empty-result helper removed. Earlier revision shared one `EMPTY`
+// instance across every empty return path; a future caller that
+// mutated the result would have polluted every subsequent read.
+// Returning a fresh `[]` per empty branch sidesteps the trap with
+// no allocation cost worth measuring.)
 
 function key(eventId: string): string {
   return `wish-${eventId}`;
@@ -109,15 +113,15 @@ function isStoredShape(value: unknown): value is StoredShape {
 }
 
 export function readWishes(eventId: string): WishEntry[] {
-  if (typeof window === "undefined") return EMPTY;
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(key(eventId));
-    if (!raw) return EMPTY;
+    if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    if (!isStoredShape(parsed)) return EMPTY;
+    if (!isStoredShape(parsed)) return [];
     return parsed.wishes;
   } catch {
-    return EMPTY;
+    return [];
   }
 }
 

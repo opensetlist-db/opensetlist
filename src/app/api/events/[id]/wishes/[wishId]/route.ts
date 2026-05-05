@@ -6,24 +6,31 @@ type RouteProps = { params: Promise<{ id: string; wishId: string }> };
 /**
  * DELETE /api/events/[id]/wishes/[wishId]
  *
- * Removes a wishlist row by its uuid. Idempotent — `deleteMany`
- * returns `{ count: 0 }` for a missing id, and we surface 200 either
- * way so an undo race (user removed, refreshed, removed again)
- * doesn't surface as a user-visible error. Mirrors the
- * reactions/route.ts:135-139 DELETE shape.
+ * Removes a wishlist row by its uuid scoped to the URL's event id.
+ * Idempotent — `deleteMany` returns `{ count: 0 }` for a missing or
+ * cross-event row, and we surface 200 either way so an undo race
+ * (user removed, refreshed, removed again) doesn't surface as a
+ * user-visible error. Mirrors the reactions/route.ts:135-139 DELETE
+ * shape.
  *
- * The `[id]` event-id segment in the URL is informational here: the
- * wish-id alone is unique, but routing the DELETE under the event
- * scope keeps the URL hierarchy consistent with POST/GET so a single
- * client helper can build all three from the same `(eventId, wishId)`
- * pair.
+ * Scoping by `(id: wishId, eventId)` rather than `(id: wishId)`
+ * alone prevents a client that knows a wish-id from another event
+ * from issuing a cross-event delete via this URL. Wish-ids are
+ * uuids and not enumerable, but defense-in-depth: the URL already
+ * carries the event id, so honoring it costs nothing.
  */
 export async function DELETE(_req: Request, { params }: RouteProps) {
-  const { wishId } = await params;
+  const { id, wishId } = await params;
   if (typeof wishId !== "string" || wishId.length === 0) {
     return NextResponse.json({ error: "Invalid wishId" }, { status: 400 });
   }
+  let eventId: bigint;
+  try {
+    eventId = BigInt(id);
+  } catch {
+    return NextResponse.json({ error: "Invalid eventId" }, { status: 400 });
+  }
 
-  await prisma.songWish.deleteMany({ where: { id: wishId } });
+  await prisma.songWish.deleteMany({ where: { id: wishId, eventId } });
   return NextResponse.json({ ok: true });
 }
