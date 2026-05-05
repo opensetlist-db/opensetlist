@@ -225,18 +225,43 @@ async function slugExists(
   }
 }
 
-// Kuroshiro singleton for Japanese → romaji transliteration
+// Kuroshiro singleton for Japanese → romaji transliteration.
+//
+// We memoize the *initialization Promise*, not just the instance, so two
+// concurrent requests on a cold lambda can't see a half-initialized
+// instance. The previous shape (`if (!kuroshiroInstance) { instance =
+// new Kuroshiro(); await instance.init(...) }`) had a race window between
+// `new Kuroshiro()` (which sets the variable synchronously) and `await
+// init()` (which actually loads the kuromoji dict): a second request
+// arriving in that window would skip the if-check and return an
+// instance whose `.convert()` would throw with "Analyzer not initialized."
+// The thrown error gets caught in `transliterateToRomaji` and the slug
+// falls through to `${model}-${ts}` — exactly the symptom F19 was meant
+// to close. By awaiting a shared init Promise we guarantee every caller
+// sees the fully-initialized instance.
 let kuroshiroInstance: import("kuroshiro").default | null = null;
+let kuroshiroInitPromise: Promise<import("kuroshiro").default> | null = null;
 
 async function getKuroshiro(): Promise<import("kuroshiro").default> {
-  if (!kuroshiroInstance) {
-    const Kuroshiro = (await import("kuroshiro")).default;
-    const KuromojiAnalyzer = (await import("kuroshiro-analyzer-kuromoji"))
-      .default;
-    kuroshiroInstance = new Kuroshiro();
-    await kuroshiroInstance.init(new KuromojiAnalyzer());
+  if (kuroshiroInstance) return kuroshiroInstance;
+  if (!kuroshiroInitPromise) {
+    kuroshiroInitPromise = (async () => {
+      const Kuroshiro = (await import("kuroshiro")).default;
+      const KuromojiAnalyzer = (await import("kuroshiro-analyzer-kuromoji"))
+        .default;
+      const k = new Kuroshiro();
+      await k.init(new KuromojiAnalyzer());
+      kuroshiroInstance = k;
+      return k;
+    })().catch((e) => {
+      // Clear the cached Promise on init failure so a future call can
+      // retry. Without this a transient ENOENT during dict load would
+      // poison the singleton for the lifetime of the lambda.
+      kuroshiroInitPromise = null;
+      throw e;
+    });
   }
-  return kuroshiroInstance;
+  return kuroshiroInitPromise;
 }
 
 /**
