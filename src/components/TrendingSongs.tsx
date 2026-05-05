@@ -189,7 +189,23 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     criterion — the card is "TOP 3 by total reactions",
                     and four small per-type counts on their own don't
                     make that obvious. `=` and digits are i18n-neutral
-                    math notation, so no translation key is needed. */}
+                    math notation, so no translation key is needed.
+
+                    Each per-type wrapper carries `role="img"` plus an
+                    `aria-label` of "<localized type> <count>" so screen
+                    readers announce the strip as four discrete
+                    type-aware data points instead of bare digits. The
+                    emoji glyph and count digit inside are `aria-hidden`
+                    — without that the AT would announce both the
+                    aria-label AND the inner content (double-read). The
+                    label reuses `t(type)` (the same Reaction-namespace
+                    key the per-row buttons use as their accessible name
+                    in `ReactionButton:405`), so labels stay translated
+                    in lockstep with the per-row UI. The total is
+                    `aria-hidden` because the four per-type counts
+                    already carry the full information; the visible
+                    "= N" is sighted-only sugar that names the ranking
+                    criterion. */}
                 <div
                   style={{
                     display: "flex",
@@ -203,6 +219,8 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     return (
                       <span
                         key={type}
+                        role="img"
+                        aria-label={`${t(type)} ${count}`}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -217,6 +235,7 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                         </span>
                         <span
                           className="tabular-nums"
+                          aria-hidden="true"
                           style={{
                             fontSize: 12,
                             fontWeight: 700,
@@ -231,6 +250,7 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                   })}
                   <span
                     className="tabular-nums"
+                    aria-hidden="true"
                     style={{
                       fontSize: 11,
                       fontWeight: 600,

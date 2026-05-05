@@ -160,4 +160,41 @@ describe("TrendingSongs", () => {
       }
     }
   });
+
+  it("exposes each reaction strip item as a labelled image with type + count", () => {
+    // CR follow-up: the visible strip is emoji + bare digit, both
+    // aria-hidden. Without an outer accessible label, screen readers
+    // would announce nothing meaningful for the trending counts. Each
+    // wrapper carries `role="img"` + `aria-label="<type> <count>"` so
+    // AT users hear "best 6", "waiting 2", etc. in REACTION_TYPES
+    // canonical order. The mock for `useTranslations` (`(key) => key`)
+    // makes `t(type)` return the raw type name, so the expected
+    // accessible names are "<type> <count>".
+    render(<TrendingSongs songs={sample} />);
+    // Song 1 — full distribution across all four types.
+    expect(screen.getByLabelText("waiting 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("best 6")).toBeInTheDocument();
+    expect(screen.getByLabelText("surprise 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("moved 1")).toBeInTheDocument();
+    // Song 2 (best:3, moved:5; waiting + surprise absent)
+    expect(screen.getByLabelText("best 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("moved 5")).toBeInTheDocument();
+    expect(screen.getByLabelText("surprise 0")).toBeInTheDocument();
+    // Song 3 (best:2, surprise:3; waiting + moved absent)
+    expect(screen.getByLabelText("best 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("surprise 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("moved 0")).toBeInTheDocument();
+    // "waiting 0" appears in BOTH song 2 and song 3 (waiting absent
+    // from each), proving that absent types render with a 0-count
+    // accessible label across multiple ranked items — the strip
+    // reads consistently regardless of which types are populated.
+    expect(screen.getAllByLabelText("waiting 0")).toHaveLength(2);
+    // The aggregate `= N` is sighted-only sugar — the four per-type
+    // labels already carry the full information, and the visible
+    // total just names the ranking criterion. Verify it is indeed
+    // hidden from AT (no labelled image / role for it).
+    expect(screen.getByText("= 10")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByText("= 8")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByText("= 5")).toHaveAttribute("aria-hidden", "true");
+  });
 });
