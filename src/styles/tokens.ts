@@ -103,6 +103,11 @@ export const colors = {
   // both surfaces share one definition.
   wishlistBg: "#f0f7ff",
   wishlistBorder: "#b5d4f4",
+  // Focus border for the wishlist's compact `<SongSearch>` input.
+  // Same hex as `primary` (intentional — wishlist surfaces echo the
+  // brand blue on interaction). Kept as a separate token so a future
+  // wishlist palette tweak doesn't accidentally repaint the brand.
+  wishlistFocusBorder: "#0277BD",
   wishlistText: "#185FA5",
   wishlistMuted: "#378ADD",
   wishlistRowDivider: "#dbeafe",

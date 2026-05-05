@@ -85,9 +85,11 @@ export function useSetlistPolling<T>({
       };
       setItems(data.items);
       setReactionCounts(data.reactionCounts ?? {});
-      // `?? []` so an older API response without the field doesn't
-      // wipe the seed; the seed remains the source of truth until
-      // a poll explicitly returns a fresh array.
+      // `?? []` when a polled response omits `top3Wishes` (older API
+      // shape, transient server bug, etc.) — reset to empty so the
+      // initial seed doesn't persist stale data indefinitely once
+      // polling is the authoritative source. Asserted by
+      // useSetlistPolling.test.tsx "falls back to []" case.
       setTop3Wishes(data.top3Wishes ?? []);
       setLastUpdated(data.updatedAt);
     } catch {

@@ -299,6 +299,11 @@ export function SongSearch({
         // Compact: pill-shaped 12px input matching the mockup's
         // InlineSongSearch — fits inside the wishlist column without
         // dominating the surface. Default: admin-form sized.
+        // Hex literals here are mirror copies of the wishlist tokens
+        // (`colors.wishlistBorder` / `colors.wishlistFocusBorder` in
+        // src/styles/tokens.ts) — Tailwind arbitrary values must be
+        // string literals at compile time so we can't reference the
+        // const directly. If you change either hex, change the token.
         className={
           isCompact
             ? "w-full px-2.5 py-1 text-xs border border-[#b5d4f4] rounded-full text-slate-900 bg-white focus:outline-none focus:border-[#0277BD]"
