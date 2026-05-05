@@ -337,6 +337,12 @@ export function SongSearch({
                   type="button"
                   role="option"
                   aria-selected={isActive}
+                  // tabIndex=-1 keeps the option out of the tab order
+                  // so focus stays on the input (the canonical ARIA
+                  // combobox + aria-activedescendant pattern). Tab
+                  // from the input then moves OUT of the composite,
+                  // not through individual option buttons.
+                  tabIndex={-1}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => handleSelect(song)}
                   className={`w-full text-left px-3 py-2 ${
