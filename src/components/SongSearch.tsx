@@ -73,6 +73,11 @@ export function SongSearch({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the in-flight fetch so a newer query can abort the older
+  // one. Without this, two fetches that race past the debounce window
+  // (≥300ms apart, both in flight) can resolve out of order — the
+  // older one's setResults clobbers the newer one's data.
+  const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,33 +93,48 @@ export function SongSearch({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Cancel any pending debounce on unmount so we don't setState after
-  // the component is gone (React would warn, and a stale result could
-  // race a fresh mount).
+  // Cancel any pending debounce + in-flight fetch on unmount so we
+  // don't setState after the component is gone (React would warn) and
+  // we don't leak a request whose response would race a fresh mount.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
     };
   }, []);
 
   const fetchResults = useCallback(
     async (q: string) => {
+      // Abort any prior in-flight fetch. Its catch block sees
+      // AbortError and silently exits, leaving loading/results to be
+      // managed by this newer call.
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       const params = new URLSearchParams({ q });
       if (includeVariants) params.set("includeVariants", "true");
       if (excludeSongIds.length > 0) {
         params.set("excludeIds", excludeSongIds.join(","));
       }
       try {
-        const res = await fetch(`/api/songs/search?${params.toString()}`);
+        const res = await fetch(`/api/songs/search?${params.toString()}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error(`Search failed: ${res.status}`);
         const data = (await res.json()) as SongSearchResult[];
         setResults(data);
-      } catch {
+        setLoading(false);
+      } catch (err) {
+        // AbortError = a newer fetch superseded us; that fetch owns
+        // the next loading/results write, so leave both alone.
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
         // Network or parse failure: fall through to empty state rather
         // than leaving stale results in the dropdown. v1 has no retry —
         // user re-types to retry, which matches the existing admin UX.
         setResults([]);
-      } finally {
         setLoading(false);
       }
     },

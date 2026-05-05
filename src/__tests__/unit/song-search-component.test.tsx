@@ -195,6 +195,67 @@ describe("SongSearch — rendering", () => {
     expect(input.value).toBe("");
   });
 
+  it("ignores stale responses when a newer query supersedes an in-flight fetch (race fix)", async () => {
+    // Race scenario: two fetches in flight at once (debounce windows
+    // ≥300ms apart, both already past the timer). If the older fetch
+    // resolves AFTER the newer one, a naive setResults would overwrite
+    // the correct (newer) results with stale data. Fix uses
+    // AbortController to cancel the older fetch when a newer one
+    // starts.
+    let resolveFirst: (v: SongSearchResult[]) => void = () => {};
+    const firstPromise = new Promise<SongSearchResult[]>((r) => {
+      resolveFirst = r;
+    });
+
+    const fetchSpy = vi
+      .fn()
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (url.includes("q=a&") || url.endsWith("q=a")) {
+          // First fetch ("a"): hangs until we manually resolve it,
+          // and rejects with AbortError if aborted.
+          return new Promise((resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+            firstPromise.then((data) => {
+              resolve({ ok: true, json: async () => data } as Response);
+            });
+          });
+        }
+        // Second fetch ("ab"): resolves immediately.
+        return Promise.resolve({
+          ok: true,
+          json: async () => [makeSong(2, "Ab Song")],
+        } as unknown as Response);
+      });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    const input = screen.getByRole("textbox");
+
+    fireEvent.change(input, { target: { value: "a" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+
+    fireEvent.change(input, { target: { value: "ab" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+
+    // Resolve the stale ("a") fetch AFTER the new one already wrote
+    // its results. Without the AbortController fix, this would clobber
+    // the newer "ab" results.
+    await act(async () => {
+      resolveFirst([makeSong(1, "A Song")]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Ab Song")).toBeInTheDocument();
+    expect(screen.queryByText("A Song")).not.toBeInTheDocument();
+  });
+
   it("hides results whose id appears in excludeSongIds (defense-in-depth)", async () => {
     mockFetchOnceWith([
       makeSong(7, "Should Be Hidden"),
