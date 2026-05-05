@@ -126,17 +126,24 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
       : "/api/admin/event-series";
     const method = initialData ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    if (res.ok) {
-      router.push("/admin/event-series");
-      router.refresh();
-    } else {
-      alert("저장에 실패했습니다.");
+      if (res.ok) {
+        router.push("/admin/event-series");
+        router.refresh();
+        return;
+      }
+
+      const body = await res.json().catch(() => null);
+      alert(body?.error ?? "저장에 실패했습니다.");
+    } catch {
+      alert("저장에 실패했습니다. 네트워크를 확인해 주세요.");
+    } finally {
       setLoading(false);
     }
   }

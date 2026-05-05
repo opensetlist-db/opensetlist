@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { generateSlug, generateUniqueSlug } from "@/lib/slug";
+import {
+  generateUniqueSlug,
+  isSlugUniqueViolation,
+  validateCanonicalSlug,
+} from "@/lib/slug";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -62,15 +66,25 @@ export async function POST(request: NextRequest) {
   //
   // Why two paths share the create call: the body validation and the
   // many nested relations are identical; only the slug source differs.
+  // The canonical-input check is shared with every other admin POST
+  // route via validateCanonicalSlug (round-trips through generateSlug;
+  // returns null for non-canonical input rather than silently rewriting
+  // the operator's slug).
+  // Mirror `resolveCanonicalSlug`'s three-way classification of `rawSlug`
+  // (the helper used by every other admin POST):
+  //   - undefined / null / empty / whitespace string → auto-path
+  //   - non-string of any other shape (number, object, array, boolean)
+  //     → 400 invalid input. A stray `{ slug: 42 }` from a typo or a
+  //     wrong content-type should surface, not silently fall through
+  //     to auto-gen.
+  //   - non-empty string → strict canonical validation; 400 if not
+  //     already canonical.
+  // Songs is the one route that doesn't go through `resolveCanonicalSlug`
+  // (it needs the existence-check + retry loop on top), but the input
+  // contract should be identical.
   let adminSlug: string | null = null;
-  if (typeof body.slug === "string" && body.slug.trim().length > 0) {
-    const trimmed = body.slug.trim();
-    // generateSlug is idempotent on already-canonical input. If the
-    // round-trip changes anything, the input wasn't canonical (had
-    // uppercase, spaces, non-ASCII, leading/trailing hyphens, etc.)
-    // and we reject rather than silently rewriting it.
-    const canonical = generateSlug(trimmed);
-    if (!canonical || canonical !== trimmed) {
+  if (body.slug !== undefined && body.slug !== null) {
+    if (typeof body.slug !== "string") {
       return NextResponse.json(
         {
           error:
@@ -79,7 +93,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    adminSlug = canonical;
+    if (body.slug.trim().length > 0) {
+      adminSlug = validateCanonicalSlug(body.slug);
+      if (!adminSlug) {
+        return NextResponse.json(
+          {
+            error:
+              "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-song-title).",
+          },
+          { status: 400 }
+        );
+      }
+    }
   }
 
   // 3 attempts is enough headroom for the auto-gen race without
@@ -124,16 +149,38 @@ export async function POST(request: NextRequest) {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === "P2002"
       ) {
+        const slugConflict = isSlugUniqueViolation(e.meta?.target);
+        // SongTranslation has a (songId, locale) composite unique and
+        // SongArtist has a (songId, artistId, role) composite — both
+        // can throw P2002 if the form payload contains duplicates.
+        // Distinguish so admin sees the real cause, and so the
+        // auto-gen retry loop doesn't burn its 3 attempts re-rolling
+        // a slug for a constraint that has nothing to do with slugs.
         if (adminSlug) {
+          if (slugConflict) {
+            return NextResponse.json(
+              {
+                error: `슬러그 '${adminSlug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+              },
+              { status: 409 }
+            );
+          }
           return NextResponse.json(
-            {
-              error: `슬러그 '${adminSlug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
-            },
+            { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
             { status: 409 }
           );
         }
-        // Auto-gen lost the race — re-roll on the next iteration.
-        continue;
+        // Auto-gen path.
+        if (slugConflict) {
+          // Lost the race — re-roll on the next iteration.
+          continue;
+        }
+        // Non-slug uniqueness failure — retrying with a new slug
+        // won't help. Bail with the generic message.
+        return NextResponse.json(
+          { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
+          { status: 409 }
+        );
       }
       throw e;
     }

@@ -1,0 +1,275 @@
+name: perf — event detail TTFB
+
+# Non-blocking informational check. Measures warm TTFB against the
+# Vercel preview for the PR head and against the most recent
+# Preview/Production deployment of the base branch, then comments on
+# the PR with the delta and sets a commit status named
+# `perf/event-detail-ttfb`.
+#
+# This status check is intentionally NOT added to branch protection's
+# required-checks list — a regression appears as a red ✗ in the PR's
+# checks panel but does NOT block merge. The reviewer decides whether
+# the regression is intentional (a new feature legitimately adds
+# queries) or a real perf bug that should be fixed before merge.
+# Required CI gates (Typecheck + Test, Semgrep, Vercel deploy,
+# CodeRabbit) continue to enforce normally.
+#
+# Thresholds chosen generously to absorb Vercel preview cold-start
+# latency and runner network jitter (±100–300ms is normal):
+#   delta ≤ +30%   → ✓ success
+#   delta > +30%   → ✗ failure ("review and merge if intentional")
+#   delta > +100%  → ✗ failure ("likely real regression")
+# Re-tune if false positives become noisy.
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+# Cancel in-flight runs for the same PR when a new push lands.
+# Without this, a slow earlier run could finish AFTER the fresh one
+# and overwrite the live perf comment / commit status with stale
+# numbers from the older head SHA.
+concurrency:
+  group: perf-event-detail-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+  deployments: read
+
+jobs:
+  measure:
+    name: TTFB regression vs base
+    runs-on: ubuntu-latest
+    # 25min covers both polling loops at their worst case (PR head:
+    # 90×10s = 15min; base: 90×10s = 15min) plus measurement (~3min)
+    # plus comment/status calls. The polling loops themselves exit
+    # early once a deployment lands, so the typical run is ~3-5min.
+    timeout-minutes: 25
+    env:
+      # Job-level env so every step inherits these without
+      # re-declaring. GH_TOKEN authenticates `gh api`/`gh pr`; REPO
+      # is the owner/name pair the API endpoints expect (also used
+      # to bypass `gh pr comment`'s default git-remote inference,
+      # since this workflow doesn't run actions/checkout).
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # Event IDs to sample. Currently:
+      #   1 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 1"
+      #   2 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 2"
+      # Both are completed events with full setlists / reactions /
+      # impressions populated, so every helper exercised by the page
+      # returns non-empty data. If those rows ever get soft-deleted
+      # or re-numbered in the preview DB, this list MUST be updated —
+      # otherwise every measurement silently records 404s and the
+      # delta becomes meaningless.
+      PERF_EVENT_IDS: "1 2"
+    steps:
+      - name: Wait for Vercel preview (head SHA)
+        id: pr_url
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eo pipefail
+          echo "Polling Vercel preview deployment for $HEAD_SHA..."
+          for i in $(seq 1 90); do
+            DEPLOYMENT_ID=$(gh api "/repos/$REPO/deployments?sha=$HEAD_SHA&per_page=20" \
+              --jq '[.[] | select(.environment | tostring | startswith("Preview"))] | .[0] | .id // empty')
+            if [ -n "$DEPLOYMENT_ID" ]; then
+              STATUS_JSON=$(gh api "/repos/$REPO/deployments/$DEPLOYMENT_ID/statuses?per_page=10" \
+                --jq '[.[] | select(.environment_url != null and .environment_url != "")] | .[0] // {}')
+              STATE=$(echo "$STATUS_JSON" | jq -r '.state // ""')
+              ENV_URL=$(echo "$STATUS_JSON" | jq -r '.environment_url // ""')
+              echo "[$i] deployment=$DEPLOYMENT_ID state=$STATE url=$ENV_URL"
+              if [ "$STATE" = "success" ] && [ -n "$ENV_URL" ] && [ "$ENV_URL" != "null" ]; then
+                echo "url=$ENV_URL" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
+                echo "Vercel preview failed for HEAD; cannot measure TTFB" >&2
+                exit 1
+              fi
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for Vercel preview" >&2
+          exit 1
+
+      - name: Resolve base URL
+        id: base_url
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -eo pipefail
+          # main has a stable production URL; everything else (typically
+          # dev) gets resolved via the latest successful Preview
+          # deployment matching the branch's tip SHA.
+          if [ "$BASE_REF" = "main" ]; then
+            echo "url=https://opensetlist.com" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Vercel registers each deployment with `ref` set to the SHA
+          # (not the branch name), so `?ref=dev` returns []. Resolve
+          # the branch tip via the commits API first, then look up
+          # deployments by that SHA — same shape as the head-SHA poll
+          # above. The base SHA is already deployed (since dev was
+          # merged to before this PR opened), so the loop exits on
+          # the first iteration in the typical case.
+          BASE_SHA=$(gh api "/repos/$REPO/commits/$BASE_REF" --jq '.sha')
+          echo "Resolving Preview deployment for $BASE_REF (sha=$BASE_SHA)..."
+          for i in $(seq 1 30); do
+            DEPLOYMENT_ID=$(gh api "/repos/$REPO/deployments?sha=$BASE_SHA&per_page=20" \
+              --jq '[.[] | select(.environment | tostring | startswith("Preview"))] | .[0] | .id // empty')
+            if [ -n "$DEPLOYMENT_ID" ]; then
+              STATUS_JSON=$(gh api "/repos/$REPO/deployments/$DEPLOYMENT_ID/statuses?per_page=10" \
+                --jq '[.[] | select(.environment_url != null and .environment_url != "")] | .[0] // {}')
+              STATE=$(echo "$STATUS_JSON" | jq -r '.state // ""')
+              ENV_URL=$(echo "$STATUS_JSON" | jq -r '.environment_url // ""')
+              echo "[$i] base deployment=$DEPLOYMENT_ID state=$STATE url=$ENV_URL"
+              if [ "$STATE" = "success" ] && [ -n "$ENV_URL" ] && [ "$ENV_URL" != "null" ]; then
+                echo "url=$ENV_URL" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              # Mirror the head-SHA fast-exit: a base deployment in
+              # failure/error state will never become success, so
+              # there's no point burning the rest of the polling
+              # budget. Surfacing it now also gives the reviewer a
+              # clear "the base branch's deploy is broken" signal
+              # rather than a vague timeout.
+              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
+                echo "Base Vercel deployment is in state=$STATE; cannot measure TTFB" >&2
+                exit 1
+              fi
+            fi
+            sleep 10
+          done
+          echo "No successful Preview deployment found for $BASE_REF (sha=$BASE_SHA)" >&2
+          exit 1
+
+      - name: Measure TTFB (PR + base)
+        id: measure
+        env:
+          PR_URL: ${{ steps.pr_url.outputs.url }}
+          BASE_URL: ${{ steps.base_url.outputs.url }}
+        run: |
+          set -eo pipefail
+          # The 6 (locale × event) combos we've been measuring manually
+          # since PR #260 — same combo set used to validate every prior
+          # perf PR, so the numbers stay comparable across history.
+          measure() {
+            local URL="$1"
+            local LABEL="$2"
+            # Warm-up pass — discard timing. Each combo also warms its
+            # own getStaticProps / DB connection. Timeouts cap at 30s
+            # so a wedged endpoint fails fast instead of hanging the job.
+            for locale in ko ja en; do
+              for id in $PERF_EVENT_IDS; do
+                curl -s -o /dev/null --max-time 30 "$URL/$locale/events/$id" >/dev/null 2>&1 || true
+              done
+            done
+            # 2 measurement passes. Capture HTTP status alongside TTFB
+            # and only count responses that are actually 200 — without
+            # this guard, an event ID that's been soft-deleted in the
+            # preview DB would silently return 404 with a fast TTFB and
+            # poison the average toward "looks great". Non-200 samples
+            # are logged loudly and excluded from the average; if too
+            # many drop, the run fails rather than reporting a
+            # meaningless number.
+            local times=()
+            local non200=0
+            local total=0
+            for pass in 1 2; do
+              for locale in ko ja en; do
+                for id in $PERF_EVENT_IDS; do
+                  total=$((total + 1))
+                  RESP=$(curl -w '%{http_code} %{time_starttransfer}' -o /dev/null -s --max-time 30 \
+                    "$URL/$locale/events/$id" 2>/dev/null || echo "000 30")
+                  HTTP_CODE=$(echo "$RESP" | awk '{print $1}')
+                  T=$(echo "$RESP" | awk '{print $2}')
+                  if [ "$HTTP_CODE" = "200" ]; then
+                    times+=("$T")
+                    echo "$LABEL  $locale/$id  pass=$pass  http=$HTTP_CODE  ttfb=${T}s" >&2
+                  else
+                    non200=$((non200 + 1))
+                    echo "$LABEL  $locale/$id  pass=$pass  http=$HTTP_CODE  ttfb=${T}s  ⚠️ EXCLUDED (non-200)" >&2
+                  fi
+                done
+              done
+            done
+            # Refuse to compute an average when more than half the
+            # samples dropped — the remaining ones aren't representative.
+            if [ "$non200" -gt $((total / 2)) ]; then
+              echo "$LABEL: $non200/$total samples were non-200; refusing to compute TTFB" >&2
+              return 1
+            fi
+            printf '%s\n' "${times[@]}" | awk '{s+=$1; n++} END {printf "%.3f\n", s/n}'
+          }
+          echo "Measuring PR preview..."
+          PR_AVG=$(measure "$PR_URL" "PR")
+          echo "Measuring base..."
+          BASE_AVG=$(measure "$BASE_URL" "BASE")
+          echo "pr_avg=$PR_AVG" >> "$GITHUB_OUTPUT"
+          echo "base_avg=$BASE_AVG" >> "$GITHUB_OUTPUT"
+          echo "PR avg: ${PR_AVG}s  |  Base avg: ${BASE_AVG}s"
+
+      - name: Compare, comment, set status
+        env:
+          PR_AVG: ${{ steps.measure.outputs.pr_avg }}
+          BASE_AVG: ${{ steps.measure.outputs.base_avg }}
+          PR_NUM: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ steps.pr_url.outputs.url }}
+          BASE_URL: ${{ steps.base_url.outputs.url }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -eo pipefail
+          DELTA_PCT=$(awk "BEGIN { printf \"%.1f\", (($PR_AVG - $BASE_AVG) / $BASE_AVG) * 100 }")
+          STATE="success"
+          VERDICT="within ±30% threshold ✅"
+          if awk "BEGIN { exit !($DELTA_PCT > 100) }"; then
+            STATE="failure"
+            VERDICT="exceeds +100% — likely real regression ❌"
+          elif awk "BEGIN { exit !($DELTA_PCT > 30) }"; then
+            STATE="failure"
+            VERDICT="exceeds +30% — review and merge if intentional ⚠️"
+          fi
+          DESC="${PR_AVG}s vs base ${BASE_AVG}s (${DELTA_PCT}%)"
+          BODY=$(cat <<EOF
+          ## perf — event detail TTFB
+
+          | | warm avg (12 samples: 6 locale × event combos × 2 passes) |
+          |---|---|
+          | PR | **${PR_AVG}s** |
+          | base (${BASE_REF}) | ${BASE_AVG}s |
+          | delta | **${DELTA_PCT}%** — ${VERDICT} |
+
+          PR preview: ${PR_URL}
+          Base:       ${BASE_URL}
+
+          This is a **non-blocking informational check**. Merge despite a failure if the regression is expected (e.g. a new feature legitimately needs more queries). Required CI gates remain enforced separately.
+          EOF
+          )
+          # --edit-last + --create-if-none: replace the previous perf
+          # comment in place rather than appending a new one on every
+          # push, so an active PR shows one living result instead of a
+          # comment per CI run. Falls back to creating the first time.
+          # --repo is required because we never ran actions/checkout
+          # in this workflow (no need to clone the repo just to call
+          # the API), and `gh pr comment` defaults to inferring the
+          # repo from `git remote get-url`, which fails outside a
+          # working tree.
+          gh pr comment --repo "$REPO" "$PR_NUM" \
+            --edit-last --create-if-none \
+            --body "$BODY"
+          # target_url makes the perf/event-detail-ttfb badge in the
+          # checks panel link to this workflow run, so a reviewer can
+          # click through to inspect the per-sample TTFB output without
+          # hunting for the run.
+          gh api -X POST \
+            "/repos/$REPO/statuses/$HEAD_SHA" \
+            -f state="$STATE" \
+            -f context="perf/event-detail-ttfb" \
+            -f description="$DESC" \
+            -f target_url="$GITHUB_SERVER_URL/$REPO/actions/runs/$GITHUB_RUN_ID"
