@@ -412,6 +412,27 @@ describe("SongSearch — keyboard navigation", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
+  it("clears aria-activedescendant when the dropdown closes via click-outside (option DOM is gone)", async () => {
+    // Click-outside calls setOpen(false) but intentionally does NOT
+    // touch activeIndex (preserves keyboard state if the user later
+    // refocuses). aria-activedescendant must still drop because the
+    // active option's DOM element no longer exists.
+    const { input } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-activedescendant")).not.toBeNull();
+
+    // Simulate mousedown outside the component — handleClickOutside is
+    // attached to document mousedown.
+    fireEvent.mouseDown(document.body);
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+  });
+
   it("Typing a new query resets activeIndex (no stale highlight on the new result set)", async () => {
     const { input } = await renderWithResults([
       makeSong(1, "Alpha"),

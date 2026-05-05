@@ -210,8 +210,17 @@ export function SongSearch({
 
   const hasQuery = query.trim().length > 0;
   const optionId = (songId: number) => `${listboxId}-option-${songId}`;
+  // aria-activedescendant must point only at a DOM element that
+  // actually exists. The listbox renders iff `open && hasQuery`, so
+  // gate the descendant id on the same condition — otherwise a
+  // click-outside (which closes via setOpen(false) but leaves
+  // activeIndex untouched) would leave aria-activedescendant
+  // referencing an id that's no longer in the tree.
   const activeOptionId =
-    activeIndex >= 0 && activeIndex < visibleResults.length
+    open &&
+    hasQuery &&
+    activeIndex >= 0 &&
+    activeIndex < visibleResults.length
       ? optionId(visibleResults[activeIndex].id)
       : undefined;
 
