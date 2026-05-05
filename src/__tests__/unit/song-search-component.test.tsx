@@ -311,3 +311,125 @@ describe("SongSearch — rendering", () => {
     expect(screen.queryByText("Should Be Hidden")).not.toBeInTheDocument();
   });
 });
+
+describe("SongSearch — keyboard navigation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function renderWithResults(songs: SongSearchResult[], onSelect = vi.fn()) {
+    mockFetchOnceWith(songs);
+    render(<SongSearch onSelect={onSelect} locale="ko" texts={TEXTS} />);
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "x" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+    return { input, onSelect };
+  }
+
+  it("ArrowDown highlights the first option and sets aria-activedescendant", async () => {
+    const { input } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    const alphaRow = screen.getByText("Alpha").closest("button")!;
+    expect(input.getAttribute("aria-activedescendant")).toBe(alphaRow.id);
+    expect(alphaRow.getAttribute("aria-selected")).toBe("true");
+    // Sibling row stays not-selected
+    const betaRow = screen.getByText("Beta").closest("button")!;
+    expect(betaRow.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("ArrowDown clamps at the last option (no wrap-around)", async () => {
+    const { input } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // overflow attempt
+
+    const betaRow = screen.getByText("Beta").closest("button")!;
+    expect(input.getAttribute("aria-activedescendant")).toBe(betaRow.id);
+  });
+
+  it("ArrowUp clamps at the first option (does not go below 0)", async () => {
+    const { input } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.keyDown(input, { key: "ArrowUp" }); // attempts to go to -1
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+
+    const alphaRow = screen.getByText("Alpha").closest("button")!;
+    expect(input.getAttribute("aria-activedescendant")).toBe(alphaRow.id);
+  });
+
+  it("Enter on the active option calls onSelect with that song", async () => {
+    const { input, onSelect } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(42, "Beta"),
+    ]);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0].id).toBe(42);
+  });
+
+  it("Enter with no active option (-1) is a no-op (does not crash on undefined)", async () => {
+    const { input, onSelect } = await renderWithResults([makeSong(1, "Alpha")]);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("Escape closes the dropdown", async () => {
+    const { input } = await renderWithResults([makeSong(1, "Alpha")]);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("Typing a new query resets activeIndex (no stale highlight on the new result set)", async () => {
+    const { input } = await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-activedescendant")).not.toBeNull();
+
+    // New query — second fetch returns a different set
+    mockFetchOnceWith([makeSong(3, "Gamma")]);
+    fireEvent.change(input, { target: { value: "y" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+    const gammaRow = screen.getByText("Gamma").closest("button")!;
+    expect(gammaRow.getAttribute("aria-selected")).toBe("false");
+  });
+});
