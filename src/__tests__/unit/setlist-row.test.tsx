@@ -532,6 +532,45 @@ describe("SetlistRow", () => {
     expect(screen.queryByText("stageType.special")).toBeNull();
   });
 
+  it("renders FallbackUnitBadge for stageType=special with a solo-type Artist credit (F18 misfire on special)", () => {
+    // Companion to the "special + group-type" test above. The F18
+    // misfire predicate is `artist.type === "solo" && stageType !==
+    // "solo"`, so it fires for `special + solo` as well as `unit +
+    // solo`. Locks in the suppression on the special branch so a
+    // future refactor (e.g. simplifying the gate to only check
+    // stageType === "unit") can't silently regress it.
+    const item = makeItem({
+      stageType: "special",
+      artists: [
+        {
+          artist: {
+            id: 55,
+            slug: "member-solo",
+            type: "solo",
+            color: "#ffb74d",
+            originalName: "Member",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+          },
+        },
+      ],
+    });
+    const { container } = render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.getByText("stageType.special")).toBeInTheDocument();
+    expect(
+      container.querySelector('a[href="/en/artists/55/member-solo"]'),
+    ).toBeNull();
+  });
+
   it("comma-joins multiple performer names in the desktop performer column", () => {
     // The col-3 performer list (`item.performers.map(...).join(", ")`,
     // SetlistRow.tsx:203) is desktop-only (`hidden lg:block`). Locks
