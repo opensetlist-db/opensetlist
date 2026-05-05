@@ -292,10 +292,7 @@
     "searchLoading": "検索中...",
     "searchNoResults": "検索結果なし",
     "removeAria": "リクエストから削除",
-    "count": "{count}人",
-    "capReachedToast": "最大3曲まで選択できます",
-    "addError": "リクエストを追加できませんでした",
-    "removeError": "リクエストを削除できませんでした"
+    "count": "{count}人"
   },
   "Impression": {
     "title": "一言感想",

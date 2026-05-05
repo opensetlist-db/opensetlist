@@ -292,10 +292,7 @@
     "searchLoading": "Searching...",
     "searchNoResults": "No results",
     "removeAria": "Remove from wishlist",
-    "count": "{count}",
-    "capReachedToast": "You can pick up to 3 songs",
-    "addError": "Couldn't add to wishlist",
-    "removeError": "Couldn't remove from wishlist"
+    "count": "{count}"
   },
   "Impression": {
     "title": "One-line impressions",

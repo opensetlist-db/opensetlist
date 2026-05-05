@@ -292,10 +292,7 @@
     "searchLoading": "검색 중...",
     "searchNoResults": "검색 결과 없음",
     "removeAria": "희망곡에서 제거",
-    "count": "{count}명",
-    "capReachedToast": "최대 3곡까지 선택할 수 있어요",
-    "addError": "희망곡을 추가하지 못했어요",
-    "removeError": "희망곡을 제거하지 못했어요"
+    "count": "{count}명"
   },
   "Impression": {
     "title": "한줄감상",
