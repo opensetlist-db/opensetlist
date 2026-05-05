@@ -114,7 +114,7 @@ describe("loadOgFonts — cold-start hardening", () => {
   });
 
   it("treats a hung readFile as a failure once the timeout elapses", async () => {
-    const { loadOgFonts, OG_FONTS } = await importFresh();
+    const { loadOgFonts, OG_FONTS, FONT_READ_TIMEOUT_MS } = await importFresh();
     const hangingFontName = OG_FONTS[1].name; // NotoSansKR
     const hangingBasename = OG_FONTS[1].file.split("/").pop()!;
 
@@ -136,8 +136,10 @@ describe("loadOgFonts — cold-start hardening", () => {
 
     const promise = loadOgFonts();
     // Drain microtasks so the 10 successful reads resolve, then advance
-    // past the 5s timeout for the one hung read.
-    await vi.advanceTimersByTimeAsync(5_000);
+    // past the configured timeout for the one hung read. Importing the
+    // constant rather than hardcoding 5_000 keeps the test honest if
+    // the production timeout ever changes.
+    await vi.advanceTimersByTimeAsync(FONT_READ_TIMEOUT_MS);
     const fonts = await promise;
 
     expect(fonts).toHaveLength(OG_FONTS.length - 1);

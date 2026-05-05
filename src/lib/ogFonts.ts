@@ -15,7 +15,15 @@ export type OgFont = {
 // 5xxes. 5s is well above warm-state read latency (single-digit ms) but
 // short enough that the request still has time to render fallback fonts
 // before the platform-level timeout.
-const FONT_READ_TIMEOUT_MS = 5_000;
+// Exported so the loadOgFonts timeout test (`og-fonts-load.test.ts`)
+// can advance fake timers past the actual configured value instead of
+// hardcoding `5_000`. Without that, raising this constant in the future
+// would silently make the timeout test under-shoot — the
+// `AbortController` wouldn't fire before `vi.advanceTimersByTimeAsync`
+// returned, the hung read wouldn't be classified as a timeout, and the
+// test would fail with a confusing "expected partial-load result, got
+// inflight Promise" shape rather than a clear staleness signal.
+export const FONT_READ_TIMEOUT_MS = 5_000;
 
 // The @fontsource "japanese" pre-bundle omits CJK symbols commonly used in
 // anime/K-POP/J-POP event titles (～ ／ ★ ☆ ♡ ♥ ♪ ♫ ♬ ❀ ✿ …), so they render
