@@ -14,9 +14,11 @@ import {
 } from "@testing-library/react";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => `SongSearch.${key}`,
-}));
+const TEXTS = {
+  placeholder: "PLACEHOLDER",
+  loading: "LOADING",
+  noResults: "NO_RESULTS",
+};
 
 function makeSong(
   id: number,
@@ -66,7 +68,7 @@ describe("SongSearch — debounce + fetch", () => {
 
   it("does not fire fetch for empty input", async () => {
     const fetchSpy = mockFetchOnceWith([]);
-    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
     // Advance well past the debounce window — nothing should fire.
     await act(async () => {
@@ -77,7 +79,7 @@ describe("SongSearch — debounce + fetch", () => {
 
   it("debounces input: no fetch before 300ms, fires after", async () => {
     const fetchSpy = mockFetchOnceWith([]);
-    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "dream" },
@@ -101,7 +103,7 @@ describe("SongSearch — debounce + fetch", () => {
 
   it("collapses bursty keystrokes into a single fetch", async () => {
     const fetchSpy = mockFetchOnceWith([]);
-    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
     const input = screen.getByRole("textbox");
     fireEvent.change(input, { target: { value: "d" } });
@@ -128,6 +130,7 @@ describe("SongSearch — debounce + fetch", () => {
       <SongSearch
         onSelect={vi.fn()}
         locale="ko"
+        texts={TEXTS}
         includeVariants
         excludeSongIds={[10, 20]}
       />,
@@ -163,7 +166,7 @@ describe("SongSearch — rendering", () => {
   // of which would deadlock under purely synchronous fake timers.
   it("renders the noResults state when the API returns []", async () => {
     mockFetchOnceWith([]);
-    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "asdfgh1234" },
@@ -172,14 +175,16 @@ describe("SongSearch — rendering", () => {
       await vi.advanceTimersByTimeAsync(305);
     });
 
-    expect(screen.getByText("SongSearch.noResults")).toBeInTheDocument();
+    expect(screen.getByText("NO_RESULTS")).toBeInTheDocument();
   });
 
   it("calls onSelect with the full result and clears the query on row click", async () => {
     const song = makeSong(42, "Dream Believers");
     mockFetchOnceWith([song]);
     const onSelect = vi.fn();
-    render(<SongSearch onSelect={onSelect} locale="ko" />);
+    render(
+      <SongSearch onSelect={onSelect} locale="ko" texts={TEXTS} />,
+    );
 
     const input = screen.getByRole("textbox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "dream" } });
@@ -230,7 +235,7 @@ describe("SongSearch — rendering", () => {
       });
     vi.stubGlobal("fetch", fetchSpy);
 
-    render(<SongSearch onSelect={vi.fn()} locale="ko" />);
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
     const input = screen.getByRole("textbox");
 
     fireEvent.change(input, { target: { value: "a" } });
@@ -262,7 +267,12 @@ describe("SongSearch — rendering", () => {
       makeSong(8, "Should Be Visible"),
     ]);
     render(
-      <SongSearch onSelect={vi.fn()} locale="ko" excludeSongIds={[7]} />,
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        excludeSongIds={[7]}
+      />,
     );
 
     fireEvent.change(screen.getByRole("textbox"), {

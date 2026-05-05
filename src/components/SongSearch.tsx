@@ -1,11 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useTranslations } from "next-intl";
 import {
   displayOriginalTitle,
   displayNameWithFallback,
 } from "@/lib/display";
+
+// UI strings the component renders. Decoupled from next-intl so
+// SongSearch works in admin contexts (`src/app/admin/**`) where the
+// layout intentionally omits NextIntlClientProvider per CLAUDE.md's
+// admin-i18n exemption. Fan callers should compose this from
+// `useTranslations("SongSearch")`; admin callers pass Korean literals.
+export interface SongSearchTexts {
+  placeholder: string;
+  loading: string;
+  noResults: string;
+}
 
 // Shape returned by GET /api/songs/search. Mirrors the route's `select`
 // projection. Exported so callers can type their `onSelect` handlers and
@@ -51,7 +61,7 @@ interface SongSearchProps {
   // Display locale for title/artist rendering. Wishlist/prediction read
   // it from useLocale(); admin pins to "ko".
   locale: string;
-  placeholder?: string;
+  texts: SongSearchTexts;
   // Hides already-selected songs. Wishlist uses this for its 3-cap;
   // admin uses it so a song picked into the current setlist row doesn't
   // re-appear in the dropdown.
@@ -71,12 +81,10 @@ const DEBOUNCE_MS = 300;
 export function SongSearch({
   onSelect,
   locale,
-  placeholder,
+  texts,
   excludeSongIds = [],
   includeVariants = false,
 }: SongSearchProps) {
-  const t = useTranslations("SongSearch");
-
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SongSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -201,20 +209,20 @@ export function SongSearch({
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
-        placeholder={placeholder ?? t("placeholder")}
+        placeholder={texts.placeholder}
         className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
-        aria-label={placeholder ?? t("placeholder")}
+        aria-label={texts.placeholder}
       />
       {open && hasQuery && (
         <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
           {loading && (
             <div className="px-3 py-2 text-sm text-gray-500">
-              {t("loading")}
+              {texts.loading}
             </div>
           )}
           {!loading && visibleResults.length === 0 && (
             <div className="px-3 py-2 text-sm text-gray-500">
-              {t("noResults")}
+              {texts.noResults}
             </div>
           )}
           {!loading &&

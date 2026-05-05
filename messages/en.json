@@ -280,11 +280,6 @@
     "trending": "Trending songs",
     "trendingEmpty": "No reactions yet — try adding one from the setlist!"
   },
-  "SongSearch": {
-    "placeholder": "Search songs...",
-    "loading": "Searching...",
-    "noResults": "No matching songs"
-  },
   "Impression": {
     "title": "One-line impressions",
     "placeholder": "How was the event? (up to 200 chars)",

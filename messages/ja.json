@@ -280,11 +280,6 @@
     "trending": "この公演の話題曲",
     "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
   },
-  "SongSearch": {
-    "placeholder": "曲を検索...",
-    "loading": "検索中...",
-    "noResults": "一致する曲がありません"
-  },
   "Impression": {
     "title": "一言感想",
     "placeholder": "ライブはどうでしたか？ (200文字以内)",

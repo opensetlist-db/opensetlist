@@ -759,6 +759,11 @@ export default function SetlistBuilder({
             <SongSearch
               onSelect={selectSong}
               locale="ko"
+              texts={{
+                placeholder: "곡 검색...",
+                loading: "검색 중...",
+                noResults: "일치하는 곡이 없습니다",
+              }}
               excludeSongIds={formSongIds}
               includeVariants
             />
