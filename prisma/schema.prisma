@@ -480,6 +480,7 @@ model Event {
   setlistItems  SetlistItem[]
   performers    EventPerformer[]
   impressions   EventImpression[]
+  wishes        SongWish[]
 
   @@index([eventSeriesId])
   @@index([date, status])
@@ -544,6 +545,7 @@ model SetlistItem {
   songs       SetlistItemSong[]
   performers  SetlistItemMember[]
   reactions   SetlistItemReaction[]
+  confirms    SetlistItemConfirm[]
 
   // Partial unique on (eventId, position) WHERE isDeleted = false lives in
   // prisma/post-deploy.sql — Prisma can't express partial uniques in schema.
@@ -688,6 +690,7 @@ model Song {
   translations  SongTranslation[]
   setlistItems  SetlistItemSong[]
   albumTracks   AlbumTrack[]
+  wishes        SongWish[]
 
   @@index([baseVersionId])
   @@index([isDeleted])
@@ -1025,4 +1028,43 @@ model Report {
   @@index([targetType, targetId])
   @@index([reporterId])
   @@index([assignedScope, status])
+}
+
+// ── SONG WISH (Phase 1B engagement) ───────────────────
+// Wishlist rows feeding the per-event TOP-3 aggregate UI.
+// No anonId at 1B/1C — localStorage owns user-side dedup
+// before POST. Server-side dedup arrives at Phase 2 with
+// accounts. The (eventId, songId) index is for aggregation
+// reads, not uniqueness.
+model SongWish {
+  id        String   @id @default(uuid())
+  eventId   BigInt
+  songId    BigInt
+  createdAt DateTime @default(now())
+
+  event     Event    @relation(fields: [eventId], references: [id])
+  song      Song     @relation(fields: [songId], references: [id])
+
+  @@index([eventId, songId])
+  @@index([eventId])
+}
+
+// ── SETLIST ITEM CONFIRM (Phase 1B engagement) ────────
+// "I was there and saw this performed" votes.
+// DB writes flag-gated by LAUNCH_FLAGS.confirmDbEnabled
+// (see src/lib/launchFlags.ts) for the 5/23–5/24 Kobe
+// events. Between 5/25 and 5/30, the flag and all gated
+// branches are deleted — removal is the activation.
+// At 1C the row carries no identifier — full identifier-
+// bound dedup arrives at Phase 2. Operator monitor +
+// override covers the bounded browser-cycling abuse risk
+// in the meantime.
+model SetlistItemConfirm {
+  id            String   @id @default(uuid())
+  setlistItemId BigInt
+  createdAt     DateTime @default(now())
+
+  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+
+  @@index([setlistItemId])
 }
