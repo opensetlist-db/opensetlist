@@ -70,10 +70,21 @@ export async function POST(request: NextRequest) {
   // route via validateCanonicalSlug (round-trips through generateSlug;
   // returns null for non-canonical input rather than silently rewriting
   // the operator's slug).
+  // Mirror `resolveCanonicalSlug`'s three-way classification of `rawSlug`
+  // (the helper used by every other admin POST):
+  //   - undefined / null / empty / whitespace string → auto-path
+  //   - non-string of any other shape (number, object, array, boolean)
+  //     → 400 invalid input. A stray `{ slug: 42 }` from a typo or a
+  //     wrong content-type should surface, not silently fall through
+  //     to auto-gen.
+  //   - non-empty string → strict canonical validation; 400 if not
+  //     already canonical.
+  // Songs is the one route that doesn't go through `resolveCanonicalSlug`
+  // (it needs the existence-check + retry loop on top), but the input
+  // contract should be identical.
   let adminSlug: string | null = null;
-  if (typeof body.slug === "string" && body.slug.trim().length > 0) {
-    adminSlug = validateCanonicalSlug(body.slug);
-    if (!adminSlug) {
+  if (body.slug !== undefined && body.slug !== null) {
+    if (typeof body.slug !== "string") {
       return NextResponse.json(
         {
           error:
@@ -81,6 +92,18 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+    if (body.slug.trim().length > 0) {
+      adminSlug = validateCanonicalSlug(body.slug);
+      if (!adminSlug) {
+        return NextResponse.json(
+          {
+            error:
+              "슬러그는 영소문자, 숫자, 하이픈으로만 구성된 URL-safe 형식이어야 합니다 (예: my-song-title).",
+          },
+          { status: 400 }
+        );
+      }
     }
   }
 
