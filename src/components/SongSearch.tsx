@@ -11,6 +11,15 @@ import {
 // projection. Exported so callers can type their `onSelect` handlers and
 // (later) the wishlist/prediction localStorage payloads against the same
 // source of truth.
+//
+// `id` and `baseVersionId` are typed `number`, NOT `string`: the route
+// pipes Prisma BigInt fields through `serializeBigInt` (src/lib/utils.ts:30),
+// which uses `Number(value)` for the bigint→JSON coercion. The rest of
+// the admin UI (SongOption.id, formSongIds: number[]) already assumes
+// number; keeping `number` here means `excludeSongIds.includes(r.id)`
+// and SetlistBuilder's duplicate guard work correctly with strict
+// equality. If serializeBigInt is ever changed to emit strings, every
+// admin caller flips at the same time and this type follows.
 export interface SongSearchResult {
   id: number;
   originalTitle: string;
@@ -157,9 +166,15 @@ export function SongSearch({
   }
 
   function handleSelect(song: SongSearchResult) {
+    // Cancel any debounce + in-flight fetch before clearing state, so
+    // a request scheduled right before the click can't resolve into
+    // setResults(stale) after we've already cleared the dropdown.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (abortRef.current) abortRef.current.abort();
     onSelect(song);
     setQuery("");
     setResults([]);
+    setLoading(false);
     setOpen(false);
   }
 
