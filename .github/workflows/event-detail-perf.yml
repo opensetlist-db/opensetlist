@@ -49,6 +49,13 @@ jobs:
     # early once a deployment lands, so the typical run is ~3-5min.
     timeout-minutes: 25
     env:
+      # Job-level env so every step inherits these without
+      # re-declaring. GH_TOKEN authenticates `gh api`/`gh pr`; REPO
+      # is the owner/name pair the API endpoints expect (also used
+      # to bypass `gh pr comment`'s default git-remote inference,
+      # since this workflow doesn't run actions/checkout).
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
       # Event IDs to sample. Currently:
       #   1 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 1"
       #   2 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 2"
@@ -63,8 +70,6 @@ jobs:
       - name: Wait for Vercel preview (head SHA)
         id: pr_url
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eo pipefail
@@ -95,8 +100,6 @@ jobs:
       - name: Resolve base URL
         id: base_url
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -eo pipefail
@@ -128,6 +131,16 @@ jobs:
               if [ "$STATE" = "success" ] && [ -n "$ENV_URL" ] && [ "$ENV_URL" != "null" ]; then
                 echo "url=$ENV_URL" >> "$GITHUB_OUTPUT"
                 exit 0
+              fi
+              # Mirror the head-SHA fast-exit: a base deployment in
+              # failure/error state will never become success, so
+              # there's no point burning the rest of the polling
+              # budget. Surfacing it now also gives the reviewer a
+              # clear "the base branch's deploy is broken" signal
+              # rather than a vague timeout.
+              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
+                echo "Base Vercel deployment is in state=$STATE; cannot measure TTFB" >&2
+                exit 1
               fi
             fi
             sleep 10
@@ -203,8 +216,6 @@ jobs:
 
       - name: Compare, comment, set status
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           PR_AVG: ${{ steps.measure.outputs.pr_avg }}
           BASE_AVG: ${{ steps.measure.outputs.base_avg }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -244,7 +255,14 @@ jobs:
           # comment in place rather than appending a new one on every
           # push, so an active PR shows one living result instead of a
           # comment per CI run. Falls back to creating the first time.
-          gh pr comment "$PR_NUM" --edit-last --create-if-none --body "$BODY"
+          # --repo is required because we never ran actions/checkout
+          # in this workflow (no need to clone the repo just to call
+          # the API), and `gh pr comment` defaults to inferring the
+          # repo from `git remote get-url`, which fails outside a
+          # working tree.
+          gh pr comment --repo "$REPO" "$PR_NUM" \
+            --edit-last --create-if-none \
+            --body "$BODY"
           # target_url makes the perf/event-detail-ttfb badge in the
           # checks panel link to this workflow run, so a reviewer can
           # click through to inspect the per-sample TTFB output without
