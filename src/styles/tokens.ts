@@ -94,6 +94,21 @@ export const colors = {
   trendingBorder: "#fde68a",
   trendingText: "#b45309",
 
+  // Wishlist card (Phase 1B, consumed by <EventWishSection>).
+  // Blue palette per `raw/mockups/mockup-wish-predict.jsx` — distinct
+  // from the brand `primary` family so the wishlist surface reads as
+  // its own card alongside the amber Trending card. The match-bg /
+  // match-text pair is reused by future <SongMatchBadge> consumers
+  // (Predicted Setlist, Week 3) — keeping them as named tokens means
+  // both surfaces share one definition.
+  wishlistBg: "#f0f7ff",
+  wishlistBorder: "#b5d4f4",
+  wishlistText: "#185FA5",
+  wishlistMuted: "#378ADD",
+  wishlistRowDivider: "#dbeafe",
+  wishlistMatchBg: "#bbf7d0",
+  wishlistMatchText: "#166534",
+
   // Song-variant / encore divider accent
   variant: "#7B1FA2",
   variantBg: "#F3E5F5",

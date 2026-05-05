@@ -72,8 +72,37 @@ export type SongRef = {
   originalTitle: string;
   originalLanguage: string;
   variantLabel: string | null;
+  /**
+   * Points at the canonical base song when this row is a variant
+   * (e.g. "Dream Believers (105th Ver.)" → id of "Dream Believers"),
+   * null otherwise. Returned by `/api/setlist` because Prisma's
+   * default `include` carries every scalar; coerced to `number` by
+   * `serializeBigInt`. Consumed by `isSongMatched` (src/lib/songMatch.ts)
+   * so the wishlist + predicted-setlist match-highlight rules can
+   * forward-match a wished base song against an actual-setlist
+   * variant, per `raw/20260503-wish-song-ui-architecture.md` §"Variant 처리".
+   */
+  baseVersionId: number | null;
   translations: SongTranslation[];
   artists: Array<{ artist: ArtistRef }>;
+};
+
+/**
+ * Per-event "fan TOP-3 wished songs" entry — what the wishlist UI
+ * needs to render a single row in the fan TOP-3 column. Built
+ * server-side by `getEventWishlistTop3` (page.tsx, SSR seed) and
+ * `/api/setlist` (polled refresh) so the same shape flows from both
+ * sources. The `count` is the number of distinct `SongWish` rows for
+ * `(eventId, songId)`; the `song` slot carries enough data to call
+ * `displayOriginalTitle` + `<SongMatchBadge>` (which checks
+ * `baseVersionId`) without a follow-up fetch.
+ */
+export type FanTop3Entry = {
+  count: number;
+  song: Pick<
+    SongRef,
+    "id" | "originalTitle" | "originalLanguage" | "variantLabel" | "baseVersionId" | "translations"
+  >;
 };
 
 export type LiveSetlistItem = {
