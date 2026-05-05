@@ -491,6 +491,47 @@ describe("SetlistRow", () => {
     expect(screen.queryByText("stageType.solo")).toBeNull();
   });
 
+  it("renders UnitBadge for stageType=special with a group-type Artist credit (parent group as special)", () => {
+    // The F18 suppression is narrowly scoped to "solo-type Artist on
+    // a non-solo stage type". Other type combinations stay unchanged
+    // — including group-type Artist on a "special" row (e.g. the
+    // parent Hasunosora group performing as a special encore). This
+    // test locks that behavior in so a future refactor of the typed
+    // gate can't silently regress it.
+    const item = makeItem({
+      stageType: "special",
+      artists: [
+        {
+          artist: {
+            id: 1,
+            slug: "hasunosora",
+            type: "group",
+            color: "#0277BD",
+            originalName: "Hasunosora",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+          },
+        },
+      ],
+    });
+    const { container } = render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.getByText("Hasunosora")).toBeInTheDocument();
+    expect(
+      container.querySelector('a[href="/en/artists/1/hasunosora"]'),
+    ).not.toBeNull();
+    // FallbackUnitBadge for "stageType.special" must NOT also fire.
+    expect(screen.queryByText("stageType.special")).toBeNull();
+  });
+
   it("comma-joins multiple performer names in the desktop performer column", () => {
     // The col-3 performer list (`item.performers.map(...).join(", ")`,
     // SetlistRow.tsx:203) is desktop-only (`hidden lg:block`). Locks
