@@ -280,6 +280,23 @@
     "trending": "이번 공연 화제의 곡",
     "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
   },
+  "Wishlist": {
+    "title": "희망곡",
+    "lockedTitle": "팬들의 희망곡 TOP3",
+    "cap": "최대 3곡",
+    "myList": "내 선택",
+    "fanTop3": "팬 TOP3",
+    "add": "+ 추가",
+    "cancel": "취소",
+    "searchPlaceholder": "곡 검색...",
+    "searchLoading": "검색 중...",
+    "searchNoResults": "검색 결과 없음",
+    "removeAria": "희망곡에서 제거",
+    "count": "{count}명",
+    "capReachedToast": "최대 3곡까지 선택할 수 있어요",
+    "addError": "희망곡을 추가하지 못했어요",
+    "removeError": "희망곡을 제거하지 못했어요"
+  },
   "Impression": {
     "title": "한줄감상",
     "placeholder": "공연은 어땠나요? (최대 200자)",

@@ -17,9 +17,11 @@ import {
 // import sites that pull `LiveSetlistItem` / `ArtistRef` /
 // `StageIdentityRef` from this file.
 import type {
+  FanTop3Entry,
   LiveSetlistItem,
   ReactionCountsMap,
 } from "@/lib/types/setlist";
+import { EventWishSection } from "@/components/EventWishSection";
 
 export type {
   ArtistRef,
@@ -37,7 +39,15 @@ interface Props {
   // already-polled values. See `src/components/LiveEventLayout.tsx`.
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
+  /** Polled fan TOP-3 wishes (Phase 1B). Pre-show + ongoing both update. */
+  top3Wishes: FanTop3Entry[];
   initialTrendingSongs: TrendingSong[];
+  /**
+   * Event start time (UTC). Threaded through to `<EventWishSection>`
+   * so the wishlist surface can flip from pre-show → locked at the
+   * UTC instant. Same shape as `LiveEventLayout` Props (Date | string).
+   */
+  startTime: Date | string | null;
   unknownSongLabel: string;
   isOngoing: boolean;
   locale: string;
@@ -47,7 +57,9 @@ export function LiveSetlist({
   eventId,
   items,
   reactionCounts,
+  top3Wishes,
   initialTrendingSongs,
+  startTime,
   unknownSongLabel,
   isOngoing,
   locale,
@@ -75,6 +87,21 @@ export function LiveSetlist({
 
   return (
     <>
+      {/* Wishlist (Phase 1B) sits at the very top of the right column,
+          above Trending — per `raw/mockups/mockup-wish-predict.jsx`.
+          Self-hides when locked + no data; renders structurally on
+          SSR so hydration matches before localStorage hydrates the
+          my-list. `startTime === null` means we don't have an event
+          start anchor, so render nothing rather than guessing. */}
+      {startTime !== null && (
+        <EventWishSection
+          eventId={eventId}
+          locale={locale}
+          startTime={startTime}
+          setlistItems={items}
+          top3Wishes={top3Wishes}
+        />
+      )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
           tokens), per mockup. Not a child of the white setlist card. */}
       <TrendingSongs songs={trendingSongs} />

@@ -15,6 +15,7 @@ import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
+import type { FanTop3Entry } from "@/lib/types/setlist";
 import { LiveEventLayout } from "@/components/LiveEventLayout";
 import {
   deriveSidebarUnitsAndPerformers,
@@ -312,6 +313,62 @@ async function getEventImpressions(eventId: bigint): Promise<{
   return { impressions, nextCursor, totalCount };
 }
 
+/**
+ * SSR seed for the wishlist (Phase 1B) fan TOP-3. One indexed
+ * `groupBy` on `SongWish(eventId, songId)` followed by a bounded
+ * `findMany` resolves the song display payload — same shape returned
+ * by the polled `/api/setlist` endpoint. Empty array when no wishes
+ * yet, so the wishlist surface still SSRs structurally for pre-show
+ * events even before any fan submits.
+ *
+ * Translation locale filter: `[locale, "ja"]` — same trim as the
+ * rest of the page query so the join doesn't fan out across every
+ * locale.
+ */
+async function getEventWishlistTop3(
+  eventId: bigint,
+  locale: string,
+): Promise<FanTop3Entry[]> {
+  const groups = await prisma.songWish.groupBy({
+    by: ["songId"],
+    where: { eventId },
+    _count: { _all: true },
+    orderBy: { _count: { id: "desc" } },
+    take: 3,
+  });
+  if (groups.length === 0) return [];
+
+  const songIds = groups.map((g) => g.songId);
+  const songs = await prisma.song.findMany({
+    where: { id: { in: songIds } },
+    select: {
+      id: true,
+      originalTitle: true,
+      originalLanguage: true,
+      variantLabel: true,
+      baseVersionId: true,
+      translations: {
+        where: { locale: { in: [locale, "ja"] } },
+        select: { locale: true, title: true, variantLabel: true },
+      },
+    },
+  });
+  const songById = new Map(songs.map((s) => [s.id, s] as const));
+
+  // `as unknown as ...` per the project's serializeBigInt boundary
+  // convention (page.tsx:617). Runtime values are numbers.
+  return groups.flatMap((g) => {
+    const song = songById.get(g.songId);
+    if (!song) return [];
+    return [
+      {
+        count: g._count._all,
+        song: serializeBigInt(song) as unknown as FanTop3Entry["song"],
+      },
+    ];
+  });
+}
+
 async function getTrendingSongs(
   eventId: bigint,
   locale: string,
@@ -430,7 +487,7 @@ export default async function EventPage({ params }: Props) {
   // waste during live shows that the existing skip avoids — see
   // `LiveSetlist.tsx:62-64` for the client-side re-derivation that
   // makes the SSR fetch dead weight when ongoing.
-  const [event, t, ct, st, aT, reactionCounts, impressionsResult] =
+  const [event, t, ct, st, aT, reactionCounts, impressionsResult, fanTop3] =
     await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
@@ -439,6 +496,11 @@ export default async function EventPage({ params }: Props) {
       getTranslations("Artist"),
       getReactionCounts(eventId),
       getEventImpressions(eventId),
+      // Wishlist fan TOP-3 — runs in parallel since it only depends
+      // on `eventId` + `locale` (both already in scope). Cheap
+      // bounded query; safe to fetch unconditionally even on
+      // completed events (just returns the historical aggregate).
+      getEventWishlistTop3(eventId, locale),
     ]);
   if (!event) notFound();
 
@@ -730,6 +792,7 @@ export default async function EventPage({ params }: Props) {
         initialSongsCount={songsCount}
         initialReactionsValue={reactionsValue}
         initialTrendingSongs={trendingSongs}
+        initialFanTop3={fanTop3}
       />
     </main>
   );
