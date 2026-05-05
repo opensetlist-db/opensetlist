@@ -64,7 +64,12 @@ export async function POST(request: NextRequest) {
 
   const slugResult = await resolveCanonicalSlug(
     body.slug,
-    translations.value[0]?.name ?? "",
+    // Fall through translations[0].name → originalName so an entry
+    // saved with no translations still produces a meaningful slug.
+    // Without the originalName backstop the auto-path would receive
+    // "" and `resolveCanonicalSlug` would emit `series-${ts}` — the
+    // standalone stage-identity route already does this same fallback.
+    translations.value[0]?.name || name.value,
     "series"
   );
   if (!slugResult.ok) return badRequest(slugResult.message);
