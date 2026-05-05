@@ -107,7 +107,6 @@ export default function SetlistBuilder({
 }) {
   const router = useRouter();
   const [items, setItems] = useState<SetlistItemData[]>(initialItems);
-  const [songs, setSongs] = useState<SongOption[]>([]);
   const [stageIdentities, setStageIdentities] = useState<
     StageIdentityOption[]
   >([]);
@@ -149,9 +148,6 @@ export default function SetlistBuilder({
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/songs")
-      .then((r) => r.json())
-      .then(setSongs);
     fetch("/api/admin/stage-identities")
       .then((r) => r.json())
       .then(setStageIdentities);

@@ -81,7 +81,7 @@ describe("SongSearch — debounce + fetch", () => {
     const fetchSpy = mockFetchOnceWith([]);
     render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "dream" },
     });
 
@@ -105,7 +105,7 @@ describe("SongSearch — debounce + fetch", () => {
     const fetchSpy = mockFetchOnceWith([]);
     render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
-    const input = screen.getByRole("textbox");
+    const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "d" } });
     await act(async () => {
       vi.advanceTimersByTime(100);
@@ -136,7 +136,7 @@ describe("SongSearch — debounce + fetch", () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "x" },
     });
     await act(async () => {
@@ -168,7 +168,7 @@ describe("SongSearch — rendering", () => {
     mockFetchOnceWith([]);
     render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
 
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "asdfgh1234" },
     });
     await act(async () => {
@@ -176,6 +176,31 @@ describe("SongSearch — rendering", () => {
     });
 
     expect(screen.getByText("NO_RESULTS")).toBeInTheDocument();
+  });
+
+  it("clears results and loading on non-ok server response (500)", async () => {
+    // Drives the fetchResults catch path: !res.ok → throw → caught
+    // (non-AbortError) → setResults([]) + setLoading(false). UI must
+    // exit the loading state and fall through to noResults.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => [],
+      } as unknown as Response),
+    );
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "dream" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+
+    expect(screen.getByText("NO_RESULTS")).toBeInTheDocument();
+    expect(screen.queryByText("LOADING")).not.toBeInTheDocument();
   });
 
   it("calls onSelect with the full result and clears the query on row click", async () => {
@@ -186,7 +211,7 @@ describe("SongSearch — rendering", () => {
       <SongSearch onSelect={onSelect} locale="ko" texts={TEXTS} />,
     );
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole("combobox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "dream" } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(305);
@@ -236,7 +261,7 @@ describe("SongSearch — rendering", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
-    const input = screen.getByRole("textbox");
+    const input = screen.getByRole("combobox");
 
     fireEvent.change(input, { target: { value: "a" } });
     await act(async () => {
@@ -275,7 +300,7 @@ describe("SongSearch — rendering", () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole("textbox"), {
+    fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "should" },
     });
     await act(async () => {

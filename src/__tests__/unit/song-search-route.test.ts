@@ -143,3 +143,17 @@ describe("GET /api/songs/search — result limit", () => {
     expect(call.take).toBe(20);
   });
 });
+
+describe("GET /api/songs/search — DB error path", () => {
+  it("returns [] with HTTP 500 when prisma throws", async () => {
+    findMany.mockRejectedValueOnce(new Error("DB connection lost"));
+
+    const res = await GET(
+      makeRequest("q=dream") as unknown as Parameters<typeof GET>[0],
+    );
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual([]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+});

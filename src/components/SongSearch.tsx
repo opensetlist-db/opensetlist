@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useId, useState, useEffect, useRef, useCallback } from "react";
 import {
   displayOriginalTitle,
   displayNameWithFallback,
@@ -85,6 +85,7 @@ export function SongSearch({
   excludeSongIds = [],
   includeVariants = false,
 }: SongSearchProps) {
+  const listboxId = useId();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SongSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -212,9 +213,18 @@ export function SongSearch({
         placeholder={texts.placeholder}
         className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
         aria-label={texts.placeholder}
+        role="combobox"
+        aria-expanded={open && hasQuery}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-autocomplete="list"
       />
       {open && hasQuery && (
-        <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
+        <div
+          id={listboxId}
+          role="listbox"
+          className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
+        >
           {loading && (
             <div className="px-3 py-2 text-sm text-gray-500">
               {texts.loading}
@@ -253,6 +263,8 @@ export function SongSearch({
                 <button
                   key={song.id}
                   type="button"
+                  role="option"
+                  aria-selected={false}
                   onClick={() => handleSelect(song)}
                   className="w-full text-left px-3 py-2 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-100 last:border-b-0"
                 >
