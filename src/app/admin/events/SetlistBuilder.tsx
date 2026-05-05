@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 import { nextSetlistPosition } from "@/lib/setlist-position";
+import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 
 type SongOption = {
   id: number;
@@ -106,7 +107,6 @@ export default function SetlistBuilder({
 }) {
   const router = useRouter();
   const [items, setItems] = useState<SetlistItemData[]>(initialItems);
-  const [songs, setSongs] = useState<SongOption[]>([]);
   const [stageIdentities, setStageIdentities] = useState<
     StageIdentityOption[]
   >([]);
@@ -129,13 +129,10 @@ export default function SetlistBuilder({
   const [formArtistIds, setFormArtistIds] = useState<number[]>([]);
 
   // Search-based selectors
-  const [songSearch, setSongSearch] = useState("");
-  const [songSearchResults, setSongSearchResults] = useState<SongOption[]>([]);
-  const [songSearchLoading, setSongSearchLoading] = useState(false);
-  const [songDropdownOpen, setSongDropdownOpen] = useState(false);
+  // Song search is owned by <SongSearch> — SetlistBuilder only keeps
+  // the list of songs the operator has already picked into this row,
+  // for tag display + form submission.
   const [selectedSongs, setSelectedSongs] = useState<SongOption[]>([]);
-  const songSearchRef = useRef<HTMLDivElement>(null);
-  const songSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [performerSearch, setPerformerSearch] = useState("");
   const [performerDropdownOpen, setPerformerDropdownOpen] = useState(false);
@@ -151,20 +148,16 @@ export default function SetlistBuilder({
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/songs")
-      .then((r) => r.json())
-      .then(setSongs);
     fetch("/api/admin/stage-identities")
       .then((r) => r.json())
       .then(setStageIdentities);
   }, []);
 
-  // Click-outside handlers for dropdowns
+  // Click-outside handlers for dropdowns. SongSearch owns its own
+  // click-outside; this only covers the performer + artist pickers,
+  // which still use the inline-dropdown pattern.
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (songSearchRef.current && !songSearchRef.current.contains(e.target as Node)) {
-        setSongDropdownOpen(false);
-      }
       if (performerSearchRef.current && !performerSearchRef.current.contains(e.target as Node)) {
         setPerformerDropdownOpen(false);
       }
@@ -176,35 +169,24 @@ export default function SetlistBuilder({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const searchSongs = useCallback((query: string) => {
-    if (songSearchTimerRef.current) clearTimeout(songSearchTimerRef.current);
-    if (!query.trim()) {
-      setSongSearchResults([]);
-      setSongSearchLoading(false);
-      return;
-    }
-    setSongSearchLoading(true);
-    songSearchTimerRef.current = setTimeout(async () => {
-      const res = await fetch(`/api/admin/songs?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      setSongSearchResults(data);
-      setSongSearchLoading(false);
-    }, 300);
-  }, []);
-
-  function handleSongSearchChange(value: string) {
-    setSongSearch(value);
-    setSongDropdownOpen(true);
-    searchSongs(value);
-  }
-
-  function selectSong(song: SongOption) {
-    if (!formSongIds.includes(song.id)) {
-      setFormSongIds((prev) => [...prev, song.id]);
-      setSelectedSongs((prev) => [...prev, song]);
-    }
-    setSongSearch("");
-    setSongSearchResults([]);
+  function selectSong(song: SongSearchResult) {
+    if (formSongIds.includes(song.id)) return;
+    setFormSongIds((prev) => [...prev, song.id]);
+    // Project of SongSearchResult down to the SongOption shape that
+    // the rest of SetlistBuilder + getSongName already understand.
+    // Explicit construction (vs. a structural cast) means a future
+    // change to either type fails at the right line instead of
+    // silently propagating undefined fields.
+    const asOption: SongOption = {
+      id: song.id,
+      originalTitle: song.originalTitle,
+      variantLabel: song.variantLabel,
+      translations: song.translations,
+      artists: song.artists.map((a) => ({
+        artist: { translations: a.artist.translations },
+      })),
+    };
+    setSelectedSongs((prev) => [...prev, asOption]);
   }
 
   function removeSong(songId: number) {
@@ -282,8 +264,6 @@ export default function SetlistBuilder({
     // this path so editing an existing item doesn't silently re-seed
     // a deliberately-empty performer list.
     setFormPerformerIds(eventPerformers.map((p) => p.id));
-    setSongSearch("");
-    setSongSearchResults([]);
     setSelectedSongs([]);
     setPerformerSearch("");
     setSelectedPerformers(eventPerformers);
@@ -744,7 +724,7 @@ export default function SetlistBuilder({
           </div>
 
           {/* Song selector — only for song type */}
-          {formType === "song" && <div ref={songSearchRef}>
+          {formType === "song" && <div>
             <label className="mb-1 block text-xs font-medium">
               곡 (복수 선택 = 메들리)
             </label>
@@ -768,52 +748,29 @@ export default function SetlistBuilder({
                 ))}
               </div>
             )}
-            {/* Search input */}
-            <div className="relative">
-              <input
-                type="text"
-                value={songSearch}
-                onChange={(e) => handleSongSearchChange(e.target.value)}
-                onFocus={() => { if (songSearch.trim()) setSongDropdownOpen(true); }}
-                placeholder="곡 검색..."
-                className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
-              />
-              {songSearchLoading && (
-                <span className="absolute right-2 top-1.5 text-xs text-zinc-400">검색 중...</span>
-              )}
-              {/* Dropdown */}
-              {songDropdownOpen && songSearch.trim() && (
-                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
-                  {songSearchResults.map((song) => {
-                    const isSelected = formSongIds.includes(song.id);
-                    return (
-                      <button
-                        key={song.id}
-                        type="button"
-                        onClick={() => selectSong(song)}
-                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-blue-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
-                      >
-                        {isSelected && <span className="mr-1">✓</span>}
-                        {getSongName(song)}
-                      </button>
-                    );
-                  })}
-                  {!songSearchLoading && songSearchResults.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-zinc-400">일치하는 곡이 없습니다</div>
-                  )}
-                  {songSearch.trim() && !songSearchLoading && (
-                    <a
-                      href="/admin/songs/new"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block border-t border-zinc-100 px-3 py-2 text-xs text-blue-600 hover:bg-blue-50"
-                    >
-                      + &quot;{songSearch}&quot; 새 곡 추가
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Shared search component. includeVariants=true preserves
+                the admin's pre-refactor ability to record a variant row
+                (e.g. "Dream Believers (SAKURA Ver.)") directly. Fan
+                pickers omit the prop and get base-only. */}
+            <SongSearch
+              onSelect={selectSong}
+              locale="ko"
+              texts={{
+                placeholder: "곡 검색...",
+                loading: "검색 중...",
+                noResults: "일치하는 곡이 없습니다",
+              }}
+              excludeSongIds={formSongIds}
+              includeVariants
+            />
+            <a
+              href="/admin/songs/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-xs text-blue-600 hover:underline"
+            >
+              + 새 곡 추가
+            </a>
           </div>}
 
           {/* Performer selector */}

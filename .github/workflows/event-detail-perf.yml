@@ -1,10 +1,12 @@
 name: perf — event detail TTFB
 
-# Non-blocking informational check. Measures warm TTFB against the
-# Vercel preview for the PR head and against the most recent
-# Preview/Production deployment of the base branch, then comments on
-# the PR with the delta and sets a commit status named
-# `perf/event-detail-ttfb`.
+# Non-blocking informational check. Builds the PR's merge commit
+# (`refs/pull/N/merge` — GitHub's auto-generated test-merge of the
+# PR head onto current base) AND the base branch tip in parallel
+# checkout dirs, runs `next start` on each in turn against the dev
+# DB, measures warm TTFB for the same 6 (locale × event) combos
+# under identical runner conditions, then comments the delta and
+# sets a commit status named `perf/event-detail-ttfb`.
 #
 # This status check is intentionally NOT added to branch protection's
 # required-checks list — a regression appears as a red ✗ in the PR's
@@ -14,8 +16,38 @@ name: perf — event detail TTFB
 # Required CI gates (Typecheck + Test, Semgrep, Vercel deploy,
 # CodeRabbit) continue to enforce normally.
 #
-# Thresholds chosen generously to absorb Vercel preview cold-start
-# latency and runner network jitter (±100–300ms is normal):
+# Why merge-commit + local build instead of Vercel preview URLs:
+# the prior implementation curl'd Vercel preview deployments (PR
+# preview vs latest dev preview). That had two systematic problems:
+#
+#   1. The PR's preview is built from the PR's HEAD, not the merge
+#      result. A README-only PR opened off stale dev would show a
+#      fake "regression" because its preview deployed un-optimized
+#      code, while base preview had the optimization. The merge
+#      commit is what dev would actually look like post-merge.
+#
+#   2. Per-deployment Vercel preview URLs scale to zero aggressively;
+#      cold-start of a low-traffic preview can add 3-4s to the first
+#      few requests. Even with warm-up, request-level lambda routing
+#      can still hit cold instances. Comparing two preview URLs in
+#      different "warmth" states produced uniform ~4.8s "regressions"
+#      that disappeared on rebase.
+#
+# Building locally on the runner removes both. Both sides run under
+# identical conditions (same runner, same Node version, same dev
+# DB connection); the only difference is the code. The trade-off:
+# we lose the ability to detect Vercel-specific regressions (cold-
+# start, edge behavior, regional drift). For the F20 regression
+# class (DB-query fan-out / Prisma include shape) the measurement
+# is actually more reliable than the Vercel-preview approach.
+#
+# `paths-ignore` skips the workflow entirely when only markdown
+# changes — those literally cannot affect TTFB and the workflow
+# would just burn CI minutes producing zero signal.
+#
+# Thresholds chosen to absorb runner network jitter and DB-latency
+# noise (Supabase Seoul ↔ Ubuntu runners is ~150-200ms RTT with
+# some variance):
 #   delta ≤ +30%   → ✓ success
 #   delta > +30%   → ✗ failure ("review and merge if intentional")
 #   delta > +100%  → ✗ failure ("likely real regression")
@@ -24,6 +56,8 @@ name: perf — event detail TTFB
 on:
   pull_request:
     branches: [main, dev]
+    paths-ignore:
+      - "**/*.md"
 
 # Cancel in-flight runs for the same PR when a new push lands.
 # Without this, a slow earlier run could finish AFTER the fresh one
@@ -37,146 +71,105 @@ permissions:
   contents: read
   pull-requests: write
   statuses: write
-  deployments: read
 
 jobs:
   measure:
     name: TTFB regression vs base
     runs-on: ubuntu-latest
-    # 25min covers both polling loops at their worst case (PR head:
-    # 90×10s = 15min; base: 90×10s = 15min) plus measurement (~3min)
-    # plus comment/status calls. The polling loops themselves exit
-    # early once a deployment lands, so the typical run is ~3-5min.
-    timeout-minutes: 25
+    # 30min covers two prod builds (~3min each), npm ci + prisma
+    # generate (~1.5min each), warm-up + measurement loops (~3min
+    # each), plus comment/status calls. Each phase has its own
+    # natural cap (curl --max-time 30, server-readiness loop 30s),
+    # so the timeout is the catch-all for genuine wedges.
+    timeout-minutes: 30
     env:
       # Job-level env so every step inherits these without
       # re-declaring. GH_TOKEN authenticates `gh api`/`gh pr`; REPO
       # is the owner/name pair the API endpoints expect (also used
-      # to bypass `gh pr comment`'s default git-remote inference,
-      # since this workflow doesn't run actions/checkout).
+      # to bypass `gh pr comment`'s default git-remote inference).
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
+      # Dev DB — same pool the runtime queries hit on Vercel previews,
+      # so query plans and roundtrip latencies match what the actual
+      # app sees. Read-only in practice: the event detail page is
+      # server-rendered SELECTs only, no mutations.
+      DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
       # Event IDs to sample. Currently:
       #   1 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 1"
       #   2 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 2"
       # Both are completed events with full setlists / reactions /
       # impressions populated, so every helper exercised by the page
       # returns non-empty data. If those rows ever get soft-deleted
-      # or re-numbered in the preview DB, this list MUST be updated —
+      # or re-numbered in the dev DB, this list MUST be updated —
       # otherwise every measurement silently records 404s and the
-      # delta becomes meaningless.
+      # delta becomes meaningless (the per-sample HTTP-200 filter
+      # below at least surfaces this loudly rather than averaging
+      # the 404s in).
       PERF_EVENT_IDS: "1 2"
     steps:
-      - name: Wait for Vercel preview (head SHA)
-        id: pr_url
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -eo pipefail
-          echo "Polling Vercel preview deployment for $HEAD_SHA..."
-          for i in $(seq 1 90); do
-            DEPLOYMENT_ID=$(gh api "/repos/$REPO/deployments?sha=$HEAD_SHA&per_page=20" \
-              --jq '[.[] | select(.environment | tostring | startswith("Preview"))] | .[0] | .id // empty')
-            if [ -n "$DEPLOYMENT_ID" ]; then
-              STATUS_JSON=$(gh api "/repos/$REPO/deployments/$DEPLOYMENT_ID/statuses?per_page=10" \
-                --jq '[.[] | select(.environment_url != null and .environment_url != "")] | .[0] // {}')
-              STATE=$(echo "$STATUS_JSON" | jq -r '.state // ""')
-              ENV_URL=$(echo "$STATUS_JSON" | jq -r '.environment_url // ""')
-              echo "[$i] deployment=$DEPLOYMENT_ID state=$STATE url=$ENV_URL"
-              if [ "$STATE" = "success" ] && [ -n "$ENV_URL" ] && [ "$ENV_URL" != "null" ]; then
-                echo "url=$ENV_URL" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
-                echo "Vercel preview failed for HEAD; cannot measure TTFB" >&2
-                exit 1
-              fi
-            fi
-            sleep 10
-          done
-          echo "Timed out waiting for Vercel preview" >&2
-          exit 1
+      # Two checkouts to separate paths. `refs/pull/N/merge` is
+      # GitHub's auto-generated merge commit — base + PR's commits,
+      # exactly the state dev would have post-merge. Only exists
+      # when the PR is mergeable (no conflicts); if it doesn't exist
+      # this checkout fails with a clear error, which is the right
+      # behavior — the user needs to resolve conflicts before perf
+      # is meaningful anyway.
+      - name: Checkout PR merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          path: pr-merge
 
-      - name: Resolve base URL
-        id: base_url
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: |
-          set -eo pipefail
-          # main has a stable production URL; everything else (typically
-          # dev) gets resolved via the latest successful Preview
-          # deployment matching the branch's tip SHA.
-          if [ "$BASE_REF" = "main" ]; then
-            echo "url=https://opensetlist.com" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Vercel registers each deployment with `ref` set to the SHA
-          # (not the branch name), so `?ref=dev` returns []. Resolve
-          # the branch tip via the commits API first, then look up
-          # deployments by that SHA — same shape as the head-SHA poll
-          # above. The base SHA is already deployed (since dev was
-          # merged to before this PR opened), so the loop exits on
-          # the first iteration in the typical case.
-          BASE_SHA=$(gh api "/repos/$REPO/commits/$BASE_REF" --jq '.sha')
-          echo "Resolving Preview deployment for $BASE_REF (sha=$BASE_SHA)..."
-          for i in $(seq 1 30); do
-            DEPLOYMENT_ID=$(gh api "/repos/$REPO/deployments?sha=$BASE_SHA&per_page=20" \
-              --jq '[.[] | select(.environment | tostring | startswith("Preview"))] | .[0] | .id // empty')
-            if [ -n "$DEPLOYMENT_ID" ]; then
-              STATUS_JSON=$(gh api "/repos/$REPO/deployments/$DEPLOYMENT_ID/statuses?per_page=10" \
-                --jq '[.[] | select(.environment_url != null and .environment_url != "")] | .[0] // {}')
-              STATE=$(echo "$STATUS_JSON" | jq -r '.state // ""')
-              ENV_URL=$(echo "$STATUS_JSON" | jq -r '.environment_url // ""')
-              echo "[$i] base deployment=$DEPLOYMENT_ID state=$STATE url=$ENV_URL"
-              if [ "$STATE" = "success" ] && [ -n "$ENV_URL" ] && [ "$ENV_URL" != "null" ]; then
-                echo "url=$ENV_URL" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-              # Mirror the head-SHA fast-exit: a base deployment in
-              # failure/error state will never become success, so
-              # there's no point burning the rest of the polling
-              # budget. Surfacing it now also gives the reviewer a
-              # clear "the base branch's deploy is broken" signal
-              # rather than a vague timeout.
-              if [ "$STATE" = "failure" ] || [ "$STATE" = "error" ]; then
-                echo "Base Vercel deployment is in state=$STATE; cannot measure TTFB" >&2
-                exit 1
-              fi
-            fi
-            sleep 10
-          done
-          echo "No successful Preview deployment found for $BASE_REF (sha=$BASE_SHA)" >&2
-          exit 1
+      - name: Checkout base tip
+        uses: actions/checkout@v4
+        with:
+          # Use the immutable base.sha captured at event time, not
+          # base.ref. With base.ref, if dev advances between the PR
+          # event firing and this step running, the base checkout
+          # races ahead of the merge commit (which is already pinned
+          # to event-time dev) and produces a mismatched comparison.
+          # base.sha matches what the merge commit was computed
+          # against, so both sides reflect the same point-in-time dev.
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
 
-      - name: Measure TTFB (PR + base)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          # Use the PR-merge lockfile as the cache key. When PR and
+          # base have identical lockfiles (the common case), both
+          # `npm ci` calls below hit the same cache. When they
+          # differ, the second one downloads fresh — still cheaper
+          # than no cache at all.
+          cache-dependency-path: pr-merge/package-lock.json
+
+      # Combined into one step so the bash measure_avg function is
+      # defined once and reused for both sides without resorting to
+      # script-file extraction. Step log is sequential and easy to
+      # follow even at ~10min total.
+      - name: Build + measure both sides
         id: measure
-        env:
-          PR_URL: ${{ steps.pr_url.outputs.url }}
-          BASE_URL: ${{ steps.base_url.outputs.url }}
         run: |
           set -eo pipefail
-          # The 6 (locale × event) combos we've been measuring manually
-          # since PR #260 — same combo set used to validate every prior
-          # perf PR, so the numbers stay comparable across history.
-          measure() {
+
+          # Per-side measurement loop. Same shape as the manual
+          # validation we've used since PR #260: warm-up pass to
+          # discard cold-start timing, then 2 measurement passes
+          # capturing HTTP status alongside TTFB. Non-200 samples
+          # are excluded from the average and logged loudly; if
+          # more than half the samples drop, the function returns
+          # non-zero (the surrounding `set -eo pipefail` then fails
+          # the step) rather than reporting a meaningless number.
+          measure_avg() {
             local URL="$1"
             local LABEL="$2"
-            # Warm-up pass — discard timing. Each combo also warms its
-            # own getStaticProps / DB connection. Timeouts cap at 30s
-            # so a wedged endpoint fails fast instead of hanging the job.
             for locale in ko ja en; do
               for id in $PERF_EVENT_IDS; do
                 curl -s -o /dev/null --max-time 30 "$URL/$locale/events/$id" >/dev/null 2>&1 || true
               done
             done
-            # 2 measurement passes. Capture HTTP status alongside TTFB
-            # and only count responses that are actually 200 — without
-            # this guard, an event ID that's been soft-deleted in the
-            # preview DB would silently return 404 with a fast TTFB and
-            # poison the average toward "looks great". Non-200 samples
-            # are logged loudly and excluded from the average; if too
-            # many drop, the run fails rather than reporting a
-            # meaningless number.
             local times=()
             local non200=0
             local total=0
@@ -198,18 +191,69 @@ jobs:
                 done
               done
             done
-            # Refuse to compute an average when more than half the
-            # samples dropped — the remaining ones aren't representative.
             if [ "$non200" -gt $((total / 2)) ]; then
               echo "$LABEL: $non200/$total samples were non-200; refusing to compute TTFB" >&2
               return 1
             fi
             printf '%s\n' "${times[@]}" | awk '{s+=$1; n++} END {printf "%.3f\n", s/n}'
           }
-          echo "Measuring PR preview..."
-          PR_AVG=$(measure "$PR_URL" "PR")
-          echo "Measuring base..."
-          BASE_AVG=$(measure "$BASE_URL" "BASE")
+
+          # Wait for next start to bind port 3000.
+          wait_for_server() {
+            local LABEL="$1"
+            for i in $(seq 1 30); do
+              if curl -s -o /dev/null --max-time 1 http://localhost:3000/ 2>/dev/null; then
+                echo "$LABEL server ready in ${i}s" >&2
+                return 0
+              fi
+              sleep 1
+            done
+            echo "$LABEL server failed to bind port 3000 within 30s" >&2
+            return 1
+          }
+
+          # Reliably stop next start. `npm run start` spawns
+          # `next start` as a child; killing the npm process doesn't
+          # always cascade. pkill -f matches the actual server
+          # process. Sleep + fuser is a paranoid fallback to ensure
+          # port 3000 is free for the second build's server.
+          stop_server() {
+            pkill -f "next start" 2>/dev/null || true
+            sleep 1
+            fuser -k 3000/tcp 2>/dev/null || true
+            sleep 1
+          }
+
+          echo "::group::Build PR merge commit"
+          cd pr-merge
+          npm ci
+          npx prisma generate
+          npm run build
+          echo "::endgroup::"
+
+          echo "::group::Measure PR merge commit TTFB"
+          npm run start > /tmp/pr-server.log 2>&1 &
+          wait_for_server "PR"
+          PR_AVG=$(measure_avg "http://localhost:3000" "PR")
+          stop_server
+          cd ..
+          echo "::endgroup::"
+
+          echo "::group::Build base tip"
+          cd base
+          npm ci
+          npx prisma generate
+          npm run build
+          echo "::endgroup::"
+
+          echo "::group::Measure base TTFB"
+          npm run start > /tmp/base-server.log 2>&1 &
+          wait_for_server "BASE"
+          BASE_AVG=$(measure_avg "http://localhost:3000" "BASE")
+          stop_server
+          cd ..
+          echo "::endgroup::"
+
           echo "pr_avg=$PR_AVG" >> "$GITHUB_OUTPUT"
           echo "base_avg=$BASE_AVG" >> "$GITHUB_OUTPUT"
           echo "PR avg: ${PR_AVG}s  |  Base avg: ${BASE_AVG}s"
@@ -220,8 +264,6 @@ jobs:
           BASE_AVG: ${{ steps.measure.outputs.base_avg }}
           PR_NUM: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_URL: ${{ steps.pr_url.outputs.url }}
-          BASE_URL: ${{ steps.base_url.outputs.url }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -eo pipefail
@@ -241,12 +283,11 @@ jobs:
 
           | | warm avg (12 samples: 6 locale × event combos × 2 passes) |
           |---|---|
-          | PR | **${PR_AVG}s** |
-          | base (${BASE_REF}) | ${BASE_AVG}s |
+          | PR merge commit | **${PR_AVG}s** |
+          | base (${BASE_REF} tip) | ${BASE_AVG}s |
           | delta | **${DELTA_PCT}%** — ${VERDICT} |
 
-          PR preview: ${PR_URL}
-          Base:       ${BASE_URL}
+          Measurement runs both sides under identical conditions on the GitHub Actions runner (same Node, same dev DB, same network). The PR side is the GitHub-computed merge commit (\`refs/pull/${PR_NUM}/merge\`) — what \`${BASE_REF}\` would actually look like post-merge — not the PR's standalone Vercel preview.
 
           This is a **non-blocking informational check**. Merge despite a failure if the regression is expected (e.g. a new feature legitimately needs more queries). Required CI gates remain enforced separately.
           EOF
@@ -255,11 +296,10 @@ jobs:
           # comment in place rather than appending a new one on every
           # push, so an active PR shows one living result instead of a
           # comment per CI run. Falls back to creating the first time.
-          # --repo is required because we never ran actions/checkout
-          # in this workflow (no need to clone the repo just to call
-          # the API), and `gh pr comment` defaults to inferring the
-          # repo from `git remote get-url`, which fails outside a
-          # working tree.
+          # --repo is required because this step doesn't run inside
+          # one of the actions/checkout working trees, and `gh pr
+          # comment` defaults to inferring the repo from `git remote
+          # get-url`.
           gh pr comment --repo "$REPO" "$PR_NUM" \
             --edit-last --create-if-none \
             --body "$BODY"

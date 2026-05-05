@@ -18,7 +18,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 10,
-    topReaction: { type: "best", emoji: "🔥", count: 6 },
+    reactionCounts: { best: 6, waiting: 2, surprise: 1, moved: 1 },
   },
   {
     setlistItemId: "2",
@@ -26,7 +26,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 8,
-    topReaction: { type: "moved", emoji: "🩷", count: 5 },
+    reactionCounts: { moved: 5, best: 3 },
   },
   {
     setlistItemId: "3",
@@ -34,7 +34,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 5,
-    topReaction: { type: "surprise", emoji: "😱", count: 3 },
+    reactionCounts: { surprise: 3, best: 2 },
   },
 ];
 
@@ -52,24 +52,35 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });
 
-  it("renders each song with title, medal, and top-reaction count", () => {
+  it("renders each song with title, medal, and per-type reaction counts (zeros omitted)", () => {
+    // F17 fix: previously the widget rendered only the single
+    // highest-emotion count under each ranked item. Day-1 surfaced
+    // that this under-displayed total engagement once per-type counts
+    // grew past rehearsal-scale single digits. The card now renders
+    // the per-type counts in REACTION_TYPES canonical order, filtered
+    // to only the types this song has — unused types are omitted to
+    // keep the card compact.
     render(<TrendingSongs songs={sample} />);
+    // Titles
     expect(screen.getByText("First Song")).toBeInTheDocument();
     expect(screen.getByText("Second Song")).toBeInTheDocument();
     expect(screen.getByText("Third Song")).toBeInTheDocument();
+    // Medals — one per ranked slot
     expect(screen.getByText("🥇")).toBeInTheDocument();
     expect(screen.getByText("🥈")).toBeInTheDocument();
     expect(screen.getByText("🥉")).toBeInTheDocument();
-    // Top-reaction emoji + count render in separate spans (the
-    // emoji at 14px, the count at 12px) per the mockup's two-line
-    // item layout — query each independently rather than as a
-    // single concatenated string.
-    expect(screen.getByText("🔥")).toBeInTheDocument();
-    expect(screen.getByText("6")).toBeInTheDocument();
-    expect(screen.getByText("🩷")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
-    expect(screen.getByText("😱")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    // Per-emoji render counts (matches the sample fixture):
+    // 😭 (waiting): song 1 only           → 1
+    // 🔥 (best):    songs 1 + 2 + 3       → 3
+    // 😱 (surprise): songs 1 + 3          → 2
+    // 🩷 (moved):   songs 1 + 2           → 2
+    // Pinning these catches both the F17-style regression (collapse
+    // back to a single per-song emoji) and any accidental re-introduction
+    // of zero-count slots.
+    expect(screen.getAllByText("😭")).toHaveLength(1);
+    expect(screen.getAllByText("🔥")).toHaveLength(3);
+    expect(screen.getAllByText("😱")).toHaveLength(2);
+    expect(screen.getAllByText("🩷")).toHaveLength(2);
   });
 
   it("uses the trending tokens for background and border", () => {
@@ -107,7 +118,7 @@ describe("TrendingSongs", () => {
         subTitle: "오리지널",
         variantLabel: null,
         totalReactions: 3,
-        topReaction: { type: "best", emoji: "🔥", count: 3 },
+        reactionCounts: { best: 3 },
       },
     ];
     render(<TrendingSongs songs={songs} />);
@@ -123,7 +134,7 @@ describe("TrendingSongs", () => {
         subTitle: null,
         variantLabel: "SAKURA Ver.",
         totalReactions: 3,
-        topReaction: { type: "best", emoji: "🔥", count: 3 },
+        reactionCounts: { best: 3 },
       },
     ];
     render(<TrendingSongs songs={songs} />);
@@ -131,14 +142,50 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("(SAKURA Ver.)")).toBeInTheDocument();
   });
 
-  it("hides medal emojis from assistive tech (decorative)", () => {
-    const { container } = render(<TrendingSongs songs={sample} />);
-    const medals = Array.from(
-      container.querySelectorAll("span[aria-hidden='true']"),
-    );
-    // Exactly three medals (🥇 🥈 🥉) marked aria-hidden so screen readers
-    // don't announce them. Pinning the exact count catches regressions
-    // where an extra decorative span sneaks in.
-    expect(medals).toHaveLength(3);
+  it("hides medal and reaction emojis from assistive tech (decorative)", () => {
+    render(<TrendingSongs songs={sample} />);
+    // Medals and reaction emojis are decorative — the per-type aria-label
+    // on each strip wrapper carries the meaning. Verify medals are
+    // aria-hidden, and that every rendered reaction emoji (the strip
+    // omits zero-count types, so per-emoji counts vary by fixture) is
+    // also aria-hidden.
+    for (const medal of ["🥇", "🥈", "🥉"]) {
+      expect(screen.getByText(medal)).toHaveAttribute("aria-hidden", "true");
+    }
+    for (const emoji of ["😭", "🔥", "😱", "🩷"]) {
+      for (const el of screen.queryAllByText(emoji)) {
+        expect(el).toHaveAttribute("aria-hidden", "true");
+      }
+    }
+  });
+
+  it("exposes each reaction strip item as a labelled image with type + count", () => {
+    // CR follow-up: the visible strip is emoji + bare digit, both
+    // aria-hidden. Without an outer accessible label, screen readers
+    // would announce nothing meaningful for the trending counts. Each
+    // rendered wrapper carries `role="img"` + `aria-label="<type>
+    // <count>"` so AT users hear "best 6", "waiting 2", etc. in
+    // REACTION_TYPES canonical order. The mock for `useTranslations`
+    // (`(key) => key`) makes `t(type)` return the raw type name, so
+    // expected accessible names are "<type> <count>". Zero-count
+    // types are omitted from the render entirely, so they have no
+    // accessible label either — verified below.
+    render(<TrendingSongs songs={sample} />);
+    // Song 1 — full distribution across all four types.
+    expect(screen.getByLabelText("waiting 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("best 6")).toBeInTheDocument();
+    expect(screen.getByLabelText("surprise 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("moved 1")).toBeInTheDocument();
+    // Song 2 (best:3, moved:5; waiting + surprise absent)
+    expect(screen.getByLabelText("best 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("moved 5")).toBeInTheDocument();
+    // Song 3 (best:2, surprise:3; waiting + moved absent)
+    expect(screen.getByLabelText("best 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("surprise 3")).toBeInTheDocument();
+    // Absent types must NOT produce a "<type> 0" label — the whole
+    // wrapper is filtered out at the renderer. Pinning these guards
+    // against a regression that re-introduces empty zero-count slots
+    // (which would clutter both the visual strip and the AT readout).
+    expect(screen.queryByLabelText(/ 0$/)).toBeNull();
   });
 });

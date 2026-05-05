@@ -12,7 +12,6 @@ import {
 import { getEventStatus } from "@/lib/eventStatus";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
-import { EMOJI_MAP } from "@/lib/reactions";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
@@ -395,7 +394,6 @@ async function getTrendingSongs(
       : null;
 
     const types = typeMap[g.setlistItemId.toString()] ?? {};
-    const topType = Object.entries(types).sort((a, b) => b[1] - a[1])[0];
 
     return {
       setlistItemId: g.setlistItemId.toString(),
@@ -403,9 +401,11 @@ async function getTrendingSongs(
       subTitle: titleDisp?.sub ?? null,
       variantLabel: titleDisp?.variant ?? null,
       totalReactions: g._count.id,
-      topReaction: topType
-        ? { type: topType[0], emoji: EMOJI_MAP[topType[0]] ?? "", count: topType[1] }
-        : { type: "best", emoji: "🔥", count: 0 },
+      // Pass the per-type counts straight through. The renderer in
+      // `<TrendingSongs>` iterates `REACTION_TYPES` (canonical order)
+      // and falls back to 0 for missing keys, so the shape here is
+      // just the raw map.
+      reactionCounts: types,
     };
   });
 }
