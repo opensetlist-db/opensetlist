@@ -1046,7 +1046,6 @@ model SongWish {
   song      Song     @relation(fields: [songId], references: [id])
 
   @@index([eventId, songId])
-  @@index([eventId])
 }
 
 // ── SETLIST ITEM CONFIRM (Phase 1B engagement) ────────
