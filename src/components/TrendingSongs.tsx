@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { REACTION_TYPES } from "@/lib/reactions";
 import { colors, radius } from "@/styles/tokens";
 
 export interface TrendingSong {
@@ -16,7 +17,17 @@ export interface TrendingSong {
    *  setlist row (`displayOriginalTitle` returns this). */
   variantLabel: string | null;
   totalReactions: number;
-  topReaction: { type: string; emoji: string; count: number };
+  /** Per-reaction-type counts, indexed by Prisma `ReactionType` value
+   *  ("waiting" | "best" | "surprise" | "moved"). Missing keys mean
+   *  zero — the renderer iterates `REACTION_TYPES` so display order is
+   *  stable regardless of which keys happen to be present. Replaced
+   *  the earlier `topReaction` (single max-emotion projection) after
+   *  Day-1 surfaced F17: the widget under-displayed total engagement
+   *  because `max-single ≪ aggregate` once per-type counts grew past
+   *  rehearsal-scale single digits. The strip below mirrors the
+   *  per-row reaction display in `<ReactionButtons>` so the trending
+   *  card reads consistently with the rest of the page. */
+  reactionCounts: Record<string, number>;
 }
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -166,25 +177,69 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     </span>
                   )}
                 </div>
+                {/* All four reaction-type counts in REACTION_TYPES
+                    canonical order (waiting / best / surprise / moved).
+                    Mirrors `<ReactionButtons>`'s per-row strip so the
+                    trending card reads consistently with the per-row
+                    reaction display below it. Zero counts render as an
+                    empty string (same convention as ReactionButtons:473)
+                    so the strip stays visually quiet for unused types
+                    while keeping the slot's width reserved. The
+                    aggregate `= N` at the end names the ranking
+                    criterion — the card is "TOP 3 by total reactions",
+                    and four small per-type counts on their own don't
+                    make that obvious. `=` and digits are i18n-neutral
+                    math notation, so no translation key is needed. */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 8,
                     marginTop: 2,
                   }}
                 >
-                  <span style={{ fontSize: 14 }}>
-                    {song.topReaction.emoji}
-                  </span>
+                  {REACTION_TYPES.map(({ type, emoji }) => {
+                    const count = song.reactionCounts[type] ?? 0;
+                    return (
+                      <span
+                        key={type}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: 14 }}
+                          aria-hidden="true"
+                        >
+                          {emoji}
+                        </span>
+                        <span
+                          className="tabular-nums"
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: TOP_COUNT_COLOR,
+                            minWidth: 10,
+                          }}
+                        >
+                          {count > 0 ? count : ""}
+                        </span>
+                      </span>
+                    );
+                  })}
                   <span
+                    className="tabular-nums"
                     style={{
-                      fontSize: 12,
-                      fontWeight: 700,
+                      fontSize: 11,
+                      fontWeight: 600,
                       color: TOP_COUNT_COLOR,
+                      opacity: 0.7,
+                      marginLeft: 4,
                     }}
                   >
-                    {song.topReaction.count}
+                    {`= ${song.totalReactions}`}
                   </span>
                 </div>
               </div>

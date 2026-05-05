@@ -18,7 +18,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 10,
-    topReaction: { type: "best", emoji: "🔥", count: 6 },
+    reactionCounts: { best: 6, waiting: 2, surprise: 1, moved: 1 },
   },
   {
     setlistItemId: "2",
@@ -26,7 +26,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 8,
-    topReaction: { type: "moved", emoji: "🩷", count: 5 },
+    reactionCounts: { moved: 5, best: 3 },
   },
   {
     setlistItemId: "3",
@@ -34,7 +34,7 @@ const sample: TrendingSong[] = [
     subTitle: null,
     variantLabel: null,
     totalReactions: 5,
-    topReaction: { type: "surprise", emoji: "😱", count: 3 },
+    reactionCounts: { surprise: 3, best: 2 },
   },
 ];
 
@@ -52,24 +52,35 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("trendingEmpty")).toBeInTheDocument();
   });
 
-  it("renders each song with title, medal, and top-reaction count", () => {
+  it("renders each song with title, medal, all four reaction counts, and aggregate total", () => {
+    // F17 fix: previously the widget rendered only the single
+    // highest-emotion count under each ranked item. Day-1 surfaced
+    // that this under-displayed total engagement once per-type counts
+    // grew past rehearsal-scale single digits. The card now mirrors
+    // `<ReactionButtons>`'s per-row strip — all four counts in
+    // canonical REACTION_TYPES order — plus an `= N` total that names
+    // the ranking criterion (the card is "TOP 3 by total reactions").
     render(<TrendingSongs songs={sample} />);
+    // Titles
     expect(screen.getByText("First Song")).toBeInTheDocument();
     expect(screen.getByText("Second Song")).toBeInTheDocument();
     expect(screen.getByText("Third Song")).toBeInTheDocument();
+    // Medals — one per ranked slot
     expect(screen.getByText("🥇")).toBeInTheDocument();
     expect(screen.getByText("🥈")).toBeInTheDocument();
     expect(screen.getByText("🥉")).toBeInTheDocument();
-    // Top-reaction emoji + count render in separate spans (the
-    // emoji at 14px, the count at 12px) per the mockup's two-line
-    // item layout — query each independently rather than as a
-    // single concatenated string.
-    expect(screen.getByText("🔥")).toBeInTheDocument();
-    expect(screen.getByText("6")).toBeInTheDocument();
-    expect(screen.getByText("🩷")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
-    expect(screen.getByText("😱")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    // Every reaction emoji renders once per ranked song (regardless
+    // of whether that song has any of that reaction). Pinning the
+    // count to 3 catches the F17-style regression where the widget
+    // collapses back to a single per-song emoji.
+    for (const emoji of ["😭", "🔥", "😱", "🩷"]) {
+      expect(screen.getAllByText(emoji)).toHaveLength(3);
+    }
+    // Aggregate totals — `= N` is i18n-neutral math notation, no
+    // translation key needed.
+    expect(screen.getByText("= 10")).toBeInTheDocument();
+    expect(screen.getByText("= 8")).toBeInTheDocument();
+    expect(screen.getByText("= 5")).toBeInTheDocument();
   });
 
   it("uses the trending tokens for background and border", () => {
@@ -107,7 +118,7 @@ describe("TrendingSongs", () => {
         subTitle: "오리지널",
         variantLabel: null,
         totalReactions: 3,
-        topReaction: { type: "best", emoji: "🔥", count: 3 },
+        reactionCounts: { best: 3 },
       },
     ];
     render(<TrendingSongs songs={songs} />);
@@ -123,7 +134,7 @@ describe("TrendingSongs", () => {
         subTitle: null,
         variantLabel: "SAKURA Ver.",
         totalReactions: 3,
-        topReaction: { type: "best", emoji: "🔥", count: 3 },
+        reactionCounts: { best: 3 },
       },
     ];
     render(<TrendingSongs songs={songs} />);
@@ -131,14 +142,22 @@ describe("TrendingSongs", () => {
     expect(screen.getByText("(SAKURA Ver.)")).toBeInTheDocument();
   });
 
-  it("hides medal emojis from assistive tech (decorative)", () => {
-    const { container } = render(<TrendingSongs songs={sample} />);
-    const medals = Array.from(
-      container.querySelectorAll("span[aria-hidden='true']"),
-    );
-    // Exactly three medals (🥇 🥈 🥉) marked aria-hidden so screen readers
-    // don't announce them. Pinning the exact count catches regressions
-    // where an extra decorative span sneaks in.
-    expect(medals).toHaveLength(3);
+  it("hides medal and reaction emojis from assistive tech (decorative)", () => {
+    render(<TrendingSongs songs={sample} />);
+    // Medals and reaction emojis are decorative — the count digits and
+    // song title carry the meaning, so screen readers shouldn't announce
+    // the emoji glyphs. Verify each medal's wrapping span has
+    // aria-hidden, and that every reaction emoji rendered in the strip
+    // (3 songs × 4 reactions = 12) is also aria-hidden.
+    for (const medal of ["🥇", "🥈", "🥉"]) {
+      expect(screen.getByText(medal)).toHaveAttribute("aria-hidden", "true");
+    }
+    for (const emoji of ["😭", "🔥", "😱", "🩷"]) {
+      const els = screen.getAllByText(emoji);
+      expect(els).toHaveLength(3);
+      for (const el of els) {
+        expect(el).toHaveAttribute("aria-hidden", "true");
+      }
+    }
   });
 });
