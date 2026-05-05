@@ -333,6 +333,22 @@ describe("SongSearch — keyboard navigation", () => {
     return { input, onSelect };
   }
 
+  it("option buttons carry tabIndex=-1 so Tab moves out of the combobox composite", async () => {
+    // ARIA combobox + aria-activedescendant pattern: focus stays on
+    // the input; the active option is highlighted but never receives
+    // focus. Default <button> is tab-focusable, which would let Tab
+    // walk through every result row instead of escaping the combobox.
+    await renderWithResults([
+      makeSong(1, "Alpha"),
+      makeSong(2, "Beta"),
+    ]);
+
+    const alphaRow = screen.getByText("Alpha").closest("button")!;
+    const betaRow = screen.getByText("Beta").closest("button")!;
+    expect(alphaRow.getAttribute("tabindex")).toBe("-1");
+    expect(betaRow.getAttribute("tabindex")).toBe("-1");
+  });
+
   it("ArrowDown highlights the first option and sets aria-activedescendant", async () => {
     const { input } = await renderWithResults([
       makeSong(1, "Alpha"),
