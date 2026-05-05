@@ -151,9 +151,16 @@ export function SongSearch({
   );
 
   function handleChange(value: string) {
+    // Abort any in-flight fetch immediately on every keystroke (not
+    // only when the next debounced fetchResults runs 300ms later).
+    // Without this, a fetch that resolves DURING the new query's
+    // debounce window writes stale setResults + setLoading(false),
+    // briefly clobbering the new keystroke's loading=true state.
+    if (abortRef.current) abortRef.current.abort();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
     setQuery(value);
     setOpen(true);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!value.trim()) {
       setResults([]);
       setLoading(false);
