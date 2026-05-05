@@ -181,7 +181,7 @@ export function SongSearch({
         onFocus={() => setOpen(true)}
         placeholder={placeholder ?? t("placeholder")}
         className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
-        aria-label={t("placeholder")}
+        aria-label={placeholder ?? t("placeholder")}
       />
       {open && hasQuery && (
         <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
   const includeVariants = searchParams.get("includeVariants") === "true";
   const excludeIds = parseExcludeIds(searchParams.get("excludeIds"));
 
-  const where: Record<string, unknown> = {
+  const where: Prisma.SongWhereInput = {
     isDeleted: false,
     OR: [
       { originalTitle: { contains: q, mode: "insensitive" } },
