@@ -280,6 +280,11 @@
     "trending": "이번 공연 화제의 곡",
     "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
   },
+  "SongSearch": {
+    "placeholder": "곡 검색...",
+    "loading": "검색 중...",
+    "noResults": "일치하는 곡이 없습니다"
+  },
   "Impression": {
     "title": "한줄감상",
     "placeholder": "공연은 어땠나요? (최대 200자)",
