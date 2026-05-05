@@ -177,35 +177,25 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     </span>
                   )}
                 </div>
-                {/* All four reaction-type counts in REACTION_TYPES
-                    canonical order (waiting / best / surprise / moved).
-                    Mirrors `<ReactionButtons>`'s per-row strip so the
-                    trending card reads consistently with the per-row
-                    reaction display below it. Zero counts render as an
-                    empty string (same convention as ReactionButtons:473)
-                    so the strip stays visually quiet for unused types
-                    while keeping the slot's width reserved. The
-                    aggregate `= N` at the end names the ranking
-                    criterion — the card is "TOP 3 by total reactions",
-                    and four small per-type counts on their own don't
-                    make that obvious. `=` and digits are i18n-neutral
-                    math notation, so no translation key is needed.
+                {/* Reaction-type counts in REACTION_TYPES canonical
+                    order (waiting / best / surprise / moved), filtered
+                    to only the types this song actually has — the
+                    trending card stays compact and unused types don't
+                    take visible space. Upstream `deriveTrendingSongs`
+                    already filters `total > 0`, so every song reaching
+                    here renders at least one emoji+count pair.
 
                     Each per-type wrapper carries `role="img"` plus an
                     `aria-label` of "<localized type> <count>" so screen
-                    readers announce the strip as four discrete
-                    type-aware data points instead of bare digits. The
-                    emoji glyph and count digit inside are `aria-hidden`
-                    — without that the AT would announce both the
-                    aria-label AND the inner content (double-read). The
-                    label reuses `t(type)` (the same Reaction-namespace
-                    key the per-row buttons use as their accessible name
-                    in `ReactionButton:405`), so labels stay translated
-                    in lockstep with the per-row UI. The total is
-                    `aria-hidden` because the four per-type counts
-                    already carry the full information; the visible
-                    "= N" is sighted-only sugar that names the ranking
-                    criterion. */}
+                    readers announce the strip as type-aware data points
+                    instead of bare digits. The emoji glyph and count
+                    digit inside are `aria-hidden` — without that the
+                    AT would announce both the aria-label AND the inner
+                    content (double-read). The label reuses `t(type)`
+                    (the same Reaction-namespace key the per-row
+                    buttons use as their accessible name in
+                    `ReactionButton:405`), so labels stay translated in
+                    lockstep with the per-row UI. */}
                 <div
                   style={{
                     display: "flex",
@@ -214,7 +204,9 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                     marginTop: 2,
                   }}
                 >
-                  {REACTION_TYPES.map(({ type, emoji }) => {
+                  {REACTION_TYPES.filter(
+                    ({ type }) => (song.reactionCounts[type] ?? 0) > 0,
+                  ).map(({ type, emoji }) => {
                     const count = song.reactionCounts[type] ?? 0;
                     return (
                       <span
@@ -240,27 +232,13 @@ export function TrendingSongs({ songs, emptyLabel }: Props) {
                             fontSize: 12,
                             fontWeight: 700,
                             color: TOP_COUNT_COLOR,
-                            minWidth: 10,
                           }}
                         >
-                          {count > 0 ? count : ""}
+                          {count}
                         </span>
                       </span>
                     );
                   })}
-                  <span
-                    className="tabular-nums"
-                    aria-hidden="true"
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: TOP_COUNT_COLOR,
-                      opacity: 0.7,
-                      marginLeft: 4,
-                    }}
-                  >
-                    {`= ${song.totalReactions}`}
-                  </span>
                 </div>
               </div>
             </li>
