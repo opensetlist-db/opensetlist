@@ -382,4 +382,168 @@ describe("SetlistRow", () => {
     expect(screen.queryByText("stageType.full_group")).toBeNull();
     expect(screen.queryByText("Should Be Ignored")).toBeNull();
   });
+
+  it("renders FallbackUnitBadge when stageType=unit but the credited Artist is solo-type (F18 ad-hoc case)", () => {
+    // F18 — event 43 "Love it!" / "Wonderful Trip!" reproducer.
+    // Operator entered the song with one performing member's solo
+    // Artist row as `SetlistItemArtist`. Pre-fix: `<UnitBadge>`
+    // rendered the solo Artist's name with `resolveUnitColor`'s
+    // slug-hashed palette tint ("one performer name with a mystery
+    // color"). Post-fix: the typed gate suppresses the UnitBadge,
+    // so the existing FallbackUnitBadge branch fires the generic
+    // stageType label — matching PR #190 D4b's "never expose
+    // half-formed unit data publicly" rule.
+    const { container } = render(
+      <SetlistRow
+        item={makeItem({
+          stageType: "unit",
+          artists: [
+            {
+              artist: {
+                id: 99,
+                slug: "sayaka-solo",
+                type: "solo",
+                color: null,
+                originalName: "Sayaka",
+                originalShortName: null,
+                originalLanguage: "ja",
+                translations: [],
+              },
+            },
+          ],
+          performers: [
+            {
+              stageIdentity: {
+                id: "si-sayaka",
+                originalName: "Sayaka",
+                originalShortName: null,
+                originalLanguage: "ja",
+                translations: [],
+                artistLinks: [],
+              },
+              realPerson: null,
+            },
+            {
+              stageIdentity: {
+                id: "si-tsuzuri",
+                originalName: "Tsuzuri",
+                originalShortName: null,
+                originalLanguage: "ja",
+                translations: [],
+                artistLinks: [],
+              },
+              realPerson: null,
+            },
+          ],
+        })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    // Generic stageType label fires (FallbackUnitBadge branch).
+    expect(screen.getByText("stageType.unit")).toBeInTheDocument();
+    // The solo Artist's name must NOT appear as a UnitBadge link in
+    // the title block. (Sayaka may still appear in the desktop col-3
+    // performer list, which is plain text — not an artist-page link.)
+    expect(
+      container.querySelector('a[href="/en/artists/99/sayaka-solo"]'),
+    ).toBeNull();
+  });
+
+  it("renders the solo Artist's UnitBadge for a true solo song (no regression)", () => {
+    // Solo songs (stageType="solo" + artist.type="solo") still render
+    // the credited solo Artist as a UnitBadge — the typed gate honors
+    // this case unchanged.
+    const item = makeItem({
+      stageType: "solo",
+      artists: [
+        {
+          artist: {
+            id: 11,
+            slug: "kaho-solo",
+            type: "solo",
+            color: "#ffb74d",
+            originalName: "Kaho",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+          },
+        },
+      ],
+    });
+    const { container } = render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    const badge = screen.getByText("Kaho");
+    expect(badge.style.color).toBe(hexToRgbString("#ffb74d"));
+    expect(
+      container.querySelector('a[href="/en/artists/11/kaho-solo"]'),
+    ).not.toBeNull();
+    // Generic stageType label must NOT also fire on top of the badge.
+    expect(screen.queryByText("stageType.solo")).toBeNull();
+  });
+
+  it("comma-joins multiple performer names in the desktop performer column", () => {
+    // The col-3 performer list (`item.performers.map(...).join(", ")`,
+    // SetlistRow.tsx:203) is desktop-only (`hidden lg:block`). Locks
+    // in the lineup display so a future regression on the title-block
+    // gate doesn't silently break the per-row member listing too.
+    const item = makeItem({
+      stageType: "unit",
+      artists: [],
+      performers: [
+        {
+          stageIdentity: {
+            id: "si-sayaka",
+            originalName: "Sayaka",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+            artistLinks: [],
+          },
+          realPerson: null,
+        },
+        {
+          stageIdentity: {
+            id: "si-tsuzuri",
+            originalName: "Tsuzuri",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+            artistLinks: [],
+          },
+          realPerson: null,
+        },
+        {
+          stageIdentity: {
+            id: "si-yuyu",
+            originalName: "Yuyu",
+            originalShortName: null,
+            originalLanguage: "ja",
+            translations: [],
+            artistLinks: [],
+          },
+          realPerson: null,
+        },
+      ],
+    });
+    render(
+      <SetlistRow
+        item={item}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+      />,
+    );
+    expect(screen.getByText("Sayaka, Tsuzuri, Yuyu")).toBeInTheDocument();
+  });
 });

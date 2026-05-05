@@ -79,9 +79,33 @@ export function SetlistRow({
       ) || t("unknownPerformer"),
   );
 
+  // Only honor the row's first SetlistItemArtist as a "unit credit"
+  // when its `Artist.type` matches what `stageType` implies:
+  //   - stageType="solo"            ↔ artist.type === "solo"
+  //   - stageType="unit"|"special"  ↔ artist.type === "unit"
+  //
+  // The original gate was `stageType !== "full_group" && artists[0]`,
+  // which honored ANY first-artist credit regardless of its type.
+  // That misfires on the F18 case: an ad-hoc unit-stage row where
+  // the operator credited one performing member's solo Artist row
+  // (e.g. event 43, "Love it!" / "Wonderful Trip!") rendered that
+  // single solo Artist's name as a `<UnitBadge>`, tinted by
+  // `resolveUnitColor`'s slug-hashed palette fallback (because
+  // solo `Artist.color` is null) — visible as "one performer name
+  // with a mystery color" under the title.
+  //
+  // With the typed gate, those rows now fall through to the existing
+  // `<FallbackUnitBadge label={t("stageType.unit")}>` branch below
+  // (line ~188), matching PR #190 D4b: never expose half-formed unit
+  // data publicly. The desktop col-3 list (`item.performers.join(", ")`)
+  // continues to show the full lineup unchanged.
+  const firstArtist = item.artists?.[0] ?? null;
   const unitArtist =
-    item.stageType !== "full_group" && item.artists?.[0]
-      ? item.artists[0]
+    firstArtist &&
+    ((item.stageType === "solo" && firstArtist.artist.type === "solo") ||
+      ((item.stageType === "unit" || item.stageType === "special") &&
+        firstArtist.artist.type === "unit"))
+      ? firstArtist
       : null;
   // Full unit name on setlist rows — operator preference. UnitBadge
   // already constrains horizontal width via the row's grid column,
