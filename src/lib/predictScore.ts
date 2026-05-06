@@ -31,8 +31,20 @@
 
 import { isSongMatched, type SongMatchInputItem } from "@/lib/songMatch";
 
-/** A single user prediction. Order in the array IS the predicted rank. */
-export interface PredictionEntry {
+/**
+ * Lean input shape the score functions actually need — just the
+ * songId, in array-order=predicted-rank.
+ *
+ * **Distinct from `PredictionEntry`** in `predictionsStorage.ts`,
+ * which is the full localStorage payload (`{songId, song:
+ * WishSongDisplay}`). The two have different responsibilities:
+ * the storage entry carries the display data needed to render the
+ * UI without a round-trip; the match-input only needs the id.
+ * Naming them differently prevents a caller from accidentally
+ * passing a partial object and losing the song-display payload
+ * mid-flow.
+ */
+export interface PredictionMatchInput {
   songId: number;
 }
 
@@ -62,7 +74,7 @@ export interface PredictScore {
  * "out-of-rank but played" dimmed display.
  */
 export function calcPredictScore(
-  predicted: PredictionEntry[],
+  predicted: PredictionMatchInput[],
   actualItems: SongMatchInputItem[],
 ): PredictScore {
   const total = actualItems.length;
@@ -111,7 +123,7 @@ export interface ShareCardScore {
  * spec verification §22 for "same song twice in actual setlist").
  */
 export function calcShareCardScore(
-  predicted: PredictionEntry[],
+  predicted: PredictionMatchInput[],
   actualItems: Array<SongMatchInputItem & { id: number | string }>,
 ): ShareCardScore {
   const matchedActualIds = new Set<number | string>();

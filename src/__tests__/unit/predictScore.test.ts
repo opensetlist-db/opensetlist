@@ -2,11 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   calcPredictScore,
   calcShareCardScore,
-  type PredictionEntry,
+  type PredictionMatchInput,
 } from "@/lib/predictScore";
 import type { SongMatchInputItem } from "@/lib/songMatch";
 
-function p(songId: number): PredictionEntry {
+function p(songId: number): PredictionMatchInput {
   return { songId };
 }
 

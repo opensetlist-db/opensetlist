@@ -3,6 +3,7 @@
 import { forwardRef } from "react";
 import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
+import { BRAND_NAME, BRAND_URL_DISPLAY } from "@/lib/config";
 import { isSongMatched } from "@/lib/songMatch";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
@@ -250,10 +251,10 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 textTransform: "uppercase",
               }}
             >
-              OpenSetlist
+              {BRAND_NAME}
             </span>
             <span style={{ fontSize: 10, color: T.footerUrl }}>
-              opensetlist.com
+              {BRAND_URL_DISPLAY}
             </span>
           </div>
         </div>

@@ -183,6 +183,25 @@ export interface ShareCardPalette {
   footerUrl: string;
 }
 
+/*
+ * z-index layering tokens. Centralizes the magic numbers that
+ * sprinkle inline `style={{ zIndex: 100 }}` values across the
+ * codebase — without a single source of truth, a future overlay
+ * (drawer, toast, secondary modal) can silently land at the wrong
+ * layer.
+ *
+ * Higher = closer to the user. Gaps left between buckets so a
+ * future intermediate layer can slot in without renumbering.
+ */
+export const zIndex = {
+  /** Sticky elements within page flow (e.g. desktop sidebar). */
+  sticky: 10,
+  /** Modal backdrop + dialog (Share Card, Flag dialogs). */
+  modal: 200,
+  /** Toast / snackbar / inline announcement above modals. */
+  toast: 300,
+} as const;
+
 export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
   dark: {
     cardBg:        "#0a1628",

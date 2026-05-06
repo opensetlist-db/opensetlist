@@ -6,7 +6,7 @@ import { ShareCardPreview } from "@/components/ShareCardPreview";
 import { shareCard, type ShareOutcome } from "@/lib/shareCard";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
-import type { ShareCardTheme } from "@/styles/tokens";
+import { zIndex, type ShareCardTheme } from "@/styles/tokens";
 
 interface Props {
   open: boolean;
@@ -125,7 +125,7 @@ export function ShareCardModal({
         position: "fixed",
         inset: 0,
         background: "rgba(0,0,0,0.5)",
-        zIndex: 200,
+        zIndex: zIndex.modal,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
