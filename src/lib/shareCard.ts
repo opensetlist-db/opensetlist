@@ -35,6 +35,16 @@ export type ShareOutcome =
  */
 const TO_BLOB_TIMEOUT_MS = 10_000;
 
+/**
+ * Delay before revoking the blob: object URL after the synchronous
+ * `<a>.click()` initiates the download. The click handler is
+ * synchronous so the browser has already started the file write
+ * by this point, but a brief grace period guards against any
+ * unusual timing on slow file systems / disk throttling. 1s is
+ * standard.
+ */
+const REVOKE_URL_DELAY_MS = 1_000;
+
 export interface ShareCardOptions {
   cardEl: HTMLElement;
   /** Text body for the tweet / share — pre-formatted by caller. */
@@ -138,7 +148,7 @@ export async function shareCard({
     document.body.removeChild(a);
     // Free the object URL after a tick — the click handler is
     // synchronous so the download is initiated before this fires.
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_URL_DELAY_MS);
 
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
     // `window.open` returns null when a popup blocker intercepts.
