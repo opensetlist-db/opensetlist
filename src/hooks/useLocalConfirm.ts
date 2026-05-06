@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMounted } from "@/hooks/useMounted";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 
@@ -100,33 +100,64 @@ export function useLocalConfirm(eventId: string): UseLocalConfirmReturn {
     setConfirmedItemIds(readStored(eventId));
   }
 
+  // Mirror current state into a ref so `toggleConfirm` reads the
+  // latest set without taking `confirmedItemIds` as a dep (which
+  // would change callback identity every toggle).
+  //
+  // The ref also lets us move side effects (`writeStored`, gated
+  // `fetch`) OUT of the `setConfirmedItemIds` updater. The previous
+  // implementation ran them inside the updater, which React 19
+  // StrictMode invokes twice in dev to verify updater purity —
+  // meaning each tap fired two `localStorage` writes (idempotent,
+  // harmless) AND two POSTs (NOT harmless once `confirmDbEnabled`
+  // flips true on 5/30 — dev would accumulate duplicate
+  // `SetlistItemConfirm` rows). Production isn't affected, but
+  // keeping dev clean is worth the small refactor. CR #283 caught
+  // this.
+  //
+  // useEffect sync (not render-phase mutation) — the project's
+  // `react-hooks/refs` rule blocks the latter. After hydration the
+  // ref tracks state with one render's lag; the optimistic update
+  // inside `toggleConfirm` covers the rapid-tap window where the
+  // effect hasn't run yet.
+  const latestConfirmedRef = useRef(confirmedItemIds);
+  useEffect(() => {
+    latestConfirmedRef.current = confirmedItemIds;
+  }, [confirmedItemIds]);
+
   const toggleConfirm = useCallback(
     (itemId: number) => {
-      setConfirmedItemIds((prev) => {
-        const next = new Set(prev);
-        const wasPresent = next.has(itemId);
-        if (wasPresent) {
-          next.delete(itemId);
-        } else {
-          next.add(itemId);
-        }
-        writeStored(eventId, next);
-        // Fire-and-forget POST only on the add side. Cancel
-        // (`wasPresent === true`) is local-only at 1B/1C — DELETE
-        // is Phase 2.
-        if (!wasPresent && LAUNCH_FLAGS.confirmDbEnabled) {
-          fetch(`/api/setlist-items/${itemId}/confirm`, {
-            method: "POST",
-          }).catch(() => {
-            // Swallow network errors — the row's local state has
-            // already flipped to my-confirmed, and at 1B the DB
-            // write is best-effort monitoring. The next viewer's
-            // poll-driven re-render will reflect actual DB state
-            // when threshold-aggregation ships in Week 3.
-          });
-        }
-        return next;
-      });
+      const prev = latestConfirmedRef.current;
+      const next = new Set(prev);
+      const wasPresent = next.has(itemId);
+      if (wasPresent) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      setConfirmedItemIds(next);
+      // Optimistic ref update so a second tap landing in the same
+      // tick (rapid double-tap, or two different rows tapped before
+      // React re-renders) reads the just-computed set rather than
+      // the pre-tap one. Without this, the second tap would
+      // recompute from a stale baseline and effectively undo the
+      // first.
+      latestConfirmedRef.current = next;
+      writeStored(eventId, next);
+      // Fire-and-forget POST only on the add side. Cancel
+      // (`wasPresent === true`) is local-only at 1B/1C — DELETE
+      // is Phase 2.
+      if (!wasPresent && LAUNCH_FLAGS.confirmDbEnabled) {
+        fetch(`/api/setlist-items/${itemId}/confirm`, {
+          method: "POST",
+        }).catch(() => {
+          // Swallow network errors — the row's local state has
+          // already flipped to my-confirmed, and at 1B the DB
+          // write is best-effort monitoring. The next viewer's
+          // poll-driven re-render will reflect actual DB state
+          // when threshold-aggregation ships in Week 3.
+        });
+      }
     },
     [eventId],
   );
