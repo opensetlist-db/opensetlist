@@ -1,12 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { SetlistRow } from "@/components/SetlistRow";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import { resolveUnitColor } from "@/lib/artistColor";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
+  // Match the predicted-setlist test's substituting mock: when the
+  // caller passes a values map (e.g. `t("flagEmailSubject", { eventId,
+  // position })`), interpolate `{varName}` placeholders in the i18n
+  // VALUE rather than the key. We don't have the live messages
+  // bundle in test, so we synthesize a placeholder string that
+  // contains every value the caller passed — sufficient for the
+  // FlagButton mailto-href substring assertions, and harmless for
+  // the existing tests that pass no vars (they get back the bare
+  // key, byte-equivalent to the prior mock).
+  useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
+    if (!vars) return key;
+    const parts = Object.entries(vars).map(([k, v]) => `${k}=${String(v)}`);
+    return `${key}(${parts.join(",")})`;
+  },
 }));
 
 vi.mock("@/hooks/useMounted", () => ({
@@ -33,6 +46,7 @@ function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
     status: "live",
     performanceType: "live_performance",
     type: "song",
+    createdAt: "2026-05-23T12:00:00.000Z",
     songs: [
       {
         song: {
@@ -733,5 +747,101 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(
       screen.getByRole("button", { name: "confirmAriaRumoured" }),
     ).toBeTruthy();
+  });
+
+  it("rumoured row: tapping [?] fires onConfirmTap (Stage C wiring)", () => {
+    const onConfirmTap = vi.fn();
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="rumoured"
+        onConfirmTap={onConfirmTap}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: "confirmAriaRumoured" });
+    fireEvent.click(btn);
+    expect(onConfirmTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("my-confirmed row: tapping [✓] fires onConfirmTap (cancel-confirm)", () => {
+    const onConfirmTap = vi.fn();
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="my-confirmed"
+        onConfirmTap={onConfirmTap}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: "confirmAriaMyConfirmed" });
+    fireEvent.click(btn);
+    expect(onConfirmTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("FlagButton renders on rumoured rows with the resolved song title in the mailto", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured", position: 7 })}
+        index={6}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+        rowState="rumoured"
+      />,
+    );
+    // FlagButton renders an `<a>` with the i18n flag label "flag"
+    // (mocked to the key string itself per the test's next-intl
+    // mock). It should be an anchor with a mailto href containing
+    // the event id + position + song title in the encoded body.
+    const flagLink = screen.getByText(/🚩 flag/);
+    const href = flagLink.closest("a")?.getAttribute("href") ?? "";
+    expect(href.startsWith("mailto:help@opensetlist.com?")).toBe(true);
+    // Encoded substring checks — the body template substitutes the
+    // raw values which then go through encodeURIComponent. We don't
+    // care about exact ordering, just that each value made it into
+    // the URI.
+    expect(href).toContain("42"); // eventId
+    expect(href).toContain("7"); // position
+    // "Test Song" is the makeItem default; encodeURIComponent
+    // replaces space with %20.
+    expect(href).toContain("Test%20Song");
+  });
+
+  it("FlagButton does NOT render on my-confirmed rows (viewer already endorsed)", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="my-confirmed"
+      />,
+    );
+    // The flag affordance contradicts a viewer's own confirm — it
+    // would let them simultaneously endorse and report the same
+    // row. Rendered only for rowState === "rumoured".
+    expect(screen.queryByText(/🚩 flag/)).toBeNull();
+  });
+
+  it("FlagButton does NOT render on confirmed rows", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ status: "confirmed" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="confirmed"
+      />,
+    );
+    expect(screen.queryByText(/🚩 flag/)).toBeNull();
   });
 });

@@ -324,6 +324,11 @@
     "encore": "Encore",
     "shareText": "{seriesName} 予想セットリスト {pct}% 的中! ({total}曲中 {matched}曲) 🎯"
   },
+  "Confirm": {
+    "flag": "通報",
+    "flagEmailSubject": "[OpenSetlist] セットリスト行の通報 — イベント {eventId} #{position}",
+    "flagEmailBody": "イベントID: {eventId}\n順番: {position}\n曲: {songTitle}\n\n問題の内容を記入してください:\n"
+  },
   "Wishlist": {
     "title": "リクエスト",
     "lockedTitle": "ファンのリクエスト TOP3",

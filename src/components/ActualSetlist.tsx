@@ -12,6 +12,8 @@ import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
+import { getConfirmStatus } from "@/lib/confirmStatus";
+import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 
 interface Props {
   items: LiveSetlistItem[];
@@ -45,6 +47,13 @@ export function ActualSetlist({
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
 
+  // Stage C — own the per-viewer localStorage-confirmed set ONCE
+  // here so every row sees the same Set instance. Mounted-gated
+  // hydration inside the hook keeps SSR + first client render
+  // matching (set is empty until after mount). The hook also fires
+  // the (gated) POST when a row toggles.
+  const { confirmedItemIds, toggleConfirm } = useLocalConfirm(eventId);
+
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
 
@@ -67,7 +76,8 @@ export function ActualSetlist({
             reactionCounts={reactionCounts}
             locale={locale}
             eventId={eventId}
-            rowState={deriveRowState(item)}
+            rowState={deriveRowState(item, confirmedItemIds)}
+            onConfirmTap={() => toggleConfirm(item.id)}
           />
         ))}
       </ol>
@@ -83,7 +93,8 @@ export function ActualSetlist({
                 reactionCounts={reactionCounts}
                 locale={locale}
                 eventId={eventId}
-                rowState={deriveRowState(item)}
+                rowState={deriveRowState(item, confirmedItemIds)}
+                onConfirmTap={() => toggleConfirm(item.id)}
               />
             ))}
           </ol>
@@ -94,23 +105,33 @@ export function ActualSetlist({
 }
 
 /**
- * Stage B row-state derivation: only `item.status === "rumoured"`
- * flips a row out of the default confirmed state. The
- * `my-confirmed` state requires reading per-viewer localStorage
- * (`confirm-{eventId}`) which is Stage C territory — until then,
- * a viewer who has confirmed a rumoured row sees the rumoured
- * styling, not the my-confirmed styling. Same `[?]` button, no
- * tap behavior change.
+ * Stage C row-state derivation, three-state composition:
  *
- * `item.status` values per the SetlistItemStatus Prisma enum:
- * `rumoured | live | confirmed`. Phase 1A rows are all confirmed
- * (the schema default); rumoured first appears with Stage C's
- * Confirm UI on 5/30 Kanagawa onwards. `live` is treated as
- * confirmed for visual purposes — the row is happening now but
- * still verified by the system.
+ *   getConfirmStatus(item, now)         localConfirmedIds.has(id)        rowState
+ *   "confirmed"                          either                           "confirmed"
+ *   "rumoured"                           true                             "my-confirmed"
+ *   "rumoured"                           false                            "rumoured"
+ *
+ * `getConfirmStatus` (`src/lib/confirmStatus.ts`) handles the DB-
+ * level decision (`status === "confirmed" | "live"` always wins;
+ * `rumoured` rows past 1-min auto-promote to confirmed too). The
+ * local-set check then chooses between the two "still rumoured"
+ * visual variants — `[?]` for someone else's row, `[✓]` for the
+ * viewer's own confirm.
+ *
+ * Read-time evaluation: `getConfirmStatus` reads `now` per call,
+ * so each render sees the current bucket. The 5s `useSetlistPolling`
+ * cadence on ongoing events triggers a re-render every poll — a
+ * row crossing the 60s mark mid-session promotes within ≤ 5s of
+ * the boundary without an extra timer.
  */
-function deriveRowState(item: LiveSetlistItem): RowState {
-  return item.status === "rumoured" ? "rumoured" : "confirmed";
+function deriveRowState(
+  item: LiveSetlistItem,
+  localConfirmedIds: Set<number>,
+): RowState {
+  const confirmStatus = getConfirmStatus(item);
+  if (confirmStatus === "confirmed") return "confirmed";
+  return localConfirmedIds.has(item.id) ? "my-confirmed" : "rumoured";
 }
 
 // Lifted verbatim from `<LiveSetlist>` so `<ActualSetlist>` stays

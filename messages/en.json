@@ -324,6 +324,11 @@
     "encore": "Encore",
     "shareText": "{seriesName} prediction {pct}% hit rate! ({matched} of {total}) 🎯"
   },
+  "Confirm": {
+    "flag": "Report",
+    "flagEmailSubject": "[OpenSetlist] Setlist row report — event {eventId} #{position}",
+    "flagEmailBody": "Event ID: {eventId}\nPosition: {position}\nSong: {songTitle}\n\nDescribe the issue:\n"
+  },
   "Wishlist": {
     "title": "Wishlist",
     "lockedTitle": "Fan wishlist TOP3",
