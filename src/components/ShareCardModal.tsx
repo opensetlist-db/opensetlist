@@ -97,10 +97,25 @@ export function ShareCardModal({
 
   if (!open) return null;
 
+  // While the share-card capture is in flight, every state-mutating
+  // path on the modal must early-return. html2canvas walks the live
+  // DOM under `cardRef.current` for ~1–3s on mobile; closing the
+  // modal mid-capture would unmount the capture target and crash
+  // the call, and a theme toggle would mutate the painted styles
+  // partway through capture and produce a garbled image. The share
+  // button's existing `busy` short-circuit covers double-tap; the
+  // others (backdrop click, Escape, close-X, theme toggle,
+  // copy-link) need the same guard. CR #285 caught this on the
+  // release diff.
+  const handleClose = () => {
+    if (busy) return;
+    onClose();
+  };
+
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      handleClose();
     }
   };
 
@@ -122,6 +137,7 @@ export function ShareCardModal({
   };
 
   const handleCopyLink = async () => {
+    if (busy) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
       setToast(t("linkCopiedToast"));
@@ -134,13 +150,18 @@ export function ShareCardModal({
     }
   };
 
+  const handleThemeChange = (m: ShareCardTheme) => {
+    if (busy) return;
+    setTheme(m);
+  };
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-card-modal-title"
       onKeyDown={handleKeyDown}
-      onClick={onClose}
+      onClick={handleClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -168,10 +189,17 @@ export function ShareCardModal({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
+            disabled={busy}
+            aria-disabled={busy}
             aria-label={t("close")}
             className="text-xl leading-none p-1 cursor-pointer"
-            style={{ background: "transparent", border: "none", color: "white" }}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "white",
+              cursor: busy ? "wait" : "pointer",
+            }}
           >
             ✕
           </button>
@@ -187,13 +215,16 @@ export function ShareCardModal({
             <button
               key={m}
               type="button"
-              onClick={() => setTheme(m)}
+              onClick={() => handleThemeChange(m)}
+              disabled={busy}
+              aria-disabled={busy}
               aria-pressed={theme === m}
               className="text-xs font-medium rounded-full px-4 py-1 cursor-pointer"
               style={{
                 background: theme === m ? "#0277BD" : "white",
                 color: theme === m ? "white" : "#475569",
                 border: "0.5px solid #e2e8f0",
+                cursor: busy ? "wait" : "pointer",
               }}
             >
               {t(m === "dark" ? "themeDark" : "themeLight")}
@@ -238,11 +269,14 @@ export function ShareCardModal({
           <button
             type="button"
             onClick={handleCopyLink}
+            disabled={busy}
+            aria-disabled={busy}
             className="text-sm rounded-full px-5 py-2 cursor-pointer"
             style={{
               background: "white",
               color: "#475569",
               border: "1px solid #e2e8f0",
+              cursor: busy ? "wait" : "pointer",
             }}
           >
             {t("copyLink")}

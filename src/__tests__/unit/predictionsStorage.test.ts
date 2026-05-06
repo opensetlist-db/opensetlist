@@ -218,7 +218,12 @@ describe("clearPredictions", () => {
 
 describe("writePredictions resilience", () => {
   it("silently swallows quota errors so callers don't see localStorage exceptions", () => {
-    vi.spyOn(window.localStorage.__proto__, "setItem").mockImplementation(() => {
+    // Spy on `Storage.prototype.setItem` (the standard surface) rather
+    // than the non-standard `localStorage.__proto__` access pattern —
+    // both reach the same prototype in jsdom, but the standard form
+    // is what static analysis (CR #285 caught this) and downstream
+    // type-aware tooling expect.
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("QuotaExceededError", "QuotaExceededError");
     });
     expect(() => writePredictions("1", [entry(1)])).not.toThrow();
