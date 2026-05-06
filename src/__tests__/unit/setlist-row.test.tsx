@@ -630,3 +630,108 @@ describe("SetlistRow", () => {
     expect(screen.getByText("Sayaka, Tsuzuri, Yuyu")).toBeInTheDocument();
   });
 });
+
+describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
+  it("default (no rowState passed): renders the position as a span (byte-equiv with pre-refactor)", () => {
+    render(
+      <SetlistRow
+        item={makeItem()}
+        index={2}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+      />,
+    );
+    // Position 3 (index + 1) renders as a span, not a button.
+    const position = screen.getByText("3");
+    expect(position.tagName.toLowerCase()).toBe("span");
+    // No interactive ARIA labels for the rumoured/my-confirmed
+    // states.
+    expect(screen.queryByRole("button", { name: "confirmAriaRumoured" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "confirmAriaMyConfirmed" }),
+    ).toBeNull();
+  });
+
+  it("rowState=\"confirmed\": no gray bg on the <li>", () => {
+    const { container } = render(
+      <SetlistRow
+        item={makeItem()}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="confirmed"
+      />,
+    );
+    const li = container.querySelector("li")!;
+    // Default: no inline background style (relies on the section
+    // card's white bg).
+    expect(li.style.background).toBe("");
+  });
+
+  it("rowState=\"rumoured\": gray bg + [?] dotted button", () => {
+    const { container } = render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="rumoured"
+      />,
+    );
+    const li = container.querySelector("li")!;
+    // colors.bgSubtle is #f8fafc → rgb(248, 250, 252).
+    expect(li.style.background.toLowerCase()).toContain(
+      "rgb(248, 250, 252)",
+    );
+    // [?] button rendered with the rumouredLabel ARIA.
+    const btn = screen.getByRole("button", { name: "confirmAriaRumoured" });
+    expect(btn.textContent).toBe("?");
+    expect(btn.getAttribute("style")).toContain("dashed");
+  });
+
+  it("rowState=\"my-confirmed\": gray bg + [✓] sky-blue button", () => {
+    const { container } = render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="my-confirmed"
+      />,
+    );
+    const li = container.querySelector("li")!;
+    expect(li.style.background.toLowerCase()).toContain(
+      "rgb(248, 250, 252)",
+    );
+    const btn = screen.getByRole("button", { name: "confirmAriaMyConfirmed" });
+    expect(btn.textContent).toBe("✓");
+    expect(btn.getAttribute("style")).toContain("solid");
+  });
+
+  it("reactions still render on rumoured rows (regression: wiki/conflicts.md #8)", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{ "1": { best: 5, waiting: 3 } }}
+        locale="en"
+        eventId="1"
+        rowState="rumoured"
+      />,
+    );
+    // ReactionButtons render as buttons with reaction-type ARIA
+    // labels (mocked to the i18n key value). At minimum the
+    // four standard reaction buttons should be present alongside
+    // the [?] confirm button.
+    const buttons = screen.getAllByRole("button");
+    // 4 reactions + 1 confirm slot = at least 5 buttons.
+    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    expect(
+      screen.getByRole("button", { name: "confirmAriaRumoured" }),
+    ).toBeTruthy();
+  });
+});

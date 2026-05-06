@@ -280,6 +280,13 @@
     "trending": "この公演の話題曲",
     "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
   },
+  "Setlist": {
+    "tabActual": "実際のセットリスト",
+    "tabPredicted": "予想セットリスト",
+    "predictedComingSoon": "予想セットリスト — 近日公開",
+    "confirmAriaRumoured": "未確認の曲",
+    "confirmAriaMyConfirmed": "確認済み"
+  },
   "Wishlist": {
     "title": "リクエスト",
     "lockedTitle": "ファンのリクエスト TOP3",

@@ -280,6 +280,13 @@
     "trending": "이번 공연 화제의 곡",
     "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
   },
+  "Setlist": {
+    "tabActual": "실제 셋리스트",
+    "tabPredicted": "예상 셋리스트",
+    "predictedComingSoon": "예상 셋리스트 — 곧 공개",
+    "confirmAriaRumoured": "확인되지 않은 곡",
+    "confirmAriaMyConfirmed": "내가 확인한 곡"
+  },
   "Wishlist": {
     "title": "희망곡",
     "lockedTitle": "팬들의 희망곡 TOP3",
