@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
-import { colors } from "@/styles/tokens";
+import { colors, zIndex } from "@/styles/tokens";
 
 /**
  * Visual state per the mockup's during-show divider rules:
@@ -91,7 +91,9 @@ export function PredictSongRow({
         borderBottom: `0.5px solid ${colors.borderLight}`,
         opacity: isDimmed ? 0.4 : 1,
         // While dragging, lift the row visually + above siblings.
-        zIndex: isDragging ? 10 : "auto",
+        // Reuses the `sticky` z-index token (= 10) since both
+        // consumers want "above default flow, well below modals".
+        zIndex: isDragging ? zIndex.sticky : "auto",
         background: isDragging ? colors.bgCard : "transparent",
         boxShadow: isDragging ? "0 1px 4px rgba(0,0,0,0.08)" : undefined,
       }}
