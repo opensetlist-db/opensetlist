@@ -11,6 +11,11 @@ import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
+import {
+  daysUntilUTC,
+  shouldShowWishBadge,
+  utcDayOffset,
+} from "@/lib/eventTiming";
 import { routing } from "@/i18n/routing";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -45,7 +50,6 @@ export async function generateMetadata({
 
 const HOME_TAKE = 5;
 const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // Home is the "near future / near past" surface; full-range browsing
 // lives on /[locale]/events. Bound upcoming + recent queries to a
 // ±30-day window so the home stays relevant even when the catalog has
@@ -71,31 +75,11 @@ const RECENT_DAY_FORMAT: Intl.DateTimeFormatOptions = {
   timeZone: "UTC",
 };
 
-// UTC day boundary — never use server-local time to bucket UTC-stored
-// dates (CLAUDE.md §"Date & Time"). Both `now` and `event.startTime`
-// must be anchored to UTC midnight before subtracting, otherwise an
-// event at 23:59 UTC on D-1 reads as today/tomorrow depending on the
-// server's offset.
-function utcDayStart(d: Date): Date {
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-  );
-}
-
-// UTC day at `now + days` for window bounds. Anchoring on UTC midnight
-// (not `now ± Nd` time offset) keeps the window edges stable across
-// regions — otherwise the inclusion of an event on the 30th day drifts
-// by the server's running time-of-day.
-function utcDayOffset(d: Date, days: number): Date {
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days)
-  );
-}
-
-function daysUntilUTC(target: Date, now: Date): number {
-  const diff = utcDayStart(target).getTime() - utcDayStart(now).getTime();
-  return Math.round(diff / MS_PER_DAY);
-}
+// `utcDayOffset` / `daysUntilUTC` / `utcDayStart` previously lived
+// inline here; relocated to `src/lib/eventTiming.ts` so the D-7 gate
+// (Wishlist + Predicted Setlist visibility) shares one definition
+// instead of forking. Same UTC-anchoring discipline per CLAUDE.md
+// §"Date & Time"; see the helper file for the full rationale.
 
 async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
@@ -207,6 +191,15 @@ interface UpcomingView {
   venue: string | null;
   formattedDate: string;
   dDayLabel: string;
+  /**
+   * D-7 open-window indicator: `daysUntil > 0 && daysUntil <= 7`.
+   * Drives the `🌸 예상 오픈` badge + emphasized border on the card.
+   * Computed server-side from the same `now` that drove `dDayLabel`
+   * so both badges agree exactly — see `shouldShowWishBadge` for
+   * why D-0 is excluded (auto-status flip is about to swap the card
+   * to ongoing).
+   */
+  showWishBadge: boolean;
 }
 
 interface RecentView {
@@ -313,6 +306,9 @@ export default async function HomePage({
     (e: UpcomingEvent) => {
       const { eventName, seriesName } = projectNames(e, locale);
       const start = new Date(e.startTime);
+      // Compute days once so the dDay label and the wish-badge
+      // condition can't drift apart (they share the same `now`).
+      const days = daysUntilUTC(start, now);
       return {
         href: eventHref(locale, e.id, eventName),
         startTimeIso: toIso(e.startTime),
@@ -320,7 +316,8 @@ export default async function HomePage({
         eventName: eventName || evT("unknownEvent"),
         venue: projectVenue(e, locale),
         formattedDate: formatDate(start, locale, UPCOMING_DATE_FORMAT),
-        dDayLabel: t("dDay", { days: daysUntilUTC(start, now) }),
+        dDayLabel: t("dDay", { days }),
+        showWishBadge: shouldShowWishBadge(days),
       };
     }
   );
@@ -428,6 +425,7 @@ export default async function HomePage({
                         venue={v.venue}
                         formattedDate={v.formattedDate}
                         dDayLabel={v.dDayLabel}
+                        showWishBadge={v.showWishBadge}
                         variant="scroll"
                       />
                     ))}
@@ -503,6 +501,7 @@ export default async function HomePage({
                       venue={v.venue}
                       formattedDate={v.formattedDate}
                       dDayLabel={v.dDayLabel}
+                      showWishBadge={v.showWishBadge}
                       variant="stack"
                     />
                   ))}
