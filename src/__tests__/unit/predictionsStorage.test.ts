@@ -171,6 +171,26 @@ describe("markLocked", () => {
     markLocked("999");
     expect(readPredictions("999")).toBeNull();
   });
+
+  it("writePredictions preserves lockedAt across a schema-malformed payload (raw-parse fallback)", () => {
+    // Write a malformed payload that still carries a valid lockedAt
+    // string. Without the raw-parse fallback in writePredictions,
+    // readPredictions would return null and the next write would
+    // clobber lockedAt with null. CR #281 flagged this.
+    window.localStorage.setItem(
+      "predict-1",
+      JSON.stringify({
+        // Missing `eventId` — fails isStoredShape validation.
+        songs: [],
+        savedAt: new Date().toISOString(),
+        lockedAt: "2026-05-23T12:00:00.000Z",
+      }),
+    );
+    expect(readPredictions("1")).toBeNull(); // confirms shape rejection
+    // Write a fresh prediction; lockedAt should survive.
+    writePredictions("1", [entry(1)]);
+    expect(readPredictions("1")!.lockedAt).toBe("2026-05-23T12:00:00.000Z");
+  });
 });
 
 describe("clearPredictions", () => {

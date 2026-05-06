@@ -122,6 +122,29 @@ describe("shareCard — desktop (no navigator.canShare)", () => {
   });
 });
 
+describe("shareCard — popup blocked (window.open returns null)", () => {
+  it("returns kind: popup_blocked instead of downloaded so caller can toast a different message", async () => {
+    vi.stubGlobal("navigator", {
+      // canShare absent → desktop fallback path
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
+    });
+    // window.open returning null is the popup-blocker signal in
+    // every browser. CR #281 caught the original code returning
+    // `downloaded` regardless.
+    vi.stubGlobal("open", vi.fn(() => null));
+    const cardEl = document.createElement("div");
+    const outcome = await shareCard({
+      cardEl,
+      text: "x",
+      url: "https://example.test/",
+    });
+    expect(outcome).toEqual({ kind: "popup_blocked" });
+  });
+});
+
 describe("shareCard — html2canvas failure", () => {
   it("returns kind: error when html2canvas throws", async () => {
     const html2canvasMod = await import("html2canvas");

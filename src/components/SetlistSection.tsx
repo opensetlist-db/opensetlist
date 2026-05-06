@@ -50,17 +50,23 @@ interface Props {
  * but the user picked "tabs sit below" to keep the LIVE pill
  * visible).
  *
- * Visibility per the task's tab matrix:
- *   - !hasPredictions             → only `<ActualSetlist>` (no tab strip)
- *   - hasPredictions, !hasActual  → only `<PredictedSetlist>` (Predicted tab only)
- *   - hasPredictions,  hasActual  → tab strip + body for active tab
+ * Visibility:
+ *   - !hasPredictions, !hasActual              → predict-only (entry point for first-time visitors on upcoming events)
+ *   - !hasPredictions,  hasActual              → only `<ActualSetlist>` (no tab strip — Phase 1A byte-equiv)
+ *   - hasPredictions,  !hasActual              → only `<PredictedSetlist>` (Predicted tab only)
+ *   - hasPredictions,   hasActual              → tab strip + body for active tab
  *
- * `hasPredictions` is a client-only signal (localStorage). SSR +
- * first client render see `false`; the mounted-gated re-read may
- * flip to `true` post-hydration. Until Stage C ships the predict
- * writer, this flip never happens in practice — `hasPredictions`
- * stays `false` and the section renders byte-equivalent to the
- * pre-refactor page (the load-bearing constraint).
+ * `hasPredictions` is a client-only signal (localStorage); SSR +
+ * first client render see `false`. CodeRabbit caught a Major bug
+ * on PR #281: pre-Stage-C, the no-predictions + no-actual path
+ * dropped to `emptyFallback` ("no setlist yet") with no entry into
+ * the Predicted UI — a first-time visitor on an upcoming event
+ * could never start predicting. Stage C ships the predict writer,
+ * so the gate now treats "no actuals (i.e. pre-show)" as a
+ * standing invitation to predict; the Predict tab is always
+ * available there. During/post-show events without predictions
+ * still hide the Predict tab (no value: actuals are immutable
+ * past startTime, so there's nothing left to predict).
  */
 export function SetlistSection({
   eventId,
@@ -90,14 +96,26 @@ export function SetlistSection({
   // is clean as-is. Code reviewers (CodeRabbit / commit-time hook /
   // prepush hook) sometimes flag this — it is the established
   // pattern, not a violation.
-  const [hasPredictions, setHasPredictions] = useState(false);
+  const [storedHasPredictions, setStoredHasPredictions] = useState(false);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   if (mounted && hydratedKey !== eventId) {
     setHydratedKey(eventId);
-    setHasPredictions(readHasPredictions(eventId));
+    setStoredHasPredictions(readHasPredictions(eventId));
   }
 
   const hasActual = items.length > 0;
+  // Predict tab visibility:
+  //   - storedHasPredictions: user has typed predictions for this
+  //     event before (localStorage). Always show their tab so they
+  //     can see their list / score across the event lifecycle.
+  //   - status === "upcoming": event hasn't started yet — show the
+  //     tab as the entry point even for first-time visitors with
+  //     no localStorage. CR #281 (Major) caught that without this
+  //     half, first-timers had no path into the Predict UI.
+  // During-show events without predictions still hide the tab; once
+  // the show is over, predicting has no value to a viewer who didn't
+  // play along live, so we don't surface the tab as clutter.
+  const hasPredictions = storedHasPredictions || status === "upcoming";
   // Default to actual when both tabs are visible (case 2) — the
   // viewer's mental model in a during/post-show event is "what's
   // actually playing", not "what I predicted earlier". When only

@@ -22,8 +22,18 @@
 export type ShareOutcome =
   | { kind: "shared" } // navigator.share resolved (mobile)
   | { kind: "downloaded" } // download + Twitter intent (desktop)
+  | { kind: "popup_blocked" } // download succeeded; window.open blocked (desktop)
   | { kind: "cancelled" } // user cancelled native sheet
   | { kind: "error"; message: string };
+
+/**
+ * Hard timeout on `canvas.toBlob` so a tainted-canvas / OOM /
+ * driver-bug edge case can't leave the modal in a permanent
+ * `busy=true` state. 10s is generous for the worst real captures
+ * (1200×N retina PNGs); anything past it is a genuine failure.
+ * CR #281 flagged the unbounded wait.
+ */
+const TO_BLOB_TIMEOUT_MS = 10_000;
 
 export interface ShareCardOptions {
   cardEl: HTMLElement;
@@ -67,9 +77,22 @@ export async function shareCard({
     };
   }
 
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob((b) => resolve(b), "image/png"),
-  );
+  const blob = await new Promise<Blob | null>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, TO_BLOB_TIMEOUT_MS);
+    canvas.toBlob((b) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(b);
+      }
+    }, "image/png");
+  });
   if (!blob) {
     return { kind: "error", message: "canvas.toBlob returned null" };
   }
@@ -118,7 +141,13 @@ export async function shareCard({
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    window.open(twitterUrl, "_blank", "noopener,noreferrer");
+    // `window.open` returns null when a popup blocker intercepts.
+    // The PNG already downloaded; just signal that the Twitter
+    // compose window didn't open so the caller can toast a
+    // different message ("manually share the saved image"). CR #281
+    // caught the original code returning `downloaded` regardless.
+    const popup = window.open(twitterUrl, "_blank", "noopener,noreferrer");
+    if (popup === null) return { kind: "popup_blocked" };
 
     return { kind: "downloaded" };
   } catch (e) {

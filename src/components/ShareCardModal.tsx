@@ -98,6 +98,7 @@ export function ShareCardModal({
     });
     setBusy(false);
     if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
+    else if (outcome.kind === "popup_blocked") setToast(t("popupBlockedToast"));
     // For "shared" / "cancelled" / "error" we surface no toast —
     // the OS sheet handles its own feedback (success/cancel) and
     // an error here is rare enough that silent-fail keeps the
@@ -109,8 +110,11 @@ export function ShareCardModal({
       await navigator.clipboard.writeText(shareUrl);
       setToast(t("linkCopiedToast"));
     } catch {
-      // Clipboard API requires HTTPS + user gesture; both should be
-      // present here. Silent-fail if not.
+      // Clipboard API requires HTTPS + user gesture (both present
+      // here normally). Surface a toast so a failed copy isn't
+      // silent — user knows to copy the URL manually instead of
+      // assuming success and moving on. CR #281 caught this.
+      setToast(t("linkCopyFailedToast"));
     }
   };
 

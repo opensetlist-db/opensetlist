@@ -13,11 +13,10 @@ export const BRAND_NAME = "OpenSetlist";
 
 /**
  * Display URL (no scheme) — what the Share Card footer shows
- * alongside the brand. Derived from BASE_URL by stripping the
- * scheme, with a fallback to "opensetlist.com" for the canonical
- * production case so preview/local screenshots still read as the
+ * alongside the brand. Intentionally a fixed literal (not derived
+ * from BASE_URL) so preview/local screenshots still read as the
  * production brand instead of leaking a vercel.app URL into shared
- * images.
+ * images. The actual share-link URL still uses BASE_URL.
  */
 export const BRAND_URL_DISPLAY = "opensetlist.com";
 

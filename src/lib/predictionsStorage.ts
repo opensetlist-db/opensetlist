@@ -137,12 +137,33 @@ export function writePredictions(
   songs: PredictionEntry[],
 ): void {
   if (typeof window === "undefined") return;
+  // Best-effort `lockedAt` preservation. `readPredictions` returns
+  // null when `isStoredShape` rejects (DevTools tampering, partial
+  // extension write); without a fallback, the next write would
+  // silently drop a previously-stamped lock — `markLocked`'s
+  // idempotency guarantee evaporates and the UI would unlock. We
+  // raw-parse just the `lockedAt` string so a malformed-but-locked
+  // payload still preserves the lock instant. CR #281 caught this.
   const existing = readPredictions(eventId);
+  let preservedLockedAt: string | null = existing?.lockedAt ?? null;
+  if (!existing) {
+    try {
+      const raw = window.localStorage.getItem(predictKey(eventId));
+      if (raw) {
+        const parsed = JSON.parse(raw) as { lockedAt?: unknown };
+        if (typeof parsed?.lockedAt === "string") {
+          preservedLockedAt = parsed.lockedAt;
+        }
+      }
+    } catch {
+      /* malformed JSON — leave preservedLockedAt as null */
+    }
+  }
   const next: StoredShape = {
     eventId,
     songs,
     savedAt: new Date().toISOString(),
-    lockedAt: existing?.lockedAt ?? null,
+    lockedAt: preservedLockedAt,
   };
   try {
     window.localStorage.setItem(predictKey(eventId), JSON.stringify(next));

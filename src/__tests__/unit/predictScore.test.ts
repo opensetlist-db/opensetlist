@@ -118,6 +118,22 @@ describe("calcPredictScore (position-rank)", () => {
     expect(at5.pendingSongs).toEqual([]);
   });
 
+  it("pendingSongs is deduped: a single prediction matching multiple actual rows contributes one entry", () => {
+    // Predicted song 50 at rank 5 (idx 4); actual setlist has only 3 rows
+    // BUT song 50 plays twice (e.g. encore reprise). Without dedup the
+    // result would push songId 50 twice into pendingSongs and cause
+    // cosmetic noise in the dimmed display. CR #281 caught this.
+    const predicted = [p(10), p(20), p(30), p(40), p(50)];
+    const result = calcPredictScore(predicted, [
+      actual({ id: 999 }),
+      actual({ id: 50 }),
+      actual({ id: 50 }), // second occurrence
+    ]);
+    // Both occurrences are out-of-rank (matchIndex 4 >= total 3) so
+    // both go to pendingSongs; the dedup collapses to one entry.
+    expect(result.pendingSongs).toEqual([50]);
+  });
+
   it("percentage rounds half-up", () => {
     // 1/3 = 33.33...% → 33
     const r1 = calcPredictScore(

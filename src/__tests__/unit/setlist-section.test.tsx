@@ -47,14 +47,17 @@ beforeEach(() => {
 });
 
 describe("SetlistSection", () => {
-  it("case 4 (no predictions, has actual): no tab strip; no tabpanel wrapper; only ActualSetlist body", () => {
+  it("case 4 (no predictions, has actual, during/post-show): no tab strip; no tabpanel wrapper; only ActualSetlist body", () => {
+    // Status `ongoing` (not upcoming) — upcoming always shows the
+    // Predict tab as the entry point per the gate. The "no tabs"
+    // path requires status to be past the start.
     render(
       <SetlistSection
         eventId="1"
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
-        status="upcoming"
+        status="ongoing"
         startTime={null}
         seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
@@ -117,7 +120,13 @@ describe("SetlistSection", () => {
     expect(screen.getByText("add")).toBeTruthy();
   });
 
-  it("no predictions + no actual: emptyFallback renders; no tabs, no tabpanel", () => {
+  it("first-visitor on an upcoming event (no predictions, no actual): predict UI renders as the entry point", () => {
+    // CR #281 caught this as a Major bug pre-fix: without the
+    // `status === "upcoming"` half of the predict-tab gate, a
+    // first-time visitor on an upcoming event with no localStorage
+    // would drop straight to emptyFallback ("no setlist yet") with
+    // no path into the Predicted UI — the 5/16 user-open feature
+    // would have shipped dead.
     render(
       <SetlistSection
         eventId="1"
@@ -125,6 +134,28 @@ describe("SetlistSection", () => {
         reactionCounts={{}}
         locale="ko"
         status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.queryByTestId("empty")).toBeNull();
+    // PredictedSetlist's `+ 곡 추가` is the entry point.
+    expect(screen.getByText("add")).toBeTruthy();
+  });
+
+  it("completed/cancelled event with no actuals + no predictions: emptyFallback renders (no predict tab — nothing to score)", () => {
+    // The degenerate case: admin marked event completed but never
+    // filled in rows + no user has predicted. Predict tab would be
+    // useless (actuals are immutable, no user data to display), so
+    // the empty fallback is correct here.
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        status="completed"
         startTime={null}
         seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
@@ -166,7 +197,11 @@ describe("SetlistSection", () => {
     expect(screen.queryByRole("list")).toBeNull();
   });
 
-  it("edge: corrupt localStorage value falls through to no-tabs (case 4 path)", () => {
+  it("edge: corrupt localStorage value falls through to no-tabs (case 4 path; status=ongoing)", () => {
+    // Use status=ongoing so the predict-tab gate doesn't show the
+    // Predict tab on the "upcoming → always show predict" path.
+    // The corrupt localStorage edge should cleanly fall through to
+    // hasPredictions=false without a console error.
     window.localStorage.setItem("predict-1", "not-json{");
     render(
       <SetlistSection
@@ -174,7 +209,7 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
-        status="upcoming"
+        status="ongoing"
         startTime={null}
         seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}

@@ -79,7 +79,13 @@ export function calcPredictScore(
 ): PredictScore {
   const total = actualItems.length;
   let matched = 0;
-  const pendingSongs: number[] = [];
+  // Set-backed so a single prediction matching multiple actual rows
+  // (medley with the same constituent twice; same-song-twice in
+  // the actual setlist) only contributes ONE entry to the dimmed
+  // out-of-rank display — the consumer (`<PredictedSetlist>`) maps
+  // pendingSongs to row state by songId, so duplicates would cause
+  // cosmetic noise without adding information. CR #281 caught this.
+  const pendingSet = new Set<number>();
 
   for (const actual of actualItems) {
     // Find the predicted-rank index where this actual song matches.
@@ -91,7 +97,7 @@ export function calcPredictScore(
     if (matchIndex < total) {
       matched++;
     } else {
-      pendingSongs.push(predicted[matchIndex].songId);
+      pendingSet.add(predicted[matchIndex].songId);
     }
   }
 
@@ -99,7 +105,7 @@ export function calcPredictScore(
     matched,
     total,
     percentage: total > 0 ? Math.round((matched / total) * 100) : 0,
-    pendingSongs,
+    pendingSongs: Array.from(pendingSet),
   };
 }
 
