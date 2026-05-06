@@ -55,6 +55,15 @@ interface Props {
    */
   status: ResolvedEventStatus;
   /**
+   * D-7 open-window indicator. Drives whether the Wishlist surface
+   * renders at all (pre-D-7 hides it entirely) AND whether the
+   * Predicted tab appears in `<SetlistSection>` for upcoming events.
+   * Post-show paths (`storedHasPredictions` for ongoing/completed)
+   * are unaffected — predictions stored before D-7 still surface
+   * post-show. See `src/lib/eventTiming.ts#isWishPredictOpen`.
+   */
+  isWishPredictOpen: boolean;
+  /**
    * Pre-resolved series + event display string for the share-card
    * text payload (`{seriesName} 예상 세트리스트 ...`). The page already
    * runs the i18n cascade for the page header; we reuse that result
@@ -74,6 +83,7 @@ export function LiveSetlist({
   isOngoing,
   locale,
   status,
+  isWishPredictOpen,
   seriesName,
 }: Props) {
   const t = useTranslations("Event");
@@ -100,13 +110,16 @@ export function LiveSetlist({
           above Trending — per `raw/mockups/mockup-wish-predict.jsx`.
           Self-hides when locked + no data; renders structurally on
           SSR so hydration matches before localStorage hydrates the
-          my-list. `startTime === null` means we don't have an event
-          start anchor, so render nothing rather than guessing. */}
-      {startTime !== null && (
+          my-list. The `isWishPredictOpen` gate (D-7 window per
+          `raw/20260503-1b-1c-timeline.md`) hides the section
+          entirely pre-D-7 — `isWishPredictOpen === true` already
+          implies `startTime !== null` (helper rejects null), so the
+          previous explicit null-guard is subsumed. */}
+      {isWishPredictOpen && (
         <EventWishSection
           eventId={eventId}
           locale={locale}
-          startTime={startTime}
+          startTime={startTime as Date | string}
           setlistItems={items}
           top3Wishes={top3Wishes}
         />
@@ -210,6 +223,7 @@ export function LiveSetlist({
         status={status}
         startTime={startTime}
         seriesName={seriesName}
+        isWishPredictOpen={isWishPredictOpen}
         emptyFallback={
           <p style={{ padding: "24px 20px", color: colors.textMuted }}>
             {t("noSetlist")}
