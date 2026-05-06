@@ -28,8 +28,9 @@ import {
   type PredictionEntry,
 } from "@/lib/predictionsStorage";
 import { calcPredictScore } from "@/lib/predictScore";
-import { isSongMatched, type SongMatchInputItem } from "@/lib/songMatch";
+import { isSongMatched } from "@/lib/songMatch";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
 
 interface Props {
@@ -38,8 +39,14 @@ interface Props {
   /** UTC; both Date and ISO string accepted (page serializes BigInt rows). */
   startTime: Date | string | null;
   status: ResolvedEventStatus;
-  /** Polled actual setlist (filtered to song-type rows by `<SetlistSection>`). */
-  actualSongs: SongMatchInputItem[];
+  /**
+   * Polled actual setlist (filtered to song-type rows by
+   * `<SetlistSection>`). Full `LiveSetlistItem[]` shape — the
+   * score functions structurally accept it (they only need
+   * `songs[].song.{id, baseVersionId}`), and `<ShareCardButton>`
+   * needs the full shape downstream for its preview render.
+   */
+  actualSongs: LiveSetlistItem[];
   /** Series + event name for the share card text payload. */
   seriesName: string;
 }
@@ -384,10 +391,10 @@ function DuringShowDivider({
       className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider"
       style={{
         padding: "6px 14px",
-        background: "#fff8e1",
-        borderTop: `2px solid ${colors.warning ?? "#fbbf24"}`,
-        borderBottom: `2px solid ${colors.warning ?? "#fbbf24"}`,
-        color: "#92400e",
+        background: colors.predictDividerBg,
+        borderTop: `2px solid ${colors.warning}`,
+        borderBottom: `2px solid ${colors.warning}`,
+        color: colors.predictDividerText,
       }}
     >
       <div className="flex-1" />

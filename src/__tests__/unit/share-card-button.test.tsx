@@ -7,7 +7,7 @@ vi.mock("next-intl", () => ({
 
 import { ShareCardButton } from "@/components/ShareCardButton";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
-import type { SongMatchInputItem } from "@/lib/songMatch";
+import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { WishSongDisplay } from "@/lib/wishStorage";
 
 const SAMPLE_SONG: WishSongDisplay = {
@@ -22,10 +22,32 @@ function entry(songId: number): PredictionEntry {
   return { songId, song: SAMPLE_SONG };
 }
 
-function actual(songId: number): SongMatchInputItem & { id: number } {
+function actual(songId: number): LiveSetlistItem {
   return {
     id: songId,
-    songs: [{ song: { id: songId, baseVersionId: null } }],
+    position: songId,
+    isEncore: false,
+    stageType: "full_group",
+    unitName: null,
+    status: "confirmed",
+    performanceType: "live_performance",
+    type: "song",
+    songs: [
+      {
+        song: {
+          id: songId,
+          slug: `s-${songId}`,
+          originalTitle: "x",
+          originalLanguage: "ja",
+          variantLabel: null,
+          baseVersionId: null,
+          translations: [],
+          artists: [],
+        },
+      },
+    ],
+    performers: [],
+    artists: [],
   };
 }
 

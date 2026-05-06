@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
 import { calcShareCardScore } from "@/lib/predictScore";
+import { BASE_URL } from "@/lib/config";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
-import type { SongMatchInputItem } from "@/lib/songMatch";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
 
@@ -17,11 +17,11 @@ interface Props {
   status: ResolvedEventStatus;
   /**
    * Polled actual setlist (filtered to song-type rows by
-   * `<SetlistSection>`). For the share-card preview body we cast
-   * back to `LiveSetlistItem` so the per-row `displayOriginalTitle`
-   * call has access to translations + originalTitle.
+   * `<SetlistSection>`). Full `LiveSetlistItem[]` shape so
+   * `<ShareCardPreview>` can call `displayOriginalTitle` on each
+   * song without an unsafe re-cast.
    */
-  actualSongs: SongMatchInputItem[];
+  actualSongs: LiveSetlistItem[];
   predictions: PredictionEntry[];
 }
 
@@ -65,30 +65,24 @@ export function ShareCardButton({
     actualSongs.length > 0 &&
     predictions.length > 0;
 
-  // Compute share-card score (order-independent). Cast actualSongs
-  // to the broader interface required by calcShareCardScore (needs
-  // `id` for de-dupe). LiveSetlistItem has `id: number`; the cast is
-  // safe.
+  // Compute share-card score (order-independent). LiveSetlistItem
+  // has `id: number` so it satisfies the calcShareCardScore
+  // signature (`SongMatchInputItem & { id }`) structurally — no
+  // cast needed.
   const score = useMemo(() => {
     if (!visible) return { matched: 0, total: 0, percentage: 0 };
-    return calcShareCardScore(
-      predictions,
-      actualSongs as Array<SongMatchInputItem & { id: number }>,
-    );
+    return calcShareCardScore(predictions, actualSongs);
   }, [visible, predictions, actualSongs]);
 
   if (!visible) return null;
 
-  // The full LiveSetlistItem shape is required by ShareCardPreview
-  // for displayOriginalTitle. SetlistSection passes the polled items
-  // (full shape) through PredictedSetlist → ShareCardButton with
-  // the SongMatchInputItem narrowed type; widening back is safe at
-  // runtime because the source IS LiveSetlistItem[].
-  const fullItems = actualSongs as unknown as LiveSetlistItem[];
-
   const eventTitle = seriesName; // page resolves the full title; reuse
   const dateLine = ""; // TODO Stage C+: thread date+venue via props
-  const eventUrl = `https://opensetlist.com/${locale}/events/${eventId}`;
+  // Use the project's BASE_URL helper so preview / local / prod all
+  // emit correct share URLs. BASE_URL pulls from
+  // NEXT_PUBLIC_BASE_URL with a vercel.app fallback (see
+  // src/lib/config.ts).
+  const eventUrl = `${BASE_URL}/${locale}/events/${eventId}`;
 
   const shareText = stT("shareText", {
     seriesName,
@@ -130,7 +124,7 @@ export function ShareCardButton({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
-        actualSongs={fullItems}
+        actualSongs={actualSongs}
         predictions={predictions}
         matched={score.matched}
         total={score.total}

@@ -15,7 +15,7 @@ vi.mock("@/hooks/useMounted", () => ({
 import { PredictedSetlist } from "@/components/PredictedSetlist";
 import { writePredictions, type PredictionEntry } from "@/lib/predictionsStorage";
 import type { WishSongDisplay } from "@/lib/wishStorage";
-import type { SongMatchInputItem } from "@/lib/songMatch";
+import type { LiveSetlistItem } from "@/lib/types/setlist";
 
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000); // +1h
 const PAST = new Date(Date.now() - 60 * 60 * 1000); // -1h
@@ -32,8 +32,34 @@ function entry(songId: number, originalTitle = `song-${songId}`): PredictionEntr
   return { songId, song: { ...SAMPLE_SONG, originalTitle } };
 }
 
-function actual(songId: number): SongMatchInputItem {
-  return { songs: [{ song: { id: songId, baseVersionId: null } }] };
+let nextItemId = 1;
+function actual(songId: number): LiveSetlistItem {
+  return {
+    id: nextItemId++,
+    position: songId,
+    isEncore: false,
+    stageType: "full_group",
+    unitName: null,
+    status: "confirmed",
+    performanceType: "live_performance",
+    type: "song",
+    songs: [
+      {
+        song: {
+          id: songId,
+          slug: `s-${songId}`,
+          originalTitle: `song-${songId}`,
+          originalLanguage: "ja",
+          variantLabel: null,
+          baseVersionId: null,
+          translations: [],
+          artists: [],
+        },
+      },
+    ],
+    performers: [],
+    artists: [],
+  };
 }
 
 beforeEach(() => {

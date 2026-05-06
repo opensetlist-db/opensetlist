@@ -78,6 +78,15 @@ export const colors = {
   // both hexes here so the divergence is one-line easy if it happens.
   error: "#dc2626",
 
+  // Predicted Setlist during-show divider (Phase 1B Stage C).
+  // Amber bar separating in-rank rows from below-rank rows in the
+  // live tab. Bg + text picked from
+  // raw/mockups/mockup-wish-predict.jsx PredictTab during-show
+  // divider. Distinct from `warning` (one-purpose token, doesn't
+  // share semantics with other warning surfaces).
+  predictDividerBg: "#fff8e1",
+  predictDividerText: "#92400e",
+
   // Soft-warning feedback (e.g. edit-cooldown countdown). Distinct from
   // `error` (hard fail) and from trending-UI tokens (semantically
   // unrelated despite the same amber family).
