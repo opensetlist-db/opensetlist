@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   hasPredictions,
   predictKey,
@@ -25,6 +25,15 @@ function entry(songId: number): PredictionEntry {
 
 beforeEach(() => {
   window.localStorage.clear();
+});
+
+afterEach(() => {
+  // The "writePredictions resilience" case spies on
+  // `localStorage.__proto__.setItem` to simulate a quota throw.
+  // Without restoration, the spy persists across tests in the
+  // same worker and any subsequent localStorage write throws
+  // unrelatedly. CR #281 caught the leak.
+  vi.restoreAllMocks();
 });
 
 describe("predictKey", () => {

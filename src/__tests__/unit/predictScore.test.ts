@@ -10,11 +10,18 @@ function p(songId: number): PredictionMatchInput {
   return { songId };
 }
 
+// Monotonically-incrementing SetlistItem id per call so two
+// medleys that share a leading constituent songId still get
+// distinct setlist-item ids — `calcShareCardScore` de-dupes on
+// the SetlistItem id, and reusing `songs[0].id` would have caused
+// false collapses in any future "two distinct items, same first
+// constituent" test. CR #281 future-proofing.
+let nextActualId = 1;
 function actual(
   ...songs: Array<{ id: number; baseVersionId?: number | null }>
 ): SongMatchInputItem & { id: number } {
   return {
-    id: songs[0]?.id ?? 0, // SetlistItem id; share-card uses this for de-dupe
+    id: nextActualId++,
     songs: songs.map((s) => ({
       song: { id: s.id, baseVersionId: s.baseVersionId ?? null },
     })),

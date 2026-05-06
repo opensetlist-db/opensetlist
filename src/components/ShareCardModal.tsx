@@ -74,10 +74,18 @@ export function ShareCardModal({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Focus the close button on open so Escape works without
-  // additional focus-trap glue. Mobile users get the same first-tap
-  // anchor.
+  // additional focus-trap glue. On close, restore focus to the
+  // element that opened the modal (typically the `결과 공유 🎯`
+  // button in `<ShareCardButton>`) — standard a11y dialog pattern,
+  // preserves keyboard navigation context. Mobile users get the
+  // same first-tap anchor on open.
   useEffect(() => {
-    if (open) closeButtonRef.current?.focus();
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => {
+      opener?.focus?.();
+    };
   }, [open]);
 
   // Auto-dismiss toast after 3s.

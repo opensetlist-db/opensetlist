@@ -17,6 +17,7 @@ import type {
   ReactionCountsMap,
 } from "@/lib/types/setlist";
 import { EventWishSection } from "@/components/EventWishSection";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 export type {
   ArtistRef,
@@ -52,7 +53,7 @@ interface Props {
    * `<PredictedSetlist>` can switch its three modes (pre-show /
    * during-show / post-show share button).
    */
-  status: import("@/lib/eventStatus").ResolvedEventStatus;
+  status: ResolvedEventStatus;
   /**
    * Pre-resolved series + event display string for the share-card
    * text payload (`{seriesName} 예상 세트리스트 ...`). The page already

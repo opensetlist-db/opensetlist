@@ -169,12 +169,19 @@ export function SetlistSection({
   //     non-existent tab id — that's both a screen-reader bug
   //     and a byte-equivalence regression. CodeRabbit caught this
   //     on PR #280's first fix-up round.
-  // Filter to song-type rows for the prediction match. MC / video /
-  // interval items are skipped per task spec — they aren't songs
-  // a user could have predicted. The full `items` list still feeds
-  // `<ActualSetlist>` (which renders MC / video / interval rows
-  // alongside song rows).
-  const actualSongs = items.filter((it) => it.type === "song");
+  // Filter to song-type rows that ALSO have a song picked. MC /
+  // video / interval items are skipped per task spec — they aren't
+  // songs a user could have predicted — and admin-created
+  // placeholder rows (`type: "song"` but no song row in `it.songs`
+  // yet because the operator hasn't filled it in) are ALSO excluded
+  // here. Without the `songs.length > 0` half, those placeholders
+  // would inflate `total` in `calcPredictScore` and shift the
+  // during-show divider past the actual matched count. CR #281
+  // caught this. The full `items` list still feeds `<ActualSetlist>`
+  // (which renders placeholder + non-song rows).
+  const actualSongs = items.filter(
+    (it) => it.type === "song" && it.songs.length > 0,
+  );
 
   const body =
     renderedTab === "actual" ? (
