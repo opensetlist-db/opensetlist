@@ -55,7 +55,7 @@ interface Props {
   status: import("@/lib/eventStatus").ResolvedEventStatus;
   /**
    * Pre-resolved series + event display string for the share-card
-   * text payload (`{seriesName} 예상 셋리스트 ...`). The page already
+   * text payload (`{seriesName} 예상 세트리스트 ...`). The page already
    * runs the i18n cascade for the page header; we reuse that result
    * rather than re-doing it inside Predicted Setlist.
    */
