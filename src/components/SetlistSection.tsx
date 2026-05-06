@@ -30,6 +30,18 @@ interface Props {
   startTime: Date | string | null;
   seriesName: string;
   /**
+   * D-7 open-window indicator (Wishlist + Predicted Setlist
+   * visibility, from `raw/20260503-1b-1c-timeline.md` §"희망곡/예상곡
+   * 표시 조건"). On upcoming events the Predict tab is gated on
+   * this — pre-D-7 the tab is hidden even if localStorage has
+   * stored predictions for the event. Post-show paths
+   * (ongoing/completed) are unaffected; predictions surface from
+   * `storedHasPredictions` regardless of this flag, so a fan who
+   * predicted within the D-7 window still sees their card after
+   * the show ends. See `src/lib/eventTiming.ts#isWishPredictOpen`.
+   */
+  isWishPredictOpen: boolean;
+  /**
    * Rendered when neither actual rows nor predictions exist (e.g.
    * the historical "no setlist yet" `<p>` from `<LiveSetlist>`).
    * Delegated INTO this component (rather than gated outside) so
@@ -76,6 +88,7 @@ export function SetlistSection({
   status,
   startTime,
   seriesName,
+  isWishPredictOpen,
   emptyFallback,
 }: Props) {
   const t = useTranslations("Setlist");
@@ -104,18 +117,23 @@ export function SetlistSection({
   }
 
   const hasActual = items.length > 0;
-  // Predict tab visibility:
-  //   - storedHasPredictions: user has typed predictions for this
-  //     event before (localStorage). Always show their tab so they
-  //     can see their list / score across the event lifecycle.
-  //   - status === "upcoming": event hasn't started yet — show the
-  //     tab as the entry point even for first-time visitors with
-  //     no localStorage. CR #281 (Major) caught that without this
-  //     half, first-timers had no path into the Predict UI.
-  // During-show events without predictions still hide the tab; once
-  // the show is over, predicting has no value to a viewer who didn't
-  // play along live, so we don't surface the tab as clutter.
-  const hasPredictions = storedHasPredictions || status === "upcoming";
+  // Predict tab visibility, two-branch gate:
+  //   - status === "upcoming": show only when the event is inside
+  //     the D-7 open window. The first-time-visitor entry path
+  //     (CR #281, Major) survives unchanged within the window;
+  //     pre-D-7 the tab is hidden even if localStorage already has
+  //     stored predictions for this event (per
+  //     `task-week2-d7-open-gate.md` — "Keep the data, just don't
+  //     surface the tab"; rare but possible if the event date moved
+  //     backward after the user predicted).
+  //   - status !== "upcoming" (ongoing/completed/cancelled):
+  //     `storedHasPredictions` alone — the D-7 gate is a pre-show
+  //     concept, post-show events should still surface a viewer's
+  //     own predictions (live-score divider during, share card
+  //     after). A viewer who never predicted sees no tab post-show
+  //     either — predicting "what was already played" has no value.
+  const hasPredictions =
+    status === "upcoming" ? isWishPredictOpen : storedHasPredictions;
   // Default to actual when both tabs are visible (case 2) — the
   // viewer's mental model in a during/post-show event is "what's
   // actually playing", not "what I predicted earlier". When only

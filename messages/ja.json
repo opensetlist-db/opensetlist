@@ -13,6 +13,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {あと#時間}}",
     "minutesLeft": "{minutes, plural, other {あと#分}}",
+    "wishOpen": "予想公開",
     "noEvents": "もうすぐ公演情報が更新されます。",
     "noUpcoming": "今後30日以内の公演はありません。",
     "noRecent": "過去30日以内の公演はありません。"

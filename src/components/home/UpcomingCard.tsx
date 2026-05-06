@@ -23,6 +23,16 @@ interface Props {
   formattedDate: string;
   dDayLabel: string;
   /**
+   * D-7 open-window indicator: caller computes via
+   * `shouldShowWishBadge(daysUntilUTC(start, now))`. When true the
+   * card grows a `🌸 예상 오픈` badge next to the D-day chip and
+   * swaps the resting border to `colors.wishlistBorder` to draw the
+   * eye toward events the user can engage with right now.
+   * Falsy default keeps non-home consumers (if any future page
+   * mounts this card) byte-equivalent.
+   */
+  showWishBadge?: boolean;
+  /**
    * Mobile horizontal scroll vs. desktop sidebar list. Mobile cards
    * are flex-shrink-0 with a fixed width inside the scroll container;
    * desktop cards stretch to fill the 340px sidebar column.
@@ -38,6 +48,7 @@ export function UpcomingCard({
   venue,
   formattedDate,
   dDayLabel,
+  showWishBadge = false,
   variant = "stack",
 }: Props) {
   // Hover/focus via React state (not a Tailwind arbitrary
@@ -103,24 +114,52 @@ export function UpcomingCard({
       ].join(" ")}
       style={{
         background: active ? colors.primaryHoverBg : colors.bgCard,
-        border: `1.5px solid ${colors.border}`,
+        // Within D-7, swap the resting stroke to the wishlist-blue
+        // border (`#b5d4f4`) so the card visually pairs with the
+        // EventWishSection's title bar — same hue used inside the
+        // event detail surface, signaling "this is the engagement
+        // window". Outside D-7 the card uses the standard `border`.
+        border: `1.5px solid ${
+          showWishBadge ? colors.wishlistBorder : colors.border
+        }`,
         borderRadius: radius.cardSm,
         padding: "14px 16px",
       }}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <span
-          className="text-[11px] font-bold"
-          style={{
-            color: colors.upcoming,
-            background: colors.upcomingBg,
-            border: `1px solid ${colors.upcomingBorder}`,
-            borderRadius: radius.badge,
-            padding: "2px 8px",
-          }}
-        >
-          {displayedLabel}
-        </span>
+        {/* D-day chip + (within D-7) wish-open chip share the left
+            cluster; the right side stays the formatted-date caption.
+            Wrapping both in a single flex group keeps them as one
+            block so the caption right-aligns regardless of badge
+            count. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className="text-[11px] font-bold"
+            style={{
+              color: colors.upcoming,
+              background: colors.upcomingBg,
+              border: `1px solid ${colors.upcomingBorder}`,
+              borderRadius: radius.badge,
+              padding: "2px 8px",
+            }}
+          >
+            {displayedLabel}
+          </span>
+          {showWishBadge && (
+            <span
+              className="text-[11px] font-semibold"
+              style={{
+                color: colors.wishlistText,
+                background: colors.wishlistBg,
+                border: `1px solid ${colors.wishlistBorder}`,
+                borderRadius: radius.badge,
+                padding: "2px 8px",
+              }}
+            >
+              🌸 {t("wishOpen")}
+            </span>
+          )}
+        </div>
         <span
           className="text-[11px]"
           style={{ color: colors.textMuted }}

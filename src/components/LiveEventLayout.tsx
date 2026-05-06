@@ -47,6 +47,16 @@ interface Props {
 
   // EventHeader props (event-level, never change after mount).
   status: ResolvedEventStatus;
+  /**
+   * D-7 open-window indicator (Wishlist + Predicted Setlist
+   * visibility). Computed server-side via `isWishPredictOpen` so
+   * the gate is snap-frozen for the page lifetime; client-side
+   * ticking across the boundary is intentionally NOT done — see
+   * `src/lib/eventTiming.ts` for the rationale. Threaded down into
+   * `<LiveSetlist>` and from there to `<EventWishSection>` and
+   * `<SetlistSection>`.
+   */
+  isWishPredictOpen: boolean;
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
@@ -121,6 +131,7 @@ export function LiveEventLayout({
   unknownSongLabel,
   eventPerformers,
   status,
+  isWishPredictOpen,
   statusLabel,
   date,
   startTime,
@@ -261,6 +272,7 @@ export function LiveEventLayout({
           isOngoing={isOngoing}
           locale={locale}
           status={status}
+          isWishPredictOpen={isWishPredictOpen}
           // `series.name` is already pre-resolved by the page via
           // `displayNameWithFallback(...)` for the EventHeader card.
           // Reuse for the share-card text payload; fall back to

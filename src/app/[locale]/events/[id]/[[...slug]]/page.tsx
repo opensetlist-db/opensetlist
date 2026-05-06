@@ -10,6 +10,7 @@ import {
   resolveLocalizedField,
 } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
+import { isWishPredictOpen } from "@/lib/eventTiming";
 import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
@@ -459,6 +460,15 @@ export default async function EventPage({ params }: Props) {
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
+  // D-7 gate (Wishlist + Predicted Setlist visibility). Snap-frozen
+  // at SSR with the same `referenceNow` that drives the rest of this
+  // page — see `src/lib/eventTiming.ts#isWishPredictOpen` for why
+  // we don't tick this client-side. Threaded through
+  // `<LiveEventLayout>` → `<LiveSetlist>` → both child surfaces.
+  const wishPredictOpen = isWishPredictOpen(
+    { startTime: event.startTime, status: resolvedStatus },
+    referenceNow,
+  );
   const {
     impressions,
     nextCursor: impressionsNextCursor,
@@ -692,6 +702,7 @@ export default async function EventPage({ params }: Props) {
         unknownSongLabel={st("unknown")}
         eventPerformers={eventPerformers}
         status={resolvedStatus}
+        isWishPredictOpen={wishPredictOpen}
         // Match the rest of the codebase's badge convention: `LIVE`
         // for ongoing events (home, event list, artist/member/series
         // detail all use t("live")), localized status text for

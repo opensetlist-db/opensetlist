@@ -60,6 +60,7 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -83,6 +84,7 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -112,6 +114,7 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -136,6 +139,7 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -158,6 +162,7 @@ describe("SetlistSection", () => {
         status="completed"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -177,6 +182,7 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -212,10 +218,86 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.getByRole("list")).toBeTruthy();
+  });
+
+  it("D-7 gate (pre-D-7 upcoming, no actual, no stored predictions): emptyFallback renders — predict tab hidden until window opens", () => {
+    // Pre-D-7 path: a first-time visitor on an upcoming event 8+
+    // days out should NOT see the Predict tab (the `🌸 예상 오픈`
+    // window hasn't opened yet). The page falls through to
+    // `emptyFallback`. Once the event crosses D-7 the gate flips
+    // and the existing first-visitor path takes over again.
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.getByTestId("empty")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+    expect(screen.queryByText("add")).toBeNull();
+  });
+
+  it("D-7 gate (pre-D-7 upcoming, no actual, WITH stored predictions): tab still hidden — \"keep the data, just don't surface the tab\"", () => {
+    // Edge case from `task-week2-d7-open-gate.md`: a user previously
+    // predicted while the event was inside the D-7 window, then the
+    // operator pushed the event date back past D-7. The localStorage
+    // entry stays (no destructive cleanup) but the tab hides — the
+    // surface re-opens automatically once the new startTime crosses
+    // back inside the window.
+    window.localStorage.setItem("predict-1", JSON.stringify({ slots: [] }));
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.getByTestId("empty")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByText("add")).toBeNull();
+  });
+
+  it("D-7 gate is pre-show-only: ongoing event with stored predictions still surfaces the Predicted tab regardless of isWishPredictOpen=false", () => {
+    // Once the show is ongoing, the D-7 gate is irrelevant —
+    // `isWishPredictOpen` returns false for any non-upcoming status,
+    // but the post-show branch of the predict-tab gate (which keys
+    // off `storedHasPredictions` only) keeps the user's tab visible
+    // through the live-score divider + share-card phases.
+    window.localStorage.setItem("predict-1", JSON.stringify({ slots: [] }));
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[makeItem()]}
+        reactionCounts={{}}
+        locale="ko"
+        status="ongoing"
+        startTime={null}
+        seriesName="Test Series"
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.getByRole("tablist")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
   });
 });
