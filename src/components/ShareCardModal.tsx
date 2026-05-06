@@ -8,6 +8,14 @@ import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { zIndex, type ShareCardTheme } from "@/styles/tokens";
 
+/**
+ * Toast auto-dismiss duration. 3s is long enough to read a short
+ * Korean/Japanese sentence (the longest copy is ~30 chars) without
+ * lingering past the user's attention. Mirrors the named-constant
+ * pattern in `src/lib/shareCard.ts` (`TO_BLOB_TIMEOUT_MS`).
+ */
+const TOAST_DISMISS_MS = 3_000;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -75,7 +83,7 @@ export function ShareCardModal({
   // Auto-dismiss toast after 3s.
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3000);
+    const timer = setTimeout(() => setToast(null), TOAST_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [toast]);
 
