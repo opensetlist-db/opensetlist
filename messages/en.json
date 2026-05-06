@@ -283,6 +283,7 @@
   "Setlist": {
     "tabActual": "Actual setlist",
     "tabPredicted": "Predicted setlist",
+    "tablistAriaLabel": "Setlist views",
     "predictedComingSoon": "Predicted setlist — coming soon",
     "confirmAriaRumoured": "Unverified song",
     "confirmAriaMyConfirmed": "Confirmed by me"

@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SetlistTabs } from "@/components/SetlistTabs";
 
-const LABELS = { actual: "ACTUAL", predicted: "PREDICTED" };
+const LABELS = {
+  actual: "ACTUAL",
+  predicted: "PREDICTED",
+  tablistAriaLabel: "TABLIST",
+};
+const TAB_IDS = { actual: "tab-a", predicted: "tab-p" };
+const PANEL_IDS = { actual: "panel-a", predicted: "panel-p" };
 
 describe("SetlistTabs visibility matrix", () => {
   it("case 3+4: no predictions → renders nothing", () => {
@@ -13,6 +19,8 @@ describe("SetlistTabs visibility matrix", () => {
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     expect(container.firstChild).toBeNull();
@@ -26,6 +34,8 @@ describe("SetlistTabs visibility matrix", () => {
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     expect(container.firstChild).toBeNull();
@@ -39,6 +49,8 @@ describe("SetlistTabs visibility matrix", () => {
         activeTab="predicted"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     expect(screen.queryByText("ACTUAL")).toBeNull();
@@ -53,6 +65,8 @@ describe("SetlistTabs visibility matrix", () => {
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     expect(screen.getByText("ACTUAL")).toBeTruthy();
@@ -69,6 +83,8 @@ describe("SetlistTabs interaction", () => {
         activeTab="predicted"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     const actualTab = screen.getByRole("tab", { name: "ACTUAL" });
@@ -86,6 +102,8 @@ describe("SetlistTabs interaction", () => {
         activeTab="actual"
         onTabChange={onTabChange}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
       />,
     );
     fireEvent.click(screen.getByRole("tab", { name: "PREDICTED" }));
@@ -102,6 +120,8 @@ describe("SetlistTabs interaction", () => {
         activeTab="actual"
         onTabChange={vi.fn()}
         labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
         predictedBadge={<span data-testid="badge">3/10 🎯</span>}
       />,
     );
@@ -110,5 +130,99 @@ describe("SetlistTabs interaction", () => {
     // Badge sits inside the Predicted tab, not the Actual tab.
     const predictedTab = screen.getByRole("tab", { name: /PREDICTED/ });
     expect(predictedTab.contains(badge)).toBe(true);
+  });
+});
+
+describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
+  function renderBoth(activeTab: "actual" | "predicted" = "actual") {
+    const onTabChange = vi.fn();
+    const utils = render(
+      <SetlistTabs
+        hasPredictions={true}
+        hasActual={true}
+        activeTab={activeTab}
+        onTabChange={onTabChange}
+        labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
+      />,
+    );
+    return { ...utils, onTabChange };
+  }
+
+  it("tablist carries aria-label from the labels prop", () => {
+    renderBoth();
+    const tablist = screen.getByRole("tablist", { name: "TABLIST" });
+    expect(tablist).toBeTruthy();
+  });
+
+  it("each tab carries id + aria-controls pointing at its panel", () => {
+    renderBoth();
+    const actualTab = screen.getByRole("tab", { name: "ACTUAL" });
+    const predictedTab = screen.getByRole("tab", { name: /PREDICTED/ });
+    expect(actualTab.id).toBe("tab-a");
+    expect(actualTab.getAttribute("aria-controls")).toBe("panel-a");
+    expect(predictedTab.id).toBe("tab-p");
+    expect(predictedTab.getAttribute("aria-controls")).toBe("panel-p");
+  });
+
+  it("roving tabindex: active tab is 0; inactive is -1", () => {
+    renderBoth("actual");
+    const actualTab = screen.getByRole("tab", { name: "ACTUAL" });
+    const predictedTab = screen.getByRole("tab", { name: /PREDICTED/ });
+    expect(actualTab.getAttribute("tabindex")).toBe("0");
+    expect(predictedTab.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("ArrowRight on active tab cycles to the next tab", () => {
+    const { onTabChange } = renderBoth("actual");
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
+    expect(onTabChange).toHaveBeenCalledWith("predicted");
+  });
+
+  it("ArrowLeft on active tab cycles to the previous tab (with wrap-around)", () => {
+    const { onTabChange } = renderBoth("actual");
+    // From "actual" (idx 0), ArrowLeft wraps to last → "predicted".
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowLeft" });
+    expect(onTabChange).toHaveBeenCalledWith("predicted");
+  });
+
+  it("Home jumps to the first tab when activeTab is the last", () => {
+    const { onTabChange } = renderBoth("predicted");
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
+    expect(onTabChange).toHaveBeenCalledWith("actual");
+  });
+
+  it("End jumps to the last tab when activeTab is the first", () => {
+    // Separate render so activeTab starts as "actual"; the parent
+    // would re-render with the new activeTab in production, but the
+    // test mock just records the call.
+    const { onTabChange } = renderBoth("actual");
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "End" });
+    expect(onTabChange).toHaveBeenCalledWith("predicted");
+  });
+
+  it("Home/End on the already-first/last tab is a no-op (skip when nextTab === activeTab)", () => {
+    const { onTabChange } = renderBoth("actual");
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "Home" });
+    expect(onTabChange).not.toHaveBeenCalled();
+  });
+
+  it("ArrowKey is a no-op when only one tab is visible (case 1, predicted-only)", () => {
+    const onTabChange = vi.fn();
+    render(
+      <SetlistTabs
+        hasPredictions={true}
+        hasActual={false}
+        activeTab="predicted"
+        onTabChange={onTabChange}
+        labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
+    expect(onTabChange).not.toHaveBeenCalled();
   });
 });

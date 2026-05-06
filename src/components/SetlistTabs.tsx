@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { colors } from "@/styles/tokens";
 
 export type SetlistTab = "actual" | "predicted";
@@ -13,12 +13,24 @@ interface Props {
   /**
    * i18n-resolved tab labels passed by the parent so the tab strip
    * stays presentation-only (mirrors the `<SongSearch>` `texts`
-   * prop convention).
+   * prop convention). `tablistAriaLabel` describes the tablist as
+   * a whole for screen readers (e.g. "Setlist views").
    */
   labels: {
     actual: string;
     predicted: string;
+    tablistAriaLabel: string;
   };
+  /**
+   * DOM ids for tab buttons + their corresponding panels. Caller
+   * (typically `<SetlistSection>`) computes them once via `useId()`
+   * and uses the same panel-ids on the `<div role="tabpanel">`
+   * wrapper around the body. WAI-ARIA tabs pattern requires
+   * `aria-controls` on each tab pointing at the panel id and
+   * `aria-labelledby` on each panel pointing back at the tab id.
+   */
+  tabIds: { actual: string; predicted: string };
+  panelIds: { actual: string; predicted: string };
   /**
    * Optional badge slot rendered after the Predicted tab label —
    * Stage C will populate this with the prediction hit-rate
@@ -48,28 +60,69 @@ export function SetlistTabs({
   activeTab,
   onTabChange,
   labels,
+  tabIds,
+  panelIds,
   predictedBadge,
 }: Props) {
   // Cases 3 + 4 — no predictions, no tabs. Phase 1A byte-equiv path.
   if (!hasPredictions) return null;
 
   const showActualTab = hasActual;
+  // Ordered list of visible tabs — drives both render order AND
+  // the keyboard-nav cycling order. Without `showActualTab` (case 1
+  // pre-show), the array shrinks to just `["predicted"]` so arrow
+  // keys are no-ops.
+  const visibleTabs: SetlistTab[] = showActualTab
+    ? ["actual", "predicted"]
+    : ["predicted"];
+
+  // WAI-ARIA tabs keyboard pattern: ArrowLeft/Right cycle (with
+  // wrap-around), Home/End jump to first/last. Active tab gets
+  // tabIndex=0 (in tab order); inactive tabs get tabIndex=-1
+  // (skipped by Tab key but reachable via arrow keys when the
+  // tablist itself is focused). Caller advances `activeTab` via
+  // `onTabChange`; React focuses the new active tab through the
+  // `tabIndex` change on the next paint.
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (visibleTabs.length < 2) return;
+    let nextTab: SetlistTab | null = null;
+    if (e.key === "ArrowLeft") {
+      const idx = visibleTabs.indexOf(activeTab);
+      nextTab = visibleTabs[(idx - 1 + visibleTabs.length) % visibleTabs.length];
+    } else if (e.key === "ArrowRight") {
+      const idx = visibleTabs.indexOf(activeTab);
+      nextTab = visibleTabs[(idx + 1) % visibleTabs.length];
+    } else if (e.key === "Home") {
+      nextTab = visibleTabs[0];
+    } else if (e.key === "End") {
+      nextTab = visibleTabs[visibleTabs.length - 1];
+    }
+    if (nextTab !== null && nextTab !== activeTab) {
+      e.preventDefault();
+      onTabChange(nextTab);
+    }
+  };
 
   return (
     <div
       role="tablist"
-      aria-label={labels.actual + " / " + labels.predicted}
+      aria-label={labels.tablistAriaLabel}
       className="flex"
       style={{ borderBottom: `1px solid ${colors.borderLight}` }}
+      onKeyDown={handleKeyDown}
     >
       {showActualTab && (
         <TabButton
+          id={tabIds.actual}
+          panelId={panelIds.actual}
           active={activeTab === "actual"}
           onClick={() => onTabChange("actual")}
           label={labels.actual}
         />
       )}
       <TabButton
+        id={tabIds.predicted}
+        panelId={panelIds.predicted}
         active={activeTab === "predicted"}
         onClick={() => onTabChange("predicted")}
         label={labels.predicted}
@@ -80,11 +133,15 @@ export function SetlistTabs({
 }
 
 function TabButton({
+  id,
+  panelId,
   active,
   onClick,
   label,
   badge,
 }: {
+  id: string;
+  panelId: string;
   active: boolean;
   onClick: () => void;
   label: string;
@@ -93,8 +150,14 @@ function TabButton({
   return (
     <button
       type="button"
+      id={id}
       role="tab"
       aria-selected={active}
+      aria-controls={panelId}
+      // Roving tabindex per WAI-ARIA: only the active tab is in
+      // the keyboard tab order; inactive tabs are reached via
+      // ArrowLeft/Right while the tablist is focused.
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
       // flex-1 + center alignment matches the mockup's tab strip
       // shape — each tab fills the available width equally and the

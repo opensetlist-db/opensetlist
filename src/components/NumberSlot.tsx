@@ -16,12 +16,19 @@ interface Props {
    */
   onTap?: () => void;
   /**
-   * aria-label for the interactive states. Caller passes the i18n
-   * resolution since this component is rendered both inside admin
-   * (Korean-only per CLAUDE.md exemption) and public surfaces.
+   * aria-label for the rumoured + my-confirmed buttons. Caller
+   * passes the i18n resolution since this component is rendered
+   * both inside admin (Korean-only per CLAUDE.md exemption) and
+   * public surfaces. Required (not optional) so an aria-label is
+   * never undefined — `<NumberSlot>` always has both interactive
+   * states reachable via the `state` prop, so callers must supply
+   * both labels even when the current state is `confirmed`. Keeps
+   * the contract symmetric and prevents the
+   * `aria-label={undefined}` accessibility regression CodeRabbit
+   * flagged on PR #280.
    */
-  rumouredLabel?: string;
-  myConfirmedLabel?: string;
+  rumouredLabel: string;
+  myConfirmedLabel: string;
 }
 
 /**

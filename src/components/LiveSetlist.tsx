@@ -172,23 +172,30 @@ export function LiveSetlist({
         </span>
       </div>
 
-      {items.length === 0 ? (
-        <p style={{ padding: "24px 20px", color: colors.textMuted }}>
-          {t("noSetlist")}
-        </p>
-      ) : (
-        // Tab-aware body. When `predict-{eventId}` is in localStorage,
-        // a tab strip renders BELOW this section's header (the SETLIST
-        // h2 + LIVE pill stay visible — see SetlistSection's docstring
-        // for the rationale). When no predictions, renders only the
-        // ActualSetlist body — byte-equivalent to pre-refactor.
-        <SetlistSection
-          eventId={eventId}
-          items={items}
-          reactionCounts={reactionCounts}
-          locale={locale}
-        />
-      )}
+      {/* Tab-aware body. When `predict-{eventId}` is in localStorage,
+          a tab strip renders BELOW this section's header (the SETLIST
+          h2 + LIVE pill stay visible — see SetlistSection's docstring
+          for the rationale). When no predictions, renders only the
+          ActualSetlist body — byte-equivalent to pre-refactor.
+
+          `emptyFallback` is delegated INTO SetlistSection (not gated
+          here) so the predictions-but-no-actual case (Stage C, case 1
+          per the task matrix) can still render the Predicted-only
+          tab. CodeRabbit caught this on PR #280 — the prior
+          `items.length === 0 → noSetlist` short-circuit would have
+          starved that path the day Stage C lands the prediction
+          writer. */}
+      <SetlistSection
+        eventId={eventId}
+        items={items}
+        reactionCounts={reactionCounts}
+        locale={locale}
+        emptyFallback={
+          <p style={{ padding: "24px 20px", color: colors.textMuted }}>
+            {t("noSetlist")}
+          </p>
+        }
+      />
     </section>
     </>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { ActualSetlist } from "@/components/ActualSetlist";
 import { PredictedSetlist } from "@/components/PredictedSetlist";
@@ -17,6 +17,16 @@ interface Props {
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
   locale: string;
+  /**
+   * Rendered when neither actual rows nor predictions exist (e.g.
+   * the historical "no setlist yet" `<p>` from `<LiveSetlist>`).
+   * Delegated INTO this component (rather than gated outside) so
+   * the predictions-but-no-actual case (matrix case 1) can still
+   * surface the Predicted-only tab strip — see the task spec at
+   * `wiki/output/task-week2-setlistsection-tab-refactor.md` for
+   * the full visibility table.
+   */
+  emptyFallback: ReactNode;
 }
 
 /**
@@ -45,6 +55,7 @@ export function SetlistSection({
   items,
   reactionCounts,
   locale,
+  emptyFallback,
 }: Props) {
   const t = useTranslations("Setlist");
   const mounted = useMounted();
@@ -85,6 +96,35 @@ export function SetlistSection({
   const renderedTab: SetlistTab =
     hasPredictions && !hasActual ? "predicted" : activeTab;
 
+  // WAI-ARIA tabs pattern needs paired tab/panel ids so each tab's
+  // `aria-controls` resolves to its panel and each panel's
+  // `aria-labelledby` resolves back to its tab. Computed via
+  // `useId()` UNCONDITIONALLY (Rules of Hooks — must run before
+  // any early return) and threaded into both `<SetlistTabs>` and
+  // the panel-wrapping `<div role="tabpanel">` below.
+  const baseId = useId();
+  const tabIds = {
+    actual: `${baseId}-tab-actual`,
+    predicted: `${baseId}-tab-predicted`,
+  };
+  const panelIds = {
+    actual: `${baseId}-panel-actual`,
+    predicted: `${baseId}-panel-predicted`,
+  };
+  const renderedPanelId =
+    renderedTab === "actual" ? panelIds.actual : panelIds.predicted;
+  const renderedTabId =
+    renderedTab === "actual" ? tabIds.actual : tabIds.predicted;
+
+  // Empty everywhere: no actual rows, no predictions. Show the
+  // caller's fallback (historically the `<p>noSetlist</p>` from
+  // `<LiveSetlist>`). No tab strip, no body wrapper — keeps the
+  // pre-refactor render byte-equivalent for events without either.
+  // Early return lives AFTER `useId` to satisfy Rules of Hooks.
+  if (!hasPredictions && !hasActual) {
+    return <>{emptyFallback}</>;
+  }
+
   return (
     <>
       <SetlistTabs
@@ -95,18 +135,32 @@ export function SetlistSection({
         labels={{
           actual: t("tabActual"),
           predicted: t("tabPredicted"),
+          tablistAriaLabel: t("tablistAriaLabel"),
         }}
+        tabIds={tabIds}
+        panelIds={panelIds}
       />
-      {renderedTab === "actual" ? (
-        <ActualSetlist
-          items={items}
-          reactionCounts={reactionCounts}
-          locale={locale}
-          eventId={eventId}
-        />
-      ) : (
-        <PredictedSetlist />
-      )}
+      {/* Single panel wrapper for the active tab — WAI-ARIA pattern
+          calls for one `role="tabpanel"` per visible panel, but
+          since we only render the active body (not all bodies
+          hidden), one panel suffices. Its id + aria-labelledby
+          pair the active tab to its content. */}
+      <div
+        role="tabpanel"
+        id={renderedPanelId}
+        aria-labelledby={renderedTabId}
+      >
+        {renderedTab === "actual" ? (
+          <ActualSetlist
+            items={items}
+            reactionCounts={reactionCounts}
+            locale={locale}
+            eventId={eventId}
+          />
+        ) : (
+          <PredictedSetlist />
+        )}
+      </div>
     </>
   );
 }

@@ -54,6 +54,7 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByRole("tablist")).toBeNull();
@@ -70,13 +71,51 @@ describe("SetlistSection", () => {
         items={[]}
         reactionCounts={{}}
         locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.getByRole("tablist")).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "tabActual" })).toBeNull();
     expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
-    // PredictedSetlist's coming-soon copy renders.
+    // PredictedSetlist's coming-soon copy renders inside the tabpanel.
     expect(screen.getByText("predictedComingSoon")).toBeTruthy();
+    expect(screen.getByRole("tabpanel")).toBeTruthy();
+    // Empty fallback is NOT rendered — predictions present.
+    expect(screen.queryByTestId("empty")).toBeNull();
+  });
+
+  it("predictions + no actual + emptyFallback present: the fallback is suppressed in favor of the Predicted tab body", () => {
+    // Same as case 1 above but explicit assertion that the
+    // emptyFallback prop is intentionally ignored when predictions
+    // exist — Stage C's case 1 path needs to surface the Predicted
+    // tab even with zero actual rows.
+    window.localStorage.setItem("predict-1", JSON.stringify({}));
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.queryByTestId("empty")).toBeNull();
+    expect(screen.getByText("predictedComingSoon")).toBeTruthy();
+  });
+
+  it("no predictions + no actual: emptyFallback renders; no tabs, no tabpanel", () => {
+    render(
+      <SetlistSection
+        eventId="1"
+        items={[]}
+        reactionCounts={{}}
+        locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    expect(screen.getByTestId("empty")).toBeTruthy();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).toBeNull();
   });
 
   it("case 2 (predictions + actual): both tabs; defaults to Actual; tap Predicted swaps body", () => {
@@ -87,6 +126,7 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     const actualTab = screen.getByRole("tab", { name: "tabActual" });
@@ -113,6 +153,7 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByRole("tablist")).toBeNull();

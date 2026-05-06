@@ -4,13 +4,27 @@ import { NumberSlot } from "@/components/NumberSlot";
 
 describe("NumberSlot", () => {
   it("confirmed: renders the position number as a span (no button)", () => {
-    render(<NumberSlot state="confirmed" position={5} />);
+    render(
+      <NumberSlot
+        state="confirmed"
+        position={5}
+        rumouredLabel="r"
+        myConfirmedLabel="m"
+      />,
+    );
     expect(screen.getByText("5")).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("rumoured: renders a [?] button with dashed border", () => {
-    render(<NumberSlot state="rumoured" position={3} rumouredLabel="rumoured-aria" />);
+    render(
+      <NumberSlot
+        state="rumoured"
+        position={3}
+        rumouredLabel="rumoured-aria"
+        myConfirmedLabel="m"
+      />,
+    );
     const btn = screen.getByRole("button", { name: "rumoured-aria" });
     expect(btn.textContent).toBe("?");
     // Inline style carries the dashed border. jsdom returns the
@@ -23,6 +37,7 @@ describe("NumberSlot", () => {
       <NumberSlot
         state="my-confirmed"
         position={3}
+        rumouredLabel="r"
         myConfirmedLabel="my-confirmed-aria"
       />,
     );
@@ -43,6 +58,7 @@ describe("NumberSlot", () => {
         position={3}
         onTap={onTap}
         rumouredLabel="x"
+        myConfirmedLabel="y"
       />,
     );
     fireEvent.click(screen.getByRole("button"));
@@ -50,13 +66,27 @@ describe("NumberSlot", () => {
   });
 
   it("rumoured: missing onTap is safe (button still tappable, no error)", () => {
-    render(<NumberSlot state="rumoured" position={3} rumouredLabel="x" />);
+    render(
+      <NumberSlot
+        state="rumoured"
+        position={3}
+        rumouredLabel="x"
+        myConfirmedLabel="y"
+      />,
+    );
     // No-op tap — should not throw.
     expect(() => fireEvent.click(screen.getByRole("button"))).not.toThrow();
   });
 
   it("confirmed: position number is rendered (regression: byte-equiv with pre-refactor span)", () => {
-    render(<NumberSlot state="confirmed" position={42} />);
+    render(
+      <NumberSlot
+        state="confirmed"
+        position={42}
+        rumouredLabel="r"
+        myConfirmedLabel="m"
+      />,
+    );
     const span = screen.getByText("42");
     expect(span.tagName.toLowerCase()).toBe("span");
     // Right-align + monospace styling preserved from the pre-refactor
