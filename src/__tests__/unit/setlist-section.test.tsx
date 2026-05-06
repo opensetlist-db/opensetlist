@@ -54,6 +54,9 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -74,14 +77,18 @@ describe("SetlistSection", () => {
         items={[]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.getByRole("tablist")).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "tabActual" })).toBeNull();
     expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
-    // PredictedSetlist's coming-soon copy renders inside the tabpanel.
-    expect(screen.getByText("predictedComingSoon")).toBeTruthy();
+    // PredictedSetlist (Stage C) renders the pre-show full UI
+    // — `+ 곡 추가` link is the load-bearing affordance for it.
+    expect(screen.getByText("add")).toBeTruthy();
     expect(screen.getByRole("tabpanel")).toBeTruthy();
     // Empty fallback is NOT rendered — predictions present.
     expect(screen.queryByTestId("empty")).toBeNull();
@@ -99,11 +106,15 @@ describe("SetlistSection", () => {
         items={[]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByTestId("empty")).toBeNull();
-    expect(screen.getByText("predictedComingSoon")).toBeTruthy();
+    // PredictedSetlist (Stage C) renders the pre-show full UI.
+    expect(screen.getByText("add")).toBeTruthy();
   });
 
   it("no predictions + no actual: emptyFallback renders; no tabs, no tabpanel", () => {
@@ -113,6 +124,9 @@ describe("SetlistSection", () => {
         items={[]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -129,6 +143,9 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
@@ -138,13 +155,14 @@ describe("SetlistSection", () => {
     expect(predictedTab.getAttribute("aria-selected")).toBe("false");
     // Body shows ActualSetlist (the <ol> of rows).
     expect(screen.getByRole("list")).toBeTruthy();
-    expect(screen.queryByText("predictedComingSoon")).toBeNull();
+    // Pre-show PredictedSetlist `+ 곡 추가` is not rendered (Actual tab active).
+    expect(screen.queryByText("add")).toBeNull();
 
     fireEvent.click(predictedTab);
     expect(actualTab.getAttribute("aria-selected")).toBe("false");
     expect(predictedTab.getAttribute("aria-selected")).toBe("true");
-    // Body swaps to PredictedSetlist placeholder.
-    expect(screen.getByText("predictedComingSoon")).toBeTruthy();
+    // Body swaps to PredictedSetlist (pre-show full UI: `+ 곡 추가`).
+    expect(screen.getByText("add")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
   });
 
@@ -156,6 +174,9 @@ describe("SetlistSection", () => {
         items={[makeItem()]}
         reactionCounts={{}}
         locale="ko"
+        status="upcoming"
+        startTime={null}
+        seriesName="Test Series"
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );

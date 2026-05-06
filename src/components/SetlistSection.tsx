@@ -11,12 +11,24 @@ import type {
   LiveSetlistItem,
   ReactionCountsMap,
 } from "@/lib/types/setlist";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 interface Props {
   eventId: string;
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
   locale: string;
+  /**
+   * Stage C — props threaded through to `<PredictedSetlist>`.
+   *   - `status`: drives pre-show / during-show / post-show modes
+   *   - `startTime`: used for the lock check (now >= startTime)
+   *   - `seriesName`: pre-resolved display string for the share-card
+   *     text payload (parent already does the cascade for the page
+   *     header so we don't redo it).
+   */
+  status: ResolvedEventStatus;
+  startTime: Date | string | null;
+  seriesName: string;
   /**
    * Rendered when neither actual rows nor predictions exist (e.g.
    * the historical "no setlist yet" `<p>` from `<LiveSetlist>`).
@@ -55,6 +67,9 @@ export function SetlistSection({
   items,
   reactionCounts,
   locale,
+  status,
+  startTime,
+  seriesName,
   emptyFallback,
 }: Props) {
   const t = useTranslations("Setlist");
@@ -136,6 +151,13 @@ export function SetlistSection({
   //     non-existent tab id — that's both a screen-reader bug
   //     and a byte-equivalence regression. CodeRabbit caught this
   //     on PR #280's first fix-up round.
+  // Filter to song-type rows for the prediction match. MC / video /
+  // interval items are skipped per task spec — they aren't songs
+  // a user could have predicted. The full `items` list still feeds
+  // `<ActualSetlist>` (which renders MC / video / interval rows
+  // alongside song rows).
+  const actualSongs = items.filter((it) => it.type === "song");
+
   const body =
     renderedTab === "actual" ? (
       <ActualSetlist
@@ -145,7 +167,14 @@ export function SetlistSection({
         eventId={eventId}
       />
     ) : (
-      <PredictedSetlist />
+      <PredictedSetlist
+        eventId={eventId}
+        locale={locale}
+        startTime={startTime}
+        status={status}
+        actualSongs={actualSongs}
+        seriesName={seriesName}
+      />
     );
 
   return (

@@ -46,6 +46,20 @@ interface Props {
   unknownSongLabel: string;
   isOngoing: boolean;
   locale: string;
+  /**
+   * Resolved event status (`"upcoming" | "ongoing" | "completed" |
+   * "cancelled"`). Threaded into `<SetlistSection>` so
+   * `<PredictedSetlist>` can switch its three modes (pre-show /
+   * during-show / post-show share button).
+   */
+  status: import("@/lib/eventStatus").ResolvedEventStatus;
+  /**
+   * Pre-resolved series + event display string for the share-card
+   * text payload (`{seriesName} 예상 셋리스트 ...`). The page already
+   * runs the i18n cascade for the page header; we reuse that result
+   * rather than re-doing it inside Predicted Setlist.
+   */
+  seriesName: string;
 }
 
 export function LiveSetlist({
@@ -58,6 +72,8 @@ export function LiveSetlist({
   unknownSongLabel,
   isOngoing,
   locale,
+  status,
+  seriesName,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -190,6 +206,9 @@ export function LiveSetlist({
         items={items}
         reactionCounts={reactionCounts}
         locale={locale}
+        status={status}
+        startTime={startTime}
+        seriesName={seriesName}
         emptyFallback={
           <p style={{ padding: "24px 20px", color: colors.textMuted }}>
             {t("noSetlist")}
