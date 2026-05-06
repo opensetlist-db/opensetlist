@@ -78,6 +78,15 @@ export const colors = {
   // both hexes here so the divergence is one-line easy if it happens.
   error: "#dc2626",
 
+  // Predicted Setlist during-show divider (Phase 1B Stage C).
+  // Amber bar separating in-rank rows from below-rank rows in the
+  // live tab. Bg + text picked from
+  // raw/mockups/mockup-wish-predict.jsx PredictTab during-show
+  // divider. Distinct from `warning` (one-purpose token, doesn't
+  // share semantics with other warning surfaces).
+  predictDividerBg: "#fff8e1",
+  predictDividerText: "#92400e",
+
   // Soft-warning feedback (e.g. edit-cooldown countdown). Distinct from
   // `error` (hard fail) and from trending-UI tokens (semantically
   // unrelated despite the same amber family).
@@ -117,6 +126,146 @@ export const colors = {
   // Song-variant / encore divider accent
   variant: "#7B1FA2",
   variantBg: "#F3E5F5",
+} as const;
+
+/*
+ * Share Card design tokens (Phase 1B Stage C).
+ *
+ * Two themes — dark + light — picked from
+ * `raw/mockups/mockup-share-card.jsx`. The card is a 600px-wide
+ * standalone surface captured to PNG via html2canvas; the tokens
+ * are intentionally distinct from the rest of the app so a future
+ * brand tweak doesn't accidentally repaint shared images already
+ * floating around social media.
+ *
+ * Exposed as a separate `shareCardColors` object (rather than
+ * nested under `colors`) so consumers explicitly opt in
+ * (`import { shareCardColors } from "@/styles/tokens"`) — the
+ * card's blue palette overlaps with `colors.primary` family but
+ * the alpha-glow + rgba accents would be confusing as
+ * top-level entries on the main `colors` object.
+ */
+export type ShareCardTheme = "dark" | "light";
+
+export interface ShareCardPalette {
+  cardBg: string;
+  /** "1px solid #d0e8f8" for light; "none" for dark. */
+  cardBorder: string;
+  /** Top accent bar gradient (light only); empty string for dark. */
+  topBar: string;
+  /** Radial overlay gradient (dark only); empty string for light. */
+  radialOverlay: string;
+  series: string;
+  title: string;
+  date: string;
+  bannerBg: string;
+  /** "1px solid #b5d4f4" for light; "1px solid rgba(79,195,247,0.2)" for dark. */
+  bannerBorder: string;
+  /** "0 1px 8px rgba(2,119,189,0.06)" for light; "none" for dark. */
+  bannerShadow: string;
+  scoreMain: string;
+  scorePct: string;
+  scoreSub: string;
+  scoreLabel: string;
+  scoreFrac: string;
+  scorePred: string;
+  missColor: string;
+  numColor: string;
+  hitRowBg: string;
+  hitDot: string;
+  hitDotGlow: string;
+  hitUnderline: string;
+  hitText: string;
+  encLine: string;
+  encLabel: string;
+  footerBorder: string;
+  footerBrand: string;
+  footerUrl: string;
+}
+
+/*
+ * z-index layering tokens. Centralizes the magic numbers that
+ * sprinkle inline `style={{ zIndex: 100 }}` values across the
+ * codebase — without a single source of truth, a future overlay
+ * (drawer, toast, secondary modal) can silently land at the wrong
+ * layer.
+ *
+ * Higher = closer to the user. Gaps left between buckets so a
+ * future intermediate layer can slot in without renumbering.
+ */
+export const zIndex = {
+  /** Sticky elements within page flow (e.g. desktop sidebar). */
+  sticky: 10,
+  /** Modal backdrop + dialog (Share Card, Flag dialogs). */
+  modal: 200,
+  /** Toast / snackbar / inline announcement above modals. */
+  toast: 300,
+} as const;
+
+export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
+  dark: {
+    cardBg:        "#0a1628",
+    cardBorder:    "none",
+    topBar:        "",
+    // Two ellipses at opposite corners, transparent past 55% to
+    // keep the card readable under the score banner + setlist rows.
+    radialOverlay:
+      "radial-gradient(ellipse at 15% 0%, rgba(79,195,247,0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(2,119,189,0.15) 0%, transparent 55%)",
+    series:        "#4FC3F7",
+    title:         "#e8f4fd",
+    date:          "#3a5a7a",
+    bannerBg:      "rgba(79,195,247,0.08)",
+    bannerBorder:  "1px solid rgba(79,195,247,0.2)",
+    bannerShadow:  "none",
+    scoreMain:     "#e8f4fd",
+    scorePct:      "#4FC3F7",
+    scoreSub:      "#3a5a7a",
+    scoreLabel:    "#4FC3F7",
+    scoreFrac:     "#4FC3F7",
+    scorePred:     "#2a4a6a",
+    missColor:     "#7a9ab8",
+    numColor:      "#2a4464",
+    hitRowBg:      "rgba(79,195,247,0.07)",
+    hitDot:        "#4FC3F7",
+    hitDotGlow:    "0 0 5px rgba(79,195,247,0.9)",
+    hitUnderline:  "rgba(79,195,247,0.5)",
+    hitText:       "#e8f4fd",
+    encLine:       "rgba(79,195,247,0.1)",
+    encLabel:      "#1e3a56",
+    footerBorder:  "rgba(79,195,247,0.1)",
+    footerBrand:   "#1e3a56",
+    footerUrl:     "#1e3a56",
+  },
+  light: {
+    cardBg:        "#f8fbff",
+    cardBorder:    "1px solid #d0e8f8",
+    topBar:        "linear-gradient(90deg, #4FC3F7, #0277BD)",
+    radialOverlay: "",
+    series:        "#0277BD",
+    title:         "#0c1a2e",
+    date:          "#8aacc8",
+    bannerBg:      "white",
+    bannerBorder:  "1px solid #b5d4f4",
+    bannerShadow:  "0 1px 8px rgba(2,119,189,0.06)",
+    scoreMain:     "#0c1a2e",
+    scorePct:      "#0277BD",
+    scoreSub:      "#8aacc8",
+    scoreLabel:    "#0277BD",
+    scoreFrac:     "#0277BD",
+    scorePred:     "#b5cfe8",
+    missColor:     "#5a8ab0",
+    numColor:      "#b5d4f4",
+    hitRowBg:      "#eef7ff",
+    hitDot:        "#0277BD",
+    hitDotGlow:    "none",
+    hitUnderline:  "rgba(2,119,189,0.4)",
+    hitText:       "#0c1a2e",
+    encLine:       "#d0e8f8",
+    encLabel:      "#b5cfe8",
+    footerBorder:  "#d0e8f8",
+    footerBrand:   "#8aacc8",
+    footerUrl:     "#b5cfe8",
+  },
 } as const;
 
 /*

@@ -260,6 +260,13 @@ export function LiveEventLayout({
           unknownSongLabel={unknownSongLabel}
           isOngoing={isOngoing}
           locale={locale}
+          status={status}
+          // `series.name` is already pre-resolved by the page via
+          // `displayNameWithFallback(...)` for the EventHeader card.
+          // Reuse for the share-card text payload; fall back to
+          // `title` (the localized event title) when the event
+          // doesn't belong to a series.
+          seriesName={series?.name ?? title}
         />
 
         <EventImpressions
