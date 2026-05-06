@@ -191,7 +191,6 @@ export function ShareCardModal({
             type="button"
             onClick={handleClose}
             disabled={busy}
-            aria-disabled={busy}
             aria-label={t("close")}
             className="text-xl leading-none p-1 cursor-pointer"
             style={{
@@ -217,7 +216,6 @@ export function ShareCardModal({
               type="button"
               onClick={() => handleThemeChange(m)}
               disabled={busy}
-              aria-disabled={busy}
               aria-pressed={theme === m}
               className="text-xs font-medium rounded-full px-4 py-1 cursor-pointer"
               style={{
@@ -270,7 +268,6 @@ export function ShareCardModal({
             type="button"
             onClick={handleCopyLink}
             disabled={busy}
-            aria-disabled={busy}
             className="text-sm rounded-full px-5 py-2 cursor-pointer"
             style={{
               background: "white",

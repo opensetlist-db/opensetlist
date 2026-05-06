@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { colors } from "@/styles/tokens";
+import { hexToRgbString } from "@/__tests__/utils/color";
 
 // Identity-mapped translations — keys are stable test fixtures.
 vi.mock("next-intl", () => ({
@@ -207,10 +209,13 @@ describe("EventWishSection — match-highlight in fan TOP-3", () => {
     // `<SongMatchBadge>` exposes `data-testid="song-match-badge"` so
     // tests reach the wrapper directly — any future markup tweak
     // (extra wrapping span for animation, etc.) wouldn't break this
-    // assertion. wishlistMatchBg = #bbf7d0 → rgb(187, 247, 208).
+    // assertion. The expected RGB is derived from the
+    // `colors.wishlistMatchBg` token via `hexToRgbString` rather
+    // than hardcoded — a future palette tweak rolls forward without
+    // a silently-passing test.
     const wrapper = screen.getByTestId("song-match-badge");
     expect(wrapper.style.background.toLowerCase()).toContain(
-      "rgb(187, 247, 208)",
+      hexToRgbString(colors.wishlistMatchBg).toLowerCase(),
     );
   });
 

@@ -29,10 +29,13 @@ beforeEach(() => {
 
 afterEach(() => {
   // The "writePredictions resilience" case spies on
-  // `localStorage.__proto__.setItem` to simulate a quota throw.
-  // Without restoration, the spy persists across tests in the
-  // same worker and any subsequent localStorage write throws
-  // unrelatedly. CR #281 caught the leak.
+  // `Storage.prototype.setItem` to simulate a quota throw.
+  // `vi.restoreAllMocks()` clears the spy so it can't persist
+  // across tests in the same worker — without restoration, any
+  // subsequent localStorage write would throw unrelatedly. CR
+  // #281 caught the leak; CR #285 noted the spy target should be
+  // `Storage.prototype.*` (the standard surface), not the
+  // non-standard `localStorage.__proto__` access pattern.
   vi.restoreAllMocks();
 });
 
