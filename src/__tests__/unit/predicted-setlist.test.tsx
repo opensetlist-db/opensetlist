@@ -13,6 +13,7 @@ vi.mock("@/hooks/useMounted", () => ({
 }));
 
 import { PredictedSetlist } from "@/components/PredictedSetlist";
+import { DIMMED_ROW_OPACITY } from "@/components/PredictSongRow";
 import { writePredictions, type PredictionEntry } from "@/lib/predictionsStorage";
 import type { WishSongDisplay } from "@/lib/wishStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
@@ -203,7 +204,9 @@ describe("PredictedSetlist — match-highlight states", () => {
     );
     // Rows at rank 2 + 3 are below the divider (rank > total=1) → opacity 0.4.
     const rowB = screen.getByText("B").closest("div[style*='opacity']")!;
-    expect(rowB.getAttribute("style")).toContain("opacity: 0.4");
+    expect(rowB.getAttribute("style")).toContain(
+      `opacity: ${DIMMED_ROW_OPACITY}`,
+    );
   });
 
   it("during-show: divider renders between in-rank and below-divider rows", () => {

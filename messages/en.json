@@ -289,8 +289,6 @@
     "confirmAriaMyConfirmed": "Confirmed by me"
   },
   "Predict": {
-    "tabBadgeLive": "{matched}/{total} 🎯",
-    "tabBadgeFinal": "🎯 Result",
     "add": "+ Add a song",
     "cancel": "Cancel",
     "removeAria": "Remove from prediction",

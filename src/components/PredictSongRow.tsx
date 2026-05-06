@@ -8,6 +8,14 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { colors, zIndex } from "@/styles/tokens";
 
 /**
+ * Dimmed-row opacity for "matched-out-of-rank" + "below-divider"
+ * states. Exported so the unit-test snapshot assertion (and any
+ * future consumer that needs to mirror this look) can reference the
+ * same value rather than hardcoding `0.4` independently.
+ */
+export const DIMMED_ROW_OPACITY = 0.4;
+
+/**
  * Visual state per the mockup's during-show divider rules:
  *   - "default":              pre-show, or post-show non-match
  *   - "matched-in-rank":      green bg + green text (counts toward score)
@@ -89,7 +97,7 @@ export function PredictSongRow({
         gap: 8,
         padding: "7px 14px",
         borderBottom: `0.5px solid ${colors.borderLight}`,
-        opacity: isDimmed ? 0.4 : 1,
+        opacity: isDimmed ? DIMMED_ROW_OPACITY : 1,
         // While dragging, lift the row visually + above siblings.
         // Reuses the `sticky` z-index token (= 10) since both
         // consumers want "above default flow, well below modals".

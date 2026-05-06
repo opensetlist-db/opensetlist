@@ -289,8 +289,6 @@
     "confirmAriaMyConfirmed": "내가 확인한 곡"
   },
   "Predict": {
-    "tabBadgeLive": "{matched}/{total} 🎯",
-    "tabBadgeFinal": "🎯 결과",
     "add": "+ 곡 추가",
     "cancel": "취소",
     "removeAria": "예상에서 제거",

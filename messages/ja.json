@@ -289,8 +289,6 @@
     "confirmAriaMyConfirmed": "確認済み"
   },
   "Predict": {
-    "tabBadgeLive": "{matched}/{total} 🎯",
-    "tabBadgeFinal": "🎯 結果",
     "add": "+ 曲を追加",
     "cancel": "キャンセル",
     "removeAria": "予想から削除",
