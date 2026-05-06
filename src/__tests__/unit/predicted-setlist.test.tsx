@@ -44,6 +44,7 @@ function actual(songId: number): LiveSetlistItem {
     status: "confirmed",
     performanceType: "live_performance",
     type: "song",
+    createdAt: "2026-05-23T12:00:00.000Z",
     songs: [
       {
         song: {

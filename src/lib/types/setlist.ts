@@ -114,6 +114,17 @@ export type LiveSetlistItem = {
   status: string;
   performanceType: string | null;
   type: string;
+  /**
+   * Row creation instant in UTC (ISO string after `serializeBigInt`).
+   * Drives the 1-minute auto-promote rule for `rumoured` rows in
+   * `getConfirmStatus` (`src/lib/confirmStatus.ts`) — late-arriving
+   * viewers see rows past the 60s boundary already settled to
+   * `confirmed`. Already returned by Prisma's default `findMany`
+   * include on `SetlistItem.createdAt` and threaded through the
+   * `/api/setlist` polling channel; this entry just makes the field
+   * visible to TS consumers.
+   */
+  createdAt: string;
   songs: Array<{ song: SongRef }>;
   performers: Array<{
     stageIdentity: StageIdentityRef;
