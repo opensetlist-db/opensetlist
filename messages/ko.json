@@ -324,6 +324,11 @@
     "encore": "Encore",
     "shareText": "{seriesName} 예상 세트리스트 {pct}% 적중! ({total}곡 중 {matched}곡) 🎯"
   },
+  "Confirm": {
+    "flag": "신고",
+    "flagEmailSubject": "[OpenSetlist] 세트리스트 행 신고 — 이벤트 {eventId} #{position}",
+    "flagEmailBody": "이벤트 ID: {eventId}\n순서: {position}\n곡: {songTitle}\n\n문제 내용을 적어주세요:\n"
+  },
   "Wishlist": {
     "title": "희망곡",
     "lockedTitle": "팬들의 희망곡 TOP3",

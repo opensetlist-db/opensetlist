@@ -9,6 +9,7 @@ import {
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
 import { NumberSlot, type RowState } from "@/components/NumberSlot";
+import { FlagButton } from "@/components/FlagButton";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
@@ -38,10 +39,19 @@ interface Props {
    * Phase 1B/1C row-state visual scaffold (Stage B foundation).
    * Defaults to `"confirmed"` so existing callers see byte-identical
    * render — the load-bearing constraint of the Stage B refactor.
-   * Stage C wires the localStorage-driven derivation that flips
-   * `rumoured` rows to `my-confirmed` when the viewer has confirmed.
+   * Stage C now ships the localStorage-driven derivation that flips
+   * `rumoured` rows to `my-confirmed` when the viewer has confirmed
+   * (composed in `<ActualSetlist>` via `useLocalConfirm`).
    */
   rowState?: RowState;
+  /**
+   * Confirm-tap handler wired by `<ActualSetlist>` for Phase 1C —
+   * fires `useLocalConfirm`'s toggle so the viewer's confirm flips
+   * optimistically. Optional because the `confirmed` state never
+   * surfaces a tappable button, and admin-side consumers (e.g.
+   * SetlistBuilder previews) don't need the lifecycle.
+   */
+  onConfirmTap?: () => void;
 }
 
 export function SetlistRow({
@@ -51,6 +61,7 @@ export function SetlistRow({
   locale,
   eventId,
   rowState = "confirmed",
+  onConfirmTap,
 }: Props) {
   const t = useTranslations("Event");
   const setlistT = useTranslations("Setlist");
@@ -190,9 +201,7 @@ export function SetlistRow({
       <NumberSlot
         state={rowState}
         position={index + 1}
-        onTap={() => {
-          /* Stage B: no-op. Stage C wires localStorage + DB. */
-        }}
+        onTap={onConfirmTap}
         rumouredLabel={setlistT("confirmAriaRumoured")}
         myConfirmedLabel={setlistT("confirmAriaMyConfirmed")}
       />
@@ -243,6 +252,22 @@ export function SetlistRow({
               `stageType.${item.stageType}` as Parameters<typeof t>[0],
             )}
           />
+        )}
+        {/* FlagButton on rumoured rows only — NOT my-confirmed (the
+            viewer's already endorsed it; flagging would contradict
+            their own confirm). Rendered as a small inline link
+            below the title so it reads as a secondary affordance
+            without competing with the song name for attention.
+            Phase 2 swaps the mailto destination for an internal
+            endpoint once threshold-based reporting ships. */}
+        {rowState === "rumoured" && (
+          <div className="mt-1">
+            <FlagButton
+              eventId={eventId}
+              position={item.position}
+              songTitle={songNames[0]?.main ?? ""}
+            />
+          </div>
         )}
       </div>
 
