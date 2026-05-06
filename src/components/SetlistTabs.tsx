@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent, ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { colors } from "@/styles/tokens";
 
 export type SetlistTab = "actual" | "predicted";
@@ -64,6 +64,20 @@ export function SetlistTabs({
   panelIds,
   predictedBadge,
 }: Props) {
+  // Per-tab button refs for the WAI-ARIA roving-focus contract.
+  // After ArrowLeft/Right/Home/End advances `activeTab`, we MUST
+  // programmatically focus the new tab button — `tabIndex` change
+  // alone does NOT move browser focus (changing tabIndex=-1 → 0
+  // makes the button reachable via Tab, but the previously-focused
+  // button keeps focus). Without the explicit `.focus()`, the user
+  // who just pressed ArrowRight stays focused on the now-inactive
+  // tab (tabIndex=-1), which breaks Tab navigation entirely.
+  // useRef runs UNCONDITIONALLY (Rules of Hooks — must run before
+  // any early return).
+  const tabButtonRefs = useRef<Partial<Record<SetlistTab, HTMLButtonElement>>>(
+    {},
+  );
+
   // Cases 3 + 4 — no predictions, no tabs. Phase 1A byte-equiv path.
   if (!hasPredictions) return null;
 
@@ -80,9 +94,7 @@ export function SetlistTabs({
   // wrap-around), Home/End jump to first/last. Active tab gets
   // tabIndex=0 (in tab order); inactive tabs get tabIndex=-1
   // (skipped by Tab key but reachable via arrow keys when the
-  // tablist itself is focused). Caller advances `activeTab` via
-  // `onTabChange`; React focuses the new active tab through the
-  // `tabIndex` change on the next paint.
+  // tablist itself is focused).
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (visibleTabs.length < 2) return;
     let nextTab: SetlistTab | null = null;
@@ -100,6 +112,17 @@ export function SetlistTabs({
     if (nextTab !== null && nextTab !== activeTab) {
       e.preventDefault();
       onTabChange(nextTab);
+      // Move focus to the new active tab so subsequent Tab keys
+      // exit the tablist (rather than staying on the now-inactive
+      // tab with tabIndex=-1, which would trap the user). Use
+      // requestAnimationFrame so the focus call lands AFTER React
+      // has re-rendered with the new `activeTab` + roving tabindex
+      // values; calling focus() on the same tick races the render
+      // and can produce inconsistent behavior in test runners.
+      const target = tabButtonRefs.current[nextTab];
+      if (target) {
+        requestAnimationFrame(() => target.focus());
+      }
     }
   };
 
@@ -118,6 +141,10 @@ export function SetlistTabs({
           active={activeTab === "actual"}
           onClick={() => onTabChange("actual")}
           label={labels.actual}
+          buttonRef={(el) => {
+            if (el) tabButtonRefs.current.actual = el;
+            else delete tabButtonRefs.current.actual;
+          }}
         />
       )}
       <TabButton
@@ -127,6 +154,10 @@ export function SetlistTabs({
         onClick={() => onTabChange("predicted")}
         label={labels.predicted}
         badge={predictedBadge}
+        buttonRef={(el) => {
+          if (el) tabButtonRefs.current.predicted = el;
+          else delete tabButtonRefs.current.predicted;
+        }}
       />
     </div>
   );
@@ -139,6 +170,7 @@ function TabButton({
   onClick,
   label,
   badge,
+  buttonRef,
 }: {
   id: string;
   panelId: string;
@@ -146,11 +178,19 @@ function TabButton({
   onClick: () => void;
   label: string;
   badge?: ReactNode;
+  /**
+   * Callback ref so the parent can collect each tab button's DOM
+   * node and call `.focus()` after keyboard activation. Caller
+   * typically populates a `useRef<Partial<Record<SetlistTab,
+   * HTMLButtonElement>>>` keyed by tab.
+   */
+  buttonRef: (el: HTMLButtonElement | null) => void;
 }) {
   return (
     <button
       type="button"
       id={id}
+      ref={buttonRef}
       role="tab"
       aria-selected={active}
       aria-controls={panelId}

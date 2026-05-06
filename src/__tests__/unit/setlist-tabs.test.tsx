@@ -208,6 +208,45 @@ describe("SetlistTabs WAI-ARIA + keyboard navigation", () => {
     expect(onTabChange).not.toHaveBeenCalled();
   });
 
+  it("focus moves to the new tab button after keyboard activation (WAI-ARIA roving focus)", async () => {
+    // Re-render with the post-keypress activeTab so the ref-based
+    // focus call has the right `tabIndex={0}` button to target.
+    // The handler uses requestAnimationFrame for the focus call;
+    // jsdom resolves it via vi's timer support, but a microtask
+    // flush is enough here.
+    const { rerender } = render(
+      <SetlistTabs
+        hasPredictions={true}
+        hasActual={true}
+        activeTab="actual"
+        onTabChange={(next) => {
+          rerender(
+            <SetlistTabs
+              hasPredictions={true}
+              hasActual={true}
+              activeTab={next}
+              onTabChange={() => {}}
+              labels={LABELS}
+              tabIds={TAB_IDS}
+              panelIds={PANEL_IDS}
+            />,
+          );
+        }}
+        labels={LABELS}
+        tabIds={TAB_IDS}
+        panelIds={PANEL_IDS}
+      />,
+    );
+    const actualTab = screen.getByRole("tab", { name: "ACTUAL" });
+    actualTab.focus();
+    expect(document.activeElement).toBe(actualTab);
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
+    // Wait one rAF tick for the focus call.
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    const predictedTab = screen.getByRole("tab", { name: /PREDICTED/ });
+    expect(document.activeElement).toBe(predictedTab);
+  });
+
   it("ArrowKey is a no-op when only one tab is visible (case 1, predicted-only)", () => {
     const onTabChange = vi.fn();
     render(
