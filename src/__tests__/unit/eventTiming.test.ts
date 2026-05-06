@@ -101,6 +101,22 @@ describe("isWishPredictOpen", () => {
     expect(isWishPredictOpen(ev, NOW)).toBe(false);
   });
 
+  it("returns false when startTime is earlier today (same UTC day, already past) — strict-future guard, CR #282", () => {
+    // The UTC-day-distance check alone would return true here:
+    // `daysUntilUTC` reports 0 (same UTC day) and 0 satisfies
+    // `>= 0 && <= 7`. But the event is in the past — the open
+    // window for predicting/wishing is closed. Without the strict
+    // `start > now` guard the helper would silently green-light
+    // a stale `status: "upcoming"` row whose DB `scheduled` flag
+    // hadn't yet been auto-flipped to `ongoing` — a real edge case
+    // when the auto-status ticker lags behind real time by a few
+    // minutes around startMs.
+    const start = new Date(NOW.getTime() - 60 * 60 * 1000); // -1h, same UTC day
+    expect(
+      isWishPredictOpen({ startTime: start, status: "upcoming" }, NOW),
+    ).toBe(false);
+  });
+
   it("returns false for ongoing/completed/cancelled regardless of timing", () => {
     const start = dayOffset(3);
     expect(

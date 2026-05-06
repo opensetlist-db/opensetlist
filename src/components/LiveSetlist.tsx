@@ -112,14 +112,18 @@ export function LiveSetlist({
           SSR so hydration matches before localStorage hydrates the
           my-list. The `isWishPredictOpen` gate (D-7 window per
           `raw/20260503-1b-1c-timeline.md`) hides the section
-          entirely pre-D-7 — `isWishPredictOpen === true` already
-          implies `startTime !== null` (helper rejects null), so the
-          previous explicit null-guard is subsumed. */}
-      {isWishPredictOpen && (
+          entirely pre-D-7. The explicit `startTime != null` guard
+          looks redundant — `isWishPredictOpen === true` already
+          implies non-null in `eventTiming.ts` — but keeping it lets
+          TS narrow `startTime` from `Date | string | null` to
+          `Date | string` for the prop pass-through, avoiding a
+          cast and matching the consumer's required-prop shape
+          (CR #282 nit). */}
+      {isWishPredictOpen && startTime != null && (
         <EventWishSection
           eventId={eventId}
           locale={locale}
-          startTime={startTime as Date | string}
+          startTime={startTime}
           setlistItems={items}
           top3Wishes={top3Wishes}
         />

@@ -85,6 +85,17 @@ export function isWishPredictOpen(
       ? event.startTime
       : new Date(event.startTime);
   if (Number.isNaN(start.getTime())) return false;
+  // Defensive strict-future check. `getEventStatus` upstream resolves
+  // DB `scheduled` → "upcoming" only when `now < startTime`, so in
+  // practice the helper sees future starts. But the helper's own
+  // contract is "the D-7 OPEN window is currently active" — which
+  // requires the start to be in the future. Without this check, a
+  // status auto-flip lag (event started ~minutes ago but DB still
+  // says `scheduled`) on the same UTC day would return true: the
+  // UTC day-distance is 0, gate passes, but the event is already
+  // past. CR #282 caught this. Tested via "earlier today, same UTC
+  // day" regression case in the unit suite.
+  if (start.getTime() <= now.getTime()) return false;
   const days = daysUntilUTC(start, now);
   return days >= 0 && days <= WISH_PREDICT_OPEN_DAYS;
 }
