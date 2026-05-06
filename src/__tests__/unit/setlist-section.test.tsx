@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 describe("SetlistSection", () => {
-  it("case 4 (no predictions, has actual): no tab strip; only ActualSetlist body", () => {
+  it("case 4 (no predictions, has actual): no tab strip; no tabpanel wrapper; only ActualSetlist body", () => {
     render(
       <SetlistSection
         eventId="1"
@@ -58,6 +58,9 @@ describe("SetlistSection", () => {
       />,
     );
     expect(screen.queryByRole("tablist")).toBeNull();
+    // No `role="tabpanel"` either — would advertise an orphaned
+    // panel whose `aria-labelledby` points at a non-existent tab.
+    expect(screen.queryByRole("tabpanel")).toBeNull();
     expect(screen.queryByText("predictedComingSoon")).toBeNull();
     // ActualSetlist renders an <ol> + at least one row.
     expect(screen.getByRole("list")).toBeTruthy();

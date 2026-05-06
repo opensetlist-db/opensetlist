@@ -125,6 +125,29 @@ export function SetlistSection({
     return <>{emptyFallback}</>;
   }
 
+  // Body for the rendered tab. Wrapper depends on whether tabs
+  // are visible:
+  //   - hasPredictions: wrap in <div role="tabpanel"> with
+  //     aria-labelledby pointing at the matching tab id (WAI-ARIA
+  //     tabs pattern requires the panel + tab pair).
+  //   - !hasPredictions: NO wrapper at all. The Phase 1A path
+  //     (no tabs in the DOM) must not advertise an orphaned
+  //     `role="tabpanel"` whose `aria-labelledby` points at a
+  //     non-existent tab id — that's both a screen-reader bug
+  //     and a byte-equivalence regression. CodeRabbit caught this
+  //     on PR #280's first fix-up round.
+  const body =
+    renderedTab === "actual" ? (
+      <ActualSetlist
+        items={items}
+        reactionCounts={reactionCounts}
+        locale={locale}
+        eventId={eventId}
+      />
+    ) : (
+      <PredictedSetlist />
+    );
+
   return (
     <>
       <SetlistTabs
@@ -140,27 +163,17 @@ export function SetlistSection({
         tabIds={tabIds}
         panelIds={panelIds}
       />
-      {/* Single panel wrapper for the active tab — WAI-ARIA pattern
-          calls for one `role="tabpanel"` per visible panel, but
-          since we only render the active body (not all bodies
-          hidden), one panel suffices. Its id + aria-labelledby
-          pair the active tab to its content. */}
-      <div
-        role="tabpanel"
-        id={renderedPanelId}
-        aria-labelledby={renderedTabId}
-      >
-        {renderedTab === "actual" ? (
-          <ActualSetlist
-            items={items}
-            reactionCounts={reactionCounts}
-            locale={locale}
-            eventId={eventId}
-          />
-        ) : (
-          <PredictedSetlist />
-        )}
-      </div>
+      {hasPredictions ? (
+        <div
+          role="tabpanel"
+          id={renderedPanelId}
+          aria-labelledby={renderedTabId}
+        >
+          {body}
+        </div>
+      ) : (
+        body
+      )}
     </>
   );
 }
