@@ -280,6 +280,14 @@
     "trending": "Trending songs",
     "trendingEmpty": "No reactions yet — try adding one from the setlist!"
   },
+  "Setlist": {
+    "tabActual": "Actual setlist",
+    "tabPredicted": "Predicted setlist",
+    "tablistAriaLabel": "Setlist views",
+    "predictedComingSoon": "Predicted setlist — coming soon",
+    "confirmAriaRumoured": "Unverified song",
+    "confirmAriaMyConfirmed": "Confirmed by me"
+  },
   "Wishlist": {
     "title": "Wishlist",
     "lockedTitle": "Fan wishlist TOP3",

@@ -1,16 +1,11 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
-import { SetlistRow } from "@/components/SetlistRow";
+import { SetlistSection } from "@/components/SetlistSection";
 import { deriveTrendingSongs } from "@/lib/trending";
 import { deriveSongsCount } from "@/lib/sidebarDerivations";
 import { colors, motion, radius, shadows } from "@/styles/tokens";
-import {
-  SETLIST_DESKTOP_GRID_COLS,
-  SETLIST_DESKTOP_GRID_GAP,
-} from "@/components/setlistLayout";
 // Setlist-shape types live in `src/lib/types/setlist.ts` so pure
 // helpers under `src/lib/` can describe them without importing from
 // `src/components/`. Re-exported below for back-compat with existing
@@ -65,7 +60,6 @@ export function LiveSetlist({
   locale,
 }: Props) {
   const t = useTranslations("Event");
-  const ct = useTranslations("Common");
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -75,8 +69,6 @@ export function LiveSetlist({
     ? deriveTrendingSongs(items, reactionCounts, locale, unknownSongLabel)
     : initialTrendingSongs;
 
-  const mainItems = items.filter((item) => !item.isEncore);
-  const encoreItems = items.filter((item) => item.isEncore);
   // Items + songs counters for the desktop subtitle. `deriveSongsCount`
   // is the single source of truth shared with the sidebar's "X songs"
   // pill (`EventHeader.songsCount`) — an admin-created placeholder
@@ -180,112 +172,36 @@ export function LiveSetlist({
         </span>
       </div>
 
-      {items.length === 0 ? (
-        <p style={{ padding: "24px 20px", color: colors.textMuted }}>
-          {t("noSetlist")}
-        </p>
-      ) : (
-        <>
-          {/* Desktop column-header strip — same 4-col grid as data rows. */}
-          <SetlistColumnHeader
-            labels={{
-              position: t("colPosition"),
-              song: t("colSong"),
-              performers: t("colPerformers"),
-              reactions: t("colReactions"),
-            }}
-          />
-          <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {mainItems.map((item, index) => (
-              <SetlistRow
-                key={item.id}
-                item={item}
-                index={index}
-                reactionCounts={reactionCounts}
-                locale={locale}
-                eventId={eventId}
-              />
-            ))}
-          </ol>
-          {encoreItems.length > 0 && (
-            <>
-              <EncoreDivider label={ct("encore")} />
-              <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                {encoreItems.map((item, index) => (
-                  <SetlistRow
-                    key={item.id}
-                    item={item}
-                    index={index}
-                    reactionCounts={reactionCounts}
-                    locale={locale}
-                    eventId={eventId}
-                  />
-                ))}
-              </ol>
-            </>
-          )}
-        </>
-      )}
+      {/* Tab-aware body. When `predict-{eventId}` is in localStorage,
+          a tab strip renders BELOW this section's header (the SETLIST
+          h2 + LIVE pill stay visible — see SetlistSection's docstring
+          for the rationale). When no predictions, renders only the
+          ActualSetlist body — byte-equivalent to pre-refactor.
+
+          `emptyFallback` is delegated INTO SetlistSection (not gated
+          here) so the predictions-but-no-actual case (Stage C, case 1
+          per the task matrix) can still render the Predicted-only
+          tab. CodeRabbit caught this on PR #280 — the prior
+          `items.length === 0 → noSetlist` short-circuit would have
+          starved that path the day Stage C lands the prediction
+          writer. */}
+      <SetlistSection
+        eventId={eventId}
+        items={items}
+        reactionCounts={reactionCounts}
+        locale={locale}
+        emptyFallback={
+          <p style={{ padding: "24px 20px", color: colors.textMuted }}>
+            {t("noSetlist")}
+          </p>
+        }
+      />
     </section>
     </>
   );
 }
 
-// Desktop column-name row — `# / SONG / PERFORMERS / REACTIONS`.
-// Pulls `SETLIST_DESKTOP_GRID_COLS` so every label sits directly
-// above its data column on the row below; the constant is the only
-// source of truth for the four-column template. Mobile hides via
-// `hidden lg:grid` since mobile rows are stacked, not gridded.
-function SetlistColumnHeader({
-  labels,
-}: {
-  labels: {
-    position: string;
-    song: string;
-    performers: string;
-    reactions: string;
-  };
-}) {
-  const headerStyle: CSSProperties = {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: 700,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
-  };
-  return (
-    <div
-      aria-hidden="true"
-      className="hidden lg:grid"
-      style={{
-        // Single source of truth for the column template + gap so
-        // header and body can't drift. See `setlistLayout.ts`.
-        gridTemplateColumns: SETLIST_DESKTOP_GRID_COLS,
-        columnGap: SETLIST_DESKTOP_GRID_GAP,
-        padding: "8px 20px",
-        background: colors.bgFaint,
-        borderBottom: `2px solid ${colors.border}`,
-      }}
-    >
-      <span style={headerStyle}>{labels.position}</span>
-      <span style={headerStyle}>{labels.song}</span>
-      <span style={headerStyle}>{labels.performers}</span>
-      <span style={headerStyle}>{labels.reactions}</span>
-    </div>
-  );
-}
-
-// Encore divider — Common.encore key with CSS uppercase + tracking. No new
-// i18n key needed (handoff §6 visual uses ALL-CAPS but the underlying label
-// text stays locale-driven).
-function EncoreDivider({ label }: { label: string }) {
-  return (
-    <div className="my-4 flex items-center gap-3">
-      <div className="h-px flex-1 bg-zinc-200" />
-      <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-        {label}
-      </span>
-      <div className="h-px flex-1 bg-zinc-200" />
-    </div>
-  );
-}
+// `SetlistColumnHeader` + `EncoreDivider` moved to `<ActualSetlist>`
+// as part of the Stage B SetlistSection refactor — they only render
+// alongside the actual-setlist body, so co-locating them with that
+// body keeps `<LiveSetlist>` focused on the section-card chrome.
