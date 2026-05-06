@@ -280,6 +280,20 @@
     "trending": "Trending songs",
     "trendingEmpty": "No reactions yet — try adding one from the setlist!"
   },
+  "Wishlist": {
+    "title": "Wishlist",
+    "lockedTitle": "Fan wishlist TOP3",
+    "cap": "Up to 3",
+    "myList": "My picks",
+    "fanTop3": "Fan TOP3",
+    "add": "+ Add",
+    "cancel": "Cancel",
+    "searchPlaceholder": "Search a song...",
+    "searchLoading": "Searching...",
+    "searchNoResults": "No results",
+    "removeAria": "Remove from wishlist",
+    "count": "{count}"
+  },
   "Impression": {
     "title": "One-line impressions",
     "placeholder": "How was the event? (up to 200 chars)",

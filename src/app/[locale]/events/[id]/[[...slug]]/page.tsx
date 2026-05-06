@@ -15,6 +15,7 @@ import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
+import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { LiveEventLayout } from "@/components/LiveEventLayout";
 import {
   deriveSidebarUnitsAndPerformers,
@@ -430,7 +431,7 @@ export default async function EventPage({ params }: Props) {
   // waste during live shows that the existing skip avoids — see
   // `LiveSetlist.tsx:62-64` for the client-side re-derivation that
   // makes the SSR fetch dead weight when ongoing.
-  const [event, t, ct, st, aT, reactionCounts, impressionsResult] =
+  const [event, t, ct, st, aT, reactionCounts, impressionsResult, fanTop3] =
     await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
@@ -439,6 +440,12 @@ export default async function EventPage({ params }: Props) {
       getTranslations("Artist"),
       getReactionCounts(eventId),
       getEventImpressions(eventId),
+      // Wishlist fan TOP-3 — shared loader in src/lib/wishes/top3.ts
+      // so polled `/api/setlist` and this SSR seed always emit the
+      // same shape (incl. soft-delete filter + deterministic ordering).
+      // Cheap bounded query; safe on completed events (returns the
+      // historical aggregate).
+      fetchEventWishlistTop3(eventId, locale),
     ]);
   if (!event) notFound();
 
@@ -730,6 +737,7 @@ export default async function EventPage({ params }: Props) {
         initialSongsCount={songsCount}
         initialReactionsValue={reactionsValue}
         initialTrendingSongs={trendingSongs}
+        initialFanTop3={fanTop3}
       />
     </main>
   );

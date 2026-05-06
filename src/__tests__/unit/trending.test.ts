@@ -29,6 +29,7 @@ function makeItem(
               originalTitle: songTitle,
               originalLanguage: locale,
               variantLabel: null,
+              baseVersionId: null,
               translations: [{ locale, title: songTitle }],
               artists: [],
             },
@@ -147,6 +148,7 @@ describe("deriveTrendingSongs", () => {
               originalTitle: "オリジナル",
               originalLanguage: "ja",
               variantLabel: null,
+              baseVersionId: null,
               translations: [
                 { locale: "ja", title: "オリジナル" },
                 { locale: "ko", title: "오리지널" },
@@ -187,6 +189,7 @@ describe("deriveTrendingSongs", () => {
               originalTitle: "",
               originalLanguage: "ja",
               variantLabel: null,
+              baseVersionId: null,
               translations: [],
               artists: [],
             },
@@ -220,6 +223,7 @@ describe("deriveTrendingSongs", () => {
               originalTitle: "Song",
               originalLanguage: "ja",
               variantLabel: "SAKURA Ver.",
+              baseVersionId: null,
               translations: [
                 { locale: "ko", title: "노래", variantLabel: "사쿠라 ver." },
               ],

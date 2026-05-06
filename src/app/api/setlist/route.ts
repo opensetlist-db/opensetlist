@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 
 export async function GET(req: NextRequest) {
-  const eventIdParam = req.nextUrl.searchParams.get("eventId");
+  // `new URL(req.url)` over `req.nextUrl` so unit tests can invoke
+  // the handler with a plain `Request`. Mirrors the wishes route.
+  const url = new URL(req.url);
+  const eventIdParam = url.searchParams.get("eventId");
   if (!eventIdParam) {
     return NextResponse.json({ error: "eventId required" }, { status: 400 });
   }
+  // Locale is optional — when absent, the wishlist top-3 song
+  // payload returns every translation. Existing callers that don't
+  // pass `?locale=` keep working byte-identically; the polling hook
+  // (useSetlistPolling) threads the active locale through so the
+  // payload stays as small as the per-page event query.
+  const locale = url.searchParams.get("locale");
 
   let eventId: bigint;
   try {
@@ -15,7 +25,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invalid eventId" }, { status: 400 });
   }
 
-  const [items, reactionGroups] = await Promise.all([
+  const [items, reactionGroups, top3Wishes] = await Promise.all([
     prisma.setlistItem.findMany({
       where: { eventId, isDeleted: false },
       orderBy: { position: "asc" },
@@ -66,6 +76,13 @@ export async function GET(req: NextRequest) {
       where: { setlistItem: { eventId, isDeleted: false } },
       _count: true,
     }),
+    // Wishlist fan TOP-3 — shared loader in src/lib/wishes/top3.ts so
+    // the polled `/api/setlist` channel and the standalone GET on
+    // `/api/events/[id]/wishes` always return identical shapes. Two
+    // round-trips internally (groupBy + findMany) but they're
+    // sequential against the DB; from this Promise.all's point of
+    // view it's a single awaited slot.
+    fetchEventWishlistTop3(eventId, locale),
   ]);
 
   const reactionCounts: Record<string, Record<string, number>> = {};
@@ -79,6 +96,7 @@ export async function GET(req: NextRequest) {
     {
       items: serializeBigInt(items),
       reactionCounts,
+      top3Wishes,
       updatedAt: new Date().toISOString(),
     },
     {

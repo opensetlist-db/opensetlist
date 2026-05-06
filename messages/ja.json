@@ -280,6 +280,20 @@
     "trending": "この公演の話題曲",
     "trendingEmpty": "まだリアクションがありません — セットリストから追加してみてください!"
   },
+  "Wishlist": {
+    "title": "リクエスト",
+    "lockedTitle": "ファンのリクエスト TOP3",
+    "cap": "最大3曲",
+    "myList": "自分の選択",
+    "fanTop3": "ファン TOP3",
+    "add": "+ 追加",
+    "cancel": "キャンセル",
+    "searchPlaceholder": "曲を検索...",
+    "searchLoading": "検索中...",
+    "searchNoResults": "検索結果なし",
+    "removeAria": "リクエストから削除",
+    "count": "{count}人"
+  },
   "Impression": {
     "title": "一言感想",
     "placeholder": "ライブはどうでしたか？ (200文字以内)",

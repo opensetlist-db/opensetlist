@@ -470,3 +470,82 @@ describe("SongSearch — keyboard navigation", () => {
     expect(gammaRow.getAttribute("aria-selected")).toBe("false");
   });
 });
+
+describe("SongSearch — variant + autoFocus props", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("default variant uses the admin-form input class (rounded-md, base text)", () => {
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
+    const input = screen.getByRole("combobox");
+    expect(input.className).toContain("rounded-md");
+    expect(input.className).toContain("text-base");
+    // Compact pill styling should NOT leak.
+    expect(input.className).not.toContain("rounded-full");
+  });
+
+  it("variant=\"compact\" swaps the input to the pill style (rounded-full, xs text, wishlist border via inline style)", () => {
+    render(
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        variant="compact"
+      />,
+    );
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    expect(input.className).toContain("rounded-full");
+    expect(input.className).toContain("text-xs");
+    // Compact border color is driven from `colors.wishlistBorder`
+    // via inline style — no Tailwind arbitrary-value duplication.
+    // jsdom returns the rgb() form for border-color.
+    expect(input.style.borderColor.toLowerCase()).toContain(
+      "rgb(181, 212, 244)",
+    );
+    // And drops the default class.
+    expect(input.className).not.toContain("rounded-md");
+  });
+
+  it("autoFocus={true} attaches autofocus on mount (input becomes the document active element)", async () => {
+    render(
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        autoFocus
+      />,
+    );
+    const input = screen.getByRole("combobox");
+    // React applies the `autoFocus` attribute as a mount-time
+    // imperative `.focus()` call. jsdom honors that, so the input is
+    // the active element on first render.
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("autoFocus defaults to false — input is not focused on mount", async () => {
+    render(<SongSearch onSelect={vi.fn()} locale="ko" texts={TEXTS} />);
+    const input = screen.getByRole("combobox");
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("variant + autoFocus are independent — compact without autoFocus doesn't grab focus", () => {
+    render(
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        variant="compact"
+      />,
+    );
+    const input = screen.getByRole("combobox");
+    expect(input.className).toContain("rounded-full");
+    expect(document.activeElement).not.toBe(input);
+  });
+});
