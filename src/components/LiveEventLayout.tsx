@@ -5,6 +5,7 @@ import {
   useSetlistPolling,
   type ReactionCountsMap,
 } from "@/hooks/useSetlistPolling";
+import type { FanTop3Entry } from "@/lib/types/setlist";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import {
   EventImpressions,
@@ -46,6 +47,16 @@ interface Props {
 
   // EventHeader props (event-level, never change after mount).
   status: ResolvedEventStatus;
+  /**
+   * D-7 open-window indicator (Wishlist + Predicted Setlist
+   * visibility). Computed server-side via `isWishPredictOpen` so
+   * the gate is snap-frozen for the page lifetime; client-side
+   * ticking across the boundary is intentionally NOT done — see
+   * `src/lib/eventTiming.ts` for the rationale. Threaded down into
+   * `<LiveSetlist>` and from there to `<EventWishSection>` and
+   * `<SetlistSection>`.
+   */
+  isWishPredictOpen: boolean;
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
@@ -77,6 +88,10 @@ interface Props {
   initialSongsCount: number;
   initialReactionsValue: string;
   initialTrendingSongs: TrendingSong[];
+  // Wishlist (Phase 1B) seed. SSR-rendered fan TOP-3 so first paint
+  // shows real data, then polling refreshes the same shape via the
+  // /api/setlist channel. Empty array when no fans have wished yet.
+  initialFanTop3: FanTop3Entry[];
 }
 
 /**
@@ -116,6 +131,7 @@ export function LiveEventLayout({
   unknownSongLabel,
   eventPerformers,
   status,
+  isWishPredictOpen,
   statusLabel,
   date,
   startTime,
@@ -135,13 +151,24 @@ export function LiveEventLayout({
   initialSongsCount,
   initialReactionsValue,
   initialTrendingSongs,
+  initialFanTop3,
 }: Props) {
-  const { items, reactionCounts, lastUpdated } =
+  // Polling stays enabled for ongoing AND upcoming events: the
+  // wishlist fan TOP-3 needs to update pre-show as more fans submit
+  // wishes (per task spec). Setlist + reactions are stable pre-show
+  // (admins enter songs as the show runs), so the extra polling on
+  // upcoming events fetches a duplicate snapshot — cheap, and the
+  // single-channel architecture is worth it. Polling stays off for
+  // completed/cancelled events.
+  const isPollingEnabled = status === "ongoing" || status === "upcoming";
+  const { items, reactionCounts, top3Wishes, lastUpdated } =
     useSetlistPolling<LiveSetlistItem>({
       eventId,
       initialItems,
       initialReactionCounts,
-      enabled: isOngoing,
+      initialTop3Wishes: initialFanTop3,
+      locale,
+      enabled: isPollingEnabled,
     });
 
   // Use the SSR-rendered sidebar values until polling delivers fresh
@@ -238,10 +265,20 @@ export function LiveEventLayout({
           eventId={eventId}
           items={items}
           reactionCounts={reactionCounts}
+          top3Wishes={top3Wishes}
           initialTrendingSongs={initialTrendingSongs}
+          startTime={startTime}
           unknownSongLabel={unknownSongLabel}
           isOngoing={isOngoing}
           locale={locale}
+          status={status}
+          isWishPredictOpen={isWishPredictOpen}
+          // `series.name` is already pre-resolved by the page via
+          // `displayNameWithFallback(...)` for the EventHeader card.
+          // Reuse for the share-card text payload; fall back to
+          // `title` (the localized event title) when the event
+          // doesn't belong to a series.
+          seriesName={series?.name ?? title}
         />
 
         <EventImpressions

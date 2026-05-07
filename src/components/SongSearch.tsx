@@ -5,6 +5,7 @@ import {
   displayOriginalTitle,
   displayNameWithFallback,
 } from "@/lib/display";
+import { colors } from "@/styles/tokens";
 
 // UI strings the component renders. Decoupled from next-intl so
 // SongSearch works in admin contexts (`src/app/admin/**`) where the
@@ -74,6 +75,19 @@ interface SongSearchProps {
   // admin will likely keep this prop as the "flat list" mode even after
   // v2 ships.
   includeVariants?: boolean;
+  // "default": admin-style — full-width input, base 16px text, gray
+  // border, rounded-md. The shape every existing caller has been using.
+  // "compact": wishlist-inline style — pill input (rounded-20px), 12px
+  // text, blue 0.5px border, denser dropdown rows. Keyboard nav, ARIA,
+  // debounce, abort, and result rendering are byte-identical between
+  // variants — `variant` only swaps the cosmetic className strings.
+  // Mockup source: raw/mockups/mockup-wish-predict.jsx `InlineSongSearch`.
+  variant?: "default" | "compact";
+  // Mount-time focus. Independent of `variant` so an admin caller can
+  // opt-in to autofocus without the compact look. The wishlist's
+  // `+ 추가` reveal pairs `variant="compact"` + `autoFocus` so the input
+  // is ready for typing the moment it appears.
+  autoFocus?: boolean;
 }
 
 const DEBOUNCE_MS = 300;
@@ -84,7 +98,10 @@ export function SongSearch({
   texts,
   excludeSongIds = [],
   includeVariants = false,
+  variant = "default",
+  autoFocus = false,
 }: SongSearchProps) {
+  const isCompact = variant === "compact";
   const listboxId = useId();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SongSearchResult[]>([]);
@@ -93,6 +110,15 @@ export function SongSearch({
   // -1 = no active descendant (input has focus, no row "highlighted").
   // Set by ArrowDown/ArrowUp; consumed by Enter and aria-activedescendant.
   const [activeIndex, setActiveIndex] = useState<number>(-1);
+  // Compact-variant focus tracking. We need this only because the
+  // compact input renders its border via inline `style` (so the
+  // wishlist token values from `colors` are the single source of
+  // truth — Tailwind arbitrary values like `border-[#0277BD]` would
+  // duplicate the hex). Inline styles can't express `:focus`, so we
+  // track focus in state and toggle the border color from JS.
+  // Default variant unaffected — it stays on Tailwind classes that
+  // do support `focus:` natively.
+  const [inputFocused, setInputFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks the in-flight fetch so a newer query can abort the older
   // one. Without this, two fetches that race past the debounce window
@@ -277,10 +303,42 @@ export function SongSearch({
         type="text"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          if (isCompact) setInputFocused(true);
+        }}
+        onBlur={() => {
+          if (isCompact) setInputFocused(false);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={texts.placeholder}
-        className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
+        // Compact: pill-shaped 12px input matching the mockup's
+        // InlineSongSearch. Border color is driven from the
+        // `colors.wishlist*` tokens via inline `style` so the hex
+        // literal lives in `tokens.ts` only — no Tailwind
+        // arbitrary-value duplication. `:focus` can't be expressed
+        // in inline style, so the focus color toggles via the
+        // `inputFocused` state set by the onFocus/onBlur handlers
+        // above.
+        // Default: admin-form sized — keeps Tailwind classes since
+        // its colors are project-grays already covered by Tailwind.
+        className={
+          isCompact
+            ? "w-full px-2.5 py-1 text-xs border rounded-full text-slate-900 bg-white focus:outline-none"
+            : "w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:border-gray-500"
+        }
+        style={
+          isCompact
+            ? {
+                borderColor: inputFocused
+                  ? colors.wishlistFocusBorder
+                  : colors.wishlistBorder,
+              }
+            : undefined
+        }
+        // React handles the `autoFocus` attribute as a mount-time
+        // imperative `.focus()` call — no need for a ref.
+        autoFocus={autoFocus}
         aria-label={texts.placeholder}
         role="combobox"
         aria-expanded={open && hasQuery}
@@ -293,15 +351,36 @@ export function SongSearch({
         <div
           id={listboxId}
           role="listbox"
-          className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
+          className={
+            isCompact
+              ? "absolute z-10 left-0 right-0 mt-1 bg-white border rounded-lg shadow-md max-h-60 overflow-y-auto"
+              : "absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
+          }
+          style={
+            isCompact
+              ? { borderColor: colors.wishlistBorder }
+              : undefined
+          }
         >
           {loading && (
-            <div className="px-3 py-2 text-sm text-gray-500">
+            <div
+              className={
+                isCompact
+                  ? "px-2.5 py-1.5 text-xs text-gray-500"
+                  : "px-3 py-2 text-sm text-gray-500"
+              }
+            >
               {texts.loading}
             </div>
           )}
           {!loading && visibleResults.length === 0 && (
-            <div className="px-3 py-2 text-sm text-gray-500">
+            <div
+              className={
+                isCompact
+                  ? "px-2.5 py-1.5 text-xs text-gray-500"
+                  : "px-3 py-2 text-sm text-gray-500"
+              }
+            >
               {texts.noResults}
             </div>
           )}
@@ -345,11 +424,23 @@ export function SongSearch({
                   tabIndex={-1}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => handleSelect(song)}
-                  className={`w-full text-left px-3 py-2 ${
-                    isActive ? "bg-gray-100" : "hover:bg-gray-50"
-                  } active:bg-gray-100 border-b border-gray-100 last:border-b-0`}
+                  className={
+                    isCompact
+                      ? `w-full text-left px-2.5 py-1.5 ${
+                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                      : `w-full text-left px-3 py-2 ${
+                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                  }
                 >
-                  <div className="text-sm font-medium text-gray-900">
+                  <div
+                    className={
+                      isCompact
+                        ? "text-xs font-medium text-gray-900"
+                        : "text-sm font-medium text-gray-900"
+                    }
+                  >
                     {title.main}
                     {title.variant && (
                       <span className="text-gray-500">
@@ -359,7 +450,13 @@ export function SongSearch({
                     )}
                   </div>
                   {(title.sub || artistName) && (
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div
+                      className={
+                        isCompact
+                          ? "text-[11px] text-gray-500 mt-0.5"
+                          : "text-xs text-gray-500 mt-0.5"
+                      }
+                    >
                       {title.sub && <span>{title.sub}</span>}
                       {title.sub && artistName && <span> · </span>}
                       {artistName && <span>{artistName}</span>}

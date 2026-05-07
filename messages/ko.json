@@ -13,6 +13,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {#시간 남음}}",
     "minutesLeft": "{minutes, plural, other {#분 남음}}",
+    "wishOpen": "예상 오픈",
     "noEvents": "곧 공연 정보가 업데이트됩니다.",
     "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
     "noRecent": "최근 30일 이내 진행된 공연이 없어요."
@@ -279,6 +280,68 @@
     "moved": "감동",
     "trending": "이번 공연 화제의 곡",
     "trendingEmpty": "아직 반응이 없어요 — 세트리스트에서 반응을 추가해보세요!"
+  },
+  "Setlist": {
+    "tabActual": "실제 세트리스트",
+    "tabPredicted": "예상 세트리스트",
+    "tablistAriaLabel": "세트리스트 보기",
+    "predictedComingSoon": "예상 세트리스트 — 곧 공개",
+    "confirmAriaRumoured": "확인되지 않은 곡",
+    "confirmAriaMyConfirmed": "내가 확인한 곡"
+  },
+  "Predict": {
+    "add": "+ 곡 추가",
+    "cancel": "취소",
+    "removeAria": "예상에서 제거",
+    "dragHandleAria": "순서 변경",
+    "lockedHint": "공연이 시작되어 예상이 잠겼습니다",
+    "shareButton": "결과 공유 🎯",
+    "shareDisabled": "공연 종료 후 활성화됩니다",
+    "searchPlaceholder": "곡 검색...",
+    "searchLoading": "검색 중...",
+    "searchNoResults": "검색 결과 없음",
+    "dividerLabel": "현재 {count}곡 — 여기까지 매칭",
+    "legendLine": "구분선 아래 = 아직 매칭 범위 밖 · 초록 = 나왔지만 순위 밖",
+    "preShowHint": "{count}곡 입력됨",
+    "duringHint": "{count}곡 예상 입력됨",
+    "afterHint": "공연 종료 · 최종 결과",
+    "finalScore": "{matched}/{total} 적중 ({pct}%) 🎯"
+  },
+  "ShareCard": {
+    "modalTitle": "결과 공유",
+    "themeDark": "다크",
+    "themeLight": "라이트",
+    "shareTwitter": "트위터에 공유",
+    "copyLink": "링크 복사",
+    "linkCopiedToast": "링크가 복사됐어요",
+    "linkCopyFailedToast": "링크를 복사하지 못했어요",
+    "imageSavedToast": "이미지가 저장됐어요. 트위터에 첨부해주세요",
+    "popupBlockedToast": "팝업이 차단됐어요. 저장된 이미지로 직접 공유해주세요",
+    "close": "닫기",
+    "scoreLabel": "예상 적중률",
+    "scoreMatchedOf": "{total}곡 중 {matched}곡 적중",
+    "scorePredicted": "{count}곡 예상",
+    "encore": "Encore",
+    "shareText": "{seriesName} 예상 세트리스트 {pct}% 적중! ({total}곡 중 {matched}곡) 🎯"
+  },
+  "Confirm": {
+    "flag": "신고",
+    "flagEmailSubject": "[OpenSetlist] 세트리스트 행 신고 — 이벤트 {eventId} #{position}",
+    "flagEmailBody": "이벤트 ID: {eventId}\n순서: {position}\n곡: {songTitle}\n\n문제 내용을 적어주세요:\n"
+  },
+  "Wishlist": {
+    "title": "희망곡",
+    "lockedTitle": "팬들의 희망곡 TOP3",
+    "cap": "최대 3곡",
+    "myList": "내 선택",
+    "fanTop3": "팬 TOP3",
+    "add": "+ 추가",
+    "cancel": "취소",
+    "searchPlaceholder": "곡 검색...",
+    "searchLoading": "검색 중...",
+    "searchNoResults": "검색 결과 없음",
+    "removeAria": "희망곡에서 제거",
+    "count": "{count}명"
   },
   "Impression": {
     "title": "한줄감상",

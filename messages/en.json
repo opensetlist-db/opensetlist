@@ -13,6 +13,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, one {# hour left} other {# hours left}}",
     "minutesLeft": "{minutes, plural, one {# min left} other {# mins left}}",
+    "wishOpen": "Predict open",
     "noEvents": "Event listings coming soon.",
     "noUpcoming": "No upcoming events in the next 30 days.",
     "noRecent": "No recent events in the last 30 days."
@@ -279,6 +280,68 @@
     "moved": "Emotional",
     "trending": "Trending songs",
     "trendingEmpty": "No reactions yet — try adding one from the setlist!"
+  },
+  "Setlist": {
+    "tabActual": "Actual setlist",
+    "tabPredicted": "Predicted setlist",
+    "tablistAriaLabel": "Setlist views",
+    "predictedComingSoon": "Predicted setlist — coming soon",
+    "confirmAriaRumoured": "Unverified song",
+    "confirmAriaMyConfirmed": "Confirmed by me"
+  },
+  "Predict": {
+    "add": "+ Add a song",
+    "cancel": "Cancel",
+    "removeAria": "Remove from prediction",
+    "dragHandleAria": "Reorder",
+    "lockedHint": "The show has started; predictions are locked",
+    "shareButton": "Share result 🎯",
+    "shareDisabled": "Available after the show ends",
+    "searchPlaceholder": "Search a song...",
+    "searchLoading": "Searching...",
+    "searchNoResults": "No results",
+    "dividerLabel": "{count, plural, one {Now # song — matched up to here} other {Now # songs — matched up to here}}",
+    "legendLine": "Below divider = out of match range · Green = played but out of rank",
+    "preShowHint": "{count, plural, one {# song entered} other {# songs entered}}",
+    "duringHint": "{count, plural, one {# prediction entered} other {# predictions entered}}",
+    "afterHint": "Show ended · Final result",
+    "finalScore": "{matched}/{total} hit ({pct}%) 🎯"
+  },
+  "ShareCard": {
+    "modalTitle": "Share result",
+    "themeDark": "Dark",
+    "themeLight": "Light",
+    "shareTwitter": "Share to Twitter",
+    "copyLink": "Copy link",
+    "linkCopiedToast": "Link copied",
+    "linkCopyFailedToast": "Couldn't copy the link",
+    "imageSavedToast": "Image saved. Please attach it on Twitter",
+    "popupBlockedToast": "Popup blocked. Please share the saved image directly",
+    "close": "Close",
+    "scoreLabel": "Prediction hit rate",
+    "scoreMatchedOf": "{matched} of {total} songs hit",
+    "scorePredicted": "{count} predicted",
+    "encore": "Encore",
+    "shareText": "{seriesName} prediction {pct}% hit rate! ({matched} of {total}) 🎯"
+  },
+  "Confirm": {
+    "flag": "Report",
+    "flagEmailSubject": "[OpenSetlist] Setlist row report — event {eventId} #{position}",
+    "flagEmailBody": "Event ID: {eventId}\nPosition: {position}\nSong: {songTitle}\n\nDescribe the issue:\n"
+  },
+  "Wishlist": {
+    "title": "Wishlist",
+    "lockedTitle": "Fan wishlist TOP3",
+    "cap": "Up to 3",
+    "myList": "My picks",
+    "fanTop3": "Fan TOP3",
+    "add": "+ Add",
+    "cancel": "Cancel",
+    "searchPlaceholder": "Search a song...",
+    "searchLoading": "Searching...",
+    "searchNoResults": "No results",
+    "removeAria": "Remove from wishlist",
+    "count": "{count}"
   },
   "Impression": {
     "title": "One-line impressions",
