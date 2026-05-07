@@ -25,5 +25,11 @@
  *    the available track at desktop widths).
  */
 
-export const SETLIST_DESKTOP_GRID_COLS = "36px 1fr 180px 280px";
+// First column widened from 36px → 52px in v0.10.1 to fit the
+// new `<NumberSlot>` two-button layout (👍 + 👎, each 22×22 with
+// an 8px gap between = 52px). Confirmed rows get ~16px extra
+// blank space in their position cell — accepted visual cost
+// vs. the alternative (per-row variable widths that would
+// misalign columns across the table).
+export const SETLIST_DESKTOP_GRID_COLS = "52px 1fr 180px 280px";
 export const SETLIST_DESKTOP_GRID_GAP = 12;

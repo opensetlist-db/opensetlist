@@ -684,7 +684,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(li.style.background).toBe("");
   });
 
-  it("rowState=\"rumoured\": gray bg + [?] dotted button", () => {
+  it("rowState=\"rumoured\" + myVote=\"none\": gray bg + both 👍/👎 dashed (default)", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -700,13 +700,18 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(li.style.background.toLowerCase()).toContain(
       "rgb(248, 250, 252)",
     );
-    // [?] button rendered with the rumouredLabel ARIA.
-    const btn = screen.getByRole("button", { name: "confirmAriaRumoured" });
-    expect(btn.textContent).toBe("?");
-    expect(btn.getAttribute("style")).toContain("dashed");
+    // Both vote buttons render in dotted-border resting state.
+    const confirmBtn = screen.getByRole("button", { name: "confirmAria" });
+    const disagreeBtn = screen.getByRole("button", { name: "disagreeAria" });
+    expect(confirmBtn.textContent).toBe("👍");
+    expect(disagreeBtn.textContent).toBe("👎");
+    expect(confirmBtn.getAttribute("style")).toContain("dashed");
+    expect(disagreeBtn.getAttribute("style")).toContain("dashed");
+    expect(confirmBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("rowState=\"my-confirmed\": gray bg + [✓] sky-blue button", () => {
+  it("rowState=\"rumoured\" + myVote=\"confirm\": gray bg + 👍 active, 👎 muted", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -714,16 +719,38 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
         reactionCounts={{}}
         locale="en"
         eventId="1"
-        rowState="my-confirmed"
+        rowState="rumoured"
+        myVote="confirm"
       />,
     );
     const li = container.querySelector("li")!;
     expect(li.style.background.toLowerCase()).toContain(
       "rgb(248, 250, 252)",
     );
-    const btn = screen.getByRole("button", { name: "confirmAriaMyConfirmed" });
-    expect(btn.textContent).toBe("✓");
-    expect(btn.getAttribute("style")).toContain("solid");
+    const confirmBtn = screen.getByRole("button", { name: "confirmAria" });
+    expect(confirmBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(confirmBtn.getAttribute("style")).toContain("solid");
+    const disagreeBtn = screen.getByRole("button", { name: "disagreeAria" });
+    expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("rowState=\"rumoured\" + myVote=\"disagree\": gray bg + 👎 active, 👍 muted", () => {
+    render(
+      <SetlistRow
+        item={makeItem({ status: "rumoured" })}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="1"
+        rowState="rumoured"
+        myVote="disagree"
+      />,
+    );
+    const disagreeBtn = screen.getByRole("button", { name: "disagreeAria" });
+    expect(disagreeBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(disagreeBtn.getAttribute("style")).toContain("solid");
+    const confirmBtn = screen.getByRole("button", { name: "confirmAria" });
+    expect(confirmBtn.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("reactions still render on rumoured rows (regression: wiki/conflicts.md #8)", () => {
@@ -738,19 +765,23 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
       />,
     );
     // ReactionButtons render as buttons with reaction-type ARIA
-    // labels (mocked to the i18n key value). At minimum the
-    // four standard reaction buttons should be present alongside
-    // the [?] confirm button.
+    // labels (mocked to the i18n key value). At minimum the four
+    // standard reaction buttons should be present alongside the
+    // two vote buttons (👍 + 👎).
     const buttons = screen.getAllByRole("button");
-    // 4 reactions + 1 confirm slot = at least 5 buttons.
-    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    // 4 reactions + 2 vote buttons = at least 6 buttons.
+    expect(buttons.length).toBeGreaterThanOrEqual(6);
     expect(
-      screen.getByRole("button", { name: "confirmAriaRumoured" }),
+      screen.getByRole("button", { name: "confirmAria" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "disagreeAria" }),
     ).toBeTruthy();
   });
 
-  it("rumoured row: tapping [?] fires onConfirmTap (Stage C wiring)", () => {
+  it("rumoured row: tapping 👍 fires onConfirmTap; tapping 👎 fires onDisagreeTap", () => {
     const onConfirmTap = vi.fn();
+    const onDisagreeTap = vi.fn();
     render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -760,32 +791,22 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
         eventId="1"
         rowState="rumoured"
         onConfirmTap={onConfirmTap}
+        onDisagreeTap={onDisagreeTap}
       />,
     );
-    const btn = screen.getByRole("button", { name: "confirmAriaRumoured" });
-    fireEvent.click(btn);
+    fireEvent.click(screen.getByRole("button", { name: "confirmAria" }));
+    expect(onConfirmTap).toHaveBeenCalledTimes(1);
+    expect(onDisagreeTap).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "disagreeAria" }));
+    expect(onDisagreeTap).toHaveBeenCalledTimes(1);
+    // Cross-isolation: tapping 👎 doesn't fire 👍 again.
     expect(onConfirmTap).toHaveBeenCalledTimes(1);
   });
 
-  it("my-confirmed row: tapping [✓] fires onConfirmTap (cancel-confirm)", () => {
-    const onConfirmTap = vi.fn();
-    render(
-      <SetlistRow
-        item={makeItem({ status: "rumoured" })}
-        index={0}
-        reactionCounts={{}}
-        locale="en"
-        eventId="1"
-        rowState="my-confirmed"
-        onConfirmTap={onConfirmTap}
-      />,
-    );
-    const btn = screen.getByRole("button", { name: "confirmAriaMyConfirmed" });
-    fireEvent.click(btn);
-    expect(onConfirmTap).toHaveBeenCalledTimes(1);
-  });
-
-  it("FlagButton renders on rumoured rows with the resolved song title in the mailto", () => {
+  it("FlagButton is GONE in v0.10.1 — no mailto link rendered on rumoured rows", () => {
+    // Regression check that the v0.10.0 FlagButton (mailto link
+    // below the title) is fully removed. The 👎 button replaces
+    // its role; the operator-email path is gone.
     render(
       <SetlistRow
         item={makeItem({ status: "rumoured", position: 7 })}
@@ -796,52 +817,12 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
         rowState="rumoured"
       />,
     );
-    // FlagButton renders an `<a>` with the i18n flag label "flag"
-    // (mocked to the key string itself per the test's next-intl
-    // mock). It should be an anchor with a mailto href containing
-    // the event id + position + song title in the encoded body.
-    const flagLink = screen.getByText(/🚩 flag/);
-    const href = flagLink.closest("a")?.getAttribute("href") ?? "";
-    expect(href.startsWith("mailto:help@opensetlist.com?")).toBe(true);
-    // Encoded substring checks — the body template substitutes the
-    // raw values which then go through encodeURIComponent. We don't
-    // care about exact ordering, just that each value made it into
-    // the URI.
-    expect(href).toContain("42"); // eventId
-    expect(href).toContain("7"); // position
-    // "Test Song" is the makeItem default; encodeURIComponent
-    // replaces space with %20.
-    expect(href).toContain("Test%20Song");
-  });
-
-  it("FlagButton does NOT render on my-confirmed rows (viewer already endorsed)", () => {
-    render(
-      <SetlistRow
-        item={makeItem({ status: "rumoured" })}
-        index={0}
-        reactionCounts={{}}
-        locale="en"
-        eventId="1"
-        rowState="my-confirmed"
-      />,
-    );
-    // The flag affordance contradicts a viewer's own confirm — it
-    // would let them simultaneously endorse and report the same
-    // row. Rendered only for rowState === "rumoured".
-    expect(screen.queryByText(/🚩 flag/)).toBeNull();
-  });
-
-  it("FlagButton does NOT render on confirmed rows", () => {
-    render(
-      <SetlistRow
-        item={makeItem({ status: "confirmed" })}
-        index={0}
-        reactionCounts={{}}
-        locale="en"
-        eventId="1"
-        rowState="confirmed"
-      />,
-    );
-    expect(screen.queryByText(/🚩 flag/)).toBeNull();
+    // No anchor with a mailto href in the row.
+    const links = screen.queryAllByRole("link");
+    for (const link of links) {
+      expect(link.getAttribute("href")?.startsWith("mailto:")).not.toBe(true);
+    }
+    // No 🚩 flag glyph anywhere in the rendered subtree.
+    expect(screen.queryByText(/🚩/)).toBeNull();
   });
 });

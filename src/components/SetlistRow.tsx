@@ -8,8 +8,11 @@ import {
 } from "@/lib/display";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
-import { NumberSlot, type RowState } from "@/components/NumberSlot";
-import { FlagButton } from "@/components/FlagButton";
+import {
+  NumberSlot,
+  type RowState,
+  type RowVote,
+} from "@/components/NumberSlot";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
@@ -36,22 +39,33 @@ interface Props {
   locale: string;
   eventId: string;
   /**
-   * Phase 1B/1C row-state visual scaffold (Stage B foundation).
-   * Defaults to `"confirmed"` so existing callers see byte-identical
-   * render — the load-bearing constraint of the Stage B refactor.
-   * Stage C now ships the localStorage-driven derivation that flips
-   * `rumoured` rows to `my-confirmed` when the viewer has confirmed
-   * (composed in `<ActualSetlist>` via `useLocalConfirm`).
+   * Binary row state — defaults to `"confirmed"` so existing
+   * non-Confirm-UI callers (admin SetlistBuilder etc.) see
+   * byte-identical render. Drives the gray-bg / no-bg distinction
+   * on the row body. The 3-state shape from v0.10.0
+   * (`my-confirmed` as a separate state) collapsed to 2-state in
+   * v0.10.1 once the cell became two independent vote buttons —
+   * the viewer's vote is now a separate axis carried by `myVote`.
    */
   rowState?: RowState;
   /**
-   * Confirm-tap handler wired by `<ActualSetlist>` for Phase 1C —
-   * fires `useLocalConfirm`'s toggle so the viewer's confirm flips
-   * optimistically. Optional because the `confirmed` state never
-   * surfaces a tappable button, and admin-side consumers (e.g.
-   * SetlistBuilder previews) don't need the lifecycle.
+   * Per-viewer vote on this rumoured row, composed by
+   * `<ActualSetlist>` from `useLocalConfirm` + `useLocalDisagree`.
+   * Defaults to "none". Ignored when `rowState === "confirmed"`.
+   */
+  myVote?: RowVote;
+  /**
+   * Tap handler for the 👍 button. Wired by `<ActualSetlist>` to
+   * `useLocalConfirm`'s toggle (with mutual-exclusivity coordination
+   * against `useLocalDisagree`).
    */
   onConfirmTap?: () => void;
+  /**
+   * Tap handler for the 👎 button. Wired by `<ActualSetlist>` to
+   * `useLocalDisagree`'s toggle (with mutual-exclusivity coordination
+   * against `useLocalConfirm`).
+   */
+  onDisagreeTap?: () => void;
 }
 
 export function SetlistRow({
@@ -61,10 +75,12 @@ export function SetlistRow({
   locale,
   eventId,
   rowState = "confirmed",
+  myVote = "none",
   onConfirmTap,
+  onDisagreeTap,
 }: Props) {
   const t = useTranslations("Event");
-  const setlistT = useTranslations("Setlist");
+  const confirmT = useTranslations("Confirm");
 
   const songNames = item.songs.map((s) => {
     const { main, sub, variant } = displayOriginalTitle(
@@ -181,29 +197,35 @@ export function SetlistRow({
       // would double-mount the stateful `<ReactionButtons>` and let
       // their optimistic-counts state diverge.
       //
-      // Mobile (default): 2-col grid `[34px_1fr]` (position is 22px
-      // visual + 12px gap). Title spans col 2 row 1; reactions span
-      // col 2 row 2.
+      // Mobile (default): 2-col grid `[64px_1fr]` (position cell is
+      // 52px visual to fit the new 👍+👎 dual buttons + 12px gap).
+      // Title spans col 2 row 1; reactions span col 2 row 2.
       //
       // Desktop (≥ lg): pulls the column template from the shared
       // CSS var so `<SetlistColumnHeader>` and `<SetlistRow>` can't
       // drift. Position col 1, title col 2, performers col 3,
-      // reactions col 4 — single row.
-      className="grid grid-cols-[34px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      // reactions col 4 — single row. The desktop position column
+      // also widened to 52px in `setlistLayout.ts` for the same
+      // dual-button reason.
+      className="grid grid-cols-[64px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
     >
       {/* Position slot — col 1, row 1. NumberSlot renders the right
-          glyph for the row state (plain number / [?] / [✓]). For
-          confirmed rows (the default), the rendered span is
-          byte-equivalent to the pre-refactor inline span — no
-          visual change for Phase 1A users. For rumoured /
-          my-confirmed, the slot becomes a tappable button; Stage B
-          ships a no-op handler, Stage C wires it. */}
+          glyph for the row state: plain number for confirmed,
+          side-by-side 👍/👎 vote buttons for rumoured. v0.10.1
+          replaces the v0.10.0 single-button [?]/[✓] shape with the
+          dual-button vote pair (see plan: "Replace <FlagButton>
+          with thumb-up / thumb-down"). The mailto-based FlagButton
+          that lived below the title is gone — the 👎 button covers
+          the "wrong row" signal with one tap instead of opening a
+          mail picker. */}
       <NumberSlot
         state={rowState}
         position={index + 1}
-        onTap={onConfirmTap}
-        rumouredLabel={setlistT("confirmAriaRumoured")}
-        myConfirmedLabel={setlistT("confirmAriaMyConfirmed")}
+        myVote={myVote}
+        onConfirmTap={onConfirmTap}
+        onDisagreeTap={onDisagreeTap}
+        confirmAriaLabel={confirmT("confirmAria")}
+        disagreeAriaLabel={confirmT("disagreeAria")}
       />
 
       {/* Title block — col 2, row 1 on both viewports. */}
@@ -253,22 +275,14 @@ export function SetlistRow({
             )}
           />
         )}
-        {/* FlagButton on rumoured rows only — NOT my-confirmed (the
-            viewer's already endorsed it; flagging would contradict
-            their own confirm). Rendered as a small inline link
-            below the title so it reads as a secondary affordance
-            without competing with the song name for attention.
-            Phase 2 swaps the mailto destination for an internal
-            endpoint once threshold-based reporting ships. */}
-        {rowState === "rumoured" && (
-          <div className="mt-1">
-            <FlagButton
-              eventId={eventId}
-              position={item.position}
-              songTitle={songNames[0]?.main ?? ""}
-            />
-          </div>
-        )}
+        {/* FlagButton (mailto:help@opensetlist.com) was removed in
+            v0.10.1 — the dual-button 👍/👎 cell at the row's
+            position slot now covers both confirmation AND
+            disagreement signals with one tap each. Email reports
+            were too high-friction at Phase 1B/1C scale; the 👎
+            button is the lightweight successor. Aggregation
+            behavior (N disagrees → row hidden / disputed) ships in
+            Week 3 alongside `<AddItemBottomSheet>`. */}
       </div>
 
       {/* Performers — desktop col 3 only. `hidden` on mobile so the

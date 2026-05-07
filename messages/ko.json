@@ -285,9 +285,7 @@
     "tabActual": "실제 세트리스트",
     "tabPredicted": "예상 세트리스트",
     "tablistAriaLabel": "세트리스트 보기",
-    "predictedComingSoon": "예상 세트리스트 — 곧 공개",
-    "confirmAriaRumoured": "확인되지 않은 곡",
-    "confirmAriaMyConfirmed": "내가 확인한 곡"
+    "predictedComingSoon": "예상 세트리스트 — 곧 공개"
   },
   "Predict": {
     "add": "+ 곡 추가",
@@ -325,9 +323,8 @@
     "shareText": "{seriesName} 예상 세트리스트 {pct}% 적중! ({total}곡 중 {matched}곡) 🎯"
   },
   "Confirm": {
-    "flag": "신고",
-    "flagEmailSubject": "[OpenSetlist] 세트리스트 행 신고 — 이벤트 {eventId} #{position}",
-    "flagEmailBody": "이벤트 ID: {eventId}\n순서: {position}\n곡: {songTitle}\n\n문제 내용을 적어주세요:\n"
+    "confirmAria": "정확함",
+    "disagreeAria": "잘못됨"
   },
   "Wishlist": {
     "title": "희망곡",
