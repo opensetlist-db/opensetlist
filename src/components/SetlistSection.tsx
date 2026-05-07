@@ -210,7 +210,17 @@ export function SetlistSection({
         eventId={eventId}
       />
     ) : (
+      // `key={eventId}` forces a remount on event navigation so
+      // `<PredictedSetlist>`'s `scheduledLocked` (initialized once
+      // via `useState` lazy init from the previous event's
+      // startTime) doesn't leak into the new event with a stale
+      // lock decision. Also re-fires the localStorage
+      // `predict-{eventId}` hydration for the new event. Same
+      // rationale as the matching `key={eventId}` on
+      // `<EventWishSection>` in `<LiveSetlist>`. CR #291 caught
+      // both call sites.
       <PredictedSetlist
+        key={eventId}
         eventId={eventId}
         locale={locale}
         startTime={startTime}
