@@ -1,11 +1,20 @@
 "use client";
 
-import { useId, useState, useEffect, useRef, useCallback } from "react";
+import {
+  useId,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   displayOriginalTitle,
   displayNameWithFallback,
 } from "@/lib/display";
-import { colors } from "@/styles/tokens";
+import { useMounted } from "@/hooks/useMounted";
+import { colors, zIndex } from "@/styles/tokens";
 
 // UI strings the component renders. Decoupled from next-intl so
 // SongSearch works in admin contexts (`src/app/admin/**`) where the
@@ -126,13 +135,45 @@ export function SongSearch({
   // older one's setResults clobbers the newer one's data.
   const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Portal target ref — separate from the input's container because
+  // the dropdown gets rendered to `document.body` (escapes ancestor
+  // `overflow: hidden` like the wishlist card and the live-setlist
+  // section). Click-outside detection has to consult both refs so a
+  // mousedown on a dropdown row doesn't fire the close-handler
+  // before the option's onClick can land. v0.10.0 smoke caught the
+  // clipping: the dropdown only displayed its first row on the
+  // wishlist + predicted-setlist surfaces because the absolute-
+  // positioned listbox got clipped to the parent card's rounded
+  // bounds; arrow-key nav still moved through the items but they
+  // were visually hidden.
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  // SSR-safe portal-target gate: `useMounted` returns false during
+  // SSR + first client commit, true thereafter. Project canonical
+  // pattern (see `src/hooks/useMounted.ts:9-18`) — equivalent to a
+  // `useState(false) + useEffect(() => setMounted(true))` pair but
+  // doesn't trip `react-hooks/set-state-in-effect`. The dropdown
+  // gate `open && hasQuery` already starts false (only flips on
+  // user input, which is post-mount anyway), so first paint is
+  // unaffected.
+  const mounted = useMounted();
+  // Computed fixed-position coords for the portalled dropdown.
+  // Recomputed on open + window scroll/resize so the dropdown
+  // tracks the input even if the page scrolls behind the dropdown.
+  // Closing on scroll would be simpler but harms mobile UX (virtual
+  // keyboard appearance triggers a scroll; we don't want the
+  // dropdown to vanish out from under the user every keystroke).
+  const [dropdownPos, setDropdownPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      const target = e.target as Node;
+      const insideContainer = containerRef.current?.contains(target);
+      const insideDropdown = dropdownRef.current?.contains(target);
+      if (!insideContainer && !insideDropdown) {
         setOpen(false);
       }
     }
@@ -297,6 +338,168 @@ export function SongSearch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, visibleResults]);
 
+  // Compute the portalled dropdown's fixed coords from the input's
+  // bounding rect. useLayoutEffect (not useEffect) so the position
+  // is measured + applied BEFORE the browser paints — prevents a
+  // single-frame flash of the dropdown at (0, 0) before the effect
+  // catches up. Listens to scroll (capture, so we catch nested
+  // scrollers too) + resize so the dropdown tracks the input.
+  // 4px gap below the input matches the previous `mt-1` Tailwind
+  // utility used when the dropdown was an absolute child.
+  //
+  // No early-return-with-setState — the closed-dropdown state is
+  // already gated by `open && hasQuery && dropdownPos !== null` at
+  // render. A stale `dropdownPos` left from a previous open won't
+  // render. Avoiding the early-return setState also keeps the
+  // effect lint-clean (`react-hooks/set-state-in-effect` permits
+  // the listener-callback setState since it's async, but blocks a
+  // synchronous setState in the effect body).
+  useLayoutEffect(() => {
+    if (!open || !hasQuery) return;
+    const input = containerRef.current?.querySelector("input");
+    if (!input) return;
+    const update = () => {
+      const rect = input.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, hasQuery]);
+
+  const dropdown = open && hasQuery && dropdownPos !== null && (
+    <div
+      ref={dropdownRef}
+      id={listboxId}
+      role="listbox"
+      className={
+        isCompact
+          ? "bg-white border rounded-lg shadow-md max-h-60 overflow-y-auto"
+          : "bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
+      }
+      style={{
+        position: "fixed",
+        top: dropdownPos.top,
+        left: dropdownPos.left,
+        width: dropdownPos.width,
+        zIndex: zIndex.dropdown,
+        ...(isCompact ? { borderColor: colors.wishlistBorder } : {}),
+      }}
+    >
+      {loading && (
+        <div
+          className={
+            isCompact
+              ? "px-2.5 py-1.5 text-xs text-gray-500"
+              : "px-3 py-2 text-sm text-gray-500"
+          }
+        >
+          {texts.loading}
+        </div>
+      )}
+      {!loading && visibleResults.length === 0 && (
+        <div
+          className={
+            isCompact
+              ? "px-2.5 py-1.5 text-xs text-gray-500"
+              : "px-3 py-2 text-sm text-gray-500"
+          }
+        >
+          {texts.noResults}
+        </div>
+      )}
+      {!loading &&
+        visibleResults.map((song, index) => {
+          const title = displayOriginalTitle(
+            {
+              originalTitle: song.originalTitle,
+              originalLanguage: song.originalLanguage,
+              variantLabel: song.variantLabel,
+            },
+            song.translations,
+            locale,
+          );
+          const artist = song.artists[0]?.artist;
+          const artistName = artist
+            ? displayNameWithFallback(
+                {
+                  originalName: artist.originalName,
+                  originalShortName: artist.originalShortName,
+                  originalLanguage: artist.originalLanguage,
+                },
+                artist.translations,
+                locale,
+                "short",
+              )
+            : null;
+          const isActive = index === activeIndex;
+          return (
+            <button
+              key={song.id}
+              id={optionId(song.id)}
+              type="button"
+              role="option"
+              aria-selected={isActive}
+              // tabIndex=-1 keeps the option out of the tab order
+              // so focus stays on the input (the canonical ARIA
+              // combobox + aria-activedescendant pattern). Tab
+              // from the input then moves OUT of the composite,
+              // not through individual option buttons.
+              tabIndex={-1}
+              onMouseEnter={() => setActiveIndex(index)}
+              onClick={() => handleSelect(song)}
+              className={
+                isCompact
+                  ? `w-full text-left px-2.5 py-1.5 ${
+                      isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                    } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                  : `w-full text-left px-3 py-2 ${
+                      isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                    } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+              }
+            >
+              <div
+                className={
+                  isCompact
+                    ? "text-xs font-medium text-gray-900"
+                    : "text-sm font-medium text-gray-900"
+                }
+              >
+                {title.main}
+                {title.variant && (
+                  <span className="text-gray-500">
+                    {" "}
+                    ({title.variant})
+                  </span>
+                )}
+              </div>
+              {(title.sub || artistName) && (
+                <div
+                  className={
+                    isCompact
+                      ? "text-[11px] text-gray-500 mt-0.5"
+                      : "text-xs text-gray-500 mt-0.5"
+                  }
+                >
+                  {title.sub && <span>{title.sub}</span>}
+                  {title.sub && artistName && <span> · </span>}
+                  {artistName && <span>{artistName}</span>}
+                </div>
+              )}
+            </button>
+          );
+        })}
+    </div>
+  );
+
   return (
     <div ref={containerRef} className="relative w-full">
       <input
@@ -347,126 +550,18 @@ export function SongSearch({
         aria-autocomplete="list"
         aria-activedescendant={activeOptionId}
       />
-      {open && hasQuery && (
-        <div
-          id={listboxId}
-          role="listbox"
-          className={
-            isCompact
-              ? "absolute z-10 left-0 right-0 mt-1 bg-white border rounded-lg shadow-md max-h-60 overflow-y-auto"
-              : "absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
-          }
-          style={
-            isCompact
-              ? { borderColor: colors.wishlistBorder }
-              : undefined
-          }
-        >
-          {loading && (
-            <div
-              className={
-                isCompact
-                  ? "px-2.5 py-1.5 text-xs text-gray-500"
-                  : "px-3 py-2 text-sm text-gray-500"
-              }
-            >
-              {texts.loading}
-            </div>
-          )}
-          {!loading && visibleResults.length === 0 && (
-            <div
-              className={
-                isCompact
-                  ? "px-2.5 py-1.5 text-xs text-gray-500"
-                  : "px-3 py-2 text-sm text-gray-500"
-              }
-            >
-              {texts.noResults}
-            </div>
-          )}
-          {!loading &&
-            visibleResults.map((song, index) => {
-              const title = displayOriginalTitle(
-                {
-                  originalTitle: song.originalTitle,
-                  originalLanguage: song.originalLanguage,
-                  variantLabel: song.variantLabel,
-                },
-                song.translations,
-                locale,
-              );
-              const artist = song.artists[0]?.artist;
-              const artistName = artist
-                ? displayNameWithFallback(
-                    {
-                      originalName: artist.originalName,
-                      originalShortName: artist.originalShortName,
-                      originalLanguage: artist.originalLanguage,
-                    },
-                    artist.translations,
-                    locale,
-                    "short",
-                  )
-                : null;
-              const isActive = index === activeIndex;
-              return (
-                <button
-                  key={song.id}
-                  id={optionId(song.id)}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  // tabIndex=-1 keeps the option out of the tab order
-                  // so focus stays on the input (the canonical ARIA
-                  // combobox + aria-activedescendant pattern). Tab
-                  // from the input then moves OUT of the composite,
-                  // not through individual option buttons.
-                  tabIndex={-1}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => handleSelect(song)}
-                  className={
-                    isCompact
-                      ? `w-full text-left px-2.5 py-1.5 ${
-                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
-                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
-                      : `w-full text-left px-3 py-2 ${
-                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
-                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
-                  }
-                >
-                  <div
-                    className={
-                      isCompact
-                        ? "text-xs font-medium text-gray-900"
-                        : "text-sm font-medium text-gray-900"
-                    }
-                  >
-                    {title.main}
-                    {title.variant && (
-                      <span className="text-gray-500">
-                        {" "}
-                        ({title.variant})
-                      </span>
-                    )}
-                  </div>
-                  {(title.sub || artistName) && (
-                    <div
-                      className={
-                        isCompact
-                          ? "text-[11px] text-gray-500 mt-0.5"
-                          : "text-xs text-gray-500 mt-0.5"
-                      }
-                    >
-                      {title.sub && <span>{title.sub}</span>}
-                      {title.sub && artistName && <span> · </span>}
-                      {artistName && <span>{artistName}</span>}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-        </div>
-      )}
+      {/* Dropdown renders into `document.body` via createPortal so
+          ancestor `overflow: hidden` (wishlist card, live-setlist
+          section) can't clip the listbox to the input's host card.
+          The position is computed from the input's bounding rect
+          (see useLayoutEffect above) so the dropdown still tracks
+          the input visually. The portal-target is gated on
+          `mounted` to keep SSR safe — server has no `document.body`.
+
+          Result-list rendering, ARIA, keyboard nav, debounce, abort
+          all unchanged from the pre-portal flow; only the parent
+          element + position strategy moved. */}
+      {mounted && dropdown && createPortal(dropdown, document.body)}
     </div>
   );
 }
