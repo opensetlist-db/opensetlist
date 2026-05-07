@@ -149,8 +149,26 @@ export function LiveSetlist({
           />
         )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
-          tokens), per mockup. Not a child of the white setlist card. */}
-      <TrendingSongs songs={trendingSongs} />
+          tokens), per mockup. Not a child of the white setlist card.
+
+          Visibility (operator preference, v0.10.0 smoke):
+            - upcoming → always hide (no reactions can have been
+              recorded yet; the empty-state nudge that the component
+              renders for `songs.length === 0` is irrelevant pre-show
+              and dilutes the page)
+            - ongoing / completed / cancelled → show only when there
+              is at least one ranked song; otherwise hide entirely
+              rather than rendering the empty-state nudge.
+
+          Reverses the earlier "always render with empty nudge"
+          rationale documented in `<TrendingSongs>` ("Card always
+          renders when mounted — the empty state nudges the user to
+          engage rather than disappearing the surface entirely").
+          The component contract itself is unchanged; the visibility
+          decision moves up to this single consumer. */}
+      {status !== "upcoming" && trendingSongs.length > 0 && (
+        <TrendingSongs songs={trendingSongs} />
+      )}
     <section
       className="mb-8"
       style={{

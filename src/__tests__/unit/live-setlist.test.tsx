@@ -22,12 +22,24 @@ vi.mock("@/components/TrendingSongs", () => ({
   TrendingSongs: () => <div data-testid="trending-songs" />,
 }));
 
+// `<LiveSetlist>` re-derives `trendingSongs` from items+reactionCounts
+// when `isOngoing`, falling back to `initialTrendingSongs` otherwise.
+// Default stub returns [] so the non-ongoing branches of these tests
+// can pin gate behavior via the `initialTrendingSongs` prop alone
+// (no need to fabricate items+reactionCounts fixtures every test).
+// The "ongoing + non-empty" case overrides this stub per-test.
+vi.mock("@/lib/trending", () => ({
+  deriveTrendingSongs: vi.fn(() => []),
+}));
+import { deriveTrendingSongs } from "@/lib/trending";
+
 import { LiveSetlist } from "@/components/LiveSetlist";
 import type {
   LiveSetlistItem,
   ReactionCountsMap,
   FanTop3Entry,
 } from "@/lib/types/setlist";
+import type { TrendingSong } from "@/components/TrendingSongs";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 interface RenderArgs {
@@ -35,6 +47,18 @@ interface RenderArgs {
   isWishPredictOpen: boolean;
   startTime?: Date | string | null;
   top3Wishes?: FanTop3Entry[];
+  initialTrendingSongs?: TrendingSong[];
+}
+
+function trendingFixture(setlistItemId = "1"): TrendingSong {
+  return {
+    setlistItemId,
+    mainTitle: "残陽",
+    subTitle: null,
+    variantLabel: null,
+    totalReactions: 5,
+    reactionCounts: { best: 5 },
+  };
 }
 
 function renderLiveSetlist({
@@ -42,6 +66,7 @@ function renderLiveSetlist({
   isWishPredictOpen,
   startTime = new Date("2026-05-23T12:00:00.000Z"),
   top3Wishes = [],
+  initialTrendingSongs = [],
 }: RenderArgs) {
   const items: LiveSetlistItem[] = [];
   const reactionCounts: ReactionCountsMap = {};
@@ -51,7 +76,7 @@ function renderLiveSetlist({
       items={items}
       reactionCounts={reactionCounts}
       top3Wishes={top3Wishes}
-      initialTrendingSongs={[]}
+      initialTrendingSongs={initialTrendingSongs}
       startTime={startTime}
       unknownSongLabel="unknown"
       isOngoing={status === "ongoing"}
@@ -154,5 +179,95 @@ describe("<LiveSetlist> wishlist render-condition", () => {
       expect(view.queryByTestId("event-wish-section")).toBeNull();
       view.unmount();
     }
+  });
+});
+
+describe("<LiveSetlist> trending render-condition", () => {
+  // v0.10.0 smoke ask (operator preference): hide the trending box
+  // entirely on upcoming events (no reactions can exist pre-show
+  // anyway), and on ongoing/completed/cancelled hide when empty
+  // rather than rendering the empty-state nudge. Reverses the
+  // earlier "always render with empty nudge" rationale documented
+  // in <TrendingSongs> itself; the component contract stays the
+  // same, the visibility decision moves to the parent.
+  //
+  //                       songs.length=0    songs.length>0
+  //   status=upcoming     hide              hide  ← never show pre-show
+  //   status=ongoing      hide              show
+  //   status=completed    hide              show
+  //   status=cancelled    hide              show
+
+  it("upcoming + empty → hides trending", () => {
+    renderLiveSetlist({ status: "upcoming", isWishPredictOpen: true });
+    expect(screen.queryByTestId("trending-songs")).toBeNull();
+  });
+
+  it("upcoming + non-empty → STILL hides trending (pre-show, never)", () => {
+    // Edge case: a stale SSR seed could in principle carry songs
+    // for an event that's now classified upcoming (manual operator
+    // status reset, etc.). The gate suppresses regardless of seed
+    // contents — the operator-stated rule is "no trending pre-show",
+    // period.
+    renderLiveSetlist({
+      status: "upcoming",
+      isWishPredictOpen: true,
+      initialTrendingSongs: [trendingFixture()],
+    });
+    expect(screen.queryByTestId("trending-songs")).toBeNull();
+  });
+
+  it("ongoing + empty → hides trending (no empty-state nudge)", () => {
+    // The component's empty-state nudge ("trendingEmpty" label)
+    // never reaches the page anymore for the live event surface.
+    renderLiveSetlist({
+      status: "ongoing",
+      isWishPredictOpen: false,
+      initialTrendingSongs: [],
+    });
+    expect(screen.queryByTestId("trending-songs")).toBeNull();
+  });
+
+  it("ongoing + non-empty (via live derivation) → renders trending", () => {
+    // Ongoing events re-derive from items+reactionCounts via
+    // `deriveTrendingSongs` rather than reading `initialTrendingSongs`,
+    // so this test stubs the derivation to a non-empty result and
+    // restores afterward. Mirrors what happens in production once a
+    // poll cycle delivers reactions on a live setlist row.
+    vi.mocked(deriveTrendingSongs).mockReturnValueOnce([trendingFixture()]);
+    renderLiveSetlist({
+      status: "ongoing",
+      isWishPredictOpen: false,
+    });
+    expect(screen.getByTestId("trending-songs")).toBeTruthy();
+  });
+
+  it("completed + empty → hides trending", () => {
+    renderLiveSetlist({
+      status: "completed",
+      isWishPredictOpen: false,
+      initialTrendingSongs: [],
+    });
+    expect(screen.queryByTestId("trending-songs")).toBeNull();
+  });
+
+  it("completed + non-empty → renders trending", () => {
+    renderLiveSetlist({
+      status: "completed",
+      isWishPredictOpen: false,
+      initialTrendingSongs: [trendingFixture()],
+    });
+    expect(screen.getByTestId("trending-songs")).toBeTruthy();
+  });
+
+  it("cancelled + non-empty → renders trending (rare but symmetric with completed)", () => {
+    // Cancelled events can carry reactions if the operator entered
+    // a partial setlist before cancelling; symmetry with completed
+    // means we don't blanket-hide.
+    renderLiveSetlist({
+      status: "cancelled",
+      isWishPredictOpen: false,
+      initialTrendingSongs: [trendingFixture()],
+    });
+    expect(screen.getByTestId("trending-songs")).toBeTruthy();
   });
 });
