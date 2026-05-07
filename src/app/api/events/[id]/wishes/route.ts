@@ -77,10 +77,19 @@ export async function POST(req: NextRequest, { params }: RouteProps) {
   // resulting Prisma error is opaque (P2003) — explicit 404s here
   // give the client a usable error shape and match the
   // reactions/route.ts:71-80 pre-check pattern.
+  //
+  // `event.startTime` is also selected here for the lock check
+  // immediately below — wishlist writes close at `startTime` per
+  // the wiki/engagement-features#Wishlist hard rules. Client-side
+  // gates already hide the editor post-startTime, but a long-open
+  // page (laptop sleep, tab background) or a curl/DevTools bypass
+  // could still POST after the lock. v0.10.0 smoke caught the
+  // open-page-across-startTime case; this 403 is the server-side
+  // belt to the client wall-clock fallback in <EventWishSection>.
   const [event, song] = await Promise.all([
     prisma.event.findFirst({
       where: { id: eventId, isDeleted: false },
-      select: { id: true },
+      select: { id: true, startTime: true },
     }),
     prisma.song.findFirst({
       where: { id: songIdBig, isDeleted: false },
@@ -92,6 +101,12 @@ export async function POST(req: NextRequest, { params }: RouteProps) {
   }
   if (!song) {
     return NextResponse.json({ error: "Song not found" }, { status: 404 });
+  }
+  if (event.startTime && Date.now() >= event.startTime.getTime()) {
+    return NextResponse.json(
+      { error: "Wishlist is locked: event has started" },
+      { status: 403 },
+    );
   }
 
   const wish = await prisma.songWish.create({

@@ -91,22 +91,44 @@ export function PredictedSetlist({
   // Treat null startTime as "never lock" — the Predicted tab is
   // useful both on dated and TBA events. `Date.now() >= startMs`
   // semantic only fires when we actually have a startTime.
+  //
+  // Two-layer lock: setTimeout flips `scheduledLocked` reliably
+  // when running, and the rendered `isLocked` falls back to a
+  // wall-clock check on every render after mount. v0.10.0 smoke
+  // caught the failure mode: a long-open page where the system
+  // suspended (laptop sleep / mobile lock) past `startMs` left
+  // the timer un-fired, so the editor stayed open across the
+  // event start. The wall-clock fallback re-evaluates on each
+  // re-render (5s polling drives plenty of these), catching the
+  // missed-timer case. Same shape as `<EventWishSection>`.
   const startMs = startTime
     ? startTime instanceof Date
       ? startTime.getTime()
       : new Date(startTime).getTime()
     : null;
-  const [isLocked, setIsLocked] = useState(() =>
+  const [scheduledLocked, setScheduledLocked] = useState(() =>
     startMs === null ? false : Date.now() >= startMs,
   );
   useEffect(() => {
-    if (isLocked) return;
+    if (scheduledLocked) return;
     if (startMs === null) return;
     const remaining = startMs - Date.now();
     if (remaining <= 0) return;
-    const timer = setTimeout(() => setIsLocked(true), remaining);
+    const timer = setTimeout(() => setScheduledLocked(true), remaining);
     return () => clearTimeout(timer);
-  }, [isLocked, startMs]);
+  }, [scheduledLocked, startMs]);
+  // `react-hooks/purity` blocks `Date.now()` at render. See the
+  // matching disable in `<EventWishSection>` for the full
+  // rationale: explicit opt-in for the wall-clock fallback that
+  // catches a missed setTimeout (laptop sleep / mobile lock).
+  // (The disable is a block, not `next-line`, because the
+  // violating call sits on line 3 of the expression — `next-line`
+  // would only reach the first line.)
+  /* eslint-disable react-hooks/purity */
+  const isLocked =
+    scheduledLocked ||
+    (mounted && startMs !== null && Date.now() >= startMs);
+  /* eslint-enable react-hooks/purity */
 
   // Stamp lockedAt to localStorage when lock fires for the first
   // time. `markLocked` is idempotent so a re-mount that re-reads a
@@ -147,6 +169,12 @@ export function PredictedSetlist({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      // Defensive isLocked check, mirrors handleAdd / handleRemove.
+      // The drag handle is hidden via `<PredictSongRow locked>` once
+      // isLocked flips, so this branch should be unreachable. But a
+      // long-open page where a drag began before lock and dropped
+      // after could otherwise mutate the post-lock list.
+      if (isLocked) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       setPredictions((prev) => {
@@ -158,12 +186,22 @@ export function PredictedSetlist({
         return next;
       });
     },
-    [eventId],
+    [eventId, isLocked],
   );
 
   // ─── Add / remove handlers ──────────────────────────────────
   const handleAdd = useCallback(
     (song: SongSearchResult) => {
+      // Defensive isLocked check: the `+ 곡 추가` link + inline
+      // `<SongSearch>` are gated by `isPreShow` (which requires
+      // !isLocked), so this branch is normally unreachable. But a
+      // long-open page that crossed `startMs` between user-tap and
+      // here could still hit it. v0.10.0 smoke caught the
+      // post-lock-edit symptom; this guard pairs with the new
+      // wall-clock-fallback isLocked derivation above and the
+      // server-side 403 (no equivalent for predictions since they're
+      // localStorage-only — server check is wishlist-only).
+      if (isLocked) return;
       // Client-side dedup: don't re-add a song already in the list.
       if (predictions.some((p) => p.songId === song.id)) {
         setSearchOpen(false);
@@ -184,16 +222,18 @@ export function PredictedSetlist({
       writePredictions(eventId, next);
       setSearchOpen(false);
     },
-    [eventId, predictions],
+    [eventId, predictions, isLocked],
   );
 
   const handleRemove = useCallback(
     (songId: number) => {
+      // Defensive isLocked check, same rationale as handleAdd.
+      if (isLocked) return;
       const next = predictions.filter((p) => p.songId !== songId);
       setPredictions(next);
       writePredictions(eventId, next);
     },
-    [eventId, predictions],
+    [eventId, predictions, isLocked],
   );
 
   // ─── Per-row state derivation ───────────────────────────────

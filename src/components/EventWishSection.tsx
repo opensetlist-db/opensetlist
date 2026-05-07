@@ -41,31 +41,59 @@ export function EventWishSection({
   const t = useTranslations("Wishlist");
   const mounted = useMounted();
 
-  // Lock state strategy:
-  //   - Lazy useState initializer reads `Date.now()` ONCE at mount —
-  //     not on every render — so initial paint for an already-past
-  //     event renders the locked UI directly (no flash of pre-show
-  //     affordances). Lazy init runs in mount phase, not render
-  //     phase, so it sidesteps `react-hooks/purity`.
-  //   - useEffect schedules a one-shot setTimeout exactly at the
-  //     `startTime` boundary so the flip happens reliably even if
-  //     the parent never re-renders between SSR and the lock instant.
-  //     Setting state from a setTimeout callback is fine for
-  //     `react-hooks/set-state-in-effect` (the rule targets
-  //     synchronous-in-effect, not async-callback-in-effect).
+  // Lock state strategy (two layers, defense-in-depth):
+  //
+  //   1. `scheduledLocked` (state) — flipped by a one-shot
+  //      setTimeout that fires at `startMs`. Lazy useState
+  //      initializer reads `Date.now()` ONCE at mount so the initial
+  //      paint for an already-past event renders the locked UI
+  //      directly (no flash of pre-show affordances).
+  //
+  //   2. `isLocked` (derived) — `scheduledLocked` OR the wall-clock
+  //      check `mounted && Date.now() >= startMs`. This catches the
+  //      case where the setTimeout misfires or fires late: laptop
+  //      sleep / mobile lock pauses JS timers, so a user who left
+  //      the page open from D-1 through startTime might find the
+  //      timer hadn't fired (the OS clock advanced but the browser's
+  //      timer was paused). v0.10.0 smoke caught this (operator
+  //      reported: "if I have a page opened before the start time, I
+  //      can still modify during the event"). The next re-render
+  //      after `startMs` — driven by the existing 5s polling cycle —
+  //      re-evaluates the wall-clock and the lock takes effect.
+  //
+  //   The `mounted` gate on the wall-clock side prevents an
+  //   SSR/client hydration mismatch: server and client both run the
+  //   lazy init for `scheduledLocked` (same input → same output),
+  //   but the wall-clock check could differ by milliseconds. Gating
+  //   it on `mounted` keeps SSR HTML deterministic.
+  //
   // CLAUDE.md UTC rule: both `Date.now()` and the `Date(startTime)`
   // constructor return absolute instants — comparison is
   // region-independent.
   const startMs =
     startTime instanceof Date ? startTime.getTime() : new Date(startTime).getTime();
-  const [isLocked, setIsLocked] = useState(() => Date.now() >= startMs);
+  const [scheduledLocked, setScheduledLocked] = useState(
+    () => Date.now() >= startMs,
+  );
   useEffect(() => {
-    if (isLocked) return;
+    if (scheduledLocked) return;
     const remaining = startMs - Date.now();
     if (remaining <= 0) return; // lazy init already set true
-    const timer = setTimeout(() => setIsLocked(true), remaining);
+    const timer = setTimeout(() => setScheduledLocked(true), remaining);
     return () => clearTimeout(timer);
-  }, [isLocked, startMs]);
+  }, [scheduledLocked, startMs]);
+  // `react-hooks/purity` blocks `Date.now()` at render by default —
+  // the rule guards against accidental impurity that would break
+  // React's render-time invariants. The wall-clock fallback below
+  // is an EXPLICIT, narrow opt-in: we re-derive lock state on each
+  // render so the next polling-driven re-render past `startMs`
+  // catches a missed setTimeout (laptop sleep / mobile lock case).
+  // The result still flows through normal React state derivation —
+  // no setState during render, no DOM mutation. Same `mounted`
+  // gate as the surrounding hydration pattern keeps SSR HTML
+  // deterministic.
+  // eslint-disable-next-line react-hooks/purity
+  const isLocked = scheduledLocked || (mounted && Date.now() >= startMs);
 
   // Hydrate localStorage AFTER mount so SSR + first client render
   // both produce the same HTML. INTENTIONAL — mirrors the
@@ -90,6 +118,15 @@ export function EventWishSection({
   const handleSelect = useCallback(
     async (song: SongSearchResult) => {
       if (pending) return;
+      // Defensive isLocked check: the search-input UI is hidden via
+      // `canAddMore` once isLocked flips, so this branch should be
+      // unreachable. But a long-open page with the search input
+      // already revealed could reach here mid-render via a stale
+      // event handler. v0.10.0 smoke caught the symptom; this guard
+      // is the client-side belt-and-braces alongside the server
+      // 403 (`POST /api/events/[id]/wishes` rejects when
+      // `now >= event.startTime`).
+      if (isLocked) return;
       // Guard against double-add of the same song — localStorage owns
       // dedup at 1B/1C, so we enforce here before POST.
       if (myWishes.some((w) => w.songId === song.id)) {
@@ -145,12 +182,14 @@ export function EventWishSection({
         setPending(false);
       }
     },
-    [eventId, myWishes, pending],
+    [eventId, myWishes, pending, isLocked],
   );
 
   const handleRemove = useCallback(
     async (entry: WishEntry) => {
       if (pending) return;
+      // Defensive isLocked check, same rationale as handleSelect.
+      if (isLocked) return;
       // Sentinel-id rows never made it to the server — strip
       // locally without a DELETE call.
       if (entry.dbId === "__pending__") return;
@@ -175,7 +214,7 @@ export function EventWishSection({
         setPending(false);
       }
     },
-    [eventId, myWishes, pending],
+    [eventId, myWishes, pending, isLocked],
   );
 
   // Render-mode gate: locked + no data → render nothing. This is
