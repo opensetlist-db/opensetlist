@@ -104,12 +104,24 @@ export function isWishPredictOpen(
  * Home-page Upcoming-card badge condition. Caller already computed
  * `daysUntil` via `daysUntilUTC` so we don't redo the date math.
  *
- * Subtly different from `isWishPredictOpen`: the badge requires
- * `daysUntil > 0` (NOT `>= 0`), because a D-0 card would already be
- * flipping into "Live Now" via the auto-status ticker. Showing
- * `🌸 예상 오픈` next to an event that's about to start is just
- * noise.
+ * D-0 (same UTC day as start, but pre-startTime) IS included —
+ * matches `isWishPredictOpen`. The earlier v0.10.0 implementation
+ * required `daysUntil > 0` on the rationale that "D-0 is about to
+ * flip to ongoing via the auto-status ticker", which was wrong:
+ * the ticker flips at `now >= startTime`, not when
+ * `daysUntilUTC` drops to 0. There's a window of up to ~24h on
+ * the event's UTC day where `daysUntil === 0` but the event hasn't
+ * started yet — and that's exactly when fans want the predict
+ * window highlighted (D-0 same-day = high engagement). Bug
+ * caught in v0.10.0 smoke: a 4h-before-start view dropped the
+ * badge while a 12h-before-start view kept it, because the 12h
+ * sample sat across the UTC midnight boundary and the 4h sample
+ * didn't.
+ *
+ * Caller (home-page Upcoming query) already filters
+ * `startTime: { gt: now }`, so past-start events can't reach this
+ * helper — no strict-future check needed here.
  */
 export function shouldShowWishBadge(daysUntil: number): boolean {
-  return daysUntil > 0 && daysUntil <= WISH_PREDICT_OPEN_DAYS;
+  return daysUntil >= 0 && daysUntil <= WISH_PREDICT_OPEN_DAYS;
 }
