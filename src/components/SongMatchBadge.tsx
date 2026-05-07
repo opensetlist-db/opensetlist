@@ -43,6 +43,12 @@ export function SongMatchBadge({
   }
   return (
     <span
+      // `data-testid` lets unit tests reach the wrapper directly
+      // instead of walking `parentElement` from the title text node;
+      // any future markup tweak (e.g. wrapping the badge in another
+      // span for animation) wouldn't break the tests. CR #285 caught
+      // this on the wishlist match-highlight tests.
+      data-testid="song-match-badge"
       // Inline-block so background-color paints around the text
       // without breaking the surrounding flex row's truncation
       // (`overflow:hidden + text-overflow:ellipsis` on the parent).

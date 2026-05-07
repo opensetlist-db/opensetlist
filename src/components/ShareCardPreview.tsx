@@ -220,7 +220,15 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                   <ShareCardRow
                     key={item.id}
                     item={item}
-                    rank={i + 1}
+                    // Continue numbering past the main set rather
+                    // than restart at 1 — the share card is a
+                    // single setlist surface, so an event with 15
+                    // main + 3 encore reads as 1..18, not 1..15
+                    // followed by 1..3 (the latter would visually
+                    // suggest two unrelated lists). Mirrors the
+                    // event detail page's rendering and the
+                    // operator's typed `position` order.
+                    rank={mainSongs.length + i + 1}
                     hit={isHit(item, predictions)}
                     T={T}
                     locale={locale}

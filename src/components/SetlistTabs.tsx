@@ -90,6 +90,20 @@ export function SetlistTabs({
     ? ["actual", "predicted"]
     : ["predicted"];
 
+  // Defensive normalization. The parent (`<SetlistSection>`) already
+  // forces `activeTab="predicted"` when `hasActual` is false (see
+  // its `renderedTab` derivation), so this clamp is a no-op for the
+  // canonical caller. But if a future consumer threads an
+  // out-of-range `activeTab` (e.g. caller forgets the matrix and
+  // passes a stale `"actual"` while `hasActual=false`), the
+  // `aria-selected` flag and roving `tabIndex` would otherwise mark
+  // the only-visible Predicted tab as inactive (selected=false,
+  // tabIndex=-1) and the keyboard nav `visibleTabs.indexOf(activeTab)`
+  // would return -1 and produce nonsense indices. Clamping here
+  // keeps the component self-contained against that contract drift.
+  const effectiveActiveTab: SetlistTab =
+    showActualTab ? activeTab : "predicted";
+
   // WAI-ARIA tabs keyboard pattern: ArrowLeft/Right cycle (with
   // wrap-around), Home/End jump to first/last. Active tab gets
   // tabIndex=0 (in tab order); inactive tabs get tabIndex=-1
@@ -99,17 +113,17 @@ export function SetlistTabs({
     if (visibleTabs.length < 2) return;
     let nextTab: SetlistTab | null = null;
     if (e.key === "ArrowLeft") {
-      const idx = visibleTabs.indexOf(activeTab);
+      const idx = visibleTabs.indexOf(effectiveActiveTab);
       nextTab = visibleTabs[(idx - 1 + visibleTabs.length) % visibleTabs.length];
     } else if (e.key === "ArrowRight") {
-      const idx = visibleTabs.indexOf(activeTab);
+      const idx = visibleTabs.indexOf(effectiveActiveTab);
       nextTab = visibleTabs[(idx + 1) % visibleTabs.length];
     } else if (e.key === "Home") {
       nextTab = visibleTabs[0];
     } else if (e.key === "End") {
       nextTab = visibleTabs[visibleTabs.length - 1];
     }
-    if (nextTab !== null && nextTab !== activeTab) {
+    if (nextTab !== null && nextTab !== effectiveActiveTab) {
       e.preventDefault();
       onTabChange(nextTab);
       // Move focus to the new active tab so subsequent Tab keys
@@ -138,7 +152,7 @@ export function SetlistTabs({
         <TabButton
           id={tabIds.actual}
           panelId={panelIds.actual}
-          active={activeTab === "actual"}
+          active={effectiveActiveTab === "actual"}
           onClick={() => onTabChange("actual")}
           label={labels.actual}
           buttonRef={(el) => {
@@ -150,7 +164,7 @@ export function SetlistTabs({
       <TabButton
         id={tabIds.predicted}
         panelId={panelIds.predicted}
-        active={activeTab === "predicted"}
+        active={effectiveActiveTab === "predicted"}
         onClick={() => onTabChange("predicted")}
         label={labels.predicted}
         badge={predictedBadge}

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { colors } from "@/styles/tokens";
+import { hexToRgbString } from "@/__tests__/utils/color";
 
 // Identity-mapped translations — keys are stable test fixtures.
 vi.mock("next-intl", () => ({
@@ -204,14 +206,17 @@ describe("EventWishSection — match-highlight in fan TOP-3", () => {
         top3Wishes={[fanEntry(10, 5, "残陽")]}
       />,
     );
-    const titleSpan = screen.getByText("残陽");
-    // The SongMatchBadge wraps the matched title in a span with the
-    // wishlist match-bg color. Walk up to find that wrapper.
-    const wrapper = titleSpan.parentElement!;
-    expect(wrapper.tagName.toLowerCase()).toBe("span");
-    // Inline style on the badge wrapper sets background to the
-    // wishlistMatchBg token (#bbf7d0).
-    expect(wrapper.style.background.toLowerCase()).toContain("rgb(187, 247, 208)");
+    // `<SongMatchBadge>` exposes `data-testid="song-match-badge"` so
+    // tests reach the wrapper directly — any future markup tweak
+    // (extra wrapping span for animation, etc.) wouldn't break this
+    // assertion. The expected RGB is derived from the
+    // `colors.wishlistMatchBg` token via `hexToRgbString` rather
+    // than hardcoded — a future palette tweak rolls forward without
+    // a silently-passing test.
+    const wrapper = screen.getByTestId("song-match-badge");
+    expect(wrapper.style.background.toLowerCase()).toContain(
+      hexToRgbString(colors.wishlistMatchBg).toLowerCase(),
+    );
   });
 
   it("pre-show suppresses the highlight even when a match would otherwise occur", () => {
@@ -224,11 +229,12 @@ describe("EventWishSection — match-highlight in fan TOP-3", () => {
         top3Wishes={[fanEntry(10, 5, "残陽")]}
       />,
     );
-    const titleSpan = screen.getByText("残陽");
-    // No green-bg wrapper in pre-show — the title's parent is the
-    // outer flex span, not the SongMatchBadge wrapper.
-    const wrapper = titleSpan.parentElement!;
-    expect(wrapper.style.background ?? "").not.toContain("rgb(187, 247, 208)");
+    // `<SongMatchBadge>` returns `<>{children}</>` (no wrapper)
+    // when `disabled` — the badge testid should be absent entirely.
+    expect(screen.queryByTestId("song-match-badge")).toBeNull();
+    // The title text itself still renders — pre-show suppresses
+    // only the highlight, not the row.
+    expect(screen.getByText("残陽")).toBeTruthy();
   });
 });
 
