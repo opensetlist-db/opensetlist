@@ -77,6 +77,7 @@ describe("EventWishSection — render gates", () => {
         eventId="1"
         locale="ko"
         startTime={PAST}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[]}
       />,
@@ -90,6 +91,7 @@ describe("EventWishSection — render gates", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[]}
       />,
@@ -104,6 +106,7 @@ describe("EventWishSection — render gates", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[fanEntry(10, 5)]}
       />,
@@ -118,6 +121,7 @@ describe("EventWishSection — render gates", () => {
         eventId="1"
         locale="ko"
         startTime={PAST}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[fanEntry(10, 5)]}
       />,
@@ -139,6 +143,7 @@ describe("EventWishSection — my-list cap of 3", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[]}
       />,
@@ -153,6 +158,7 @@ describe("EventWishSection — my-list cap of 3", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[]}
       />,
@@ -172,6 +178,7 @@ describe("EventWishSection — locked-state controls hidden", () => {
         eventId="1"
         locale="ko"
         startTime={PAST}
+        status="upcoming"
         setlistItems={[setlistItem(10)]}
         top3Wishes={[fanEntry(10, 5)]}
       />,
@@ -186,6 +193,7 @@ describe("EventWishSection — locked-state controls hidden", () => {
         eventId="1"
         locale="ko"
         startTime={PAST}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[fanEntry(10, 5)]}
       />,
@@ -202,6 +210,7 @@ describe("EventWishSection — match-highlight in fan TOP-3", () => {
         locale="ko"
         startTime={PAST}
         // wished song 10 also appears in the actual setlist
+        status="upcoming"
         setlistItems={[setlistItem(10)]}
         top3Wishes={[fanEntry(10, 5, "残陽")]}
       />,
@@ -225,6 +234,7 @@ describe("EventWishSection — match-highlight in fan TOP-3", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[setlistItem(10)]}
         top3Wishes={[fanEntry(10, 5, "残陽")]}
       />,
@@ -245,6 +255,7 @@ describe("EventWishSection — search reveal + cancel toggle", () => {
         eventId="1"
         locale="ko"
         startTime={FUTURE}
+        status="upcoming"
         setlistItems={[]}
         top3Wishes={[]}
       />,
@@ -266,3 +277,58 @@ describe("EventWishSection — search reveal + cancel toggle", () => {
 // is integration territory (better suited for Playwright). The wiring
 // here is small enough that the three unit suites above give
 // confidence without a fragile timer-juggling test.
+
+describe("EventWishSection — server-status lock (slow-client-clock fallback)", () => {
+  it("status='ongoing' + FUTURE startTime → editor hidden (server lock overrides client wall-clock)", () => {
+    // Slow-client-clock scenario: the user's device clock is set so
+    // far behind that `Date.now() < startMs` (FUTURE startTime per
+    // test fixture). With only the setTimeout + wall-clock layers,
+    // the editor would stay open. The new third lock input —
+    // server-resolved `status !== "upcoming"`, polled from
+    // `/api/setlist` and threaded down via
+    // `<LiveEventLayout>`'s `effectiveStatus` — flips isLocked
+    // regardless of client clock. Operator confirmation: "changing
+    // device time is too easy to do" at this scale, so the
+    // server's clock is the only bypass-resistant signal.
+    render(
+      <EventWishSection
+        eventId="1"
+        locale="ko"
+        startTime={FUTURE}
+        status="ongoing"
+        setlistItems={[]}
+        top3Wishes={[fanEntry(10, 5, "残陽")]}
+      />,
+    );
+    // Title flips to the locked variant — the cap label and ✕
+    // remove buttons hide.
+    expect(screen.getByText(/lockedTitle/)).toBeTruthy();
+    // The "최대 3곡" hint shows only pre-lock; absent here.
+    expect(screen.queryByText("cap")).toBeNull();
+    // The `+ 추가` button shows only when `canAddMore = !isLocked
+    // && myWishes.length < MAX_WISHES`. Locked → absent.
+    expect(screen.queryByText("add")).toBeNull();
+  });
+
+  it("status='upcoming' + FUTURE startTime → editor visible (no lock fires)", () => {
+    // Sanity: the lock OR-chain only fires when one of the three
+    // inputs is true. With a future startTime, upcoming status, and
+    // no setTimeout fired, all three are false → editor open.
+    render(
+      <EventWishSection
+        eventId="1"
+        locale="ko"
+        startTime={FUTURE}
+        status="upcoming"
+        setlistItems={[]}
+        top3Wishes={[]}
+      />,
+    );
+    // Title bar reads `🌸 title` when unlocked (vs `🌸 lockedTitle`
+    // when locked). The 🌸 prefix is part of the JSX template, so
+    // we match the suffix.
+    expect(screen.getByText(/title$/)).toBeTruthy();
+    expect(screen.queryByText(/lockedTitle/)).toBeNull();
+    expect(screen.getByText("cap")).toBeTruthy();
+  });
+});

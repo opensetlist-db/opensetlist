@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
+import { getEventStatus } from "@/lib/eventStatus";
 
 export async function GET(req: NextRequest) {
   // `new URL(req.url)` over `req.nextUrl` so unit tests can invoke
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invalid eventId" }, { status: 400 });
   }
 
-  const [items, reactionGroups, top3Wishes] = await Promise.all([
+  const [items, reactionGroups, top3Wishes, event] = await Promise.all([
     prisma.setlistItem.findMany({
       where: { eventId, isDeleted: false },
       orderBy: { position: "asc" },
@@ -83,6 +84,21 @@ export async function GET(req: NextRequest) {
     // sequential against the DB; from this Promise.all's point of
     // view it's a single awaited slot.
     fetchEventWishlistTop3(eventId, locale),
+    // Event status + startTime for the polled `status` field below.
+    // Lets the client lock the wishlist + predicted-setlist editors
+    // when the server's authoritative clock crosses startTime, even
+    // if the client's local clock is skewed (e.g. user with a slow
+    // device clock would see the editor remain open past startTime
+    // because their `Date.now() < startMs`; the polled status
+    // overrides the client wall-clock check). v0.10.0 smoke caught
+    // the symptom + the operator confirmed clock-skew is the
+    // realistic bypass at this scale (manipulating localStorage
+    // requires understanding the format; changing device time is
+    // trivial).
+    prisma.event.findFirst({
+      where: { id: eventId, isDeleted: false },
+      select: { status: true, startTime: true },
+    }),
   ]);
 
   const reactionCounts: Record<string, Record<string, number>> = {};
@@ -92,11 +108,18 @@ export async function GET(req: NextRequest) {
     reactionCounts[key][g.reactionType] = g._count;
   }
 
+  // Resolve status server-side via the same `getEventStatus`
+  // helper the page uses at SSR. `null` when the event was missing
+  // or soft-deleted — clients treat null as "no fresh status; keep
+  // the SSR-initial value" (see `<LiveEventLayout>`).
+  const status = event ? getEventStatus(event) : null;
+
   return NextResponse.json(
     {
       items: serializeBigInt(items),
       reactionCounts,
       top3Wishes,
+      status,
       updatedAt: new Date().toISOString(),
     },
     {

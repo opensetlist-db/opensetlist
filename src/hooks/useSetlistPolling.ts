@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // boundary. Re-exported below for back-compat with existing
 // `import { ReactionCountsMap } from "@/hooks/useSetlistPolling"`.
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 export type { ReactionCountsMap };
 
@@ -27,6 +28,16 @@ interface UseSetlistPollingResult<T> {
   items: T[];
   reactionCounts: ReactionCountsMap;
   top3Wishes: FanTop3Entry[];
+  /**
+   * Server-resolved event status, refreshed on every poll. Null
+   * until the first successful poll lands (callers fall back to
+   * their SSR-initial status). Drives the wishlist + predicted-
+   * setlist client lock as the server-authoritative override of
+   * the client wall-clock check — handles the slow-client-clock
+   * bypass case that the client-side `Date.now() >= startMs`
+   * derivation can't catch on its own.
+   */
+  status: ResolvedEventStatus | null;
   lastUpdated: string | null;
 }
 
@@ -44,6 +55,7 @@ export function useSetlistPolling<T>({
     useState<ReactionCountsMap>(initialReactionCounts);
   const [top3Wishes, setTop3Wishes] =
     useState<FanTop3Entry[]>(initialTop3Wishes);
+  const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -67,6 +79,7 @@ export function useSetlistPolling<T>({
     setItems(initialItems);
     setReactionCounts(initialReactionCounts);
     setTop3Wishes(initialTop3Wishes);
+    setStatus(null);
     setLastUpdated(null);
   }
 
@@ -81,6 +94,7 @@ export function useSetlistPolling<T>({
         items: T[];
         reactionCounts?: ReactionCountsMap;
         top3Wishes?: FanTop3Entry[];
+        status?: ResolvedEventStatus | null;
         updatedAt: string;
       };
       setItems(data.items);
@@ -91,6 +105,11 @@ export function useSetlistPolling<T>({
       // polling is the authoritative source. Asserted by
       // useSetlistPolling.test.tsx "falls back to []" case.
       setTop3Wishes(data.top3Wishes ?? []);
+      // `?? null` for forward-compat: an older API shape that omits
+      // `status` keeps the prior null, so callers fall back to the
+      // SSR-initial status they passed in. Once the server side
+      // ships the `status` field (this PR), every poll updates it.
+      setStatus(data.status ?? null);
       setLastUpdated(data.updatedAt);
     } catch {
       // Silent — next tick retries.
@@ -108,5 +127,5 @@ export function useSetlistPolling<T>({
     };
   }, [enabled, intervalMs, fetchSetlist]);
 
-  return { items, reactionCounts, top3Wishes, lastUpdated };
+  return { items, reactionCounts, top3Wishes, status, lastUpdated };
 }
