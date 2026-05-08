@@ -131,17 +131,30 @@ export function ShareCardModal({
   const handleShare = async () => {
     if (!cardRef.current || busy) return;
     setBusy(true);
-    const outcome: ShareOutcome = await shareCard({
-      cardEl: cardRef.current,
-    });
-    setBusy(false);
-    if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
-    // CR #295: surface a toast on error too. Without it, a tainted-
-    // canvas / OOM / driver-bug failure leaves the user with no
-    // feedback — the spinner stops, but they can't tell whether the
-    // download silently succeeded or quietly broke. The toast tells
-    // them to retry or fall back to "Copy link".
-    else if (outcome.kind === "error") setToast(t("imageErrorToast"));
+    try {
+      const outcome: ShareOutcome = await shareCard({
+        cardEl: cardRef.current,
+      });
+      if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
+      // CR #295: surface a toast on error too. Without it, a tainted-
+      // canvas / OOM / driver-bug failure leaves the user with no
+      // feedback — the spinner stops, but they can't tell whether the
+      // download silently succeeded or quietly broke. The toast tells
+      // them to retry or fall back to "Copy link".
+      else if (outcome.kind === "error") setToast(t("imageErrorToast"));
+    } catch {
+      // Defensive: today's `shareCard()` catches every internal async
+      // path and always returns a ShareOutcome rather than throwing.
+      // But the dynamic `import("html2canvas")` is the kind of code
+      // that could grow new throws over time (network failures,
+      // bundler chunk-load errors, future refactors). Wrapping here
+      // guarantees the same error toast even if shareCard rethrows,
+      // and `finally` guarantees `busy` is released so the modal
+      // doesn't lock. CR #295 round 2.
+      setToast(t("imageErrorToast"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleCopyLink = async () => {
