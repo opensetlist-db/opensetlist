@@ -31,6 +31,23 @@ export async function DELETE(_req: Request, { params }: RouteProps) {
     return NextResponse.json({ error: "Invalid eventId" }, { status: 400 });
   }
 
+  // Lock check mirrors POST `/api/events/[id]/wishes`: deletes also
+  // freeze at `event.startTime`, otherwise a long-open page could
+  // remove a wish post-lock and corrupt the fan TOP-3 aggregate
+  // mid-show. Soft-deleted events fall through to the 200-ok path
+  // (no startTime narrowing) since the wish wouldn't exist anyway —
+  // matches the existing idempotent-DELETE shape.
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, isDeleted: false },
+    select: { startTime: true },
+  });
+  if (event?.startTime && Date.now() >= event.startTime.getTime()) {
+    return NextResponse.json(
+      { error: "Wishlist is locked: event has started" },
+      { status: 403 },
+    );
+  }
+
   await prisma.songWish.deleteMany({ where: { id: wishId, eventId } });
   return NextResponse.json({ ok: true });
 }

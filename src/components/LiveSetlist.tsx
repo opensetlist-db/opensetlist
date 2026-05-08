@@ -140,7 +140,17 @@ export function LiveSetlist({
           prop pass-through. */}
       {startTime != null &&
         (status !== "upcoming" || isWishPredictOpen) && (
+          // `key={eventId}` forces a remount when the user navigates
+          // from event A to event B in the same browser session.
+          // Without it, React's default reconciliation preserves
+          // `<EventWishSection>`'s state across the prop change —
+          // which means `scheduledLocked` (initialized once via
+          // `useState` lazy init from event A's startTime) leaks
+          // into event B with a stale lock decision, and the
+          // localStorage `wish-{eventId}` hydration also wouldn't
+          // re-fire for the new event id. CR #291 caught this.
           <EventWishSection
+            key={eventId}
             eventId={eventId}
             locale={locale}
             startTime={startTime}
