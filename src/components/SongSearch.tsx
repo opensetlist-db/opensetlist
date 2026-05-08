@@ -369,9 +369,20 @@ export function SongSearch({
     update();
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
+    // iOS Safari: the on-screen keyboard show/hide does NOT consistently
+    // fire `window.resize` / `window.scroll` — only `visualViewport`
+    // reliably emits during keyboard transitions. Without this, on
+    // mobile the dropdown sits at its pre-keyboard `top` while the
+    // input shifts up under the focused state, creating a visible gap.
+    // CR #290 nit (operator-confirmed pickup, optional but cheap).
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", update);
+    vv?.addEventListener("scroll", update);
     return () => {
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
+      vv?.removeEventListener("resize", update);
+      vv?.removeEventListener("scroll", update);
     };
   }, [open, hasQuery]);
 

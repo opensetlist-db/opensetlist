@@ -589,9 +589,14 @@ describe("SongSearch — portal escapes ancestor overflow:hidden (CR v0.10.0 smo
     );
     const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "残" } });
+    // Match the file-wide pattern documented at lines 163–166: the
+    // sync `advanceTimersByTime` + `await Promise.resolve()` flush
+    // happens to work because `act(async)` drains microtasks at the
+    // end, but it leans on incidental ordering. The async helper
+    // pumps both the debounce window AND the awaited fetch chain in
+    // one step, so adding a fetch step later won't silently flake.
     await act(async () => {
-      vi.advanceTimersByTime(300);
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(305);
     });
     const listbox = screen.getByRole("listbox");
     // The clipping host is the test wrapper. The listbox must NOT be
@@ -626,9 +631,9 @@ describe("SongSearch — portal escapes ancestor overflow:hidden (CR v0.10.0 smo
     );
     const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "残" } });
+    // See sibling test above for the rationale on the async helper.
     await act(async () => {
-      vi.advanceTimersByTime(300);
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(305);
     });
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
