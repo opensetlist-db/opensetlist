@@ -285,9 +285,7 @@
     "tabActual": "Actual setlist",
     "tabPredicted": "Predicted setlist",
     "tablistAriaLabel": "Setlist views",
-    "predictedComingSoon": "Predicted setlist — coming soon",
-    "confirmAriaRumoured": "Unverified song",
-    "confirmAriaMyConfirmed": "Confirmed by me"
+    "predictedComingSoon": "Predicted setlist — coming soon"
   },
   "Predict": {
     "add": "+ Add a song",
@@ -325,9 +323,8 @@
     "shareText": "{seriesName} prediction {pct}% hit rate! ({matched} of {total}) 🎯"
   },
   "Confirm": {
-    "flag": "Report",
-    "flagEmailSubject": "[OpenSetlist] Setlist row report — event {eventId} #{position}",
-    "flagEmailBody": "Event ID: {eventId}\nPosition: {position}\nSong: {songTitle}\n\nDescribe the issue:\n"
+    "confirmAria": "Mark as correct",
+    "disagreeAria": "Mark as incorrect"
   },
   "Wishlist": {
     "title": "Wishlist",
