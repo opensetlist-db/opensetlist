@@ -314,6 +314,7 @@
     "linkCopiedToast": "Link copied",
     "linkCopyFailedToast": "Couldn't copy the link",
     "imageSavedToast": "Image saved",
+    "imageErrorToast": "Couldn't save the image",
     "close": "Close",
     "scoreLabel": "Prediction hit rate",
     "scoreMatchedOf": "{matched} of {total} songs hit",

@@ -136,10 +136,12 @@ export function ShareCardModal({
     });
     setBusy(false);
     if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
-    // `error` is rare (canvas tainted / OOM / driver bug) — silent-
-    // fail keeps the happy path uncluttered. The user can retry by
-    // tapping the button again; if it's a persistent failure they
-    // can fall back to "Copy link".
+    // CR #295: surface a toast on error too. Without it, a tainted-
+    // canvas / OOM / driver-bug failure leaves the user with no
+    // feedback — the spinner stops, but they can't tell whether the
+    // download silently succeeded or quietly broke. The toast tells
+    // them to retry or fall back to "Copy link".
+    else if (outcome.kind === "error") setToast(t("imageErrorToast"));
   };
 
   const handleCopyLink = async () => {

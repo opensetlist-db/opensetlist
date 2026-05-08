@@ -8,9 +8,12 @@ import { shareCard } from "@/lib/shareCard";
 vi.mock("html2canvas", () => ({
   default: vi.fn(async () => {
     // Minimal canvas stub — toBlob is the only method shareCard
-    // actually uses. Returns a 1×1 PNG blob.
+    // actually uses. Returns a 1×1 PNG blob. Callback is typed as
+    // `Blob | null` to match the BlobCallback browser spec
+    // (lib.dom.d.ts) — the per-test toBlob-null override below
+    // depends on this matching shape. CR #295 nit.
     return {
-      toBlob: (cb: (b: Blob) => void) => {
+      toBlob: (cb: (b: Blob | null) => void) => {
         cb(new Blob(["fake-png"], { type: "image/png" }));
       },
     } as unknown as HTMLCanvasElement;
