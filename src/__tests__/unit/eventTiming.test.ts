@@ -88,9 +88,11 @@ describe("isWishPredictOpen", () => {
   });
 
   it("returns true for an upcoming event same UTC day (D-0)", () => {
-    // D-0 in `isWishPredictOpen` is true (event is later today),
-    // even though `shouldShowWishBadge` would return false for the
-    // same daysUntil — the home badge has a stricter `> 0` rule.
+    // D-0 in `isWishPredictOpen` is true (event is later today).
+    // `shouldShowWishBadge(0)` also returns true after this PR — the
+    // earlier `> 0` "stricter rule" has been removed so both
+    // surfaces agree on D-0. See the consistency assertion in the
+    // `shouldShowWishBadge` suite below.
     const ev = { startTime: dayOffset(0), status: "upcoming" as const };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
   });
