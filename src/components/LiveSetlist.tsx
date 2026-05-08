@@ -154,6 +154,7 @@ export function LiveSetlist({
             eventId={eventId}
             locale={locale}
             startTime={startTime}
+            status={status}
             setlistItems={items}
             top3Wishes={top3Wishes}
           />

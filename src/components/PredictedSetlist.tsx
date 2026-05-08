@@ -117,16 +117,19 @@ export function PredictedSetlist({
     const timer = setTimeout(() => setScheduledLocked(true), remaining);
     return () => clearTimeout(timer);
   }, [scheduledLocked, startMs]);
-  // `react-hooks/purity` blocks `Date.now()` at render. See the
-  // matching disable in `<EventWishSection>` for the full
-  // rationale: explicit opt-in for the wall-clock fallback that
-  // catches a missed setTimeout (laptop sleep / mobile lock).
-  // (The disable is a block, not `next-line`, because the
-  // violating call sits on line 3 of the expression — `next-line`
-  // would only reach the first line.)
+  // Three-input lock — see `<EventWishSection>` for the full
+  // rationale. The polled `status` (server-resolved via
+  // `getEventStatus` server-side, refreshed every 5s) is the
+  // bypass-resistant signal for clock-skewed clients; the
+  // wall-clock check covers missed setTimeout (laptop sleep /
+  // mobile lock); scheduledLocked is the best-case timer fire.
+  // `react-hooks/purity` block disable applies because the
+  // violating Date.now() call sits on line 3 of the expression —
+  // `next-line` would only reach the first line.
   /* eslint-disable react-hooks/purity */
   const isLocked =
     scheduledLocked ||
+    status !== "upcoming" ||
     (mounted && startMs !== null && Date.now() >= startMs);
   /* eslint-enable react-hooks/purity */
 
@@ -248,7 +251,13 @@ export function PredictedSetlist({
   // The during-show divider is drawn between rank `actualCount` and
   // `actualCount + 1` to communicate the matching boundary.
   const total = actualSongs.length;
-  const isPreShow = !isLocked && status !== "completed";
+  // `!isLocked` now implies `status === "upcoming"` because the new
+  // 3-input lock includes `status !== "upcoming"` as one of the OR
+  // branches — so `status !== "completed"` is always true here. TS
+  // narrows it away. Kept the `isDuringShow` shape (still has a
+  // meaningful "completed" branch since isLocked is true for
+  // ongoing/completed/cancelled).
+  const isPreShow = !isLocked;
   const isDuringShow = isLocked && status !== "completed";
 
   function rowState(rank: number, songId: number): PredictRowState {

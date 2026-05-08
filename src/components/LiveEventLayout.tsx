@@ -161,15 +161,33 @@ export function LiveEventLayout({
   // single-channel architecture is worth it. Polling stays off for
   // completed/cancelled events.
   const isPollingEnabled = status === "ongoing" || status === "upcoming";
-  const { items, reactionCounts, top3Wishes, lastUpdated } =
-    useSetlistPolling<LiveSetlistItem>({
-      eventId,
-      initialItems,
-      initialReactionCounts,
-      initialTop3Wishes: initialFanTop3,
-      locale,
-      enabled: isPollingEnabled,
-    });
+  const {
+    items,
+    reactionCounts,
+    top3Wishes,
+    status: polledStatus,
+    lastUpdated,
+  } = useSetlistPolling<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isPollingEnabled,
+  });
+  // Effective status: polled value when available (server-authoritative
+  // refresh, ~5s cadence), else fall back to the SSR-initial `status`
+  // prop. The polled value catches the auto-status-flip on the
+  // server (DB `scheduled` → `ongoing` past startTime) without
+  // requiring a page reload — which closes the
+  // slow-client-clock bypass on the wishlist + predicted-setlist
+  // editors. v0.10.0 smoke caught the symptom: a user with their
+  // device clock set 1h slow could keep editing past startTime
+  // because their `Date.now() < startMs` even after the show
+  // started; the server's `getEventStatus` flipped to "ongoing"
+  // correctly, the polled status now propagates that down via the
+  // existing prop chain.
+  const effectiveStatus: ResolvedEventStatus = polledStatus ?? status;
 
   // Use the SSR-rendered sidebar values until polling delivers fresh
   // data (`lastUpdated !== null`). This single gate covers two cases:
@@ -271,7 +289,7 @@ export function LiveEventLayout({
           unknownSongLabel={unknownSongLabel}
           isOngoing={isOngoing}
           locale={locale}
-          status={status}
+          status={effectiveStatus}
           isWishPredictOpen={isWishPredictOpen}
           // `series.name` is already pre-resolved by the page via
           // `displayNameWithFallback(...)` for the EventHeader card.

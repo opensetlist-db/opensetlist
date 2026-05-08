@@ -9,6 +9,7 @@ import { useMounted } from "@/hooks/useMounted";
 import { readWishes, writeWishes, type WishEntry } from "@/lib/wishStorage";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import type { SongMatchInputItem } from "@/lib/songMatch";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -25,6 +26,18 @@ interface Props {
    * string for date columns; the constructor coerces either input.
    */
   startTime: Date | string;
+  /**
+   * Server-resolved event status. Server-authoritative — refreshed
+   * on every poll via `<LiveEventLayout>`'s `effectiveStatus`
+   * derivation. Joins the existing setTimeout + wall-clock layers
+   * as a third lock input, so a client with a skewed device clock
+   * can't keep the editor open past the actual server-side
+   * startTime. v0.10.0 smoke + operator confirmation: clock-skew
+   * is the realistic bypass at this scale (manipulating
+   * localStorage requires understanding the format; changing
+   * device time is trivial).
+   */
+  status: ResolvedEventStatus;
   /** Polled actual setlist — drives match-highlights in locked state. */
   setlistItems: SongMatchInputItem[];
   /** Polled fan TOP-3 (server aggregate). */
@@ -35,6 +48,7 @@ export function EventWishSection({
   eventId,
   locale,
   startTime,
+  status,
   setlistItems,
   top3Wishes,
 }: Props) {
@@ -92,8 +106,27 @@ export function EventWishSection({
   // no setState during render, no DOM mutation. Same `mounted`
   // gate as the surrounding hydration pattern keeps SSR HTML
   // deterministic.
-  // eslint-disable-next-line react-hooks/purity
-  const isLocked = scheduledLocked || (mounted && Date.now() >= startMs);
+  // Three-input lock: any one flips isLocked true.
+  //   1. scheduledLocked — setTimeout hit startMs (best case).
+  //   2. server-resolved status — polled `status !== "upcoming"`
+  //      (catches client-clock skew; server is authoritative on
+  //      time and the only fully bypass-resistant signal).
+  //   3. wall-clock — `Date.now() >= startMs` at render (catches
+  //      missed setTimeout, e.g. laptop sleep).
+  // `react-hooks/purity` blocks `Date.now()` at render by default;
+  // the block disable is an EXPLICIT, narrow opt-in for the
+  // wall-clock fallback (#3) — block-form because the violating
+  // call sits on line 4 of the expression and `next-line` would
+  // only reach the first. The result still flows through normal
+  // React state derivation — no setState during render, no DOM
+  // mutation. Same `mounted` gate as the surrounding hydration
+  // pattern keeps SSR HTML deterministic.
+  /* eslint-disable react-hooks/purity */
+  const isLocked =
+    scheduledLocked ||
+    status !== "upcoming" ||
+    (mounted && Date.now() >= startMs);
+  /* eslint-enable react-hooks/purity */
 
   // Hydrate localStorage AFTER mount so SSR + first client render
   // both produce the same HTML. INTENTIONAL — mirrors the
