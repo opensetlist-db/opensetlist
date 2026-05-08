@@ -104,6 +104,17 @@ export function NumberSlot({
   // + glyph differ per active state.
   const isConfirmed = myVote === "confirm";
   const isDisagreed = myVote === "disagree";
+  // Without a tap handler the button has no behavior — render it
+  // as `disabled` (also drops the `pointer` cursor) so it doesn't
+  // advertise itself as interactive. In practice every fan-facing
+  // call site (`<SetlistRow>` via `<ActualSetlist>`) supplies both
+  // handlers, but the props are typed optional and an admin/preview
+  // caller (SetlistBuilder) could legitimately render a row without
+  // wiring the vote actions. Without this guard the buttons would
+  // be focusable + clickable + visually identical to the active
+  // state, which is a usability + a11y bug. CR #293.
+  const canConfirmTap = typeof onConfirmTap === "function";
+  const canDisagreeTap = typeof onDisagreeTap === "function";
   return (
     <div
       className="mt-0.5 inline-flex items-center"
@@ -112,6 +123,8 @@ export function NumberSlot({
       <button
         type="button"
         onClick={onConfirmTap}
+        disabled={!canConfirmTap}
+        aria-disabled={!canConfirmTap}
         aria-label={confirmAriaLabel}
         aria-pressed={isConfirmed}
         className="inline-flex items-center justify-center rounded-full text-[11px] font-medium"
@@ -119,7 +132,7 @@ export function NumberSlot({
           width: 22,
           height: 22,
           flexShrink: 0,
-          cursor: "pointer",
+          cursor: canConfirmTap ? "pointer" : "default",
           ...(isConfirmed
             ? {
                 border: `1.5px solid ${colors.primary}`,
@@ -138,6 +151,8 @@ export function NumberSlot({
       <button
         type="button"
         onClick={onDisagreeTap}
+        disabled={!canDisagreeTap}
+        aria-disabled={!canDisagreeTap}
         aria-label={disagreeAriaLabel}
         aria-pressed={isDisagreed}
         className="inline-flex items-center justify-center rounded-full text-[11px] font-medium"
@@ -145,7 +160,7 @@ export function NumberSlot({
           width: 22,
           height: 22,
           flexShrink: 0,
-          cursor: "pointer",
+          cursor: canDisagreeTap ? "pointer" : "default",
           ...(isDisagreed
             ? {
                 border: `1.5px solid ${colors.disagreeText}`,

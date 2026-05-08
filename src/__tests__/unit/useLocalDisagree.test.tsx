@@ -17,6 +17,12 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // `vi.restoreAllMocks()` does NOT undo `vi.stubGlobal()` calls
+  // (the round-trip test stubs `fetch`); without `unstubAllGlobals`
+  // the stub leaks into subsequent test files. Vitest's
+  // `unstubGlobals: true` config option is not enabled in this
+  // project, so the test file owns its own teardown.
+  vi.unstubAllGlobals();
 });
 
 describe("disagreeKey", () => {
