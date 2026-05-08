@@ -8,9 +8,12 @@ import { shareCard } from "@/lib/shareCard";
 vi.mock("html2canvas", () => ({
   default: vi.fn(async () => {
     // Minimal canvas stub — toBlob is the only method shareCard
-    // actually uses. Returns a 1×1 PNG blob.
+    // actually uses. Returns a 1×1 PNG blob. Callback is typed as
+    // `Blob | null` to match the BlobCallback browser spec
+    // (lib.dom.d.ts) — the per-test toBlob-null override below
+    // depends on this matching shape. CR #295 nit.
     return {
-      toBlob: (cb: (b: Blob) => void) => {
+      toBlob: (cb: (b: Blob | null) => void) => {
         cb(new Blob(["fake-png"], { type: "image/png" }));
       },
     } as unknown as HTMLCanvasElement;
@@ -26,140 +29,106 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("shareCard — mobile (navigator.canShare returns true)", () => {
-  it("invokes navigator.share with the file + text + url and returns shared", async () => {
-    const shareSpy = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
-      share: shareSpy,
+describe("shareCard — download path (single platform-agnostic flow)", () => {
+  // v0.10.x rewrote `shareCard` to a single download-only flow. The
+  // earlier mobile (`navigator.share`) + desktop (`window.open` Twitter
+  // intent) split was dropped because Twitter's web intent doesn't
+  // accept image attachments AND `navigator.share` doesn't reliably
+  // surface Twitter in the OS share sheet (operator-confirmed during
+  // smoke). Tests here pin the download path specifically; there is
+  // no longer a `shared` / `cancelled` / `popup_blocked` outcome.
+
+  it("rasterizes via html2canvas and triggers an anchor download, returning kind: downloaded", async () => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
     });
+    const appendChildSpy = vi.spyOn(document.body, "appendChild");
     const cardEl = document.createElement("div");
-    const outcome = await shareCard({
-      cardEl,
-      text: "tweet body",
-      url: "https://example.test/event/1",
-    });
-    expect(outcome).toEqual({ kind: "shared" });
-    expect(shareSpy).toHaveBeenCalledOnce();
-    const arg = shareSpy.mock.calls[0][0];
-    expect(arg.text).toBe("tweet body");
-    expect(arg.url).toBe("https://example.test/event/1");
-    expect(arg.files).toHaveLength(1);
-    expect(arg.files[0].name).toBe("opensetlist-result.png");
-    expect(arg.files[0].type).toBe("image/png");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "downloaded" });
+    // The hidden anchor was appended to <body>, has the correct
+    // `download` attr, and points at the blob: object URL.
+    const appended = appendChildSpy.mock.calls.find(
+      ([n]) => (n as HTMLElement).tagName === "A",
+    );
+    expect(appended).toBeTruthy();
+    const anchor = appended?.[0] as HTMLAnchorElement;
+    expect(anchor.download).toBe("opensetlist-result.png");
+    expect(anchor.href).toContain("blob:");
   });
 
-  it("returns kind: cancelled when the user dismisses the native sheet (AbortError)", async () => {
-    const shareSpy = vi
-      .fn()
-      .mockRejectedValue(new DOMException("aborted", "AbortError"));
-    vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
-      share: shareSpy,
+  it("uses the caller-provided filename when supplied", async () => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
     });
+    const appendChildSpy = vi.spyOn(document.body, "appendChild");
     const cardEl = document.createElement("div");
-    const outcome = await shareCard({
-      cardEl,
-      text: "x",
-      url: "https://example.test/",
-    });
-    expect(outcome).toEqual({ kind: "cancelled" });
+
+    await shareCard({ cardEl, filename: "custom-name.png" });
+
+    const appended = appendChildSpy.mock.calls.find(
+      ([n]) => (n as HTMLElement).tagName === "A",
+    );
+    expect((appended?.[0] as HTMLAnchorElement).download).toBe(
+      "custom-name.png",
+    );
   });
 
-  it("returns kind: error on a non-abort share rejection", async () => {
-    vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
-      share: vi.fn().mockRejectedValue(new Error("permission denied")),
-    });
-    const cardEl = document.createElement("div");
-    const outcome = await shareCard({
-      cardEl,
-      text: "x",
-      url: "https://example.test/",
-    });
-    expect(outcome.kind).toBe("error");
-    if (outcome.kind === "error") {
-      expect(outcome.message).toBe("permission denied");
-    }
-  });
-});
-
-describe("shareCard — desktop (no navigator.canShare)", () => {
-  it("triggers a download + opens Twitter intent and returns kind: downloaded", async () => {
+  it("does NOT call navigator.share or window.open (no platform-integration paths remain)", async () => {
+    // Regression guard: the v0.10.x rewrite drops both branches.
+    // If someone re-introduces either accidentally, this assertion
+    // catches it before users see an empty Twitter compose window
+    // or a missing-from-share-sheet bug again.
+    const shareSpy = vi.fn();
     const openSpy = vi.fn();
-    // Stub navigator without canShare → falls through to desktop path.
     vi.stubGlobal("navigator", {
-      // canShare absent
+      canShare: vi.fn().mockReturnValue(true),
+      share: shareSpy,
     });
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
       revokeObjectURL: vi.fn(),
     });
     vi.stubGlobal("open", openSpy);
-    // Spy on appendChild so we know the anchor was clicked.
-    const appendChildSpy = vi.spyOn(document.body, "appendChild");
     const cardEl = document.createElement("div");
 
-    const outcome = await shareCard({
-      cardEl,
-      text: "tweet body",
-      url: "https://example.test/event/1",
-    });
+    const outcome = await shareCard({ cardEl });
 
     expect(outcome).toEqual({ kind: "downloaded" });
-    // Anchor with the download attribute was appended (then removed).
-    expect(appendChildSpy).toHaveBeenCalled();
-    const appended = appendChildSpy.mock.calls.find(
-      ([n]) => (n as HTMLElement).tagName === "A",
-    );
-    expect(appended).toBeTruthy();
-    // Twitter intent opened with text + url query params.
-    expect(openSpy).toHaveBeenCalledOnce();
-    const intentUrl = openSpy.mock.calls[0][0] as string;
-    expect(intentUrl).toContain("twitter.com/intent/tweet");
-    expect(intentUrl).toContain(encodeURIComponent("tweet body"));
-    expect(intentUrl).toContain(encodeURIComponent("https://example.test/event/1"));
+    expect(shareSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
   });
 });
 
-describe("shareCard — popup blocked (window.open returns null)", () => {
-  it("returns kind: popup_blocked instead of downloaded so caller can toast a different message", async () => {
-    vi.stubGlobal("navigator", {
-      // canShare absent → desktop fallback path
-    });
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:fake"),
-      revokeObjectURL: vi.fn(),
-    });
-    // window.open returning null is the popup-blocker signal in
-    // every browser. CR #281 caught the original code returning
-    // `downloaded` regardless.
-    vi.stubGlobal("open", vi.fn(() => null));
-    const cardEl = document.createElement("div");
-    const outcome = await shareCard({
-      cardEl,
-      text: "x",
-      url: "https://example.test/",
-    });
-    expect(outcome).toEqual({ kind: "popup_blocked" });
-  });
-});
-
-describe("shareCard — html2canvas failure", () => {
+describe("shareCard — error paths", () => {
   it("returns kind: error when html2canvas throws", async () => {
     const html2canvasMod = await import("html2canvas");
     const spy = vi.spyOn(html2canvasMod, "default").mockRejectedValueOnce(
       new Error("canvas tainted"),
     );
     const cardEl = document.createElement("div");
-    const outcome = await shareCard({
-      cardEl,
-      text: "x",
-      url: "https://example.test/",
-    });
+    const outcome = await shareCard({ cardEl });
     expect(outcome.kind).toBe("error");
     if (outcome.kind === "error") {
       expect(outcome.message).toBe("canvas tainted");
+    }
+    spy.mockRestore();
+  });
+
+  it("returns kind: error when canvas.toBlob yields null (e.g. tainted canvas)", async () => {
+    const html2canvasMod = await import("html2canvas");
+    const spy = vi.spyOn(html2canvasMod, "default").mockResolvedValueOnce({
+      toBlob: (cb: (b: Blob | null) => void) => cb(null),
+    } as unknown as HTMLCanvasElement);
+    const cardEl = document.createElement("div");
+    const outcome = await shareCard({ cardEl });
+    expect(outcome.kind).toBe("error");
+    if (outcome.kind === "error") {
+      expect(outcome.message).toBe("canvas.toBlob returned null");
     }
     spy.mockRestore();
   });

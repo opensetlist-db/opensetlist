@@ -309,18 +309,17 @@
     "modalTitle": "결과 공유",
     "themeDark": "다크",
     "themeLight": "라이트",
-    "shareTwitter": "트위터에 공유",
+    "saveImage": "이미지 저장",
     "copyLink": "링크 복사",
     "linkCopiedToast": "링크가 복사됐어요",
     "linkCopyFailedToast": "링크를 복사하지 못했어요",
-    "imageSavedToast": "이미지가 저장됐어요. 트위터에 첨부해주세요",
-    "popupBlockedToast": "팝업이 차단됐어요. 저장된 이미지로 직접 공유해주세요",
+    "imageSavedToast": "이미지가 저장됐어요",
+    "imageErrorToast": "이미지를 저장하지 못했어요",
     "close": "닫기",
     "scoreLabel": "예상 적중률",
     "scoreMatchedOf": "{total}곡 중 {matched}곡 적중",
     "scorePredicted": "{count}곡 예상",
-    "encore": "Encore",
-    "shareText": "{seriesName} 예상 세트리스트 {pct}% 적중! ({total}곡 중 {matched}곡) 🎯"
+    "encore": "Encore"
   },
   "Confirm": {
     "confirmAria": "정확함",

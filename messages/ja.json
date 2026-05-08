@@ -309,18 +309,17 @@
     "modalTitle": "結果を共有",
     "themeDark": "ダーク",
     "themeLight": "ライト",
-    "shareTwitter": "Twitterで共有",
+    "saveImage": "画像を保存",
     "copyLink": "リンクをコピー",
     "linkCopiedToast": "リンクをコピーしました",
     "linkCopyFailedToast": "リンクをコピーできませんでした",
-    "imageSavedToast": "画像を保存しました。Twitterに添付してください",
-    "popupBlockedToast": "ポップアップがブロックされました。保存した画像から直接共有してください",
+    "imageSavedToast": "画像を保存しました",
+    "imageErrorToast": "画像を保存できませんでした",
     "close": "閉じる",
     "scoreLabel": "予想的中率",
     "scoreMatchedOf": "{total}曲中 {matched}曲的中",
     "scorePredicted": "{count}曲予想",
-    "encore": "Encore",
-    "shareText": "{seriesName} 予想セットリスト {pct}% 的中! ({total}曲中 {matched}曲) 🎯"
+    "encore": "Encore"
   },
   "Confirm": {
     "confirmAria": "正しい",

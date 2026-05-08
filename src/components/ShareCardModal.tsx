@@ -30,8 +30,13 @@ interface Props {
   percentage: number;
   predictedCount: number;
   locale: string;
-  // For the share text + URL.
-  shareText: string;
+  /**
+   * Canonical event URL, used by the "Copy link" CTA. The
+   * `shareCard()` helper no longer consumes a text/URL payload —
+   * v0.10.x dropped both the Twitter intent open and the
+   * navigator.share path in favor of a download-only flow (see
+   * `src/lib/shareCard.ts` docstring).
+   */
   shareUrl: string;
 }
 
@@ -42,8 +47,13 @@ interface Props {
  * modal renders `<ShareCardPreview>` (the html2canvas capture
  * target), a dark/light theme toggle, and two CTA buttons:
  *
- *   - 트위터에 공유: triggers `shareCard()` which picks
- *     navigator.share (mobile) or download + Twitter intent (desktop).
+ *   - 이미지 저장: triggers `shareCard()` which rasterizes the
+ *     preview and downloads it as a PNG. The user shares the saved
+ *     file manually wherever they want — Twitter web compose,
+ *     KakaoTalk, Discord, Photos. v0.10.x dropped the earlier
+ *     "Share to Twitter" branding because Twitter's web intent
+ *     is text+URL only and `navigator.share` doesn't reliably
+ *     surface Twitter in the OS sheet.
  *   - 링크 복사: copies the canonical event URL via Clipboard API.
  *
  * Accessibility: `Escape` closes; click-outside closes; first
@@ -63,7 +73,6 @@ export function ShareCardModal({
   percentage,
   predictedCount,
   locale,
-  shareText,
   shareUrl,
 }: Props) {
   const t = useTranslations("ShareCard");
@@ -122,18 +131,30 @@ export function ShareCardModal({
   const handleShare = async () => {
     if (!cardRef.current || busy) return;
     setBusy(true);
-    const outcome: ShareOutcome = await shareCard({
-      cardEl: cardRef.current,
-      text: shareText,
-      url: shareUrl,
-    });
-    setBusy(false);
-    if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
-    else if (outcome.kind === "popup_blocked") setToast(t("popupBlockedToast"));
-    // For "shared" / "cancelled" / "error" we surface no toast —
-    // the OS sheet handles its own feedback (success/cancel) and
-    // an error here is rare enough that silent-fail keeps the
-    // happy path uncluttered.
+    try {
+      const outcome: ShareOutcome = await shareCard({
+        cardEl: cardRef.current,
+      });
+      if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
+      // CR #295: surface a toast on error too. Without it, a tainted-
+      // canvas / OOM / driver-bug failure leaves the user with no
+      // feedback — the spinner stops, but they can't tell whether the
+      // download silently succeeded or quietly broke. The toast tells
+      // them to retry or fall back to "Copy link".
+      else if (outcome.kind === "error") setToast(t("imageErrorToast"));
+    } catch {
+      // Defensive: today's `shareCard()` catches every internal async
+      // path and always returns a ShareOutcome rather than throwing.
+      // But the dynamic `import("html2canvas")` is the kind of code
+      // that could grow new throws over time (network failures,
+      // bundler chunk-load errors, future refactors). Wrapping here
+      // guarantees the same error toast even if shareCard rethrows,
+      // and `finally` guarantees `busy` is released so the modal
+      // doesn't lock. CR #295 round 2.
+      setToast(t("imageErrorToast"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleCopyLink = async () => {
@@ -256,13 +277,19 @@ export function ShareCardModal({
             disabled={busy}
             className="text-sm font-medium rounded-full px-5 py-2 cursor-pointer"
             style={{
-              background: busy ? "#94a3b8" : "#1d9bf0",
+              // Brand blue gradient (matches the `결과 공유 🎯`
+              // opener in `<ShareCardButton>`) instead of the
+              // earlier Twitter-blue `#1d9bf0`. The button no longer
+              // claims Twitter, so the brand color reads cleaner.
+              background: busy
+                ? "#94a3b8"
+                : "linear-gradient(135deg, #4FC3F7, #0277BD)",
               color: "white",
               border: "none",
               cursor: busy ? "wait" : "pointer",
             }}
           >
-            {t("shareTwitter")}
+            {t("saveImage")}
           </button>
           <button
             type="button"
