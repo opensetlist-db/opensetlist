@@ -196,6 +196,14 @@ export interface ShareCardPalette {
 export const zIndex = {
   /** Sticky elements within page flow (e.g. desktop sidebar). */
   sticky: 10,
+  /**
+   * Floating-positioned overlays that escape ancestor `overflow:
+   * hidden` via React portal — currently the `<SongSearch>` result
+   * dropdown. Sits above sticky chrome but below modals so a
+   * future picker rendered inside `<ShareCardModal>` etc. doesn't
+   * end up on top of its host dialog.
+   */
+  dropdown: 100,
   /** Modal backdrop + dialog (Share Card, Flag dialogs). */
   modal: 200,
   /** Toast / snackbar / inline announcement above modals. */

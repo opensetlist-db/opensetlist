@@ -549,3 +549,97 @@ describe("SongSearch — variant + autoFocus props", () => {
     expect(document.activeElement).not.toBe(input);
   });
 });
+
+describe("SongSearch — portal escapes ancestor overflow:hidden (CR v0.10.0 smoke)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("listbox renders into document.body, not as a descendant of the input's host card", async () => {
+    // The wishlist + predicted-setlist surfaces wrap <SongSearch>
+    // inside a card with `overflow: hidden + border-radius`. v0.10.0
+    // smoke caught: the dropdown was clipped to the card's bounds —
+    // arrow-key nav still moved through the items, but only the first
+    // row was visually reachable. Fix: render the listbox via
+    // createPortal to document.body so the clipping ancestor doesn't
+    // matter.
+    mockFetchOnceWith([
+      makeSong(1, "残陽"),
+      makeSong(2, "ハナムスビ"),
+      makeSong(3, "Dream Believers"),
+    ]);
+    const { container } = render(
+      <div
+        data-testid="clipping-host"
+        style={{ overflow: "hidden", borderRadius: 14 }}
+      >
+        <SongSearch
+          onSelect={vi.fn()}
+          locale="ko"
+          texts={TEXTS}
+          variant="compact"
+        />
+      </div>,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "残" } });
+    // Match the file-wide pattern documented at lines 163–166: the
+    // sync `advanceTimersByTime` + `await Promise.resolve()` flush
+    // happens to work because `act(async)` drains microtasks at the
+    // end, but it leans on incidental ordering. The async helper
+    // pumps both the debounce window AND the awaited fetch chain in
+    // one step, so adding a fetch step later won't silently flake.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+    const listbox = screen.getByRole("listbox");
+    // The clipping host is the test wrapper. The listbox must NOT be
+    // a descendant of it; otherwise the parent's overflow:hidden
+    // would clip the dropdown the same way the live cards did.
+    const host = screen.getByTestId("clipping-host");
+    expect(host.contains(listbox)).toBe(false);
+    // And the listbox must still be in the document — somewhere
+    // under document.body, escaping the host.
+    expect(document.body.contains(listbox)).toBe(true);
+    // The original SongSearch root (`container.firstChild`) shouldn't
+    // contain it either — confirms the portal really moved it out.
+    expect(container.firstChild?.contains(listbox)).toBe(false);
+  });
+
+  it("clicking a portalled option fires onSelect (click-outside handler doesn't pre-empt)", async () => {
+    // The dropdown is rendered to document.body, so the click-outside
+    // mousedown listener has to consult both refs (input container +
+    // dropdown ref) — otherwise mousedown on a row would close the
+    // dropdown before the option's onClick lands.
+    mockFetchOnceWith([makeSong(1, "残陽"), makeSong(2, "ハナムスビ")]);
+    const onSelect = vi.fn();
+    render(
+      <div style={{ overflow: "hidden", borderRadius: 14 }}>
+        <SongSearch
+          onSelect={onSelect}
+          locale="ko"
+          texts={TEXTS}
+          variant="compact"
+        />
+      </div>,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "残" } });
+    // See sibling test above for the rationale on the async helper.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(2);
+    fireEvent.mouseDown(options[1]);
+    fireEvent.click(options[1]);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0].id).toBe(2);
+  });
+});
