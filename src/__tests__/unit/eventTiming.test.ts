@@ -88,9 +88,11 @@ describe("isWishPredictOpen", () => {
   });
 
   it("returns true for an upcoming event same UTC day (D-0)", () => {
-    // D-0 in `isWishPredictOpen` is true (event is later today),
-    // even though `shouldShowWishBadge` would return false for the
-    // same daysUntil — the home badge has a stricter `> 0` rule.
+    // D-0 in `isWishPredictOpen` is true (event is later today).
+    // `shouldShowWishBadge(0)` also returns true after this PR — the
+    // earlier `> 0` "stricter rule" has been removed so both
+    // surfaces agree on D-0. See the consistency assertion in the
+    // `shouldShowWishBadge` suite below.
     const ev = { startTime: dayOffset(0), status: "upcoming" as const };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
   });
@@ -160,11 +162,18 @@ describe("shouldShowWishBadge", () => {
     }
   });
 
-  it("returns false for daysUntil 0 — D-0 is about to flip to Live Now", () => {
-    // Distinct from isWishPredictOpen which IS true for D-0; the
-    // home-card badge has a stricter rule because the auto-status
-    // ticker is about to swap the card to ongoing anyway.
-    expect(shouldShowWishBadge(0)).toBe(false);
+  it("returns true for daysUntil 0 — same UTC day as start, pre-startTime (regression)", () => {
+    // v0.10.0 had `daysUntil > 0` on the rationale that "D-0 is
+    // about to flip to Live Now via the auto-status ticker." That
+    // was wrong: the ticker fires at `now >= startTime`, not when
+    // `daysUntilUTC` drops to 0. There's a window of up to ~24h
+    // on the event's UTC day where the event hasn't started yet
+    // but `daysUntil === 0` — the badge MUST stay visible there
+    // (it's the highest-engagement window of all). v0.10.0 smoke
+    // caught: a 4h-before-start view dropped the badge while a
+    // 12h-before-start view kept it because the 12h sample sat
+    // across the UTC midnight boundary. Both should show.
+    expect(shouldShowWishBadge(0)).toBe(true);
   });
 
   it("returns false for daysUntil 8+ (outside the open window)", () => {
@@ -174,5 +183,22 @@ describe("shouldShowWishBadge", () => {
 
   it("returns false for negative daysUntil", () => {
     expect(shouldShowWishBadge(-1)).toBe(false);
+  });
+
+  it("matches isWishPredictOpen on the inclusive D-0 lower bound — both should agree", () => {
+    // Behavioral consistency check: the home-card badge and the
+    // event-detail surface gate must say the same thing about a
+    // D-0 upcoming event. Drift between them is what produced the
+    // v0.10.0 smoke bug — surfaces visible on event detail but the
+    // home card hiding the predict-open indicator.
+    const dayOffset = (days: number) =>
+      new Date(Date.UTC(2026, 4, 15 + days, 12, 0, 0));
+    const NOW_LOCAL = new Date("2026-05-15T03:00:00.000Z");
+    const detailGate = isWishPredictOpen(
+      { startTime: dayOffset(0), status: "upcoming" },
+      NOW_LOCAL,
+    );
+    expect(detailGate).toBe(true);
+    expect(shouldShowWishBadge(0)).toBe(true);
   });
 });
