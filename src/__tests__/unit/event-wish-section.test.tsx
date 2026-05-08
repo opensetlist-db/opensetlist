@@ -325,9 +325,12 @@ describe("EventWishSection — server-status lock (slow-client-clock fallback)",
       />,
     );
     // Title bar reads `🌸 title` when unlocked (vs `🌸 lockedTitle`
-    // when locked). The 🌸 prefix is part of the JSX template, so
-    // we match the suffix.
-    expect(screen.getByText(/title$/)).toBeTruthy();
+    // when locked). Anchor both ends of the regex so a future
+    // `lockedTitle` rename ending in "title" doesn't slip through —
+    // the `queryByText(/lockedTitle/)` assertion below would still
+    // catch the regression, but the strict-match here documents the
+    // exact unlocked-state contract. CR #294 nit.
+    expect(screen.getByText(/^🌸 title$/)).toBeTruthy();
     expect(screen.queryByText(/lockedTitle/)).toBeNull();
     expect(screen.getByText("cap")).toBeTruthy();
   });
