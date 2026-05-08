@@ -56,7 +56,6 @@ export function ShareCardButton({
   predictions,
 }: Props) {
   const t = useTranslations("Predict");
-  const stT = useTranslations("ShareCard");
   const [open, setOpen] = useState(false);
 
   // Gate: post-show + has actuals + has predictions.
@@ -83,13 +82,6 @@ export function ShareCardButton({
   // NEXT_PUBLIC_BASE_URL with a vercel.app fallback (see
   // src/lib/config.ts).
   const eventUrl = `${BASE_URL}/${locale}/events/${eventId}`;
-
-  const shareText = stT("shareText", {
-    seriesName,
-    pct: score.percentage,
-    matched: score.matched,
-    total: score.total,
-  });
 
   return (
     <>
@@ -131,7 +123,6 @@ export function ShareCardButton({
         percentage={score.percentage}
         predictedCount={predictions.length}
         locale={locale}
-        shareText={shareText}
         shareUrl={eventUrl}
       />
     </>
