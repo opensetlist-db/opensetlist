@@ -341,6 +341,17 @@ describe("GET /api/events/[id]/wishes", () => {
 describe("DELETE /api/events/[id]/wishes/[wishId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Explicit default for the lock-check `findFirst`. Without this
+    // mock, `vi.clearAllMocks()` leaves it returning `undefined`,
+    // and the route's lock-check `event?.startTime && now >= …`
+    // short-circuits — so the happy-path tests below pass for the
+    // wrong reason (they never actually exercise the lock-check
+    // branch). Default to a future startTime so the lock evaluates
+    // to false legitimately; tests that need the lock to fire
+    // override this mock with a past startTime explicitly. CR #297.
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      startTime: new Date(Date.now() + 60 * 60 * 1000), // +1h, future
+    });
     (prisma.songWish.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue(
       { count: 1 },
     );

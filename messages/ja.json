@@ -319,7 +319,7 @@
     "scoreLabel": "予想的中率",
     "scoreMatchedOf": "{total}曲中 {matched}曲的中",
     "scorePredicted": "{count}曲予想",
-    "encore": "Encore"
+    "encore": "アンコール"
   },
   "Confirm": {
     "confirmAria": "正しい",
