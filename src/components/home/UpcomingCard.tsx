@@ -134,7 +134,7 @@ export function UpcomingCard({
             count. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span
-            className="text-[11px] font-bold"
+            className="whitespace-nowrap text-[11px] font-bold"
             style={{
               color: colors.upcoming,
               background: colors.upcomingBg,
@@ -147,7 +147,7 @@ export function UpcomingCard({
           </span>
           {showWishBadge && (
             <span
-              className="text-[11px] font-semibold"
+              className="whitespace-nowrap text-[11px] font-semibold"
               style={{
                 color: colors.wishlistText,
                 background: colors.wishlistBg,
@@ -161,7 +161,7 @@ export function UpcomingCard({
           )}
         </div>
         <span
-          className="text-[11px]"
+          className="whitespace-nowrap text-[11px]"
           style={{ color: colors.textMuted }}
         >
           {formattedDate}
