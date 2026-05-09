@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 // Type lives in `src/lib/types/setlist.ts` so pure helpers under
 // `src/lib/` can use it without crossing the lib→hooks layer
 // boundary. Re-exported below for back-compat with existing
@@ -58,19 +64,34 @@ export function useSetlistPolling<T>({
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // AbortController for the currently in-flight fetch. Cancelled
-  // when (a) a newer fetchSetlist invocation supersedes it, or
-  // (b) the polling effect is torn down (eventId/locale change,
-  // unmount). The signal is also re-checked after each `await` so
-  // a fetch that resolves in the same microtask as the abort fires
-  // bails before writing setState. CR #297 round 2 — the earlier
-  // generation-counter approach was racy: the cleanup-time seq
-  // bump fires AFTER render commit, so a fetch resolving in the
-  // commit→cleanup gap could still pass the seq check and clobber
-  // the freshly-seeded new-event state. AbortController + post-
-  // await `signal.aborted` checks close that window because the
-  // signal mutates synchronously when abort() fires.
+  // AbortController for the currently in-flight fetch. Used for two
+  // distinct purposes:
+  //   - Cleanup-time abort on eventId/locale change or unmount.
+  //   - In-flight detection at the top of fetchSetlist so a slow
+  //     network (response time > intervalMs) doesn't have every
+  //     tick cancel the prior tick — the new tick simply skips and
+  //     the in-flight fetch is allowed to complete.
+  // The post-await `eventIdRef`/`localeRef` checks below are the
+  // belt-and-braces guard against the render-commit→cleanup race
+  // window (where the abort hasn't fired yet but eventId already
+  // changed). CR #298 rounds 2 + 3.
   const abortRef = useRef<AbortController | null>(null);
+
+  // Latest-value refs synced via useLayoutEffect so the OLD
+  // fetchSetlist's closure can compare its captured eventId/locale
+  // against the current value at resolution time. useLayoutEffect
+  // (not useEffect) so the sync runs in the same synchronous frame
+  // as the commit — no microtask gap during which a stale fetch
+  // resolution could see a not-yet-updated ref. This is the
+  // synchronous freshness check the AbortController alone can't
+  // provide (abort() only fires in cleanup, which runs in the
+  // next microtask after commit).
+  const eventIdRef = useRef(eventId);
+  const localeRef = useRef(locale);
+  useLayoutEffect(() => {
+    eventIdRef.current = eventId;
+    localeRef.current = locale;
+  }, [eventId, locale]);
 
   // Re-sync from props only when eventId actually changes — not on every
   // parent re-render. Without this guard, callers passing fresh array refs
@@ -102,22 +123,42 @@ export function useSetlistPolling<T>({
   }
 
   const fetchSetlist = useCallback(async () => {
-    // Abort any prior in-flight fetch from this same eventId/locale
-    // cycle (poll N still in flight when poll N+1 starts). Without
-    // this, a slow fetch could land AFTER a faster newer fetch and
-    // clobber the newer state.
-    if (abortRef.current) abortRef.current.abort();
+    // Concurrency guard: if a prior fetch is still in flight for the
+    // SAME eventId/locale cycle, skip this tick and let the in-flight
+    // request complete. Aborting it instead would cause a perma-
+    // cancellation loop on slow networks (response time > intervalMs
+    // → every tick cancels the previous one → no setState ever fires).
+    // CR #298 round 3.
+    if (abortRef.current) return;
+    // Capture the eventId/locale at fetch start. The OLD fetchSetlist
+    // (defined when eventId was "A") has these in its closure as "A";
+    // a NEW render with eventId="B" recreates fetchSetlist with "B".
+    // On resolution, we compare these captured values against the
+    // latest-value refs (eventIdRef.current, localeRef.current) which
+    // useLayoutEffect updated synchronously at the commit boundary.
+    // Mismatch = stale → bail before setState.
+    const fetchEventId = eventId;
+    const fetchLocale = locale;
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       const res = await fetch(
-        `/api/setlist?eventId=${encodeURIComponent(eventId)}&locale=${encodeURIComponent(locale)}`,
+        `/api/setlist?eventId=${encodeURIComponent(fetchEventId)}&locale=${encodeURIComponent(fetchLocale)}`,
         { cache: "no-store", signal: controller.signal },
       );
-      // Post-await aborted check: the network response may have
-      // arrived just as eventId/locale changed and the cleanup
-      // fired abort(). Bail before parsing + writing setState.
-      if (controller.signal.aborted) return;
+      // Two-check freshness guard, see ref docstring above:
+      //   - signal.aborted catches the case where the cleanup ran
+      //     and called abort() on this controller.
+      //   - eventIdRef/localeRef mismatch catches the render-commit
+      //     →cleanup gap window where eventId already changed but
+      //     the cleanup hasn't fired abort() yet.
+      if (
+        controller.signal.aborted ||
+        eventIdRef.current !== fetchEventId ||
+        localeRef.current !== fetchLocale
+      ) {
+        return;
+      }
       if (!res.ok) return;
       const data = (await res.json()) as {
         items: T[];
@@ -126,9 +167,16 @@ export function useSetlistPolling<T>({
         status?: ResolvedEventStatus | null;
         updatedAt: string;
       };
-      // Second post-await check: json parse may have resolved in
-      // the same window as a deferred abort. Cheap belt-and-braces.
-      if (controller.signal.aborted) return;
+      // Second post-await freshness check — the json parse may have
+      // resolved across an event-change boundary even after the
+      // first check passed.
+      if (
+        controller.signal.aborted ||
+        eventIdRef.current !== fetchEventId ||
+        localeRef.current !== fetchLocale
+      ) {
+        return;
+      }
       setItems(data.items);
       setReactionCounts(data.reactionCounts ?? {});
       // `?? []` when a polled response omits `top3Wishes` (older API
@@ -152,9 +200,18 @@ export function useSetlistPolling<T>({
       }
       setLastUpdated(data.updatedAt);
     } catch (err) {
-      // AbortError from the cleanup or supersede path — silent.
+      // AbortError from the cleanup path — silent.
       if (err instanceof DOMException && err.name === "AbortError") return;
       // Network/JSON parse failure — also silent; next tick retries.
+    } finally {
+      // Clear abortRef so the next tick is allowed to fire — but
+      // ONLY if THIS controller is still the one stored. If the
+      // useEffect cleanup already aborted us and reset the ref to
+      // null (or a brand-new controller for the next eventId is
+      // already there), don't clobber. CR #298 round 3.
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
   }, [eventId, locale]);
 
