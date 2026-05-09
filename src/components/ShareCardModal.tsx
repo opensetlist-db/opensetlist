@@ -31,11 +31,12 @@ interface Props {
   predictedCount: number;
   locale: string;
   /**
-   * Canonical event URL, used by the "Copy link" CTA. The
-   * `shareCard()` helper no longer consumes a text/URL payload —
-   * v0.10.x dropped both the Twitter intent open and the
-   * navigator.share path in favor of a download-only flow (see
-   * `src/lib/shareCard.ts` docstring).
+   * Canonical event URL, forwarded as the `url` field of the
+   * `shareCard({ share })` payload so URL-aware native share targets
+   * (Twitter, Discord, etc.) get an unfurl when the OS sheet path is
+   * taken. Ignored on the download fallback. Threaded through
+   * regardless of capability — the helper only consults it inside the
+   * native-share branch.
    */
   shareUrl: string;
 }
@@ -45,16 +46,24 @@ interface Props {
  *
  * The user opens it from `<ShareCardButton>` (post-show only). The
  * modal renders `<ShareCardPreview>` (the html2canvas capture
- * target), a dark/light theme toggle, and two CTA buttons:
+ * target), a dark/light theme toggle, and one CTA button:
  *
  *   - 이미지 저장: triggers `shareCard()` which rasterizes the
- *     preview and downloads it as a PNG. The user shares the saved
- *     file manually wherever they want — Twitter web compose,
- *     KakaoTalk, Discord, Photos. v0.10.x dropped the earlier
- *     "Share to Twitter" branding because Twitter's web intent
- *     is text+URL only and `navigator.share` doesn't reliably
- *     surface Twitter in the OS sheet.
- *   - 링크 복사: copies the canonical event URL via Clipboard API.
+ *     preview, then either opens the OS share sheet (when
+ *     `navigator.canShare({ files })` is supported — typical mobile
+ *     + recent Safari/Chromium desktop) or falls back to a PNG
+ *     download (typical desktop). The native-share payload includes
+ *     the event title, a score-summary text body, and the canonical
+ *     event URL so platforms that compose a body alongside the file
+ *     (Messages, email, Twitter compose) get sensible defaults.
+ *
+ * The earlier "링크 복사" sibling CTA was removed in v0.10.2 because
+ * the label implied a per-image URL, but the share card is rendered
+ * client-side and never hosted — the button only ever copied the
+ * event URL, under-delivering on its implied promise. The native-
+ * share path's `url` field already covers the share-the-link intent
+ * for OS-sheet users; everyone else can grab the URL from the event
+ * page's address bar.
  *
  * Accessibility: `Escape` closes; click-outside closes; first
  * focusable element gets focus on open. role=dialog + aria-modal +
@@ -134,13 +143,29 @@ export function ShareCardModal({
     try {
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
+        // Native-share payload — only consulted when the OS sheet
+        // path is taken. Title for surfaces that show one (Twitter
+        // compose, KakaoTalk caption); text for ones that compose a
+        // body (Messages, email); url so users on URL-aware targets
+        // (Twitter, Discord) get an unfurl. The image File itself is
+        // always attached regardless of which fields the platform
+        // honors.
+        share: {
+          title: eventTitle,
+          text: t("shareText", { matched, total, percentage }),
+          url: shareUrl,
+        },
       });
       if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
+      // `shared` and `cancelled` are intentionally silent — the OS
+      // share sheet already gave the user feedback (a toast, an
+      // animation, or just dismissed). Surfacing our own toast on
+      // top would be redundant and noisy.
       // CR #295: surface a toast on error too. Without it, a tainted-
       // canvas / OOM / driver-bug failure leaves the user with no
       // feedback — the spinner stops, but they can't tell whether the
-      // download silently succeeded or quietly broke. The toast tells
-      // them to retry or fall back to "Copy link".
+      // image silently succeeded or quietly broke. The toast tells
+      // them to retry.
       else if (outcome.kind === "error") setToast(t("imageErrorToast"));
     } catch {
       // Defensive: today's `shareCard()` catches every internal async
@@ -154,20 +179,6 @@ export function ShareCardModal({
       setToast(t("imageErrorToast"));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const handleCopyLink = async () => {
-    if (busy) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setToast(t("linkCopiedToast"));
-    } catch {
-      // Clipboard API requires HTTPS + user gesture (both present
-      // here normally). Surface a toast so a failed copy isn't
-      // silent — user knows to copy the URL manually instead of
-      // assuming success and moving on. CR #281 caught this.
-      setToast(t("linkCopyFailedToast"));
     }
   };
 
@@ -278,9 +289,7 @@ export function ShareCardModal({
             className="text-sm font-medium rounded-full px-5 py-2 cursor-pointer"
             style={{
               // Brand blue gradient (matches the `결과 공유 🎯`
-              // opener in `<ShareCardButton>`) instead of the
-              // earlier Twitter-blue `#1d9bf0`. The button no longer
-              // claims Twitter, so the brand color reads cleaner.
+              // opener in `<ShareCardButton>`).
               background: busy
                 ? "#94a3b8"
                 : "linear-gradient(135deg, #4FC3F7, #0277BD)",
@@ -290,20 +299,6 @@ export function ShareCardModal({
             }}
           >
             {t("saveImage")}
-          </button>
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            disabled={busy}
-            className="text-sm rounded-full px-5 py-2 cursor-pointer"
-            style={{
-              background: "white",
-              color: "#475569",
-              border: "1px solid #e2e8f0",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            {t("copyLink")}
           </button>
         </div>
 

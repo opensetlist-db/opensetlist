@@ -344,11 +344,21 @@ export function EventWishSection({
                       ✕
                     </button>
                   )}
-                  <span
-                    className="flex-1 text-xs truncate"
-                    style={{ color: colors.textPrimary }}
-                  >
-                    {display.main}
+                  <span className="flex-1 text-xs truncate min-w-0">
+                    <SongMatchBadge
+                      songId={entry.songId}
+                      setlistItems={setlistItems}
+                      // Pre-show: no actual setlist yet, suppress the
+                      // highlight so my-list reads as "candidate songs"
+                      // rather than "winners". Mirrors the right-column
+                      // (모두의 희망곡) gate. Once `isLocked` flips at
+                      // startTime, both columns light up matched rows.
+                      disabled={!isLocked}
+                    >
+                      <span style={{ color: colors.textPrimary }}>
+                        {display.main}
+                      </span>
+                    </SongMatchBadge>
                     {display.sub && (
                       <span
                         className="ml-1 text-[11px]"

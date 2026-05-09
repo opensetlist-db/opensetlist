@@ -25,7 +25,7 @@ interface Props {
   /**
    * D-7 open-window indicator: caller computes via
    * `shouldShowWishBadge(daysUntilUTC(start, now))`. When true the
-   * card grows a `🌸 예상 오픈` badge next to the D-day chip and
+   * card grows a `🌸 세트리스트 예상 가능` badge next to the D-day chip and
    * swaps the resting border to `colors.wishlistBorder` to draw the
    * eye toward events the user can engage with right now.
    * Falsy default keeps non-home consumers (if any future page
@@ -134,7 +134,7 @@ export function UpcomingCard({
             count. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span
-            className="text-[11px] font-bold"
+            className="whitespace-nowrap text-[11px] font-bold"
             style={{
               color: colors.upcoming,
               background: colors.upcomingBg,
@@ -147,7 +147,7 @@ export function UpcomingCard({
           </span>
           {showWishBadge && (
             <span
-              className="text-[11px] font-semibold"
+              className="whitespace-nowrap text-[11px] font-semibold"
               style={{
                 color: colors.wishlistText,
                 background: colors.wishlistBg,
@@ -161,7 +161,7 @@ export function UpcomingCard({
           )}
         </div>
         <span
-          className="text-[11px]"
+          className="whitespace-nowrap text-[11px]"
           style={{ color: colors.textMuted }}
         >
           {formattedDate}

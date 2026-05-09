@@ -29,16 +29,74 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("shareCard — download path (single platform-agnostic flow)", () => {
-  // v0.10.x rewrote `shareCard` to a single download-only flow. The
-  // earlier mobile (`navigator.share`) + desktop (`window.open` Twitter
-  // intent) split was dropped because Twitter's web intent doesn't
-  // accept image attachments AND `navigator.share` doesn't reliably
-  // surface Twitter in the OS share sheet (operator-confirmed during
-  // smoke). Tests here pin the download path specifically; there is
-  // no longer a `shared` / `cancelled` / `popup_blocked` outcome.
+describe("shareCard — native share path (mobile + canShare-capable browsers)", () => {
+  it("calls navigator.share with the file when canShare({ files }) returns true, returns kind: shared", async () => {
+    const shareSpy = vi.fn().mockResolvedValue(undefined);
+    const canShareSpy = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("navigator", {
+      canShare: canShareSpy,
+      share: shareSpy,
+    });
+    const cardEl = document.createElement("div");
 
+    const outcome = await shareCard({
+      cardEl,
+      share: { title: "T", text: "X", url: "https://example.com" },
+    });
+
+    expect(outcome).toEqual({ kind: "shared" });
+    expect(canShareSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ files: expect.any(Array) }),
+    );
+    expect(shareSpy).toHaveBeenCalledTimes(1);
+    const payload = shareSpy.mock.calls[0][0];
+    expect(payload.files).toHaveLength(1);
+    expect(payload.files[0]).toBeInstanceOf(File);
+    expect(payload.files[0].type).toBe("image/png");
+    expect(payload.title).toBe("T");
+    expect(payload.text).toBe("X");
+    expect(payload.url).toBe("https://example.com");
+  });
+
+  it("returns kind: cancelled when navigator.share rejects with AbortError (user dismissed sheet)", async () => {
+    const abort = new DOMException("aborted", "AbortError");
+    vi.stubGlobal("navigator", {
+      canShare: vi.fn().mockReturnValue(true),
+      share: vi.fn().mockRejectedValue(abort),
+    });
+    const cardEl = document.createElement("div");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "cancelled" });
+  });
+
+  it("falls back to download when navigator.share rejects with a non-abort error", async () => {
+    vi.stubGlobal("navigator", {
+      canShare: vi.fn().mockReturnValue(true),
+      share: vi.fn().mockRejectedValue(new Error("permission denied")),
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
+    });
+    const appendChildSpy = vi.spyOn(document.body, "appendChild");
+    const cardEl = document.createElement("div");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "downloaded" });
+    const appended = appendChildSpy.mock.calls.find(
+      ([n]) => (n as HTMLElement).tagName === "A",
+    );
+    expect(appended).toBeTruthy();
+  });
+});
+
+describe("shareCard — download fallback (no canShare support)", () => {
   it("rasterizes via html2canvas and triggers an anchor download, returning kind: downloaded", async () => {
+    // No navigator stub → typeof navigator.canShare !== 'function' →
+    // skip the share branch entirely and go straight to download.
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
       revokeObjectURL: vi.fn(),
@@ -78,29 +136,25 @@ describe("shareCard — download path (single platform-agnostic flow)", () => {
     );
   });
 
-  it("does NOT call navigator.share or window.open (no platform-integration paths remain)", async () => {
-    // Regression guard: the v0.10.x rewrite drops both branches.
-    // If someone re-introduces either accidentally, this assertion
-    // catches it before users see an empty Twitter compose window
-    // or a missing-from-share-sheet bug again.
+  it("falls back to download when canShare({ files }) returns false (e.g. desktop without file-share)", async () => {
+    // navigator exists, share fn exists, but the platform refuses to
+    // share files (typical on older desktop Chrome). Should skip the
+    // share path and download instead.
     const shareSpy = vi.fn();
-    const openSpy = vi.fn();
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
+      canShare: vi.fn().mockReturnValue(false),
       share: shareSpy,
     });
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
       revokeObjectURL: vi.fn(),
     });
-    vi.stubGlobal("open", openSpy);
     const cardEl = document.createElement("div");
 
     const outcome = await shareCard({ cardEl });
 
     expect(outcome).toEqual({ kind: "downloaded" });
     expect(shareSpy).not.toHaveBeenCalled();
-    expect(openSpy).not.toHaveBeenCalled();
   });
 });
 
