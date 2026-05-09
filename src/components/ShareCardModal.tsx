@@ -173,20 +173,6 @@ export function ShareCardModal({
     }
   };
 
-  const handleCopyLink = async () => {
-    if (busy) return;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setToast(t("linkCopiedToast"));
-    } catch {
-      // Clipboard API requires HTTPS + user gesture (both present
-      // here normally). Surface a toast so a failed copy isn't
-      // silent — user knows to copy the URL manually instead of
-      // assuming success and moving on. CR #281 caught this.
-      setToast(t("linkCopyFailedToast"));
-    }
-  };
-
   const handleThemeChange = (m: ShareCardTheme) => {
     if (busy) return;
     setTheme(m);
@@ -294,9 +280,7 @@ export function ShareCardModal({
             className="text-sm font-medium rounded-full px-5 py-2 cursor-pointer"
             style={{
               // Brand blue gradient (matches the `결과 공유 🎯`
-              // opener in `<ShareCardButton>`) instead of the
-              // earlier Twitter-blue `#1d9bf0`. The button no longer
-              // claims Twitter, so the brand color reads cleaner.
+              // opener in `<ShareCardButton>`).
               background: busy
                 ? "#94a3b8"
                 : "linear-gradient(135deg, #4FC3F7, #0277BD)",
@@ -306,20 +290,6 @@ export function ShareCardModal({
             }}
           >
             {t("saveImage")}
-          </button>
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            disabled={busy}
-            className="text-sm rounded-full px-5 py-2 cursor-pointer"
-            style={{
-              background: "white",
-              color: "#475569",
-              border: "1px solid #e2e8f0",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            {t("copyLink")}
           </button>
         </div>
 
