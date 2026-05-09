@@ -326,17 +326,17 @@
     "disagreeAria": "間違っている"
   },
   "Wishlist": {
-    "title": "リクエスト",
-    "lockedTitle": "ファンのリクエスト TOP3",
+    "title": "この公演で聴きたい曲",
+    "lockedTitle": "みんなの希望曲",
     "cap": "最大3曲",
-    "myList": "自分の選択",
-    "fanTop3": "ファン TOP3",
-    "add": "+ 追加",
+    "myList": "私の希望曲",
+    "fanTop3": "みんなの希望曲",
+    "add": "+ 曲を追加",
     "cancel": "キャンセル",
     "searchPlaceholder": "曲を検索...",
     "searchLoading": "検索中...",
     "searchNoResults": "検索結果なし",
-    "removeAria": "リクエストから削除",
+    "removeAria": "希望曲から削除",
     "count": "{count}人"
   },
   "Impression": {
