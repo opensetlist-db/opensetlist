@@ -326,8 +326,8 @@
     "disagreeAria": "잘못됨"
   },
   "Wishlist": {
-    "title": "희망곡",
-    "lockedTitle": "팬들의 희망곡 TOP3",
+    "title": "이번 공연에서 듣고 싶은 곡",
+    "lockedTitle": "모두의 희망곡",
     "cap": "최대 3곡",
     "myList": "내 선택",
     "fanTop3": "팬 TOP3",

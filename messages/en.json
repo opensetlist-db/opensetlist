@@ -326,8 +326,8 @@
     "disagreeAria": "Mark as incorrect"
   },
   "Wishlist": {
-    "title": "Wishlist",
-    "lockedTitle": "Fan wishlist TOP3",
+    "title": "Songs you want to hear at this show",
+    "lockedTitle": "Everyone's wishlist",
     "cap": "Up to 3",
     "myList": "My picks",
     "fanTop3": "Fan TOP3",

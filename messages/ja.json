@@ -326,8 +326,8 @@
     "disagreeAria": "間違っている"
   },
   "Wishlist": {
-    "title": "リクエスト",
-    "lockedTitle": "ファンのリクエスト TOP3",
+    "title": "この公演で聴きたい曲",
+    "lockedTitle": "みんなのリクエスト",
     "cap": "最大3曲",
     "myList": "自分の選択",
     "fanTop3": "ファン TOP3",
