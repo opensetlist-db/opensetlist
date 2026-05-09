@@ -229,7 +229,7 @@ describe("SetlistSection", () => {
 
   it("D-7 gate (pre-D-7 upcoming, no actual, no stored predictions): emptyFallback renders — predict tab hidden until window opens", () => {
     // Pre-D-7 path: a first-time visitor on an upcoming event 8+
-    // days out should NOT see the Predict tab (the `🌸 예상 오픈`
+    // days out should NOT see the Predict tab (the `🌸 세트리스트 예상 가능`
     // window hasn't opened yet). The page falls through to
     // `emptyFallback`. Once the event crosses D-7 the gate flips
     // and the existing first-visitor path takes over again.

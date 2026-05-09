@@ -25,7 +25,7 @@ interface Props {
   /**
    * D-7 open-window indicator: caller computes via
    * `shouldShowWishBadge(daysUntilUTC(start, now))`. When true the
-   * card grows a `🌸 예상 오픈` badge next to the D-day chip and
+   * card grows a `🌸 세트리스트 예상 가능` badge next to the D-day chip and
    * swaps the resting border to `colors.wishlistBorder` to draw the
    * eye toward events the user can engage with right now.
    * Falsy default keeps non-home consumers (if any future page

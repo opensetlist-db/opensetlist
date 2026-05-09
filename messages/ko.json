@@ -13,7 +13,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, other {#시간 남음}}",
     "minutesLeft": "{minutes, plural, other {#분 남음}}",
-    "wishOpen": "예상 오픈",
+    "wishOpen": "세트리스트 예상 가능",
     "noEvents": "곧 공연 정보가 업데이트됩니다.",
     "noUpcoming": "앞으로 30일 이내 예정된 공연이 없어요.",
     "noRecent": "최근 30일 이내 진행된 공연이 없어요."
