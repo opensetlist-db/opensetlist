@@ -134,8 +134,24 @@ export function ShareCardModal({
     try {
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
+        // Native-share payload — only consulted when the OS sheet
+        // path is taken. Title for surfaces that show one (Twitter
+        // compose, KakaoTalk caption); text for ones that compose a
+        // body (Messages, email); url so users on URL-aware targets
+        // (Twitter, Discord) get an unfurl. The image File itself is
+        // always attached regardless of which fields the platform
+        // honors.
+        share: {
+          title: eventTitle,
+          text: t("shareText", { matched, total, percentage }),
+          url: shareUrl,
+        },
       });
       if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
+      // `shared` and `cancelled` are intentionally silent — the OS
+      // share sheet already gave the user feedback (a toast, an
+      // animation, or just dismissed). Surfacing our own toast on
+      // top would be redundant and noisy.
       // CR #295: surface a toast on error too. Without it, a tainted-
       // canvas / OOM / driver-bug failure leaves the user with no
       // feedback — the spinner stops, but they can't tell whether the
