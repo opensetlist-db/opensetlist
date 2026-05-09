@@ -13,7 +13,7 @@
     "dDay": "D-{days}",
     "hoursLeft": "{hours, plural, one {# hour left} other {# hours left}}",
     "minutesLeft": "{minutes, plural, one {# min left} other {# mins left}}",
-    "wishOpen": "Predict open",
+    "wishOpen": "Setlist Prediction Available",
     "noEvents": "Event listings coming soon.",
     "noUpcoming": "No upcoming events in the next 30 days.",
     "noRecent": "No recent events in the last 30 days."
