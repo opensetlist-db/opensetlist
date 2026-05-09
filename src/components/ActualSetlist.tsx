@@ -16,6 +16,8 @@ import {
 import { getConfirmStatus } from "@/lib/confirmStatus";
 import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 import { useLocalDisagree } from "@/hooks/useLocalDisagree";
+import { trackEvent } from "@/lib/analytics";
+import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 
 interface Props {
   items: LiveSetlistItem[];
@@ -68,6 +70,24 @@ export function ActualSetlist({
   // handler.
   const handleConfirmTap = useCallback(
     (itemId: number) => {
+      // GA4 Phase 1B 🔴 5/23 Kobe blocking subset: fire BEFORE the
+      // toggleConfirm call (which contains the gated POST). The
+      // whole point of the Kobe UI-test event with
+      // `confirmDbEnabled=false` is measuring tap intent under the
+      // gated state — `db_enabled` is carried as a per-event param
+      // (not a session dimension) so the 5/30 flag flip is
+      // queryable in a single GA4 view across the cutover.
+      // The 1-min auto-promote in `getConfirmStatus` is NOT a tap;
+      // it lives in `deriveRowState` and never reaches this
+      // handler.
+      trackEvent("confirm_click", {
+        event_id: String(eventId),
+        setlist_item_id: String(itemId),
+        target_state: confirmedItemIds.has(itemId)
+          ? "to_unconfirmed"
+          : "to_confirmed",
+        db_enabled: LAUNCH_FLAGS.confirmDbEnabled,
+      });
       if (disagreedItemIds.has(itemId)) {
         // Clear opposing vote first. The disagree toggle is
         // idempotent — calling it on a present id removes it.
@@ -75,16 +95,40 @@ export function ActualSetlist({
       }
       toggleConfirm(itemId);
     },
-    [disagreedItemIds, toggleDisagree, toggleConfirm],
+    [
+      eventId,
+      confirmedItemIds,
+      disagreedItemIds,
+      toggleDisagree,
+      toggleConfirm,
+    ],
   );
   const handleDisagreeTap = useCallback(
     (itemId: number) => {
+      // GA4 Phase 1B: local-only at v0.10.x (no server endpoint
+      // yet — Week 3 work). No `db_enabled` param since there's
+      // no DB write to gate. Mutual-exclusivity below is a UI
+      // mechanic, not a separate user action; we don't fire a
+      // confirm_click for the auto-clear of the opposite vote.
+      trackEvent("disagree_click", {
+        event_id: String(eventId),
+        setlist_item_id: String(itemId),
+        target_state: disagreedItemIds.has(itemId)
+          ? "to_undisagreed"
+          : "to_disagreed",
+      });
       if (confirmedItemIds.has(itemId)) {
         toggleConfirm(itemId);
       }
       toggleDisagree(itemId);
     },
-    [confirmedItemIds, toggleConfirm, toggleDisagree],
+    [
+      eventId,
+      confirmedItemIds,
+      disagreedItemIds,
+      toggleConfirm,
+      toggleDisagree,
+    ],
   );
 
   const mainItems = items.filter((item) => !item.isEncore);

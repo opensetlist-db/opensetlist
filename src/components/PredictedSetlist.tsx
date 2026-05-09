@@ -29,6 +29,7 @@ import {
 } from "@/lib/predictionsStorage";
 import { calcPredictScore } from "@/lib/predictScore";
 import { isSongMatched } from "@/lib/songMatch";
+import { trackEvent } from "@/lib/analytics";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
@@ -141,6 +142,28 @@ export function PredictedSetlist({
     if (isLocked) markLocked(eventId);
   }, [isLocked, eventId]);
 
+  // GA4 Phase 1B `predict_lock_view`: track the first observation
+  // of the locked Predicted view per session, per event. The KPI
+  // is "% of returning visitors who view live results during the
+  // show" — sessionStorage is intentional (not localStorage) so
+  // the count resets across sessions; a long-running tab that
+  // crosses startTime fires once at that transition. Best-effort:
+  // private-mode browsers throw on sessionStorage access, in
+  // which case we still fire (one extra event per pageview is
+  // preferable to silently losing the metric for that audience).
+  useEffect(() => {
+    if (!isLocked) return;
+    if (typeof window === "undefined") return;
+    const key = `predict_lock_viewed:${eventId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {
+      // private mode / quota — fall through and fire anyway.
+    }
+    trackEvent("predict_lock_view", { event_id: String(eventId) });
+  }, [isLocked, eventId]);
+
   // ─── Predictions state ──────────────────────────────────────
   // Mounted-gated read of localStorage, mirroring EventWishSection
   // (avoids react-hooks/set-state-in-effect; the canonical project
@@ -186,6 +209,11 @@ export function PredictedSetlist({
         if (oldIndex < 0 || newIndex < 0) return prev;
         const next = arrayMove(prev, oldIndex, newIndex);
         writePredictions(eventId, next);
+        // GA4 Phase 1B: one fire per drop commit, never per drag
+        // pixel. The active.id === over.id no-op was rejected
+        // above; the index-not-found branch is rejected here. So we
+        // only reach this point when the order actually changed.
+        trackEvent("predict_reorder", { event_id: String(eventId) });
         return next;
       });
     },
@@ -224,6 +252,14 @@ export function PredictedSetlist({
       setPredictions(next);
       writePredictions(eventId, next);
       setSearchOpen(false);
+      // GA4 Phase 1B: track after the localStorage commit so a
+      // dedup short-circuit above never fires the event. No
+      // server confirmation needed — predictions are
+      // localStorage-only at v0.10.x.
+      trackEvent("predict_add", {
+        event_id: String(eventId),
+        song_id: String(song.id),
+      });
     },
     [eventId, predictions, isLocked],
   );
