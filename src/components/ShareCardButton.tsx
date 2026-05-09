@@ -97,7 +97,7 @@ export function ShareCardButton({
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
-          gap: 10,
+          gap: "10px",
         }}
       >
         {!enabled && (
@@ -115,11 +115,12 @@ export function ShareCardButton({
           aria-disabled={!enabled}
           className="text-sm font-medium rounded-full px-5 py-2"
           style={{
-            // Disabled: muted slate (matches the modal's `busy` state
-            // styling). Enabled: brand-blue gradient, same as before.
+            // Disabled: muted slate from the shared `colors.textMuted`
+            // token (same hex the modal's `busy` state uses inline).
+            // Enabled: brand-blue gradient, same as before.
             background: enabled
               ? "linear-gradient(135deg, #4FC3F7, #0277BD)"
-              : "#94a3b8",
+              : colors.textMuted,
             color: "white",
             border: "none",
             whiteSpace: "nowrap",
