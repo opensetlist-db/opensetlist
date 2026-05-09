@@ -448,7 +448,7 @@ export function SongSearch({
                 },
                 artist.translations,
                 locale,
-                "short",
+                "full",
               )
             : null;
           const isActive = index === activeIndex;
