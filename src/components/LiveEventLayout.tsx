@@ -5,6 +5,8 @@ import {
   useSetlistPolling,
   type ReactionCountsMap,
 } from "@/hooks/useSetlistPolling";
+import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
+import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import {
@@ -160,21 +162,45 @@ export function LiveEventLayout({
   // upcoming events fetches a duplicate snapshot — cheap, and the
   // single-channel architecture is worth it. Polling stays off for
   // completed/cancelled events.
-  const isPollingEnabled = status === "ongoing" || status === "upcoming";
+  const isActive = status === "ongoing" || status === "upcoming";
+
+  // R1 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`. Both
+  // hooks must always be called (rules-of-hooks), so we drive the
+  // pick via the `enabled` flag — only the active hook does any
+  // network work; the other returns its initial state unchanged.
+  // The boolean annotation widens away the literal `false` type so
+  // TypeScript keeps both branches in scope (otherwise the realtime
+  // hook would be statically dead code today).
+  //
+  // Activation flow mirrors `confirmDbEnabled`: a single commit
+  // flips the flag to `true` AND deletes the polling branch +
+  // useSetlistPolling import here. The hook file stays alive as
+  // R3's fallback mechanism — the activation removes only this
+  // call site, not the hook itself.
+  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
+  const polled = useSetlistPolling<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isActive && !realtimeFlag,
+  });
+  const realtime = useRealtimeEventChannel<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isActive && realtimeFlag,
+  });
   const {
     items,
     reactionCounts,
     top3Wishes,
     status: polledStatus,
     lastUpdated,
-  } = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    initialTop3Wishes: initialFanTop3,
-    locale,
-    enabled: isPollingEnabled,
-  });
+  } = realtimeFlag ? realtime : polled;
   // Effective status: polled value when available (server-authoritative
   // refresh, ~5s cadence), else fall back to the SSR-initial `status`
   // prop. The polled value catches the auto-status-flip on the
