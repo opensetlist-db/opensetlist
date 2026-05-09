@@ -26,21 +26,21 @@ interface Props {
 }
 
 /**
- * Post-show share button + modal trigger. Display gates per task
- * spec:
+ * Share button + modal trigger. The button now appears in two
+ * states so users learn the affordance exists *before* the show
+ * ends, instead of having it pop in only at completion:
  *
- *   showShareButton =
- *     event.status === 'completed' &&
- *     actualSetlist.length > 0 &&
- *     userPrediction.length > 0
+ *   - During show (`status === "ongoing"` + has predictions):
+ *     visible but disabled, with a "공연 종료 후 활성화됩니다"
+ *     hint to its left explaining the wait. No score yet, modal
+ *     unreachable.
+ *   - Post-show (`status === "completed"` + has actuals + has
+ *     predictions): enabled, full gradient, opens the share modal.
  *
- * When the gate fails, returns null (no button rendered). The
- * Predicted tab's during-show "결과 공유 (공연 종료 후 활성화됩니다)"
- * placeholder is intentionally NOT in this component — that's a
- * separate visual concern; the during-show placeholder belongs to
- * the during-show legend area, which can be added later if the
- * spec calls for it. For Phase 1B Stage C we ship the post-show
- * button only.
+ * Pre-show (`status === "upcoming"`) and zero-prediction cases
+ * still return null — there's nothing to share, so showing the
+ * button would just be noise. Prediction-locked-but-empty users
+ * also stay null since the share card has no payload to render.
  *
  * Score for the share card uses `calcShareCardScore` (order-
  * independent) — distinct from the live tab's position-rank rule
@@ -58,20 +58,24 @@ export function ShareCardButton({
   const t = useTranslations("Predict");
   const [open, setOpen] = useState(false);
 
-  // Gate: post-show + has actuals + has predictions.
-  const visible =
+  // Visibility: any time the user *has* predictions for an event
+  // that's mid-flight or finished. During the show the button is
+  // disabled (no score yet); after, it opens the modal.
+  const enabled =
     status === "completed" &&
     actualSongs.length > 0 &&
     predictions.length > 0;
+  const visible =
+    enabled || (status === "ongoing" && predictions.length > 0);
 
-  // Compute share-card score (order-independent). LiveSetlistItem
-  // has `id: number` so it satisfies the calcShareCardScore
-  // signature (`SongMatchInputItem & { id }`) structurally — no
-  // cast needed.
+  // Compute share-card score (order-independent) only when enabled.
+  // LiveSetlistItem has `id: number` so it satisfies
+  // calcShareCardScore's `SongMatchInputItem & { id }` signature
+  // structurally — no cast needed.
   const score = useMemo(() => {
-    if (!visible) return { matched: 0, total: 0, percentage: 0 };
+    if (!enabled) return { matched: 0, total: 0, percentage: 0 };
     return calcShareCardScore(predictions, actualSongs);
-  }, [visible, predictions, actualSongs]);
+  }, [enabled, predictions, actualSongs]);
 
   if (!visible) return null;
 
@@ -93,38 +97,61 @@ export function ShareCardButton({
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
+          gap: 10,
         }}
       >
+        {!enabled && (
+          <span
+            className="text-[11px]"
+            style={{ color: colors.textMuted }}
+          >
+            {t("shareDisabled")}
+          </span>
+        )}
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="text-sm font-medium rounded-full px-5 py-2 cursor-pointer"
+          onClick={() => enabled && setOpen(true)}
+          disabled={!enabled}
+          aria-disabled={!enabled}
+          className="text-sm font-medium rounded-full px-5 py-2"
           style={{
-            background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+            // Disabled: muted slate (matches the modal's `busy` state
+            // styling). Enabled: brand-blue gradient, same as before.
+            background: enabled
+              ? "linear-gradient(135deg, #4FC3F7, #0277BD)"
+              : "#94a3b8",
             color: "white",
             border: "none",
             whiteSpace: "nowrap",
+            cursor: enabled ? "pointer" : "not-allowed",
+            opacity: enabled ? 1 : 0.85,
           }}
         >
           {t("shareButton")}
         </button>
       </div>
 
-      <ShareCardModal
-        open={open}
-        onClose={() => setOpen(false)}
-        seriesName={seriesName}
-        eventTitle={eventTitle}
-        dateLine={dateLine}
-        actualSongs={actualSongs}
-        predictions={predictions}
-        matched={score.matched}
-        total={score.total}
-        percentage={score.percentage}
-        predictedCount={predictions.length}
-        locale={locale}
-        shareUrl={eventUrl}
-      />
+      {/* Modal only mounts in the enabled path — `open` can never
+          flip true while disabled (the click handler short-circuits)
+          but gating render here avoids carrying html2canvas + modal
+          state for users who can't reach it. */}
+      {enabled && (
+        <ShareCardModal
+          open={open}
+          onClose={() => setOpen(false)}
+          seriesName={seriesName}
+          eventTitle={eventTitle}
+          dateLine={dateLine}
+          actualSongs={actualSongs}
+          predictions={predictions}
+          matched={score.matched}
+          total={score.total}
+          percentage={score.percentage}
+          predictedCount={predictions.length}
+          locale={locale}
+          shareUrl={eventUrl}
+        />
+      )}
     </>
   );
 }
