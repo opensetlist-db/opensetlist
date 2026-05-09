@@ -1,30 +1,28 @@
 /**
- * Share Card capture + download (Phase 1B Stage C, simplified for
- * v0.10.x).
+ * Share Card capture + native-share-or-download.
  *
- * Single path on every platform: rasterize `cardEl` via html2canvas,
- * then trigger a PNG download via `<a download>`. The user shares the
- * saved file manually wherever they want (Twitter web compose,
- * KakaoTalk, Discord, Photos, etc.).
+ * Two paths depending on capability:
  *
- * Earlier versions had two paths — `navigator.share({ files })` on
- * mobile and `window.open(twitter.com/intent/tweet)` + download on
- * desktop. Both were dropped in favor of the simpler download-only
- * flow because:
+ *   1. Native share (mobile + any browser exposing
+ *      `navigator.canShare({ files })`): rasterize, build a `File`,
+ *      hand it to `navigator.share({ files, title, text, url })`.
+ *      The OS share sheet appears with the user's installed apps —
+ *      Photos / Messages / KakaoTalk / Twitter / etc. — and we do
+ *      nothing further. Successful share returns `kind: "shared"`.
+ *      User-dismiss returns `kind: "cancelled"` (silent — no toast).
  *
- *   - Twitter's web intent (`twitter.com/intent/tweet?text=…&url=…`)
- *     is text+URL only — there is no API to attach images via URL
- *     params. Users who tapped "Share to Twitter" on desktop saw an
- *     empty compose window and concluded the button was broken.
- *   - `navigator.share({ files })` only surfaces apps that registered
- *     for `image/png` AND have an active share extension. Twitter
- *     does not always appear in the OS sheet (operator-confirmed
- *     during v0.10.x smoke), making the "Share to Twitter" branding
- *     a broken promise on those devices.
+ *   2. Download fallback (desktop browsers + any environment that
+ *      can't share files): trigger a PNG file download via
+ *      `<a download>`, returning `kind: "downloaded"`. The user
+ *      manually attaches it wherever they want.
  *
- * Download is the only path that works identically on every browser /
- * OS / installed-app combination. The "Copy link" sibling CTA in
- * `<ShareCardModal>` covers the URL-paste case.
+ * History note: the v0.10.x rewrite collapsed both paths into
+ * download-only, because the original mobile branch was branded as
+ * "Share to Twitter" and Twitter doesn't always surface in the OS
+ * share sheet. This version reintroduces native share with a
+ * different framing — it's the generic OS sheet, no app promised —
+ * so the missing-Twitter case is no longer a broken contract; it's
+ * just one fewer option in a list the user already understands.
  *
  * `html2canvas` is dynamic-imported (~150KB lib) so the regular
  * event-page bundle doesn't grow — only loaded when the share button
@@ -33,6 +31,8 @@
 
 export type ShareOutcome =
   | { kind: "downloaded" }
+  | { kind: "shared" }
+  | { kind: "cancelled" }
   | { kind: "error"; message: string };
 
 /**
@@ -56,19 +56,36 @@ const REVOKE_URL_DELAY_MS = 1_000;
 
 export interface ShareCardOptions {
   cardEl: HTMLElement;
-  /** PNG filename (download path). */
+  /** PNG filename (used as the File name for share, and as the
+   *  download attribute for the fallback path). */
   filename?: string;
+  /**
+   * Optional payload for `navigator.share`. Only consulted when the
+   * native-share path is taken; ignored on the download fallback.
+   * Each field is forwarded as-is — see the Web Share API spec for
+   * platform-specific behavior (some surfaces use `title`, some
+   * compose `text + url`, some only attach the file).
+   */
+  share?: {
+    title?: string;
+    text?: string;
+    url?: string;
+  };
 }
 
 const DEFAULT_FILENAME = "opensetlist-result.png";
 
 /**
- * Capture `cardEl` to a PNG and trigger a file download. Returns a
- * `ShareOutcome` so the caller can surface the appropriate toast.
+ * Capture `cardEl` to a PNG, then either open the OS share sheet
+ * (when `navigator.canShare({ files })` says yes) or fall back to a
+ * file download. Returns a `ShareOutcome` so the caller can surface
+ * the appropriate toast (or, in the share-success / cancel case,
+ * stay silent — the OS already owns the user feedback).
  */
 export async function shareCard({
   cardEl,
   filename = DEFAULT_FILENAME,
+  share,
 }: ShareCardOptions): Promise<ShareOutcome> {
   // Dynamic import keeps html2canvas out of the main bundle.
   // The package's default export is the function we want.
@@ -109,10 +126,43 @@ export async function shareCard({
     return { kind: "error", message: "canvas.toBlob returned null" };
   }
 
-  // Trigger the download via a hidden `<a download>`. The synchronous
-  // `.click()` initiates the file write before the function returns;
-  // the object URL is revoked after a brief grace period to be safe
-  // on slow file systems.
+  // Native-share branch — the preferred path on mobile and on any
+  // desktop browser that supports file-share (Safari, Edge, recent
+  // Chromium on macOS). `canShare({ files })` is the right gate: it
+  // returns false when the platform can't attach files even if
+  // `navigator.share` itself exists, so a positive result means the
+  // OS will actually show a usable sheet. AbortError = user dismissed
+  // the sheet → silent `cancelled`. Any other share failure (rare:
+  // file-too-large, permission denied) falls through to the download
+  // fallback so the user still gets the image.
+  const file = new File([blob], filename, { type: "image/png" });
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.canShare === "function" &&
+    typeof navigator.share === "function" &&
+    navigator.canShare({ files: [file] })
+  ) {
+    try {
+      const payload: ShareData = { files: [file] };
+      if (share?.title) payload.title = share.title;
+      if (share?.text) payload.text = share.text;
+      if (share?.url) payload.url = share.url;
+      await navigator.share(payload);
+      return { kind: "shared" };
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return { kind: "cancelled" };
+      }
+      // Non-abort failure — fall through to the download fallback so
+      // the user always ends up with the image one way or the other.
+    }
+  }
+
+  // Download fallback — triggered when canShare is unsupported or
+  // the share path threw a non-abort error. Synchronous `.click()`
+  // initiates the file write before the function returns; the object
+  // URL is revoked after a brief grace period to be safe on slow file
+  // systems.
   try {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
