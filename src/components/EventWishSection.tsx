@@ -7,6 +7,7 @@ import { SongMatchBadge } from "@/components/SongMatchBadge";
 import { displayOriginalTitle } from "@/lib/display";
 import { useMounted } from "@/hooks/useMounted";
 import { readWishes, writeWishes, type WishEntry } from "@/lib/wishStorage";
+import { trackEvent } from "@/lib/analytics";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import type { SongMatchInputItem } from "@/lib/songMatch";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -206,6 +207,13 @@ export function EventWishSection({
         ];
         setMyWishes(next);
         writeWishes(eventId, next);
+        // GA4 Phase 1B: track only after server-confirmed add. Sits
+        // in the user-action callback (not a polling-derived effect)
+        // so the PR #298 cross-event polling race can't replay it.
+        trackEvent("wish_add", {
+          event_id: String(eventId),
+          song_id: String(song.id),
+        });
       } catch {
         // Rollback. Optimistic UI flips back to the snapshot; nothing
         // persisted to localStorage so refresh would also show the
@@ -240,6 +248,13 @@ export function EventWishSection({
           { method: "DELETE" },
         );
         if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+        // GA4 Phase 1B: track only after server-confirmed delete.
+        // `entry.songId` (the DB Song.id), NOT `entry.dbId` (the
+        // EventWish row id) — KPI groups by song.
+        trackEvent("wish_remove", {
+          event_id: String(eventId),
+          song_id: String(entry.songId),
+        });
       } catch {
         setMyWishes(snapshot);
         writeWishes(eventId, snapshot);

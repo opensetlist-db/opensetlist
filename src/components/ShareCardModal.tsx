@@ -4,9 +4,35 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardPreview } from "@/components/ShareCardPreview";
 import { shareCard, type ShareOutcome } from "@/lib/shareCard";
+import { trackEvent } from "@/lib/analytics";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { zIndex, type ShareCardTheme } from "@/styles/tokens";
+
+/**
+ * Classify a `shareCard()` error message into one of the four
+ * `share_card_save_failed` reason buckets the GA4 KPI table groups
+ * by. The mapping is brittle by design — it inspects message
+ * strings produced by `src/lib/shareCard.ts`, which means a string
+ * change there will silently start emitting `'unknown'` for that
+ * path. That's acceptable: the helper is one file with three
+ * known throw sites and the unknown bucket is the safe fallback.
+ *
+ * Reasons:
+ *   - 'timeout'         → 10s `TO_BLOB_TIMEOUT_MS` elapsed
+ *                         (helper returns "canvas.toBlob returned null")
+ *   - 'tainted_canvas'  → CORS leak in capture (html2canvas / browser msg)
+ *   - 'oom'             → memory / allocation failure
+ *   - 'unknown'         → anything else, including future paths
+ */
+function classifyShareCardFailure(
+  message: string,
+): "timeout" | "tainted_canvas" | "oom" | "unknown" {
+  if (message === "canvas.toBlob returned null") return "timeout";
+  if (/tainted/i.test(message)) return "tainted_canvas";
+  if (/(memory|OOM|allocation)/i.test(message)) return "oom";
+  return "unknown";
+}
 
 /**
  * Toast auto-dismiss duration. 3s is long enough to read a short
@@ -19,6 +45,14 @@ const TOAST_DISMISS_MS = 3_000;
 interface Props {
   open: boolean;
   onClose: () => void;
+  /**
+   * Event id for GA4 event params. Stringified at the call site
+   * (`<ShareCardButton>` already receives `eventId: string`),
+   * passed through unchanged so the modal can fire share_card_*
+   * events with consistent shapes alongside `<ShareCardButton>`'s
+   * `share_card_open`.
+   */
+  eventId: string;
   // Card payload + score (caller computes via calcShareCardScore).
   seriesName: string;
   eventTitle: string;
@@ -72,6 +106,7 @@ interface Props {
 export function ShareCardModal({
   open,
   onClose,
+  eventId,
   seriesName,
   eventTitle,
   dateLine,
@@ -156,17 +191,37 @@ export function ShareCardModal({
           url: shareUrl,
         },
       });
-      if (outcome.kind === "downloaded") setToast(t("imageSavedToast"));
-      // `shared` and `cancelled` are intentionally silent — the OS
-      // share sheet already gave the user feedback (a toast, an
-      // animation, or just dismissed). Surfacing our own toast on
-      // top would be redundant and noisy.
+      if (outcome.kind === "downloaded") {
+        // GA4 Phase 1B: same event for both download + native-share
+        // success — `outcome` param distinguishes desktop fallback
+        // from mobile OS-sheet path so KPI funnel stays one query.
+        trackEvent("share_card_save", {
+          event_id: String(eventId),
+          outcome: "downloaded",
+        });
+        setToast(t("imageSavedToast"));
+      } else if (outcome.kind === "shared") {
+        trackEvent("share_card_save", {
+          event_id: String(eventId),
+          outcome: "shared",
+        });
+        // `shared` and `cancelled` remain UI-silent — the OS share
+        // sheet already gave the user feedback. Cancellation
+        // intentionally fires no event (low-signal user action,
+        // would inflate the share-funnel denominator).
+      }
       // CR #295: surface a toast on error too. Without it, a tainted-
       // canvas / OOM / driver-bug failure leaves the user with no
       // feedback — the spinner stops, but they can't tell whether the
       // image silently succeeded or quietly broke. The toast tells
       // them to retry.
-      else if (outcome.kind === "error") setToast(t("imageErrorToast"));
+      else if (outcome.kind === "error") {
+        trackEvent("share_card_save_failed", {
+          event_id: String(eventId),
+          reason: classifyShareCardFailure(outcome.message),
+        });
+        setToast(t("imageErrorToast"));
+      }
     } catch {
       // Defensive: today's `shareCard()` catches every internal async
       // path and always returns a ShareOutcome rather than throwing.
@@ -176,6 +231,10 @@ export function ShareCardModal({
       // guarantees the same error toast even if shareCard rethrows,
       // and `finally` guarantees `busy` is released so the modal
       // doesn't lock. CR #295 round 2.
+      trackEvent("share_card_save_failed", {
+        event_id: String(eventId),
+        reason: "unknown",
+      });
       setToast(t("imageErrorToast"));
     } finally {
       setBusy(false);

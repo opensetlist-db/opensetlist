@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
 import { calcShareCardScore } from "@/lib/predictScore";
+import { trackEvent } from "@/lib/analytics";
 import { BASE_URL } from "@/lib/config";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
@@ -110,7 +111,15 @@ export function ShareCardButton({
         )}
         <button
           type="button"
-          onClick={() => enabled && setOpen(true)}
+          onClick={() => {
+            if (!enabled) return;
+            // GA4 Phase 1B: fire only on enabled-state taps. The
+            // PR #307 disabled-during-show variant is a no-op in
+            // the UI; tracking it would just inflate the
+            // share-funnel denominator with non-actions.
+            trackEvent("share_card_open", { event_id: String(eventId) });
+            setOpen(true);
+          }}
           disabled={!enabled}
           aria-disabled={!enabled}
           className="text-sm font-medium rounded-full px-5 py-2"
@@ -140,6 +149,7 @@ export function ShareCardButton({
         <ShareCardModal
           open={open}
           onClose={() => setOpen(false)}
+          eventId={eventId}
           seriesName={seriesName}
           eventTitle={eventTitle}
           dateLine={dateLine}
