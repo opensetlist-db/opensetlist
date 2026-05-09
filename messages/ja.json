@@ -299,7 +299,7 @@
     "searchLoading": "検索中...",
     "searchNoResults": "検索結果なし",
     "dividerLabel": "現在 {count}曲 — ここまでマッチング",
-    "legendLine": "区切り線の下 = まだマッチング範囲外 · 緑 = 出たが順位外",
+    "legendLine": "区切り線の下 = まだマッチング範囲外 · 薄い緑 = 出たが順位外",
     "preShowHint": "{count}曲入力済み",
     "duringHint": "{count}曲予想入力済み",
     "afterHint": "公演終了 · 最終結果",

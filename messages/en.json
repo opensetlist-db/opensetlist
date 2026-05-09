@@ -299,7 +299,7 @@
     "searchLoading": "Searching...",
     "searchNoResults": "No results",
     "dividerLabel": "{count, plural, one {Now # song — matched up to here} other {Now # songs — matched up to here}}",
-    "legendLine": "Below divider = out of match range · Green = played but out of rank",
+    "legendLine": "Below divider = out of match range · Light green = played but out of rank",
     "preShowHint": "{count, plural, one {# song entered} other {# songs entered}}",
     "duringHint": "{count, plural, one {# prediction entered} other {# predictions entered}}",
     "afterHint": "Show ended · Final result",
