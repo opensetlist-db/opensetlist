@@ -336,6 +336,17 @@ function ShareCardRow({
       <span
         style={{
           fontSize: 13,
+          // Explicit lineHeight: html2canvas reads the line-box from the
+          // computed style, and a span with `overflow:hidden +
+          // whiteSpace:nowrap` plus the browser default line-height
+          // collapses to roughly the font size. The captured PNG then
+          // clips glyph ascenders/descenders (visible on Latin chars
+          // with descenders and on CJK glyphs that paint slightly
+          // above the cap height). 1.5 gives ~20px of vertical room
+          // per row — comfortably above any glyph's natural extent
+          // without making the row noticeably taller than the live
+          // browser preview.
+          lineHeight: 1.5,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
