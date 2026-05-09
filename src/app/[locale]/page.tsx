@@ -184,6 +184,7 @@ interface OngoingView {
 }
 
 interface UpcomingView {
+  eventId: string;
   href: string;
   startTimeIso: string;
   seriesName: string | null;
@@ -310,6 +311,7 @@ export default async function HomePage({
       // condition can't drift apart (they share the same `now`).
       const days = daysUntilUTC(start, now);
       return {
+        eventId: String(e.id),
         href: eventHref(locale, e.id, eventName),
         startTimeIso: toIso(e.startTime),
         seriesName,
@@ -418,6 +420,7 @@ export default async function HomePage({
                     {upcomingViews.map((v) => (
                       <UpcomingCard
                         key={v.href}
+                        eventId={v.eventId}
                         href={v.href}
                         startTimeIso={v.startTimeIso}
                         seriesName={v.seriesName}
@@ -494,6 +497,7 @@ export default async function HomePage({
                   {upcomingViews.map((v) => (
                     <UpcomingCard
                       key={v.href}
+                      eventId={v.eventId}
                       href={v.href}
                       startTimeIso={v.startTimeIso}
                       seriesName={v.seriesName}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import EventStatusTicker from "@/components/EventStatusTicker";
+import { trackEvent } from "@/lib/analytics";
 import { colors, radius } from "@/styles/tokens";
 
 const MINUTE_MS = 60 * 1000;
@@ -15,6 +16,15 @@ const DAY_MS = 24 * HOUR_MS;
 const TICK_MS = 30 * 1000;
 
 interface Props {
+  /**
+   * Event id (digit string) for the GA4 `home_upcoming_click`
+   * event. Threaded explicitly rather than parsed from `href` at
+   * runtime — the page builds the view objects from typed Prisma
+   * rows, so passing the id is cheaper and matches the project's
+   * "stringify before GA4" discipline (BigInt would throw on
+   * serialization).
+   */
+  eventId: string;
   href: string;
   startTimeIso: string | null;
   seriesName: string | null;
@@ -41,6 +51,7 @@ interface Props {
 }
 
 export function UpcomingCard({
+  eventId,
   href,
   startTimeIso,
   seriesName,
@@ -108,6 +119,17 @@ export function UpcomingCard({
       onMouseLeave={() => setActive(false)}
       onFocus={() => setActive(true)}
       onBlur={() => setActive(false)}
+      onClick={() => {
+        // GA4 Phase 1B: A/B-style attribution for the D-7 wish-open
+        // badge. `badge_visible` reuses the same boolean that drives
+        // the badge render (computed once server-side via
+        // `shouldShowWishBadge`) so the param can never disagree
+        // with what the user actually saw.
+        trackEvent("home_upcoming_click", {
+          event_id: eventId,
+          badge_visible: !!showWishBadge,
+        });
+      }}
       className={[
         "block transition-colors",
         variant === "scroll" ? "w-[200px] flex-shrink-0" : "w-full",
