@@ -132,6 +132,55 @@ describe("POST /api/events/[id]/wishes", () => {
     expect(res.status).toBe(404);
     expect(prisma.songWish.create).not.toHaveBeenCalled();
   });
+
+  it("returns 403 when event has already started (server-side lock)", async () => {
+    // Server-side lock: wishlist writes close at event.startTime.
+    // Pairs with the client-side wall-clock fallback in
+    // <EventWishSection> for the long-open-page case (laptop sleep
+    // past startTime); also catches outright bypass via curl /
+    // DevTools / a stale page that ignored its own client gate.
+    // v0.10.0 smoke caught the symptom as "I can still modify
+    // during the event" when the page was opened pre-startTime.
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(1),
+      // 1h in the past — locked.
+      startTime: new Date(Date.now() - 60 * 60 * 1000),
+    });
+    const res = await POST(postRequest({ songId: 42 }) as never, {
+      params: params1,
+    });
+    expect(res.status).toBe(403);
+    expect(prisma.songWish.create).not.toHaveBeenCalled();
+  });
+
+  it("allows POST when event.startTime is in the future (lock not active)", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(1),
+      // 1h in the future — pre-show.
+      startTime: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    const res = await POST(postRequest({ songId: 42 }) as never, {
+      params: params1,
+    });
+    expect(res.status).toBe(200);
+    expect(prisma.songWish.create).toHaveBeenCalled();
+  });
+
+  it("allows POST when event.startTime is null (TBA event, no lock anchor)", async () => {
+    // TBA events shouldn't lock — the operator hasn't pinned a
+    // start instant yet, so the client never enters its lock state
+    // either (`<EventWishSection>` derives isLocked from startMs;
+    // null startTime → never-lock).
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(1),
+      startTime: null,
+    });
+    const res = await POST(postRequest({ songId: 42 }) as never, {
+      params: params1,
+    });
+    expect(res.status).toBe(200);
+    expect(prisma.songWish.create).toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/events/[id]/wishes", () => {
@@ -292,6 +341,17 @@ describe("GET /api/events/[id]/wishes", () => {
 describe("DELETE /api/events/[id]/wishes/[wishId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Explicit default for the lock-check `findFirst`. Without this
+    // mock, `vi.clearAllMocks()` leaves it returning `undefined`,
+    // and the route's lock-check `event?.startTime && now >= …`
+    // short-circuits — so the happy-path tests below pass for the
+    // wrong reason (they never actually exercise the lock-check
+    // branch). Default to a future startTime so the lock evaluates
+    // to false legitimately; tests that need the lock to fire
+    // override this mock with a past startTime explicitly. CR #297.
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      startTime: new Date(Date.now() + 60 * 60 * 1000), // +1h, future
+    });
     (prisma.songWish.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue(
       { count: 1 },
     );
@@ -337,5 +397,49 @@ describe("DELETE /api/events/[id]/wishes/[wishId]", () => {
     });
     expect(res.status).toBe(400);
     expect(prisma.songWish.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when event has already started (server-side lock)", async () => {
+    // Symmetric with POST: deletes also freeze at startTime,
+    // otherwise a long-open page could remove a wish post-lock and
+    // corrupt the fan TOP-3 mid-show.
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      startTime: new Date(Date.now() - 60 * 60 * 1000),
+    });
+    const res = await DELETE(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "1", wishId: "wish-uuid-abc" }),
+    });
+    expect(res.status).toBe(403);
+    expect(prisma.songWish.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("idempotent past-startTime: missing-event row falls through to 200", async () => {
+    // The event lookup returns null when the event was soft-deleted
+    // (or never existed). The optional-chain `event?.startTime`
+    // bails out, the lock check is skipped, and the deleteMany
+    // no-ops with count=0. Preserves the existing
+    // idempotent-DELETE shape so an undo race doesn't surface as
+    // an error.
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+      null,
+    );
+    (prisma.songWish.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { count: 0 },
+    );
+    const res = await DELETE(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "1", wishId: "wish-uuid-abc" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("allows DELETE when event.startTime is in the future (lock not active)", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      startTime: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    const res = await DELETE(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: "1", wishId: "wish-uuid-abc" }),
+    });
+    expect(res.status).toBe(200);
+    expect(prisma.songWish.deleteMany).toHaveBeenCalled();
   });
 });

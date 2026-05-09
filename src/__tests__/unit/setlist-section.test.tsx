@@ -301,4 +301,67 @@ describe("SetlistSection", () => {
     expect(screen.getByRole("tablist")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
   });
+
+  it("renderedTab guard: stale activeTab='predicted' from a prior event with predictions doesn't bleed into a new event with no predictions (CR #291)", () => {
+    // Reproduces the cross-event bleed CR caught:
+    //   1. Event A has predictions; user clicks Predicted tab →
+    //      activeTab = "predicted" (state lives inside SetlistSection,
+    //      which doesn't have a key so it persists across event nav).
+    //   2. Navigate to event B (no predictions, has actual rows).
+    //   3. Without the guard, renderedTab would fall through to the
+    //      stale activeTab="predicted", and the body would render
+    //      <PredictedSetlist> while <SetlistTabs hasPredictions=false>
+    //      renders no tab strip → orphan body, no tab visible.
+    //   4. Fix: when !hasPredictions, force renderedTab to "actual"
+    //      regardless of stored activeTab.
+    //
+    // Step 1: render event A with predictions, click Predicted to
+    // promote activeTab.
+    window.localStorage.setItem("predict-1", JSON.stringify({ slots: [] }));
+    const { rerender } = render(
+      <SetlistSection
+        eventId="1"
+        items={[makeItem()]}
+        reactionCounts={{}}
+        locale="ko"
+        status="ongoing"
+        startTime={null}
+        seriesName="Test Series"
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /tabPredicted/ }));
+    expect(
+      screen
+        .getByRole("tab", { name: /tabPredicted/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    // Step 2: navigate to event B — same SetlistSection instance
+    // (no key so state persists), new eventId, no localStorage
+    // predictions, has actual rows. Re-render simulates the parent
+    // (LiveSetlist) re-rendering with new props for a different
+    // event in the same browser session.
+    rerender(
+      <SetlistSection
+        eventId="2"
+        items={[makeItem({ id: 99 })]}
+        reactionCounts={{}}
+        locale="ko"
+        status="ongoing"
+        startTime={null}
+        seriesName="Test Series"
+        isWishPredictOpen={false}
+        emptyFallback={<p data-testid="empty">empty</p>}
+      />,
+    );
+    // No predictions for event 2 → no tab strip should render.
+    expect(screen.queryByRole("tablist")).toBeNull();
+    // Body must be ActualSetlist (the <ol>), NOT PredictedSetlist
+    // (which would have a `+ 곡 추가` button). The guard forces
+    // renderedTab → "actual" when !hasPredictions, overriding the
+    // stale activeTab="predicted" left over from event 1.
+    expect(screen.getByRole("list")).toBeTruthy();
+    expect(screen.queryByText("add")).toBeNull();
+  });
 });

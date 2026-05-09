@@ -143,9 +143,32 @@ export function SetlistSection({
   // Compute the rendered active-tab key separately so a state mismatch
   // (e.g. activeTab="actual" but hasActual=false) renders the right
   // body without forcing the user-driven activeTab state to chase
-  // the hasActual prop.
-  const renderedTab: SetlistTab =
-    hasPredictions && !hasActual ? "predicted" : activeTab;
+  // the hasActual / hasPredictions props.
+  //
+  // Three-branch fallback (in order):
+  //   1. !hasPredictions          → force "actual" (defensive against
+  //                                  stale `activeTab="predicted"` on
+  //                                  cross-event navigation; CR caught
+  //                                  this. Without the guard, navigating
+  //                                  from event A — where the user
+  //                                  clicked the Predicted tab —
+  //                                  to event B with no predictions
+  //                                  would render <PredictedSetlist>
+  //                                  body while <SetlistTabs hasPredictions=
+  //                                  false> renders no tab strip,
+  //                                  producing an orphan body.
+  //                                  The `key={eventId}` on
+  //                                  <PredictedSetlist> resets ITS
+  //                                  internal state but doesn't reach
+  //                                  <SetlistSection>'s own activeTab.)
+  //   2. !hasActual && hasPredictions → force "predicted" (case 1
+  //                                  pre-show — Predicted-only).
+  //   3. otherwise                 → activeTab (user-driven).
+  const renderedTab: SetlistTab = !hasPredictions
+    ? "actual"
+    : !hasActual
+      ? "predicted"
+      : activeTab;
 
   // WAI-ARIA tabs pattern needs paired tab/panel ids so each tab's
   // `aria-controls` resolves to its panel and each panel's
@@ -210,7 +233,17 @@ export function SetlistSection({
         eventId={eventId}
       />
     ) : (
+      // `key={eventId}` forces a remount on event navigation so
+      // `<PredictedSetlist>`'s `scheduledLocked` (initialized once
+      // via `useState` lazy init from the previous event's
+      // startTime) doesn't leak into the new event with a stale
+      // lock decision. Also re-fires the localStorage
+      // `predict-{eventId}` hydration for the new event. Same
+      // rationale as the matching `key={eventId}` on
+      // `<EventWishSection>` in `<LiveSetlist>`. CR #291 caught
+      // both call sites.
       <PredictedSetlist
+        key={eventId}
         eventId={eventId}
         locale={locale}
         startTime={startTime}

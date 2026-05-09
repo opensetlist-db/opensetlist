@@ -1,8 +1,9 @@
 "use client";
 
+import { useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { SetlistRow } from "@/components/SetlistRow";
-import type { RowState } from "@/components/NumberSlot";
+import type { RowState, RowVote } from "@/components/NumberSlot";
 import type {
   LiveSetlistItem,
   ReactionCountsMap,
@@ -14,6 +15,7 @@ import {
 } from "@/components/setlistLayout";
 import { getConfirmStatus } from "@/lib/confirmStatus";
 import { useLocalConfirm } from "@/hooks/useLocalConfirm";
+import { useLocalDisagree } from "@/hooks/useLocalDisagree";
 
 interface Props {
   items: LiveSetlistItem[];
@@ -47,12 +49,43 @@ export function ActualSetlist({
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
 
-  // Stage C — own the per-viewer localStorage-confirmed set ONCE
-  // here so every row sees the same Set instance. Mounted-gated
-  // hydration inside the hook keeps SSR + first client render
-  // matching (set is empty until after mount). The hook also fires
-  // the (gated) POST when a row toggles.
+  // Per-viewer vote sets, owned ONCE here so every row sees the
+  // same Set instances. Mounted-gated hydration inside each hook
+  // keeps SSR + first client render matching (sets are empty until
+  // after mount). `useLocalConfirm` also fires the (gated) POST on
+  // confirm; `useLocalDisagree` is localStorage-only at v0.10.x
+  // (no POST endpoint yet — Week 3 work).
   const { confirmedItemIds, toggleConfirm } = useLocalConfirm(eventId);
+  const { disagreedItemIds, toggleDisagree } = useLocalDisagree(eventId);
+
+  // Mutual exclusivity: a viewer can't simultaneously confirm AND
+  // disagree on the same row. Tapping 👍 clears any matching
+  // disagree, and vice versa. This coordination lives at the
+  // consumer level (here) rather than inside the hooks so each
+  // hook stays independently testable. The handler is memoized so
+  // child `<SetlistRow>` consumers don't re-render unnecessarily;
+  // each row composes its own per-id closure over the memoized
+  // handler.
+  const handleConfirmTap = useCallback(
+    (itemId: number) => {
+      if (disagreedItemIds.has(itemId)) {
+        // Clear opposing vote first. The disagree toggle is
+        // idempotent — calling it on a present id removes it.
+        toggleDisagree(itemId);
+      }
+      toggleConfirm(itemId);
+    },
+    [disagreedItemIds, toggleDisagree, toggleConfirm],
+  );
+  const handleDisagreeTap = useCallback(
+    (itemId: number) => {
+      if (confirmedItemIds.has(itemId)) {
+        toggleConfirm(itemId);
+      }
+      toggleDisagree(itemId);
+    },
+    [confirmedItemIds, toggleConfirm, toggleDisagree],
+  );
 
   const mainItems = items.filter((item) => !item.isEncore);
   const encoreItems = items.filter((item) => item.isEncore);
@@ -76,8 +109,10 @@ export function ActualSetlist({
             reactionCounts={reactionCounts}
             locale={locale}
             eventId={eventId}
-            rowState={deriveRowState(item, confirmedItemIds)}
-            onConfirmTap={() => toggleConfirm(item.id)}
+            rowState={deriveRowState(item)}
+            myVote={deriveMyVote(item.id, confirmedItemIds, disagreedItemIds)}
+            onConfirmTap={() => handleConfirmTap(item.id)}
+            onDisagreeTap={() => handleDisagreeTap(item.id)}
           />
         ))}
       </ol>
@@ -93,8 +128,10 @@ export function ActualSetlist({
                 reactionCounts={reactionCounts}
                 locale={locale}
                 eventId={eventId}
-                rowState={deriveRowState(item, confirmedItemIds)}
-                onConfirmTap={() => toggleConfirm(item.id)}
+                rowState={deriveRowState(item)}
+                myVote={deriveMyVote(item.id, confirmedItemIds, disagreedItemIds)}
+                onConfirmTap={() => handleConfirmTap(item.id)}
+                onDisagreeTap={() => handleDisagreeTap(item.id)}
               />
             ))}
           </ol>
@@ -105,19 +142,14 @@ export function ActualSetlist({
 }
 
 /**
- * Stage C row-state derivation, three-state composition:
- *
- *   getConfirmStatus(item, now)         localConfirmedIds.has(id)        rowState
- *   "confirmed"                          either                           "confirmed"
- *   "rumoured"                           true                             "my-confirmed"
- *   "rumoured"                           false                            "rumoured"
+ * Binary row state — `confirmed` or `rumoured`. The viewer's vote
+ * is now a separate axis (`RowVote` via `deriveMyVote` below), not
+ * a row-level state, since v0.10.1's dual-button NumberSlot
+ * (👍/👎) collapsed the previous 3-state shape.
  *
  * `getConfirmStatus` (`src/lib/confirmStatus.ts`) handles the DB-
  * level decision (`status === "confirmed" | "live"` always wins;
- * `rumoured` rows past 1-min auto-promote to confirmed too). The
- * local-set check then chooses between the two "still rumoured"
- * visual variants — `[?]` for someone else's row, `[✓]` for the
- * viewer's own confirm.
+ * `rumoured` rows past 1-min auto-promote to confirmed too).
  *
  * Read-time evaluation: `getConfirmStatus` reads `now` per call,
  * so each render sees the current bucket. The 5s `useSetlistPolling`
@@ -125,13 +157,26 @@ export function ActualSetlist({
  * row crossing the 60s mark mid-session promotes within ≤ 5s of
  * the boundary without an extra timer.
  */
-function deriveRowState(
-  item: LiveSetlistItem,
-  localConfirmedIds: Set<number>,
-): RowState {
+function deriveRowState(item: LiveSetlistItem): RowState {
   const confirmStatus = getConfirmStatus(item);
-  if (confirmStatus === "confirmed") return "confirmed";
-  return localConfirmedIds.has(item.id) ? "my-confirmed" : "rumoured";
+  return confirmStatus === "confirmed" ? "confirmed" : "rumoured";
+}
+
+/**
+ * Per-viewer vote derivation for `<NumberSlot>`. Confirm wins ties
+ * defensively (a row in both sets is a logic bug elsewhere — the
+ * mutual-exclusivity handlers above prevent it — but if it ever
+ * happens, treating the row as confirmed is the safer default
+ * since confirm has the gated DB write and disagree doesn't).
+ */
+function deriveMyVote(
+  itemId: number,
+  confirmedItemIds: Set<number>,
+  disagreedItemIds: Set<number>,
+): RowVote {
+  if (confirmedItemIds.has(itemId)) return "confirm";
+  if (disagreedItemIds.has(itemId)) return "disagree";
+  return "none";
 }
 
 // Lifted verbatim from `<LiveSetlist>` so `<ActualSetlist>` stays

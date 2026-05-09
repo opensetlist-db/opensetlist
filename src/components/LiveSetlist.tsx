@@ -55,12 +55,17 @@ interface Props {
    */
   status: ResolvedEventStatus;
   /**
-   * D-7 open-window indicator. Drives whether the Wishlist surface
-   * renders at all (pre-D-7 hides it entirely) AND whether the
-   * Predicted tab appears in `<SetlistSection>` for upcoming events.
-   * Post-show paths (`storedHasPredictions` for ongoing/completed)
-   * are unaffected — predictions stored before D-7 still surface
-   * post-show. See `src/lib/eventTiming.ts#isWishPredictOpen`.
+   * D-7 open-window indicator. **Pre-show only** — gates the
+   * Wishlist + Predicted Setlist surfaces against the 7-day
+   * picker-UI window. For non-upcoming statuses
+   * (ongoing/completed/cancelled) this flag does NOT govern
+   * visibility; the locked TOP-3 display + post-show share card
+   * always render once the show has started, regardless of
+   * D-window distance (`task-week2-d7-open-gate.md`:
+   * "Post-lock display [...] is NOT gated"). The render
+   * conditions below mirror that split: upcoming branch defers to
+   * this flag, non-upcoming branch falls through. See
+   * `src/lib/eventTiming.ts#isWishPredictOpen`.
    */
   isWishPredictOpen: boolean;
   /**
@@ -110,27 +115,71 @@ export function LiveSetlist({
           above Trending — per `raw/mockups/mockup-wish-predict.jsx`.
           Self-hides when locked + no data; renders structurally on
           SSR so hydration matches before localStorage hydrates the
-          my-list. The `isWishPredictOpen` gate (D-7 window per
-          `raw/20260503-1b-1c-timeline.md`) hides the section
-          entirely pre-D-7. The explicit `startTime != null` guard
-          looks redundant — `isWishPredictOpen === true` already
-          implies non-null in `eventTiming.ts` — but keeping it lets
-          TS narrow `startTime` from `Date | string | null` to
-          `Date | string` for the prop pass-through, avoiding a
-          cast and matching the consumer's required-prop shape
-          (CR #282 nit). */}
-      {isWishPredictOpen && startTime != null && (
-        <EventWishSection
-          eventId={eventId}
-          locale={locale}
-          startTime={startTime}
-          setlistItems={items}
-          top3Wishes={top3Wishes}
-        />
-      )}
+          my-list.
+
+          D-7 gate is **pre-show only** (per
+          `task-week2-d7-open-gate.md` + `engagement-features#D-7
+          visibility gate`): "Post-lock display (results, match
+          badges) is NOT gated — once the show happens, the result
+          view stays visible regardless of D-window distance." The
+          condition below mirrors `<SetlistSection>`'s split: when
+          `status === "upcoming"`, defer to `isWishPredictOpen`
+          (pre-show D-7 window); for any other status (ongoing /
+          completed / cancelled), render unconditionally and let
+          `<EventWishSection>` itself collapse to null on
+          locked-with-no-data. The original v0.10.0 implementation
+          gated on `isWishPredictOpen` alone, which hid the
+          locked TOP-3 display entirely on every ongoing /
+          completed event — broken because `isWishPredictOpen`
+          returns false for any non-upcoming status by design.
+
+          The explicit `startTime != null` guard looks redundant in
+          the upcoming branch (the helper rejects null start) but
+          is load-bearing for the non-upcoming branch — and it
+          gives TS a narrowing it can use to drop the cast on the
+          prop pass-through. */}
+      {startTime != null &&
+        (status !== "upcoming" || isWishPredictOpen) && (
+          // `key={eventId}` forces a remount when the user navigates
+          // from event A to event B in the same browser session.
+          // Without it, React's default reconciliation preserves
+          // `<EventWishSection>`'s state across the prop change —
+          // which means `scheduledLocked` (initialized once via
+          // `useState` lazy init from event A's startTime) leaks
+          // into event B with a stale lock decision, and the
+          // localStorage `wish-{eventId}` hydration also wouldn't
+          // re-fire for the new event id. CR #291 caught this.
+          <EventWishSection
+            key={eventId}
+            eventId={eventId}
+            locale={locale}
+            startTime={startTime}
+            status={status}
+            setlistItems={items}
+            top3Wishes={top3Wishes}
+          />
+        )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
-          tokens), per mockup. Not a child of the white setlist card. */}
-      <TrendingSongs songs={trendingSongs} />
+          tokens), per mockup. Not a child of the white setlist card.
+
+          Visibility (operator preference, v0.10.0 smoke):
+            - upcoming → always hide (no reactions can have been
+              recorded yet; the empty-state nudge that the component
+              renders for `songs.length === 0` is irrelevant pre-show
+              and dilutes the page)
+            - ongoing / completed / cancelled → show only when there
+              is at least one ranked song; otherwise hide entirely
+              rather than rendering the empty-state nudge.
+
+          Reverses the earlier "always render with empty nudge"
+          rationale documented in `<TrendingSongs>` ("Card always
+          renders when mounted — the empty state nudges the user to
+          engage rather than disappearing the surface entirely").
+          The component contract itself is unchanged; the visibility
+          decision moves up to this single consumer. */}
+      {status !== "upcoming" && trendingSongs.length > 0 && (
+        <TrendingSongs songs={trendingSongs} />
+      )}
     <section
       className="mb-8"
       style={{

@@ -285,9 +285,7 @@
     "tabActual": "Actual setlist",
     "tabPredicted": "Predicted setlist",
     "tablistAriaLabel": "Setlist views",
-    "predictedComingSoon": "Predicted setlist — coming soon",
-    "confirmAriaRumoured": "Unverified song",
-    "confirmAriaMyConfirmed": "Confirmed by me"
+    "predictedComingSoon": "Predicted setlist — coming soon"
   },
   "Predict": {
     "add": "+ Add a song",
@@ -301,7 +299,7 @@
     "searchLoading": "Searching...",
     "searchNoResults": "No results",
     "dividerLabel": "{count, plural, one {Now # song — matched up to here} other {Now # songs — matched up to here}}",
-    "legendLine": "Below divider = out of match range · Green = played but out of rank",
+    "legendLine": "Below divider = out of match range · Light green = played but out of rank",
     "preShowHint": "{count, plural, one {# song entered} other {# songs entered}}",
     "duringHint": "{count, plural, one {# prediction entered} other {# predictions entered}}",
     "afterHint": "Show ended · Final result",
@@ -311,23 +309,21 @@
     "modalTitle": "Share result",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "shareTwitter": "Share to Twitter",
+    "saveImage": "Save image",
     "copyLink": "Copy link",
     "linkCopiedToast": "Link copied",
     "linkCopyFailedToast": "Couldn't copy the link",
-    "imageSavedToast": "Image saved. Please attach it on Twitter",
-    "popupBlockedToast": "Popup blocked. Please share the saved image directly",
+    "imageSavedToast": "Image saved",
+    "imageErrorToast": "Couldn't save the image",
     "close": "Close",
     "scoreLabel": "Prediction hit rate",
     "scoreMatchedOf": "{matched} of {total} songs hit",
     "scorePredicted": "{count} predicted",
-    "encore": "Encore",
-    "shareText": "{seriesName} prediction {pct}% hit rate! ({matched} of {total}) 🎯"
+    "encore": "Encore"
   },
   "Confirm": {
-    "flag": "Report",
-    "flagEmailSubject": "[OpenSetlist] Setlist row report — event {eventId} #{position}",
-    "flagEmailBody": "Event ID: {eventId}\nPosition: {position}\nSong: {songTitle}\n\nDescribe the issue:\n"
+    "confirmAria": "Mark as correct",
+    "disagreeAria": "Mark as incorrect"
   },
   "Wishlist": {
     "title": "Wishlist",

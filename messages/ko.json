@@ -285,9 +285,7 @@
     "tabActual": "실제 세트리스트",
     "tabPredicted": "예상 세트리스트",
     "tablistAriaLabel": "세트리스트 보기",
-    "predictedComingSoon": "예상 세트리스트 — 곧 공개",
-    "confirmAriaRumoured": "확인되지 않은 곡",
-    "confirmAriaMyConfirmed": "내가 확인한 곡"
+    "predictedComingSoon": "예상 세트리스트 — 곧 공개"
   },
   "Predict": {
     "add": "+ 곡 추가",
@@ -301,7 +299,7 @@
     "searchLoading": "검색 중...",
     "searchNoResults": "검색 결과 없음",
     "dividerLabel": "현재 {count}곡 — 여기까지 매칭",
-    "legendLine": "구분선 아래 = 아직 매칭 범위 밖 · 초록 = 나왔지만 순위 밖",
+    "legendLine": "구분선 아래 = 아직 매칭 범위 밖 · 연한 초록 = 나왔지만 순위 밖",
     "preShowHint": "{count}곡 입력됨",
     "duringHint": "{count}곡 예상 입력됨",
     "afterHint": "공연 종료 · 최종 결과",
@@ -311,23 +309,21 @@
     "modalTitle": "결과 공유",
     "themeDark": "다크",
     "themeLight": "라이트",
-    "shareTwitter": "트위터에 공유",
+    "saveImage": "이미지 저장",
     "copyLink": "링크 복사",
     "linkCopiedToast": "링크가 복사됐어요",
     "linkCopyFailedToast": "링크를 복사하지 못했어요",
-    "imageSavedToast": "이미지가 저장됐어요. 트위터에 첨부해주세요",
-    "popupBlockedToast": "팝업이 차단됐어요. 저장된 이미지로 직접 공유해주세요",
+    "imageSavedToast": "이미지가 저장됐어요",
+    "imageErrorToast": "이미지를 저장하지 못했어요",
     "close": "닫기",
     "scoreLabel": "예상 적중률",
     "scoreMatchedOf": "{total}곡 중 {matched}곡 적중",
     "scorePredicted": "{count}곡 예상",
-    "encore": "Encore",
-    "shareText": "{seriesName} 예상 세트리스트 {pct}% 적중! ({total}곡 중 {matched}곡) 🎯"
+    "encore": "Encore"
   },
   "Confirm": {
-    "flag": "신고",
-    "flagEmailSubject": "[OpenSetlist] 세트리스트 행 신고 — 이벤트 {eventId} #{position}",
-    "flagEmailBody": "이벤트 ID: {eventId}\n순서: {position}\n곡: {songTitle}\n\n문제 내용을 적어주세요:\n"
+    "confirmAria": "정확함",
+    "disagreeAria": "잘못됨"
   },
   "Wishlist": {
     "title": "희망곡",

@@ -285,9 +285,7 @@
     "tabActual": "実際のセットリスト",
     "tabPredicted": "予想セットリスト",
     "tablistAriaLabel": "セットリスト表示",
-    "predictedComingSoon": "予想セットリスト — 近日公開",
-    "confirmAriaRumoured": "未確認の曲",
-    "confirmAriaMyConfirmed": "確認済み"
+    "predictedComingSoon": "予想セットリスト — 近日公開"
   },
   "Predict": {
     "add": "+ 曲を追加",
@@ -301,7 +299,7 @@
     "searchLoading": "検索中...",
     "searchNoResults": "検索結果なし",
     "dividerLabel": "現在 {count}曲 — ここまでマッチング",
-    "legendLine": "区切り線の下 = まだマッチング範囲外 · 緑 = 出たが順位外",
+    "legendLine": "区切り線の下 = まだマッチング範囲外 · 薄い緑 = 出たが順位外",
     "preShowHint": "{count}曲入力済み",
     "duringHint": "{count}曲予想入力済み",
     "afterHint": "公演終了 · 最終結果",
@@ -311,23 +309,21 @@
     "modalTitle": "結果を共有",
     "themeDark": "ダーク",
     "themeLight": "ライト",
-    "shareTwitter": "Twitterで共有",
+    "saveImage": "画像を保存",
     "copyLink": "リンクをコピー",
     "linkCopiedToast": "リンクをコピーしました",
     "linkCopyFailedToast": "リンクをコピーできませんでした",
-    "imageSavedToast": "画像を保存しました。Twitterに添付してください",
-    "popupBlockedToast": "ポップアップがブロックされました。保存した画像から直接共有してください",
+    "imageSavedToast": "画像を保存しました",
+    "imageErrorToast": "画像を保存できませんでした",
     "close": "閉じる",
     "scoreLabel": "予想的中率",
     "scoreMatchedOf": "{total}曲中 {matched}曲的中",
     "scorePredicted": "{count}曲予想",
-    "encore": "Encore",
-    "shareText": "{seriesName} 予想セットリスト {pct}% 的中! ({total}曲中 {matched}曲) 🎯"
+    "encore": "アンコール"
   },
   "Confirm": {
-    "flag": "通報",
-    "flagEmailSubject": "[OpenSetlist] セットリスト行の通報 — イベント {eventId} #{position}",
-    "flagEmailBody": "イベントID: {eventId}\n順番: {position}\n曲: {songTitle}\n\n問題の内容を記入してください:\n"
+    "confirmAria": "正しい",
+    "disagreeAria": "間違っている"
   },
   "Wishlist": {
     "title": "リクエスト",

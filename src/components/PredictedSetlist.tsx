@@ -91,22 +91,47 @@ export function PredictedSetlist({
   // Treat null startTime as "never lock" — the Predicted tab is
   // useful both on dated and TBA events. `Date.now() >= startMs`
   // semantic only fires when we actually have a startTime.
+  //
+  // Two-layer lock: setTimeout flips `scheduledLocked` reliably
+  // when running, and the rendered `isLocked` falls back to a
+  // wall-clock check on every render after mount. v0.10.0 smoke
+  // caught the failure mode: a long-open page where the system
+  // suspended (laptop sleep / mobile lock) past `startMs` left
+  // the timer un-fired, so the editor stayed open across the
+  // event start. The wall-clock fallback re-evaluates on each
+  // re-render (5s polling drives plenty of these), catching the
+  // missed-timer case. Same shape as `<EventWishSection>`.
   const startMs = startTime
     ? startTime instanceof Date
       ? startTime.getTime()
       : new Date(startTime).getTime()
     : null;
-  const [isLocked, setIsLocked] = useState(() =>
+  const [scheduledLocked, setScheduledLocked] = useState(() =>
     startMs === null ? false : Date.now() >= startMs,
   );
   useEffect(() => {
-    if (isLocked) return;
+    if (scheduledLocked) return;
     if (startMs === null) return;
     const remaining = startMs - Date.now();
     if (remaining <= 0) return;
-    const timer = setTimeout(() => setIsLocked(true), remaining);
+    const timer = setTimeout(() => setScheduledLocked(true), remaining);
     return () => clearTimeout(timer);
-  }, [isLocked, startMs]);
+  }, [scheduledLocked, startMs]);
+  // Three-input lock — see `<EventWishSection>` for the full
+  // rationale. The polled `status` (server-resolved via
+  // `getEventStatus` server-side, refreshed every 5s) is the
+  // bypass-resistant signal for clock-skewed clients; the
+  // wall-clock check covers missed setTimeout (laptop sleep /
+  // mobile lock); scheduledLocked is the best-case timer fire.
+  // `react-hooks/purity` block disable applies because the
+  // violating Date.now() call sits on line 3 of the expression —
+  // `next-line` would only reach the first line.
+  /* eslint-disable react-hooks/purity */
+  const isLocked =
+    scheduledLocked ||
+    status !== "upcoming" ||
+    (mounted && startMs !== null && Date.now() >= startMs);
+  /* eslint-enable react-hooks/purity */
 
   // Stamp lockedAt to localStorage when lock fires for the first
   // time. `markLocked` is idempotent so a re-mount that re-reads a
@@ -147,6 +172,12 @@ export function PredictedSetlist({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      // Defensive isLocked check, mirrors handleAdd / handleRemove.
+      // The drag handle is hidden via `<PredictSongRow locked>` once
+      // isLocked flips, so this branch should be unreachable. But a
+      // long-open page where a drag began before lock and dropped
+      // after could otherwise mutate the post-lock list.
+      if (isLocked) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       setPredictions((prev) => {
@@ -158,12 +189,22 @@ export function PredictedSetlist({
         return next;
       });
     },
-    [eventId],
+    [eventId, isLocked],
   );
 
   // ─── Add / remove handlers ──────────────────────────────────
   const handleAdd = useCallback(
     (song: SongSearchResult) => {
+      // Defensive isLocked check: the `+ 곡 추가` link + inline
+      // `<SongSearch>` are gated by `isPreShow` (which requires
+      // !isLocked), so this branch is normally unreachable. But a
+      // long-open page that crossed `startMs` between user-tap and
+      // here could still hit it. v0.10.0 smoke caught the
+      // post-lock-edit symptom; this guard pairs with the new
+      // wall-clock-fallback isLocked derivation above and the
+      // server-side 403 (no equivalent for predictions since they're
+      // localStorage-only — server check is wishlist-only).
+      if (isLocked) return;
       // Client-side dedup: don't re-add a song already in the list.
       if (predictions.some((p) => p.songId === song.id)) {
         setSearchOpen(false);
@@ -184,16 +225,18 @@ export function PredictedSetlist({
       writePredictions(eventId, next);
       setSearchOpen(false);
     },
-    [eventId, predictions],
+    [eventId, predictions, isLocked],
   );
 
   const handleRemove = useCallback(
     (songId: number) => {
+      // Defensive isLocked check, same rationale as handleAdd.
+      if (isLocked) return;
       const next = predictions.filter((p) => p.songId !== songId);
       setPredictions(next);
       writePredictions(eventId, next);
     },
-    [eventId, predictions],
+    [eventId, predictions, isLocked],
   );
 
   // ─── Per-row state derivation ───────────────────────────────
@@ -208,12 +251,37 @@ export function PredictedSetlist({
   // The during-show divider is drawn between rank `actualCount` and
   // `actualCount + 1` to communicate the matching boundary.
   const total = actualSongs.length;
-  const isPreShow = !isLocked && status !== "completed";
-  const isDuringShow = isLocked && status !== "completed";
+  // `!isLocked` implies `status === "upcoming"` because the 3-input
+  // lock (#291 + #294) includes `status !== "upcoming"` as one of
+  // the OR branches.
+  //
+  // `isDuringShow` is `status === "ongoing"` specifically — NOT
+  // `isLocked && status !== "completed"`. The earlier shape would
+  // light up live hints + the matching divider on `cancelled`
+  // events too (they're locked AND not completed), which is wrong:
+  // a cancelled show should never advertise a live mid-show
+  // experience to a viewer who happens to have predictions stored.
+  // CR #297. Cancelled events fall through to neither pre nor
+  // during nor "completed" branches — top hint strip stays empty
+  // for them, which matches the absence of a meaningful "show
+  // ended" or "live now" copy for the cancelled state.
+  const isPreShow = !isLocked;
+  const isDuringShow = status === "ongoing";
+  const isPostShow = status === "completed";
 
   function rowState(rank: number, songId: number): PredictRowState {
     // Pre-show: nothing to match against; everything renders default.
     if (isPreShow) return "default";
+    // Cancelled events (status === "cancelled"): locked AND not
+    // ongoing AND not completed — no live matching context, no
+    // post-show recap to anchor matched/dim/below-divider styles
+    // against. Render every row as "default" so a cancelled event
+    // with stored predictions doesn't show fake "matched" or
+    // "below divider" styling against an empty actuals list. CR #297
+    // round 2 — the earlier sibling fix narrowed `isDuringShow` for
+    // the top hint strip but `rowState`'s `!isPreShow` fallthrough
+    // was still reaching the matching branches for cancelled.
+    if (!isDuringShow && !isPostShow) return "default";
     // Computed match: is this prediction's songId in the actual list?
     const matched = isSongMatched(
       songId,

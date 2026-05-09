@@ -72,6 +72,17 @@ export const colors = {
   liveBg: "#fef2f2",
   liveBorder: "#fecaca",
 
+  // Confirm-row disagree button (Phase 1B/1C). Active state for
+  // the 👎 button in `<NumberSlot>` when the viewer has voted
+  // "wrong row." Rose family — same red end of the spectrum as
+  // `live` but a deeper accent (rose-700 vs the LIVE red-600), so
+  // the two tokens read as related-but-distinct semantics
+  // ("happening now" vs "I disagree this is correct"). The bg is
+  // light enough (~rose-50) that the button reads as a soft
+  // toggle pill rather than an alarming alert.
+  disagreeBg: "#fff1f2",
+  disagreeText: "#9f1239",
+
   // Error feedback (validation + submission failures). Same red as `live`
   // today, but semantically distinct: a future brand shift moving live to
   // orange (rare but possible per CR) shouldn't recolor error text. Keep
@@ -196,6 +207,14 @@ export interface ShareCardPalette {
 export const zIndex = {
   /** Sticky elements within page flow (e.g. desktop sidebar). */
   sticky: 10,
+  /**
+   * Floating-positioned overlays that escape ancestor `overflow:
+   * hidden` via React portal — currently the `<SongSearch>` result
+   * dropdown. Sits above sticky chrome but below modals so a
+   * future picker rendered inside `<ShareCardModal>` etc. doesn't
+   * end up on top of its host dialog.
+   */
+  dropdown: 100,
   /** Modal backdrop + dialog (Share Card, Flag dialogs). */
   modal: 200,
   /** Toast / snackbar / inline announcement above modals. */
