@@ -267,10 +267,21 @@ export function PredictedSetlist({
   // ended" or "live now" copy for the cancelled state.
   const isPreShow = !isLocked;
   const isDuringShow = status === "ongoing";
+  const isPostShow = status === "completed";
 
   function rowState(rank: number, songId: number): PredictRowState {
     // Pre-show: nothing to match against; everything renders default.
     if (isPreShow) return "default";
+    // Cancelled events (status === "cancelled"): locked AND not
+    // ongoing AND not completed — no live matching context, no
+    // post-show recap to anchor matched/dim/below-divider styles
+    // against. Render every row as "default" so a cancelled event
+    // with stored predictions doesn't show fake "matched" or
+    // "below divider" styling against an empty actuals list. CR #297
+    // round 2 — the earlier sibling fix narrowed `isDuringShow` for
+    // the top hint strip but `rowState`'s `!isPreShow` fallthrough
+    // was still reaching the matching branches for cancelled.
+    if (!isDuringShow && !isPostShow) return "default";
     // Computed match: is this prediction's songId in the actual list?
     const matched = isSongMatched(
       songId,

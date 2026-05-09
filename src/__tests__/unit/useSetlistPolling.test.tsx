@@ -57,11 +57,28 @@ describe("useSetlistPolling", () => {
     // don't silently repoint the polling loop or drop the locale that
     // the server uses to filter the wishlist top-3 song translations.
     // `cache: "no-store"` is required so browsers can't serve a
-    // private cached response across poll ticks.
+    // private cached response across poll ticks. `signal` is the
+    // AbortController from the eventId-change-race fix (CR #297) —
+    // each fetch carries its controller's signal so a stale fetch
+    // can be cancelled when eventId/locale changes; assert it's
+    // present without pinning the exact controller instance.
     const expectedUrl = "/api/setlist?eventId=1&locale=ko";
-    const expectedInit = { cache: "no-store" };
-    expect(global.fetch).toHaveBeenNthCalledWith(1, expectedUrl, expectedInit);
-    expect(global.fetch).toHaveBeenNthCalledWith(2, expectedUrl, expectedInit);
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      expectedUrl,
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      expectedUrl,
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("does not poll when enabled=false", async () => {

@@ -58,11 +58,19 @@ export function useSetlistPolling<T>({
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Generation counter — see fetchSetlist. Bumped on every fetch start
-  // AND on eventId change so a slow in-flight request from the prior
-  // event resolves to a stale seq and bails before clobbering the new
-  // event's state. CR #297.
-  const requestSeqRef = useRef(0);
+  // AbortController for the currently in-flight fetch. Cancelled
+  // when (a) a newer fetchSetlist invocation supersedes it, or
+  // (b) the polling effect is torn down (eventId/locale change,
+  // unmount). The signal is also re-checked after each `await` so
+  // a fetch that resolves in the same microtask as the abort fires
+  // bails before writing setState. CR #297 round 2 — the earlier
+  // generation-counter approach was racy: the cleanup-time seq
+  // bump fires AFTER render commit, so a fetch resolving in the
+  // commit→cleanup gap could still pass the seq check and clobber
+  // the freshly-seeded new-event state. AbortController + post-
+  // await `signal.aborted` checks close that window because the
+  // signal mutates synchronously when abort() fires.
+  const abortRef = useRef<AbortController | null>(null);
 
   // Re-sync from props only when eventId actually changes — not on every
   // parent re-render. Without this guard, callers passing fresh array refs
@@ -86,21 +94,30 @@ export function useSetlistPolling<T>({
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
     setLastUpdated(null);
-    // Generation is bumped in the interval-effect's cleanup (below)
-    // — that's the safe place to mutate the ref. The cleanup fires
-    // when `fetchSetlist`'s identity changes (its `[eventId, locale]`
-    // deps changed), which is exactly the eventId-change moment.
-    // The render-time `requestSeqRef.current += 1` would have been
-    // simpler but trips `react-hooks/refs`.
+    // The in-flight fetch (if any) is aborted in the polling
+    // useEffect's cleanup below — that's the safe place to mutate
+    // the ref. The post-await `signal.aborted` checks inside
+    // fetchSetlist provide the synchronous catch for any fetch
+    // that resolves between commit and cleanup.
   }
 
   const fetchSetlist = useCallback(async () => {
-    const requestSeq = ++requestSeqRef.current;
+    // Abort any prior in-flight fetch from this same eventId/locale
+    // cycle (poll N still in flight when poll N+1 starts). Without
+    // this, a slow fetch could land AFTER a faster newer fetch and
+    // clobber the newer state.
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const res = await fetch(
         `/api/setlist?eventId=${encodeURIComponent(eventId)}&locale=${encodeURIComponent(locale)}`,
-        { cache: "no-store" },
+        { cache: "no-store", signal: controller.signal },
       );
+      // Post-await aborted check: the network response may have
+      // arrived just as eventId/locale changed and the cleanup
+      // fired abort(). Bail before parsing + writing setState.
+      if (controller.signal.aborted) return;
       if (!res.ok) return;
       const data = (await res.json()) as {
         items: T[];
@@ -109,14 +126,9 @@ export function useSetlistPolling<T>({
         status?: ResolvedEventStatus | null;
         updatedAt: string;
       };
-      // Stale-response guard: a slow fetch from a prior eventId
-      // can resolve after the eventId changed. The seq we captured
-      // when this fetch started no longer matches the current
-      // generation — skip the setState writes so the new event's
-      // freshly-seeded state isn't clobbered with the prior
-      // event's data. The next-tick fetch for the current event
-      // will fill in the live values. CR #297.
-      if (requestSeq !== requestSeqRef.current) return;
+      // Second post-await check: json parse may have resolved in
+      // the same window as a deferred abort. Cheap belt-and-braces.
+      if (controller.signal.aborted) return;
       setItems(data.items);
       setReactionCounts(data.reactionCounts ?? {});
       // `?? []` when a polled response omits `top3Wishes` (older API
@@ -139,8 +151,10 @@ export function useSetlistPolling<T>({
         setStatus(data.status ?? null);
       }
       setLastUpdated(data.updatedAt);
-    } catch {
-      // Silent — next tick retries.
+    } catch (err) {
+      // AbortError from the cleanup or supersede path — silent.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Network/JSON parse failure — also silent; next tick retries.
     }
   }, [eventId, locale]);
 
@@ -152,17 +166,18 @@ export function useSetlistPolling<T>({
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      // Bump generation on cleanup so any in-flight fetch from this
-      // useEffect cycle resolves to a stale seq and skips its
-      // setState writes. The cleanup fires when `fetchSetlist`'s
-      // identity changes (eventId or locale change) — exactly the
-      // moment a stale OLD-event response would otherwise clobber
-      // the freshly-seeded NEW-event state. Without this, a slow
-      // fetchA could resolve in the gap between eventId-change and
-      // the next interval tick (≤ intervalMs ≈ 5s window), and
-      // overwrite the lock-driving `status` with the prior event's
-      // data. CR #297.
-      requestSeqRef.current += 1;
+      // Cancel the in-flight fetch when fetchSetlist's identity
+      // changes (eventId/locale change) or the hook unmounts. The
+      // abort() call mutates `signal.aborted` synchronously, so the
+      // post-await checks inside fetchSetlist see it immediately
+      // even if the fetch resolves in the same microtask cycle.
+      // Combined with the supersede-time abort at the top of
+      // fetchSetlist, this fully closes the cross-event clobber
+      // window CR #297 round 2 flagged.
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
     };
   }, [enabled, intervalMs, fetchSetlist]);
 
