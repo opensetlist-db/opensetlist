@@ -53,7 +53,21 @@ function actual(songId: number): LiveSetlistItem {
 }
 
 describe("ShareCardButton — display gates", () => {
-  it("renders nothing when status !== completed", () => {
+  it("renders nothing when status === upcoming (pre-show, nothing to share)", () => {
+    const { container } = render(
+      <ShareCardButton
+        eventId="1"
+        seriesName="Test"
+        locale="ko"
+        status="upcoming"
+        actualSongs={[]}
+        predictions={[entry(10)]}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("renders nothing when predictions is empty (no payload to share, regardless of status)", () => {
     const { container } = render(
       <ShareCardButton
         eventId="1"
@@ -61,13 +75,25 @@ describe("ShareCardButton — display gates", () => {
         locale="ko"
         status="ongoing"
         actualSongs={[actual(10)]}
-        predictions={[entry(10)]}
+        predictions={[]}
       />,
     );
     expect(container.firstChild).toBeNull();
+
+    const { container: c2 } = render(
+      <ShareCardButton
+        eventId="1"
+        seriesName="Test"
+        locale="ko"
+        status="completed"
+        actualSongs={[actual(10)]}
+        predictions={[]}
+      />,
+    );
+    expect(c2.firstChild).toBeNull();
   });
 
-  it("renders nothing when actualSongs is empty (status completed)", () => {
+  it("renders nothing when status === completed but actualSongs is empty (no scoreable result)", () => {
     const { container } = render(
       <ShareCardButton
         eventId="1"
@@ -81,21 +107,28 @@ describe("ShareCardButton — display gates", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders nothing when predictions is empty (status completed)", () => {
-    const { container } = render(
+  it("renders the button DISABLED with a hint when status === ongoing and the user has predictions", () => {
+    render(
       <ShareCardButton
         eventId="1"
         seriesName="Test"
         locale="ko"
-        status="completed"
+        status="ongoing"
         actualSongs={[actual(10)]}
-        predictions={[]}
+        predictions={[entry(10)]}
       />,
     );
-    expect(container.firstChild).toBeNull();
+    const btn = screen.getByRole("button", { name: "shareButton" });
+    expect(btn).toBeTruthy();
+    // `disabled` HTML attribute renders as the empty string in jsdom.
+    expect(btn.getAttribute("disabled")).not.toBeNull();
+    expect(btn.getAttribute("aria-disabled")).toBe("true");
+    // The hint sits next to the button so users learn the affordance
+    // exists before the show ends.
+    expect(screen.getByText("shareDisabled")).toBeTruthy();
   });
 
-  it("renders the share button when all three gates pass", () => {
+  it("renders the button ENABLED (no hint) when all three gates pass", () => {
     render(
       <ShareCardButton
         eventId="1"
@@ -106,7 +139,11 @@ describe("ShareCardButton — display gates", () => {
         predictions={[entry(10)]}
       />,
     );
-    // Button label uses the i18n key value (mock returns the key).
-    expect(screen.getByRole("button", { name: "shareButton" })).toBeTruthy();
+    const btn = screen.getByRole("button", { name: "shareButton" });
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute("disabled")).toBeNull();
+    expect(btn.getAttribute("aria-disabled")).toBe("false");
+    // Hint should NOT render in the enabled path.
+    expect(screen.queryByText("shareDisabled")).toBeNull();
   });
 });
