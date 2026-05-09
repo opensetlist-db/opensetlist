@@ -327,7 +327,7 @@
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
-    "lockedTitle": "みんなのリクエスト",
+    "lockedTitle": "みんなの希望曲",
     "cap": "最大3曲",
     "myList": "自分の選択",
     "fanTop3": "ファン TOP3",
@@ -336,7 +336,7 @@
     "searchPlaceholder": "曲を検索...",
     "searchLoading": "検索中...",
     "searchNoResults": "検索結果なし",
-    "removeAria": "リクエストから削除",
+    "removeAria": "希望曲から削除",
     "count": "{count}人"
   },
   "Impression": {
