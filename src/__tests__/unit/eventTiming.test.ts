@@ -193,10 +193,12 @@ describe("shouldShowWishBadge", () => {
     // home card hiding the predict-open indicator.
     const dayOffset = (days: number) =>
       new Date(Date.UTC(2026, 4, 15 + days, 12, 0, 0));
-    const NOW_LOCAL = new Date("2026-05-15T03:00:00.000Z");
+    // Use the module-level `NOW` constant — re-declaring `NOW_LOCAL`
+    // with the same value drifted away from the rest of the suite
+    // and risked silent skew if `NOW` ever changes. CR #297 nit.
     const detailGate = isWishPredictOpen(
       { startTime: dayOffset(0), status: "upcoming" },
-      NOW_LOCAL,
+      NOW,
     );
     expect(detailGate).toBe(true);
     expect(shouldShowWishBadge(0)).toBe(true);

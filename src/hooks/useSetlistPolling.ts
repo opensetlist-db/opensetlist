@@ -58,6 +58,11 @@ export function useSetlistPolling<T>({
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Generation counter — see fetchSetlist. Bumped on every fetch start
+  // AND on eventId change so a slow in-flight request from the prior
+  // event resolves to a stale seq and bails before clobbering the new
+  // event's state. CR #297.
+  const requestSeqRef = useRef(0);
 
   // Re-sync from props only when eventId actually changes — not on every
   // parent re-render. Without this guard, callers passing fresh array refs
@@ -81,9 +86,16 @@ export function useSetlistPolling<T>({
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
     setLastUpdated(null);
+    // Generation is bumped in the interval-effect's cleanup (below)
+    // — that's the safe place to mutate the ref. The cleanup fires
+    // when `fetchSetlist`'s identity changes (its `[eventId, locale]`
+    // deps changed), which is exactly the eventId-change moment.
+    // The render-time `requestSeqRef.current += 1` would have been
+    // simpler but trips `react-hooks/refs`.
   }
 
   const fetchSetlist = useCallback(async () => {
+    const requestSeq = ++requestSeqRef.current;
     try {
       const res = await fetch(
         `/api/setlist?eventId=${encodeURIComponent(eventId)}&locale=${encodeURIComponent(locale)}`,
@@ -97,6 +109,14 @@ export function useSetlistPolling<T>({
         status?: ResolvedEventStatus | null;
         updatedAt: string;
       };
+      // Stale-response guard: a slow fetch from a prior eventId
+      // can resolve after the eventId changed. The seq we captured
+      // when this fetch started no longer matches the current
+      // generation — skip the setState writes so the new event's
+      // freshly-seeded state isn't clobbered with the prior
+      // event's data. The next-tick fetch for the current event
+      // will fill in the live values. CR #297.
+      if (requestSeq !== requestSeqRef.current) return;
       setItems(data.items);
       setReactionCounts(data.reactionCounts ?? {});
       // `?? []` when a polled response omits `top3Wishes` (older API
@@ -105,11 +125,19 @@ export function useSetlistPolling<T>({
       // polling is the authoritative source. Asserted by
       // useSetlistPolling.test.tsx "falls back to []" case.
       setTop3Wishes(data.top3Wishes ?? []);
-      // `?? null` for forward-compat: an older API shape that omits
-      // `status` keeps the prior null, so callers fall back to the
-      // SSR-initial status they passed in. Once the server side
-      // ships the `status` field (this PR), every poll updates it.
-      setStatus(data.status ?? null);
+      // Only update `status` when the field is actually present in
+      // the response. The earlier `data.status ?? null` would CLEAR
+      // a valid prior status whenever the server omits the field
+      // (forward-compat shape, transient response gap, partial
+      // hot-path response) — and because `status` drives the
+      // wishlist + predicted-setlist client lock, a transient null
+      // would silently re-unlock both editors mid-show. Prefer a
+      // stale-but-correct status over an unintended unlock. The
+      // SSR-initial status the caller passed in remains in effect
+      // when the server omits the field. CR #297.
+      if ("status" in data) {
+        setStatus(data.status ?? null);
+      }
       setLastUpdated(data.updatedAt);
     } catch {
       // Silent — next tick retries.
@@ -124,6 +152,17 @@ export function useSetlistPolling<T>({
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      // Bump generation on cleanup so any in-flight fetch from this
+      // useEffect cycle resolves to a stale seq and skips its
+      // setState writes. The cleanup fires when `fetchSetlist`'s
+      // identity changes (eventId or locale change) — exactly the
+      // moment a stale OLD-event response would otherwise clobber
+      // the freshly-seeded NEW-event state. Without this, a slow
+      // fetchA could resolve in the gap between eventId-change and
+      // the next interval tick (≤ intervalMs ≈ 5s window), and
+      // overwrite the lock-driving `status` with the prior event's
+      // data. CR #297.
+      requestSeqRef.current += 1;
     };
   }, [enabled, intervalMs, fetchSetlist]);
 

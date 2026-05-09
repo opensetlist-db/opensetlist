@@ -251,14 +251,22 @@ export function PredictedSetlist({
   // The during-show divider is drawn between rank `actualCount` and
   // `actualCount + 1` to communicate the matching boundary.
   const total = actualSongs.length;
-  // `!isLocked` now implies `status === "upcoming"` because the new
-  // 3-input lock includes `status !== "upcoming"` as one of the OR
-  // branches — so `status !== "completed"` is always true here. TS
-  // narrows it away. Kept the `isDuringShow` shape (still has a
-  // meaningful "completed" branch since isLocked is true for
-  // ongoing/completed/cancelled).
+  // `!isLocked` implies `status === "upcoming"` because the 3-input
+  // lock (#291 + #294) includes `status !== "upcoming"` as one of
+  // the OR branches.
+  //
+  // `isDuringShow` is `status === "ongoing"` specifically — NOT
+  // `isLocked && status !== "completed"`. The earlier shape would
+  // light up live hints + the matching divider on `cancelled`
+  // events too (they're locked AND not completed), which is wrong:
+  // a cancelled show should never advertise a live mid-show
+  // experience to a viewer who happens to have predictions stored.
+  // CR #297. Cancelled events fall through to neither pre nor
+  // during nor "completed" branches — top hint strip stays empty
+  // for them, which matches the absence of a meaningful "show
+  // ended" or "live now" copy for the cancelled state.
   const isPreShow = !isLocked;
-  const isDuringShow = isLocked && status !== "completed";
+  const isDuringShow = status === "ongoing";
 
   function rowState(rank: number, songId: number): PredictRowState {
     // Pre-show: nothing to match against; everything renders default.
