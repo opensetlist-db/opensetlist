@@ -218,21 +218,12 @@ export function useRealtimeEventChannel<T>({
     setLastUpdated(null);
     // The fallback gate stays sticky — if we fell back on event A,
     // navigating to event B gets a fresh attempt at realtime. This
-    // matches "user refresh = fresh retry" semantics. The matching
-    // ref resets (hasSubscribedBeforeRef, hasReportedFallbackRef)
-    // live in the useEffect below — react-hooks/refs forbids ref
-    // writes during render.
+    // matches "user refresh = fresh retry" semantics. Matching ref
+    // resets live INSIDE the channel-setup effect below: refs are
+    // bound to the channel's lifetime, and the channel restarts on
+    // any of [eventId, locale, enabled, pollFallback] changing.
     setPollFallback(false);
   }
-
-  // Reset the realtime-state refs when eventId changes — paired with
-  // the setState resets above. Runs post-commit (effect timing) so
-  // the new channel-setup effect, which also depends on eventId,
-  // sees the freshly-zeroed refs when its subscribe callback fires.
-  useEffect(() => {
-    hasSubscribedBeforeRef.current = false;
-    hasReportedFallbackRef.current = false;
-  }, [eventId]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -240,6 +231,18 @@ export function useRealtimeEventChannel<T>({
     // (the dep change triggered it) and we skip channel setup so
     // useSetlistPolling owns the page.
     if (pollFallback) return;
+
+    // Reset the channel-bound refs at the top of every channel
+    // setup. They track state of the CURRENT channel — whether
+    // it's seen its first SUBSCRIBED, whether we've reported a
+    // fallback for it — so resetting only on eventId change (in
+    // a sibling useEffect) would leak old-channel state into the
+    // new channel when locale changes (the channel-setup effect
+    // re-runs but the sibling does not, so the new channel's
+    // first SUBSCRIBED would be misread as a reconnect and
+    // trigger a redundant /api/setlist refetch).
+    hasSubscribedBeforeRef.current = false;
+    hasReportedFallbackRef.current = false;
 
     // ──── Snapshot fetch ────
     // Used both for the initial mount seed AND as the Path B refetch

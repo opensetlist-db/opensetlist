@@ -169,22 +169,30 @@ export function useRealtimeImpressions({
 
   // Reset transient state when eventId changes (mirror the pattern in
   // useRealtimeEventChannel — fresh attempt at realtime per event).
-  // The matching ref reset lives in the useEffect below to satisfy
-  // react-hooks/refs (no ref writes during render).
+  // The matching ref reset lives INSIDE the channel-setup effect
+  // below — channel-bound refs need to reset whenever the channel
+  // is re-created, which includes locale changes. Also reset
+  // `lastUpdated` so consumers don't read the previous event's
+  // timestamp before any event B push lands.
   const [prevEventId, setPrevEventId] = useState(eventId);
   if (prevEventId !== eventId) {
     setPrevEventId(eventId);
     setPollFallback(false);
+    setLastUpdated(null);
   }
-  useEffect(() => {
-    hasReportedFallbackRef.current = false;
-  }, [eventId]);
 
   useEffect(() => {
     if (!enabled) return;
     // Once polling has taken over, this effect has cleaned up the
     // dead channel and we skip re-subscribing.
     if (pollFallback) return;
+
+    // Reset the channel-bound captureMessage latch at the top of
+    // every channel setup. Mirrors useRealtimeEventChannel — the
+    // ref tracks state of the CURRENT channel, so resetting only
+    // on eventId change would leak across locale-change channel
+    // re-creates (the channel-setup effect also re-runs on locale).
+    hasReportedFallbackRef.current = false;
 
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
