@@ -43,45 +43,60 @@ interface SetlistSnapshot<T> {
   updatedAt: string;
 }
 
+// Bare-row shape for SetlistItemReaction `postgres_changes` payloads.
+// The DB column is BigInt; logical replication serializes it to a JS
+// number when the value fits in IEEE-754, otherwise to a string.
+// `setlistItemId` is the only field we actually compare against
+// existing keys — coerce to string so the reactionCounts map lookup
+// matches `String(setlistItemId)` regardless of which form arrives.
+interface ReactionRowPayload {
+  id: string;
+  setlistItemId: number | string | bigint;
+  reactionType: string;
+  eventId: number | string | bigint | null;
+}
+
 /**
  * Realtime-push variant of `useSetlistPolling`. Same API, same return
  * shape, picked between by `LAUNCH_FLAGS.realtimeEnabled` inside
  * `LiveEventLayout`.
  *
- * R1 implementation — Path B (refetch on push) for SetlistItem:
+ * Channel: `event:{eventId}` carries SetlistItem, SetlistItemReaction,
+ * and SongWish changes. EventImpression rides on a separate channel
+ * (`event:{eventId}:impressions`) owned by `useRealtimeImpressions`
+ * inside `EventImpressions`, since the impressions feed has its own
+ * cursor-pagination state and its consumer is independent.
  *
- *   1. On mount: one-shot `GET /api/setlist?eventId=…&locale=…` to seed
- *      items + reactions + top3Wishes + status. Same endpoint and same
- *      response shape the polling hook consumes — keeps reconciliation
- *      logic identical.
+ * Reconciliation strategy per table:
  *
- *   2. Subscribe to `event:{eventId}` channel; listen for
- *      `postgres_changes` on `SetlistItem` filtered by
- *      `eventId=eq.{eventId}`. Any INSERT/UPDATE/DELETE triggers an
- *      immediate /api/setlist refetch so the next snapshot includes
- *      the change with full nested shape (songs, performers, artists)
- *      that the raw `payload.new` row from `postgres_changes` does NOT
- *      carry.
+ *   - SetlistItem        → Path B (refetch /api/setlist on push). The
+ *     postgres_changes payload is the bare row; the polling response
+ *     and downstream consumers (LiveSetlist, sidebar derivations)
+ *     expect the deeply-nested LiveSetlistItem with songs / performers
+ *     / artists joined. R1's choice; kept in R2.
  *
- *   3. On unmount or eventId change: unsubscribe + abort any in-flight
- *      fetch.
+ *   - SetlistItemReaction → Path A (per-row diff merge into
+ *     reactionCounts). High-frequency, low-cardinality (the count
+ *     map is tiny): trivial to maintain client-side. INSERT
+ *     increments, DELETE decrements (via REPLICA IDENTITY FULL on
+ *     the table — see prisma/post-deploy.sql). UPDATE is unreachable
+ *     in the current write paths (reactions are immutable), so
+ *     ignored. R2's structural F14 win lives here: ~5s polling →
+ *     0 polling for the highest-volume slice.
  *
- * Why Path B for R1 (not per-row diff merge): the postgres_changes
- * payload contains only the bare SetlistItem columns. The polling
- * response and downstream consumers (`LiveSetlist`, sidebar
- * derivations) expect the deeply-nested `LiveSetlistItem` shape with
- * songs, performers, and artists joined. Reconstructing that shape
- * from individual table pushes is R2's problem; for R1 we use the
- * push as a "kick" to refetch the joined snapshot. Latency goes from
- * ≤5s (poll cadence) to ~100ms (push → refetch) without inventing a
- * second source of truth for the joined shape.
+ *   - SongWish           → Path B (refetch /api/setlist on push). The
+ *     wishlist TOP-3 needs locale-specific song-translation joins
+ *     and a server-side aggregation that's awkward to mirror
+ *     client-side. Frequency is low (~10s of wishes per show), so
+ *     refetching on each change is acceptable.
  *
- * R1 does NOT relieve F14 connection pressure — every push still
- * triggers a /api/setlist hit, and inactive viewers receive no
- * pushes. R2 introduces per-row diff merge (Path A) for SetlistItem
- * + reactions + impressions, after which the /api/setlist endpoint
- * is hit only as the initial-state seed. R3 adds the polling
- * fallback path for production safety.
+ * Optimistic-UI / push collision: NOT mitigated with a suppression
+ * window in this hook. ReactionButtons already protects via the
+ * `pendingPollCounts` stash pattern (props-while-loading don't apply
+ * to local optimistic state; POST response is authoritative on
+ * settle). EventImpressions dedupes by id in mergeImpressions.
+ * Adding a suppression Map here would be belt-and-suspenders for a
+ * race that the consumer-side architecture already handles.
  */
 export function useRealtimeEventChannel<T>({
   eventId,
@@ -136,13 +151,14 @@ export function useRealtimeEventChannel<T>({
 
     // ──── Snapshot fetch ────
     // Used both for the initial mount seed AND as the Path B refetch
-    // triggered by every postgres_changes push. Same endpoint, same
-    // response shape — the polling and realtime paths reconcile
+    // triggered by SetlistItem / SongWish pushes. Same endpoint,
+    // same response shape — the polling and realtime paths reconcile
     // against identical data.
     const fetchSnapshot = async () => {
       // Cancel any prior in-flight fetch so a rapid burst of pushes
-      // (e.g., admin paste-importing a setlist) collapses to a single
-      // refetch instead of stampeding /api/setlist.
+      // (e.g., admin paste-importing a setlist, multiple wishes
+      // landing within the same animation frame) collapses to a
+      // single refetch instead of stampeding /api/setlist.
       if (abortRef.current) {
         abortRef.current.abort();
       }
@@ -199,6 +215,52 @@ export function useRealtimeEventChannel<T>({
     // Seed initial state.
     void fetchSnapshot();
 
+    // ──── Reaction diff merge (Path A) ────
+    // Closes over `setReactionCounts` directly to avoid a stale
+    // closure on a fresh hook prop value — diff-merge math is
+    // self-contained per-cell (read-modify-write of one entry),
+    // so the functional setState form gives us atomicity against
+    // concurrent pushes within the same render cycle.
+    const applyReactionInsert = (row: ReactionRowPayload) => {
+      const sid = String(row.setlistItemId);
+      const rType = row.reactionType;
+      setReactionCounts((prev) => {
+        const next = { ...prev };
+        const cell = { ...(next[sid] ?? {}) };
+        cell[rType] = (cell[rType] ?? 0) + 1;
+        next[sid] = cell;
+        return next;
+      });
+    };
+    const applyReactionDelete = (row: ReactionRowPayload) => {
+      // Requires REPLICA IDENTITY FULL on SetlistItemReaction so
+      // setlistItemId + reactionType are present in payload.old —
+      // see prisma/post-deploy.sql. Defensive guard: bail if either
+      // field is missing (REPLICA IDENTITY misconfigured) so we
+      // don't accidentally decrement a wrong cell.
+      if (row.setlistItemId == null || !row.reactionType) return;
+      const sid = String(row.setlistItemId);
+      const rType = row.reactionType;
+      setReactionCounts((prev) => {
+        const cell = prev[sid];
+        if (!cell || !cell[rType]) return prev;
+        const next = { ...prev };
+        const updated = { ...cell };
+        const newCount = updated[rType] - 1;
+        if (newCount <= 0) {
+          delete updated[rType];
+        } else {
+          updated[rType] = newCount;
+        }
+        if (Object.keys(updated).length === 0) {
+          delete next[sid];
+        } else {
+          next[sid] = updated;
+        }
+        return next;
+      });
+    };
+
     // ──── Channel subscription ────
     // Per-event channel. Filter is column-level on `eventId` — only
     // changes for THIS event reach this subscriber, regardless of
@@ -213,6 +275,7 @@ export function useRealtimeEventChannel<T>({
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
       .channel(`event:${eventId}`)
+      // SetlistItem — Path B (refetch).
       .on(
         "postgres_changes",
         {
@@ -222,11 +285,51 @@ export function useRealtimeEventChannel<T>({
           filter: `eventId=eq.${eventId}`,
         },
         () => {
-          // Path B: any change → refetch the full joined snapshot.
-          // The push payload's bare row doesn't include songs /
-          // performers / artists, so we deliberately ignore the
-          // payload contents and re-derive from /api/setlist. R2
-          // replaces this with per-row diff merge (Path A).
+          void fetchSnapshot();
+        },
+      )
+      // SetlistItemReaction — Path A (diff merge).
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "SetlistItemReaction",
+          filter: `eventId=eq.${eventId}`,
+        },
+        (payload) => {
+          applyReactionInsert(payload.new as ReactionRowPayload);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "SetlistItemReaction",
+          filter: `eventId=eq.${eventId}`,
+        },
+        (payload) => {
+          applyReactionDelete(payload.old as ReactionRowPayload);
+        },
+      )
+      // SongWish — Path B (refetch). The TOP-3 aggregate needs
+      // locale-specific song-translation joins, which are awkward
+      // to mirror client-side. Refetch frequency is low (wishes
+      // arrive at ~tens-per-show, mostly pre-show) so the bandwidth
+      // cost of re-pulling /api/setlist on each push is acceptable.
+      // A future optimization could add a /api/wishlist/top3 thin
+      // endpoint, but the existing endpoint reuses the SSR cache
+      // path — premature to split.
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "SongWish",
+          filter: `eventId=eq.${eventId}`,
+        },
+        () => {
           void fetchSnapshot();
         },
       )

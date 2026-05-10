@@ -68,9 +68,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // SELECT the parent's eventId in the same lookup that validates
+  // existence — denormalization for Realtime R2 (SetlistItemReaction
+  // needs `eventId` directly so Supabase Realtime's column-only
+  // `postgres_changes` filter can route pushes by event). Free join
+  // since we were already going to read the row.
   const item = await prisma.setlistItem.findFirst({
     where: { id: siId, isDeleted: false },
-    select: { id: true },
+    select: { id: true, eventId: true },
   });
   if (!item) {
     return NextResponse.json(
@@ -85,14 +90,27 @@ export async function POST(req: NextRequest) {
   // we re-select the existing row and return its id so the client's UI
   // state stays consistent. Same pattern as
   // src/app/api/impressions/translate/route.ts:121-156.
+  //
+  // `select: { id: true }` on both the create and the catch's
+  // re-select narrows the returned row to just the UUID we actually
+  // serialize back to the client. Without an explicit select, Prisma
+  // returns every scalar including the new `eventId BigInt?` (R2
+  // denormalization). The current response body only references
+  // `reaction.id`, so a stray BigInt wouldn't reach JSON.stringify
+  // today — but a future spread (`...reaction` in a debug log, an
+  // expanded response shape) would silently throw at runtime.
+  // Mirroring the parent SetlistItem.findFirst's `select: { id, eventId }`
+  // shape just above keeps the convention uniform.
   let reaction;
   try {
     reaction = await prisma.setlistItemReaction.create({
       data: {
         setlistItemId: siId,
+        eventId: item.eventId,
         reactionType,
         anonId: dedupAnonId,
       },
+      select: { id: true },
     });
   } catch (e) {
     if (
@@ -102,6 +120,7 @@ export async function POST(req: NextRequest) {
     ) {
       reaction = await prisma.setlistItemReaction.findFirst({
         where: { setlistItemId: siId, reactionType, anonId: dedupAnonId },
+        select: { id: true },
       });
       if (!reaction) throw e; // partial unique guarantees a row — fail loud
     } else {
