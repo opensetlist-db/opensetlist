@@ -222,14 +222,16 @@ export function EventImpressions({
   // synchronously merge the response, so the matching push is a
   // no-op replace (id already in the list at that rootImpressionId).
   const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
-  useImpressionPolling({
-    eventId,
-    enabled: isOngoing && !realtimeFlag,
-    onUpdate: ({ impressions: polled }) => {
-      setImpressions((prev) => mergeImpressions(prev, polled));
-    },
-  });
-  useRealtimeImpressions({
+  // R3: realtime channel exposes a pollFallback signal. When the
+  // channel exhausts its retry budget (CHANNEL_ERROR / TIMED_OUT),
+  // the hook flips pollFallback to true and stays there for the
+  // page lifetime. We feed that into the polling hook's `enabled`
+  // so the impressions feed degrades gracefully back to the proven
+  // 30s polling path within one render — without the user noticing.
+  // The realtime hook stays mounted but its own effect early-returns
+  // on the same flag (the dead channel was torn down by the
+  // pollFallback dep change).
+  const realtime = useRealtimeImpressions({
     eventId,
     enabled: isOngoing && realtimeFlag,
     onUpsert: (impression) => {
@@ -279,6 +281,24 @@ export function EventImpressions({
       if (wasPresent) {
         setTotalCount((c) => Math.max(0, c - 1));
       }
+    },
+  });
+  // Polling path. Always called (rules-of-hooks); enabled when:
+  //   - the realtime flag is OFF (pre-cutover), or
+  //   - realtime fell back via R3's CHANNEL_ERROR / TIMED_OUT path
+  //     (channel exhausted its retry budget — useImpressionPolling
+  //     takes over without the user noticing).
+  // Both the realtime onUpsert/onRemove callbacks above and this
+  // polling onUpdate feed into the SAME `impressions` state via
+  // mergeImpression(s); during the brief overlap as fallback flips,
+  // both may fire — `mergeImpressions` (id-dedupe) and
+  // `mergeImpressionByChain` (rootId-dedupe) are both idempotent so
+  // duplicate work is harmless.
+  useImpressionPolling({
+    eventId,
+    enabled: isOngoing && (!realtimeFlag || realtime.pollFallback),
+    onUpdate: ({ impressions: polled }) => {
+      setImpressions((prev) => mergeImpressions(prev, polled));
     },
   });
 
