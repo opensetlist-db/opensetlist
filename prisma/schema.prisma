@@ -481,6 +481,12 @@ model Event {
   performers    EventPerformer[]
   impressions   EventImpression[]
   wishes        SongWish[]
+  // Realtime R2: SetlistItemReaction carries a denormalized eventId
+  // so Supabase Realtime postgres_changes can filter pushes by event
+  // (the channel filter only supports columns on the changed table,
+  // not joins). Backfilled in prisma/post-deploy.sql; populated on
+  // INSERT in src/app/api/reactions/route.ts.
+  reactions     SetlistItemReaction[]
 
   @@index([eventSeriesId])
   @@index([date, status])
@@ -556,6 +562,17 @@ model SetlistItem {
 model SetlistItemReaction {
   id            String   @id @default(uuid())
   setlistItemId BigInt
+  // Realtime R2 denormalization. Supabase Realtime's postgres_changes
+  // filter only supports column-level filters on the changed table —
+  // a JOIN through SetlistItem to Event is not expressible — so the
+  // realtime cutover requires eventId on this row directly. Nullable
+  // during the rollout window: post-deploy.sql backfills existing
+  // rows from setlistItem.eventId; the reactions POST handler
+  // populates new rows. A follow-up migration tightens this to NOT
+  // NULL once the backfill is verified everywhere. Conceptually
+  // immutable: SetlistItem.eventId never changes after creation,
+  // so this column tracks it 1:1 for the row's lifetime.
+  eventId       BigInt?
   reactionType  ReactionType
   createdAt     DateTime @default(now())
   // localStorage opensetlist_anon_id — nullable for legacy rows + clients
@@ -566,8 +583,19 @@ model SetlistItemReaction {
   anonId        String?      @db.VarChar(64)
 
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
+  // No onDelete: Cascade on the event side — SetlistItem already
+  // cascades from Event, and SetlistItemReaction cascades from
+  // SetlistItem, so the chain takes care of cleanup. Adding a second
+  // cascade path would risk Postgres "multiple cascade paths" errors.
+  event         Event?      @relation(fields: [eventId], references: [id])
 
   @@index([setlistItemId, reactionType])
+  // Realtime R2: GIN-style lookup for the channel-filter query path
+  // (`WHERE eventId = $1` over the publication's logical replication
+  // stream is filtered Postgres-side; the index keeps GROUP BY
+  // aggregations on eventId fast for any future server-side
+  // analytics).
+  @@index([eventId, setlistItemId])
 }
 
 // Post-show one-line impressions ("한줄감상") per event.

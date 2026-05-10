@@ -68,9 +68,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // SELECT the parent's eventId in the same lookup that validates
+  // existence — denormalization for Realtime R2 (SetlistItemReaction
+  // needs `eventId` directly so Supabase Realtime's column-only
+  // `postgres_changes` filter can route pushes by event). Free join
+  // since we were already going to read the row.
   const item = await prisma.setlistItem.findFirst({
     where: { id: siId, isDeleted: false },
-    select: { id: true },
+    select: { id: true, eventId: true },
   });
   if (!item) {
     return NextResponse.json(
@@ -90,6 +95,7 @@ export async function POST(req: NextRequest) {
     reaction = await prisma.setlistItemReaction.create({
       data: {
         setlistItemId: siId,
+        eventId: item.eventId,
         reactionType,
         anonId: dedupAnonId,
       },

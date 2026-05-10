@@ -5,6 +5,8 @@ import { useTranslations, useLocale } from "next-intl";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
+import { useRealtimeImpressions } from "@/hooks/useRealtimeImpressions";
+import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
@@ -161,25 +163,48 @@ export function EventImpressions({
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // Polling delivers the newest page (no cursor) and intentionally
-  // does NOT request `?includeTotal=1` — running an event-wide
-  // `count()` every 30s per concurrent viewer for a UX-only metric
-  // is wasted DB hot-path cost. Merge polled impressions into the
-  // accumulated list (older loaded pages stay put, new arrivals
-  // slide in at the top) and let `totalCount` drift slightly until
-  // the next "see older" click refreshes it. Optimistic increments
-  // in `handleSubmit` / `handleReport` cover the user's own actions.
+  // R2 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`.
+  // Both hooks must always be called (rules-of-hooks), so the
+  // inactive one runs with `enabled: false` and does no work. The
+  // boolean annotation widens away the literal `false` type so
+  // TypeScript keeps both branches in scope.
   //
-  // Cadence is the hook's default (30s as of F14 — was 5s before
-  // the launch-day-retro mitigation). Cross-user impression
-  // freshness of ≤ 33s is fine for a conversational comment
-  // thread; the submitter's own comment surfaces the instant
-  // `handleSubmit` returns (no polling delay).
+  // Polling path (current default) — delivers the newest page (no
+  // cursor) and intentionally does NOT request `?includeTotal=1`
+  // (event-wide count() every 30s per viewer is wasted DB hot-path
+  // cost). Merge polled impressions into the accumulated list
+  // (older loaded pages stay put, new arrivals slide in at the
+  // top); `totalCount` drifts slightly until the next "see older"
+  // click refreshes it. Cross-user impression freshness ≤ 33s is
+  // fine for a conversational thread; the submitter's own comment
+  // surfaces the instant `handleSubmit` returns.
+  //
+  // Realtime path — per-row push via supabase_realtime publication
+  // (see prisma/post-deploy.sql). onUpsert handles INSERT visible
+  // and UPDATE-still-visible (mergeImpression dedupes by chain id);
+  // onRemove handles UPDATE-now-hidden (supersededAt set, or
+  // isDeleted/isHidden flipped) and rare hard DELETEs. The supersede
+  // edit flow produces an onUpsert(new id) + onRemove(old id) pair;
+  // mergeImpression's chain-level dedupe makes the order irrelevant.
+  // No suppression window needed: own-action POST handlers
+  // synchronously merge the response, so the matching push is a
+  // no-op replace (id already in the list at that rootImpressionId).
+  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
   useImpressionPolling({
     eventId,
-    enabled: isOngoing,
+    enabled: isOngoing && !realtimeFlag,
     onUpdate: ({ impressions: polled }) => {
       setImpressions((prev) => mergeImpressions(prev, polled));
+    },
+  });
+  useRealtimeImpressions({
+    eventId,
+    enabled: isOngoing && realtimeFlag,
+    onUpsert: (impression) => {
+      setImpressions((prev) => mergeImpressions(prev, [impression]));
+    },
+    onRemove: (id) => {
+      setImpressions((prev) => prev.filter((p) => p.id !== id));
     },
   });
 
