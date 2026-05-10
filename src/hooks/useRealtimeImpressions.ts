@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 // Import from `src/lib/types/` (cross-layer type module) instead of
 // `@/components/EventImpressions` to avoid the hook ↔ component
@@ -32,6 +33,22 @@ interface UseRealtimeImpressionsOptions {
 
 interface UseRealtimeImpressionsResult {
   lastUpdated: string | null;
+  /**
+   * R3: realtime channel exhausted its retry budget (`CHANNEL_ERROR`
+   * or `TIMED_OUT`) and the consumer should switch to its polling
+   * fallback. Once true, stays true for the page lifetime — no
+   * auto-recovery, matching `useRealtimeEventChannel`'s semantics.
+   *
+   * Different fallback wiring than `useRealtimeEventChannel`: that
+   * hook calls `useSetlistPolling` *internally* and seamlessly
+   * swaps; this hook coexists with `useImpressionPolling` at the
+   * `EventImpressions` call site (because the impressions feed
+   * has its own cursor + load-more state owned by the consumer),
+   * so the consumer needs to see the flag and decide when to
+   * enable polling. Mirrors the `pendingPollCounts` / loading-flag
+   * pattern that already governs the consumer's prop-sync logic.
+   */
+  pollFallback: boolean;
 }
 
 // Bare-row shape from the EventImpression `postgres_changes`
@@ -105,6 +122,22 @@ function rowToImpression(row: ImpressionRowPayload): Impression {
  * flows similarly converge — the consumer's optimistic state
  * already removed the row by rootId before the realtime UPDATE
  * arrives, so the realtime onRemove is a no-op filter.
+ *
+ * R3 — polling fallback + observability:
+ *
+ *   - On `CHANNEL_ERROR` / `TIMED_OUT`, expose `pollFallback: true`
+ *     in the return shape. EventImpressions watches this flag and
+ *     enables `useImpressionPolling` (which is always called
+ *     alongside this hook) so the impressions feed keeps updating
+ *     via the proven 5/30s polling path.
+ *
+ *   - No auto-recovery: once flipped, stays true for the page
+ *     lifetime. Matches `useRealtimeEventChannel`.
+ *
+ *   - Sentry: breadcrumb on every transition (separate category
+ *     `realtime-impressions` so it doesn't blur with the setlist
+ *     channel's stream); a single `captureMessage` on first
+ *     fallback per session.
  */
 export function useRealtimeImpressions({
   eventId,
@@ -113,6 +146,7 @@ export function useRealtimeImpressions({
   onRemove,
 }: UseRealtimeImpressionsOptions): UseRealtimeImpressionsResult {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [pollFallback, setPollFallback] = useState(false);
 
   // Hold callbacks in refs so a fresh callback identity per render
   // doesn't tear down + rebuild the channel subscription. Same
@@ -128,8 +162,37 @@ export function useRealtimeImpressions({
     onRemoveRef.current = onRemove;
   }, [onRemove]);
 
+  // Once-per-session latch for the Sentry captureMessage. Mirrors the
+  // pattern in useRealtimeEventChannel — sustained outages shouldn't
+  // generate one captureMessage per status flip.
+  const hasReportedFallbackRef = useRef(false);
+
+  // Reset transient state when eventId changes (mirror the pattern in
+  // useRealtimeEventChannel — fresh attempt at realtime per event).
+  // The matching ref reset lives INSIDE the channel-setup effect
+  // below — channel-bound refs need to reset whenever the channel
+  // is re-created, which includes locale changes. Also reset
+  // `lastUpdated` so consumers don't read the previous event's
+  // timestamp before any event B push lands.
+  const [prevEventId, setPrevEventId] = useState(eventId);
+  if (prevEventId !== eventId) {
+    setPrevEventId(eventId);
+    setPollFallback(false);
+    setLastUpdated(null);
+  }
+
   useEffect(() => {
     if (!enabled) return;
+    // Once polling has taken over, this effect has cleaned up the
+    // dead channel and we skip re-subscribing.
+    if (pollFallback) return;
+
+    // Reset the channel-bound captureMessage latch at the top of
+    // every channel setup. Mirrors useRealtimeEventChannel — the
+    // ref tracks state of the CURRENT channel, so resetting only
+    // on eventId change would leak across locale-change channel
+    // re-creates (the channel-setup effect also re-runs on locale).
+    hasReportedFallbackRef.current = false;
 
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
@@ -192,7 +255,51 @@ export function useRealtimeImpressions({
           setLastUpdated(new Date().toISOString());
         },
       )
-      .subscribe();
+      .subscribe((channelStatus) => {
+        // R3: status transition observability + fallback gating.
+        // Separate breadcrumb category from `useRealtimeEventChannel`
+        // so post-mortems can tell the two channels apart at a
+        // glance.
+        Sentry.addBreadcrumb({
+          category: "realtime-impressions",
+          message: `event:${eventId}:impressions channel status → ${channelStatus}`,
+          level: channelStatus === "SUBSCRIBED" ? "info" : "warning",
+          data: { eventId, channelStatus },
+        });
+
+        if (
+          channelStatus === "CHANNEL_ERROR" ||
+          channelStatus === "TIMED_OUT"
+        ) {
+          if (!hasReportedFallbackRef.current) {
+            hasReportedFallbackRef.current = true;
+            Sentry.captureMessage(
+              "Realtime impressions fallback to polling",
+              {
+                level: "warning",
+                tags: {
+                  eventId,
+                  transitionReason: channelStatus,
+                },
+              },
+            );
+          }
+          // Tell the consumer (EventImpressions) to enable polling.
+          // The dep change triggers cleanup below; the next render's
+          // effect early-returns.
+          setPollFallback(true);
+        }
+        // Reconnect-SUBSCRIBED gap-fill is NOT done here. The
+        // impressions feed is purely append-driven (chains either
+        // grow or are hidden); a brief gap during a reconnect would
+        // cause us to miss INSERTs that landed during the drop, but
+        // those would surface naturally on the consumer's next
+        // load-more click (or be re-pushed if the user posts after
+        // reconnect). Refetching the full feed on reconnect would
+        // require us to mirror the cursor-pagination state in this
+        // hook, which is the consumer's concern. Trade-off accepted
+        // for R3.
+      });
 
     return () => {
       void supabase.removeChannel(channel);
@@ -200,8 +307,10 @@ export function useRealtimeImpressions({
     // Callbacks are NOT in the deps array — they're held in refs and
     // the latest value is read on each push. Adding them here would
     // re-subscribe the channel on every parent re-render with a fresh
-    // callback identity, which would be a regression.
-  }, [eventId, enabled]);
+    // callback identity, which would be a regression. `pollFallback`
+    // IS in the deps so the effect re-runs (cleanup + early return)
+    // when we hand off to polling.
+  }, [eventId, enabled, pollFallback]);
 
-  return { lastUpdated };
+  return { lastUpdated, pollFallback };
 }
