@@ -56,6 +56,37 @@ function mergeImpressions(
   return merged;
 }
 
+/**
+ * Chain-aware merge: replace any existing row whose `rootImpressionId`
+ * matches the incoming row's, then prepend the incoming row. Used for
+ * single-row updates where dedup must collapse a *chain* of supersede
+ * versions into one visible row, not just dedupe by `id`.
+ *
+ * Why this differs from `mergeImpressions` (id-based): when a user
+ * edits an impression, the new row has a *new* `id` but the *same*
+ * `rootImpressionId`. Id-based dedupe would leave both the old and
+ * new versions in the list. Chain-based dedupe correctly collapses
+ * to the latest version.
+ *
+ * Used by both:
+ *   - own-action POST handlers (handleSubmit, handleEdit) where the
+ *     server response is the new chain head and we want it to replace
+ *     any prior version of the same chain in the list,
+ *   - the realtime onUpsert callback for the same reason.
+ *
+ * Pure / non-mutating; safe inside a `setImpressions(prev => ...)`
+ * updater.
+ */
+function mergeImpressionByChain(
+  prev: Impression[],
+  imp: Impression,
+): Impression[] {
+  const without = prev.filter(
+    (p) => p.rootImpressionId !== imp.rootImpressionId,
+  );
+  return [imp, ...without];
+}
+
 interface SavedImpression {
   chainId: string;
   content: string;
@@ -202,10 +233,52 @@ export function EventImpressions({
     eventId,
     enabled: isOngoing && realtimeFlag,
     onUpsert: (impression) => {
-      setImpressions((prev) => mergeImpressions(prev, [impression]));
+      // Chain-aware dedup AND totalCount sync. Two cases collapse:
+      //   - INSERT for a brand-new chain (rootImpressionId not yet
+      //     in the list) → grow the visible list AND increment
+      //     totalCount so the "see older (X more)" math reflects
+      //     reality.
+      //   - INSERT for a supersede (rootImpressionId already in the
+      //     list) → replace the prior version in place; totalCount
+      //     stays the same because the server-side count() filter
+      //     (supersededAt IS NULL) counts one chain head, not one
+      //     per row in the chain.
+      // We capture `isNewChain` from inside the updater (idempotent
+      // closure-write — both runs of the updater under React 18
+      // strict mode see the same `prev` and assign the same value)
+      // so the totalCount call below knows which case fired.
+      let isNewChain = false;
+      setImpressions((prev) => {
+        isNewChain = !prev.some(
+          (p) => p.rootImpressionId === impression.rootImpressionId,
+        );
+        return mergeImpressionByChain(prev, impression);
+      });
+      if (isNewChain) {
+        setTotalCount((c) => c + 1);
+      }
     },
     onRemove: (id) => {
-      setImpressions((prev) => prev.filter((p) => p.id !== id));
+      // Mirror onUpsert's totalCount tracking. Three cases reach
+      // here, only one of which should decrement:
+      //   - UPDATE that flips a previously-visible row to hidden
+      //     via supersededAt set (during an edit) → the matching
+      //     INSERT for the new row already replaced this id in the
+      //     list via onUpsert, so `wasPresent` is false, no-op.
+      //   - UPDATE that flips a previously-visible row to hidden
+      //     via isHidden / isDeleted (report flow, soft delete) →
+      //     row was in the list, removed → decrement.
+      //   - Hard DELETE (rare) → same as the hidden case.
+      // The wasPresent capture pattern matches onUpsert's
+      // isNewChain — same React-18-strict-mode safety reasoning.
+      let wasPresent = false;
+      setImpressions((prev) => {
+        wasPresent = prev.some((p) => p.id === id);
+        return prev.filter((p) => p.id !== id);
+      });
+      if (wasPresent) {
+        setTotalCount((c) => Math.max(0, c - 1));
+      }
     },
   });
 
@@ -319,14 +392,11 @@ export function EventImpressions({
 
   // After an edit, the new row has a different `id` than the prior version,
   // so dedup must be on the chain id — otherwise the old version would
-  // remain in the visible list.
+  // remain in the visible list. Delegates to the top-level
+  // `mergeImpressionByChain` helper, which the realtime onUpsert
+  // callback also uses.
   const mergeImpression = (imp: Impression) => {
-    setImpressions((prev) => {
-      const without = prev.filter(
-        (p) => p.rootImpressionId !== imp.rootImpressionId
-      );
-      return [imp, ...without];
-    });
+    setImpressions((prev) => mergeImpressionByChain(prev, imp));
   };
 
   const handleSubmit = async () => {
