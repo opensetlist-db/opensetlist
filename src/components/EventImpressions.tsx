@@ -12,15 +12,16 @@ import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { ImpressionCell } from "./ImpressionCell";
 import { borderWidth, colors, motion, radius, shadows } from "@/styles/tokens";
+// Type lives in `src/lib/types/impression.ts` so hooks under
+// `src/hooks/` can describe impressions without importing from
+// `src/components/` (which would create a circular dependency with
+// hooks this component imports). Re-exported for back-compat with
+// existing `import { Impression } from "@/components/EventImpressions"`
+// sites elsewhere — useImpressionPolling, useRealtimeImpressions,
+// and ImpressionCell currently rely on this re-export.
+import type { Impression } from "@/lib/types/impression";
 
-export interface Impression {
-  id: string;
-  rootImpressionId: string;
-  eventId: string;
-  content: string;
-  locale: string;
-  createdAt: string;
-}
+export type { Impression };
 
 /**
  * Merge a fresh page of impressions into the accumulated list,

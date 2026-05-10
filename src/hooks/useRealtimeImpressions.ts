@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
-import type { Impression } from "@/components/EventImpressions";
+// Import from `src/lib/types/` (cross-layer type module) instead of
+// `@/components/EventImpressions` to avoid the hook ↔ component
+// circular dependency — EventImpressions imports this hook.
+import type { Impression } from "@/lib/types/impression";
 
 interface UseRealtimeImpressionsOptions {
   eventId: string;
