@@ -6,7 +6,6 @@ import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 import { useRealtimeImpressions } from "@/hooks/useRealtimeImpressions";
-import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
@@ -249,25 +248,9 @@ export function EventImpressions({
     [],
   );
 
-  // R2 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`.
-  // Both hooks must always be called (rules-of-hooks), so the
-  // inactive one runs with `enabled: false` and does no work. The
-  // boolean annotation widens away the literal `false` type so
-  // TypeScript keeps both branches in scope.
-  //
-  // Polling path (current default) — delivers the newest page (no
-  // cursor) and intentionally does NOT request `?includeTotal=1`
-  // (event-wide count() every 30s per viewer is wasted DB hot-path
-  // cost). Merge polled impressions into the accumulated list
-  // (older loaded pages stay put, new arrivals slide in at the
-  // top); `totalCount` drifts slightly until the next "see older"
-  // click refreshes it. Cross-user impression freshness ≤ 33s is
-  // fine for a conversational thread; the submitter's own comment
-  // surfaces the instant `handleSubmit` returns.
-  //
-  // Realtime path — per-row push via supabase_realtime publication
-  // (see prisma/post-deploy.sql). onUpsert handles INSERT visible
-  // and UPDATE-still-visible (mergeImpression dedupes by chain id);
+  // Realtime per-row push via supabase_realtime publication (see
+  // prisma/post-deploy.sql). onUpsert handles INSERT visible AND
+  // UPDATE-still-visible (mergeImpression dedupes by chain id);
   // onRemove handles UPDATE-now-hidden (supersededAt set, or
   // isDeleted/isHidden flipped) and rare hard DELETEs. The supersede
   // edit flow produces an onUpsert(new id) + onRemove(old id) pair;
@@ -275,19 +258,16 @@ export function EventImpressions({
   // No suppression window needed: own-action POST handlers
   // synchronously merge the response, so the matching push is a
   // no-op replace (id already in the list at that rootImpressionId).
-  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
-  // R3: realtime channel exposes a pollFallback signal. When the
-  // channel exhausts its retry budget (CHANNEL_ERROR / TIMED_OUT),
-  // the hook flips pollFallback to true and stays there for the
-  // page lifetime. We feed that into the polling hook's `enabled`
-  // so the impressions feed degrades gracefully back to the proven
-  // 30s polling path within one render — without the user noticing.
-  // The realtime hook stays mounted but its own effect early-returns
-  // on the same flag (the dead channel was torn down by the
-  // pollFallback dep change).
+  //
+  // useImpressionPolling stays alive below as the in-hook R3
+  // fallback path that takes over on `realtime.pollFallback` (set
+  // by useRealtimeImpressions on CHANNEL_ERROR / TIMED_OUT).
+  // Pre-v0.11.0, this site branched between polling and realtime
+  // via LAUNCH_FLAGS.realtimeEnabled; the activation deleted the
+  // flag-on/off branch and demoted polling to the fallback role.
   const realtime = useRealtimeImpressions({
     eventId,
-    enabled: isOngoing && realtimeFlag,
+    enabled: isOngoing,
     onUpsert: (impression) => {
       // Chain-aware dedup AND totalCount sync. Two cases collapse:
       //   - INSERT for a brand-new chain (rootImpressionId not yet
@@ -345,20 +325,18 @@ export function EventImpressions({
       }
     },
   });
-  // Polling path. Always called (rules-of-hooks); enabled when:
-  //   - the realtime flag is OFF (pre-cutover), or
-  //   - realtime fell back via R3's CHANNEL_ERROR / TIMED_OUT path
-  //     (channel exhausted its retry budget — useImpressionPolling
-  //     takes over without the user noticing).
-  // Both the realtime onUpsert/onRemove callbacks above and this
-  // polling onUpdate feed into the SAME `impressions` state via
-  // mergeImpression(s); during the brief overlap as fallback flips,
-  // both may fire — `mergeImpressions` (id-dedupe) and
-  // `mergeImpressionByChain` (rootId-dedupe) are both idempotent so
-  // duplicate work is harmless.
+  // R3 polling fallback. Always called (rules-of-hooks); enabled
+  // ONLY when realtime fell back via CHANNEL_ERROR / TIMED_OUT
+  // (channel exhausted its retry budget — useImpressionPolling
+  // takes over without the user noticing). During the brief overlap
+  // window as fallback flips, both the realtime callbacks above and
+  // this polling onUpdate may fire against the same `impressions`
+  // state — `mergeImpressions` (id-dedupe) and `mergeImpressionByChain`
+  // (rootId-dedupe) are both idempotent so duplicate work is
+  // harmless.
   useImpressionPolling({
     eventId,
-    enabled: isOngoing && (!realtimeFlag || realtime.pollFallback),
+    enabled: isOngoing && realtime.pollFallback,
     onUpdate: ({ impressions: polled }) => {
       applyImpressionsUpdate((prev) => mergeImpressions(prev, polled));
     },
