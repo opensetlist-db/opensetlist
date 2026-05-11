@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
@@ -184,6 +184,32 @@ export function EventImpressions({
   const mounted = useMounted();
   const [impressions, setImpressions] =
     useState<Impression[]>(initialImpressions);
+  // Latest-state ref synced via useEffect so the realtime
+  // onUpsert/onRemove callbacks can read the most recent committed
+  // `impressions` value synchronously when deciding whether to bump
+  // `totalCount`. The earlier closure-capture pattern
+  // (`let isNewChain = false; setImpressions((prev) => { isNewChain
+  // = ...; return ... }); if (isNewChain) ...`) was racy in React 18:
+  // setState updaters are deferred to the next render's
+  // reconciliation, so the `if (isNewChain)` check ran with the
+  // initial `false` before the updater could write the real value
+  // — totalCount never incremented for new-chain INSERTs on the
+  // realtime path. The ref pattern reads from the previously-
+  // committed state, which is the correct anchor for the
+  // "is-this-a-new-chain?" decision (the chain either existed in
+  // the list-as-rendered or it didn't; pending updates that haven't
+  // committed yet can't change that answer for the row we're about
+  // to insert).
+  //
+  // Tiny race window: between commit and useEffect running, the ref
+  // is one render stale. Realtime pushes are spaced >> the gap, and
+  // the worst-case mistake (over-count by 1 if two pushes for the
+  // SAME rootImpressionId fire within the gap) is a single-row
+  // accounting drift on a UX-only metric — accepted.
+  const impressionsRef = useRef<Impression[]>(initialImpressions);
+  useEffect(() => {
+    impressionsRef.current = impressions;
+  }, [impressions]);
   // Pagination state — tracks the user's position in the older half.
   // Polling does NOT touch these; they advance only on a successful
   // "see older" click (server response sets `loadMoreCursor` to the
@@ -245,17 +271,19 @@ export function EventImpressions({
       //     stays the same because the server-side count() filter
       //     (supersededAt IS NULL) counts one chain head, not one
       //     per row in the chain.
-      // We capture `isNewChain` from inside the updater (idempotent
-      // closure-write — both runs of the updater under React 18
-      // strict mode see the same `prev` and assign the same value)
-      // so the totalCount call below knows which case fired.
-      let isNewChain = false;
-      setImpressions((prev) => {
-        isNewChain = !prev.some(
-          (p) => p.rootImpressionId === impression.rootImpressionId,
-        );
-        return mergeImpressionByChain(prev, impression);
-      });
+      // The `isNewChain` decision reads from `impressionsRef.current`
+      // — the LATEST committed state, NOT the closure capture from
+      // when the callback was created and NOT a value computed
+      // inside the setImpressions updater. React 18 defers updaters
+      // to the next render's reconciliation, so a `let isNewChain
+      // = false; setImpressions((prev) => { isNewChain = ... })`
+      // pattern would always read `false` at the post-setState
+      // check site (the updater hasn't run yet). The ref pattern
+      // gives us a synchronous read against the rendered tree.
+      const isNewChain = !impressionsRef.current.some(
+        (p) => p.rootImpressionId === impression.rootImpressionId,
+      );
+      setImpressions((prev) => mergeImpressionByChain(prev, impression));
       if (isNewChain) {
         setTotalCount((c) => c + 1);
       }
@@ -271,13 +299,10 @@ export function EventImpressions({
       //     via isHidden / isDeleted (report flow, soft delete) →
       //     row was in the list, removed → decrement.
       //   - Hard DELETE (rare) → same as the hidden case.
-      // The wasPresent capture pattern matches onUpsert's
-      // isNewChain — same React-18-strict-mode safety reasoning.
-      let wasPresent = false;
-      setImpressions((prev) => {
-        wasPresent = prev.some((p) => p.id === id);
-        return prev.filter((p) => p.id !== id);
-      });
+      // Same `impressionsRef.current` synchronous-read pattern as
+      // onUpsert above — see that comment for the rationale.
+      const wasPresent = impressionsRef.current.some((p) => p.id === id);
+      setImpressions((prev) => prev.filter((p) => p.id !== id));
       if (wasPresent) {
         setTotalCount((c) => Math.max(0, c - 1));
       }
