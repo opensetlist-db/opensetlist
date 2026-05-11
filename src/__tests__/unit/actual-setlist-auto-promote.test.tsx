@@ -10,6 +10,7 @@ vi.mock("@/hooks/useMounted", () => ({
 }));
 
 import { ActualSetlist } from "@/components/ActualSetlist";
+import { AUTO_CONFIRM_TICK_MS } from "@/lib/confirmStatus";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 
 function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
@@ -92,7 +93,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
     // infra might fire (none expected, but defensive). Our ticker is
     // the one with the literal 5_000 ms cadence.
     const ourTickerCalls = setIntervalSpy.mock.calls.filter(
-      ([, ms]) => ms === 5_000,
+      ([, ms]: [unknown, number?]) => ms === AUTO_CONFIRM_TICK_MS,
     );
     expect(ourTickerCalls.length).toBe(1);
   });
@@ -113,7 +114,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
     );
 
     const ourTickerCalls = setIntervalSpy.mock.calls.filter(
-      ([, ms]) => ms === 5_000,
+      ([, ms]: [unknown, number?]) => ms === AUTO_CONFIRM_TICK_MS,
     );
     expect(ourTickerCalls.length).toBe(0);
   });
@@ -138,7 +139,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
     );
 
     const ourTickerCalls = setIntervalSpy.mock.calls.filter(
-      ([, ms]) => ms === 5_000,
+      ([, ms]: [unknown, number?]) => ms === AUTO_CONFIRM_TICK_MS,
     );
     expect(ourTickerCalls.length).toBe(0);
   });

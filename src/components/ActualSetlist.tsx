@@ -13,7 +13,7 @@ import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
-import { getConfirmStatus } from "@/lib/confirmStatus";
+import { AUTO_CONFIRM_TICK_MS, getConfirmStatus } from "@/lib/confirmStatus";
 import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 import { useLocalDisagree } from "@/hooks/useLocalDisagree";
 import { trackEvent } from "@/lib/analytics";
@@ -75,7 +75,7 @@ export function ActualSetlist({
   const [, tickAutoPromote] = useReducer((x: number) => x + 1, 0);
   useEffect(() => {
     if (!hasRumoured) return;
-    const id = setInterval(tickAutoPromote, 5_000);
+    const id = setInterval(tickAutoPromote, AUTO_CONFIRM_TICK_MS);
     return () => clearInterval(id);
   }, [hasRumoured]);
 
