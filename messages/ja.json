@@ -323,7 +323,7 @@
   "Confirm": {
     "confirmAria": "正しい",
     "disagreeAria": "間違っている",
-    "description": "新しく登録された曲が正確なら 👍 を、間違っていれば 👎 を押してください。"
+    "description": "新しく登録された曲が正確なら ✓ を、間違っていれば ✕ を押してください。"
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",

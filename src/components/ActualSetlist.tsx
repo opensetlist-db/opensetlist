@@ -90,7 +90,7 @@ export function ActualSetlist({
   const { disagreedItemIds, toggleDisagree } = useLocalDisagree(eventId);
 
   // Mutual exclusivity: a viewer can't simultaneously confirm AND
-  // disagree on the same row. Tapping 👍 clears any matching
+  // disagree on the same row. Tapping ✓ clears any matching
   // disagree, and vice versa. This coordination lives at the
   // consumer level (here) rather than inside the hooks so each
   // hook stays independently testable. The handler is memoized so
@@ -166,7 +166,7 @@ export function ActualSetlist({
   return (
     <>
       {/* Confirm-vote instructional strip: tells first-time visitors
-          how to 👍/👎 newly-registered (rumoured) rows. Visible only
+          how to ✓/✕ newly-registered (rumoured) rows. Visible only
           while at least one row is still rumoured — once every row
           promotes to confirmed (DB-confirmed or via the 1-min auto-
           promote in `getConfirmStatus`), the action it describes is
@@ -241,7 +241,7 @@ export function ActualSetlist({
  * Binary row state — `confirmed` or `rumoured`. The viewer's vote
  * is now a separate axis (`RowVote` via `deriveMyVote` below), not
  * a row-level state, since v0.10.1's dual-button NumberSlot
- * (👍/👎) collapsed the previous 3-state shape.
+ * (✓/✕) collapsed the previous 3-state shape.
  *
  * `getConfirmStatus` (`src/lib/confirmStatus.ts`) handles the DB-
  * level decision (`status === "confirmed" | "live"` always wins;

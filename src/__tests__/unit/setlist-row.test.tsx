@@ -684,7 +684,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(li.style.background).toBe("");
   });
 
-  it("rowState=\"rumoured\" + myVote=\"none\": gray bg + both 👍/👎 dashed (default)", () => {
+  it("rowState=\"rumoured\" + myVote=\"none\": gray bg + both ✓/✕ dashed (default)", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -703,15 +703,15 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     // Both vote buttons render in dotted-border resting state.
     const confirmBtn = screen.getByRole("button", { name: "confirmAria" });
     const disagreeBtn = screen.getByRole("button", { name: "disagreeAria" });
-    expect(confirmBtn.textContent).toBe("👍");
-    expect(disagreeBtn.textContent).toBe("👎");
+    expect(confirmBtn.textContent).toBe("✓");
+    expect(disagreeBtn.textContent).toBe("✕");
     expect(confirmBtn.getAttribute("style")).toContain("dashed");
     expect(disagreeBtn.getAttribute("style")).toContain("dashed");
     expect(confirmBtn.getAttribute("aria-pressed")).toBe("false");
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("rowState=\"rumoured\" + myVote=\"confirm\": gray bg + 👍 active, 👎 muted", () => {
+  it("rowState=\"rumoured\" + myVote=\"confirm\": gray bg + ✓ active, ✕ muted", () => {
     const { container } = render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -734,7 +734,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("rowState=\"rumoured\" + myVote=\"disagree\": gray bg + 👎 active, 👍 muted", () => {
+  it("rowState=\"rumoured\" + myVote=\"disagree\": gray bg + ✕ active, ✓ muted", () => {
     render(
       <SetlistRow
         item={makeItem({ status: "rumoured" })}
@@ -767,7 +767,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     // ReactionButtons render as buttons with reaction-type ARIA
     // labels (mocked to the i18n key value). At minimum the four
     // standard reaction buttons should be present alongside the
-    // two vote buttons (👍 + 👎).
+    // two vote buttons (✓ + ✕).
     const buttons = screen.getAllByRole("button");
     // 4 reactions + 2 vote buttons = at least 6 buttons.
     expect(buttons.length).toBeGreaterThanOrEqual(6);
@@ -779,7 +779,7 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     ).toBeTruthy();
   });
 
-  it("rumoured row: tapping 👍 fires onConfirmTap; tapping 👎 fires onDisagreeTap", () => {
+  it("rumoured row: tapping ✓ fires onConfirmTap; tapping ✕ fires onDisagreeTap", () => {
     const onConfirmTap = vi.fn();
     const onDisagreeTap = vi.fn();
     render(
@@ -799,13 +799,13 @@ describe("SetlistRow — rowState prop (Phase 1B/1C scaffold)", () => {
     expect(onDisagreeTap).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "disagreeAria" }));
     expect(onDisagreeTap).toHaveBeenCalledTimes(1);
-    // Cross-isolation: tapping 👎 doesn't fire 👍 again.
+    // Cross-isolation: tapping ✕ doesn't fire ✓ again.
     expect(onConfirmTap).toHaveBeenCalledTimes(1);
   });
 
   it("FlagButton is GONE in v0.10.1 — no mailto link rendered on rumoured rows", () => {
     // Regression check that the v0.10.0 FlagButton (mailto link
-    // below the title) is fully removed. The 👎 button replaces
+    // below the title) is fully removed. The ✕ button replaces
     // its role; the operator-email path is gone.
     render(
       <SetlistRow

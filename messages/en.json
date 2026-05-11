@@ -323,7 +323,7 @@
   "Confirm": {
     "confirmAria": "Mark as correct",
     "disagreeAria": "Mark as incorrect",
-    "description": "If a newly added song is correct, tap 👍 — if not, tap 👎."
+    "description": "If a newly added song is correct, tap ✓ — if not, tap ✕."
   },
   "Wishlist": {
     "title": "Songs you want to hear at this show",
