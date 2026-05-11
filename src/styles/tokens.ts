@@ -73,7 +73,7 @@ export const colors = {
   liveBorder: "#fecaca",
 
   // Confirm-row disagree button (Phase 1B/1C). Active state for
-  // the 👎 button in `<NumberSlot>` when the viewer has voted
+  // the ✕ button in `<NumberSlot>` when the viewer has voted
   // "wrong row." Rose family — same red end of the spectrum as
   // `live` but a deeper accent (rose-700 vs the LIVE red-600), so
   // the two tokens read as related-but-distinct semantics

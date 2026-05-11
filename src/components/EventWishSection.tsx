@@ -287,10 +287,12 @@ export function EventWishSection({
         border: `0.5px solid ${colors.wishlistBorder}`,
       }}
     >
-      {/* Title bar: 🌸 + label, with `최대 3곡` hint right-aligned in
-          pre-show only. */}
+      {/* Title bar: 🌸 + label. The pre-show "최대 3곡" hint that
+          used to sit right-aligned here moved into the description
+          strip below so the rules ("add before start", "max 3") read
+          as one sentence rather than a split label + badge. */}
       <div
-        className="flex items-center justify-between px-3.5 pt-2.5 pb-2"
+        className="flex items-center px-3.5 pt-2.5 pb-2"
         style={{ borderBottom: `0.5px solid ${colors.wishlistBorder}` }}
       >
         <span
@@ -299,15 +301,25 @@ export function EventWishSection({
         >
           🌸 {titleText}
         </span>
-        {!isLocked && (
-          <span
-            className="text-[11px]"
-            style={{ color: colors.wishlistMuted }}
-          >
-            {t("cap")}
-          </span>
-        )}
       </div>
+
+      {/* Description strip: instructional copy for first-time visitors.
+          Pre-show only — once startTime lands and `isLocked` flips, the
+          actions it describes (add/remove) are gone, so the copy is too.
+          Border-bottom uses `wishlistBorder` (same token as the title bar
+          border directly above) so the section reads as one chrome block;
+          row-internal dividers in the grid below use `wishlistRowDivider`. */}
+      {!isLocked && (
+        <div
+          className="px-3.5 pt-2 pb-1 text-[11px]"
+          style={{
+            color: colors.wishlistMuted,
+            borderBottom: `0.5px solid ${colors.wishlistBorder}`,
+          }}
+        >
+          {t("description")}
+        </div>
+      )}
 
       <div className="px-3.5 py-2.5">
         <div className="grid grid-cols-2 gap-2.5 lg:gap-4">

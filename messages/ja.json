@@ -303,7 +303,8 @@
     "preShowHint": "{count}曲入力済み",
     "duringHint": "{count}曲予想入力済み",
     "afterHint": "公演終了 · 最終結果",
-    "finalScore": "{matched}/{total} 的中 ({pct}%) 🎯"
+    "finalScore": "{matched}/{total} 的中 ({pct}%) 🎯",
+    "description": "公演開始までに曲を追加してください。実際のセットリストと比較して的中率が計算されます。予想曲数に制限はありませんが、実際のセットリスト曲数までの上位順位の曲のみが判定に使用されます。"
   },
   "ShareCard": {
     "modalTitle": "結果を共有",
@@ -321,12 +322,13 @@
   },
   "Confirm": {
     "confirmAria": "正しい",
-    "disagreeAria": "間違っている"
+    "disagreeAria": "間違っている",
+    "description": "新しく登録された曲が正確なら ✓ を、間違っていれば ✕ を押してください。"
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
     "lockedTitle": "みんなの希望曲",
-    "cap": "最大3曲",
+    "description": "公演開始までに曲を追加してください。最大3曲まで選択できます。",
     "myList": "私の希望曲",
     "fanTop3": "みんなの希望曲",
     "add": "+ 曲を追加",

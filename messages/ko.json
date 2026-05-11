@@ -303,7 +303,8 @@
     "preShowHint": "{count}곡 입력됨",
     "duringHint": "{count}곡 예상 입력됨",
     "afterHint": "공연 종료 · 최종 결과",
-    "finalScore": "{matched}/{total} 적중 ({pct}%) 🎯"
+    "finalScore": "{matched}/{total} 적중 ({pct}%) 🎯",
+    "description": "공연 시작 전까지 곡을 추가해 주세요. 실제 세트리스트와 비교하여 적중률이 계산됩니다. 예상 세트리스트 곡 수에는 제한이 없지만, 실제 세트리스트 곡 수 만큼의 상위 순번곡만이 판정에 사용됩니다."
   },
   "ShareCard": {
     "modalTitle": "결과 공유",
@@ -321,12 +322,13 @@
   },
   "Confirm": {
     "confirmAria": "정확함",
-    "disagreeAria": "잘못됨"
+    "disagreeAria": "잘못됨",
+    "description": "새로 등록된 곡이 정확하면 ✓를, 아니면 ✕를 눌러 주세요."
   },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",
     "lockedTitle": "모두의 희망곡",
-    "cap": "최대 3곡",
+    "description": "공연 시작 전까지 곡을 추가해 주세요. 최대 3곡까지 선택할 수 있습니다.",
     "myList": "나의 희망곡",
     "fanTop3": "모두의 희망곡",
     "add": "+ 곡 추가",

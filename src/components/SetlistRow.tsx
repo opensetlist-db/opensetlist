@@ -55,13 +55,13 @@ interface Props {
    */
   myVote?: RowVote;
   /**
-   * Tap handler for the 👍 button. Wired by `<ActualSetlist>` to
+   * Tap handler for the ✓ button. Wired by `<ActualSetlist>` to
    * `useLocalConfirm`'s toggle (with mutual-exclusivity coordination
    * against `useLocalDisagree`).
    */
   onConfirmTap?: () => void;
   /**
-   * Tap handler for the 👎 button. Wired by `<ActualSetlist>` to
+   * Tap handler for the ✕ button. Wired by `<ActualSetlist>` to
    * `useLocalDisagree`'s toggle (with mutual-exclusivity coordination
    * against `useLocalConfirm`).
    */
@@ -198,7 +198,7 @@ export function SetlistRow({
       // their optimistic-counts state diverge.
       //
       // Mobile (default): 2-col grid `[64px_1fr]` (position cell is
-      // 52px visual to fit the new 👍+👎 dual buttons + 12px gap).
+      // 52px visual to fit the new ✓+✕ dual buttons + 12px gap).
       // Title spans col 2 row 1; reactions span col 2 row 2.
       //
       // Desktop (≥ lg): pulls the column template from the shared
@@ -211,11 +211,11 @@ export function SetlistRow({
     >
       {/* Position slot — col 1, row 1. NumberSlot renders the right
           glyph for the row state: plain number for confirmed,
-          side-by-side 👍/👎 vote buttons for rumoured. v0.10.1
+          side-by-side ✓/✕ vote buttons for rumoured. v0.10.1
           replaces the v0.10.0 single-button [?]/[✓] shape with the
           dual-button vote pair (see plan: "Replace <FlagButton>
           with thumb-up / thumb-down"). The mailto-based FlagButton
-          that lived below the title is gone — the 👎 button covers
+          that lived below the title is gone — the ✕ button covers
           the "wrong row" signal with one tap instead of opening a
           mail picker. */}
       <NumberSlot
@@ -276,10 +276,10 @@ export function SetlistRow({
           />
         )}
         {/* FlagButton (mailto:help@opensetlist.com) was removed in
-            v0.10.1 — the dual-button 👍/👎 cell at the row's
+            v0.10.1 — the dual-button ✓/✕ cell at the row's
             position slot now covers both confirmation AND
             disagreement signals with one tap each. Email reports
-            were too high-friction at Phase 1B/1C scale; the 👎
+            were too high-friction at Phase 1B/1C scale; the ✕
             button is the lightweight successor. Aggregation
             behavior (N disagrees → row hidden / disputed) ships in
             Week 3 alongside `<AddItemBottomSheet>`. */}

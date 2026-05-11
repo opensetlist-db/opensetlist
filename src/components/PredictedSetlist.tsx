@@ -374,6 +374,26 @@ export function PredictedSetlist({
         )}
       </div>
 
+      {/* Instructional description: explains the prediction rules
+          (no cap on entries, but only the top-N matches against the
+          actual setlist count toward the score). Pre-show only —
+          once `isLocked` flips, the user can no longer edit, so the
+          rules copy retires alongside the editor. Visual treatment
+          mirrors the during-show legend strip further down. */}
+      {isPreShow && (
+        <div
+          className="text-[11px]"
+          style={{
+            padding: "6px 14px",
+            color: colors.textMuted,
+            background: colors.bgSubtle,
+            borderBottom: `0.5px solid ${colors.borderLight}`,
+          }}
+        >
+          {t("description")}
+        </div>
+      )}
+
       {/* Predicted rows */}
       <DndContext
         sensors={sensors}

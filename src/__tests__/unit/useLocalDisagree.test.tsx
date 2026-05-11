@@ -70,7 +70,7 @@ describe("useLocalDisagree hydration", () => {
   it("scopes by storage prefix — confirm and disagree don't collide", () => {
     // Independent storage keys means the two hooks coexist for the
     // same event without one's writes affecting the other's
-    // hydration. The mutual-exclusivity rule (tap 👍 clears 👎) is
+    // hydration. The mutual-exclusivity rule (tap ✓ clears ✕) is
     // enforced at the consumer level, not in storage.
     window.localStorage.setItem("confirm-1", JSON.stringify([1, 2, 3]));
     window.localStorage.setItem("disagree-1", JSON.stringify([4, 5]));
