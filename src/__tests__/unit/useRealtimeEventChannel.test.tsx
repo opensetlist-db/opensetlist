@@ -57,6 +57,7 @@ vi.mock("@/lib/supabaseClient", () => ({
 // Imports come AFTER the mocks above so the hook resolves the mocked
 // modules at load time.
 import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
+import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 
 const initialItems: unknown[] = [];
@@ -365,10 +366,13 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
   });
 
   it("re-schedules the next boundary after the first fires (ongoing → completed)", async () => {
-    // 30s to startTime, then 12h ONGOING_BUFFER_MS to completed.
+    // 30s to startTime, then ONGOING_BUFFER_MS to completed.
     // Exercise that BOTH boundaries fire across one mount.
+    // ONGOING_BUFFER_MS imported from `@/lib/eventStatus` so a
+    // future tweak to the buffer value (12h → something else)
+    // surfaces here as a fresh-test-fail rather than a silent
+    // false-pass.
     const startTime = new Date(Date.now() + 30_000).toISOString();
-    const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 
     renderHook(() =>
       useRealtimeEventChannel({

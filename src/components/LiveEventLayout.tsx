@@ -191,10 +191,18 @@ export function LiveEventLayout({
   // so a Date object (fresh identity each render) would re-create
   // the channel every render — catastrophic. Same pattern as
   // <EventHeader> uses when forwarding to <EventStatusTicker>.
+  //
+  // Invalid-Date guard: `new Date("not-a-date").toISOString()` throws
+  // RangeError. SSR is contractually expected to hand down valid
+  // Dates only, but a NaN-time Date here would crash the render —
+  // treat invalid as null, mirroring `nextEventStatusBoundaryDelay`'s
+  // string-branch policy so the two halves of the contract align.
   const startTimeIso: string | null =
     typeof startTime === "string"
       ? startTime
-      : startTime?.toISOString() ?? null;
+      : startTime && !Number.isNaN(startTime.getTime())
+        ? startTime.toISOString()
+        : null;
   const realtime = useRealtimeEventChannel<LiveSetlistItem>({
     eventId,
     initialItems,
