@@ -5,15 +5,15 @@ import { useMounted } from "@/hooks/useMounted";
 
 /**
  * Phase 1B/1C client-side hook for the per-viewer "disagree" vote
- * on a setlist row — the 👎 button in `<NumberSlot>` paired with
- * the existing 👍 confirm button (see `useLocalConfirm`).
+ * on a setlist row — the ✕ button in `<NumberSlot>` paired with
+ * the existing ✓ confirm button (see `useLocalConfirm`).
  *
  * Mirrors `useLocalConfirm` exactly except for two differences:
  *
  *   1. **Storage key** — `disagree-{eventId}` instead of
  *      `confirm-{eventId}`. Independent localStorage scopes mean
  *      the two hooks never collide; the `<ActualSetlist>` consumer
- *      enforces mutual exclusivity at the handler level (tap 👍
+ *      enforces mutual exclusivity at the handler level (tap ✓
  *      clears any matching disagree, and vice versa).
  *
  *   2. **No POST** — disagrees stay client-only at v0.10.x. The

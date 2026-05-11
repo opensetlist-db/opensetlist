@@ -34,17 +34,17 @@ interface Props {
    * (SetlistBuilder, etc.) don't need to pass it.
    */
   myVote?: RowVote;
-  /** Tap handler for the 👍 button. Required when state is "rumoured". */
+  /** Tap handler for the ✓ (correct) button. Required when state is "rumoured". */
   onConfirmTap?: () => void;
-  /** Tap handler for the 👎 button. Required when state is "rumoured". */
+  /** Tap handler for the ✕ (incorrect) button. Required when state is "rumoured". */
   onDisagreeTap?: () => void;
   /**
-   * aria-label for the 👍 button. Caller passes the i18n
+   * aria-label for the ✓ button. Caller passes the i18n
    * resolution since this component is rendered both inside admin
    * (Korean-only per CLAUDE.md exemption) and public surfaces.
    */
   confirmAriaLabel: string;
-  /** aria-label for the 👎 button. Same i18n contract as confirmAriaLabel. */
+  /** aria-label for the ✕ button. Same i18n contract as confirmAriaLabel. */
   disagreeAriaLabel: string;
 }
 
@@ -53,21 +53,24 @@ interface Props {
  *
  *   - "confirmed": plain number, muted color, no border. Visual
  *     parity with the pre-Confirm-UI `<span>` it replaces.
- *   - "rumoured": side-by-side `[👍][👎]` 22×22 buttons. The viewer
- *     can vote either direction; mutual exclusivity (toggling 👍
- *     clears 👎 and vice versa) is enforced by the parent's tap
+ *   - "rumoured": side-by-side `[✓][✕]` 22×22 buttons. The viewer
+ *     can vote either direction; mutual exclusivity (toggling ✓
+ *     clears ✕ and vice versa) is enforced by the parent's tap
  *     handlers, not here. Visual state per `myVote`:
  *
  *       myVote="none"     both buttons dotted-border, muted
- *       myVote="confirm"  👍 solid sky-blue (active), 👎 muted
- *       myVote="disagree" 👍 muted, 👎 solid rose-red (active)
+ *       myVote="confirm"  ✓ solid sky-blue (active), ✕ muted
+ *       myVote="disagree" ✓ muted, ✕ solid rose-red (active)
  *
- * Replaces the v0.10.0 `[?]/[✓]` single-button shape — see the
- * v0.10.1 plan ("Replace `<FlagButton>` with thumb-up/thumb-down
- * vote buttons"). The mailto-based FlagButton was too high-friction
- * for the operator-expected report volume; the 👎 button shape
- * also lays the groundwork for Week 3's user-entered conflict
- * resolution where viewers vote between competing rows.
+ * Glyph history: this slot used 👍 / 👎 from v0.10.1 through v0.10.x.
+ * The thumb-up/down emoji read as "like/dislike" (subjective preference)
+ * across the consumer web — fans could vote 👎 on a song they didn't
+ * enjoy even when it WAS performed, which is the opposite of the
+ * intended "is this row correct?" semantic. Switched to monochromatic
+ * ✓ / ✕ so the button bg color (sky-blue / rose-red) carries the
+ * factual claim instead of being undermined by the glyph's connotation.
+ * Earlier shapes: v0.10.0 used a single `[?]/[✓]` flag button (mailto
+ * FlagButton, too high-friction for Phase 1B/1C report volume).
  *
  * Mockup source: `raw/mockups/mockup-setlist.jsx` `ConfirmButton`
  * (the original two-button mockup, which v0.10.0 simplified to a
@@ -120,6 +123,14 @@ export function NumberSlot({
       className="mt-0.5 inline-flex items-center"
       style={{ gap: 8 }}
     >
+      {/* The text-symbol glyphs (✓ / ✕, U+2713 / U+2715) are
+          monochromatic — they inherit the button's `color` style,
+          so the active-state palette (sky-blue / rose-red) carries
+          the semantic, not the glyph itself. Bumped to text-[14px]
+          font-bold from the original text-[11px] font-medium that
+          worked for the higher-density 👍/👎 emoji; at 22×22 the
+          smaller text-symbol shapes need the extra weight + size to
+          stay legible. */}
       <button
         type="button"
         onClick={onConfirmTap}
@@ -127,7 +138,7 @@ export function NumberSlot({
         aria-disabled={!canConfirmTap}
         aria-label={confirmAriaLabel}
         aria-pressed={isConfirmed}
-        className="inline-flex items-center justify-center rounded-full text-[11px] font-medium"
+        className="inline-flex items-center justify-center rounded-full text-[14px] font-bold leading-none"
         style={{
           width: 22,
           height: 22,
@@ -146,7 +157,7 @@ export function NumberSlot({
               }),
         }}
       >
-        👍
+        ✓
       </button>
       <button
         type="button"
@@ -155,7 +166,7 @@ export function NumberSlot({
         aria-disabled={!canDisagreeTap}
         aria-label={disagreeAriaLabel}
         aria-pressed={isDisagreed}
-        className="inline-flex items-center justify-center rounded-full text-[11px] font-medium"
+        className="inline-flex items-center justify-center rounded-full text-[14px] font-bold leading-none"
         style={{
           width: 22,
           height: 22,
@@ -174,7 +185,7 @@ export function NumberSlot({
               }),
         }}
       >
-        👎
+        ✕
       </button>
     </div>
   );

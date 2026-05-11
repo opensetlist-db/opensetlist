@@ -46,7 +46,7 @@ describe("NumberSlot — confirmed state (no buttons)", () => {
 });
 
 describe("NumberSlot — rumoured state, dual vote buttons", () => {
-  it("renders BOTH 👍 and 👎 buttons (no number, no [?]/[✓])", () => {
+  it("renders BOTH ✓ and ✕ buttons (no number, no [?]/[✓])", () => {
     render(
       <NumberSlot
         state="rumoured"
@@ -57,8 +57,8 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     );
     const confirmBtn = screen.getByRole("button", { name: "confirm-aria" });
     const disagreeBtn = screen.getByRole("button", { name: "disagree-aria" });
-    expect(confirmBtn.textContent).toBe("👍");
-    expect(disagreeBtn.textContent).toBe("👎");
+    expect(confirmBtn.textContent).toBe("✓");
+    expect(disagreeBtn.textContent).toBe("✕");
     expect(screen.queryAllByRole("button")).toHaveLength(2);
     // The position number itself is NOT rendered on rumoured rows
     // (the buttons replace it). This is intentional — the cell is
@@ -83,7 +83,7 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("myVote=\"confirm\": 👍 active (solid sky-blue + aria-pressed); 👎 stays muted", () => {
+  it("myVote=\"confirm\": ✓ active (solid sky-blue + aria-pressed); ✕ stays muted", () => {
     render(
       <NumberSlot
         state="rumoured"
@@ -101,12 +101,12 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     expect(confirmBtn.getAttribute("style")?.toLowerCase()).toContain(
       "rgb(232, 244, 253)",
     );
-    // 👎 stays muted/dashed when only 👍 is voted.
+    // ✕ stays muted/dashed when only ✓ is voted.
     expect(disagreeBtn.getAttribute("aria-pressed")).toBe("false");
     expect(disagreeBtn.getAttribute("style")).toContain("dashed");
   });
 
-  it("myVote=\"disagree\": 👎 active (solid rose-red + aria-pressed); 👍 stays muted", () => {
+  it("myVote=\"disagree\": ✕ active (solid rose-red + aria-pressed); ✓ stays muted", () => {
     render(
       <NumberSlot
         state="rumoured"
@@ -127,12 +127,12 @@ describe("NumberSlot — rumoured state, dual vote buttons", () => {
     expect(disagreeBtn.getAttribute("style")?.toLowerCase()).toContain(
       "rgb(255, 241, 242)",
     );
-    // 👍 stays muted/dashed when only 👎 is voted.
+    // ✓ stays muted/dashed when only ✕ is voted.
     expect(confirmBtn.getAttribute("aria-pressed")).toBe("false");
     expect(confirmBtn.getAttribute("style")).toContain("dashed");
   });
 
-  it("clicking 👍 fires onConfirmTap; clicking 👎 fires onDisagreeTap; tap handlers don't cross-fire", () => {
+  it("clicking ✓ fires onConfirmTap; clicking ✕ fires onDisagreeTap; tap handlers don't cross-fire", () => {
     const onConfirmTap = vi.fn();
     const onDisagreeTap = vi.fn();
     render(

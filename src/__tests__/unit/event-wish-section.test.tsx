@@ -115,7 +115,7 @@ describe("EventWishSection — render gates", () => {
     expect(screen.queryByText(/^🌸 lockedTitle$/)).toBeNull();
   });
 
-  it("locked + has data renders the title key 'lockedTitle' and hides the cap hint", () => {
+  it("locked + has data renders the title key 'lockedTitle' and hides the description strip", () => {
     render(
       <EventWishSection
         eventId="1"
@@ -127,7 +127,7 @@ describe("EventWishSection — render gates", () => {
       />,
     );
     expect(screen.getByText(/^🌸 lockedTitle$/)).toBeTruthy();
-    expect(screen.queryByText("cap")).toBeNull();
+    expect(screen.queryByText("description")).toBeNull();
   });
 });
 
@@ -300,11 +300,11 @@ describe("EventWishSection — server-status lock (slow-client-clock fallback)",
         top3Wishes={[fanEntry(10, 5, "残陽")]}
       />,
     );
-    // Title flips to the locked variant — the cap label and ✕
+    // Title flips to the locked variant — the description strip and ✕
     // remove buttons hide.
     expect(screen.getByText(/lockedTitle/)).toBeTruthy();
-    // The "최대 3곡" hint shows only pre-lock; absent here.
-    expect(screen.queryByText("cap")).toBeNull();
+    // The instructional description shows only pre-lock; absent here.
+    expect(screen.queryByText("description")).toBeNull();
     // The `+ 추가` button shows only when `canAddMore = !isLocked
     // && myWishes.length < MAX_WISHES`. Locked → absent.
     expect(screen.queryByText("add")).toBeNull();
@@ -332,6 +332,6 @@ describe("EventWishSection — server-status lock (slow-client-clock fallback)",
     // exact unlocked-state contract. CR #294 nit.
     expect(screen.getByText(/^🌸 title$/)).toBeTruthy();
     expect(screen.queryByText(/lockedTitle/)).toBeNull();
-    expect(screen.getByText("cap")).toBeTruthy();
+    expect(screen.getByText("description")).toBeTruthy();
   });
 });
