@@ -188,10 +188,14 @@ export function useRealtimeImpressions({
     if (pollFallback) return;
 
     // Reset the channel-bound captureMessage latch at the top of
-    // every channel setup. Mirrors useRealtimeEventChannel — the
-    // ref tracks state of the CURRENT channel, so resetting only
-    // on eventId change would leak across locale-change channel
-    // re-creates (the channel-setup effect also re-runs on locale).
+    // every channel setup. The ref tracks state of the CURRENT
+    // channel, so resetting it inside the effect (rather than in a
+    // sibling useEffect keyed on eventId only) keeps the latch
+    // bound to the channel's actual lifetime — this effect re-runs
+    // on `[eventId, enabled, pollFallback]`, so any of those
+    // changing creates a fresh channel that deserves a fresh
+    // fallback latch. (No `locale` here — this hook doesn't take
+    // one; that's `useRealtimeEventChannel`.)
     hasReportedFallbackRef.current = false;
 
     const supabase = getSupabaseBrowserClient();
