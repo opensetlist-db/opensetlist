@@ -107,6 +107,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
+        // null startTime so the boundary timer is a no-op for the
+        // fallback / Sentry / reconnect tests below — those don't
+        // exercise boundary behavior. Boundary-specific tests at
+        // the bottom of this file pass concrete ISO strings.
+        startTime: null,
       }),
     );
 
@@ -150,6 +155,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
+        // null startTime so the boundary timer is a no-op for the
+        // fallback / Sentry / reconnect tests below — those don't
+        // exercise boundary behavior. Boundary-specific tests at
+        // the bottom of this file pass concrete ISO strings.
+        startTime: null,
       }),
     );
 
@@ -171,6 +181,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
+        // null startTime so the boundary timer is a no-op for the
+        // fallback / Sentry / reconnect tests below — those don't
+        // exercise boundary behavior. Boundary-specific tests at
+        // the bottom of this file pass concrete ISO strings.
+        startTime: null,
       }),
     );
 
@@ -208,6 +223,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
+        // null startTime so the boundary timer is a no-op for the
+        // fallback / Sentry / reconnect tests below — those don't
+        // exercise boundary behavior. Boundary-specific tests at
+        // the bottom of this file pass concrete ISO strings.
+        startTime: null,
       }),
     );
 
@@ -251,6 +271,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
+        // null startTime so the boundary timer is a no-op for the
+        // fallback / Sentry / reconnect tests below — those don't
+        // exercise boundary behavior. Boundary-specific tests at
+        // the bottom of this file pass concrete ISO strings.
+        startTime: null,
       }),
     );
 
@@ -286,10 +311,151 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: false,
+        startTime: null,
       }),
     );
 
     expect(channelMock).not.toHaveBeenCalled();
     expect(capturedSubscribeCallback).toBeNull();
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Status-boundary scheduler tests
+  //
+  // Pre-Realtime, the 5s polling cadence inside `useSetlistPolling`
+  // implicitly caught the upcoming → ongoing flip — every poll's
+  // /api/setlist response carried server-resolved `status`. With
+  // Realtime, the endpoint is only refetched on push (SetlistItem
+  // and SongWish), so a startTime crossing in a no-activity window
+  // would leave polledStatus stale and let `polledStatus ?? status`
+  // in LiveEventLayout mask a fresh SSR status. The boundary
+  // scheduler closes that gap.
+  // ──────────────────────────────────────────────────────────────────
+
+  it("schedules a fetchSnapshot at the upcoming → ongoing boundary", async () => {
+    // startTime 30s in the future (within the 24.8-day setTimeout
+    // ceiling, so the schedule actually fires).
+    const startTime = new Date(Date.now() + 30_000).toISOString();
+
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime,
+      }),
+    );
+
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    // Mount-time seed fetch.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Advance past the boundary + the post-boundary buffer (2s).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000 + 2_500);
+    });
+    await flushMicrotasks();
+
+    // Boundary timer fired → fetchSnapshot ran → second /api/setlist hit.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-schedules the next boundary after the first fires (ongoing → completed)", async () => {
+    // 30s to startTime, then 12h ONGOING_BUFFER_MS to completed.
+    // Exercise that BOTH boundaries fire across one mount.
+    const startTime = new Date(Date.now() + 30_000).toISOString();
+    const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
+
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime,
+      }),
+    );
+
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1); // mount seed
+
+    // First boundary: upcoming → ongoing.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000 + 2_500);
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Second boundary: ongoing → completed (12h after startTime).
+    // We've already advanced 30s+2.5s past now-zero, so advance
+    // the remainder of ONGOING_BUFFER_MS plus another buffer to
+    // cross the second boundary.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ONGOING_BUFFER_MS);
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not schedule a boundary when startTime is null", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1); // mount seed only
+
+    // Advance a long time — no boundary timer was scheduled, so
+    // no extra fetch fires (only push-driven fetches would, and
+    // we don't trigger any in this test).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule a boundary when startTime is in the past (event already past completed)", async () => {
+    // 24h ago: past both startTime and the ONGOING_BUFFER_MS=12h
+    // window, so nextEventStatusBoundaryDelay returns null.
+    const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime,
+      }),
+    );
+
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
