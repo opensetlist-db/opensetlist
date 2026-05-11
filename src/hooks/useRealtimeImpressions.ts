@@ -171,7 +171,9 @@ export function useRealtimeImpressions({
   // useRealtimeEventChannel — fresh attempt at realtime per event).
   // The matching ref reset lives INSIDE the channel-setup effect
   // below — channel-bound refs need to reset whenever the channel
-  // is re-created, which includes locale changes. Also reset
+  // is re-created, which here means any of `[eventId, enabled,
+  // pollFallback]` changing (this hook doesn't take a `locale`
+  // option; that's useRealtimeEventChannel). Also reset
   // `lastUpdated` so consumers don't read the previous event's
   // timestamp before any event B push lands.
   const [prevEventId, setPrevEventId] = useState(eventId);

@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { IMPRESSION_MAX_CHARS } from "@/lib/config";
 import { getEditCooldownRemaining } from "@/lib/impression";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
 import { useRealtimeImpressions } from "@/hooks/useRealtimeImpressions";
-import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
@@ -184,6 +183,27 @@ export function EventImpressions({
   const mounted = useMounted();
   const [impressions, setImpressions] =
     useState<Impression[]>(initialImpressions);
+  // Latest-state ref kept in lockstep with `impressions` by routing
+  // every mutation through `applyImpressionsUpdate` below — never
+  // by the post-render `useEffect` sync the previous iteration of
+  // this fix used, which left a one-render stale window between
+  // commit and effect run that a rapid-fire realtime onRemove could
+  // race against (CR feedback on PR #326).
+  //
+  // Why a ref at all: the realtime `onUpsert`/`onRemove` callbacks
+  // need to decide whether to bump `totalCount` based on whether
+  // the chain / id was previously in the list. React 18's
+  // `setState(updater)` defers the updater to reconciliation, so
+  // the closure-capture pattern (`let isNewChain = false;
+  // setImpressions((prev) => { isNewChain = ...; return ... });
+  // if (isNewChain) ...`) reads `false` before the updater runs —
+  // `setTotalCount` would never fire. The helper below calls the
+  // updater SYNCHRONOUSLY (eagerly, not via React's queue), so the
+  // captured flag is set before the post-call `if`-check, AND the
+  // ref is updated in the same synchronous moment, so concurrent
+  // callbacks within the same task see the latest value with no
+  // race window.
+  const impressionsRef = useRef<Impression[]>(initialImpressions);
   // Pagination state — tracks the user's position in the older half.
   // Polling does NOT touch these; they advance only on a successful
   // "see older" click (server response sets `loadMoreCursor` to the
@@ -195,25 +215,42 @@ export function EventImpressions({
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // R2 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`.
-  // Both hooks must always be called (rules-of-hooks), so the
-  // inactive one runs with `enabled: false` and does no work. The
-  // boolean annotation widens away the literal `false` type so
-  // TypeScript keeps both branches in scope.
+  // Synchronous-ref-update helper. ALL impressions mutations route
+  // through this — the realtime callbacks rely on the ref reflecting
+  // the latest value the instant the previous mutation returns, so
+  // direct `setImpressions(updater)` calls (where the updater is
+  // queued and run later by React) would let the ref drift relative
+  // to React state and re-introduce the totalCount-sync race CR
+  // flagged on PR #326.
   //
-  // Polling path (current default) — delivers the newest page (no
-  // cursor) and intentionally does NOT request `?includeTotal=1`
-  // (event-wide count() every 30s per viewer is wasted DB hot-path
-  // cost). Merge polled impressions into the accumulated list
-  // (older loaded pages stay put, new arrivals slide in at the
-  // top); `totalCount` drifts slightly until the next "see older"
-  // click refreshes it. Cross-user impression freshness ≤ 33s is
-  // fine for a conversational thread; the submitter's own comment
-  // surfaces the instant `handleSubmit` returns.
+  // The helper calls `updater(prev)` eagerly against
+  // `impressionsRef.current`, writes the result back to the ref,
+  // then forwards to `setImpressions` in VALUE form (not updater
+  // form). The value form means React doesn't re-run our updater
+  // during reconciliation — we've already run it once here, and
+  // the ref already holds the truth. Strict mode is safe because
+  // every merge function in this file (`mergeImpressions`,
+  // `mergeImpressionByChain`, the filter-by-id) is idempotent.
   //
-  // Realtime path — per-row push via supabase_realtime publication
-  // (see prisma/post-deploy.sql). onUpsert handles INSERT visible
-  // and UPDATE-still-visible (mergeImpression dedupes by chain id);
+  // The contract: NO call site in this component is allowed to
+  // call `setImpressions` directly — they must all go through
+  // `applyImpressionsUpdate`. A future refactor that violates this
+  // would let the ref drift; the closure-capture flag reads inside
+  // `onUpsert`/`onRemove` would silently miss bumps. The lint
+  // rule that would enforce this is too niche to ship; treat the
+  // helper as the single mutator and the ref as its receipt.
+  const applyImpressionsUpdate = useCallback(
+    (updater: (prev: Impression[]) => Impression[]) => {
+      const next = updater(impressionsRef.current);
+      impressionsRef.current = next;
+      setImpressions(next);
+    },
+    [],
+  );
+
+  // Realtime per-row push via supabase_realtime publication (see
+  // prisma/post-deploy.sql). onUpsert handles INSERT visible AND
+  // UPDATE-still-visible (mergeImpression dedupes by chain id);
   // onRemove handles UPDATE-now-hidden (supersededAt set, or
   // isDeleted/isHidden flipped) and rare hard DELETEs. The supersede
   // edit flow produces an onUpsert(new id) + onRemove(old id) pair;
@@ -221,19 +258,16 @@ export function EventImpressions({
   // No suppression window needed: own-action POST handlers
   // synchronously merge the response, so the matching push is a
   // no-op replace (id already in the list at that rootImpressionId).
-  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
-  // R3: realtime channel exposes a pollFallback signal. When the
-  // channel exhausts its retry budget (CHANNEL_ERROR / TIMED_OUT),
-  // the hook flips pollFallback to true and stays there for the
-  // page lifetime. We feed that into the polling hook's `enabled`
-  // so the impressions feed degrades gracefully back to the proven
-  // 30s polling path within one render — without the user noticing.
-  // The realtime hook stays mounted but its own effect early-returns
-  // on the same flag (the dead channel was torn down by the
-  // pollFallback dep change).
+  //
+  // useImpressionPolling stays alive below as the in-hook R3
+  // fallback path that takes over on `realtime.pollFallback` (set
+  // by useRealtimeImpressions on CHANNEL_ERROR / TIMED_OUT).
+  // Pre-v0.11.0, this site branched between polling and realtime
+  // via LAUNCH_FLAGS.realtimeEnabled; the activation deleted the
+  // flag-on/off branch and demoted polling to the fallback role.
   const realtime = useRealtimeImpressions({
     eventId,
-    enabled: isOngoing && realtimeFlag,
+    enabled: isOngoing,
     onUpsert: (impression) => {
       // Chain-aware dedup AND totalCount sync. Two cases collapse:
       //   - INSERT for a brand-new chain (rootImpressionId not yet
@@ -245,12 +279,18 @@ export function EventImpressions({
       //     stays the same because the server-side count() filter
       //     (supersededAt IS NULL) counts one chain head, not one
       //     per row in the chain.
-      // We capture `isNewChain` from inside the updater (idempotent
-      // closure-write — both runs of the updater under React 18
-      // strict mode see the same `prev` and assign the same value)
-      // so the totalCount call below knows which case fired.
+      // `isNewChain` is captured from inside the
+      // `applyImpressionsUpdate` updater, which runs SYNCHRONOUSLY
+      // (the helper calls `updater(impressionsRef.current)` eagerly,
+      // not via React's deferred setState queue). So the post-call
+      // `if (isNewChain)` check sees the value set by the updater
+      // run that just completed. For concurrent calls within the
+      // same task (two rapid-fire pushes), the ref is updated
+      // synchronously inside the helper between calls, so the
+      // second push's updater sees the first's result — no
+      // off-by-one.
       let isNewChain = false;
-      setImpressions((prev) => {
+      applyImpressionsUpdate((prev) => {
         isNewChain = !prev.some(
           (p) => p.rootImpressionId === impression.rootImpressionId,
         );
@@ -271,10 +311,12 @@ export function EventImpressions({
       //     via isHidden / isDeleted (report flow, soft delete) →
       //     row was in the list, removed → decrement.
       //   - Hard DELETE (rare) → same as the hidden case.
-      // The wasPresent capture pattern matches onUpsert's
-      // isNewChain — same React-18-strict-mode safety reasoning.
+      // Same eager-updater + closure-capture pattern as `onUpsert`
+      // above — `applyImpressionsUpdate` calls the updater
+      // synchronously, so `wasPresent` is set before the post-call
+      // `if` check runs (CR feedback on PR #326).
       let wasPresent = false;
-      setImpressions((prev) => {
+      applyImpressionsUpdate((prev) => {
         wasPresent = prev.some((p) => p.id === id);
         return prev.filter((p) => p.id !== id);
       });
@@ -283,22 +325,20 @@ export function EventImpressions({
       }
     },
   });
-  // Polling path. Always called (rules-of-hooks); enabled when:
-  //   - the realtime flag is OFF (pre-cutover), or
-  //   - realtime fell back via R3's CHANNEL_ERROR / TIMED_OUT path
-  //     (channel exhausted its retry budget — useImpressionPolling
-  //     takes over without the user noticing).
-  // Both the realtime onUpsert/onRemove callbacks above and this
-  // polling onUpdate feed into the SAME `impressions` state via
-  // mergeImpression(s); during the brief overlap as fallback flips,
-  // both may fire — `mergeImpressions` (id-dedupe) and
-  // `mergeImpressionByChain` (rootId-dedupe) are both idempotent so
-  // duplicate work is harmless.
+  // R3 polling fallback. Always called (rules-of-hooks); enabled
+  // ONLY when realtime fell back via CHANNEL_ERROR / TIMED_OUT
+  // (channel exhausted its retry budget — useImpressionPolling
+  // takes over without the user noticing). During the brief overlap
+  // window as fallback flips, both the realtime callbacks above and
+  // this polling onUpdate may fire against the same `impressions`
+  // state — `mergeImpressions` (id-dedupe) and `mergeImpressionByChain`
+  // (rootId-dedupe) are both idempotent so duplicate work is
+  // harmless.
   useImpressionPolling({
     eventId,
-    enabled: isOngoing && (!realtimeFlag || realtime.pollFallback),
+    enabled: isOngoing && realtime.pollFallback,
     onUpdate: ({ impressions: polled }) => {
-      setImpressions((prev) => mergeImpressions(prev, polled));
+      applyImpressionsUpdate((prev) => mergeImpressions(prev, polled));
     },
   });
 
@@ -324,7 +364,7 @@ export function EventImpressions({
         nextCursor: string | null;
         totalCount?: number;
       };
-      setImpressions((prev) => mergeImpressions(prev, data.impressions));
+      applyImpressionsUpdate((prev) => mergeImpressions(prev, data.impressions));
       setLoadMoreCursor(data.nextCursor);
       if (data.totalCount !== undefined) {
         setTotalCount(data.totalCount);
@@ -334,7 +374,7 @@ export function EventImpressions({
     } finally {
       setLoadingMore(false);
     }
-  }, [eventId, loadingMore, loadMoreCursor, t]);
+  }, [eventId, loadingMore, loadMoreCursor, t, applyImpressionsUpdate]);
 
   const savedKey = `impression-${eventId}`;
   // SSR + client first render start at empty values so hydration matches
@@ -416,7 +456,7 @@ export function EventImpressions({
   // `mergeImpressionByChain` helper, which the realtime onUpsert
   // callback also uses.
   const mergeImpression = (imp: Impression) => {
-    setImpressions((prev) => mergeImpressionByChain(prev, imp));
+    applyImpressionsUpdate((prev) => mergeImpressionByChain(prev, imp));
   };
 
   const handleSubmit = async () => {
@@ -536,7 +576,7 @@ export function EventImpressions({
       }
       const body = (await res.json()) as { isHidden?: boolean };
       if (body.isHidden) {
-        setImpressions((prev) =>
+        applyImpressionsUpdate((prev) =>
           prev.filter((p) => p.rootImpressionId !== chainId)
         );
         // Mirror the impression-removal in the displayed total —

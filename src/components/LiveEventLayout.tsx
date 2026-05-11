@@ -1,12 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  useSetlistPolling,
-  type ReactionCountsMap,
-} from "@/hooks/useSetlistPolling";
+// useSetlistPolling type re-export kept; the hook itself is no
+// longer called here (lives inside useRealtimeEventChannel as the
+// R3 fallback path that takes over on CHANNEL_ERROR / TIMED_OUT).
+import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
-import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import {
@@ -155,37 +154,15 @@ export function LiveEventLayout({
   initialTrendingSongs,
   initialFanTop3,
 }: Props) {
-  // Polling stays enabled for ongoing AND upcoming events: the
-  // wishlist fan TOP-3 needs to update pre-show as more fans submit
-  // wishes (per task spec). Setlist + reactions are stable pre-show
-  // (admins enter songs as the show runs), so the extra polling on
-  // upcoming events fetches a duplicate snapshot — cheap, and the
-  // single-channel architecture is worth it. Polling stays off for
+  // Stays enabled for ongoing AND upcoming events: the wishlist fan
+  // TOP-3 needs to update pre-show as more fans submit wishes (per
+  // task spec). Setlist + reactions are stable pre-show (admins
+  // enter songs as the show runs), so the extra subscription on
+  // upcoming events fetches a duplicate seed snapshot — cheap, and
+  // the single-channel architecture is worth it. Stays off for
   // completed/cancelled events.
   const isActive = status === "ongoing" || status === "upcoming";
 
-  // R1 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`. Both
-  // hooks must always be called (rules-of-hooks), so we drive the
-  // pick via the `enabled` flag — only the active hook does any
-  // network work; the other returns its initial state unchanged.
-  // The boolean annotation widens away the literal `false` type so
-  // TypeScript keeps both branches in scope (otherwise the realtime
-  // hook would be statically dead code today).
-  //
-  // Activation flow mirrors `confirmDbEnabled`: a single commit
-  // flips the flag to `true` AND deletes the polling branch +
-  // useSetlistPolling import here. The hook file stays alive as
-  // R3's fallback mechanism — the activation removes only this
-  // call site, not the hook itself.
-  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
-  const polled = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    initialTop3Wishes: initialFanTop3,
-    locale,
-    enabled: isActive && !realtimeFlag,
-  });
   // Coerce startTime to a stable ISO string for the realtime hook's
   // boundary scheduler. The hook's effect deps include startTime,
   // so a Date object (fresh identity each render) would re-create
@@ -203,22 +180,28 @@ export function LiveEventLayout({
       : startTime && !Number.isNaN(startTime.getTime())
         ? startTime.toISOString()
         : null;
-  const realtime = useRealtimeEventChannel<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    initialTop3Wishes: initialFanTop3,
-    locale,
-    enabled: isActive && realtimeFlag,
-    startTime: startTimeIso,
-  });
+  // useSetlistPolling is NOT called here directly — it lives inside
+  // useRealtimeEventChannel as the R3 fallback path that takes over
+  // on CHANNEL_ERROR / TIMED_OUT. Pre-v0.11.0, this site branched
+  // between polling and realtime via LAUNCH_FLAGS.realtimeEnabled;
+  // the activation deleted that branch and made realtime the
+  // unconditional source, with polling demoted to the in-hook
+  // fallback per the original R3 design.
   const {
     items,
     reactionCounts,
     top3Wishes,
     status: polledStatus,
     lastUpdated,
-  } = realtimeFlag ? realtime : polled;
+  } = useRealtimeEventChannel<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isActive,
+    startTime: startTimeIso,
+  });
   // Effective status: prefer the polled value when present, fall
   // back to the SSR-initial `status` prop. Both paths refresh
   // `polledStatus` at the right cadence to catch the
