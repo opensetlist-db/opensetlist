@@ -305,13 +305,16 @@ export function EventWishSection({
 
       {/* Description strip: instructional copy for first-time visitors.
           Pre-show only — once startTime lands and `isLocked` flips, the
-          actions it describes (add/remove) are gone, so the copy is too. */}
+          actions it describes (add/remove) are gone, so the copy is too.
+          Border-bottom uses `wishlistBorder` (same token as the title bar
+          border directly above) so the section reads as one chrome block;
+          row-internal dividers in the grid below use `wishlistRowDivider`. */}
       {!isLocked && (
         <div
           className="px-3.5 pt-2 pb-1 text-[11px]"
           style={{
             color: colors.wishlistMuted,
-            borderBottom: `0.5px solid ${colors.wishlistRowDivider}`,
+            borderBottom: `0.5px solid ${colors.wishlistBorder}`,
           }}
         >
           {t("description")}
