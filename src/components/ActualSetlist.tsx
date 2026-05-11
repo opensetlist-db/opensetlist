@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useReducer } from "react";
 import { useTranslations } from "next-intl";
 import { SetlistRow } from "@/components/SetlistRow";
 import type { RowState, RowVote } from "@/components/NumberSlot";
@@ -13,7 +13,7 @@ import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
 } from "@/components/setlistLayout";
-import { getConfirmStatus } from "@/lib/confirmStatus";
+import { AUTO_CONFIRM_TICK_MS, getConfirmStatus } from "@/lib/confirmStatus";
 import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 import { useLocalDisagree } from "@/hooks/useLocalDisagree";
 import { trackEvent } from "@/lib/analytics";
@@ -50,6 +50,34 @@ export function ActualSetlist({
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
+
+  // Auto-promote ticker for `getConfirmStatus`'s 1-min boundary.
+  // The function reads `new Date()` per call, so the row's visual
+  // state only updates when the component re-renders. Pre-Realtime
+  // the 5s polling cadence in `useSetlistPolling` provided that
+  // re-render implicitly; with the Realtime push path active
+  // there's no cadence (only event-driven re-renders), so a
+  // rumoured row stays rumoured visually until either a push
+  // arrives or the user reloads. This explicit setInterval restores
+  // the documented "≤5s of the boundary" promote contract,
+  // independent of the data source — works uniformly for polling,
+  // realtime, and R3 polling-fallback paths.
+  //
+  // Skip the timer entirely when no rumoured items exist — keeps
+  // the cost zero for completed events and once every row has
+  // settled. `hasRumoured` is intentionally NOT memoized: the
+  // boolean must re-derive on every render so the post-tick render
+  // sees rows that just crossed the boundary as confirmed and
+  // flips the dep, tearing down the timer.
+  const hasRumoured = items.some(
+    (item) => getConfirmStatus(item) === "rumoured",
+  );
+  const [, tickAutoPromote] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (!hasRumoured) return;
+    const id = setInterval(tickAutoPromote, AUTO_CONFIRM_TICK_MS);
+    return () => clearInterval(id);
+  }, [hasRumoured]);
 
   // Per-viewer vote sets, owned ONCE here so every row sees the
   // same Set instances. Mounted-gated hydration inside each hook
@@ -196,10 +224,11 @@ export function ActualSetlist({
  * `rumoured` rows past 1-min auto-promote to confirmed too).
  *
  * Read-time evaluation: `getConfirmStatus` reads `now` per call,
- * so each render sees the current bucket. The 5s `useSetlistPolling`
- * cadence on ongoing events triggers a re-render every poll — a
- * row crossing the 60s mark mid-session promotes within ≤ 5s of
- * the boundary without an extra timer.
+ * so each render sees the current bucket. The 5s `setInterval`
+ * declared above (gated on `hasRumoured`) forces a re-render at
+ * that cadence so rows crossing the 60s mark promote within ≤ 5s
+ * of the boundary — independent of whether the data source is
+ * polling, realtime push, or R3 polling-fallback.
  */
 function deriveRowState(item: LiveSetlistItem): RowState {
   const confirmStatus = getConfirmStatus(item);

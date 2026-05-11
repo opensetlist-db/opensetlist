@@ -48,7 +48,10 @@ describe("POST /api/reactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (prisma.setlistItem.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
-      { id: BigInt(10) },
+      // R2: route now selects `{ id, eventId }` so the create call
+      // can denormalize eventId onto SetlistItemReaction (Realtime
+      // requires a direct column for the postgres_changes filter).
+      { id: BigInt(10), eventId: BigInt(42) },
     );
     (
       prisma.setlistItemReaction.create as ReturnType<typeof vi.fn>
@@ -145,8 +148,18 @@ describe("POST /api/reactions", () => {
     expect(body.reactionId).toBe("reaction-uuid-1");
     expect(body.counts).toEqual({ best: 1 });
     // Legacy path stores anonId as null so the partial unique skips this row.
+    // R2: eventId is now denormalized from the parent SetlistItem (read
+    // from the findFirst select above), and `select: { id: true }` narrows
+    // the returned row to just the UUID we serialize back — keeps the
+    // BigInt eventId off the response payload.
     expect(prisma.setlistItemReaction.create).toHaveBeenCalledWith({
-      data: { setlistItemId: BigInt(10), reactionType: "best", anonId: null },
+      data: {
+        setlistItemId: BigInt(10),
+        eventId: BigInt(42),
+        reactionType: "best",
+        anonId: null,
+      },
+      select: { id: true },
     });
   });
 
@@ -216,6 +229,7 @@ describe("POST /api/reactions", () => {
     expect(prisma.setlistItemReaction.findFirst).toHaveBeenCalledTimes(1);
     expect(prisma.setlistItemReaction.findFirst).toHaveBeenCalledWith({
       where: { setlistItemId: BigInt(10), reactionType: "best", anonId: "anon-A" },
+      select: { id: true },
     });
   });
 
@@ -266,7 +280,13 @@ describe("POST /api/reactions", () => {
     );
     expect(res.status).toBe(200);
     expect(prisma.setlistItemReaction.create).toHaveBeenCalledWith({
-      data: { setlistItemId: BigInt(10), reactionType: "best", anonId: null },
+      data: {
+        setlistItemId: BigInt(10),
+        eventId: BigInt(42),
+        reactionType: "best",
+        anonId: null,
+      },
+      select: { id: true },
     });
   });
 });

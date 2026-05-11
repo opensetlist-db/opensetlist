@@ -148,13 +148,17 @@ export function UpcomingCard({
         padding: "14px 16px",
       }}
     >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        {/* D-day chip + (within D-7) wish-open chip share the left
-            cluster; the right side stays the formatted-date caption.
-            Wrapping both in a single flex group keeps them as one
-            block so the caption right-aligns regardless of badge
-            count. */}
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* D-day chip + formatted-date caption stay on row 1, both
+          `whitespace-nowrap` so neither breaks. The wish-open chip
+          (within D-7) drops to its own row 2 so it doesn't compete
+          with the date for horizontal room — at the 200 px scroll
+          variant width, putting it next to the D-day chip via
+          flex-wrap pushed the caption into too little space and the
+          date overflowed visually even with `whitespace-nowrap` on
+          the span (PR #299 added the nowrap but couldn't fix the
+          flex squeeze with a stretchy wish-badge sibling). */}
+      <div className="mb-2 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
           <span
             className="whitespace-nowrap text-[11px] font-bold"
             style={{
@@ -167,27 +171,27 @@ export function UpcomingCard({
           >
             {displayedLabel}
           </span>
-          {showWishBadge && (
-            <span
-              className="whitespace-nowrap text-[11px] font-semibold"
-              style={{
-                color: colors.wishlistText,
-                background: colors.wishlistBg,
-                border: `1px solid ${colors.wishlistBorder}`,
-                borderRadius: radius.badge,
-                padding: "2px 8px",
-              }}
-            >
-              🌸 {t("wishOpen")}
-            </span>
-          )}
+          <span
+            className="whitespace-nowrap text-[11px]"
+            style={{ color: colors.textMuted }}
+          >
+            {formattedDate}
+          </span>
         </div>
-        <span
-          className="whitespace-nowrap text-[11px]"
-          style={{ color: colors.textMuted }}
-        >
-          {formattedDate}
-        </span>
+        {showWishBadge && (
+          <span
+            className="whitespace-nowrap self-start text-[11px] font-semibold"
+            style={{
+              color: colors.wishlistText,
+              background: colors.wishlistBg,
+              border: `1px solid ${colors.wishlistBorder}`,
+              borderRadius: radius.badge,
+              padding: "2px 8px",
+            }}
+          >
+            🌸 {t("wishOpen")}
+          </span>
+        )}
       </div>
       {seriesName && (
         <div

@@ -10,13 +10,27 @@
  * not stuck in a permanent rumoured limbo.
  *
  * Re-evaluation cadence: `getConfirmStatus` reads `now` at call
- * time, so each render sees the current bucket. The 5s poll cycle
- * in `useSetlistPolling` triggers a re-render every poll, so a row
+ * time, so each render sees the current bucket. The consumer
+ * (`<ActualSetlist>`) runs an explicit 5s `setInterval` while any
+ * rumoured row is present — that ticker forces re-render so a row
  * that crosses the 60s mark mid-session promotes within ≤ 5s of
- * the boundary — no extra `setInterval` needed in components.
+ * the boundary regardless of the data source (polling, realtime
+ * push, or R3 polling-fallback). The earlier "polling implicitly
+ * provides the tick" assumption broke once the realtime cutover
+ * disconnected re-renders from a fixed cadence.
  */
 const AUTO_CONFIRM_MINUTES = 1;
 const AUTO_CONFIRM_MS = AUTO_CONFIRM_MINUTES * 60_000;
+
+/**
+ * Cadence of the explicit re-render ticker that `<ActualSetlist>`
+ * runs while any rumoured row is present, so rows crossing the
+ * `AUTO_CONFIRM_MS` boundary mid-session promote within ≤ this
+ * many ms of the boundary. Co-located with `AUTO_CONFIRM_MS` so a
+ * future change to the threshold surfaces the cadence next door —
+ * the two are intentionally paired (boundary + worst-case-latency).
+ */
+export const AUTO_CONFIRM_TICK_MS = 5_000;
 
 /**
  * Resolve the "settled" confirmation status for a setlist row.

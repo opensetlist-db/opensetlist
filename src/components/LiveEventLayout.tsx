@@ -5,6 +5,8 @@ import {
   useSetlistPolling,
   type ReactionCountsMap,
 } from "@/hooks/useSetlistPolling";
+import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
+import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import { LiveSetlist, type LiveSetlistItem } from "@/components/LiveSetlist";
 import {
@@ -160,33 +162,87 @@ export function LiveEventLayout({
   // upcoming events fetches a duplicate snapshot — cheap, and the
   // single-channel architecture is worth it. Polling stays off for
   // completed/cancelled events.
-  const isPollingEnabled = status === "ongoing" || status === "upcoming";
+  const isActive = status === "ongoing" || status === "upcoming";
+
+  // R1 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`. Both
+  // hooks must always be called (rules-of-hooks), so we drive the
+  // pick via the `enabled` flag — only the active hook does any
+  // network work; the other returns its initial state unchanged.
+  // The boolean annotation widens away the literal `false` type so
+  // TypeScript keeps both branches in scope (otherwise the realtime
+  // hook would be statically dead code today).
+  //
+  // Activation flow mirrors `confirmDbEnabled`: a single commit
+  // flips the flag to `true` AND deletes the polling branch +
+  // useSetlistPolling import here. The hook file stays alive as
+  // R3's fallback mechanism — the activation removes only this
+  // call site, not the hook itself.
+  const realtimeFlag: boolean = LAUNCH_FLAGS.realtimeEnabled;
+  const polled = useSetlistPolling<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isActive && !realtimeFlag,
+  });
+  // Coerce startTime to a stable ISO string for the realtime hook's
+  // boundary scheduler. The hook's effect deps include startTime,
+  // so a Date object (fresh identity each render) would re-create
+  // the channel every render — catastrophic. Same pattern as
+  // <EventHeader> uses when forwarding to <EventStatusTicker>.
+  //
+  // Invalid-Date guard: `new Date("not-a-date").toISOString()` throws
+  // RangeError. SSR is contractually expected to hand down valid
+  // Dates only, but a NaN-time Date here would crash the render —
+  // treat invalid as null, mirroring `nextEventStatusBoundaryDelay`'s
+  // string-branch policy so the two halves of the contract align.
+  const startTimeIso: string | null =
+    typeof startTime === "string"
+      ? startTime
+      : startTime && !Number.isNaN(startTime.getTime())
+        ? startTime.toISOString()
+        : null;
+  const realtime = useRealtimeEventChannel<LiveSetlistItem>({
+    eventId,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes: initialFanTop3,
+    locale,
+    enabled: isActive && realtimeFlag,
+    startTime: startTimeIso,
+  });
   const {
     items,
     reactionCounts,
     top3Wishes,
     status: polledStatus,
     lastUpdated,
-  } = useSetlistPolling<LiveSetlistItem>({
-    eventId,
-    initialItems,
-    initialReactionCounts,
-    initialTop3Wishes: initialFanTop3,
-    locale,
-    enabled: isPollingEnabled,
-  });
-  // Effective status: polled value when available (server-authoritative
-  // refresh, ~5s cadence), else fall back to the SSR-initial `status`
-  // prop. The polled value catches the auto-status-flip on the
-  // server (DB `scheduled` → `ongoing` past startTime) without
-  // requiring a page reload — which closes the
-  // slow-client-clock bypass on the wishlist + predicted-setlist
-  // editors. v0.10.0 smoke caught the symptom: a user with their
-  // device clock set 1h slow could keep editing past startTime
-  // because their `Date.now() < startMs` even after the show
-  // started; the server's `getEventStatus` flipped to "ongoing"
-  // correctly, the polled status now propagates that down via the
-  // existing prop chain.
+  } = realtimeFlag ? realtime : polled;
+  // Effective status: prefer the polled value when present, fall
+  // back to the SSR-initial `status` prop. Both paths refresh
+  // `polledStatus` at the right cadence to catch the
+  // server-side auto-flip past startTime — without it, a user
+  // with a slow device clock could keep editing past startTime
+  // (their `Date.now() < startMs` even when the server says
+  // ongoing). v0.10.0 smoke caught that symptom; CR #297
+  // hardened the propagation.
+  //
+  // How `polledStatus` stays fresh, per data-source path:
+  //   - Polling (`useSetlistPolling`): fetches /api/setlist every
+  //     5s, polled.status reflects the server's auto-flip within
+  //     ≤5s of the boundary.
+  //   - Realtime (`useRealtimeEventChannel`): a boundary-scheduled
+  //     setTimeout (see `nextEventStatusBoundaryDelay` and the
+  //     channel-setup effect) calls fetchSnapshot at startTime +
+  //     POST_BOUNDARY_BUFFER_MS, refreshing polledStatus. Without
+  //     this, Realtime would only refetch on push (Path B for
+  //     SetlistItem and SongWish), and a startTime crossing in a
+  //     no-activity window would leave polledStatus stale —
+  //     `polledStatus ?? status` would mask a fresh SSR status
+  //     (refreshed by <EventStatusTicker>'s router.refresh at the
+  //     same boundary) with the stale polled value.
+  //   - R3 fallback: same as polling.
   const effectiveStatus: ResolvedEventStatus = polledStatus ?? status;
 
   // Use the SSR-rendered sidebar values until polling delivers fresh

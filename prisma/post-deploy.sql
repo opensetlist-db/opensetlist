@@ -181,3 +181,121 @@ DROP INDEX IF EXISTS "SetlistItem_eventId_position_key";
 CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_event_position_active_unique
   ON "SetlistItem" ("eventId", "position")
   WHERE "isDeleted" = false;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Supabase Realtime publication — Phase 1C R1 (SetlistItem only).
+--
+-- The Supabase project's `supabase_realtime` publication selects which
+-- tables emit logical-replication events to subscribed clients. R1
+-- adds SetlistItem so the live event page's `useRealtimeEventChannel`
+-- hook receives INSERT/UPDATE/DELETE pushes filtered by `eventId`.
+--
+-- Idempotency: pg_publication_tables guards against re-adding (the
+-- raw `ALTER PUBLICATION ... ADD TABLE` errors if the table is
+-- already a member). Both `migrate-dev.yml` and `migrate-prod.yml`
+-- replay this file on every deploy, so the guard must hold.
+--
+-- R2 will extend the publication to SetlistItemReaction +
+-- EventImpression + SongWish; SetlistItemConfirm is added when
+-- `LAUNCH_FLAGS.confirmDbEnabled` flips on at 5/30. Each addition
+-- gets its own DO block here so failed/partial deploys converge
+-- cleanly.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'SetlistItem'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE "SetlistItem"';
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Realtime R2: SetlistItemReaction.eventId backfill.
+--
+-- The R2 schema change added `eventId BigInt?` to SetlistItemReaction
+-- (denormalized from SetlistItem.eventId). This backfill fills the
+-- column for any pre-R2 rows. Idempotent — the WHERE clause skips
+-- already-populated rows on re-run.
+--
+-- The application-side write path (POST /api/reactions) populates
+-- eventId on every new INSERT, so once this runs once and the
+-- workflow deploys the new app code, the column converges to
+-- always-populated. A follow-up migration after that point can
+-- tighten this to NOT NULL safely.
+UPDATE "SetlistItemReaction" r
+   SET "eventId" = i."eventId"
+  FROM "SetlistItem" i
+ WHERE r."setlistItemId" = i.id
+   AND r."eventId" IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Realtime R2: extend supabase_realtime publication.
+--
+-- Adds the three remaining R2 tables (SetlistItemReaction,
+-- EventImpression, SongWish) to the publication. Each table gets its
+-- own DO block so a partial-failure deploy converges cleanly: if
+-- SetlistItemReaction succeeds and the deploy crashes before
+-- EventImpression, the next replay skips SetlistItemReaction (already
+-- in the publication) and adds EventImpression.
+--
+-- SetlistItemConfirm is intentionally NOT added here — it lands when
+-- LAUNCH_FLAGS.confirmDbEnabled flips on at 5/30, alongside its own
+-- eventId denormalization.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'SetlistItemReaction'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE "SetlistItemReaction"';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'EventImpression'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE "EventImpression"';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'SongWish'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE "SongWish"';
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Realtime R2: REPLICA IDENTITY FULL for diff-merge tables.
+--
+-- Postgres logical replication ships only the primary key in DELETE
+-- WAL events by default. Supabase Realtime exposes that as
+-- `payload.old = { id }` — which is enough for SetlistItem (Path B
+-- refetch on push) and SongWish (Path B refetch top3) but NOT for
+-- the per-row diff merge (Path A) the realtime hook does for
+-- SetlistItemReaction and EventImpression:
+--
+--   - SetlistItemReaction DELETE → need (setlistItemId, reactionType)
+--     to decrement the right reactionCounts cell. Without FULL we
+--     only get the row's UUID.
+--   - EventImpression UPDATE (supersede) → need (rootImpressionId,
+--     supersededAt, isHidden, isDeleted) on the OLD row to know
+--     whether the row was previously visible. INSERT carries `new`
+--     fully regardless; the gap is only on UPDATE/DELETE.
+--
+-- REPLICA IDENTITY FULL widens those payloads to the full row at
+-- the cost of extra WAL bytes per change. Trivial at our table
+-- sizes (reactions ≤ ~10⁵ rows/year, impressions ≤ ~10⁴) and the
+-- bytes only ship for changes, not on idle.
+--
+-- These are idempotent: ALTER TABLE ... REPLICA IDENTITY FULL is
+-- safe to re-run, no IF NOT EXISTS guard needed.
+ALTER TABLE "SetlistItemReaction" REPLICA IDENTITY FULL;
+ALTER TABLE "EventImpression" REPLICA IDENTITY FULL;
