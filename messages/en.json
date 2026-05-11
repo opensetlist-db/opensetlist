@@ -303,7 +303,8 @@
     "preShowHint": "{count, plural, one {# song entered} other {# songs entered}}",
     "duringHint": "{count, plural, one {# prediction entered} other {# predictions entered}}",
     "afterHint": "Show ended · Final result",
-    "finalScore": "{matched}/{total} hit ({pct}%) 🎯"
+    "finalScore": "{matched}/{total} hit ({pct}%) 🎯",
+    "description": "Add your predictions before the show starts. Your hit rate is scored against the actual setlist. There's no limit on how many songs you predict, but only the top N predictions (where N = the number of songs in the actual setlist) count toward the score."
   },
   "ShareCard": {
     "modalTitle": "Share result",
@@ -321,12 +322,13 @@
   },
   "Confirm": {
     "confirmAria": "Mark as correct",
-    "disagreeAria": "Mark as incorrect"
+    "disagreeAria": "Mark as incorrect",
+    "description": "If a newly added song is correct, tap 👍 — if not, tap 👎."
   },
   "Wishlist": {
     "title": "Songs you want to hear at this show",
     "lockedTitle": "Everyone's wishlist",
-    "cap": "Up to 3",
+    "description": "Add the songs you want to hear before the show starts. Up to 3 picks.",
     "myList": "My wishlist",
     "fanTop3": "Everyone's wishlist",
     "add": "+ Add a song",

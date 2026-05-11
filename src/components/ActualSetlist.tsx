@@ -50,6 +50,7 @@ export function ActualSetlist({
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
+  const confirmT = useTranslations("Confirm");
 
   // Auto-promote ticker for `getConfirmStatus`'s 1-min boundary.
   // The function reads `new Date()` per call, so the row's visual
@@ -164,6 +165,29 @@ export function ActualSetlist({
 
   return (
     <>
+      {/* Confirm-vote instructional strip: tells first-time visitors
+          how to 👍/👎 newly-registered (rumoured) rows. Visible only
+          while at least one row is still rumoured — once every row
+          promotes to confirmed (DB-confirmed or via the 1-min auto-
+          promote in `getConfirmStatus`), the action it describes is
+          gone and the strip retires with it. The same `hasRumoured`
+          flag drives the auto-promote ticker above, so visibility and
+          re-render cadence stay coupled. Visual treatment mirrors the
+          adjacent `<SetlistColumnHeader>` (same padding + bg) so the
+          strip reads as part of the column-header block. */}
+      {hasRumoured && (
+        <div
+          className="text-[11px]"
+          style={{
+            padding: "8px 20px",
+            color: colors.textMuted,
+            background: colors.bgFaint,
+            borderBottom: `0.5px solid ${colors.border}`,
+          }}
+        >
+          {confirmT("description")}
+        </div>
+      )}
       <SetlistColumnHeader
         labels={{
           position: t("colPosition"),
