@@ -184,32 +184,27 @@ export function EventImpressions({
   const mounted = useMounted();
   const [impressions, setImpressions] =
     useState<Impression[]>(initialImpressions);
-  // Latest-state ref synced via useEffect so the realtime
-  // onUpsert/onRemove callbacks can read the most recent committed
-  // `impressions` value synchronously when deciding whether to bump
-  // `totalCount`. The earlier closure-capture pattern
-  // (`let isNewChain = false; setImpressions((prev) => { isNewChain
-  // = ...; return ... }); if (isNewChain) ...`) was racy in React 18:
-  // setState updaters are deferred to the next render's
-  // reconciliation, so the `if (isNewChain)` check ran with the
-  // initial `false` before the updater could write the real value
-  // — totalCount never incremented for new-chain INSERTs on the
-  // realtime path. The ref pattern reads from the previously-
-  // committed state, which is the correct anchor for the
-  // "is-this-a-new-chain?" decision (the chain either existed in
-  // the list-as-rendered or it didn't; pending updates that haven't
-  // committed yet can't change that answer for the row we're about
-  // to insert).
+  // Latest-state ref kept in lockstep with `impressions` by routing
+  // every mutation through `applyImpressionsUpdate` below — never
+  // by the post-render `useEffect` sync the previous iteration of
+  // this fix used, which left a one-render stale window between
+  // commit and effect run that a rapid-fire realtime onRemove could
+  // race against (CR feedback on PR #326).
   //
-  // Tiny race window: between commit and useEffect running, the ref
-  // is one render stale. Realtime pushes are spaced >> the gap, and
-  // the worst-case mistake (over-count by 1 if two pushes for the
-  // SAME rootImpressionId fire within the gap) is a single-row
-  // accounting drift on a UX-only metric — accepted.
+  // Why a ref at all: the realtime `onUpsert`/`onRemove` callbacks
+  // need to decide whether to bump `totalCount` based on whether
+  // the chain / id was previously in the list. React 18's
+  // `setState(updater)` defers the updater to reconciliation, so
+  // the closure-capture pattern (`let isNewChain = false;
+  // setImpressions((prev) => { isNewChain = ...; return ... });
+  // if (isNewChain) ...`) reads `false` before the updater runs —
+  // `setTotalCount` would never fire. The helper below calls the
+  // updater SYNCHRONOUSLY (eagerly, not via React's queue), so the
+  // captured flag is set before the post-call `if`-check, AND the
+  // ref is updated in the same synchronous moment, so concurrent
+  // callbacks within the same task see the latest value with no
+  // race window.
   const impressionsRef = useRef<Impression[]>(initialImpressions);
-  useEffect(() => {
-    impressionsRef.current = impressions;
-  }, [impressions]);
   // Pagination state — tracks the user's position in the older half.
   // Polling does NOT touch these; they advance only on a successful
   // "see older" click (server response sets `loadMoreCursor` to the
@@ -220,6 +215,39 @@ export function EventImpressions({
   const [totalCount, setTotalCount] = useState<number>(initialTotalCount);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
+  // Synchronous-ref-update helper. ALL impressions mutations route
+  // through this — the realtime callbacks rely on the ref reflecting
+  // the latest value the instant the previous mutation returns, so
+  // direct `setImpressions(updater)` calls (where the updater is
+  // queued and run later by React) would let the ref drift relative
+  // to React state and re-introduce the totalCount-sync race CR
+  // flagged on PR #326.
+  //
+  // The helper calls `updater(prev)` eagerly against
+  // `impressionsRef.current`, writes the result back to the ref,
+  // then forwards to `setImpressions` in VALUE form (not updater
+  // form). The value form means React doesn't re-run our updater
+  // during reconciliation — we've already run it once here, and
+  // the ref already holds the truth. Strict mode is safe because
+  // every merge function in this file (`mergeImpressions`,
+  // `mergeImpressionByChain`, the filter-by-id) is idempotent.
+  //
+  // The contract: NO call site in this component is allowed to
+  // call `setImpressions` directly — they must all go through
+  // `applyImpressionsUpdate`. A future refactor that violates this
+  // would let the ref drift; the closure-capture flag reads inside
+  // `onUpsert`/`onRemove` would silently miss bumps. The lint
+  // rule that would enforce this is too niche to ship; treat the
+  // helper as the single mutator and the ref as its receipt.
+  const applyImpressionsUpdate = useCallback(
+    (updater: (prev: Impression[]) => Impression[]) => {
+      const next = updater(impressionsRef.current);
+      impressionsRef.current = next;
+      setImpressions(next);
+    },
+    [],
+  );
 
   // R2 Realtime cutover: branch on `LAUNCH_FLAGS.realtimeEnabled`.
   // Both hooks must always be called (rules-of-hooks), so the
@@ -271,19 +299,23 @@ export function EventImpressions({
       //     stays the same because the server-side count() filter
       //     (supersededAt IS NULL) counts one chain head, not one
       //     per row in the chain.
-      // The `isNewChain` decision reads from `impressionsRef.current`
-      // — the LATEST committed state, NOT the closure capture from
-      // when the callback was created and NOT a value computed
-      // inside the setImpressions updater. React 18 defers updaters
-      // to the next render's reconciliation, so a `let isNewChain
-      // = false; setImpressions((prev) => { isNewChain = ... })`
-      // pattern would always read `false` at the post-setState
-      // check site (the updater hasn't run yet). The ref pattern
-      // gives us a synchronous read against the rendered tree.
-      const isNewChain = !impressionsRef.current.some(
-        (p) => p.rootImpressionId === impression.rootImpressionId,
-      );
-      setImpressions((prev) => mergeImpressionByChain(prev, impression));
+      // `isNewChain` is captured from inside the
+      // `applyImpressionsUpdate` updater, which runs SYNCHRONOUSLY
+      // (the helper calls `updater(impressionsRef.current)` eagerly,
+      // not via React's deferred setState queue). So the post-call
+      // `if (isNewChain)` check sees the value set by the updater
+      // run that just completed. For concurrent calls within the
+      // same task (two rapid-fire pushes), the ref is updated
+      // synchronously inside the helper between calls, so the
+      // second push's updater sees the first's result — no
+      // off-by-one.
+      let isNewChain = false;
+      applyImpressionsUpdate((prev) => {
+        isNewChain = !prev.some(
+          (p) => p.rootImpressionId === impression.rootImpressionId,
+        );
+        return mergeImpressionByChain(prev, impression);
+      });
       if (isNewChain) {
         setTotalCount((c) => c + 1);
       }
@@ -299,10 +331,15 @@ export function EventImpressions({
       //     via isHidden / isDeleted (report flow, soft delete) →
       //     row was in the list, removed → decrement.
       //   - Hard DELETE (rare) → same as the hidden case.
-      // Same `impressionsRef.current` synchronous-read pattern as
-      // onUpsert above — see that comment for the rationale.
-      const wasPresent = impressionsRef.current.some((p) => p.id === id);
-      setImpressions((prev) => prev.filter((p) => p.id !== id));
+      // Same eager-updater + closure-capture pattern as `onUpsert`
+      // above — `applyImpressionsUpdate` calls the updater
+      // synchronously, so `wasPresent` is set before the post-call
+      // `if` check runs (CR feedback on PR #326).
+      let wasPresent = false;
+      applyImpressionsUpdate((prev) => {
+        wasPresent = prev.some((p) => p.id === id);
+        return prev.filter((p) => p.id !== id);
+      });
       if (wasPresent) {
         setTotalCount((c) => Math.max(0, c - 1));
       }
@@ -323,7 +360,7 @@ export function EventImpressions({
     eventId,
     enabled: isOngoing && (!realtimeFlag || realtime.pollFallback),
     onUpdate: ({ impressions: polled }) => {
-      setImpressions((prev) => mergeImpressions(prev, polled));
+      applyImpressionsUpdate((prev) => mergeImpressions(prev, polled));
     },
   });
 
@@ -349,7 +386,7 @@ export function EventImpressions({
         nextCursor: string | null;
         totalCount?: number;
       };
-      setImpressions((prev) => mergeImpressions(prev, data.impressions));
+      applyImpressionsUpdate((prev) => mergeImpressions(prev, data.impressions));
       setLoadMoreCursor(data.nextCursor);
       if (data.totalCount !== undefined) {
         setTotalCount(data.totalCount);
@@ -359,7 +396,7 @@ export function EventImpressions({
     } finally {
       setLoadingMore(false);
     }
-  }, [eventId, loadingMore, loadMoreCursor, t]);
+  }, [eventId, loadingMore, loadMoreCursor, t, applyImpressionsUpdate]);
 
   const savedKey = `impression-${eventId}`;
   // SSR + client first render start at empty values so hydration matches
@@ -441,7 +478,7 @@ export function EventImpressions({
   // `mergeImpressionByChain` helper, which the realtime onUpsert
   // callback also uses.
   const mergeImpression = (imp: Impression) => {
-    setImpressions((prev) => mergeImpressionByChain(prev, imp));
+    applyImpressionsUpdate((prev) => mergeImpressionByChain(prev, imp));
   };
 
   const handleSubmit = async () => {
@@ -561,7 +598,7 @@ export function EventImpressions({
       }
       const body = (await res.json()) as { isHidden?: boolean };
       if (body.isHidden) {
-        setImpressions((prev) =>
+        applyImpressionsUpdate((prev) =>
           prev.filter((p) => p.rootImpressionId !== chainId)
         );
         // Mirror the impression-removal in the displayed total —
