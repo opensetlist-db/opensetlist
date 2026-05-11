@@ -565,16 +565,14 @@ model SetlistItemReaction {
   // Realtime R2 denormalization. Supabase Realtime's postgres_changes
   // filter only supports column-level filters on the changed table —
   // a JOIN through SetlistItem to Event is not expressible — so the
-  // realtime cutover requires eventId on this row directly.
-  //
-  // Tightened to NOT NULL after the dev backfill in post-deploy.sql
-  // verified zero-NULL across existing rows AND the reactions POST
-  // handler in src/app/api/reactions/route.ts populates eventId on
-  // every new INSERT (free join — pulled from the SetlistItem lookup
-  // that already runs to validate existence). Conceptually
-  // immutable: SetlistItem.eventId never changes after creation, so
-  // this column tracks it 1:1 for the row's lifetime.
-  eventId       BigInt
+  // realtime cutover requires eventId on this row directly. Nullable
+  // during the rollout window: post-deploy.sql backfills existing
+  // rows from setlistItem.eventId; the reactions POST handler
+  // populates new rows. A follow-up migration tightens this to NOT
+  // NULL once the backfill is verified everywhere. Conceptually
+  // immutable: SetlistItem.eventId never changes after creation,
+  // so this column tracks it 1:1 for the row's lifetime.
+  eventId       BigInt?
   reactionType  ReactionType
   createdAt     DateTime @default(now())
   // localStorage opensetlist_anon_id — nullable for legacy rows + clients
@@ -589,7 +587,7 @@ model SetlistItemReaction {
   // cascades from Event, and SetlistItemReaction cascades from
   // SetlistItem, so the chain takes care of cleanup. Adding a second
   // cascade path would risk Postgres "multiple cascade paths" errors.
-  event         Event       @relation(fields: [eventId], references: [id])
+  event         Event?      @relation(fields: [eventId], references: [id])
 
   @@index([setlistItemId, reactionType])
   // Realtime R2: GIN-style lookup for the channel-filter query path
