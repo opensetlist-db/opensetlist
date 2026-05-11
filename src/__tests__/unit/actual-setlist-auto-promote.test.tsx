@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
@@ -142,5 +142,58 @@ describe("ActualSetlist — auto-promote ticker", () => {
       ([, ms]: [unknown, number?]) => ms === AUTO_CONFIRM_TICK_MS,
     );
     expect(ourTickerCalls.length).toBe(0);
+  });
+
+  // CR follow-up on PR #323 — the gating tests above prove the
+  // ticker is registered, but not that it actually flips a row's
+  // visual state when it fires. This test is the positive
+  // counterpart: render with a rumoured row 30s before the 60s
+  // boundary, advance fake timers past the boundary, assert the
+  // row's visual state has flipped from rumoured (vote buttons
+  // visible) to confirmed (vote buttons gone, NumberSlot renders
+  // the plain position number).
+  //
+  // The 👍 vote button (`<NumberSlot>`'s `confirmAriaLabel`-tagged
+  // button) is the queryable signal: it only renders for rumoured
+  // rows. With useTranslations mocked to return keys verbatim, the
+  // aria-label resolves to the literal "confirmAria" string — a
+  // stable selector across i18n changes.
+  it("flips a rumoured row to confirmed visual state after the ticker fires past the 60s boundary", () => {
+    vi.useFakeTimers();
+    try {
+      // 59s before now — under the 60s threshold at render time, but
+      // crosses past 60s after one ticker fire.
+      const now = new Date();
+      const justBeforeBoundary = makeItem({
+        status: "rumoured",
+        createdAt: new Date(now.getTime() - 59_000).toISOString(),
+      });
+
+      render(
+        <ActualSetlist
+          items={[justBeforeBoundary]}
+          reactionCounts={{}}
+          locale="ko"
+          eventId="1"
+        />,
+      );
+
+      // Initial render: rumoured → vote buttons present.
+      expect(
+        screen.queryByRole("button", { name: "confirmAria" }),
+      ).not.toBeNull();
+
+      // Advance one ticker cadence + a tiny safety margin past the
+      // 60s boundary. After this, getConfirmStatus's `now`-read on
+      // re-render sees ≥ 60s elapsed → returns "confirmed" →
+      // NumberSlot renders the plain number, vote buttons gone.
+      act(() => {
+        vi.advanceTimersByTime(AUTO_CONFIRM_TICK_MS);
+      });
+
+      expect(screen.queryByRole("button", { name: "confirmAria" })).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
