@@ -5,7 +5,10 @@ import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import { useSetlistPolling } from "@/hooks/useSetlistPolling";
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
-import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import {
+  nextEventStatusBoundaryDelay,
+  type ResolvedEventStatus,
+} from "@/lib/eventStatus";
 
 export type { ReactionCountsMap };
 
@@ -20,6 +23,30 @@ interface UseRealtimeEventChannelOptions<T> {
   // locale-independent.
   locale: string;
   enabled: boolean;
+  /**
+   * Event start time as ISO string (or null when unknown). Used to
+   * schedule a boundary `fetchSnapshot()` at the upcoming → ongoing
+   * and ongoing → completed flips, so the polled `status` field
+   * re-derives without depending on a fan/admin push to land.
+   *
+   * String — NOT `Date` — so the value is reference-stable across
+   * renders for the channel-setup effect's deps array. The caller
+   * is expected to coerce a `Date` via `.toISOString()` before
+   * passing in. Mirrors the pattern used at `<EventStatusTicker>`'s
+   * call site (`<EventHeader>`).
+   *
+   * Pre-Realtime, the 5s polling cadence implicitly caught these
+   * boundaries — every poll's response carried server-resolved
+   * `status`. With Realtime, `/api/setlist` only refetches on push
+   * (Path B for SetlistItem and SongWish), so without this timer a
+   * startTime crossing in a no-activity window would leave the
+   * polled status stale, and the `polledStatus ?? status`
+   * precedence in `LiveEventLayout` would mask a fresh SSR
+   * `status` (router.refresh from `<EventStatusTicker>`) with the
+   * stale polled value. The boundary timer here closes that
+   * window.
+   */
+  startTime: string | null;
 }
 
 interface UseRealtimeEventChannelResult<T> {
@@ -144,6 +171,7 @@ export function useRealtimeEventChannel<T>({
   initialTop3Wishes,
   locale,
   enabled,
+  startTime,
 }: UseRealtimeEventChannelOptions<T>): UseRealtimeEventChannelResult<T> {
   const [items, setItems] = useState<T[]>(initialItems);
   const [reactionCounts, setReactionCounts] =
@@ -311,6 +339,36 @@ export function useRealtimeEventChannel<T>({
     // Seed initial state.
     void fetchSnapshot();
 
+    // ──── Status-boundary scheduler ────
+    // Self-rescheduling setTimeout that fires fetchSnapshot at each
+    // event-status boundary (upcoming → ongoing at startTime, then
+    // ongoing → completed at startTime + ONGOING_BUFFER_MS). After
+    // the first boundary fires and fetchSnapshot lands, the
+    // recursive call queries the helper for the NEXT boundary —
+    // which becomes the completed flip — and schedules again. After
+    // the second boundary, the helper returns null and the chain
+    // ends. The post-first-boundary fetchSnapshot also flips
+    // polledStatus to "ongoing", which propagates up to the
+    // wishlist + predicted-setlist editor lock without waiting for
+    // an unrelated push.
+    //
+    // Cleanup: we hold the timer in a closure variable; the effect
+    // cleanup clears the latest scheduled one. The recursive
+    // setTimeout chain only fires on a still-mounted hook because
+    // each callback runs after the previous timer was assigned to
+    // the same `boundaryTimer` slot — clearing the latest is
+    // sufficient.
+    let boundaryTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNextStatusBoundary = () => {
+      const delayMs = nextEventStatusBoundaryDelay(startTime);
+      if (delayMs === null) return;
+      boundaryTimer = setTimeout(() => {
+        void fetchSnapshot();
+        scheduleNextStatusBoundary();
+      }, delayMs);
+    };
+    scheduleNextStatusBoundary();
+
     // ──── Reaction diff merge (Path A) ────
     const applyReactionInsert = (row: ReactionRowPayload) => {
       const sid = String(row.setlistItemId);
@@ -472,6 +530,9 @@ export function useRealtimeEventChannel<T>({
         abortRef.current.abort();
         abortRef.current = null;
       }
+      if (boundaryTimer !== null) {
+        clearTimeout(boundaryTimer);
+      }
       // `removeChannel` both unsubscribes and removes the channel
       // from the supabase-js internal registry. If we only called
       // `channel.unsubscribe()`, the registry would leak the
@@ -479,7 +540,7 @@ export function useRealtimeEventChannel<T>({
       // reuse the dead channel.
       void supabase.removeChannel(channel);
     };
-  }, [eventId, locale, enabled, pollFallback]);
+  }, [eventId, locale, enabled, pollFallback, startTime]);
 
   // R3: fallback return shape. When polling has taken over, prefer
   // its state — but during the warmup window (first poll hasn't
