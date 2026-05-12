@@ -59,6 +59,36 @@ const LIVE_BADGE_BG = "#dc2626";
  */
 const LIVE_BADGE_RESERVED_PX = 80;
 
+/**
+ * Row-height floor for song-title rows in the captured PNG. iOS
+ * Safari's html2canvas pipeline collapses line-boxes on `overflow:
+ * hidden + whiteSpace: nowrap` spans more aggressively than desktop
+ * browsers do, clipping the bottom half of each title in the saved
+ * image. Forcing the row's `minHeight` to a known floor bypasses
+ * line-box computation entirely — the row physically owns enough
+ * vertical space to contain the rendered text regardless of how the
+ * capture pipeline interprets line-height.
+ *
+ * 28px = 1.8 × ~15px (room for 13px font + 2px descender headroom)
+ * + small slop for cross-browser font-metrics variance. Browsers
+ * fold this into the natural row height (no visible change in the
+ * live preview); only the captured PNG depends on the floor.
+ */
+const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
+
+/**
+ * Line-height multiplier for song-title spans, paired with the row
+ * `minHeight` floor above. PR #305 / v0.10.2 used 1.5 for desktop
+ * html2canvas; iOS Safari needs more headroom — 1.8 × 13px font ≈
+ * 24px line box, enough for Latin descenders + CJK glyph extents
+ * even when the capture pipeline shaves a few pixels.
+ *
+ * Belt-and-suspenders with `CAPTURE_ROW_MIN_HEIGHT_PX`. If a future
+ * browser quirk affects one of the two, the other should still keep
+ * the glyph inside the captured bounds.
+ */
+const CAPTURE_ROW_LINE_HEIGHT = 1.8;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -603,7 +633,7 @@ function PredictionRow({
         // the natural row height with the same content is ~28px
         // anyway — this is a no-op for the browser, a load-bearing
         // floor for the capture.
-        minHeight: 28,
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
       }}
     >
@@ -633,7 +663,7 @@ function PredictionRow({
           // html2canvas pipeline collapses the line-box more
           // aggressively and needs more headroom to keep glyph
           // descenders + the CJK glyph extent inside the row.
-          lineHeight: 1.8,
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
@@ -681,7 +711,7 @@ function ShareCardRow({
         // forcing a 28px row floor keeps the rendered text fully
         // inside the captured bounds. No-op for the live browser
         // preview where the natural row height matches.
-        minHeight: 28,
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
         background: hit ? T.hitRowBg : "transparent",
       }}
@@ -724,7 +754,7 @@ function ShareCardRow({
           // was cut). 1.8 × 13px = ~24px per line box, plus the row
           // minHeight: 28 floor, gives enough headroom for Latin
           // descenders + CJK glyph extents on every browser tested.
-          lineHeight: 1.8,
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
