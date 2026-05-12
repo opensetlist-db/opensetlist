@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useTranslations } from "next-intl";
 import {
   ShareCardPreview,
@@ -207,19 +213,22 @@ export function ShareCardModal({
   // Gated on `mounted` so SSR + first client commit render the same
   // markup (both fall through to the download label until the
   // post-mount re-render flips it).
-  const isShareCapable =
-    mounted &&
-    typeof navigator !== "undefined" &&
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    (() => {
-      try {
-        const probeFile = new File([], "probe.png", { type: "image/png" });
-        return navigator.canShare({ files: [probeFile] });
-      } catch {
-        return false;
-      }
-    })();
+  // useMemo over `[mounted]` so the probe-File construction +
+  // canShare call runs once after mount instead of every render.
+  // Early-return chain reads top-to-bottom — easier to scan than a
+  // short-circuit AND of four capability checks.
+  const isShareCapable = useMemo(() => {
+    if (!mounted) return false;
+    if (typeof navigator === "undefined") return false;
+    if (typeof navigator.canShare !== "function") return false;
+    if (typeof navigator.share !== "function") return false;
+    try {
+      const probeFile = new File([], "probe.png", { type: "image/png" });
+      return navigator.canShare({ files: [probeFile] });
+    } catch {
+      return false;
+    }
+  }, [mounted]);
 
   // Capability check for Button B. Same SSR-safety pattern as the
   // touch detection above — false on first render, may flip true
