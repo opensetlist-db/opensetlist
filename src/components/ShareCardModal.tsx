@@ -19,34 +19,31 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { zIndex, type ShareCardTheme } from "@/styles/tokens";
 
 /**
- * Classify a `shareCard()` / `copyCardToClipboard()` error message
- * into one of the GA4 `share_card_save_failed` reason buckets. The
- * mapping is brittle by design — it inspects message strings produced
- * by `src/lib/shareCard.ts`, which means a string change there will
- * silently start emitting `'unknown'` for that path. That's
- * acceptable: the helper is one file with known throw sites and the
- * unknown bucket is the safe fallback.
+ * Classify a `shareCard()` / `copyCardToClipboard()` *error-kind*
+ * message into one of the GA4 `share_card_save_failed` reason
+ * buckets. The mapping is brittle by design — it inspects message
+ * strings produced by `src/lib/shareCard.ts`, which means a string
+ * change there will silently start emitting `'unknown'` for that
+ * path. That's acceptable: the helper is one file with known throw
+ * sites and the unknown bucket is the safe fallback.
  *
- * Reasons:
- *   - 'timeout'                → 10s `TO_BLOB_TIMEOUT_MS` elapsed
- *                                (helper returns "canvas.toBlob returned null")
- *   - 'tainted_canvas'         → CORS leak in capture (html2canvas / browser msg)
- *   - 'oom'                    → memory / allocation failure
- *   - 'clipboard_unsupported'  → ClipboardItem / clipboard.write missing
- *                                (set by the copy handler, not message inspection)
- *   - 'clipboard_denied'       → NotAllowedError from clipboard.write
- *                                (set by the copy handler, not message inspection)
- *   - 'unknown'                → anything else, including future paths
+ * Only consumes message strings — the clipboard-specific outcomes
+ * (`unsupported`, `denied`) have their own kinds in `CopyOutcome` and
+ * are surfaced as `clipboard_unsupported` / `clipboard_denied` GA4
+ * reasons directly by `handleCopy`, not via this classifier. Keeping
+ * those separate means we don't have to invent fake message strings
+ * for non-error outcomes.
+ *
+ * Reasons returned:
+ *   - 'timeout'         → 10s `TO_BLOB_TIMEOUT_MS` elapsed
+ *                         (helper returns "canvas.toBlob returned null")
+ *   - 'tainted_canvas'  → CORS leak in capture (html2canvas / browser msg)
+ *   - 'oom'             → memory / allocation failure
+ *   - 'unknown'         → anything else, including future paths
  */
 function classifyShareCardFailure(
   message: string,
-):
-  | "timeout"
-  | "tainted_canvas"
-  | "oom"
-  | "clipboard_unsupported"
-  | "clipboard_denied"
-  | "unknown" {
+): "timeout" | "tainted_canvas" | "oom" | "unknown" {
   if (message === "canvas.toBlob returned null") return "timeout";
   if (/tainted/i.test(message)) return "tainted_canvas";
   if (/(memory|OOM|allocation)/i.test(message)) return "oom";
@@ -482,47 +479,55 @@ export function ShareCardModal({
             target ergonomics (Apple HIG / Material recommended
             minimum). Both buttons share the brand gradient bg so
             they read as a pair of primary actions; the icon glyph +
-            label communicates which intent is which. */}
-        <div className="flex justify-center gap-2 mt-3" style={{ maxWidth: 600, marginLeft: "auto", marginRight: "auto" }}>
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={busy}
-            className="flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer"
-            style={{
-              minHeight: 44,
-              background: busy
-                ? "#94a3b8"
-                : "linear-gradient(135deg, #4FC3F7, #0277BD)",
-              color: "white",
-              border: "none",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
-            <span>{t("saveImage")}</span>
-          </button>
-          {clipboardSupported && (
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={busy}
-              className="flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer"
+            label communicates which intent is which. Shared style
+            hoisted so a future palette change touches one place,
+            not two — CR-flagged duplication. */}
+        {(() => {
+          const actionButtonStyle: React.CSSProperties = {
+            minHeight: 44,
+            background: busy
+              ? "#94a3b8"
+              : "linear-gradient(135deg, #4FC3F7, #0277BD)",
+            color: "white",
+            border: "none",
+            cursor: busy ? "wait" : "pointer",
+          };
+          const actionButtonClass =
+            "flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer";
+          return (
+            <div
+              className="flex justify-center gap-2 mt-3"
               style={{
-                minHeight: 44,
-                background: busy
-                  ? "#94a3b8"
-                  : "linear-gradient(135deg, #4FC3F7, #0277BD)",
-                color: "white",
-                border: "none",
-                cursor: busy ? "wait" : "pointer",
+                maxWidth: 600,
+                marginLeft: "auto",
+                marginRight: "auto",
               }}
             >
-              <CopyIcon />
-              <span>{t("copyImage")}</span>
-            </button>
-          )}
-        </div>
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={busy}
+                className={actionButtonClass}
+                style={actionButtonStyle}
+              >
+                {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
+                <span>{t("saveImage")}</span>
+              </button>
+              {clipboardSupported && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  disabled={busy}
+                  className={actionButtonClass}
+                  style={actionButtonStyle}
+                >
+                  <CopyIcon />
+                  <span>{t("copyImage")}</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Toast */}
         {toast && (
