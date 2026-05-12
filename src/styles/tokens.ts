@@ -269,28 +269,40 @@ export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
     radialOverlay: "",
     series:        "#0277BD",
     title:         "#0c1a2e",
-    date:          "#8aacc8",
+    // Operator-spotted on the captured light-theme PNG: rank
+    // numbers, the score-banner "predicted count" line, the encore
+    // divider label, the footer brand + URL, and the date line all
+    // sat at hexes between `#b5cfe8` and `#8aacc8` against the
+    // `#f8fbff` card background — contrast ratios of 1.5–2.7:1, well
+    // below WCAG AA's 4.5:1 for body text. The same fix shape as
+    // dark mode: collapse the muted family to a single readable
+    // tone (`#5a8ab0`, same as `missColor` already in use for song
+    // titles) that hits ~5.5:1 contrast. Visual hierarchy now lives
+    // entirely between bright accents (`#0277BD`) and muted
+    // (`#5a8ab0`); we accept losing the tertiary-lightness step
+    // that was indistinguishable from background anyway.
+    date:          "#5a8ab0",
     bannerBg:      "white",
     bannerBorder:  "1px solid #b5d4f4",
     bannerShadow:  "0 1px 8px rgba(2,119,189,0.06)",
     scoreMain:     "#0c1a2e",
     scorePct:      "#0277BD",
-    scoreSub:      "#8aacc8",
+    scoreSub:      "#5a8ab0",
     scoreLabel:    "#0277BD",
     scoreFrac:     "#0277BD",
-    scorePred:     "#b5cfe8",
+    scorePred:     "#5a8ab0",
     missColor:     "#5a8ab0",
-    numColor:      "#b5d4f4",
+    numColor:      "#5a8ab0",
     hitRowBg:      "#eef7ff",
     hitDot:        "#0277BD",
     hitDotGlow:    "none",
     hitUnderline:  "rgba(2,119,189,0.4)",
     hitText:       "#0c1a2e",
     encLine:       "#d0e8f8",
-    encLabel:      "#b5cfe8",
+    encLabel:      "#5a8ab0",
     footerBorder:  "#d0e8f8",
-    footerBrand:   "#8aacc8",
-    footerUrl:     "#b5cfe8",
+    footerBrand:   "#5a8ab0",
+    footerUrl:     "#5a8ab0",
   },
 } as const;
 
