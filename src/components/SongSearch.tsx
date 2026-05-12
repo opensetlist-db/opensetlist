@@ -156,12 +156,19 @@ export function SongSearch({
   // user input, which is post-mount anyway), so first paint is
   // unaffected.
   const mounted = useMounted();
-  // Computed fixed-position coords for the portalled dropdown.
-  // Recomputed on open + window scroll/resize so the dropdown
-  // tracks the input even if the page scrolls behind the dropdown.
-  // Closing on scroll would be simpler but harms mobile UX (virtual
-  // keyboard appearance triggers a scroll; we don't want the
-  // dropdown to vanish out from under the user every keystroke).
+  // Document-relative coords for the portalled dropdown (rendered with
+  // `position: absolute`). Recomputed on open + layout-shifting events
+  // (window scroll, resize, visualViewport scroll/resize) so the
+  // dropdown tracks the input through keyboard transitions and content
+  // reflow. With absolute positioning + doc coords the dropdown
+  // scrolls naturally WITH the page (the input is also in document
+  // flow, so they stay aligned automatically) — see the
+  // `useLayoutEffect` docstring below for the iOS Safari soft-keyboard
+  // rationale that drove the switch from `position: fixed` to
+  // `position: absolute`. Closing the dropdown on scroll would be
+  // simpler but harms mobile UX: virtual-keyboard show/hide fires
+  // scroll-class events, and we don't want the dropdown to vanish out
+  // from under the user every keystroke.
   const [dropdownPos, setDropdownPos] = useState<{
     top: number;
     left: number;
