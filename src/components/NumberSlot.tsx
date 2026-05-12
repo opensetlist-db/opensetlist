@@ -117,9 +117,21 @@ export function NumberSlot({
   // line on a 390px iPhone. See SetlistRow.tsx mobile-grid comment
   // for the full width math.
   //
+  // `row-span-2 self-center` on mobile is the second half of the
+  // fix: without it, the 48px-tall button stack pushed grid row 1
+  // (title row) to 48px tall, leaving ~26px of empty space in col 2
+  // between the title and the reactions row below it (the visible
+  // height gap between rumoured and confirmed rows on first-deploy).
+  // Spanning both rows lets the position cell occupy the full
+  // (row 1 title height + row-gap + row 2 reactions height) ≈ 60px
+  // combined cell, so the buttons vertically center within that and
+  // rumoured rows total to roughly the same height as confirmed rows.
+  //
   // Desktop (≥ lg): horizontal pair — 22+8+22 = 52px wide, 22px
   // tall. Matches `SETLIST_DESKTOP_GRID_COLS` first track, keeps
   // rumoured + confirmed rows the same height on the desktop table.
+  // `lg:row-span-1 lg:self-auto` resets the mobile span so the cell
+  // sits in a single row 1 alongside the other 4-col-layout cells.
   //
   // `gap-1 lg:gap-2` controls cross-axis spacing in both
   // directions (Tailwind `gap` resolves to row-gap OR column-gap
@@ -140,7 +152,7 @@ export function NumberSlot({
   const canDisagreeTap = typeof onDisagreeTap === "function";
   return (
     <div
-      className="mt-0.5 inline-flex flex-col items-center gap-1 lg:flex-row lg:gap-2"
+      className="row-span-2 self-center mt-0.5 inline-flex flex-col items-center gap-1 lg:row-span-1 lg:self-auto lg:flex-row lg:gap-2"
     >
       {/* The text-symbol glyphs (✓ / ✕, U+2713 / U+2715) are
           monochromatic — they inherit the button's `color` style,

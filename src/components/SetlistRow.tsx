@@ -212,13 +212,14 @@ export function SetlistRow({
       //                  ✓/✕ buttons VERTICALLY on mobile (22px wide
       //                  column instead of 52px wide row). Frees ~24px
       //                  for the reactions row → 4 buttons fit cleanly
-      //                  through iPhone SE 3 (375px). Trade-off:
-      //                  rumoured-state rows render ~22px taller than
-      //                  confirmed rows on mobile (vertical button
-      //                  column ≅ 48px tall vs. confirmed single
-      //                  digit). The uneven height in mixed-state
-      //                  setlists is an accepted cost for "4 reaction
-      //                  buttons always fit on one line."
+      //                  through iPhone SE 3 (375px). <NumberSlot>
+      //                  also `row-span-2`s on mobile so the button
+      //                  stack spans (title row 1) + (reactions row 2)
+      //                  and self-centers within that combined cell;
+      //                  this keeps rumoured rows the same total
+      //                  height as confirmed rows (no more ~26px gap
+      //                  between title and reactions on rumoured
+      //                  rows from the first deploy).
       //
       // ⚠️ The 28px mobile column width and <NumberSlot>'s
       // `flex-col lg:flex-row` direction switch must stay in lockstep
