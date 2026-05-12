@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
+import type { ShareCardMode } from "@/components/ShareCardPreview";
 import { calcShareCardScore } from "@/lib/predictScore";
 import { trackEvent } from "@/lib/analytics";
 import { BASE_URL } from "@/lib/config";
@@ -27,26 +28,58 @@ interface Props {
 }
 
 /**
- * Share button + modal trigger. The button now appears in two
- * states so users learn the affordance exists *before* the show
- * ends, instead of having it pop in only at completion:
+ * Derive the share-card `mode` from event lifecycle + actual-setlist
+ * presence. See `<ShareCardPreview>` for the per-mode rendering rules.
  *
- *   - During show (`status === "ongoing"` + has predictions):
- *     visible but disabled, with a "공연 종료 후 활성화됩니다"
- *     hint to its left explaining the wait. No score yet, modal
- *     unreachable.
- *   - Post-show (`status === "completed"` + has actuals + has
- *     predictions): enabled, full gradient, opens the share modal.
+ *   - `upcoming` (pre-show)                  → `prediction`
+ *   - `ongoing` with no actuals yet          → `prediction`
+ *     (operator hasn't entered any songs; treating as pre-show keeps
+ *     the card useful instead of rendering an empty result body)
+ *   - `ongoing` with at least one actual     → `live`
+ *   - `completed`                            → `final`
+ *   - `cancelled` (rare)                     → `final` if any actuals,
+ *                                              else `prediction`
  *
- * Pre-show (`status === "upcoming"`) and zero-prediction cases
- * still return null — there's nothing to share, so showing the
- * button would just be noise. Prediction-locked-but-empty users
- * also stay null since the share card has no payload to render.
+ * Pure function so the test suite can pin every transition without
+ * mounting the component.
+ */
+export function deriveShareCardMode(
+  status: ResolvedEventStatus,
+  hasActuals: boolean,
+): ShareCardMode {
+  if (status === "completed") return "final";
+  if (status === "cancelled") return hasActuals ? "final" : "prediction";
+  if (status === "ongoing" && hasActuals) return "live";
+  return "prediction";
+}
+
+/**
+ * Share button + modal trigger. Shows up whenever the viewer has at
+ * least one prediction stored for the event, at every lifecycle
+ * stage. Pre-show is the viral entry point — fans share their
+ * predictions BEFORE the show, friends see the image, friends show
+ * up. v0.11.1-and-earlier only enabled share post-show, missing the
+ * pre-show share funnel entirely.
  *
- * Score for the share card uses `calcShareCardScore` (order-
- * independent) — distinct from the live tab's position-rank rule
- * (`calcPredictScore`). See `src/lib/predictScore.ts` for the
- * "do not unify" rationale.
+ * Three modes, derived via `deriveShareCardMode` above:
+ *
+ *   - `prediction` (pre-show or ongoing-no-actuals): button reads
+ *     `예상 공유 🎯`. Card has no score banner; renders the viewer's
+ *     predictions in their rank order with a "예상 세트리스트" label.
+ *   - `live` (ongoing + has actuals): button reads `결과 공유 🎯`.
+ *     Card mirrors the post-show layout with a red `LIVE` pill in
+ *     the top-right and a partial score.
+ *   - `final` (completed): button reads `결과 공유 🎯`. Current
+ *     post-show layout — final score, full actual setlist.
+ *
+ * Zero-prediction events still return null in every state — there's
+ * nothing to share, so the button would just be noise.
+ *
+ * Score: `calcShareCardScore` is order-independent and only
+ * meaningful when actualSongs is non-empty. Computed once for both
+ * `live` + `final` modes; skipped for `prediction` (no score to
+ * compute). See `src/lib/predictScore.ts` for the "do not unify
+ * with `calcPredictScore`" rationale.
  */
 export function ShareCardButton({
   eventId,
@@ -59,24 +92,23 @@ export function ShareCardButton({
   const t = useTranslations("Predict");
   const [open, setOpen] = useState(false);
 
-  // Visibility: any time the user *has* predictions for an event
-  // that's mid-flight or finished. During the show the button is
-  // disabled (no score yet); after, it opens the modal.
-  const enabled =
-    status === "completed" &&
-    actualSongs.length > 0 &&
-    predictions.length > 0;
-  const visible =
-    enabled || (status === "ongoing" && predictions.length > 0);
+  const hasActuals = actualSongs.length > 0;
+  const mode = deriveShareCardMode(status, hasActuals);
 
-  // Compute share-card score (order-independent) only when enabled.
-  // LiveSetlistItem has `id: number` so it satisfies
+  // Hide the surface entirely if the viewer hasn't predicted anything.
+  // No payload to render in `prediction` mode; no fan-vs-result
+  // narrative to render in `live` / `final` mode either.
+  const visible = predictions.length > 0;
+
+  // Score only meaningful in modes that have an actual setlist to
+  // compare predictions against. `prediction` mode skips this work
+  // entirely. LiveSetlistItem has `id: number` so it satisfies
   // calcShareCardScore's `SongMatchInputItem & { id }` signature
   // structurally — no cast needed.
   const score = useMemo(() => {
-    if (!enabled) return { matched: 0, total: 0, percentage: 0 };
+    if (mode === "prediction") return { matched: 0, total: 0, percentage: 0 };
     return calcShareCardScore(predictions, actualSongs);
-  }, [enabled, predictions, actualSongs]);
+  }, [mode, predictions, actualSongs]);
 
   if (!visible) return null;
 
@@ -87,6 +119,9 @@ export function ShareCardButton({
   // NEXT_PUBLIC_BASE_URL with a vercel.app fallback (see
   // src/lib/config.ts).
   const eventUrl = `${BASE_URL}/${locale}/events/${eventId}`;
+
+  const buttonLabel =
+    mode === "prediction" ? t("shareButtonPrediction") : t("shareButton");
 
   return (
     <>
@@ -101,68 +136,49 @@ export function ShareCardButton({
           gap: "10px",
         }}
       >
-        {!enabled && (
-          <span
-            className="text-[11px]"
-            style={{ color: colors.textMuted }}
-          >
-            {t("shareDisabled")}
-          </span>
-        )}
         <button
           type="button"
           onClick={() => {
-            if (!enabled) return;
-            // GA4 Phase 1B: fire only on enabled-state taps. The
-            // PR #307 disabled-during-show variant is a no-op in
-            // the UI; tracking it would just inflate the
-            // share-funnel denominator with non-actions.
-            trackEvent("share_card_open", { event_id: String(eventId) });
+            // GA4 Phase 1B: include `mode` so post-analysis can
+            // segment the share funnel by lifecycle stage —
+            // pre-show shares are the new viral entry point and
+            // worth measuring separately from post-show shares.
+            trackEvent("share_card_open", {
+              event_id: String(eventId),
+              mode,
+            });
             setOpen(true);
           }}
-          disabled={!enabled}
-          aria-disabled={!enabled}
           className="text-sm font-medium rounded-full px-5 py-2"
           style={{
-            // Disabled: muted slate from the shared `colors.textMuted`
-            // token (same hex the modal's `busy` state uses inline).
-            // Enabled: brand-blue gradient, same as before.
-            background: enabled
-              ? "linear-gradient(135deg, #4FC3F7, #0277BD)"
-              : colors.textMuted,
+            background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
             color: "white",
             border: "none",
             whiteSpace: "nowrap",
-            cursor: enabled ? "pointer" : "not-allowed",
-            opacity: enabled ? 1 : 0.85,
+            cursor: "pointer",
           }}
         >
-          {t("shareButton")}
+          {buttonLabel}
         </button>
       </div>
 
-      {/* Modal only mounts in the enabled path — `open` can never
-          flip true while disabled (the click handler short-circuits)
-          but gating render here avoids carrying html2canvas + modal
-          state for users who can't reach it. */}
-      {enabled && (
-        <ShareCardModal
-          open={open}
-          onClose={() => setOpen(false)}
-          eventId={eventId}
-          seriesName={seriesName}
-          eventTitle={eventTitle}
-          dateLine={dateLine}
-          actualSongs={actualSongs}
-          predictions={predictions}
-          matched={score.matched}
-          total={score.total}
-          percentage={score.percentage}
-          predictedCount={predictions.length}
-          locale={locale}
-          shareUrl={eventUrl}
-        />
-      )}
+      <ShareCardModal
+        open={open}
+        onClose={() => setOpen(false)}
+        eventId={eventId}
+        mode={mode}
+        seriesName={seriesName}
+        eventTitle={eventTitle}
+        dateLine={dateLine}
+        actualSongs={actualSongs}
+        predictions={predictions}
+        matched={score.matched}
+        total={score.total}
+        percentage={score.percentage}
+        predictedCount={predictions.length}
+        locale={locale}
+        shareUrl={eventUrl}
+      />
     </>
   );
 }

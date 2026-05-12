@@ -2,23 +2,39 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { ShareCardPreview } from "@/components/ShareCardPreview";
-import { shareCard, type ShareOutcome } from "@/lib/shareCard";
+import {
+  ShareCardPreview,
+  type ShareCardMode,
+} from "@/components/ShareCardPreview";
+import {
+  shareCard,
+  copyCardToClipboard,
+  type ShareOutcome,
+  type CopyOutcome,
+} from "@/lib/shareCard";
+import { useMounted } from "@/hooks/useMounted";
 import { trackEvent } from "@/lib/analytics";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { zIndex, type ShareCardTheme } from "@/styles/tokens";
 
 /**
- * Classify a `shareCard()` error message into one of the four
- * `share_card_save_failed` reason buckets the GA4 KPI table groups
- * by. The mapping is brittle by design — it inspects message
+ * Classify a `shareCard()` / `copyCardToClipboard()` *error-kind*
+ * message into one of the GA4 `share_card_save_failed` reason
+ * buckets. The mapping is brittle by design — it inspects message
  * strings produced by `src/lib/shareCard.ts`, which means a string
  * change there will silently start emitting `'unknown'` for that
- * path. That's acceptable: the helper is one file with three
- * known throw sites and the unknown bucket is the safe fallback.
+ * path. That's acceptable: the helper is one file with known throw
+ * sites and the unknown bucket is the safe fallback.
  *
- * Reasons:
+ * Only consumes message strings — the clipboard-specific outcomes
+ * (`unsupported`, `denied`) have their own kinds in `CopyOutcome` and
+ * are surfaced as `clipboard_unsupported` / `clipboard_denied` GA4
+ * reasons directly by `handleCopy`, not via this classifier. Keeping
+ * those separate means we don't have to invent fake message strings
+ * for non-error outcomes.
+ *
+ * Reasons returned:
  *   - 'timeout'         → 10s `TO_BLOB_TIMEOUT_MS` elapsed
  *                         (helper returns "canvas.toBlob returned null")
  *   - 'tainted_canvas'  → CORS leak in capture (html2canvas / browser msg)
@@ -53,6 +69,14 @@ interface Props {
    * `share_card_open`.
    */
   eventId: string;
+  /**
+   * Card render mode — drives both `<ShareCardPreview>` layout and the
+   * native-share text payload below. See `ShareCardMode` for the per-
+   * mode meaning (`prediction` = pre-show / no-actuals-yet, no score;
+   * `live` = mid-flight with partial score + LIVE pill; `final` = the
+   * v0.11.1-and-earlier post-show layout).
+   */
+  mode: ShareCardMode;
   // Card payload + score (caller computes via calcShareCardScore).
   seriesName: string;
   eventTitle: string;
@@ -76,20 +100,30 @@ interface Props {
 }
 
 /**
- * Post-show share-card preview modal.
+ * Share-card preview modal with two action buttons:
  *
- * The user opens it from `<ShareCardButton>` (post-show only). The
- * modal renders `<ShareCardPreview>` (the html2canvas capture
- * target), a dark/light theme toggle, and one CTA button:
+ *   - **다운로드 / 공유** (Button A) — triggers `shareCard()` which
+ *     either downloads a PNG (desktop) or opens the OS share sheet
+ *     (touch-primary devices that pass `navigator.canShare({ files })`).
+ *     Icon swaps dynamically: download-arrow on desktop, iOS-style
+ *     share square on touch devices, so the user knows what to expect
+ *     before tapping. The native-share payload includes the event
+ *     title, a score-summary text body (varies by mode), and the
+ *     canonical event URL.
+ *   - **이미지 복사** (Button B) — triggers `copyCardToClipboard()`
+ *     which writes the rendered PNG to `navigator.clipboard` as
+ *     `image/png`. User can paste straight into a community-site
+ *     composer (DCInside, Ruliweb), a messenger input box (KakaoTalk,
+ *     Slack, Discord), or anywhere else that handles image paste —
+ *     skipping the "save → open gallery → attach" loop. Capability-
+ *     gated: hidden when `window.ClipboardItem` or
+ *     `navigator.clipboard.write` is unavailable (older Firefox, some
+ *     embedded WebViews), so the button is only ever visible where it
+ *     actually works.
  *
- *   - 이미지 저장: triggers `shareCard()` which rasterizes the
- *     preview, then either opens the OS share sheet (when
- *     `navigator.canShare({ files })` is supported — typical mobile
- *     + recent Safari/Chromium desktop) or falls back to a PNG
- *     download (typical desktop). The native-share payload includes
- *     the event title, a score-summary text body, and the canonical
- *     event URL so platforms that compose a body alongside the file
- *     (Messages, email, Twitter compose) get sensible defaults.
+ * Both buttons sit directly below the card preview, side-by-side,
+ * `flex-1` so each takes equal width, with a 44px min-height for
+ * touch-target ergonomics (Apple HIG / Material recommended minimum).
  *
  * The earlier "링크 복사" sibling CTA was removed in v0.10.2 because
  * the label implied a per-image URL, but the share card is rendered
@@ -107,6 +141,7 @@ export function ShareCardModal({
   open,
   onClose,
   eventId,
+  mode,
   seriesName,
   eventTitle,
   dateLine,
@@ -120,11 +155,38 @@ export function ShareCardModal({
   shareUrl,
 }: Props) {
   const t = useTranslations("ShareCard");
+  const mounted = useMounted();
   const [theme, setTheme] = useState<ShareCardTheme>("dark");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Touch-primary detection drives the Button A icon swap (share-out
+  // box on iOS / Android / iPad-finger; downward-arrow on desktop).
+  // Gated on `mounted` so SSR + first client commit render the same
+  // markup (both fall through to the download-arrow path until the
+  // post-mount re-render flips it). Without the gate, hydration
+  // mismatches between server (no matchMedia) and client.
+  const isTouchPrimary =
+    mounted &&
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+
+  // Capability check for Button B. Same SSR-safety pattern as the
+  // touch detection above — false on first render, may flip true
+  // post-mount. The button is fully hidden when unsupported (older
+  // Firefox, some embedded WebViews) so we never show an affordance
+  // that can't fire. CR-anticipated edge: the API check is for
+  // `clipboard.write` specifically, not `clipboard.writeText` — the
+  // latter is more widely supported but only handles strings.
+  const clipboardSupported =
+    mounted &&
+    typeof navigator !== "undefined" &&
+    typeof navigator.clipboard?.write === "function" &&
+    typeof window !== "undefined" &&
+    typeof window.ClipboardItem !== "undefined";
 
   // Focus the close button on open so Escape works without
   // additional focus-trap glue. On close, restore focus to the
@@ -157,8 +219,8 @@ export function ShareCardModal({
   // the call, and a theme toggle would mutate the painted styles
   // partway through capture and produce a garbled image. The share
   // button's existing `busy` short-circuit covers double-tap; the
-  // others (backdrop click, Escape, close-X, theme toggle,
-  // copy-link) need the same guard. CR #285 caught this on the
+  // others (backdrop click, Escape, close-X, theme toggle, copy
+  // button) need the same guard. CR #285 caught this on the
   // release diff.
   const handleClose = () => {
     if (busy) return;
@@ -176,6 +238,19 @@ export function ShareCardModal({
     if (!cardRef.current || busy) return;
     setBusy(true);
     try {
+      // Per-mode native-share text. The post-show `shareText` carries
+      // the final hit-rate sentence; live-mode flags the partial state
+      // explicitly so a friend opening the share later understands the
+      // numbers are mid-flight; prediction-mode has no score yet, just
+      // a "my predicted setlist — N songs" caption to seed virality
+      // before the show. `title` + `url` stay the same across modes —
+      // the event identity doesn't change.
+      const shareText =
+        mode === "prediction"
+          ? t("shareTextPrediction", { count: predictedCount })
+          : mode === "live"
+            ? t("shareTextLive", { matched, total, percentage })
+            : t("shareText", { matched, total, percentage });
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
         // Native-share payload — only consulted when the OS sheet
@@ -187,14 +262,14 @@ export function ShareCardModal({
         // honors.
         share: {
           title: eventTitle,
-          text: t("shareText", { matched, total, percentage }),
+          text: shareText,
           url: shareUrl,
         },
       });
       if (outcome.kind === "downloaded") {
-        // GA4 Phase 1B: same event for both download + native-share
-        // success — `outcome` param distinguishes desktop fallback
-        // from mobile OS-sheet path so KPI funnel stays one query.
+        // GA4 Phase 1B: same event for download / share / copy
+        // success — `outcome` param distinguishes the path so the KPI
+        // funnel stays one query.
         trackEvent("share_card_save", {
           event_id: String(eventId),
           outcome: "downloaded",
@@ -236,6 +311,65 @@ export function ShareCardModal({
         reason: "unknown",
       });
       setToast(t("imageErrorToast"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!cardRef.current || busy) return;
+    setBusy(true);
+    try {
+      const outcome: CopyOutcome = await copyCardToClipboard({
+        cardEl: cardRef.current,
+      });
+      if (outcome.kind === "copied") {
+        // Same GA4 event family as download/share, with a distinct
+        // `outcome` value so the funnel breakdown is one query.
+        trackEvent("share_card_save", {
+          event_id: String(eventId),
+          outcome: "copied",
+        });
+        setToast(t("imageCopiedToast"));
+      } else if (outcome.kind === "unsupported") {
+        // Should be unreachable in practice — the button is hidden
+        // when `clipboardSupported` is false, so a click can only
+        // arrive when the capability check passed. Defensive log
+        // for the edge case where the runtime check disagrees with
+        // the mount-time check (DevTools simulation, embedded
+        // WebView state changes).
+        trackEvent("share_card_save_failed", {
+          event_id: String(eventId),
+          reason: "clipboard_unsupported",
+        });
+        setToast(t("imageCopyFailedToast"));
+      } else if (outcome.kind === "denied") {
+        // User-gesture expired (rare with our Promise<Blob> pattern)
+        // or permission-policy denial. Surface the same "couldn't
+        // copy" toast as the catch-all error — the distinction is
+        // analytics-only.
+        trackEvent("share_card_save_failed", {
+          event_id: String(eventId),
+          reason: "clipboard_denied",
+        });
+        setToast(t("imageCopyFailedToast"));
+      } else if (outcome.kind === "error") {
+        trackEvent("share_card_save_failed", {
+          event_id: String(eventId),
+          reason: classifyShareCardFailure(outcome.message),
+        });
+        setToast(t("imageCopyFailedToast"));
+      }
+    } catch {
+      // Same defensive catch as handleShare — see that branch for
+      // the rationale. Failure here is a thrown error from
+      // `copyCardToClipboard`, which today always returns a
+      // CopyOutcome but might rethrow from a future refactor.
+      trackEvent("share_card_save_failed", {
+        event_id: String(eventId),
+        reason: "unknown",
+      });
+      setToast(t("imageCopyFailedToast"));
     } finally {
       setBusy(false);
     }
@@ -326,6 +460,7 @@ export function ShareCardModal({
           <ShareCardPreview
             ref={cardRef}
             theme={theme}
+            mode={mode}
             seriesName={seriesName}
             eventTitle={eventTitle}
             dateLine={dateLine}
@@ -339,27 +474,60 @@ export function ShareCardModal({
           />
         </div>
 
-        {/* Action buttons */}
-        <div className="flex justify-center gap-2 mt-3">
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={busy}
-            className="text-sm font-medium rounded-full px-5 py-2 cursor-pointer"
-            style={{
-              // Brand blue gradient (matches the `결과 공유 🎯`
-              // opener in `<ShareCardButton>`).
-              background: busy
-                ? "#94a3b8"
-                : "linear-gradient(135deg, #4FC3F7, #0277BD)",
-              color: "white",
-              border: "none",
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            {t("saveImage")}
-          </button>
-        </div>
+        {/* Action buttons — directly below the preview, side-by-side,
+            flex-1 so each takes equal width, min-h-[44px] for touch-
+            target ergonomics (Apple HIG / Material recommended
+            minimum). Both buttons share the brand gradient bg so
+            they read as a pair of primary actions; the icon glyph +
+            label communicates which intent is which. Shared style
+            hoisted so a future palette change touches one place,
+            not two — CR-flagged duplication. */}
+        {(() => {
+          const actionButtonStyle: React.CSSProperties = {
+            minHeight: 44,
+            background: busy
+              ? "#94a3b8"
+              : "linear-gradient(135deg, #4FC3F7, #0277BD)",
+            color: "white",
+            border: "none",
+            cursor: busy ? "wait" : "pointer",
+          };
+          const actionButtonClass =
+            "flex-1 inline-flex items-center justify-center gap-2 text-sm font-medium rounded-full px-5 cursor-pointer";
+          return (
+            <div
+              className="flex justify-center gap-2 mt-3"
+              style={{
+                maxWidth: 600,
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={busy}
+                className={actionButtonClass}
+                style={actionButtonStyle}
+              >
+                {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
+                <span>{t("saveImage")}</span>
+              </button>
+              {clipboardSupported && (
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  disabled={busy}
+                  className={actionButtonClass}
+                  style={actionButtonStyle}
+                >
+                  <CopyIcon />
+                  <span>{t("copyImage")}</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Toast */}
         {toast && (
@@ -381,5 +549,79 @@ export function ShareCardModal({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Inline SVG icons (no new dependency). Each is sized 16×16 with
+ * stroke-based outlines so they inherit the parent's text color via
+ * `currentColor` — works against the brand-gradient button bg.
+ *
+ * **Why inline, not lucide-react / heroicons-react**: the share-card
+ * modal is the only consumer right now and we already keep the
+ * client bundle lean (html2canvas is dynamic-imported for the same
+ * reason). Three small SVGs cost ~30 lines vs an entire icon package.
+ */
+function DownloadIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Downward arrow into a tray — communicates "to disk". */}
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* iOS-style share box: rounded square with an arrow exiting
+          the top. Universally recognized as "send / share out". */}
+      <path d="M12 3v12" />
+      <path d="m7 8 5-5 5 5" />
+      <path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* Two overlapping rounded squares — the universal "copy"
+          glyph in macOS / Windows / Material / iOS keyboards. */}
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
   );
 }

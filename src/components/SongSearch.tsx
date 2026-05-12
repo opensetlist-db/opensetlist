@@ -156,12 +156,19 @@ export function SongSearch({
   // user input, which is post-mount anyway), so first paint is
   // unaffected.
   const mounted = useMounted();
-  // Computed fixed-position coords for the portalled dropdown.
-  // Recomputed on open + window scroll/resize so the dropdown
-  // tracks the input even if the page scrolls behind the dropdown.
-  // Closing on scroll would be simpler but harms mobile UX (virtual
-  // keyboard appearance triggers a scroll; we don't want the
-  // dropdown to vanish out from under the user every keystroke).
+  // Document-relative coords for the portalled dropdown (rendered with
+  // `position: absolute`). Recomputed on open + layout-shifting events
+  // (window scroll, resize, visualViewport scroll/resize) so the
+  // dropdown tracks the input through keyboard transitions and content
+  // reflow. With absolute positioning + doc coords the dropdown
+  // scrolls naturally WITH the page (the input is also in document
+  // flow, so they stay aligned automatically) — see the
+  // `useLayoutEffect` docstring below for the iOS Safari soft-keyboard
+  // rationale that drove the switch from `position: fixed` to
+  // `position: absolute`. Closing the dropdown on scroll would be
+  // simpler but harms mobile UX: virtual-keyboard show/hide fires
+  // scroll-class events, and we don't want the dropdown to vanish out
+  // from under the user every keystroke.
   const [dropdownPos, setDropdownPos] = useState<{
     top: number;
     left: number;
@@ -338,14 +345,37 @@ export function SongSearch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, visibleResults]);
 
-  // Compute the portalled dropdown's fixed coords from the input's
-  // bounding rect. useLayoutEffect (not useEffect) so the position
-  // is measured + applied BEFORE the browser paints — prevents a
-  // single-frame flash of the dropdown at (0, 0) before the effect
-  // catches up. Listens to scroll (capture, so we catch nested
-  // scrollers too) + resize so the dropdown tracks the input.
-  // 4px gap below the input matches the previous `mt-1` Tailwind
-  // utility used when the dropdown was an absolute child.
+  // Compute the portalled dropdown's coords from the input's bounding
+  // rect, stored in **document-relative** coordinates so the dropdown
+  // uses `position: absolute` (not `fixed`). useLayoutEffect (not
+  // useEffect) so the position is measured + applied BEFORE the browser
+  // paints — prevents a single-frame flash of the dropdown at (0, 0)
+  // before the effect catches up. 4px gap below the input matches the
+  // previous `mt-1` Tailwind utility used when the dropdown was an
+  // absolute child.
+  //
+  // **iOS Safari soft-keyboard quirk** (fixed in this commit, originally
+  // shipped as `position: fixed` in PR #290): when the on-screen
+  // keyboard is open, iOS Safari handles `position: fixed` unreliably —
+  // fixed elements either fail to track the visual viewport or scroll
+  // with the page, depending on the page state. Operator reported the
+  // dropdown ending up off-screen with "scroll up to see it" recovery
+  // on both wishlist + predict surfaces. Switching to `position:
+  // absolute` with `top: rect.bottom + window.scrollY` puts the
+  // dropdown in **document space** — it sits at a fixed point in the
+  // document and scrolls naturally with the page (and with the input,
+  // which is also in document flow). No iOS quirk to fight; the
+  // dropdown stays anchored to the input through every keyboard /
+  // scroll transition.
+  //
+  // The scroll + visualViewport listeners still fire `update()` because
+  // **layout reflow** (not scroll position) can move the input in
+  // document space — e.g. iOS keyboard appearing pushes layout up,
+  // dynamic content above the input expanding, orientation change,
+  // etc. Without listeners the dropdown would drift on those events.
+  // Scrolling itself no longer needs handling (absolute positioning
+  // handles it automatically) but the scroll event is a useful coarse
+  // signal that "something is moving" — cheap to keep.
   //
   // No early-return-with-setState — the closed-dropdown state is
   // already gated by `open && hasQuery && dropdownPos !== null` at
@@ -360,21 +390,38 @@ export function SongSearch({
     if (!input) return;
     const update = () => {
       const rect = input.getBoundingClientRect();
-      setDropdownPos({
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-      });
+      // Document-relative coords: viewport rect + current scroll
+      // offset. With `position: absolute` on the portalled dropdown,
+      // this places it at a fixed point in the document — scrolls
+      // with the input naturally, no iOS Safari fixed-positioning
+      // quirks.
+      const top = rect.bottom + window.scrollY + 4;
+      const left = rect.left + window.scrollX;
+      const width = rect.width;
+      // Equality guard: visualViewport scroll/resize events fire
+      // rapidly during iOS keyboard transitions, and a no-op
+      // `setState({ ... })` with structurally-equal-but-fresh object
+      // would still re-render the dropdown subtree on every event.
+      // Functional setState compares the three numeric fields and
+      // returns the prior reference when nothing changed — React
+      // bails out on identity equality and skips the render.
+      setDropdownPos((prev) =>
+        prev &&
+        prev.top === top &&
+        prev.left === left &&
+        prev.width === width
+          ? prev
+          : { top, left, width },
+      );
     };
     update();
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
     // iOS Safari: the on-screen keyboard show/hide does NOT consistently
     // fire `window.resize` / `window.scroll` — only `visualViewport`
-    // reliably emits during keyboard transitions. Without this, on
-    // mobile the dropdown sits at its pre-keyboard `top` while the
-    // input shifts up under the focused state, creating a visible gap.
-    // CR #290 nit (operator-confirmed pickup, optional but cheap).
+    // reliably emits during keyboard transitions. Layout reflow during
+    // the keyboard animation can shift the input's document position,
+    // and update() needs to fire so the dropdown follows.
     const vv = window.visualViewport;
     vv?.addEventListener("resize", update);
     vv?.addEventListener("scroll", update);
@@ -397,7 +444,13 @@ export function SongSearch({
           : "bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto"
       }
       style={{
-        position: "fixed",
+        // Document-relative absolute positioning (NOT fixed) — see
+        // the useLayoutEffect docstring above for the iOS Safari
+        // soft-keyboard rationale. `top` / `left` carry doc coords
+        // (viewport rect + scroll offset), so the dropdown sits at
+        // a fixed point in the document and scrolls naturally with
+        // the input.
+        position: "absolute",
         top: dropdownPos.top,
         left: dropdownPos.left,
         width: dropdownPos.width,
