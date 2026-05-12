@@ -666,6 +666,17 @@ function PredictionRow({
         borderRadius: 5,
       }}
     >
+      {/* 14px spacer placed BEFORE the rank, mirroring the live/final
+          mode's filled-checkbox / empty-box that occupies the same
+          slot. Pre-show there's nothing to compare against — every
+          prediction is just a prediction, no match status to show —
+          so a transparent spacer keeps the title's horizontal
+          position aligned with the post-show capture of the same
+          event. Without it (or with a 5px spacer matching the
+          pre-v0.11.6 hit-dot width), titles would shift between
+          modes and the "this is the same surface" mental model
+          would break. */}
+      <span style={{ width: 14, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 11,
@@ -678,12 +689,6 @@ function PredictionRow({
       >
         {rank}
       </span>
-      {/* Spacer to keep predictions visually aligned with live/final
-          rows (which carry a 5px hit-dot here). Without it the
-          prediction title would shift 15px left vs the same event
-          rendered post-show, and the user's mental model of "this
-          is the same surface" would be undermined. */}
-      <span style={{ width: 5, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 13,
@@ -745,6 +750,47 @@ function ShareCardRow({
         background: hit ? T.hitRowBg : "transparent",
       }}
     >
+      {/* Checkbox-style hit indicator placed BEFORE the position
+          number (operator preference) so the matched/unmatched
+          signal is the first thing a viewer's eye lands on as the
+          list reads top-to-bottom. Filled box + white ✓ for hit
+          rows; same-size outline-only box for miss rows so titles
+          stay vertically aligned across the captured PNG. Pre-
+          v0.11.6 used a 5px dot on hit + a 5px spacer on miss; the
+          dot's vertical centering was inconsistent at small sizes
+          and the size-asymmetry between dot/spacer let titles
+          drift by ~half a pixel. */}
+      {hit ? (
+        <span
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 3,
+            background: T.hitDot,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            color: "white",
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: 1,
+          }}
+        >
+          ✓
+        </span>
+      ) : (
+        <span
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 3,
+            border: `1.5px solid ${T.missColor}`,
+            boxSizing: "border-box",
+            flexShrink: 0,
+          }}
+        />
+      )}
       <span
         style={{
           fontSize: 11,
@@ -757,20 +803,6 @@ function ShareCardRow({
       >
         {rank}
       </span>
-      {hit ? (
-        <span
-          style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: T.hitDot,
-            boxShadow: T.hitDotGlow,
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <span style={{ width: 5, flexShrink: 0 }} />
-      )}
       <span
         style={{
           fontSize: 13,
