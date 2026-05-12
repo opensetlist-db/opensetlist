@@ -395,11 +395,24 @@ export function SongSearch({
       // this places it at a fixed point in the document — scrolls
       // with the input naturally, no iOS Safari fixed-positioning
       // quirks.
-      setDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-      });
+      const top = rect.bottom + window.scrollY + 4;
+      const left = rect.left + window.scrollX;
+      const width = rect.width;
+      // Equality guard: visualViewport scroll/resize events fire
+      // rapidly during iOS keyboard transitions, and a no-op
+      // `setState({ ... })` with structurally-equal-but-fresh object
+      // would still re-render the dropdown subtree on every event.
+      // Functional setState compares the three numeric fields and
+      // returns the prior reference when nothing changed — React
+      // bails out on identity equality and skips the render.
+      setDropdownPos((prev) =>
+        prev &&
+        prev.top === top &&
+        prev.left === left &&
+        prev.width === width
+          ? prev
+          : { top, left, width },
+      );
     };
     update();
     window.addEventListener("scroll", update, true);
