@@ -225,7 +225,11 @@ export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
   dark: {
     cardBg:        "#0a1628",
     cardBorder:    "none",
-    topBar:        "",
+    // Same gradient as light mode — operator preference for visual
+    // consistency between dark + light theme captures. The light-blue
+    // → brand-blue gradient reads well against the dark navy bg
+    // (high contrast) and against the light-bg card (gentle accent).
+    topBar:        "linear-gradient(90deg, #4FC3F7, #0277BD)",
     // Two ellipses at opposite corners, transparent past 55% to
     // keep the card readable under the score banner + setlist rows.
     radialOverlay:

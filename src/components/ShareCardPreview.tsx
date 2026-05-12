@@ -154,7 +154,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
   ) {
     const t = useTranslations("ShareCard");
     const T = shareCardColors[theme];
-    const isLight = theme === "light";
     const isPredictionMode = mode === "prediction";
     const isLiveMode = mode === "live";
 
@@ -191,8 +190,14 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           position: "relative",
         }}
       >
-        {/* Dark: radial gradient overlay; light: top accent bar. */}
-        {!isLight && T.radialOverlay && (
+        {/* Dark: radial gradient overlay covers the whole card.
+            Both themes: 4px top accent bar (light-blue → brand-blue
+            gradient). The accent bar is rendered with explicit
+            stacking (position: relative, z-index: 2) so it sits
+            above the dark theme's absolutely-positioned radial
+            overlay — without the stacking, the overlay would paint
+            over the top 4px and hide the accent. */}
+        {T.radialOverlay && (
           <div
             style={{
               position: "absolute",
@@ -202,8 +207,15 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
             }}
           />
         )}
-        {isLight && T.topBar && (
-          <div style={{ height: 4, background: T.topBar }} />
+        {T.topBar && (
+          <div
+            style={{
+              position: "relative",
+              zIndex: 2,
+              height: 4,
+              background: T.topBar,
+            }}
+          />
         )}
 
         <div style={{ position: "relative", zIndex: 1, padding: "26px 32px 22px" }}>
