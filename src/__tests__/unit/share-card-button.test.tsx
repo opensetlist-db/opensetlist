@@ -5,7 +5,10 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-import { ShareCardButton } from "@/components/ShareCardButton";
+import {
+  ShareCardButton,
+  deriveShareCardMode,
+} from "@/components/ShareCardButton";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { WishSongDisplay } from "@/lib/wishStorage";
@@ -52,9 +55,53 @@ function actual(songId: number): LiveSetlistItem {
   };
 }
 
+describe("deriveShareCardMode — pure function", () => {
+  it("upcoming → prediction (regardless of actuals — upcoming events can't have any)", () => {
+    expect(deriveShareCardMode("upcoming", false)).toBe("prediction");
+    expect(deriveShareCardMode("upcoming", true)).toBe("prediction");
+  });
+
+  it("ongoing with no actuals yet → prediction (operator hasn't started entering)", () => {
+    expect(deriveShareCardMode("ongoing", false)).toBe("prediction");
+  });
+
+  it("ongoing with at least one actual → live (mid-flight with partial result)", () => {
+    expect(deriveShareCardMode("ongoing", true)).toBe("live");
+  });
+
+  it("completed → final (regardless of actuals — defaults to final layout)", () => {
+    expect(deriveShareCardMode("completed", true)).toBe("final");
+    expect(deriveShareCardMode("completed", false)).toBe("final");
+  });
+
+  it("cancelled with actuals → final (the partial setlist that was played still has meaning)", () => {
+    expect(deriveShareCardMode("cancelled", true)).toBe("final");
+  });
+
+  it("cancelled without actuals → prediction (the show never produced data to compare against)", () => {
+    expect(deriveShareCardMode("cancelled", false)).toBe("prediction");
+  });
+});
+
 describe("ShareCardButton — display gates", () => {
-  it("renders nothing when status === upcoming (pre-show, nothing to share)", () => {
-    const { container } = render(
+  it("renders nothing when predictions is empty (no payload to share, regardless of status)", () => {
+    for (const status of ["upcoming", "ongoing", "completed"] as const) {
+      const { container } = render(
+        <ShareCardButton
+          eventId="1"
+          seriesName="Test"
+          locale="ko"
+          status={status}
+          actualSongs={[actual(10)]}
+          predictions={[]}
+        />,
+      );
+      expect(container.firstChild).toBeNull();
+    }
+  });
+
+  it("upcoming + has predictions → renders the button enabled with the prediction label", () => {
+    render(
       <ShareCardButton
         eventId="1"
         seriesName="Test"
@@ -64,50 +111,18 @@ describe("ShareCardButton — display gates", () => {
         predictions={[entry(10)]}
       />,
     );
-    expect(container.firstChild).toBeNull();
+    // v0.11.1-and-earlier returned null here; the pre-show share is
+    // the new viral entry point. Button should now render, enabled,
+    // with the prediction-specific label.
+    const btn = screen.getByRole("button", { name: "shareButtonPrediction" });
+    expect(btn).toBeTruthy();
+    expect(btn.getAttribute("disabled")).toBeNull();
+    // The "공연 종료 후 활성화됩니다" hint that v0.10.2 introduced is
+    // gone — the button is enabled in every lifecycle stage now.
+    expect(screen.queryByText("shareDisabled")).toBeNull();
   });
 
-  it("renders nothing when predictions is empty (no payload to share, regardless of status)", () => {
-    const { container } = render(
-      <ShareCardButton
-        eventId="1"
-        seriesName="Test"
-        locale="ko"
-        status="ongoing"
-        actualSongs={[actual(10)]}
-        predictions={[]}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-
-    const { container: c2 } = render(
-      <ShareCardButton
-        eventId="1"
-        seriesName="Test"
-        locale="ko"
-        status="completed"
-        actualSongs={[actual(10)]}
-        predictions={[]}
-      />,
-    );
-    expect(c2.firstChild).toBeNull();
-  });
-
-  it("renders nothing when status === completed but actualSongs is empty (no scoreable result)", () => {
-    const { container } = render(
-      <ShareCardButton
-        eventId="1"
-        seriesName="Test"
-        locale="ko"
-        status="completed"
-        actualSongs={[]}
-        predictions={[entry(10)]}
-      />,
-    );
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("renders the button DISABLED with a hint when status === ongoing and the user has predictions", () => {
+  it("ongoing + has actuals + has predictions → button enabled with the result label (live mode)", () => {
     render(
       <ShareCardButton
         eventId="1"
@@ -118,17 +133,41 @@ describe("ShareCardButton — display gates", () => {
         predictions={[entry(10)]}
       />,
     );
+    // Same `shareButton` label as completed — the difference between
+    // live and final modes is in the card's LIVE pill, not the button
+    // text (the user is sharing the same "result" surface).
     const btn = screen.getByRole("button", { name: "shareButton" });
     expect(btn).toBeTruthy();
-    // `disabled` HTML attribute renders as the empty string in jsdom.
-    expect(btn.getAttribute("disabled")).not.toBeNull();
-    expect(btn.getAttribute("aria-disabled")).toBe("true");
-    // The hint sits next to the button so users learn the affordance
-    // exists before the show ends.
-    expect(screen.getByText("shareDisabled")).toBeTruthy();
+    expect(btn.getAttribute("disabled")).toBeNull();
+    expect(screen.queryByText("shareDisabled")).toBeNull();
+    // Prediction-mode label must NOT also appear — only one button
+    // is rendered.
+    expect(
+      screen.queryByRole("button", { name: "shareButtonPrediction" }),
+    ).toBeNull();
   });
 
-  it("renders the button ENABLED (no hint) when all three gates pass", () => {
+  it("ongoing + no actuals yet + has predictions → button enabled with the prediction label", () => {
+    render(
+      <ShareCardButton
+        eventId="1"
+        seriesName="Test"
+        locale="ko"
+        status="ongoing"
+        actualSongs={[]}
+        predictions={[entry(10)]}
+      />,
+    );
+    // The operator hasn't entered any songs yet during the show, so
+    // we fall back to the prediction layout. Without this, the card
+    // would render an empty result body with a 0/0 score, which
+    // reads as broken rather than mid-flight.
+    expect(
+      screen.getByRole("button", { name: "shareButtonPrediction" }),
+    ).toBeTruthy();
+  });
+
+  it("completed + has actuals + has predictions → button enabled with the result label (final mode)", () => {
     render(
       <ShareCardButton
         eventId="1"
@@ -142,8 +181,27 @@ describe("ShareCardButton — display gates", () => {
     const btn = screen.getByRole("button", { name: "shareButton" });
     expect(btn).toBeTruthy();
     expect(btn.getAttribute("disabled")).toBeNull();
-    expect(btn.getAttribute("aria-disabled")).toBe("false");
-    // Hint should NOT render in the enabled path.
-    expect(screen.queryByText("shareDisabled")).toBeNull();
+  });
+
+  it("completed + no actuals + has predictions → button STILL renders (final-mode card with empty result body)", () => {
+    // Edge case: completed event but the operator never entered a
+    // setlist. v0.11.1-and-earlier returned null here. The new mode
+    // derivation routes this to `final` mode regardless. We keep the
+    // button visible — the user predicted something, so they have a
+    // shareable payload (the result card just shows 0/N). Hiding it
+    // would silently swallow the prediction.
+    render(
+      <ShareCardButton
+        eventId="1"
+        seriesName="Test"
+        locale="ko"
+        status="completed"
+        actualSongs={[]}
+        predictions={[entry(10)]}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "shareButton" }),
+    ).toBeTruthy();
   });
 });

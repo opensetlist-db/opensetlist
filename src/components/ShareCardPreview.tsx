@@ -9,8 +9,31 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
 
+/**
+ * Render mode for the share card. Drives both `<ShareCardPreview>`'s
+ * layout and `<ShareCardButton>`'s label / `<ShareCardModal>`'s share
+ * text. The mode is derived from `status + actualSongs` at the
+ * button level (see `<ShareCardButton>`):
+ *
+ *   - `"prediction"` — pre-show (`upcoming`) OR ongoing with no actual
+ *     songs entered yet. Shows the viewer's predicted setlist in their
+ *     chosen rank order. No score banner (there's nothing to compare
+ *     against). Pre-show share is the viral entry point: fans share
+ *     their predictions BEFORE the show, friends see them, friends
+ *     show up. v0.11.1-and-earlier only enabled share post-show, which
+ *     missed this whole funnel.
+ *   - `"live"` — ongoing AND actualSongs has at least one row.
+ *     Identical layout to `"final"` (score banner + actual setlist
+ *     with hit highlighting) but with a red `LIVE` pill in the top-
+ *     right corner signaling the result is partial / mid-flight.
+ *   - `"final"` — completed. Current post-show layout — final score,
+ *     full actual setlist.
+ */
+export type ShareCardMode = "prediction" | "live" | "final";
+
 interface Props {
   theme: ShareCardTheme;
+  mode: ShareCardMode;
   /** Pre-resolved series + event title for the card header. */
   seriesName: string;
   eventTitle: string;
@@ -18,12 +41,20 @@ interface Props {
   dateLine: string;
   /**
    * Actual setlist filtered to song-type items already (caller does the
-   * filter). Encore vs main split via `isEncore` on each row.
+   * filter). Encore vs main split via `isEncore` on each row. Empty in
+   * `mode === "prediction"`; required + non-empty in `live` / `final`.
    */
   actualSongs: LiveSetlistItem[];
-  /** User's prediction list (for hit/miss derivation). */
+  /**
+   * User's prediction list. Drives the rendered rows in `prediction`
+   * mode (rank = the user's chosen order). Drives hit/miss derivation
+   * for `live` / `final` modes.
+   */
   predictions: PredictionEntry[];
-  /** Pre-computed score from `calcShareCardScore` (order-independent). */
+  /**
+   * Pre-computed score from `calcShareCardScore` (order-independent).
+   * Only consumed in `live` / `final` modes; ignored in `prediction`.
+   */
   matched: number;
   total: number;
   percentage: number;
@@ -49,6 +80,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
   function ShareCardPreview(
     {
       theme,
+      mode,
       seriesName,
       eventTitle,
       dateLine,
@@ -65,6 +97,8 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
     const t = useTranslations("ShareCard");
     const T = shareCardColors[theme];
     const isLight = theme === "light";
+    const isPredictionMode = mode === "prediction";
+    const isLiveMode = mode === "live";
 
     const mainSongs = actualSongs.filter((s) => !s.isEncore);
     const encoreSongs = actualSongs.filter((s) => s.isEncore);
@@ -98,144 +132,77 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
         )}
 
         <div style={{ position: "relative", zIndex: 1, padding: "26px 32px 22px" }}>
-          {/* Header */}
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: T.series,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
-          >
-            {seriesName}
-          </div>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              color: T.title,
-              lineHeight: 1.3,
-              marginBottom: 3,
-            }}
-          >
-            {eventTitle}
-          </div>
-          <div style={{ fontSize: 12, color: T.date, marginBottom: 20 }}>
-            {dateLine}
-          </div>
-
-          {/* Score banner */}
+          {/* Header — series + event title + date. Live-mode adds a red
+              LIVE pill in the top-right corner so anyone re-seeing this
+              image after the show ends still knows it was captured
+              mid-flight (the percentage in the banner is partial, not
+              final). Pre-show prediction cards don't carry the pill —
+              there's no result to qualify. */}
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "space-between",
-              background: T.bannerBg,
-              border: T.bannerBorder,
-              boxShadow: T.bannerShadow,
-              borderRadius: 12,
-              padding: "14px 20px",
+              gap: 12,
               marginBottom: 20,
             }}
           >
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: T.scoreLabel,
-                  letterSpacing: "0.06em",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: T.series,
+                  letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   marginBottom: 4,
                 }}
               >
-                {t("scoreLabel")}
-              </div>
-              <div>
-                <span
-                  style={{
-                    fontSize: 36,
-                    fontWeight: 700,
-                    color: T.scoreMain,
-                    lineHeight: 1,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {percentage}
-                </span>
-                <span
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 600,
-                    color: T.scorePct,
-                    marginLeft: 3,
-                  }}
-                >
-                  %
-                </span>
-              </div>
-              <div style={{ fontSize: 12, color: T.scoreSub, marginTop: 3 }}>
-                {t("scoreMatchedOf", { matched, total })}
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 11, color: T.scorePred }}>
-                {t("scorePredicted", { count: predictedCount })}
+                {seriesName}
               </div>
               <div
                 style={{
-                  fontSize: 24,
+                  fontSize: 18,
                   fontWeight: 700,
-                  color: T.scoreFrac,
-                  lineHeight: 1,
-                  marginTop: 4,
+                  color: T.title,
+                  lineHeight: 1.3,
+                  marginBottom: 3,
                 }}
               >
-                {matched} / {total}
+                {eventTitle}
+              </div>
+              <div style={{ fontSize: 12, color: T.date }}>
+                {dateLine}
               </div>
             </div>
+            {isLiveMode && <LiveBadge label={t("liveBadge")} />}
           </div>
 
-          {/* Setlist rows */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
-            {mainSongs.map((item, i) => (
-              <ShareCardRow
-                key={item.id}
-                item={item}
-                rank={i + 1}
-                hit={isHit(item, predictions)}
-                T={T}
-                locale={locale}
-              />
-            ))}
-          </div>
-
-          {encoreSongs.length > 0 && (
-            <>
-              <EncoreDivider label={t("encore")} T={T} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {encoreSongs.map((item, i) => (
-                  <ShareCardRow
-                    key={item.id}
-                    item={item}
-                    // Continue numbering past the main set rather
-                    // than restart at 1 — the share card is a
-                    // single setlist surface, so an event with 15
-                    // main + 3 encore reads as 1..18, not 1..15
-                    // followed by 1..3 (the latter would visually
-                    // suggest two unrelated lists). Mirrors the
-                    // event detail page's rendering and the
-                    // operator's typed `position` order.
-                    rank={mainSongs.length + i + 1}
-                    hit={isHit(item, predictions)}
-                    T={T}
-                    locale={locale}
-                  />
-                ))}
-              </div>
-            </>
+          {isPredictionMode ? (
+            <PredictionList
+              predictions={predictions}
+              locale={locale}
+              T={T}
+              sectionLabel={t("predictionLabel")}
+              countLabel={t("predictionCount", { count: predictions.length })}
+            />
+          ) : (
+            <ActualResultBody
+              mainSongs={mainSongs}
+              encoreSongs={encoreSongs}
+              predictions={predictions}
+              matched={matched}
+              total={total}
+              percentage={percentage}
+              locale={locale}
+              T={T}
+              labels={{
+                scoreLabel: t("scoreLabel"),
+                scoreMatchedOf: t("scoreMatchedOf", { matched, total }),
+                scorePredicted: t("scorePredicted", { count: predictedCount }),
+                encore: t("encore"),
+              }}
+            />
           )}
 
           {/* Footer */}
@@ -271,8 +238,336 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
   },
 );
 
+/**
+ * Pre-show / no-actuals-yet variant. Renders a section label + the
+ * viewer's predictions in their chosen rank order. No hit/miss state
+ * because there's no actual setlist to compare against — the dots +
+ * underline + green tint that drive the live/final variants would be
+ * meaningless. The rank number stays so the card communicates the
+ * predicted ORDER, not just the song set.
+ */
+function PredictionList({
+  predictions,
+  locale,
+  T,
+  sectionLabel,
+  countLabel,
+}: {
+  predictions: PredictionEntry[];
+  locale: string;
+  T: typeof shareCardColors.dark;
+  sectionLabel: string;
+  countLabel: string;
+}) {
+  return (
+    <>
+      {/* Section label strip — replaces the score banner. Keeps the
+          card's visual rhythm (header → labeled section → list) without
+          claiming an accuracy number that doesn't exist yet. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 14,
+          paddingBottom: 8,
+          borderBottom: `1px solid ${T.footerBorder}`,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: T.scoreLabel,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          {sectionLabel}
+        </span>
+        <span style={{ fontSize: 12, color: T.scorePred }}>{countLabel}</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
+        {predictions.map((entry, i) => (
+          <PredictionRow
+            key={entry.songId}
+            entry={entry}
+            rank={i + 1}
+            T={T}
+            locale={locale}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Live / final result body. Identical to the pre-v0.11.2 layout —
+ * score banner + actual setlist rows with hit/miss highlighting +
+ * encore divider. The LIVE pill in the parent header is the only
+ * visual difference between `live` and `final` modes; everything in
+ * this body is shared.
+ */
+function ActualResultBody({
+  mainSongs,
+  encoreSongs,
+  predictions,
+  matched,
+  total,
+  percentage,
+  locale,
+  T,
+  labels,
+}: {
+  mainSongs: LiveSetlistItem[];
+  encoreSongs: LiveSetlistItem[];
+  predictions: PredictionEntry[];
+  matched: number;
+  total: number;
+  percentage: number;
+  locale: string;
+  T: typeof shareCardColors.dark;
+  labels: {
+    scoreLabel: string;
+    scoreMatchedOf: string;
+    scorePredicted: string;
+    encore: string;
+  };
+}) {
+  return (
+    <>
+      {/* Score banner */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: T.bannerBg,
+          border: T.bannerBorder,
+          boxShadow: T.bannerShadow,
+          borderRadius: 12,
+          padding: "14px 20px",
+          marginBottom: 20,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: T.scoreLabel,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}
+          >
+            {labels.scoreLabel}
+          </div>
+          <div>
+            <span
+              style={{
+                fontSize: 36,
+                fontWeight: 700,
+                color: T.scoreMain,
+                lineHeight: 1,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {percentage}
+            </span>
+            <span
+              style={{
+                fontSize: 20,
+                fontWeight: 600,
+                color: T.scorePct,
+                marginLeft: 3,
+              }}
+            >
+              %
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: T.scoreSub, marginTop: 3 }}>
+            {labels.scoreMatchedOf}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: T.scorePred }}>
+            {labels.scorePredicted}
+          </div>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: T.scoreFrac,
+              lineHeight: 1,
+              marginTop: 4,
+            }}
+          >
+            {matched} / {total}
+          </div>
+        </div>
+      </div>
+
+      {/* Setlist rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
+        {mainSongs.map((item, i) => (
+          <ShareCardRow
+            key={item.id}
+            item={item}
+            rank={i + 1}
+            hit={isHit(item, predictions)}
+            T={T}
+            locale={locale}
+          />
+        ))}
+      </div>
+
+      {encoreSongs.length > 0 && (
+        <>
+          <EncoreDivider label={labels.encore} T={T} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            {encoreSongs.map((item, i) => (
+              <ShareCardRow
+                key={item.id}
+                item={item}
+                // Continue numbering past the main set rather than
+                // restart at 1 — the share card is a single setlist
+                // surface, so an event with 15 main + 3 encore reads
+                // as 1..18, not 1..15 followed by 1..3 (the latter
+                // would visually suggest two unrelated lists).
+                rank={mainSongs.length + i + 1}
+                hit={isHit(item, predictions)}
+                T={T}
+                locale={locale}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Red pill rendered in the top-right of the card header during
+ * `live` mode. Uses inline RGB values (not theme tokens) because
+ * "LIVE" semantics are theme-invariant — same red pulses in both
+ * dark and light cards, so the OS share / saved image reads
+ * unambiguously regardless of theme. The pulsing dot is a static
+ * filled circle in the captured PNG (animation doesn't survive
+ * html2canvas), styled to mirror the live-now visual language
+ * used elsewhere on the site.
+ */
+function LiveBadge({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        flexShrink: 0,
+        padding: "4px 10px",
+        borderRadius: 999,
+        background: "#dc2626",
+        color: "white",
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        lineHeight: 1,
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: "white",
+          flexShrink: 0,
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
 function isHit(item: LiveSetlistItem, predictions: PredictionEntry[]): boolean {
   return predictions.some((p) => isSongMatched(p.songId, [item]));
+}
+
+/**
+ * Renders a single song row in `prediction` mode. Compared to the
+ * live/final `<ShareCardRow>`, this one drops the hit-dot and the
+ * green hit-highlight palette — there's no comparison surface yet,
+ * so every prediction renders identically in the muted "miss"
+ * color (which here just reads as "neutral, not yet scored").
+ */
+function PredictionRow({
+  entry,
+  rank,
+  T,
+  locale,
+}: {
+  entry: PredictionEntry;
+  rank: number;
+  T: typeof shareCardColors.dark;
+  locale: string;
+}) {
+  const display = displayOriginalTitle(
+    entry.song,
+    entry.song.translations,
+    locale,
+  );
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "5px 8px",
+        borderRadius: 5,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          color: T.numColor,
+          width: 18,
+          textAlign: "right",
+          flexShrink: 0,
+        }}
+      >
+        {rank}
+      </span>
+      {/* Spacer to keep predictions visually aligned with live/final
+          rows (which carry a 5px hit-dot here). Without it the
+          prediction title would shift 15px left vs the same event
+          rendered post-show, and the user's mental model of "this
+          is the same surface" would be undermined. */}
+      <span style={{ width: 5, flexShrink: 0 }} />
+      <span
+        style={{
+          fontSize: 13,
+          // See live/final rendering for the lineHeight rationale —
+          // explicit value prevents html2canvas glyph-clipping on
+          // capture (CR #305 fix).
+          lineHeight: 1.5,
+          flex: 1,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          color: T.missColor,
+          fontWeight: 400,
+        }}
+      >
+        {display.main}
+      </span>
+    </div>
+  );
 }
 
 function ShareCardRow({

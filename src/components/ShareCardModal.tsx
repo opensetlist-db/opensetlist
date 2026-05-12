@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
-import { ShareCardPreview } from "@/components/ShareCardPreview";
+import {
+  ShareCardPreview,
+  type ShareCardMode,
+} from "@/components/ShareCardPreview";
 import { shareCard, type ShareOutcome } from "@/lib/shareCard";
 import { trackEvent } from "@/lib/analytics";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
@@ -53,6 +56,14 @@ interface Props {
    * `share_card_open`.
    */
   eventId: string;
+  /**
+   * Card render mode — drives both `<ShareCardPreview>` layout and the
+   * native-share text payload below. See `ShareCardMode` for the per-
+   * mode meaning (`prediction` = pre-show / no-actuals-yet, no score;
+   * `live` = mid-flight with partial score + LIVE pill; `final` = the
+   * v0.11.1-and-earlier post-show layout).
+   */
+  mode: ShareCardMode;
   // Card payload + score (caller computes via calcShareCardScore).
   seriesName: string;
   eventTitle: string;
@@ -107,6 +118,7 @@ export function ShareCardModal({
   open,
   onClose,
   eventId,
+  mode,
   seriesName,
   eventTitle,
   dateLine,
@@ -176,6 +188,19 @@ export function ShareCardModal({
     if (!cardRef.current || busy) return;
     setBusy(true);
     try {
+      // Per-mode native-share text. The post-show `shareText` carries
+      // the final hit-rate sentence; live-mode flags the partial state
+      // explicitly so a friend opening the share later understands the
+      // numbers are mid-flight; prediction-mode has no score yet, just
+      // a "my predicted setlist — N songs" caption to seed virality
+      // before the show. `title` + `url` stay the same across modes —
+      // the event identity doesn't change.
+      const shareText =
+        mode === "prediction"
+          ? t("shareTextPrediction", { count: predictedCount })
+          : mode === "live"
+            ? t("shareTextLive", { matched, total, percentage })
+            : t("shareText", { matched, total, percentage });
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
         // Native-share payload — only consulted when the OS sheet
@@ -187,7 +212,7 @@ export function ShareCardModal({
         // honors.
         share: {
           title: eventTitle,
-          text: t("shareText", { matched, total, percentage }),
+          text: shareText,
           url: shareUrl,
         },
       });
@@ -326,6 +351,7 @@ export function ShareCardModal({
           <ShareCardPreview
             ref={cardRef}
             theme={theme}
+            mode={mode}
             seriesName={seriesName}
             eventTitle={eventTitle}
             dateLine={dateLine}
