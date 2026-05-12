@@ -162,29 +162,48 @@ export function ShareCardModal({
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Drives Button A's icon + label. Matches `shareCard.ts`'s
-  // gate-free share attempt: if `navigator.share` exists, the helper
-  // will try to share; the label shows "Share" + share-icon. If the
-  // API is missing entirely, the action is unconditionally download;
-  // the label shows "Download" + download-icon. Gated on `mounted`
-  // so SSR + first client commit render the same markup (both fall
-  // through to the download label until the post-mount re-render
-  // flips it).
+  // Drives Button A's icon + label. The HELPER (`shareCard.ts`)
+  // attempts share whenever `navigator.share` exists, regardless of
+  // canShare — that's the gate-free path that fixes the operator's
+  // iPhone where canShare returned false even when share would work.
+  // But operator-spotted: when share *does* throw (rarer, but
+  // possible on platforms with API stubs only), the label said
+  // "Share" while the captured behavior was Download. The label
+  // wasn't honest about what would happen.
   //
-  // We deliberately do NOT call `canShare({files})` here. Earlier
-  // v0.11.5 iterations did, but the operator-spotted iPhone behavior
-  // was that canShare returned false even on devices where
-  // navigator.share would have succeeded — see `shareCard.ts` for
-  // the full history. Trusting `navigator.share` existence keeps
-  // the label honest with what the helper actually attempts. Edge
-  // case: a hypothetical device with `navigator.share` that always
-  // throws — label says "Share" but action falls through to
-  // download. Acceptable; the alternative (canShare-based label)
-  // was demonstrably wrong on real iPhones.
+  // Fix: predict the action via `canShare({ files: probePng })` for
+  // the label, while keeping the helper gate-free. A probe File
+  // (empty payload, image/png MIME) answers the capability question
+  // at mount time without rasterizing.
+  //
+  // Resulting matrix:
+  //   canShare true, share resolves  → label "Share",  action Share ✓
+  //   canShare true, share throws    → label "Share",  action Download (rare; mismatch unavoidable)
+  //   canShare false, share resolves → label "Download", action Share (operator's iPhone if share works)
+  //   canShare false, share throws   → label "Download", action Download ✓
+  //
+  // The mismatch the operator complained about was case 2 — label
+  // says Share but action is Download. Pinning the label to
+  // canShare's prediction means cases 1 and 4 (the common ones)
+  // always match; cases 2 and 3 are edge cases where label/action
+  // diverge. Acceptable tradeoff.
+  //
+  // Gated on `mounted` so SSR + first client commit render the same
+  // markup (both fall through to the download label until the
+  // post-mount re-render flips it).
   const isShareCapable =
     mounted &&
     typeof navigator !== "undefined" &&
-    typeof navigator.share === "function";
+    typeof navigator.canShare === "function" &&
+    typeof navigator.share === "function" &&
+    (() => {
+      try {
+        const probeFile = new File([], "probe.png", { type: "image/png" });
+        return navigator.canShare({ files: [probeFile] });
+      } catch {
+        return false;
+      }
+    })();
 
   // Capability check for Button B. Same SSR-safety pattern as the
   // touch detection above — false on first render, may flip true
