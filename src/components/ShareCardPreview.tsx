@@ -89,6 +89,18 @@ const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
  */
 const CAPTURE_ROW_LINE_HEIGHT = 1.8;
 
+/**
+ * Side length of the checkbox-style hit indicator that sits before
+ * the position number on every song row. Must stay in lockstep
+ * across all three row variants — `ShareCardRow`'s filled-checkbox
+ * (hit), `ShareCardRow`'s outline-only box (miss), and
+ * `PredictionRow`'s transparent spacer — so the rank column's left
+ * edge lands at the same x in every captured PNG regardless of
+ * mode. 14px is the smallest size that keeps the ✓ glyph legible at
+ * scale=2 capture quality.
+ */
+const INDICATOR_SIZE_PX = 14;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -676,7 +688,7 @@ function PredictionRow({
           pre-v0.11.6 hit-dot width), titles would shift between
           modes and the "this is the same surface" mental model
           would break. */}
-      <span style={{ width: 14, flexShrink: 0 }} />
+      <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 11,
@@ -763,8 +775,8 @@ function ShareCardRow({
       {hit ? (
         <span
           style={{
-            width: 14,
-            height: 14,
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
             borderRadius: 3,
             background: T.hitDot,
             display: "inline-flex",
@@ -782,8 +794,8 @@ function ShareCardRow({
       ) : (
         <span
           style={{
-            width: 14,
-            height: 14,
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
             borderRadius: 3,
             border: `1.5px solid ${T.missColor}`,
             boxSizing: "border-box",
