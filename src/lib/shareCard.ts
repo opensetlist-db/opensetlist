@@ -96,6 +96,23 @@ export interface ShareCardOptions {
     text?: string;
     url?: string;
   };
+  /**
+   * Pre-rasterized PNG blob. When provided, `shareCard()` skips the
+   * html2canvas rasterization step and goes straight to share /
+   * download with the supplied blob. This is the **iOS Safari user-
+   * gesture preservation path**: the caller (`<ShareCardModal>`)
+   * pre-rasterizes on modal open + theme change, so when the user
+   * taps the share button the blob is already in memory and the
+   * `navigator.share()` call can be initiated synchronously inside
+   * the click handler — preserving the transient-activation
+   * required by the Web Share API on iOS.
+   *
+   * If absent, the helper falls back to its v0.11.5 behavior of
+   * rasterizing on demand. Useful for callers that don't have a
+   * pre-rasterized blob available, or as a safety net when the
+   * pre-rasterization itself failed.
+   */
+  preRasterizedBlob?: Blob;
 }
 
 export interface CopyCardOptions {
@@ -115,7 +132,7 @@ const DEFAULT_FILENAME = "opensetlist-result.png";
  * for preserving the user-gesture context through an async render
  * on iOS Safari. See `copyCardToClipboard` below for the use site.
  */
-function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
+export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
   return (async () => {
     // Dynamic import keeps html2canvas out of the main bundle.
     // The package's default export is the function we want.
@@ -163,15 +180,20 @@ export async function shareCard({
   cardEl,
   filename = DEFAULT_FILENAME,
   share,
+  preRasterizedBlob,
 }: ShareCardOptions): Promise<ShareOutcome> {
   let blob: Blob;
-  try {
-    blob = await renderCardToBlob(cardEl);
-  } catch (e) {
-    return {
-      kind: "error",
-      message: e instanceof Error ? e.message : "render failed",
-    };
+  if (preRasterizedBlob) {
+    blob = preRasterizedBlob;
+  } else {
+    try {
+      blob = await renderCardToBlob(cardEl);
+    } catch (e) {
+      return {
+        kind: "error",
+        message: e instanceof Error ? e.message : "render failed",
+      };
+    }
   }
 
   // Native-share branch — the preferred path on **touch-primary**

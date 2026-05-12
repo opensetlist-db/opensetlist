@@ -9,6 +9,7 @@ import {
 import {
   shareCard,
   copyCardToClipboard,
+  renderCardToBlob,
   type ShareOutcome,
   type CopyOutcome,
 } from "@/lib/shareCard";
@@ -161,6 +162,21 @@ export function ShareCardModal({
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // Pre-rasterized PNG blob, refreshed on modal open + theme change.
+  // **Critical for iOS Safari Web Share**: navigator.share requires
+  // transient activation (user gesture) at the moment of the call,
+  // and `await renderCardToBlob()` is an async I/O hop through a
+  // macrotask which loses activation. If we await inside handleShare
+  // BEFORE calling navigator.share, iOS rejects with NotAllowedError
+  // → falls through to download → operator-reported "share button
+  // still downloads on iPhone". Pre-rasterizing here means the blob
+  // is already in memory when the user taps; handleShare can build
+  // a File and call navigator.share synchronously inside the click
+  // handler, preserving the user gesture and letting the OS share
+  // sheet actually appear.
+  const [preRasterizedBlob, setPreRasterizedBlob] = useState<Blob | null>(
+    null,
+  );
 
   // Drives Button A's icon + label. The HELPER (`shareCard.ts`)
   // attempts share whenever `navigator.share` exists, regardless of
@@ -261,6 +277,56 @@ export function ShareCardModal({
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // Render-time invalidation tracker for the pre-rasterized blob.
+  // When `open` flips to true or `theme` changes, the cached blob
+  // is stale and must be reset to null before the async effect
+  // below kicks off a fresh render. Using the project's canonical
+  // prev-state pattern (see `useMounted.ts` docstring) — running
+  // `setPreRasterizedBlob(null)` directly in the effect body trips
+  // `react-hooks/set-state-in-effect`. Cheap check on every render;
+  // only flips state when the tracked key actually changes.
+  const rasterizationKey = `${open ? "open" : "closed"}:${theme}`;
+  const [prevRasterizationKey, setPrevRasterizationKey] = useState(
+    rasterizationKey,
+  );
+  if (prevRasterizationKey !== rasterizationKey) {
+    setPrevRasterizationKey(rasterizationKey);
+    setPreRasterizedBlob(null);
+  }
+
+  // Pre-rasterize the card to a PNG blob in the background. Runs on
+  // modal open and re-runs on theme change (the dark / light cards
+  // produce visually different PNGs, so the cached blob must be
+  // invalidated when the user toggles — done via the prev-state
+  // tracker above). 100ms delay lets the new theme actually paint
+  // before capture.
+  //
+  // The blob is the load-bearing input to the iOS Safari user-
+  // gesture fix: when handleShare runs, it consumes this state
+  // synchronously, skipping the async rasterization that would
+  // otherwise expire the click's transient activation.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const delay = setTimeout(() => {
+      if (cancelled || !cardRef.current) return;
+      renderCardToBlob(cardRef.current)
+        .then((blob) => {
+          if (!cancelled) setPreRasterizedBlob(blob);
+        })
+        .catch(() => {
+          // Render failure is non-fatal — the share/copy handlers
+          // fall back to on-demand rasterization (the v0.11.5 path)
+          // which will surface the error to the user via toast if
+          // the second attempt also fails.
+        });
+    }, 100);
+    return () => {
+      cancelled = true;
+      clearTimeout(delay);
+    };
+  }, [open, theme]);
+
   if (!open) return null;
 
   // While the share-card capture is in flight, every state-mutating
@@ -304,6 +370,15 @@ export function ShareCardModal({
             : t("shareText", { matched, total, percentage });
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
+        // Pass the pre-rasterized blob (may be null if rasterization
+        // hadn't completed before the user tapped — the helper falls
+        // back to on-demand rasterization in that case). The
+        // "preRasterizedBlob present" path is the iOS Safari user-
+        // gesture preservation route: navigator.share is called
+        // synchronously inside this click handler without an async
+        // hop through canvas.toBlob, so transient activation
+        // survives the call.
+        preRasterizedBlob: preRasterizedBlob ?? undefined,
         // Native-share payload — only consulted when the OS sheet
         // path is taken. Title for surfaces that show one (Twitter
         // compose, KakaoTalk caption); text for ones that compose a
