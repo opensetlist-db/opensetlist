@@ -361,10 +361,26 @@ export function ShareCardModal({
       // into a known interactive inside the modal keeps the
       // keyboard-nav context anchored in the dialog and lets the
       // operator-reported "background page scrolls / modal buttons
-      // unresponsive" symptom resolve naturally. Optional chain
-      // covers the close-mid-async edge case where the modal
-      // unmounted between the await and this line.
-      closeButtonRef.current?.focus();
+      // unresponsive" symptom resolve naturally.
+      //
+      // **setTimeout(0)** matters here. React 18 batches state
+      // updates inside event handlers — the `setBusy(false)` above
+      // queues a re-render that hasn't flushed yet at the point of
+      // a synchronous `focus()` call. The close button is rendered
+      // as `disabled={busy}`, so until React flushes the new state
+      // the DOM element still carries `disabled` and `focus()` is a
+      // silent no-op. Deferring to the next macrotask (`setTimeout(...,
+      // 0)`) lets React commit the re-render first, then focus()
+      // targets an enabled button. Operator-spotted post-v0.11.5:
+      // synchronous focus() worked for the Share button (the native
+      // share sheet captures + restores focus automatically) but
+      // not for Copy (no native UI in the way, no automatic
+      // restoration). Optional chain covers the close-mid-async edge
+      // case where the modal unmounted between the await and the
+      // setTimeout callback.
+      setTimeout(() => {
+        closeButtonRef.current?.focus();
+      }, 0);
     }
   };
 
@@ -433,10 +449,26 @@ export function ShareCardModal({
       // into a known interactive inside the modal keeps the
       // keyboard-nav context anchored in the dialog and lets the
       // operator-reported "background page scrolls / modal buttons
-      // unresponsive" symptom resolve naturally. Optional chain
-      // covers the close-mid-async edge case where the modal
-      // unmounted between the await and this line.
-      closeButtonRef.current?.focus();
+      // unresponsive" symptom resolve naturally.
+      //
+      // **setTimeout(0)** matters here. React 18 batches state
+      // updates inside event handlers — the `setBusy(false)` above
+      // queues a re-render that hasn't flushed yet at the point of
+      // a synchronous `focus()` call. The close button is rendered
+      // as `disabled={busy}`, so until React flushes the new state
+      // the DOM element still carries `disabled` and `focus()` is a
+      // silent no-op. Deferring to the next macrotask (`setTimeout(...,
+      // 0)`) lets React commit the re-render first, then focus()
+      // targets an enabled button. Operator-spotted post-v0.11.5:
+      // synchronous focus() worked for the Share button (the native
+      // share sheet captures + restores focus automatically) but
+      // not for Copy (no native UI in the way, no automatic
+      // restoration). Optional chain covers the close-mid-async edge
+      // case where the modal unmounted between the await and the
+      // setTimeout callback.
+      setTimeout(() => {
+        closeButtonRef.current?.focus();
+      }, 0);
     }
   };
 
