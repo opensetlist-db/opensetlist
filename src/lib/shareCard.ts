@@ -1,20 +1,28 @@
 /**
  * Share Card capture + native-share-or-download.
  *
- * Two paths depending on capability:
+ * Two paths depending on device shape + capability:
  *
- *   1. Native share (mobile + any browser exposing
- *      `navigator.canShare({ files })`): rasterize, build a `File`,
- *      hand it to `navigator.share({ files, title, text, url })`.
- *      The OS share sheet appears with the user's installed apps —
- *      Photos / Messages / KakaoTalk / Twitter / etc. — and we do
- *      nothing further. Successful share returns `kind: "shared"`.
+ *   1. Native share (**touch-primary devices** that also support
+ *      file-share): rasterize, build a `File`, hand it to
+ *      `navigator.share({ files, title, text, url })`. The OS share
+ *      sheet appears with the user's installed apps — Photos /
+ *      Messages / KakaoTalk / Twitter / etc. — and we do nothing
+ *      further. Successful share returns `kind: "shared"`.
  *      User-dismiss returns `kind: "cancelled"` (silent — no toast).
  *
- *   2. Download fallback (desktop browsers + any environment that
- *      can't share files): trigger a PNG file download via
- *      `<a download>`, returning `kind: "downloaded"`. The user
- *      manually attaches it wherever they want.
+ *   2. Download fallback (**desktop browsers including macOS** + any
+ *      environment that can't share files): trigger a PNG file
+ *      download via `<a download>`, returning `kind: "downloaded"`.
+ *      The user manually attaches it wherever they want. macOS
+ *      Safari + Chrome both pass `canShare({ files })`, but their
+ *      OS share sheet lacks a "save to Downloads" entry — viewers
+ *      who tap "이미지 저장" expect a saved PNG, not a Mail / Messages
+ *      / AirDrop sheet, so desktops are routed through download
+ *      regardless of share-capability. The `(pointer: coarse)`
+ *      media query is the gate (true on phone/tablet finger input,
+ *      false on mouse/trackpad — including iPad with Magic Keyboard
+ *      attached, which gets desktop-like UX anyway).
  *
  * History note: the v0.10.x rewrite collapsed both paths into
  * download-only, because the original mobile branch was branded as
@@ -77,10 +85,11 @@ const DEFAULT_FILENAME = "opensetlist-result.png";
 
 /**
  * Capture `cardEl` to a PNG, then either open the OS share sheet
- * (when `navigator.canShare({ files })` says yes) or fall back to a
- * file download. Returns a `ShareOutcome` so the caller can surface
- * the appropriate toast (or, in the share-success / cancel case,
- * stay silent — the OS already owns the user feedback).
+ * (on touch-primary devices that also support file-share) or fall
+ * back to a file download (everywhere else, including macOS). Returns
+ * a `ShareOutcome` so the caller can surface the appropriate toast
+ * (or, in the share-success / cancel case, stay silent — the OS
+ * already owns the user feedback).
  */
 export async function shareCard({
   cardEl,
@@ -126,17 +135,34 @@ export async function shareCard({
     return { kind: "error", message: "canvas.toBlob returned null" };
   }
 
-  // Native-share branch — the preferred path on mobile and on any
-  // desktop browser that supports file-share (Safari, Edge, recent
-  // Chromium on macOS). `canShare({ files })` is the right gate: it
-  // returns false when the platform can't attach files even if
-  // `navigator.share` itself exists, so a positive result means the
-  // OS will actually show a usable sheet. AbortError = user dismissed
-  // the sheet → silent `cancelled`. Any other share failure (rare:
-  // file-too-large, permission denied) falls through to the download
-  // fallback so the user still gets the image.
+  // Native-share branch — the preferred path on **touch-primary**
+  // devices (phones + tablets in finger mode). On desktops, even
+  // those that pass `canShare({ files })` (macOS Safari, macOS
+  // Chrome 16.x+, Edge), the OS share sheet is platform-themed for
+  // messaging/social-app handoff and notably lacks a "save to
+  // Downloads" entry — a viewer who taps "이미지 저장" on a MacBook
+  // expecting a saved PNG ends up in a sheet with Mail / Messages /
+  // AirDrop / Notes but no way to save the image. Operator-spotted
+  // post-v0.11.1 on a MacBook. Gating with `(pointer: coarse)` is
+  // the canonical "this device is touch-primary" media query: true
+  // on iPhone / Android / iPad (touch), false on desktop with mouse
+  // or trackpad, and correctly false on an iPad with a Magic
+  // Keyboard trackpad attached (which gets desktop-like UX anyway).
+  //
+  // `canShare({ files })` stays as the secondary gate: even on a
+  // touch-primary device, file-share may not be supported (older
+  // Android Chrome, Firefox mobile pre-2024) — those still need the
+  // download fallback. AbortError = user dismissed the sheet → silent
+  // `cancelled`. Any other share failure (rare: file-too-large,
+  // permission denied) falls through to the download fallback so the
+  // user always ends up with the image.
   const file = new File([blob], filename, { type: "image/png" });
+  const isTouchPrimary =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
   if (
+    isTouchPrimary &&
     typeof navigator !== "undefined" &&
     typeof navigator.canShare === "function" &&
     typeof navigator.share === "function" &&
