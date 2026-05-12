@@ -315,7 +315,7 @@
     "copyImage": "Copy image",
     "imageSavedToast": "Image saved",
     "imageErrorToast": "Couldn't save the image",
-    "imageCopiedToast": "Copied! Paste with Ctrl+V",
+    "imageCopiedToast": "Copied! Paste with Ctrl+V / ⌘V",
     "imageCopyFailedToast": "Couldn't copy the image",
     "shareText": "Prediction hit rate {percentage}% — {matched} of {total} songs hit",
     "shareTextLive": "Show in progress — {matched} of {total} songs hit so far ({percentage}%)",

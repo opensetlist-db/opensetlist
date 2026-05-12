@@ -315,7 +315,7 @@
     "copyImage": "画像をコピー",
     "imageSavedToast": "画像を保存しました",
     "imageErrorToast": "画像を保存できませんでした",
-    "imageCopiedToast": "コピーしました! Ctrl+Vで貼り付けてください",
+    "imageCopiedToast": "コピーしました! Ctrl+V / ⌘Vで貼り付けてください",
     "imageCopyFailedToast": "画像をコピーできませんでした",
     "shareText": "予想的中率 {percentage}% — {total}曲中{matched}曲的中",
     "shareTextLive": "公演進行中 — 現在 {total}曲中 {matched}曲的中 ({percentage}%)",
