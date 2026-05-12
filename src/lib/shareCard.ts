@@ -207,12 +207,33 @@ export async function shareCard({
   // AbortError = user dismissed the sheet → silent `cancelled`. Any
   // other share failure falls through to download.
   const file = new File([blob], filename, { type: "image/png" });
+  // Two-signal mobile detection — either positive result routes to
+  // share. The `(pointer: coarse)` media query is the standard
+  // "this device is touch-primary" check (true on iPhone / Android /
+  // iPad-finger, false on desktop mouse/trackpad). But the post-iOS-
+  // feedback v0.11.5 deploy still routed iPhones to download —
+  // operator-spotted. Suspected cause: some iOS Safari configurations
+  // / WKWebView contexts return false from `(pointer: coarse)`, the
+  // same kind of unreliability that motivated dropping the
+  // `canShare({ files })` gate one commit earlier. Adding a UA-based
+  // backup signal: iPad/iPhone/iPod in the userAgent string, or
+  // iPadOS 13+ which masquerades as `MacIntel` (disambiguated via
+  // `maxTouchPoints > 1`, since real Macs report 0). OR the two
+  // signals so any positive result routes to share. Risk: iPad with
+  // a Magic Keyboard trackpad attached reports `(pointer: fine)` but
+  // still matches `isAppleMobileUA` → now routes to share instead of
+  // download (was download in v0.11.4). Acceptable tradeoff for
+  // fixing the iPhone share regression — that's the bigger audience.
   const isTouchPrimary =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia("(pointer: coarse)").matches;
+  const isAppleMobileUA =
+    typeof navigator !== "undefined" &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
   if (
-    isTouchPrimary &&
+    (isTouchPrimary || isAppleMobileUA) &&
     typeof navigator !== "undefined" &&
     typeof navigator.share === "function"
   ) {
