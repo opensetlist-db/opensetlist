@@ -170,7 +170,24 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           borderRadius: 20,
           overflow: "hidden",
           border: T.cardBorder,
-          fontFamily: "'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
+          // Latin-first fallback chain so ASCII characters (Latin
+          // letters, digits, spaces) render with the system Latin
+          // font's metrics — `system-ui` resolves to SF Pro on
+          // iOS/macOS, Segoe UI on Windows, Roboto on Android — and
+          // CJK characters fall through to Noto Sans JP / Pretendard
+          // / Noto Sans KR. The pre-v0.11.5 order put `Noto Sans JP`
+          // first which the live browser handled fine (modern CSS
+          // text-shaping uses per-script font selection), but
+          // html2canvas's capture pipeline on iOS Safari fell back
+          // wholesale to Hiragino for the whole run and rendered
+          // ASCII spaces at ideographic (full-width) metrics —
+          // operator-spotted: "Garden  Stage  /  兵庫  公演  Day .1"
+          // in the captured PNG vs tight "Garden Stage／兵庫公演 Day.1"
+          // in the live preview. Putting the Latin-resolving system
+          // font first makes the per-script selection more robust
+          // through the capture pipeline.
+          fontFamily:
+            "system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
           position: "relative",
         }}
       >

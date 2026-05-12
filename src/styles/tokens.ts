@@ -232,28 +232,35 @@ export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
       "radial-gradient(ellipse at 15% 0%, rgba(79,195,247,0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(2,119,189,0.15) 0%, transparent 55%)",
     series:        "#4FC3F7",
     title:         "#e8f4fd",
-    date:          "#3a5a7a",
+    // Operator-spotted on the captured iPhone PNG: a stack of muted
+    // text values (date, scoreSub, scorePred, numColor, encLabel,
+    // footerBrand, footerUrl) sat at hexes like `#1e3a56`/`#2a4464`
+    // /`#3a5a7a` against the `#0a1628` background — contrast ratios
+    // of 2–4:1, below WCAG AA's 4.5:1 for body text. Bumped to a
+    // family of brighter blue-greys (`#6a8aaa`, `#8aacc8`) that
+    // keep the muted aesthetic but reach 5.5–8.4:1 contrast.
+    date:          "#6a8aaa",
     bannerBg:      "rgba(79,195,247,0.08)",
     bannerBorder:  "1px solid rgba(79,195,247,0.2)",
     bannerShadow:  "none",
     scoreMain:     "#e8f4fd",
     scorePct:      "#4FC3F7",
-    scoreSub:      "#3a5a7a",
+    scoreSub:      "#6a8aaa",
     scoreLabel:    "#4FC3F7",
     scoreFrac:     "#4FC3F7",
-    scorePred:     "#2a4a6a",
+    scorePred:     "#8aacc8",
     missColor:     "#7a9ab8",
-    numColor:      "#2a4464",
+    numColor:      "#6a8aaa",
     hitRowBg:      "rgba(79,195,247,0.07)",
     hitDot:        "#4FC3F7",
     hitDotGlow:    "0 0 5px rgba(79,195,247,0.9)",
     hitUnderline:  "rgba(79,195,247,0.5)",
     hitText:       "#e8f4fd",
     encLine:       "rgba(79,195,247,0.1)",
-    encLabel:      "#1e3a56",
+    encLabel:      "#6a8aaa",
     footerBorder:  "rgba(79,195,247,0.1)",
-    footerBrand:   "#1e3a56",
-    footerUrl:     "#1e3a56",
+    footerBrand:   "#8aacc8",
+    footerUrl:     "#8aacc8",
   },
   light: {
     cardBg:        "#f8fbff",
