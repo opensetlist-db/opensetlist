@@ -165,29 +165,6 @@ export function ActualSetlist({
 
   return (
     <>
-      {/* Confirm-vote instructional strip: tells first-time visitors
-          how to ✓/✕ newly-registered (rumoured) rows. Visible only
-          while at least one row is still rumoured — once every row
-          promotes to confirmed (DB-confirmed or via the 1-min auto-
-          promote in `getConfirmStatus`), the action it describes is
-          gone and the strip retires with it. The same `hasRumoured`
-          flag drives the auto-promote ticker above, so visibility and
-          re-render cadence stay coupled. Visual treatment mirrors the
-          adjacent `<SetlistColumnHeader>` (same padding + bg) so the
-          strip reads as part of the column-header block. */}
-      {hasRumoured && (
-        <div
-          className="text-[11px]"
-          style={{
-            padding: "8px 20px",
-            color: colors.textMuted,
-            background: colors.bgFaint,
-            borderBottom: `0.5px solid ${colors.border}`,
-          }}
-        >
-          {confirmT("description")}
-        </div>
-      )}
       <SetlistColumnHeader
         labels={{
           position: t("colPosition"),
@@ -232,6 +209,37 @@ export function ActualSetlist({
             ))}
           </ol>
         </>
+      )}
+      {/* Confirm-vote instructional strip: tells first-time visitors
+          how to ✓/✕ newly-registered (rumoured) rows. Visible only
+          while at least one row is still rumoured — once every row
+          promotes to confirmed (DB-confirmed or via the 1-min auto-
+          promote in `getConfirmStatus`), the action it describes is
+          gone and the strip retires with it. The same `hasRumoured`
+          flag drives the auto-promote ticker above, so visibility and
+          re-render cadence stay coupled.
+
+          Sits at the BOTTOM of the setlist body, not the top: new
+          rumoured rows get appended at the bottom of the list as the
+          operator adds them, so the description always renders right
+          next to the rows whose ✓/✕ buttons it explains. A top-of-
+          list placement (the v0.11.1-shipped position) put the help
+          copy far away from new rows once the list had any length.
+          Visual treatment mirrors `<SetlistColumnHeader>` (same
+          padding + bg, borderTop instead of borderBottom) so the
+          strip reads as a "footer" answer to the header above. */}
+      {hasRumoured && (
+        <div
+          className="text-[11px]"
+          style={{
+            padding: "8px 20px",
+            color: colors.textMuted,
+            background: colors.bgFaint,
+            borderTop: `0.5px solid ${colors.border}`,
+          }}
+        >
+          {confirmT("description")}
+        </div>
       )}
     </>
   );
