@@ -162,36 +162,29 @@ export function ShareCardModal({
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Drives Button A's icon + label. Matches the share-vs-download
-  // decision in `shareCard.ts`: if `navigator.canShare({ files: PNG })`
-  // returns true the action will share, otherwise it downloads. A
-  // probe File (empty payload, image/png MIME) lets us answer the
-  // capability question at mount time without rasterizing the card —
-  // canShare's gate is the MIME type, not content. Gated on `mounted`
+  // Drives Button A's icon + label. Matches `shareCard.ts`'s
+  // gate-free share attempt: if `navigator.share` exists, the helper
+  // will try to share; the label shows "Share" + share-icon. If the
+  // API is missing entirely, the action is unconditionally download;
+  // the label shows "Download" + download-icon. Gated on `mounted`
   // so SSR + first client commit render the same markup (both fall
-  // through to the download path until the post-mount re-render
-  // flips it). Without the gate, hydration mismatches between server
-  // (no navigator) and client.
+  // through to the download label until the post-mount re-render
+  // flips it).
   //
-  // The earlier `(pointer: coarse)` heuristic that lived here was an
-  // imperfect proxy — touch-primary devices ≠ canShare-files-capable
-  // devices. macOS Safari with mouse reports pointer:fine but
-  // canShare:true, so the v0.11.5 heuristic labeled it "Download"
-  // while the action was share. Asking canShare directly removes
-  // that mismatch.
+  // We deliberately do NOT call `canShare({files})` here. Earlier
+  // v0.11.5 iterations did, but the operator-spotted iPhone behavior
+  // was that canShare returned false even on devices where
+  // navigator.share would have succeeded — see `shareCard.ts` for
+  // the full history. Trusting `navigator.share` existence keeps
+  // the label honest with what the helper actually attempts. Edge
+  // case: a hypothetical device with `navigator.share` that always
+  // throws — label says "Share" but action falls through to
+  // download. Acceptable; the alternative (canShare-based label)
+  // was demonstrably wrong on real iPhones.
   const isShareCapable =
     mounted &&
     typeof navigator !== "undefined" &&
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    (() => {
-      try {
-        const probeFile = new File([], "probe.png", { type: "image/png" });
-        return navigator.canShare({ files: [probeFile] });
-      } catch {
-        return false;
-      }
-    })();
+    typeof navigator.share === "function";
 
   // Capability check for Button B. Same SSR-safety pattern as the
   // touch detection above — false on first render, may flip true

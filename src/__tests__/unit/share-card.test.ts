@@ -29,18 +29,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("shareCard — native share path (canShare-files capable browsers)", () => {
-  it("canShare({files}) true → calls navigator.share with the file, returns kind: shared", async () => {
-    // Post-iOS-feedback simplification: the gate is purely
-    // `navigator.canShare({ files })` again. The earlier pointer-
-    // coarse + UA-fallback layering was removed in favor of trusting
-    // the capability check across every platform (iOS / Android /
-    // macOS Safari / recent Chromium desktop). Per-platform sheet
-    // ergonomics are accepted as-is.
+describe("shareCard — native share path (navigator.share present)", () => {
+  it("navigator.share present + resolves → calls share with the file, returns kind: shared", async () => {
+    // Post-iOS-feedback final shape: the gate is purely
+    // `typeof navigator.share === "function"`. canShare is NOT
+    // consulted — operator-spotted on iPhone that canShare({files})
+    // could return false even when share() would succeed, breaking
+    // the share path on a non-trivial slice of real iOS Safari
+    // installs. Trusting the call attempt instead is more permissive
+    // and more reliable; failure modes fall through to download.
     const shareSpy = vi.fn().mockResolvedValue(undefined);
-    const canShareSpy = vi.fn().mockReturnValue(true);
     vi.stubGlobal("navigator", {
-      canShare: canShareSpy,
       share: shareSpy,
     });
     const cardEl = document.createElement("div");
@@ -51,9 +50,6 @@ describe("shareCard — native share path (canShare-files capable browsers)", ()
     });
 
     expect(outcome).toEqual({ kind: "shared" });
-    expect(canShareSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ files: expect.any(Array) }),
-    );
     expect(shareSpy).toHaveBeenCalledTimes(1);
     const payload = shareSpy.mock.calls[0][0];
     expect(payload.files).toHaveLength(1);
@@ -64,10 +60,33 @@ describe("shareCard — native share path (canShare-files capable browsers)", ()
     expect(payload.url).toBe("https://example.com");
   });
 
+  it("share attempted even when canShare({files}) would return false → exercises the iOS workaround path", async () => {
+    // Defensive pin on the post-iOS-feedback design decision: we
+    // call navigator.share REGARDLESS of canShare's verdict. This
+    // test stubs canShare to return false (simulating the unreliable
+    // iOS Safari behavior) AND share to resolve — the helper should
+    // still attempt share and return `shared`. If a future refactor
+    // re-introduces a canShare gate, this test fails loudly so the
+    // iOS regression doesn't sneak back in.
+    const shareSpy = vi.fn().mockResolvedValue(undefined);
+    const canShareSpy = vi.fn().mockReturnValue(false);
+    vi.stubGlobal("navigator", {
+      canShare: canShareSpy,
+      share: shareSpy,
+    });
+    const cardEl = document.createElement("div");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "shared" });
+    expect(shareSpy).toHaveBeenCalledTimes(1);
+    // canShare may or may not have been called by other code paths,
+    // but the helper itself doesn't gate on its return value.
+  });
+
   it("returns kind: cancelled when navigator.share rejects with AbortError (user dismissed sheet)", async () => {
     const abort = new DOMException("aborted", "AbortError");
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
       share: vi.fn().mockRejectedValue(abort),
     });
     const cardEl = document.createElement("div");
@@ -78,8 +97,10 @@ describe("shareCard — native share path (canShare-files capable browsers)", ()
   });
 
   it("falls back to download when navigator.share rejects with a non-abort error", async () => {
+    // The catch-all path: any non-abort share failure (platform
+    // can't share files, file-too-large, permission-policy, etc.)
+    // routes to download so the user always ends up with the image.
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
       share: vi.fn().mockRejectedValue(new Error("permission denied")),
     });
     vi.stubGlobal("URL", {
@@ -99,8 +120,8 @@ describe("shareCard — native share path (canShare-files capable browsers)", ()
   });
 });
 
-describe("shareCard — download fallback (canShare-files false or share API missing)", () => {
-  it("no navigator stub → typeof navigator.canShare !== 'function' → download fallback", async () => {
+describe("shareCard — download fallback (navigator.share missing)", () => {
+  it("no navigator stub → typeof navigator.share !== 'function' → download fallback", async () => {
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
       revokeObjectURL: vi.fn(),
@@ -140,15 +161,13 @@ describe("shareCard — download fallback (canShare-files false or share API mis
     );
   });
 
-  it("canShare({files}) returns false → skips share branch, downloads instead", async () => {
-    // Browsers that expose `canShare` but refuse file-share (older
-    // Android Chrome, Firefox mobile, Windows Chrome at the desktop
-    // edge). The capability check is the single source of truth: a
-    // false return routes straight to download.
-    const shareSpy = vi.fn();
+  it("navigator.clipboard-only stub (no share) → download fallback", async () => {
+    // Some browsers expose `navigator` without the Web Share API
+    // (older Chrome, every desktop Firefox). The download path is
+    // the unconditional fallback. The stub deliberately includes
+    // `clipboard` but not `share` to mirror that real-world shape.
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(false),
-      share: shareSpy,
+      clipboard: { write: vi.fn() },
     });
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
@@ -159,7 +178,6 @@ describe("shareCard — download fallback (canShare-files false or share API mis
     const outcome = await shareCard({ cardEl });
 
     expect(outcome).toEqual({ kind: "downloaded" });
-    expect(shareSpy).not.toHaveBeenCalled();
   });
 });
 

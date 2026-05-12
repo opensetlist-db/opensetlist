@@ -188,37 +188,43 @@ export async function shareCard({
   // or trackpad, and correctly false on an iPad with a Magic
   // Keyboard trackpad attached (which gets desktop-like UX anyway).
   //
-  // Single-gate share check: `navigator.canShare({ files })` IS the
-  // capability check. If the browser reports it can share files, do
-  // it; otherwise fall through to download. v0.11.4 added a
-  // `(pointer: coarse)` touch-primary gate on top to keep macOS
-  // Safari/Chrome (which both return true from canShare but have a
-  // share sheet without "save to Downloads") on the download path.
-  // v0.11.5 first tried dropping canShare entirely (kept pointer-
-  // coarse) then added an Apple-mobile UA fallback when that still
-  // routed iPhones to download — both intermediate approaches were
-  // operator-spotted as still broken.
+  // **Gate-free share attempt.** History of this branch's gating:
   //
-  // Final shape, per operator preference: trust `canShare({ files })`
-  // as the source of truth across every platform. The Web Share API
-  // is the canonical web-platform path here — it works well on iOS /
-  // Android / recent macOS browsers, and the simplicity is worth the
-  // tradeoff that macOS users may see an OS share sheet (with
-  // AirDrop / Mail / Messages — but no "save to Downloads"). Users
-  // who want a PNG file on macOS can right-click the modal preview
-  // and `Save Image As…` from the browser; the explicit
-  // 다운로드 button still hits the download path on any platform
-  // where canShare returns false.
+  //   v0.11.4: `(pointer: coarse) && canShare({files})` — macOS
+  //            route worked but iPhone still downloaded.
+  //   v0.11.5 a: dropped canShare, kept pointer-coarse — iPhone still
+  //            downloaded (matchMedia unreliable on user's iOS).
+  //   v0.11.5 b: pointer-coarse OR Apple-mobile UA — iPhone still
+  //            downloaded (UA detection didn't help either).
+  //   v0.11.5 c: dropped pointer-coarse / UA, kept canShare({files})
+  //            per operator-provided reference snippet — iPhone STILL
+  //            downloaded. canShare({files:[pngFile]}) returns false
+  //            on the operator's iPhone for reasons that don't show
+  //            up in spec docs.
   //
-  // AbortError = user dismissed the sheet → silent `cancelled`. Any
-  // other share failure falls through to download so the user
-  // always ends up with the image one way or the other.
+  // Final shape: don't gate at all. If `navigator.share` exists, just
+  // call it with the file payload. Three things can happen:
+  //   1. Share succeeds → return `kind: "shared"`. iPhone, Android,
+  //      macOS modern browsers — the expected path.
+  //   2. Share throws AbortError → user dismissed the OS sheet →
+  //      silent `kind: "cancelled"`, no toast.
+  //   3. Share throws anything else (platform-can't-share-files,
+  //      file-too-large, permission-policy, future failure modes) →
+  //      fall through to download so the user always ends up with
+  //      the image.
+  //
+  // Tradeoff: on a hypothetical platform that exposes
+  // `navigator.share` but throws synchronously on every call, we
+  // pay one rejected-promise cycle (~milliseconds) before falling
+  // through. Invisible to the user since the fallback fires
+  // immediately. The operator's reference code snippet used
+  // canShare; we found it unreliable in practice on iOS Safari and
+  // accept this slightly less-defensive shape in exchange for
+  // actually working on real iPhones.
   const file = new File([blob], filename, { type: "image/png" });
   if (
     typeof navigator !== "undefined" &&
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    navigator.canShare({ files: [file] })
+    typeof navigator.share === "function"
   ) {
     try {
       const payload: ShareData = { files: [file] };
