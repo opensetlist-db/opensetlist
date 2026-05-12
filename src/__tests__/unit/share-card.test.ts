@@ -29,7 +29,45 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("shareCard — native share path (mobile + canShare-capable browsers)", () => {
+/**
+ * Stub `window.matchMedia` so the touch-primary gate in shareCard
+ * reports the requested shape. `(pointer: coarse)` → true simulates
+ * a phone/tablet finger; false simulates desktop mouse/trackpad. Any
+ * other media query falls through to `matches: false` (the test
+ * environment never uses them, but the spec demands a defined return).
+ */
+function stubTouchPrimary(matches: boolean): void {
+  const matchMediaSpy = vi.fn((query: string) => ({
+    matches: query === "(pointer: coarse)" ? matches : false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    onchange: null,
+  }));
+  // jsdom defines `window.matchMedia` as undefined by default, so
+  // assigning directly is fine; the unstubAllGlobals call in
+  // beforeEach/afterEach can't reach window.matchMedia (only
+  // vi.stubGlobal-managed entries) but the property is overwritten
+  // fresh on every stubTouchPrimary call.
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: matchMediaSpy,
+  });
+}
+
+describe("shareCard — native share path (touch-primary devices + canShare-capable browsers)", () => {
+  beforeEach(() => {
+    // Touch-primary by default for this describe block — these tests
+    // exist to exercise the share path. Individual specs override
+    // when they need to assert the desktop fallback (see "desktop
+    // even when canShare succeeds" below).
+    stubTouchPrimary(true);
+  });
+
   it("calls navigator.share with the file when canShare({ files }) returns true, returns kind: shared", async () => {
     const shareSpy = vi.fn().mockResolvedValue(undefined);
     const canShareSpy = vi.fn().mockReturnValue(true);
@@ -90,6 +128,33 @@ describe("shareCard — native share path (mobile + canShare-capable browsers)",
       ([n]) => (n as HTMLElement).tagName === "A",
     );
     expect(appended).toBeTruthy();
+  });
+
+  it("falls back to download on desktop (pointer: fine) even when canShare({ files }) returns true — macOS regression", async () => {
+    // macOS Safari + Chrome both pass `canShare({ files })`, but
+    // their OS share sheet has no "save to Downloads" entry. A user
+    // who taps 이미지 저장 on a MacBook gets stuck in a Mail / Messages
+    // / AirDrop sheet with no way to save the PNG. The touch-primary
+    // gate (`(pointer: coarse)`) skips the share branch on desktop
+    // regardless of capability so the download fallback always runs.
+    stubTouchPrimary(false);
+    const shareSpy = vi.fn();
+    vi.stubGlobal("navigator", {
+      canShare: vi.fn().mockReturnValue(true),
+      share: shareSpy,
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:fake"),
+      revokeObjectURL: vi.fn(),
+    });
+    const cardEl = document.createElement("div");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "downloaded" });
+    // canShare succeeds but the touch-primary gate blocks the
+    // share branch — navigator.share must NOT be invoked.
+    expect(shareSpy).not.toHaveBeenCalled();
   });
 });
 
