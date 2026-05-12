@@ -296,14 +296,44 @@ export function ShareCardModal({
   }, [toast]);
 
   // Render-time invalidation tracker for the pre-rasterized blob.
-  // When `open` flips to true or `theme` changes, the cached blob
-  // is stale and must be reset to null before the async effect
-  // below kicks off a fresh render. Using the project's canonical
-  // prev-state pattern (see `useMounted.ts` docstring) — running
-  // `setPreRasterizedBlob(null)` directly in the effect body trips
-  // `react-hooks/set-state-in-effect`. Cheap check on every render;
-  // only flips state when the tracked key actually changes.
-  const rasterizationKey = `${open ? "open" : "closed"}:${theme}`;
+  // The cached blob represents a snapshot of the card at a specific
+  // set of visual inputs; any change to those inputs invalidates
+  // the cache.
+  //
+  // Inputs that affect the captured PNG:
+  //   - `open` / `theme`: mode / palette
+  //   - `mode`: prediction vs live vs final layout
+  //   - `seriesName` / `eventTitle` / `dateLine`: header strings
+  //   - `actualSongs` / `predictions`: row contents (real-time push
+  //     during an ongoing event mutates `actualSongs`; user edits
+  //     in localStorage mutate `predictions`)
+  //   - `matched` / `total` / `percentage` / `predictedCount`:
+  //     score banner numerics
+  //
+  // For the array inputs the key encodes the id sequence so order
+  // changes invalidate too (drag-reorder a prediction → new key →
+  // re-rasterize). Cheap on every render: two `map().join()` over
+  // ~10–30 items.
+  //
+  // Uses the project's canonical prev-state pattern (see
+  // `useMounted.ts` docstring) — running `setPreRasterizedBlob(null)`
+  // directly in the effect body trips `react-hooks/set-state-in-
+  // effect`. The render-time check flips state only when the
+  // tracked key actually changes.
+  const rasterizationKey = [
+    open ? "open" : "closed",
+    theme,
+    mode,
+    seriesName,
+    eventTitle,
+    dateLine,
+    actualSongs.map((s) => s.id).join(","),
+    predictions.map((p) => p.songId).join(","),
+    matched,
+    total,
+    percentage,
+    predictedCount,
+  ].join("|");
   const [prevRasterizationKey, setPrevRasterizationKey] = useState(
     rasterizationKey,
   );
@@ -312,17 +342,22 @@ export function ShareCardModal({
     setPreRasterizedBlob(null);
   }
 
-  // Pre-rasterize the card to a PNG blob in the background. Runs on
-  // modal open and re-runs on theme change (the dark / light cards
-  // produce visually different PNGs, so the cached blob must be
-  // invalidated when the user toggles — done via the prev-state
-  // tracker above). 100ms delay lets the new theme actually paint
-  // before capture.
+  // Pre-rasterize the card to a PNG blob in the background. Re-runs
+  // whenever `rasterizationKey` changes — that key covers theme,
+  // mode, header strings, row contents, and score numerics, so any
+  // visible change to the card retriggers a fresh capture. 100ms
+  // delay lets the new render paint before html2canvas reads the
+  // DOM.
   //
   // The blob is the load-bearing input to the iOS Safari user-
   // gesture fix: when handleShare runs, it consumes this state
   // synchronously, skipping the async rasterization that would
   // otherwise expire the click's transient activation.
+  //
+  // `rasterizationKey` is the sole effect dep — it encodes every
+  // input the function body cares about, so listing the underlying
+  // 12 props separately would duplicate the invariant. The exhaust-
+  // ive-deps suppression is justified by that contract.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -343,7 +378,8 @@ export function ShareCardModal({
       cancelled = true;
       clearTimeout(delay);
     };
-  }, [open, theme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rasterizationKey]);
 
   if (!open) return null;
 
