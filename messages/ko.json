@@ -294,6 +294,7 @@
     "dragHandleAria": "순서 변경",
     "lockedHint": "공연이 시작되어 예상이 잠겼습니다",
     "shareButton": "결과 공유 🎯",
+    "shareButtonPrediction": "예상 공유 🎯",
     "shareDisabled": "공연 종료 후 활성화됩니다",
     "searchPlaceholder": "곡 검색...",
     "searchLoading": "검색 중...",
@@ -314,10 +315,15 @@
     "imageSavedToast": "이미지가 저장됐어요",
     "imageErrorToast": "이미지를 저장하지 못했어요",
     "shareText": "예상 적중률 {percentage}% — {total}곡 중 {matched}곡 적중",
+    "shareTextLive": "공연 진행 중 — 현재까지 {total}곡 중 {matched}곡 적중 ({percentage}%)",
+    "shareTextPrediction": "내 예상 세트리스트 — {count}곡",
     "close": "닫기",
     "scoreLabel": "예상 적중률",
     "scoreMatchedOf": "{total}곡 중 {matched}곡 적중",
     "scorePredicted": "{count}곡 예상",
+    "predictionLabel": "예상 세트리스트",
+    "predictionCount": "{count}곡",
+    "liveBadge": "LIVE",
     "encore": "Encore"
   },
   "Confirm": {
