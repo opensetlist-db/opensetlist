@@ -59,12 +59,15 @@ function stubTouchPrimary(matches: boolean): void {
   });
 }
 
-describe("shareCard — native share path (touch-primary devices + canShare-capable browsers)", () => {
+describe("shareCard — native share path (touch-primary + navigator.share present)", () => {
   beforeEach(() => {
     // Touch-primary by default for this describe block — these tests
-    // exist to exercise the share path. Individual specs override
-    // when they need to assert the desktop fallback (see "desktop
-    // even when canShare succeeds" below).
+    // exist to exercise the share path. The post-iOS-feedback gate
+    // is `pointer: coarse` + `typeof navigator.share === "function"`
+    // (the `canShare({ files })` check that was here pre-feedback was
+    // dropped because iOS Safari returned false from it even when
+    // share would succeed). Individual specs override touch state
+    // when they need to assert the desktop fallback below.
     stubTouchPrimary(true);
   });
 
@@ -159,9 +162,20 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
   });
 });
 
-describe("shareCard — download fallback (no canShare support)", () => {
+describe("shareCard — download fallback (non-touch-primary or no navigator.share)", () => {
+  beforeEach(() => {
+    // Non-touch-primary by default for this describe block — the
+    // share branch is gated on `(pointer: coarse) === true`, so
+    // setting it false here forces every test to take the download
+    // path regardless of navigator state. Pre-feedback this describe
+    // relied on test-order side effects (the previous describe's
+    // last test left matchMedia=false); explicit setup makes the
+    // intent clear and order-independent.
+    stubTouchPrimary(false);
+  });
+
   it("rasterizes via html2canvas and triggers an anchor download, returning kind: downloaded", async () => {
-    // No navigator stub → typeof navigator.canShare !== 'function' →
+    // No navigator stub → typeof navigator.share !== 'function' →
     // skip the share branch entirely and go straight to download.
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
@@ -202,13 +216,15 @@ describe("shareCard — download fallback (no canShare support)", () => {
     );
   });
 
-  it("falls back to download when canShare({ files }) returns false (e.g. desktop without file-share)", async () => {
-    // navigator exists, share fn exists, but the platform refuses to
-    // share files (typical on older desktop Chrome). Should skip the
-    // share path and download instead.
+  it("non-touch-primary device with navigator.share present → still downloads (desktop with Web Share API doesn't get the share branch)", async () => {
+    // The non-touch-primary case is what routes desktops (mouse /
+    // trackpad) through download even when they expose
+    // `navigator.share` (macOS Safari, recent Chromium). Pre-iOS-
+    // feedback this test was named "canShare({files}) returns false"
+    // — that check is no longer in the helper, but the *behavioral*
+    // pin survives: a desktop with share API still gets download.
     const shareSpy = vi.fn();
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(false),
       share: shareSpy,
     });
     vi.stubGlobal("URL", {

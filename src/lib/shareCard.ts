@@ -232,11 +232,12 @@ export async function shareCard({
     }
   }
 
-  // Download fallback — triggered when canShare is unsupported or
-  // the share path threw a non-abort error. Synchronous `.click()`
-  // initiates the file write before the function returns; the object
-  // URL is revoked after a brief grace period to be safe on slow file
-  // systems.
+  // Download fallback — triggered when the native-share branch
+  // didn't run (non-touch-primary device, or `navigator.share`
+  // missing) or when `navigator.share` threw a non-abort error.
+  // Synchronous `.click()` initiates the file write before the
+  // function returns; the object URL is revoked after a brief
+  // grace period to be safe on slow file systems.
   try {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
