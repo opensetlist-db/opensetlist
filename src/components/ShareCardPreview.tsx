@@ -43,6 +43,22 @@ export type ShareCardMode = "prediction" | "live" | "final";
  */
 const LIVE_BADGE_BG = "#dc2626";
 
+/**
+ * Pixel footprint reserved on the right of the title block when the
+ * LIVE badge is rendered absolutely-positioned in the corner. Drives
+ * the `paddingRight` on the title container so long event titles
+ * truncate (via natural wrap) rather than running under the badge.
+ *
+ * Locked to the badge's actual rendered width: 6px pulse dot + 6px
+ * gap + ~28px "LIVE" text at 11px font + 10px+10px horizontal padding
+ * + 0.5px×2 inner spacing = ~60px badge content + ~12px gap from
+ * title block + ~8px right-side breathing room ≈ 80px. If the badge
+ * geometry changes (font size, padding, label text), revisit this
+ * constant in lockstep — coupling is explicit by design so a future
+ * tweak to the badge doesn't silently overlap the title.
+ */
+const LIVE_BADGE_RESERVED_PX = 80;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -162,14 +178,15 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               `paddingRight` on the title block when present, so the
               title's width is bounded by a paddingBox rather than a
               flex computation. Renders identically in the live
-              preview (paddingRight = 80 reserves the badge's pixel
-              footprint) and the captured PNG (paddingRight is a
-              standard box-model property html2canvas honors). */}
+              preview (paddingRight reserves the badge's pixel
+              footprint, see LIVE_BADGE_RESERVED_PX) and the captured
+              PNG (paddingRight is a standard box-model property
+              html2canvas honors). */}
           <div
             style={{
               position: "relative",
               marginBottom: 20,
-              paddingRight: isLiveMode ? 80 : 0,
+              paddingRight: isLiveMode ? LIVE_BADGE_RESERVED_PX : 0,
             }}
           >
             {/* Series row: hidden entirely when seriesName is empty
