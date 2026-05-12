@@ -162,17 +162,36 @@ export function ShareCardModal({
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Touch-primary detection drives the Button A icon swap (share-out
-  // box on iOS / Android / iPad-finger; downward-arrow on desktop).
-  // Gated on `mounted` so SSR + first client commit render the same
-  // markup (both fall through to the download-arrow path until the
-  // post-mount re-render flips it). Without the gate, hydration
-  // mismatches between server (no matchMedia) and client.
-  const isTouchPrimary =
+  // Drives Button A's icon + label. Matches the share-vs-download
+  // decision in `shareCard.ts`: if `navigator.canShare({ files: PNG })`
+  // returns true the action will share, otherwise it downloads. A
+  // probe File (empty payload, image/png MIME) lets us answer the
+  // capability question at mount time without rasterizing the card —
+  // canShare's gate is the MIME type, not content. Gated on `mounted`
+  // so SSR + first client commit render the same markup (both fall
+  // through to the download path until the post-mount re-render
+  // flips it). Without the gate, hydration mismatches between server
+  // (no navigator) and client.
+  //
+  // The earlier `(pointer: coarse)` heuristic that lived here was an
+  // imperfect proxy — touch-primary devices ≠ canShare-files-capable
+  // devices. macOS Safari with mouse reports pointer:fine but
+  // canShare:true, so the v0.11.5 heuristic labeled it "Download"
+  // while the action was share. Asking canShare directly removes
+  // that mismatch.
+  const isShareCapable =
     mounted &&
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches;
+    typeof navigator !== "undefined" &&
+    typeof navigator.canShare === "function" &&
+    typeof navigator.share === "function" &&
+    (() => {
+      try {
+        const probeFile = new File([], "probe.png", { type: "image/png" });
+        return navigator.canShare({ files: [probeFile] });
+      } catch {
+        return false;
+      }
+    })();
 
   // Capability check for Button B. Same SSR-safety pattern as the
   // touch detection above — false on first render, may flip true
@@ -564,9 +583,9 @@ export function ShareCardModal({
                     actual action. One word matches what actually
                     happens on the device — and the icon already swaps
                     for the same reason. */}
-                {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
+                {isShareCapable ? <ShareIcon /> : <DownloadIcon />}
                 <span>
-                  {isTouchPrimary ? t("shareImage") : t("downloadImage")}
+                  {isShareCapable ? t("shareImage") : t("downloadImage")}
                 </span>
               </button>
               {clipboardSupported && (

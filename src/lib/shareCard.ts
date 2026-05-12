@@ -188,54 +188,37 @@ export async function shareCard({
   // or trackpad, and correctly false on an iPad with a Magic
   // Keyboard trackpad attached (which gets desktop-like UX anyway).
   //
-  // We deliberately **do NOT** gate on `navigator.canShare({ files })`
-  // here. v0.11.4 originally did, but operator-spotted on iOS: the
-  // share button was downloading instead of opening the share sheet.
-  // Investigated: iOS Safari has been observed returning `false` from
-  // `canShare({ files: [pngFile] })` in some configurations even
-  // though `navigator.share({ files: [...] })` would succeed when
-  // called. The capability check is unreliable on iOS specifically.
-  // Removing the gate means we always *attempt* share on touch-
-  // primary devices when `navigator.share` exists — if the platform
-  // can't actually share files, the call rejects with a non-abort
-  // error and we fall through to the download path. End result: iOS
-  // gets share (the expected behavior), Android Chrome without
-  // file-share still gracefully falls back to download. The only
-  // regression risk is one extra share-attempt-then-rejection cycle
-  // on platforms that can't share files but expose `navigator.share`
-  // — invisible to the user since the fallback fires immediately.
+  // Single-gate share check: `navigator.canShare({ files })` IS the
+  // capability check. If the browser reports it can share files, do
+  // it; otherwise fall through to download. v0.11.4 added a
+  // `(pointer: coarse)` touch-primary gate on top to keep macOS
+  // Safari/Chrome (which both return true from canShare but have a
+  // share sheet without "save to Downloads") on the download path.
+  // v0.11.5 first tried dropping canShare entirely (kept pointer-
+  // coarse) then added an Apple-mobile UA fallback when that still
+  // routed iPhones to download — both intermediate approaches were
+  // operator-spotted as still broken.
+  //
+  // Final shape, per operator preference: trust `canShare({ files })`
+  // as the source of truth across every platform. The Web Share API
+  // is the canonical web-platform path here — it works well on iOS /
+  // Android / recent macOS browsers, and the simplicity is worth the
+  // tradeoff that macOS users may see an OS share sheet (with
+  // AirDrop / Mail / Messages — but no "save to Downloads"). Users
+  // who want a PNG file on macOS can right-click the modal preview
+  // and `Save Image As…` from the browser; the explicit
+  // 다운로드 button still hits the download path on any platform
+  // where canShare returns false.
+  //
   // AbortError = user dismissed the sheet → silent `cancelled`. Any
-  // other share failure falls through to download.
+  // other share failure falls through to download so the user
+  // always ends up with the image one way or the other.
   const file = new File([blob], filename, { type: "image/png" });
-  // Two-signal mobile detection — either positive result routes to
-  // share. The `(pointer: coarse)` media query is the standard
-  // "this device is touch-primary" check (true on iPhone / Android /
-  // iPad-finger, false on desktop mouse/trackpad). But the post-iOS-
-  // feedback v0.11.5 deploy still routed iPhones to download —
-  // operator-spotted. Suspected cause: some iOS Safari configurations
-  // / WKWebView contexts return false from `(pointer: coarse)`, the
-  // same kind of unreliability that motivated dropping the
-  // `canShare({ files })` gate one commit earlier. Adding a UA-based
-  // backup signal: iPad/iPhone/iPod in the userAgent string, or
-  // iPadOS 13+ which masquerades as `MacIntel` (disambiguated via
-  // `maxTouchPoints > 1`, since real Macs report 0). OR the two
-  // signals so any positive result routes to share. Risk: iPad with
-  // a Magic Keyboard trackpad attached reports `(pointer: fine)` but
-  // still matches `isAppleMobileUA` → now routes to share instead of
-  // download (was download in v0.11.4). Acceptable tradeoff for
-  // fixing the iPhone share regression — that's the bigger audience.
-  const isTouchPrimary =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches;
-  const isAppleMobileUA =
-    typeof navigator !== "undefined" &&
-    (/iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
   if (
-    (isTouchPrimary || isAppleMobileUA) &&
     typeof navigator !== "undefined" &&
-    typeof navigator.share === "function"
+    typeof navigator.canShare === "function" &&
+    typeof navigator.share === "function" &&
+    navigator.canShare({ files: [file] })
   ) {
     try {
       const payload: ShareData = { files: [file] };
