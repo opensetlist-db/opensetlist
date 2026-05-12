@@ -589,6 +589,21 @@ function PredictionRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // Explicit minHeight so html2canvas can't compute a row taller
+        // than the line-box it ends up rendering. PR #305 / v0.11.4
+        // set `lineHeight: 1.5` on the title span; operator's iPhone
+        // capture still showed the bottom half of every song title
+        // clipped, which is too much to be just a descender issue —
+        // html2canvas on iOS Safari was rendering the line-box at
+        // roughly half the computed CSS height. Forcing a row floor
+        // of 28px (= 1.5 × 18px line-height for 13px font + 1px slop)
+        // means the row physically owns enough vertical space to
+        // contain the rendered text regardless of how html2canvas
+        // interprets line-height. Live preview reads the same since
+        // the natural row height with the same content is ~28px
+        // anyway — this is a no-op for the browser, a load-bearing
+        // floor for the capture.
+        minHeight: 28,
         borderRadius: 5,
       }}
     >
@@ -613,10 +628,12 @@ function PredictionRow({
       <span
         style={{
           fontSize: 13,
-          // See live/final rendering for the lineHeight rationale —
-          // explicit value prevents html2canvas glyph-clipping on
-          // capture (CR #305 fix).
-          lineHeight: 1.5,
+          // Bumped from 1.5 → 1.8 on top of the minHeight floor above.
+          // 1.5 was the v0.10.2 PR #305 fix on desktop; iOS Safari's
+          // html2canvas pipeline collapses the line-box more
+          // aggressively and needs more headroom to keep glyph
+          // descenders + the CJK glyph extent inside the row.
+          lineHeight: 1.8,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
@@ -659,6 +676,12 @@ function ShareCardRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // See <PredictionRow> for the minHeight rationale — iOS
+        // Safari's html2canvas pipeline collapses the line-box,
+        // forcing a 28px row floor keeps the rendered text fully
+        // inside the captured bounds. No-op for the live browser
+        // preview where the natural row height matches.
+        minHeight: 28,
         borderRadius: 5,
         background: hit ? T.hitRowBg : "transparent",
       }}
@@ -692,17 +715,16 @@ function ShareCardRow({
       <span
         style={{
           fontSize: 13,
-          // Explicit lineHeight: html2canvas reads the line-box from the
-          // computed style, and a span with `overflow:hidden +
-          // whiteSpace:nowrap` plus the browser default line-height
-          // collapses to roughly the font size. The captured PNG then
-          // clips glyph ascenders/descenders (visible on Latin chars
-          // with descenders and on CJK glyphs that paint slightly
-          // above the cap height). 1.5 gives ~20px of vertical room
-          // per row — comfortably above any glyph's natural extent
-          // without making the row noticeably taller than the live
-          // browser preview.
-          lineHeight: 1.5,
+          // Bumped from 1.5 → 1.8 on top of the row's minHeight floor.
+          // PR #305 / v0.10.2 set 1.5 for desktop html2canvas which
+          // collapsed the line-box to ~the font-size and clipped glyph
+          // ascenders/descenders. iOS Safari's html2canvas pipeline
+          // collapses MORE aggressively (operator-spotted on the
+          // v0.11.5 capture — the bottom half of every song title
+          // was cut). 1.8 × 13px = ~24px per line box, plus the row
+          // minHeight: 28 floor, gives enough headroom for Latin
+          // descenders + CJK glyph extents on every browser tested.
+          lineHeight: 1.8,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
