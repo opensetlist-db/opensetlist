@@ -567,7 +567,18 @@ export function ShareCardModal({
         background: "rgba(0,0,0,0.5)",
         zIndex: zIndex.modal,
         display: "flex",
-        alignItems: "center",
+        // Operator-spotted on iPhone with a 14-row setlist: tall
+        // content (card preview + theme toggle + buttons) exceeded
+        // the visible viewport, and `alignItems: center` clipped the
+        // top of the modal (theme toggle disappeared above the
+        // scroll origin). Centering on a scrollable flex container
+        // anchors the content's vertical center to the container's
+        // center even when scrolled past — the overflow above is
+        // unreachable. Canonical fix: `flex-start` on the parent,
+        // `marginBlock: auto` on the child. Short content still
+        // centers (auto margins distribute the positive free space);
+        // tall content sits at the top with the rest scrollable.
+        alignItems: "flex-start",
         justifyContent: "center",
         padding: 16,
         overflowY: "auto",
@@ -575,7 +586,15 @@ export function ShareCardModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 632, width: "100%" }}
+        style={{
+          maxWidth: 632,
+          width: "100%",
+          // Auto top/bottom margins center short content vertically
+          // while letting tall content overflow naturally — see the
+          // parent's alignItems comment for the rationale.
+          marginTop: "auto",
+          marginBottom: "auto",
+        }}
       >
         {/* Header strip — title + close button. */}
         <div
