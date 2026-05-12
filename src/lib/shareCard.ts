@@ -1,46 +1,63 @@
 /**
- * Share Card capture + native-share-or-download.
+ * Share Card capture + three exit paths.
  *
- * Two paths depending on device shape + capability:
+ * The card is the same in every case (html2canvas → PNG blob). What
+ * differs is where the bytes go:
  *
- *   1. Native share (**touch-primary devices** that also support
- *      file-share): rasterize, build a `File`, hand it to
- *      `navigator.share({ files, title, text, url })`. The OS share
- *      sheet appears with the user's installed apps — Photos /
- *      Messages / KakaoTalk / Twitter / etc. — and we do nothing
- *      further. Successful share returns `kind: "shared"`.
- *      User-dismiss returns `kind: "cancelled"` (silent — no toast).
+ *   1. **`shareCard()`** — download (desktops + browsers that can't
+ *      file-share) or OS share sheet (touch-primary devices that pass
+ *      `navigator.canShare({ files })`). One button in the modal,
+ *      labelled "다운로드 / 공유". See the function docstring for the
+ *      touch-primary / desktop split.
  *
- *   2. Download fallback (**desktop browsers including macOS** + any
- *      environment that can't share files): trigger a PNG file
- *      download via `<a download>`, returning `kind: "downloaded"`.
- *      The user manually attaches it wherever they want. macOS
- *      Safari + Chrome both pass `canShare({ files })`, but their
- *      OS share sheet lacks a "save to Downloads" entry — viewers
- *      who tap "이미지 저장" expect a saved PNG, not a Mail / Messages
- *      / AirDrop sheet, so desktops are routed through download
- *      regardless of share-capability. The `(pointer: coarse)`
- *      media query is the gate (true on phone/tablet finger input,
- *      false on mouse/trackpad — including iPad with Magic Keyboard
- *      attached, which gets desktop-like UX anyway).
+ *   2. **`copyCardToClipboard()`** — `navigator.clipboard.write` with
+ *      a `ClipboardItem` carrying `image/png`. One button in the
+ *      modal, labelled "이미지 복사". The intended ergonomic is: skip
+ *      the "save → open gallery → attach" loop on community sites
+ *      (DCInside, Ruliweb, KakaoTalk) and let the user paste the
+ *      image straight into a post or chat with Ctrl+V / ⌘V.
  *
- * History note: the v0.10.x rewrite collapsed both paths into
- * download-only, because the original mobile branch was branded as
- * "Share to Twitter" and Twitter doesn't always surface in the OS
- * share sheet. This version reintroduces native share with a
- * different framing — it's the generic OS sheet, no app promised —
- * so the missing-Twitter case is no longer a broken contract; it's
- * just one fewer option in a list the user already understands.
+ * Both paths share the html2canvas → blob pipeline (`renderCardToBlob`
+ * below). `html2canvas` is dynamic-imported (~150KB) so the regular
+ * event-page bundle doesn't grow — only loaded when the user actually
+ * triggers one of these actions.
  *
- * `html2canvas` is dynamic-imported (~150KB lib) so the regular
- * event-page bundle doesn't grow — only loaded when the share button
- * is actually tapped.
+ * History note: the v0.10.x rewrite collapsed both share + download
+ * into download-only (the original mobile branch was branded "Share
+ * to Twitter" and the intent broke when Twitter stopped surfacing
+ * reliably). v0.10.2 reintroduced native share with a generic-sheet
+ * framing. v0.11.3 force-downloaded on desktop even when canShare
+ * succeeded, since macOS share sheets have no save-to-Downloads
+ * entry. v0.11.4 splits the modal into two buttons (download/share
+ * + clipboard-copy) so community-site posters can paste directly
+ * instead of going through a download intermediate.
  */
 
 export type ShareOutcome =
   | { kind: "downloaded" }
   | { kind: "shared" }
   | { kind: "cancelled" }
+  | { kind: "error"; message: string };
+
+export type CopyOutcome =
+  | { kind: "copied" }
+  /**
+   * Browser doesn't support image clipboard writes — `ClipboardItem`
+   * undefined or `navigator.clipboard.write` missing. Older Firefox,
+   * some embedded WebViews. Caller can surface a distinct "your
+   * browser doesn't support this" hint rather than the generic
+   * failure toast.
+   */
+  | { kind: "unsupported" }
+  /**
+   * User-gesture-required failure or permissions-policy denial. iOS
+   * Safari occasionally throws this if the async render outlives the
+   * click-handler tick (we mitigate via Promise<Blob> inside
+   * ClipboardItem). Firefox without explicit permission too. Caller
+   * surfaces the same "couldn't copy" toast as the catch-all error
+   * — the distinction is mostly for analytics.
+   */
+  | { kind: "denied" }
   | { kind: "error"; message: string };
 
 /**
@@ -81,7 +98,58 @@ export interface ShareCardOptions {
   };
 }
 
+export interface CopyCardOptions {
+  cardEl: HTMLElement;
+}
+
 const DEFAULT_FILENAME = "opensetlist-result.png";
+
+/**
+ * html2canvas → PNG Blob, shared by both `shareCard()` and
+ * `copyCardToClipboard()`. Rejects on any failure (html2canvas
+ * throws, toBlob yields null, toBlob exceeds the 10s timeout).
+ *
+ * Kept as a Promise-returning helper (not an async function) so a
+ * caller can pass the unresolved Promise directly into a
+ * `ClipboardItem` constructor — that's the spec-recommended pattern
+ * for preserving the user-gesture context through an async render
+ * on iOS Safari. See `copyCardToClipboard` below for the use site.
+ */
+function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
+  return (async () => {
+    // Dynamic import keeps html2canvas out of the main bundle.
+    // The package's default export is the function we want.
+    const mod = await import("html2canvas");
+    const html2canvas = mod.default;
+    const canvas = await html2canvas(cardEl, {
+      scale: 2, // ~1200px output for retina + Twitter quality
+      useCORS: true, // for any external images (member-color avatars)
+      backgroundColor: null, // preserve the card's own bg
+      logging: false,
+    });
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      }, TO_BLOB_TIMEOUT_MS);
+      canvas.toBlob((b) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(b);
+        }
+      }, "image/png");
+    });
+    if (!blob) {
+      throw new Error("canvas.toBlob returned null");
+    }
+    return blob;
+  })();
+}
 
 /**
  * Capture `cardEl` to a PNG, then either open the OS share sheet
@@ -96,43 +164,14 @@ export async function shareCard({
   filename = DEFAULT_FILENAME,
   share,
 }: ShareCardOptions): Promise<ShareOutcome> {
-  // Dynamic import keeps html2canvas out of the main bundle.
-  // The package's default export is the function we want.
-  let canvas: HTMLCanvasElement;
+  let blob: Blob;
   try {
-    const mod = await import("html2canvas");
-    const html2canvas = mod.default;
-    canvas = await html2canvas(cardEl, {
-      scale: 2, // ~1200px output for retina + Twitter quality
-      useCORS: true, // for any external images (member-color avatars)
-      backgroundColor: null, // preserve the card's own bg
-      logging: false,
-    });
+    blob = await renderCardToBlob(cardEl);
   } catch (e) {
     return {
       kind: "error",
-      message: e instanceof Error ? e.message : "html2canvas failed",
+      message: e instanceof Error ? e.message : "render failed",
     };
-  }
-
-  const blob = await new Promise<Blob | null>((resolve) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve(null);
-      }
-    }, TO_BLOB_TIMEOUT_MS);
-    canvas.toBlob((b) => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        resolve(b);
-      }
-    }, "image/png");
-  });
-  if (!blob) {
-    return { kind: "error", message: "canvas.toBlob returned null" };
   }
 
   // Native-share branch — the preferred path on **touch-primary**
@@ -140,7 +179,7 @@ export async function shareCard({
   // those that pass `canShare({ files })` (macOS Safari, macOS
   // Chrome 16.x+, Edge), the OS share sheet is platform-themed for
   // messaging/social-app handoff and notably lacks a "save to
-  // Downloads" entry — a viewer who taps "이미지 저장" on a MacBook
+  // Downloads" entry — a viewer who taps "다운로드 / 공유" on a MacBook
   // expecting a saved PNG ends up in a sheet with Mail / Messages /
   // AirDrop / Notes but no way to save the image. Operator-spotted
   // post-v0.11.1 on a MacBook. Gating with `(pointer: coarse)` is
@@ -204,6 +243,66 @@ export async function shareCard({
     return {
       kind: "error",
       message: e instanceof Error ? e.message : "download failed",
+    };
+  }
+}
+
+/**
+ * Capture `cardEl` to a PNG and write it to the system clipboard as
+ * `image/png`. The user can then paste it directly (Ctrl+V / ⌘V) into
+ * community-site post composers (DCInside, Ruliweb), messengers
+ * (KakaoTalk, Slack, Discord), or anywhere else that handles image
+ * paste — bypassing the "save → open gallery → attach" loop.
+ *
+ * **Critical iOS Safari pattern**: `ClipboardItem` is constructed with
+ * the **unresolved** `Promise<Blob>` from `renderCardToBlob`, NOT an
+ * awaited Blob. The spec requires this on iOS Safari so the user-
+ * gesture context (the click event) stays valid across the async
+ * html2canvas render. If we `await renderCardToBlob()` first and then
+ * pass the resolved Blob to `ClipboardItem`, iOS Safari throws a
+ * `NotAllowedError` because the gesture has expired by the time
+ * `clipboard.write` is invoked. The desktop browsers (Chrome / Edge /
+ * Safari) tolerate either ordering, so this pattern is the safe
+ * common shape.
+ *
+ * Capability-gated by the caller (the modal checks `window.ClipboardItem`
+ * + `navigator.clipboard.write` at mount time and hides the button on
+ * unsupported browsers). The `unsupported` outcome here is a defense
+ * for the edge case where the capability check passes but the call
+ * still fails synthetically (DevTools simulation, locked-down embedded
+ * WebViews).
+ */
+export async function copyCardToClipboard({
+  cardEl,
+}: CopyCardOptions): Promise<CopyOutcome> {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.clipboard?.write !== "function" ||
+    typeof ClipboardItem === "undefined"
+  ) {
+    return { kind: "unsupported" };
+  }
+
+  try {
+    // Pass the **unresolved** Promise<Blob> into ClipboardItem — see
+    // the docstring above for the iOS Safari user-gesture rationale.
+    // If renderCardToBlob rejects, the ClipboardItem promise rejects,
+    // and `clipboard.write` rejects — caught below.
+    const blobPromise = renderCardToBlob(cardEl);
+    const item = new ClipboardItem({ "image/png": blobPromise });
+    await navigator.clipboard.write([item]);
+    return { kind: "copied" };
+  } catch (e) {
+    // NotAllowedError = user-gesture expired OR permission-policy
+    // denied. Surface as `denied` so the modal can fire the GA4 event
+    // with a useful `reason` field; UX-wise it falls under the same
+    // "couldn't copy" toast as the catch-all error.
+    if (e instanceof DOMException && e.name === "NotAllowedError") {
+      return { kind: "denied" };
+    }
+    return {
+      kind: "error",
+      message: e instanceof Error ? e.message : "clipboard write failed",
     };
   }
 }

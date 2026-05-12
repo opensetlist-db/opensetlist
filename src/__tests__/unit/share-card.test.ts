@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { shareCard } from "@/lib/shareCard";
+import { shareCard, copyCardToClipboard } from "@/lib/shareCard";
 
 // Stub html2canvas via dynamic import. The helper does
 // `await import("html2canvas")` then calls `mod.default(el, opts)`.
@@ -248,6 +248,182 @@ describe("shareCard — error paths", () => {
     expect(outcome.kind).toBe("error");
     if (outcome.kind === "error") {
       expect(outcome.message).toBe("canvas.toBlob returned null");
+    }
+    spy.mockRestore();
+  });
+});
+
+/**
+ * Stub `navigator.clipboard` + `window.ClipboardItem` so the copy
+ * helper sees a fully-capable environment. The `ClipboardItem`
+ * constructor in jsdom is undefined by default, so we install a
+ * minimal class shim that just records what was constructed; the
+ * helper's only contract with ClipboardItem is "must be invokable
+ * with `new` and accept a Record<string, Promise<Blob>>". The
+ * `clipboard.write` mock returns a `vi.fn` so individual tests can
+ * override its resolution to assert success / NotAllowedError /
+ * arbitrary failure paths.
+ */
+function stubClipboardSupported(): { writeSpy: ReturnType<typeof vi.fn> } {
+  const writeSpy = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", {
+    clipboard: { write: writeSpy },
+  });
+  class ClipboardItemShim {
+    items: Record<string, Promise<Blob>>;
+    constructor(items: Record<string, Promise<Blob>>) {
+      this.items = items;
+    }
+  }
+  vi.stubGlobal("ClipboardItem", ClipboardItemShim);
+  return { writeSpy };
+}
+
+describe("copyCardToClipboard — clipboard write path", () => {
+  it("rasterizes the card, constructs a ClipboardItem with image/png Promise<Blob>, and calls clipboard.write → kind: copied", async () => {
+    const { writeSpy } = stubClipboardSupported();
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "copied" });
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    // ClipboardItem instance is the first (and only) array element
+    // passed to clipboard.write. Its `items` record should carry
+    // `image/png` → a Promise<Blob>. We verify the MIME key and
+    // resolve the promise to confirm the blob shape — not just
+    // existence — so a future refactor that swaps MIME or drops
+    // the promise wrapper fails loudly here.
+    const item = writeSpy.mock.calls[0][0][0];
+    expect(Object.keys(item.items)).toEqual(["image/png"]);
+    const blob = await item.items["image/png"];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe("image/png");
+  });
+
+  it("preserves the user-gesture context by passing the Promise<Blob> to ClipboardItem *before* awaiting the render", async () => {
+    // iOS Safari requires the ClipboardItem to receive an unresolved
+    // Promise so the user-gesture context (the click event) stays
+    // valid across the async html2canvas render. If a future refactor
+    // `await renderCardToBlob()` first and then passes the resolved
+    // Blob into ClipboardItem, iOS Safari throws NotAllowedError.
+    // This test pins the ordering: ClipboardItem must be constructed
+    // synchronously inside the click tick, BEFORE the blob resolves.
+    //
+    // We assert by spying on the ClipboardItem constructor and
+    // checking it was called with a `then`-able (Promise-like) for
+    // the image/png key, not a resolved Blob.
+    const { writeSpy: _writeSpy } = stubClipboardSupported();
+    void _writeSpy;
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "copied" });
+    // Inspect the value passed for image/png: it should be a
+    // thenable (Promise). A resolved Blob would still satisfy
+    // `instanceof Blob` but fail the `typeof .then === "function"`
+    // check — pinning on `.then` documents the API contract.
+    const item = _writeSpy.mock.calls[0][0][0];
+    const slot = item.items["image/png"];
+    expect(typeof slot?.then).toBe("function");
+  });
+
+  it("returns kind: unsupported when ClipboardItem is undefined (older Firefox / WebView)", async () => {
+    const writeSpy = vi.fn();
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy },
+    });
+    // No ClipboardItem stub → typeof ClipboardItem === 'undefined'.
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "unsupported" });
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns kind: unsupported when navigator.clipboard.write is missing", async () => {
+    // navigator.clipboard exists (some browsers expose readText only)
+    // but `write` does not. The capability check should reject.
+    vi.stubGlobal("navigator", { clipboard: {} });
+    class ClipboardItemShim {
+      constructor() {}
+    }
+    vi.stubGlobal("ClipboardItem", ClipboardItemShim);
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "unsupported" });
+  });
+
+  it("returns kind: denied when clipboard.write rejects with NotAllowedError (user-gesture expired / permission denied)", async () => {
+    const notAllowed = new DOMException("permission denied", "NotAllowedError");
+    const writeSpy = vi.fn().mockRejectedValue(notAllowed);
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy },
+    });
+    class ClipboardItemShim {
+      constructor() {}
+    }
+    vi.stubGlobal("ClipboardItem", ClipboardItemShim);
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "denied" });
+  });
+
+  it("returns kind: error when clipboard.write rejects with an arbitrary error", async () => {
+    const writeSpy = vi.fn().mockRejectedValue(new Error("clipboard busy"));
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy },
+    });
+    class ClipboardItemShim {
+      constructor() {}
+    }
+    vi.stubGlobal("ClipboardItem", ClipboardItemShim);
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome.kind).toBe("error");
+    if (outcome.kind === "error") {
+      expect(outcome.message).toBe("clipboard busy");
+    }
+  });
+
+  it("returns kind: error when html2canvas throws (render failure propagates through ClipboardItem promise)", async () => {
+    const html2canvasMod = await import("html2canvas");
+    const spy = vi.spyOn(html2canvasMod, "default").mockRejectedValueOnce(
+      new Error("canvas tainted"),
+    );
+    // Capability check must pass so the helper reaches the render
+    // step; the rejection happens inside the Promise<Blob> wrapper.
+    const writeSpy = vi.fn().mockImplementation(async (items) => {
+      // Real browsers await the Promise<Blob> inside ClipboardItem
+      // and re-throw on rejection. Simulate by awaiting here so the
+      // helper's catch path fires.
+      await items[0].items["image/png"];
+    });
+    vi.stubGlobal("navigator", {
+      clipboard: { write: writeSpy },
+    });
+    class ClipboardItemShim {
+      items: Record<string, Promise<Blob>>;
+      constructor(items: Record<string, Promise<Blob>>) {
+        this.items = items;
+      }
+    }
+    vi.stubGlobal("ClipboardItem", ClipboardItemShim);
+    const cardEl = document.createElement("div");
+
+    const outcome = await copyCardToClipboard({ cardEl });
+
+    expect(outcome.kind).toBe("error");
+    if (outcome.kind === "error") {
+      expect(outcome.message).toBe("canvas tainted");
     }
     spy.mockRestore();
   });
