@@ -31,6 +31,18 @@ import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
  */
 export type ShareCardMode = "prediction" | "live" | "final";
 
+/**
+ * "LIVE" badge red — intentionally theme-invariant so the captured
+ * PNG reads as a live indicator regardless of whether the user
+ * shared from the dark or light card theme. Tailwind red-600
+ * (#dc2626) matches the project's existing `colors.live` token but
+ * is duplicated here, not imported, so the share-card visual
+ * language stays decoupled from event-status palette decisions that
+ * might re-tone `colors.live` for accessibility or branding reasons
+ * later.
+ */
+const LIVE_BADGE_BG = "#dc2626";
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -470,7 +482,7 @@ function LiveBadge({ label }: { label: string }) {
         flexShrink: 0,
         padding: "4px 10px",
         borderRadius: 999,
-        background: "#dc2626",
+        background: LIVE_BADGE_BG,
         color: "white",
         fontSize: 11,
         fontWeight: 700,
