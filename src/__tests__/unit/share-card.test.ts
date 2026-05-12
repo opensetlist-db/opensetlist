@@ -68,11 +68,15 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
     stubTouchPrimary(true);
   });
 
-  it("calls navigator.share with the file when canShare({ files }) returns true, returns kind: shared", async () => {
+  it("calls navigator.share with the file on touch-primary devices, returns kind: shared", async () => {
+    // Post-iOS-feedback: the canShare({files}) gate was removed
+    // because iOS Safari was observed returning false from it even
+    // when navigator.share would succeed. The helper now attempts
+    // share unconditionally on touch-primary devices when
+    // navigator.share exists; the test only stubs `share` (no
+    // canShare) and asserts share is invoked with the right payload.
     const shareSpy = vi.fn().mockResolvedValue(undefined);
-    const canShareSpy = vi.fn().mockReturnValue(true);
     vi.stubGlobal("navigator", {
-      canShare: canShareSpy,
       share: shareSpy,
     });
     const cardEl = document.createElement("div");
@@ -83,9 +87,6 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
     });
 
     expect(outcome).toEqual({ kind: "shared" });
-    expect(canShareSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ files: expect.any(Array) }),
-    );
     expect(shareSpy).toHaveBeenCalledTimes(1);
     const payload = shareSpy.mock.calls[0][0];
     expect(payload.files).toHaveLength(1);

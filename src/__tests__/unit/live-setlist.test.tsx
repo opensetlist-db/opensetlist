@@ -84,6 +84,8 @@ function renderLiveSetlist({
       status={status}
       isWishPredictOpen={isWishPredictOpen}
       seriesName="Test Series"
+      eventTitle="Test Event"
+      dateLine="2026-05-23"
     />,
   );
 }

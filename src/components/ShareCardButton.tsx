@@ -14,7 +14,17 @@ import { colors } from "@/styles/tokens";
 
 interface Props {
   eventId: string;
+  /**
+   * Share-card header trio. See `<LiveSetlist>` for the per-field
+   * rationale. Pre-v0.11.5 only `seriesName` was threaded and the
+   * helper set `eventTitle = seriesName` as a placeholder — the
+   * captured PNG showed the series-name row twice and no actual
+   * event identifier. v0.11.5 plumbed `eventTitle` + `dateLine`
+   * through the SetlistSection → PredictedSetlist → here chain.
+   */
   seriesName: string;
+  eventTitle: string;
+  dateLine: string;
   locale: string;
   status: ResolvedEventStatus;
   /**
@@ -84,6 +94,8 @@ export function deriveShareCardMode(
 export function ShareCardButton({
   eventId,
   seriesName,
+  eventTitle,
+  dateLine,
   locale,
   status,
   actualSongs,
@@ -112,8 +124,11 @@ export function ShareCardButton({
 
   if (!visible) return null;
 
-  const eventTitle = seriesName; // page resolves the full title; reuse
-  const dateLine = ""; // TODO Stage C+: thread date+venue via props
+  // `eventTitle` + `dateLine` arrive as props from `<LiveEventLayout>`
+  // through the SetlistSection → PredictedSetlist chain (v0.11.5+).
+  // Pre-v0.11.5 these were synthesized in-place as `eventTitle =
+  // seriesName` + `dateLine = ""` placeholders — see the Props
+  // docstring for the iOS-feedback rationale.
   // Use the project's BASE_URL helper so preview / local / prod all
   // emit correct share URLs. BASE_URL pulls from
   // NEXT_PUBLIC_BASE_URL with a vercel.app fallback (see

@@ -149,17 +149,36 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               image after the show ends still knows it was captured
               mid-flight (the percentage in the banner is partial, not
               final). Pre-show prediction cards don't carry the pill —
-              there's no result to qualify. */}
+              there's no result to qualify.
+
+              v0.11.4 originally used `display: flex` here with a
+              `flex: 1` title block. Operator-spotted on the captured
+              PNG: the event title rendered noticeably wider than the
+              live browser preview, ignoring the flex constraint.
+              Cause: html2canvas doesn't reliably honor flexbox sizing
+              when capturing — flex children fall back to intrinsic
+              width rather than the computed share. Switched to
+              absolute positioning for the LIVE badge with explicit
+              `paddingRight` on the title block when present, so the
+              title's width is bounded by a paddingBox rather than a
+              flex computation. Renders identically in the live
+              preview (paddingRight = 80 reserves the badge's pixel
+              footprint) and the captured PNG (paddingRight is a
+              standard box-model property html2canvas honors). */}
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
+              position: "relative",
               marginBottom: 20,
+              paddingRight: isLiveMode ? 80 : 0,
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Series row: hidden entirely when seriesName is empty
+                so standalone events (no series) get a card with just
+                title + date instead of an empty caps-style row at the
+                top. v0.11.5 plumbed real seriesName values through;
+                pre-v0.11.5 the field was a placeholder duplicated
+                from the title. */}
+            {seriesName && (
               <div
                 style={{
                   fontSize: 11,
@@ -172,22 +191,35 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               >
                 {seriesName}
               </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: T.title,
-                  lineHeight: 1.3,
-                  marginBottom: 3,
-                }}
-              >
-                {eventTitle}
-              </div>
+            )}
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: T.title,
+                // Bumped from 1.3 → 1.5 to match the same html2canvas-
+                // glyph-clipping fix PR #305 applied to song-title
+                // rows. Tight line-heights collapse the line-box on
+                // capture and clip glyph extents; 1.5 reserves enough
+                // vertical room for Latin descenders + CJK glyph
+                // extents without making the title noticeably taller
+                // in the live browser preview.
+                lineHeight: 1.5,
+                marginBottom: 3,
+              }}
+            >
+              {eventTitle}
+            </div>
+            {dateLine && (
               <div style={{ fontSize: 12, color: T.date }}>
                 {dateLine}
               </div>
-            </div>
-            {isLiveMode && <LiveBadge label={t("liveBadge")} />}
+            )}
+            {isLiveMode && (
+              <div style={{ position: "absolute", top: 0, right: 0 }}>
+                <LiveBadge label={t("liveBadge")} />
+              </div>
+            )}
           </div>
 
           {isPredictionMode ? (

@@ -188,13 +188,24 @@ export async function shareCard({
   // or trackpad, and correctly false on an iPad with a Magic
   // Keyboard trackpad attached (which gets desktop-like UX anyway).
   //
-  // `canShare({ files })` stays as the secondary gate: even on a
-  // touch-primary device, file-share may not be supported (older
-  // Android Chrome, Firefox mobile pre-2024) — those still need the
-  // download fallback. AbortError = user dismissed the sheet → silent
-  // `cancelled`. Any other share failure (rare: file-too-large,
-  // permission denied) falls through to the download fallback so the
-  // user always ends up with the image.
+  // We deliberately **do NOT** gate on `navigator.canShare({ files })`
+  // here. v0.11.4 originally did, but operator-spotted on iOS: the
+  // share button was downloading instead of opening the share sheet.
+  // Investigated: iOS Safari has been observed returning `false` from
+  // `canShare({ files: [pngFile] })` in some configurations even
+  // though `navigator.share({ files: [...] })` would succeed when
+  // called. The capability check is unreliable on iOS specifically.
+  // Removing the gate means we always *attempt* share on touch-
+  // primary devices when `navigator.share` exists — if the platform
+  // can't actually share files, the call rejects with a non-abort
+  // error and we fall through to the download path. End result: iOS
+  // gets share (the expected behavior), Android Chrome without
+  // file-share still gracefully falls back to download. The only
+  // regression risk is one extra share-attempt-then-rejection cycle
+  // on platforms that can't share files but expose `navigator.share`
+  // — invisible to the user since the fallback fires immediately.
+  // AbortError = user dismissed the sheet → silent `cancelled`. Any
+  // other share failure falls through to download.
   const file = new File([blob], filename, { type: "image/png" });
   const isTouchPrimary =
     typeof window !== "undefined" &&
@@ -203,9 +214,7 @@ export async function shareCard({
   if (
     isTouchPrimary &&
     typeof navigator !== "undefined" &&
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    navigator.canShare({ files: [file] })
+    typeof navigator.share === "function"
   ) {
     try {
       const payload: ShareData = { files: [file] };

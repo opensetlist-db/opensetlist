@@ -510,8 +510,18 @@ export function ShareCardModal({
                 className={actionButtonClass}
                 style={actionButtonStyle}
               >
+                {/* Per-platform label: touch-primary devices route to
+                    `navigator.share` (OS share sheet), non-touch to a
+                    direct file download. v0.11.4 used a combined
+                    "다운로드 / 공유" label, which wrapped onto two lines
+                    on narrow iPhone viewports + misled users about the
+                    actual action. One word matches what actually
+                    happens on the device — and the icon already swaps
+                    for the same reason. */}
                 {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
-                <span>{t("saveImage")}</span>
+                <span>
+                  {isTouchPrimary ? t("shareImage") : t("downloadImage")}
+                </span>
               </button>
               {clipboardSupported && (
                 <button
