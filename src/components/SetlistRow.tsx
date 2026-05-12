@@ -197,9 +197,17 @@ export function SetlistRow({
       // would double-mount the stateful `<ReactionButtons>` and let
       // their optimistic-counts state diverge.
       //
-      // Mobile (default): 2-col grid `[64px_1fr]` (position cell is
-      // 52px visual to fit the new ✓+✕ dual buttons + 12px gap).
+      // Mobile (default): 2-col grid `[52px_1fr]` (position cell sized
+      // to fit the ✓+✕ dual-button content exactly — 22+8+22 = 52px).
       // Title spans col 2 row 1; reactions span col 2 row 2.
+      //
+      // Pre-v0.11.2 this was `[64px_1fr]` — 12px of slack between the
+      // position cell content and the gap. On a 390px iPhone the
+      // slack pushed the 4-reaction row past the available width and
+      // wrapped the 4th button onto a second line (operator caught
+      // post-v0.11.1 deploy). Tightening to 52px gives the reactions
+      // row those 12px back; confirmed-row numbers still fit cleanly
+      // (1–2 digit position right-aligned inside 52px).
       //
       // Desktop (≥ lg): pulls the column template from the shared
       // CSS var so `<SetlistColumnHeader>` and `<SetlistRow>` can't
@@ -207,7 +215,7 @@ export function SetlistRow({
       // reactions col 4 — single row. The desktop position column
       // also widened to 52px in `setlistLayout.ts` for the same
       // dual-button reason.
-      className="grid grid-cols-[64px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      className="grid grid-cols-[52px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
     >
       {/* Position slot — col 1, row 1. NumberSlot renders the right
           glyph for the row state: plain number for confirmed,
