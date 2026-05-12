@@ -565,14 +565,28 @@ model SetlistItemReaction {
   // Realtime R2 denormalization. Supabase Realtime's postgres_changes
   // filter only supports column-level filters on the changed table —
   // a JOIN through SetlistItem to Event is not expressible — so the
-  // realtime cutover requires eventId on this row directly. Nullable
-  // during the rollout window: post-deploy.sql backfills existing
-  // rows from setlistItem.eventId; the reactions POST handler
-  // populates new rows. A follow-up migration tightens this to NOT
-  // NULL once the backfill is verified everywhere. Conceptually
-  // immutable: SetlistItem.eventId never changes after creation,
-  // so this column tracks it 1:1 for the row's lifetime.
-  eventId       BigInt?
+  // realtime cutover requires eventId on this row directly.
+  //
+  // NOT NULL after v0.10.4's post-deploy.sql backfill (every existing
+  // row populated from setlistItem.eventId) AND the reactions POST
+  // handler populates eventId on every new INSERT (free join — pulled
+  // from the SetlistItem lookup that already runs to validate
+  // existence). Conceptually immutable: SetlistItem.eventId never
+  // changes after creation, so this column tracks it 1:1 for the
+  // row's lifetime.
+  //
+  // History footnote: this NOT NULL was first applied in dev via
+  // PR #320, then was supposed to ship to main twice — first via
+  // PR #327 (v0.10.5), then again via PR #329 (v0.11.0). Both merges
+  // silently dropped the change because git's three-way merge resolved
+  // the v0.10.4 revert (commit d0030cd, which had to revert #320 to
+  // ship the column nullable for safe initial rollout) as authoritative
+  // — main's revert "won" against release-branch diffs that derived
+  // from a merge base after #320 was already in shared history. This
+  // PR breaks that lineage by branching off main directly and
+  // re-applying as a fresh diff that git can't trace back to the
+  // revert.
+  eventId       BigInt
   reactionType  ReactionType
   createdAt     DateTime @default(now())
   // localStorage opensetlist_anon_id — nullable for legacy rows + clients
@@ -587,7 +601,7 @@ model SetlistItemReaction {
   // cascades from Event, and SetlistItemReaction cascades from
   // SetlistItem, so the chain takes care of cleanup. Adding a second
   // cascade path would risk Postgres "multiple cascade paths" errors.
-  event         Event?      @relation(fields: [eventId], references: [id])
+  event         Event       @relation(fields: [eventId], references: [id])
 
   @@index([setlistItemId, reactionType])
   // Realtime R2: GIN-style lookup for the channel-filter query path
