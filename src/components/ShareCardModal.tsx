@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useTranslations } from "next-intl";
 import {
   ShareCardPreview,
@@ -9,6 +15,7 @@ import {
 import {
   shareCard,
   copyCardToClipboard,
+  renderCardToBlob,
   type ShareOutcome,
   type CopyOutcome,
 } from "@/lib/shareCard";
@@ -57,6 +64,15 @@ function classifyShareCardFailure(
  * pattern in `src/lib/shareCard.ts` (`TO_BLOB_TIMEOUT_MS`).
  */
 const TOAST_DISMISS_MS = 3_000;
+
+/**
+ * Delay before kicking off the pre-rasterization on modal open /
+ * theme change. Gives the new theme a chance to actually paint into
+ * the DOM before html2canvas captures it. 100ms is a comfortable
+ * margin past a single animation frame (~16ms) without making the
+ * pre-rasterization feel laggy to a fast-tapping user.
+ */
+const PRE_RASTERIZE_DELAY_MS = 100;
 
 interface Props {
   open: boolean;
@@ -161,18 +177,67 @@ export function ShareCardModal({
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // Pre-rasterized PNG blob, refreshed on modal open + theme change.
+  // **Critical for iOS Safari Web Share**: navigator.share requires
+  // transient activation (user gesture) at the moment of the call,
+  // and `await renderCardToBlob()` is an async I/O hop through a
+  // macrotask which loses activation. If we await inside handleShare
+  // BEFORE calling navigator.share, iOS rejects with NotAllowedError
+  // → falls through to download → operator-reported "share button
+  // still downloads on iPhone". Pre-rasterizing here means the blob
+  // is already in memory when the user taps; handleShare can build
+  // a File and call navigator.share synchronously inside the click
+  // handler, preserving the user gesture and letting the OS share
+  // sheet actually appear.
+  const [preRasterizedBlob, setPreRasterizedBlob] = useState<Blob | null>(
+    null,
+  );
 
-  // Touch-primary detection drives the Button A icon swap (share-out
-  // box on iOS / Android / iPad-finger; downward-arrow on desktop).
+  // Drives Button A's icon + label. The HELPER (`shareCard.ts`)
+  // attempts share whenever `navigator.share` exists, regardless of
+  // canShare — that's the gate-free path that fixes the operator's
+  // iPhone where canShare returned false even when share would work.
+  // But operator-spotted: when share *does* throw (rarer, but
+  // possible on platforms with API stubs only), the label said
+  // "Share" while the captured behavior was Download. The label
+  // wasn't honest about what would happen.
+  //
+  // Fix: predict the action via `canShare({ files: probePng })` for
+  // the label, while keeping the helper gate-free. A probe File
+  // (empty payload, image/png MIME) answers the capability question
+  // at mount time without rasterizing.
+  //
+  // Resulting matrix:
+  //   canShare true, share resolves  → label "Share",  action Share ✓
+  //   canShare true, share throws    → label "Share",  action Download (rare; mismatch unavoidable)
+  //   canShare false, share resolves → label "Download", action Share (operator's iPhone if share works)
+  //   canShare false, share throws   → label "Download", action Download ✓
+  //
+  // The mismatch the operator complained about was case 2 — label
+  // says Share but action is Download. Pinning the label to
+  // canShare's prediction means cases 1 and 4 (the common ones)
+  // always match; cases 2 and 3 are edge cases where label/action
+  // diverge. Acceptable tradeoff.
+  //
   // Gated on `mounted` so SSR + first client commit render the same
-  // markup (both fall through to the download-arrow path until the
-  // post-mount re-render flips it). Without the gate, hydration
-  // mismatches between server (no matchMedia) and client.
-  const isTouchPrimary =
-    mounted &&
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches;
+  // markup (both fall through to the download label until the
+  // post-mount re-render flips it).
+  // useMemo over `[mounted]` so the probe-File construction +
+  // canShare call runs once after mount instead of every render.
+  // Early-return chain reads top-to-bottom — easier to scan than a
+  // short-circuit AND of four capability checks.
+  const isShareCapable = useMemo(() => {
+    if (!mounted) return false;
+    if (typeof navigator === "undefined") return false;
+    if (typeof navigator.canShare !== "function") return false;
+    if (typeof navigator.share !== "function") return false;
+    try {
+      const probeFile = new File([], "probe.png", { type: "image/png" });
+      return navigator.canShare({ files: [probeFile] });
+    } catch {
+      return false;
+    }
+  }, [mounted]);
 
   // Capability check for Button B. Same SSR-safety pattern as the
   // touch detection above — false on first render, may flip true
@@ -203,12 +268,118 @@ export function ShareCardModal({
     };
   }, [open]);
 
+  // Body-scroll lock while the modal is open. Without this, a swipe
+  // on the modal's dark backdrop on iOS Safari scrolls the underlying
+  // event detail page (the modal is `position: fixed` so it stays in
+  // place, but the document body underneath still scrolls). Operator-
+  // spotted post-v0.11.5: after tapping 이미지 복사, the user's
+  // gesture was scrolling the event page behind the modal even though
+  // the modal stayed visible. Saving + restoring the previous
+  // `overflow` value rather than blindly resetting to `""` so a
+  // future caller that set its own body overflow gets it back. The
+  // effect runs only when `open` flips — its cleanup restores the
+  // previous value at unmount or when `open` flips to false.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   // Auto-dismiss toast after 3s.
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), TOAST_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Render-time invalidation tracker for the pre-rasterized blob.
+  // The cached blob represents a snapshot of the card at a specific
+  // set of visual inputs; any change to those inputs invalidates
+  // the cache.
+  //
+  // Inputs that affect the captured PNG:
+  //   - `open` / `theme`: mode / palette
+  //   - `mode`: prediction vs live vs final layout
+  //   - `seriesName` / `eventTitle` / `dateLine`: header strings
+  //   - `actualSongs` / `predictions`: row contents (real-time push
+  //     during an ongoing event mutates `actualSongs`; user edits
+  //     in localStorage mutate `predictions`)
+  //   - `matched` / `total` / `percentage` / `predictedCount`:
+  //     score banner numerics
+  //
+  // For the array inputs the key encodes the id sequence so order
+  // changes invalidate too (drag-reorder a prediction → new key →
+  // re-rasterize). Cheap on every render: two `map().join()` over
+  // ~10–30 items.
+  //
+  // Uses the project's canonical prev-state pattern (see
+  // `useMounted.ts` docstring) — running `setPreRasterizedBlob(null)`
+  // directly in the effect body trips `react-hooks/set-state-in-
+  // effect`. The render-time check flips state only when the
+  // tracked key actually changes.
+  const rasterizationKey = [
+    open ? "open" : "closed",
+    theme,
+    mode,
+    seriesName,
+    eventTitle,
+    dateLine,
+    actualSongs.map((s) => s.id).join(","),
+    predictions.map((p) => p.songId).join(","),
+    matched,
+    total,
+    percentage,
+    predictedCount,
+  ].join("|");
+  const [prevRasterizationKey, setPrevRasterizationKey] = useState(
+    rasterizationKey,
+  );
+  if (prevRasterizationKey !== rasterizationKey) {
+    setPrevRasterizationKey(rasterizationKey);
+    setPreRasterizedBlob(null);
+  }
+
+  // Pre-rasterize the card to a PNG blob in the background. Re-runs
+  // whenever `rasterizationKey` changes — that key covers theme,
+  // mode, header strings, row contents, and score numerics, so any
+  // visible change to the card retriggers a fresh capture. 100ms
+  // delay lets the new render paint before html2canvas reads the
+  // DOM.
+  //
+  // The blob is the load-bearing input to the iOS Safari user-
+  // gesture fix: when handleShare runs, it consumes this state
+  // synchronously, skipping the async rasterization that would
+  // otherwise expire the click's transient activation.
+  //
+  // `rasterizationKey` is the sole effect dep — it encodes every
+  // input the function body cares about, so listing the underlying
+  // 12 props separately would duplicate the invariant. The exhaust-
+  // ive-deps suppression is justified by that contract.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const delay = setTimeout(() => {
+      if (cancelled || !cardRef.current) return;
+      renderCardToBlob(cardRef.current)
+        .then((blob) => {
+          if (!cancelled) setPreRasterizedBlob(blob);
+        })
+        .catch(() => {
+          // Render failure is non-fatal — the share/copy handlers
+          // fall back to on-demand rasterization (the v0.11.5 path)
+          // which will surface the error to the user via toast if
+          // the second attempt also fails.
+        });
+    }, PRE_RASTERIZE_DELAY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(delay);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rasterizationKey]);
 
   if (!open) return null;
 
@@ -234,6 +405,34 @@ export function ShareCardModal({
     }
   };
 
+  /**
+   * Move focus back to the close button after an async share/copy
+   * handler settles. Wrapped in `setTimeout(..., 0)` so the focus
+   * call runs on the next macrotask — AFTER React commits the
+   * `setBusy(false)` re-render and the close button's `disabled`
+   * attribute clears. React 18 batches state updates inside event
+   * handlers, so a synchronous `focus()` immediately after
+   * `setBusy(false)` lands on a still-disabled element (silent
+   * no-op).
+   *
+   * Why this is load-bearing: iOS Safari has been observed dropping
+   * focus to `document.body` when an async user-gesture-required
+   * API like `navigator.clipboard.write` or `navigator.share`
+   * completes — the busy-button disable/enable cycle compounds the
+   * blur. Pulling focus back into a known interactive inside the
+   * modal keeps the keyboard-nav context anchored in the dialog and
+   * resolves the "background page scrolls / modal buttons
+   * unresponsive" symptom.
+   *
+   * Optional chain covers the close-mid-async edge case where the
+   * modal unmounted between the await and the setTimeout callback.
+   */
+  const refocusCloseButton = (): void => {
+    setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 0);
+  };
+
   const handleShare = async () => {
     if (!cardRef.current || busy) return;
     setBusy(true);
@@ -253,6 +452,15 @@ export function ShareCardModal({
             : t("shareText", { matched, total, percentage });
       const outcome: ShareOutcome = await shareCard({
         cardEl: cardRef.current,
+        // Pass the pre-rasterized blob (may be null if rasterization
+        // hadn't completed before the user tapped — the helper falls
+        // back to on-demand rasterization in that case). The
+        // "preRasterizedBlob present" path is the iOS Safari user-
+        // gesture preservation route: navigator.share is called
+        // synchronously inside this click handler without an async
+        // hop through canvas.toBlob, so transient activation
+        // survives the call.
+        preRasterizedBlob: preRasterizedBlob ?? undefined,
         // Native-share payload — only consulted when the OS sheet
         // path is taken. Title for surfaces that show one (Twitter
         // compose, KakaoTalk caption); text for ones that compose a
@@ -313,6 +521,7 @@ export function ShareCardModal({
       setToast(t("imageErrorToast"));
     } finally {
       setBusy(false);
+      refocusCloseButton();
     }
   };
 
@@ -372,6 +581,7 @@ export function ShareCardModal({
       setToast(t("imageCopyFailedToast"));
     } finally {
       setBusy(false);
+      refocusCloseButton();
     }
   };
 
@@ -393,7 +603,18 @@ export function ShareCardModal({
         background: "rgba(0,0,0,0.5)",
         zIndex: zIndex.modal,
         display: "flex",
-        alignItems: "center",
+        // Operator-spotted on iPhone with a 14-row setlist: tall
+        // content (card preview + theme toggle + buttons) exceeded
+        // the visible viewport, and `alignItems: center` clipped the
+        // top of the modal (theme toggle disappeared above the
+        // scroll origin). Centering on a scrollable flex container
+        // anchors the content's vertical center to the container's
+        // center even when scrolled past — the overflow above is
+        // unreachable. Canonical fix: `flex-start` on the parent,
+        // `marginBlock: auto` on the child. Short content still
+        // centers (auto margins distribute the positive free space);
+        // tall content sits at the top with the rest scrollable.
+        alignItems: "flex-start",
         justifyContent: "center",
         padding: 16,
         overflowY: "auto",
@@ -401,7 +622,15 @@ export function ShareCardModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 632, width: "100%" }}
+        style={{
+          maxWidth: 632,
+          width: "100%",
+          // Auto top/bottom margins center short content vertically
+          // while letting tall content overflow naturally — see the
+          // parent's alignItems comment for the rationale.
+          marginTop: "auto",
+          marginBottom: "auto",
+        }}
       >
         {/* Header strip — title + close button. */}
         <div
@@ -510,8 +739,18 @@ export function ShareCardModal({
                 className={actionButtonClass}
                 style={actionButtonStyle}
               >
-                {isTouchPrimary ? <ShareIcon /> : <DownloadIcon />}
-                <span>{t("saveImage")}</span>
+                {/* Per-platform label: touch-primary devices route to
+                    `navigator.share` (OS share sheet), non-touch to a
+                    direct file download. v0.11.4 used a combined
+                    "다운로드 / 공유" label, which wrapped onto two lines
+                    on narrow iPhone viewports + misled users about the
+                    actual action. One word matches what actually
+                    happens on the device — and the icon already swaps
+                    for the same reason. */}
+                {isShareCapable ? <ShareIcon /> : <DownloadIcon />}
+                <span>
+                  {isShareCapable ? t("shareImage") : t("downloadImage")}
+                </span>
               </button>
               {clipboardSupported && (
                 <button

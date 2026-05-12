@@ -61,6 +61,8 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -85,6 +87,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -115,6 +119,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -140,6 +146,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -163,6 +171,8 @@ describe("SetlistSection", () => {
         status="completed"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -183,6 +193,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -219,6 +231,8 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -242,6 +256,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -269,6 +285,8 @@ describe("SetlistSection", () => {
         status="upcoming"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -294,6 +312,8 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -327,6 +347,8 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -351,6 +373,8 @@ describe("SetlistSection", () => {
         status="ongoing"
         startTime={null}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,

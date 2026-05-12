@@ -43,6 +43,52 @@ export type ShareCardMode = "prediction" | "live" | "final";
  */
 const LIVE_BADGE_BG = "#dc2626";
 
+/**
+ * Pixel footprint reserved on the right of the title block when the
+ * LIVE badge is rendered absolutely-positioned in the corner. Drives
+ * the `paddingRight` on the title container so long event titles
+ * truncate (via natural wrap) rather than running under the badge.
+ *
+ * Locked to the badge's actual rendered width: 6px pulse dot + 6px
+ * gap + ~28px "LIVE" text at 11px font + 10px+10px horizontal padding
+ * + 0.5px×2 inner spacing = ~60px badge content + ~12px gap from
+ * title block + ~8px right-side breathing room ≈ 80px. If the badge
+ * geometry changes (font size, padding, label text), revisit this
+ * constant in lockstep — coupling is explicit by design so a future
+ * tweak to the badge doesn't silently overlap the title.
+ */
+const LIVE_BADGE_RESERVED_PX = 80;
+
+/**
+ * Row-height floor for song-title rows in the captured PNG. iOS
+ * Safari's html2canvas pipeline collapses line-boxes on `overflow:
+ * hidden + whiteSpace: nowrap` spans more aggressively than desktop
+ * browsers do, clipping the bottom half of each title in the saved
+ * image. Forcing the row's `minHeight` to a known floor bypasses
+ * line-box computation entirely — the row physically owns enough
+ * vertical space to contain the rendered text regardless of how the
+ * capture pipeline interprets line-height.
+ *
+ * 28px = 1.8 × ~15px (room for 13px font + 2px descender headroom)
+ * + small slop for cross-browser font-metrics variance. Browsers
+ * fold this into the natural row height (no visible change in the
+ * live preview); only the captured PNG depends on the floor.
+ */
+const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
+
+/**
+ * Line-height multiplier for song-title spans, paired with the row
+ * `minHeight` floor above. PR #305 / v0.10.2 used 1.5 for desktop
+ * html2canvas; iOS Safari needs more headroom — 1.8 × 13px font ≈
+ * 24px line box, enough for Latin descenders + CJK glyph extents
+ * even when the capture pipeline shaves a few pixels.
+ *
+ * Belt-and-suspenders with `CAPTURE_ROW_MIN_HEIGHT_PX`. If a future
+ * browser quirk affects one of the two, the other should still keep
+ * the glyph inside the captured bounds.
+ */
+const CAPTURE_ROW_LINE_HEIGHT = 1.8;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -108,7 +154,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
   ) {
     const t = useTranslations("ShareCard");
     const T = shareCardColors[theme];
-    const isLight = theme === "light";
     const isPredictionMode = mode === "prediction";
     const isLiveMode = mode === "live";
 
@@ -124,12 +169,35 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           borderRadius: 20,
           overflow: "hidden",
           border: T.cardBorder,
-          fontFamily: "'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
+          // Latin-first fallback chain so ASCII characters (Latin
+          // letters, digits, spaces) render with the system Latin
+          // font's metrics — `system-ui` resolves to SF Pro on
+          // iOS/macOS, Segoe UI on Windows, Roboto on Android — and
+          // CJK characters fall through to Noto Sans JP / Pretendard
+          // / Noto Sans KR. The pre-v0.11.5 order put `Noto Sans JP`
+          // first which the live browser handled fine (modern CSS
+          // text-shaping uses per-script font selection), but
+          // html2canvas's capture pipeline on iOS Safari fell back
+          // wholesale to Hiragino for the whole run and rendered
+          // ASCII spaces at ideographic (full-width) metrics —
+          // operator-spotted: "Garden  Stage  /  兵庫  公演  Day .1"
+          // in the captured PNG vs tight "Garden Stage／兵庫公演 Day.1"
+          // in the live preview. Putting the Latin-resolving system
+          // font first makes the per-script selection more robust
+          // through the capture pipeline.
+          fontFamily:
+            "system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
           position: "relative",
         }}
       >
-        {/* Dark: radial gradient overlay; light: top accent bar. */}
-        {!isLight && T.radialOverlay && (
+        {/* Dark: radial gradient overlay covers the whole card.
+            Both themes: 4px top accent bar (light-blue → brand-blue
+            gradient). The accent bar is rendered with explicit
+            stacking (position: relative, z-index: 2) so it sits
+            above the dark theme's absolutely-positioned radial
+            overlay — without the stacking, the overlay would paint
+            over the top 4px and hide the accent. */}
+        {T.radialOverlay && (
           <div
             style={{
               position: "absolute",
@@ -139,8 +207,15 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
             }}
           />
         )}
-        {isLight && T.topBar && (
-          <div style={{ height: 4, background: T.topBar }} />
+        {T.topBar && (
+          <div
+            style={{
+              position: "relative",
+              zIndex: 2,
+              height: 4,
+              background: T.topBar,
+            }}
+          />
         )}
 
         <div style={{ position: "relative", zIndex: 1, padding: "26px 32px 22px" }}>
@@ -149,17 +224,37 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               image after the show ends still knows it was captured
               mid-flight (the percentage in the banner is partial, not
               final). Pre-show prediction cards don't carry the pill —
-              there's no result to qualify. */}
+              there's no result to qualify.
+
+              v0.11.4 originally used `display: flex` here with a
+              `flex: 1` title block. Operator-spotted on the captured
+              PNG: the event title rendered noticeably wider than the
+              live browser preview, ignoring the flex constraint.
+              Cause: html2canvas doesn't reliably honor flexbox sizing
+              when capturing — flex children fall back to intrinsic
+              width rather than the computed share. Switched to
+              absolute positioning for the LIVE badge with explicit
+              `paddingRight` on the title block when present, so the
+              title's width is bounded by a paddingBox rather than a
+              flex computation. Renders identically in the live
+              preview (paddingRight reserves the badge's pixel
+              footprint, see LIVE_BADGE_RESERVED_PX) and the captured
+              PNG (paddingRight is a standard box-model property
+              html2canvas honors). */}
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
+              position: "relative",
               marginBottom: 20,
+              paddingRight: isLiveMode ? LIVE_BADGE_RESERVED_PX : 0,
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Series row: hidden entirely when seriesName is empty
+                so standalone events (no series) get a card with just
+                title + date instead of an empty caps-style row at the
+                top. v0.11.5 plumbed real seriesName values through;
+                pre-v0.11.5 the field was a placeholder duplicated
+                from the title. */}
+            {seriesName && (
               <div
                 style={{
                   fontSize: 11,
@@ -172,22 +267,35 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               >
                 {seriesName}
               </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: T.title,
-                  lineHeight: 1.3,
-                  marginBottom: 3,
-                }}
-              >
-                {eventTitle}
-              </div>
+            )}
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: T.title,
+                // Bumped from 1.3 → 1.5 to match the same html2canvas-
+                // glyph-clipping fix PR #305 applied to song-title
+                // rows. Tight line-heights collapse the line-box on
+                // capture and clip glyph extents; 1.5 reserves enough
+                // vertical room for Latin descenders + CJK glyph
+                // extents without making the title noticeably taller
+                // in the live browser preview.
+                lineHeight: 1.5,
+                marginBottom: 3,
+              }}
+            >
+              {eventTitle}
+            </div>
+            {dateLine && (
               <div style={{ fontSize: 12, color: T.date }}>
                 {dateLine}
               </div>
-            </div>
-            {isLiveMode && <LiveBadge label={t("liveBadge")} />}
+            )}
+            {isLiveMode && (
+              <div style={{ position: "absolute", top: 0, right: 0 }}>
+                <LiveBadge label={t("liveBadge")} />
+              </div>
+            )}
           </div>
 
           {isPredictionMode ? (
@@ -540,6 +648,21 @@ function PredictionRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // Explicit minHeight so html2canvas can't compute a row taller
+        // than the line-box it ends up rendering. PR #305 / v0.11.4
+        // set `lineHeight: 1.5` on the title span; operator's iPhone
+        // capture still showed the bottom half of every song title
+        // clipped, which is too much to be just a descender issue —
+        // html2canvas on iOS Safari was rendering the line-box at
+        // roughly half the computed CSS height. Forcing a row floor
+        // of 28px (= 1.5 × 18px line-height for 13px font + 1px slop)
+        // means the row physically owns enough vertical space to
+        // contain the rendered text regardless of how html2canvas
+        // interprets line-height. Live preview reads the same since
+        // the natural row height with the same content is ~28px
+        // anyway — this is a no-op for the browser, a load-bearing
+        // floor for the capture.
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
       }}
     >
@@ -564,10 +687,12 @@ function PredictionRow({
       <span
         style={{
           fontSize: 13,
-          // See live/final rendering for the lineHeight rationale —
-          // explicit value prevents html2canvas glyph-clipping on
-          // capture (CR #305 fix).
-          lineHeight: 1.5,
+          // Bumped from 1.5 → 1.8 on top of the minHeight floor above.
+          // 1.5 was the v0.10.2 PR #305 fix on desktop; iOS Safari's
+          // html2canvas pipeline collapses the line-box more
+          // aggressively and needs more headroom to keep glyph
+          // descenders + the CJK glyph extent inside the row.
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
@@ -610,6 +735,12 @@ function ShareCardRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // See <PredictionRow> for the minHeight rationale — iOS
+        // Safari's html2canvas pipeline collapses the line-box,
+        // forcing a 28px row floor keeps the rendered text fully
+        // inside the captured bounds. No-op for the live browser
+        // preview where the natural row height matches.
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
         background: hit ? T.hitRowBg : "transparent",
       }}
@@ -643,17 +774,16 @@ function ShareCardRow({
       <span
         style={{
           fontSize: 13,
-          // Explicit lineHeight: html2canvas reads the line-box from the
-          // computed style, and a span with `overflow:hidden +
-          // whiteSpace:nowrap` plus the browser default line-height
-          // collapses to roughly the font size. The captured PNG then
-          // clips glyph ascenders/descenders (visible on Latin chars
-          // with descenders and on CJK glyphs that paint slightly
-          // above the cap height). 1.5 gives ~20px of vertical room
-          // per row — comfortably above any glyph's natural extent
-          // without making the row noticeably taller than the live
-          // browser preview.
-          lineHeight: 1.5,
+          // Bumped from 1.5 → 1.8 on top of the row's minHeight floor.
+          // PR #305 / v0.10.2 set 1.5 for desktop html2canvas which
+          // collapsed the line-box to ~the font-size and clipped glyph
+          // ascenders/descenders. iOS Safari's html2canvas pipeline
+          // collapses MORE aggressively (operator-spotted on the
+          // v0.11.5 capture — the bottom half of every song title
+          // was cut). 1.8 × 13px = ~24px per line box, plus the row
+          // minHeight: 28 floor, gives enough headroom for Latin
+          // descenders + CJK glyph extents on every browser tested.
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",

@@ -330,12 +330,29 @@ export function LiveEventLayout({
           locale={locale}
           status={effectiveStatus}
           isWishPredictOpen={isWishPredictOpen}
-          // `series.name` is already pre-resolved by the page via
-          // `displayNameWithFallback(...)` for the EventHeader card.
-          // Reuse for the share-card text payload; fall back to
-          // `title` (the localized event title) when the event
-          // doesn't belong to a series.
-          seriesName={series?.name ?? title}
+          // Share-card header pair. Pre-v0.11.5 only `seriesName` was
+          // threaded and `<ShareCardButton>` set `eventTitle =
+          // seriesName` as a placeholder — the captured PNG showed
+          // the series-name row twice (once as the series label, once
+          // as the title) with no actual event identifier. Now
+          // passing both pieces separately:
+          //
+          //   - `seriesName`: the localized series name when this event
+          //     belongs to one, else empty string (preview hides the
+          //     series row in that case).
+          //   - `eventTitle`: the event-specific identifier (e.g.
+          //     "Day 2 · Marine Messe Fukuoka"). Always present —
+          //     falls back to series-short / "unknown event" upstream
+          //     via `headerTitle`.
+          //
+          // `dateLine` stays as a forwarded prop on the chain (kept
+          // for forward-compatibility if the operator wants to surface
+          // date/venue/city on the captured PNG later) but is passed
+          // empty here per the operator's preference: the share card
+          // should show series + event title only, no date row.
+          seriesName={series?.name ?? ""}
+          eventTitle={title}
+          dateLine=""
         />
 
         <EventImpressions
