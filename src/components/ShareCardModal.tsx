@@ -65,6 +65,15 @@ function classifyShareCardFailure(
  */
 const TOAST_DISMISS_MS = 3_000;
 
+/**
+ * Delay before kicking off the pre-rasterization on modal open /
+ * theme change. Gives the new theme a chance to actually paint into
+ * the DOM before html2canvas captures it. 100ms is a comfortable
+ * margin past a single animation frame (~16ms) without making the
+ * pre-rasterization feel laggy to a fast-tapping user.
+ */
+const PRE_RASTERIZE_DELAY_MS = 100;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -329,7 +338,7 @@ export function ShareCardModal({
           // which will surface the error to the user via toast if
           // the second attempt also fails.
         });
-    }, 100);
+    }, PRE_RASTERIZE_DELAY_MS);
     return () => {
       cancelled = true;
       clearTimeout(delay);
@@ -358,6 +367,34 @@ export function ShareCardModal({
       e.preventDefault();
       handleClose();
     }
+  };
+
+  /**
+   * Move focus back to the close button after an async share/copy
+   * handler settles. Wrapped in `setTimeout(..., 0)` so the focus
+   * call runs on the next macrotask — AFTER React commits the
+   * `setBusy(false)` re-render and the close button's `disabled`
+   * attribute clears. React 18 batches state updates inside event
+   * handlers, so a synchronous `focus()` immediately after
+   * `setBusy(false)` lands on a still-disabled element (silent
+   * no-op).
+   *
+   * Why this is load-bearing: iOS Safari has been observed dropping
+   * focus to `document.body` when an async user-gesture-required
+   * API like `navigator.clipboard.write` or `navigator.share`
+   * completes — the busy-button disable/enable cycle compounds the
+   * blur. Pulling focus back into a known interactive inside the
+   * modal keeps the keyboard-nav context anchored in the dialog and
+   * resolves the "background page scrolls / modal buttons
+   * unresponsive" symptom.
+   *
+   * Optional chain covers the close-mid-async edge case where the
+   * modal unmounted between the await and the setTimeout callback.
+   */
+  const refocusCloseButton = (): void => {
+    setTimeout(() => {
+      closeButtonRef.current?.focus();
+    }, 0);
   };
 
   const handleShare = async () => {
@@ -448,35 +485,7 @@ export function ShareCardModal({
       setToast(t("imageErrorToast"));
     } finally {
       setBusy(false);
-      // Re-focus the close button after the async handler settles.
-      // iOS Safari has been observed dropping focus to `document.body`
-      // (which then routes scroll / interaction to the underlying
-      // event detail page) when an async user-gesture-required API
-      // like `navigator.clipboard.write` completes — the busy-button
-      // disable/enable cycle compounds the blur. Pulling focus back
-      // into a known interactive inside the modal keeps the
-      // keyboard-nav context anchored in the dialog and lets the
-      // operator-reported "background page scrolls / modal buttons
-      // unresponsive" symptom resolve naturally.
-      //
-      // **setTimeout(0)** matters here. React 18 batches state
-      // updates inside event handlers — the `setBusy(false)` above
-      // queues a re-render that hasn't flushed yet at the point of
-      // a synchronous `focus()` call. The close button is rendered
-      // as `disabled={busy}`, so until React flushes the new state
-      // the DOM element still carries `disabled` and `focus()` is a
-      // silent no-op. Deferring to the next macrotask (`setTimeout(...,
-      // 0)`) lets React commit the re-render first, then focus()
-      // targets an enabled button. Operator-spotted post-v0.11.5:
-      // synchronous focus() worked for the Share button (the native
-      // share sheet captures + restores focus automatically) but
-      // not for Copy (no native UI in the way, no automatic
-      // restoration). Optional chain covers the close-mid-async edge
-      // case where the modal unmounted between the await and the
-      // setTimeout callback.
-      setTimeout(() => {
-        closeButtonRef.current?.focus();
-      }, 0);
+      refocusCloseButton();
     }
   };
 
@@ -536,35 +545,7 @@ export function ShareCardModal({
       setToast(t("imageCopyFailedToast"));
     } finally {
       setBusy(false);
-      // Re-focus the close button after the async handler settles.
-      // iOS Safari has been observed dropping focus to `document.body`
-      // (which then routes scroll / interaction to the underlying
-      // event detail page) when an async user-gesture-required API
-      // like `navigator.clipboard.write` completes — the busy-button
-      // disable/enable cycle compounds the blur. Pulling focus back
-      // into a known interactive inside the modal keeps the
-      // keyboard-nav context anchored in the dialog and lets the
-      // operator-reported "background page scrolls / modal buttons
-      // unresponsive" symptom resolve naturally.
-      //
-      // **setTimeout(0)** matters here. React 18 batches state
-      // updates inside event handlers — the `setBusy(false)` above
-      // queues a re-render that hasn't flushed yet at the point of
-      // a synchronous `focus()` call. The close button is rendered
-      // as `disabled={busy}`, so until React flushes the new state
-      // the DOM element still carries `disabled` and `focus()` is a
-      // silent no-op. Deferring to the next macrotask (`setTimeout(...,
-      // 0)`) lets React commit the re-render first, then focus()
-      // targets an enabled button. Operator-spotted post-v0.11.5:
-      // synchronous focus() worked for the Share button (the native
-      // share sheet captures + restores focus automatically) but
-      // not for Copy (no native UI in the way, no automatic
-      // restoration). Optional chain covers the close-mid-async edge
-      // case where the modal unmounted between the await and the
-      // setTimeout callback.
-      setTimeout(() => {
-        closeButtonRef.current?.focus();
-      }, 0);
+      refocusCloseButton();
     }
   };
 
