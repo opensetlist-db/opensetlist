@@ -203,6 +203,26 @@ export function ShareCardModal({
     };
   }, [open]);
 
+  // Body-scroll lock while the modal is open. Without this, a swipe
+  // on the modal's dark backdrop on iOS Safari scrolls the underlying
+  // event detail page (the modal is `position: fixed` so it stays in
+  // place, but the document body underneath still scrolls). Operator-
+  // spotted post-v0.11.5: after tapping 이미지 복사, the user's
+  // gesture was scrolling the event page behind the modal even though
+  // the modal stayed visible. Saving + restoring the previous
+  // `overflow` value rather than blindly resetting to `""` so a
+  // future caller that set its own body overflow gets it back. The
+  // effect runs only when `open` flips — its cleanup restores the
+  // previous value at unmount or when `open` flips to false.
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   // Auto-dismiss toast after 3s.
   useEffect(() => {
     if (!toast) return;
@@ -313,6 +333,19 @@ export function ShareCardModal({
       setToast(t("imageErrorToast"));
     } finally {
       setBusy(false);
+      // Re-focus the close button after the async handler settles.
+      // iOS Safari has been observed dropping focus to `document.body`
+      // (which then routes scroll / interaction to the underlying
+      // event detail page) when an async user-gesture-required API
+      // like `navigator.clipboard.write` completes — the busy-button
+      // disable/enable cycle compounds the blur. Pulling focus back
+      // into a known interactive inside the modal keeps the
+      // keyboard-nav context anchored in the dialog and lets the
+      // operator-reported "background page scrolls / modal buttons
+      // unresponsive" symptom resolve naturally. Optional chain
+      // covers the close-mid-async edge case where the modal
+      // unmounted between the await and this line.
+      closeButtonRef.current?.focus();
     }
   };
 
@@ -372,6 +405,19 @@ export function ShareCardModal({
       setToast(t("imageCopyFailedToast"));
     } finally {
       setBusy(false);
+      // Re-focus the close button after the async handler settles.
+      // iOS Safari has been observed dropping focus to `document.body`
+      // (which then routes scroll / interaction to the underlying
+      // event detail page) when an async user-gesture-required API
+      // like `navigator.clipboard.write` completes — the busy-button
+      // disable/enable cycle compounds the blur. Pulling focus back
+      // into a known interactive inside the modal keeps the
+      // keyboard-nav context anchored in the dialog and lets the
+      // operator-reported "background page scrolls / modal buttons
+      // unresponsive" symptom resolve naturally. Optional chain
+      // covers the close-mid-async edge case where the modal
+      // unmounted between the await and this line.
+      closeButtonRef.current?.focus();
     }
   };
 
