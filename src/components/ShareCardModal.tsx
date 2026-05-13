@@ -307,8 +307,8 @@ export function ShareCardModal({
   //   - `actualSongs` / `predictions`: row contents (real-time push
   //     during an ongoing event mutates `actualSongs`; user edits
   //     in localStorage mutate `predictions`)
-  //   - `matched` / `total` / `percentage` / `predictedCount`:
-  //     score banner numerics
+  //   - `matched` / `total` / `percentage`: score banner numerics
+  //     (`predictedCount` is redundant with `predictions.length`)
   //
   // For the array inputs the key encodes the id sequence so order
   // changes invalidate too (drag-reorder a prediction → new key →
@@ -332,7 +332,10 @@ export function ShareCardModal({
     matched,
     total,
     percentage,
-    predictedCount,
+    // predictedCount intentionally omitted — it's `predictions.length`
+    // by construction, and the predictions array is already keyed
+    // by id sequence above. Adding it as a separate key field would
+    // be redundant.
   ].join("|");
   const [prevRasterizationKey, setPrevRasterizationKey] = useState(
     rasterizationKey,
@@ -698,7 +701,6 @@ export function ShareCardModal({
             matched={matched}
             total={total}
             percentage={percentage}
-            predictedCount={predictedCount}
             locale={locale}
           />
         </div>

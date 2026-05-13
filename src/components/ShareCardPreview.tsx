@@ -89,6 +89,18 @@ const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
  */
 const CAPTURE_ROW_LINE_HEIGHT = 1.8;
 
+/**
+ * Side length of the checkbox-style hit indicator that sits before
+ * the position number on every song row. Must stay in lockstep
+ * across all three row variants — `ShareCardRow`'s filled-checkbox
+ * (hit), `ShareCardRow`'s outline-only box (miss), and
+ * `PredictionRow`'s transparent spacer — so the rank column's left
+ * edge lands at the same x in every captured PNG regardless of
+ * mode. 14px is the smallest size that keeps the ✓ glyph legible at
+ * scale=2 capture quality.
+ */
+const INDICATOR_SIZE_PX = 14;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -116,7 +128,6 @@ interface Props {
   matched: number;
   total: number;
   percentage: number;
-  predictedCount: number;
   /** Display locale (drives `displayOriginalTitle`). */
   locale: string;
 }
@@ -147,7 +158,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       matched,
       total,
       percentage,
-      predictedCount,
       locale,
     },
     ref,
@@ -318,8 +328,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               T={T}
               labels={{
                 scoreLabel: t("scoreLabel"),
-                scoreMatchedOf: t("scoreMatchedOf", { matched, total }),
-                scorePredicted: t("scorePredicted", { count: predictedCount }),
                 encore: t("encore"),
               }}
             />
@@ -451,8 +459,6 @@ function ActualResultBody({
   T: typeof shareCardColors.dark;
   labels: {
     scoreLabel: string;
-    scoreMatchedOf: string;
-    scorePredicted: string;
     encore: string;
   };
 }) {
@@ -508,21 +514,21 @@ function ActualResultBody({
               %
             </span>
           </div>
-          <div style={{ fontSize: 12, color: T.scoreSub, marginTop: 3 }}>
-            {labels.scoreMatchedOf}
-          </div>
+          {/* "X of Y songs hit" subline removed in v0.11.6 — the big
+              fraction in the right column already encodes that count,
+              and the captured card reads tighter without the
+              redundant phrasing under the percentage. */}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: T.scorePred }}>
-            {labels.scorePredicted}
-          </div>
+          {/* "X predicted" caption removed in v0.11.6 alongside the
+              "X of Y hit" subline — the big M/T fraction is the only
+              right-column element now. */}
           <div
             style={{
               fontSize: 24,
               fontWeight: 700,
               color: T.scoreFrac,
               lineHeight: 1,
-              marginTop: 4,
             }}
           >
             {matched} / {total}
@@ -666,6 +672,17 @@ function PredictionRow({
         borderRadius: 5,
       }}
     >
+      {/* 14px spacer placed BEFORE the rank, mirroring the live/final
+          mode's filled-checkbox / empty-box that occupies the same
+          slot. Pre-show there's nothing to compare against — every
+          prediction is just a prediction, no match status to show —
+          so a transparent spacer keeps the title's horizontal
+          position aligned with the post-show capture of the same
+          event. Without it (or with a 5px spacer matching the
+          pre-v0.11.6 hit-dot width), titles would shift between
+          modes and the "this is the same surface" mental model
+          would break. */}
+      <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 11,
@@ -678,12 +695,6 @@ function PredictionRow({
       >
         {rank}
       </span>
-      {/* Spacer to keep predictions visually aligned with live/final
-          rows (which carry a 5px hit-dot here). Without it the
-          prediction title would shift 15px left vs the same event
-          rendered post-show, and the user's mental model of "this
-          is the same surface" would be undermined. */}
-      <span style={{ width: 5, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 13,
@@ -745,6 +756,47 @@ function ShareCardRow({
         background: hit ? T.hitRowBg : "transparent",
       }}
     >
+      {/* Checkbox-style hit indicator placed BEFORE the position
+          number (operator preference) so the matched/unmatched
+          signal is the first thing a viewer's eye lands on as the
+          list reads top-to-bottom. Filled box + white ✓ for hit
+          rows; same-size outline-only box for miss rows so titles
+          stay vertically aligned across the captured PNG. Pre-
+          v0.11.6 used a 5px dot on hit + a 5px spacer on miss; the
+          dot's vertical centering was inconsistent at small sizes
+          and the size-asymmetry between dot/spacer let titles
+          drift by ~half a pixel. */}
+      {hit ? (
+        <span
+          style={{
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
+            borderRadius: 3,
+            background: T.hitDot,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            color: "white",
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: 1,
+          }}
+        >
+          ✓
+        </span>
+      ) : (
+        <span
+          style={{
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
+            borderRadius: 3,
+            border: `1.5px solid ${T.missColor}`,
+            boxSizing: "border-box",
+            flexShrink: 0,
+          }}
+        />
+      )}
       <span
         style={{
           fontSize: 11,
@@ -757,20 +809,6 @@ function ShareCardRow({
       >
         {rank}
       </span>
-      {hit ? (
-        <span
-          style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: T.hitDot,
-            boxShadow: T.hitDotGlow,
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <span style={{ width: 5, flexShrink: 0 }} />
-      )}
       <span
         style={{
           fontSize: 13,

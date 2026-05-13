@@ -738,6 +738,14 @@ export default async function EventPage({ params }: Props) {
         title={headerTitle}
         venue={venue}
         city={city}
+        // Short variants — consumed by LiveEventLayout for the share
+        // card header (v0.11.6 preference: prefer short over full for
+        // the captured PNG; full names overflow on long series).
+        // Other surfaces (EventHeader, breadcrumb) keep using
+        // headerTitle / seriesFullName which already encode the
+        // longer or short-with-fallback variant they want.
+        seriesShortName={seriesShortName}
+        eventShortName={eventShortName}
         initialImpressions={impressions}
         initialImpressionsNextCursor={impressionsNextCursor}
         initialImpressionsTotalCount={impressionsTotalCount}
