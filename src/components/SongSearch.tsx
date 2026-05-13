@@ -28,6 +28,16 @@ import { colors, zIndex } from "@/styles/tokens";
 // when the caller opts into `variantPicker` / `allowCreate`. v1 callers
 // (wishlist / prediction / admin SetlistBuilder) keep their existing
 // 3-key shape with no changes.
+//
+// IMPORTANT — no hardcoded language fallbacks. If a v2-opting caller
+// omits one of these strings, the component renders the row empty
+// rather than fall back to a Korean default. CLAUDE.md requires
+// user-facing surfaces to be strictly i18n-keyed, and a "Korean leak"
+// for a ja/en caller that forgets a key would silently violate that
+// rule. Empty UI is a visible bug; a Korean leak is invisible to a
+// Korean-reading reviewer. Consumers using `useTranslations("SongSearch")`
+// get every key from the locale's messages file, so the empty-string
+// branch only fires for misconfigured callers.
 export interface SongSearchTexts {
   placeholder: string;
   loading: string;
@@ -619,12 +629,11 @@ export function SongSearch({
   // and uses `texts.variantPickerOriginalLabel` directly.
   function resolveVariantLabel(v: SongVariant): string {
     const localized = v.translations.find((t) => t.locale === locale);
-    return (
-      localized?.variantLabel ||
-      v.variantLabel ||
-      texts.variantPickerOriginalLabel ||
-      "원곡"
-    );
+    // No hardcoded language fallback — see the SongSearchTexts comment.
+    // Empty string would be a data bug (variants are required to have a
+    // label by domain rules); falling back to a Korean "원곡" would
+    // silently leak Korean into a ja/en surface, which is worse.
+    return localized?.variantLabel || v.variantLabel || "";
   }
 
   // Future-slot rows are intentionally non-interactive at 1C — they
@@ -825,7 +834,7 @@ export function SongSearch({
                 : "w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 border-b border-gray-100"
             }
           >
-            {texts.variantPickerBack ?? "← 다른 곡 선택"}
+            {texts.variantPickerBack ?? ""}
           </button>
           {/* Stage-2 header: the picked base's title. Decorative — the
               picker's job is to disambiguate WHICH version of this
@@ -845,7 +854,7 @@ export function SongSearch({
                   : "text-xs uppercase tracking-wide text-gray-500"
               }
             >
-              {texts.variantPickerTitle ?? "어떤 버전인가요?"}
+              {texts.variantPickerTitle ?? ""}
             </div>
             <div
               className={
@@ -876,7 +885,7 @@ export function SongSearch({
             const isActive = index === activeIndex;
             const isOriginal = v === undefined;
             const label = isOriginal
-              ? texts.variantPickerOriginalLabel ?? "원곡"
+              ? texts.variantPickerOriginalLabel ?? ""
               : resolveVariantLabel(v);
             return (
               <button
