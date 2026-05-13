@@ -791,19 +791,14 @@ function ShareCardRow({
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            // Shift the box up by 1px so it visually aligns with the
-            // title text's optical center. With `lineHeight: 1.8` on
-            // the title span, the text's line-box is ~23px tall but
-            // the visible glyph sits in the top ~70% of it (leading
-            // distribution puts more empty space below the baseline
-            // than above the cap-height). The box's physical center
-            // therefore appears slightly BELOW the title's optical
-            // center when flex-centered. `position: relative; top:
-            // -1px` is the standard pixel-hack — costs nothing in
-            // layout (relative-positioned children don't shift
-            // siblings) and gives a deterministic 1px upward nudge.
-            position: "relative",
-            top: -1,
+            // Box stays at flex-center (no positional shift). The
+            // generous CAPTURE_ROW_LINE_HEIGHT (2.2) makes the row
+            // tall enough that the title's flex-centered cap-middle
+            // and the box's geometric center land within ~1.4px of
+            // each other — close enough to read as aligned without
+            // requiring a `position: relative; top: -n` nudge that
+            // would couple the box's position to the line-height in
+            // ways that drift as either is retuned.
           }}
         >
           {/* Inline SVG check mark instead of the U+2713 text glyph.
@@ -839,13 +834,12 @@ function ShareCardRow({
             border: `1.5px solid ${T.missColor}`,
             boxSizing: "border-box",
             flexShrink: 0,
-            // Same 1px upward shift as the filled-hit box above — see
-            // the comment there for the title-line-box-vs-glyph-
-            // center rationale. Keeping both variants in lockstep
-            // means hit + miss rows align identically with the
-            // title text.
-            position: "relative",
-            top: -1,
+            // Matches the filled-hit box above — both variants rely
+            // on the row's flex-centering + the generous line-height
+            // to land aligned with the title text without a manual
+            // shift. Keeping hit + miss in lockstep means rows stack
+            // with identical vertical positioning regardless of
+            // match status.
           }}
         />
       )}
