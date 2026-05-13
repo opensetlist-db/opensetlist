@@ -279,15 +279,16 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                   textTransform: "uppercase",
                   marginBottom: 4,
                   // Pull the series caption up so its visible cap-top
-                  // sits closer to the card's top padding edge.
-                  // Default `line-height: ~1.2` on 11px text leaves
-                  // ~1.1px of leading above the em-box plus the
-                  // Segoe-UI ascender offset within, putting the
-                  // visible glyph ~3.6px below the line-box top.
-                  // -3 closes that gap without touching the card-
-                  // level padding (kept at 26px to preserve outer
-                  // breathing room).
-                  marginTop: -3,
+                  // sits closer to the card's top padding edge. The
+                  // captured Preview showed the rendered font's
+                  // empty leading above the cap-top is closer to
+                  // ~7px than the ~3.6px Segoe-UI math suggested —
+                  // the system-ui fallback chain resolves to a
+                  // font with an even taller ascender in this
+                  // pipeline. -7 closes that gap without touching
+                  // the card-level padding (kept at 26px to preserve
+                  // outer breathing room).
+                  marginTop: -7,
                 }}
               >
                 {seriesName}
@@ -307,19 +308,18 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 // in the live browser preview.
                 lineHeight: 1.5,
                 marginBottom: 3,
-                // Same Segoe-UI-ascender-compensation pattern as the
-                // series caption + score-banner percentage. With
-                // `lineHeight: 1.5` × 18px font = 27px line-box, the
-                // visible cap-top sits ~8.6px below the line-box top
-                // (4.5 of half-leading + ~4 from the font's natural
-                // ascender offset). Without this pull-up the gap
-                // between the series caption baseline and the title
-                // cap-top read as ~14px of empty space on the
-                // captured card — visually disconnecting the two
-                // lines instead of reading as one header block. -6
-                // tightens the gap to ~8px, still legible separation
-                // without the visual disconnection.
-                marginTop: -6,
+                // Same ascender-compensation pattern as the series
+                // caption + score-banner percentage. With
+                // `lineHeight: 1.5` × 18px font = 27px line-box,
+                // the visible cap-top sits well below the line-box
+                // top because of half-leading + the font's natural
+                // ascender offset. The captured Preview showed the
+                // gap between the series baseline and the title
+                // cap-top reading as much larger than the math
+                // predicted — empirically -12 lines the title
+                // cap-top up with the eye's expected position
+                // relative to the series caption above.
+                marginTop: -12,
               }}
             >
               {eventTitle}
@@ -531,7 +531,7 @@ function ActualResultBody({
               // headroom above and almost none below. Pulling the
               // line up by 6px restores roughly symmetric breathing
               // room on the captured card.
-              marginTop: -6,
+              marginTop: -12,
             }}
           >
             <span
@@ -578,7 +578,7 @@ function ActualResultBody({
               // vs ~8px). -3 brings the visible fraction up to a
               // symmetric position relative to the banner centre,
               // keeping left + right columns optically balanced.
-              marginTop: -3,
+              marginTop: -7,
             }}
           >
             {matched} / {total}
@@ -653,7 +653,7 @@ function LiveBadge({ label }: { label: string }) {
         // baseline offset; padding 3px top / 5px bottom shifts
         // the line-box up 1px so the visible "LIVE" cap-middle
         // sits at the badge's vertical center.
-        padding: "3px 10px 5px",
+        padding: "1px 10px 7px",
         borderRadius: 999,
         background: LIVE_BADGE_BG,
         color: "white",
@@ -725,7 +725,7 @@ function PredictionRow({
         // below. Padding 4px top / 6px bottom shifts the line-box
         // up 1px, dragging the cap-middle to within ~0.1px of the
         // row background's vertical center.
-        padding: "4px 8px 6px",
+        padding: "2px 8px 8px",
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -839,7 +839,7 @@ function ShareCardRow({
         // below. Padding 4px top / 6px bottom shifts the line-box
         // up 1px, dragging the cap-middle to within ~0.1px of the
         // row background's vertical center.
-        padding: "4px 8px 6px",
+        padding: "2px 8px 8px",
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
