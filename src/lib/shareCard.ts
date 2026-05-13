@@ -122,6 +122,73 @@ export interface CopyCardOptions {
 const DEFAULT_FILENAME = "opensetlist-result.png";
 
 /**
+ * Vertical-centering shifts applied ONLY to the cloned DOM passed
+ * to html2canvas. The modal preview keeps the browser's spec-
+ * correct rendering; the captured PNG gets these compensating
+ * shifts so visible text lines up with its surrounding background
+ * (row bright-fill, LIVE pill, score banner).
+ *
+ * The amounts are empirical, iterated against operator iPhone +
+ * Windows desktop captures during PR #356. Negative `top` lifts
+ * the element up; positive lifts down. Adjust here if a new
+ * platform/font combination shifts the apparent baseline.
+ */
+export const CAPTURE_SHIFT_ATTR = "data-capture-shift";
+
+const CAPTURE_SHIFTS = {
+  // Header block
+  "series-caption": -7,
+  "event-title": -12,
+  // Score banner
+  "score-percent": -12,
+  "score-fraction": -7,
+  // Song rows — title + number ride the same shift so they stay
+  // optically in lockstep; the checkbox indicator stays flex-
+  // centered (no entry here) so it lands at the row background
+  // center rather than the visible-glyph center.
+  "row-title": -5,
+  "row-number": -5,
+  // LIVE pill. The label rides -8 to lift the visible cap-middle
+  // onto the badge's vertical center (same Segoe-UI-ascender
+  // pattern as the row title). The dot doesn't carry a tall
+  // ascender of its own, but in capture it ends up co-aligned
+  // with the label when it shares the same shift — pulling it
+  // down (the previous +6 tuning) over-shot, floating the dot
+  // below the LIVE cap-middle. -8 matches the label so the dot
+  // sits next to the visible "LIVE" text.
+  "live-badge-dot": -1,
+  "live-badge-label": -8,
+} as const;
+
+/**
+ * The string-literal union of valid `data-capture-shift` values.
+ * Importing this in `ShareCardPreview.tsx` lets the compiler catch
+ * a typo at the JSX site — without it the attribute and key strings
+ * could drift independently and a misspelled key would silently
+ * drop the shift on capture.
+ */
+export type CaptureShiftKey = keyof typeof CAPTURE_SHIFTS;
+
+function applyCaptureShifts(clonedRoot: HTMLElement): void {
+  const nodes = clonedRoot.querySelectorAll<HTMLElement>(
+    `[${CAPTURE_SHIFT_ATTR}]`,
+  );
+  nodes.forEach((node) => {
+    const key = node.getAttribute(CAPTURE_SHIFT_ATTR) as CaptureShiftKey | null;
+    if (!key) return;
+    const shift = CAPTURE_SHIFTS[key];
+    if (shift === undefined) return;
+    // `position: relative; top: N` shifts the visible element
+    // without altering layout flow — siblings stay put, the box
+    // model isn't disturbed, and any flex-centered indicator in
+    // the same row keeps its natural position relative to the
+    // row background.
+    node.style.position = "relative";
+    node.style.top = `${shift}px`;
+  });
+}
+
+/**
  * html2canvas → PNG Blob, shared by both `shareCard()` and
  * `copyCardToClipboard()`. Rejects on any failure (html2canvas
  * throws, toBlob yields null, toBlob exceeds the 10s timeout).
@@ -143,6 +210,20 @@ export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
       useCORS: true, // for any external images (member-color avatars)
       backgroundColor: null, // preserve the card's own bg
       logging: false,
+      // Capture-only vertical-centering shifts. The browser renders
+      // the modal preview with system-ui at a CSS-spec-correct
+      // baseline, but html2canvas re-rasterizes glyphs with the
+      // font's natural ascender offset, dragging visible text
+      // several pixels below where the modal preview shows it. The
+      // shifts below compensate ONLY in the cloned DOM that
+      // html2canvas walks — the source DOM (and therefore the
+      // modal preview) is untouched. The data-capture-shift
+      // attributes on the targeted elements in ShareCardPreview
+      // act as stable selectors; the px amounts are empirical from
+      // operator iPhone + Windows desktop capture iterations.
+      onclone: (_doc, clonedRoot) => {
+        applyCaptureShifts(clonedRoot);
+      },
     });
 
     const blob = await new Promise<Blob | null>((resolve) => {
