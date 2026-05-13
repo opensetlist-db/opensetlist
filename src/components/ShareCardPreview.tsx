@@ -658,7 +658,19 @@ function PredictionRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "5px 8px",
+        // Asymmetric vertical padding (top > bottom) compensates for
+        // the half-leading distribution + Latin font metrics that
+        // place the visible glyph (cap-top to baseline) in the
+        // upper portion of the line-box. With symmetric 5px/5px
+        // padding, titles without descenders ("Dream Believers")
+        // appeared ~1.4px above the row's geometric center because
+        // baseline sits at ~78% of em-height. Shifting the line-box
+        // down 1px via padding 6px top / 4px bottom moves the
+        // visible glyph cap-middle to within ~0.4px of the row
+        // background's vertical center — operator-visible test:
+        // hit-row's bright fill now reads as enclosing the title
+        // text symmetrically above + below.
+        padding: "6px 8px 4px",
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -759,7 +771,19 @@ function ShareCardRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "5px 8px",
+        // Asymmetric vertical padding (top > bottom) compensates for
+        // the half-leading distribution + Latin font metrics that
+        // place the visible glyph (cap-top to baseline) in the
+        // upper portion of the line-box. With symmetric 5px/5px
+        // padding, titles without descenders ("Dream Believers")
+        // appeared ~1.4px above the row's geometric center because
+        // baseline sits at ~78% of em-height. Shifting the line-box
+        // down 1px via padding 6px top / 4px bottom moves the
+        // visible glyph cap-middle to within ~0.4px of the row
+        // background's vertical center — operator-visible test:
+        // hit-row's bright fill now reads as enclosing the title
+        // text symmetrically above + below.
+        padding: "6px 8px 4px",
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
