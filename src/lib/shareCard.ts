@@ -146,9 +146,13 @@ const CAPTURE_SHIFTS: Record<string, number> = {
   // center rather than the visible-glyph center.
   "row-title": -5,
   "row-number": -5,
-  // LIVE pill — both the dot and the label share the shift so
-  // they remain horizontally co-aligned inside the badge.
-  "live-badge-dot": -8,
+  // LIVE pill. The label rides -8 to lift the visible cap-middle
+  // onto the badge's vertical center (same Segoe-UI-ascender
+  // pattern as the row title). The dot doesn't carry a tall
+  // ascender, so it lands ~14px above where the eye expects when
+  // it shares the label's shift — pull it back down with +6 so
+  // it sits next to the visible "LIVE" cap-middle.
+  "live-badge-dot": 6,
   "live-badge-label": -8,
 };
 
