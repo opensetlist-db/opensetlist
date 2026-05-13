@@ -548,6 +548,14 @@ function ActualResultBody({
               fontWeight: 700,
               color: T.scoreFrac,
               lineHeight: 1,
+              // Same Segoe-UI-ascender shift as the NN% line on the
+              // left — scaled down because the fraction font is
+              // 24px vs the percentage's 36px, so the empty leading
+              // above the cap-top is correspondingly smaller (~5.5
+              // vs ~8px). -3 brings the visible fraction up to a
+              // symmetric position relative to the banner centre,
+              // keeping left + right columns optically balanced.
+              marginTop: -3,
             }}
           >
             {matched} / {total}
