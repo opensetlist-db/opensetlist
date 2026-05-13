@@ -271,6 +271,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 from the title. */}
             {seriesName && (
               <div
+                data-capture-shift="series-caption"
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
@@ -278,23 +279,13 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   marginBottom: 4,
-                  // Pull the series caption up so its visible cap-top
-                  // sits closer to the card's top padding edge. The
-                  // captured Preview showed the rendered font's
-                  // empty leading above the cap-top is closer to
-                  // ~7px than the ~3.6px Segoe-UI math suggested —
-                  // the system-ui fallback chain resolves to a
-                  // font with an even taller ascender in this
-                  // pipeline. -7 closes that gap without touching
-                  // the card-level padding (kept at 26px to preserve
-                  // outer breathing room).
-                  marginTop: -7,
                 }}
               >
                 {seriesName}
               </div>
             )}
             <div
+              data-capture-shift="event-title"
               style={{
                 fontSize: 18,
                 fontWeight: 700,
@@ -308,18 +299,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 // in the live browser preview.
                 lineHeight: 1.5,
                 marginBottom: 3,
-                // Same ascender-compensation pattern as the series
-                // caption + score-banner percentage. With
-                // `lineHeight: 1.5` × 18px font = 27px line-box,
-                // the visible cap-top sits well below the line-box
-                // top because of half-leading + the font's natural
-                // ascender offset. The captured Preview showed the
-                // gap between the series baseline and the title
-                // cap-top reading as much larger than the math
-                // predicted — empirically -12 lines the title
-                // cap-top up with the eye's expected position
-                // relative to the series caption above.
-                marginTop: -12,
               }}
             >
               {eventTitle}
@@ -519,21 +498,7 @@ function ActualResultBody({
           >
             {labels.scoreLabel}
           </div>
-          <div
-            style={{
-              // Negative top margin pulls the big "NN%" line up so
-              // the visible glyph mass sits closer to the centre of
-              // its rendered space. With `lineHeight: 1` + Segoe UI
-              // metrics (ascender ~0.94em), the cap-top sits ~8px
-              // below the em-box top while only ~2px of leading
-              // remains below the baseline — visually the "100"
-              // reads as too far below the label, with empty
-              // headroom above and almost none below. Pulling the
-              // line up by 6px restores roughly symmetric breathing
-              // room on the captured card.
-              marginTop: -12,
-            }}
-          >
+          <div data-capture-shift="score-percent">
             <span
               style={{
                 fontSize: 36,
@@ -566,19 +531,12 @@ function ActualResultBody({
               "X of Y hit" subline — the big M/T fraction is the only
               right-column element now. */}
           <div
+            data-capture-shift="score-fraction"
             style={{
               fontSize: 24,
               fontWeight: 700,
               color: T.scoreFrac,
               lineHeight: 1,
-              // Same Segoe-UI-ascender shift as the NN% line on the
-              // left — scaled down because the fraction font is
-              // 24px vs the percentage's 36px, so the empty leading
-              // above the cap-top is correspondingly smaller (~5.5
-              // vs ~8px). -3 brings the visible fraction up to a
-              // symmetric position relative to the banner centre,
-              // keeping left + right columns optically balanced.
-              marginTop: -7,
             }}
           >
             {matched} / {total}
@@ -644,16 +602,7 @@ function LiveBadge({ label }: { label: string }) {
         alignItems: "center",
         gap: 6,
         flexShrink: 0,
-        // Asymmetric vertical padding (top << bottom) compensates
-        // for the system-ui ascender height that drags the cap-
-        // middle below the badge's geometric center with symmetric
-        // padding. With `lineHeight: 1` and `fontSize: 11`, the
-        // line-box exactly equals the em-box and there's no leading
-        // to absorb the font's natural baseline offset. Iterated
-        // against Preview captures: 0px top / 8px bottom (= 8px
-        // delta) lands the visible "LIVE" cap-middle on the badge's
-        // vertical center.
-        padding: "0px 10px 8px",
+        padding: "4px 10px",
         borderRadius: 999,
         background: LIVE_BADGE_BG,
         color: "white",
@@ -665,6 +614,7 @@ function LiveBadge({ label }: { label: string }) {
       }}
     >
       <span
+        data-capture-shift="live-badge-dot"
         style={{
           width: 6,
           height: 6,
@@ -673,7 +623,7 @@ function LiveBadge({ label }: { label: string }) {
           flexShrink: 0,
         }}
       />
-      {label}
+      <span data-capture-shift="live-badge-label">{label}</span>
     </span>
   );
 }
@@ -712,19 +662,7 @@ function PredictionRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top << bottom) lifts the
-        // line-box well above geometric center, which centers the
-        // VISIBLE glyph in the row's bright-fill background.
-        // Reason: the system-ui fallback chain in the deployed
-        // pipeline resolves to a font with a very tall ascender,
-        // pushing the visible cap-middle well below the line-box
-        // center. With symmetric 5/5 padding, the cap-middle
-        // landed several pixels below the row's geometric center.
-        // Iterated against Preview captures: 0px top / 10px bottom
-        // (= 10px delta) lands the cap-middle on the row's
-        // vertical center. minHeight stays the floor; bottom
-        // padding does the bulk of the visual centering.
-        padding: "0px 8px 10px",
+        padding: "5px 8px",
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -755,6 +693,7 @@ function PredictionRow({
           would break. */}
       <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
+        data-capture-shift="row-number"
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -762,27 +701,14 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // No vertical shift here — see the title span below for
-          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
       <span
+        data-capture-shift="row-title"
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
-          // two jobs: (1) gives enough leading below the baseline
-          // that iOS Safari's html2canvas pipeline can't clip the
-          // round bottoms of letters that extend slightly past the
-          // baseline, and (2) grows the line-box and row enough
-          // that the title's flex-centered cap-middle lands within
-          // ~0.5px of the box's optical center, so no explicit
-          // `position: relative; top: -n` nudge is needed on the
-          // title or number spans to align with the indicator box.
-          // Earlier captures at lineHeight 1.8 needed a -2 nudge
-          // on title + number to compensate for the shorter line-
-          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -825,19 +751,7 @@ function ShareCardRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top << bottom) lifts the
-        // line-box well above geometric center, which centers the
-        // VISIBLE glyph in the row's bright-fill background.
-        // Reason: the system-ui fallback chain in the deployed
-        // pipeline resolves to a font with a very tall ascender,
-        // pushing the visible cap-middle well below the line-box
-        // center. With symmetric 5/5 padding, the cap-middle
-        // landed several pixels below the row's geometric center.
-        // Iterated against Preview captures: 0px top / 10px bottom
-        // (= 10px delta) lands the cap-middle on the row's
-        // vertical center. minHeight stays the floor; bottom
-        // padding does the bulk of the visual centering.
-        padding: "0px 8px 10px",
+        padding: "5px 8px",
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
@@ -922,6 +836,7 @@ function ShareCardRow({
         />
       )}
       <span
+        data-capture-shift="row-number"
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -929,27 +844,14 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // No vertical shift here — see the title span below for
-          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
       <span
+        data-capture-shift="row-title"
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
-          // two jobs: (1) gives enough leading below the baseline
-          // that iOS Safari's html2canvas pipeline can't clip the
-          // round bottoms of letters that extend slightly past the
-          // baseline, and (2) grows the line-box and row enough
-          // that the title's flex-centered cap-middle lands within
-          // ~0.5px of the box's optical center, so no explicit
-          // `position: relative; top: -n` nudge is needed on the
-          // title or number spans to align with the indicator box.
-          // Earlier captures at lineHeight 1.8 needed a -2 nudge
-          // on title + number to compensate for the shorter line-
-          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
