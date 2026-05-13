@@ -336,6 +336,14 @@
     "disagreeAria": "間違っている",
     "description": "新しく登録された曲が正確なら ✓ を、間違っていれば ✕ を押してください。"
   },
+  "SongSearch": {
+    "variantPickerTitle": "どのバージョンですか？",
+    "variantPickerBack": "← 別の曲を選ぶ",
+    "variantPickerOriginalLabel": "原曲",
+    "createSongRow": "+ 「{query}」を新しい曲として追加",
+    "createVariantRow": "+ 「{query}」を新しい variant として追加",
+    "createDisabledTooltip": "Phase 2 で利用可能"
+  },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
     "lockedTitle": "みんなの希望曲",

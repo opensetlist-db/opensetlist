@@ -24,6 +24,15 @@ import { serializeBigInt } from "@/lib/utils";
 // at *scoring* time via baseVersionId (per engagement-features.md
 // "Match semantics"). Admin opts in (?includeVariants=true) to retain
 // its current ability to record variant-specific setlist rows.
+//
+// `expandVariants` (added for SongSearch v2 / AddItemBottomSheet) is
+// orthogonal to `includeVariants`. When true, the response keeps the
+// base-only flat list (variants are NOT promoted to top-level rows)
+// but each base row carries its child variants in a nested `variants`
+// array — used by the v2 two-stage picker to render stage 2 from the
+// same payload that drove stage 1, with no second round-trip. The two
+// flags are independent: admin keeps `includeVariants=true` for its
+// flat-variant escape hatch; fan v2 callers pass `expandVariants=true`.
 
 const RESULT_LIMIT = 20;
 
@@ -48,6 +57,7 @@ export async function GET(request: NextRequest) {
   }
 
   const includeVariants = searchParams.get("includeVariants") === "true";
+  const expandVariants = searchParams.get("expandVariants") === "true";
   const excludeIds = parseExcludeIds(searchParams.get("excludeIds"));
 
   const where: Prisma.SongWhereInput = {
@@ -62,7 +72,11 @@ export async function GET(request: NextRequest) {
     ],
   };
 
-  if (!includeVariants) {
+  // `expandVariants` implies base-only too: nested variants on a flat
+  // variant row would be a no-op (variants are leaves), so when v2's
+  // expansion is requested we force the same base-only filter that
+  // applies in the default (non-admin) case.
+  if (!includeVariants || expandVariants) {
     where.baseVersionId = null;
   }
 
@@ -70,34 +84,60 @@ export async function GET(request: NextRequest) {
     where.id = { notIn: excludeIds };
   }
 
-  try {
-    const songs = await prisma.song.findMany({
-      where,
+  // Single typed select with conditional `variants` injection. v2's
+  // expansion is a leaf-level addition — the rest of the projection is
+  // byte-identical, so spreading the conditional block keeps the v1
+  // shape stable for non-expand callers (admin SetlistBuilder, wishlist,
+  // prediction) and avoids a union return type on findMany.
+  //
+  // Each variant row carries id + variantLabel + per-locale translation
+  // overrides — enough for the picker to render labels and for the
+  // consumer to derive `variantId` from the user's pick.
+  const select: Prisma.SongSelect = {
+    id: true,
+    originalTitle: true,
+    originalLanguage: true,
+    variantLabel: true,
+    baseVersionId: true,
+    translations: {
+      select: { locale: true, title: true, variantLabel: true },
+    },
+    artists: {
       select: {
-        id: true,
-        originalTitle: true,
-        originalLanguage: true,
-        variantLabel: true,
-        baseVersionId: true,
-        translations: {
-          select: { locale: true, title: true, variantLabel: true },
-        },
-        artists: {
+        artist: {
           select: {
-            artist: {
-              select: {
-                id: true,
-                originalName: true,
-                originalShortName: true,
-                originalLanguage: true,
-                translations: {
-                  select: { locale: true, name: true, shortName: true },
-                },
-              },
+            id: true,
+            originalName: true,
+            originalShortName: true,
+            originalLanguage: true,
+            translations: {
+              select: { locale: true, name: true, shortName: true },
             },
           },
         },
       },
+    },
+    ...(expandVariants
+      ? {
+          variants: {
+            where: { isDeleted: false },
+            select: {
+              id: true,
+              variantLabel: true,
+              translations: {
+                select: { locale: true, title: true, variantLabel: true },
+              },
+            },
+            orderBy: { id: "asc" },
+          },
+        }
+      : {}),
+  };
+
+  try {
+    const songs = await prisma.song.findMany({
+      where,
+      select,
       orderBy: { createdAt: "desc" },
       take: RESULT_LIMIT,
     });
