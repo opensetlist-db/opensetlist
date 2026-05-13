@@ -696,11 +696,8 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // See the title span's `top: -2` rationale below — the
-          // number rides the same shift so number + title stay
-          // optically in lockstep with the indicator box.
-          position: "relative",
-          top: -2,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
@@ -708,10 +705,18 @@ function PredictionRow({
       <span
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) gives
-          // enough leading below the baseline that iOS Safari's
-          // html2canvas pipeline can't clip the round bottoms of
-          // letters that extend slightly past the baseline.
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -719,17 +724,6 @@ function PredictionRow({
           textOverflow: "ellipsis",
           color: T.missColor,
           fontWeight: 400,
-          // Shift the title up 2px to align its visible glyph center
-          // with the indicator box. The generous line-box (see
-          // CAPTURE_ROW_LINE_HEIGHT — 2.2 × 13px ≈ 28.6px) is
-          // centered in the row by `alignItems: center`, but iOS
-          // Safari's html2canvas pipeline renders glyphs in the
-          // LOWER portion of that line-box, so visible text drifts
-          // ~2px below the row's geometric center while the box
-          // sits exactly at it. Without this nudge the box reads
-          // as centered but titles hang low. -2 is empirical.
-          position: "relative",
-          top: -2,
         }}
       >
         {display.main}
@@ -863,11 +857,8 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // Rides the same -2 shift as the title (see below) so the
-          // rank number + title stay on the same optical baseline
-          // as the indicator box.
-          position: "relative",
-          top: -2,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
@@ -875,10 +866,18 @@ function ShareCardRow({
       <span
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) gives
-          // enough leading below the baseline that iOS Safari's
-          // html2canvas pipeline can't clip the round bottoms of
-          // letters that extend slightly past the baseline.
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -890,19 +889,6 @@ function ShareCardRow({
           textDecorationColor: hit ? T.hitUnderline : "transparent",
           textUnderlineOffset: 3,
           textDecorationThickness: 2,
-          // Shift the title up 2px to align its visible glyph center
-          // with the indicator box. The generous line-box (see
-          // CAPTURE_ROW_LINE_HEIGHT — 2.2 × 13px ≈ 28.6px) is
-          // centered in the row by `alignItems: center`, but iOS
-          // Safari's html2canvas renders glyphs in the LOWER portion
-          // of the line-box, so visible text sits ~2px below the
-          // row's geometric center while the box is exactly at it.
-          // Without this nudge box + title look unaligned. -2 is
-          // empirical; the box's separate -1 shift is preserved so
-          // the box stays where the operator expects from the
-          // earlier alignment pass.
-          position: "relative",
-          top: -2,
         }}
       >
         {display.main}
