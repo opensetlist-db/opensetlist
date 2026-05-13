@@ -702,8 +702,13 @@ export function SongSearch({
       // explicit `{josa}` placeholder we substitute here — keeps the
       // grammar correct for ko, and the placeholder is a no-op for
       // ja/en where the string ignores it.
+      //
+      // `josa.pick` returns the particle alone (no word prefix) so we
+      // can drop it straight into the placeholder. Earlier shape
+      // (`josa(q, "을/를").slice(q.length)`) leaned on the word+particle
+      // length math; CR #353 swap.
       const q = query.trim();
-      const particle = q ? josa(q, "을/를").slice(q.length) : "";
+      const particle = q ? josa.pick(q, "을/를") : "";
       label = texts.createVariantRow
         ?.replace("{query}", q)
         .replace("{josa}", particle);
