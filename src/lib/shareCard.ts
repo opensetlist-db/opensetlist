@@ -156,7 +156,7 @@ const CAPTURE_SHIFTS = {
   // down (the previous +6 tuning) over-shot, floating the dot
   // below the LIVE cap-middle. -8 matches the label so the dot
   // sits next to the visible "LIVE" text.
-  "live-badge-dot": -8,
+  "live-badge-dot": -1,
   "live-badge-label": -8,
 } as const;
 
