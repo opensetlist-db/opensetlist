@@ -644,16 +644,16 @@ function LiveBadge({ label }: { label: string }) {
         alignItems: "center",
         gap: 6,
         flexShrink: 0,
-        // Asymmetric vertical padding (top < bottom) compensates
-        // for the Segoe UI ascender height that drags the cap-
-        // middle below the badge's geometric center with
-        // symmetric padding. With `lineHeight: 1` and `fontSize:
-        // 11`, the line-box exactly equals the em-box and
-        // there's no leading to absorb the font's natural
-        // baseline offset; padding 3px top / 5px bottom shifts
-        // the line-box up 1px so the visible "LIVE" cap-middle
-        // sits at the badge's vertical center.
-        padding: "1px 10px 7px",
+        // Asymmetric vertical padding (top << bottom) compensates
+        // for the system-ui ascender height that drags the cap-
+        // middle below the badge's geometric center with symmetric
+        // padding. With `lineHeight: 1` and `fontSize: 11`, the
+        // line-box exactly equals the em-box and there's no leading
+        // to absorb the font's natural baseline offset. Iterated
+        // against Preview captures: 0px top / 8px bottom (= 8px
+        // delta) lands the visible "LIVE" cap-middle on the badge's
+        // vertical center.
+        padding: "0px 10px 8px",
         borderRadius: 999,
         background: LIVE_BADGE_BG,
         color: "white",
@@ -712,20 +712,19 @@ function PredictionRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top < bottom) lifts the
-        // line-box 1px above geometric center, which centers the
+        // Asymmetric vertical padding (top << bottom) lifts the
+        // line-box well above geometric center, which centers the
         // VISIBLE glyph in the row's bright-fill background.
-        // Reason: with `system-ui` on Windows Chrome resolving to
-        // Segoe UI, the font has an unusually tall ascender
-        // (~0.94em vs the ~0.8em that's typical), pushing the
-        // baseline well below the em-box center. With symmetric
-        // 5px/5px padding the title's cap-middle landed ~1.1px
-        // below the row's geometric center, so the bright fill
-        // appeared to have more headroom above the text than
-        // below. Padding 4px top / 6px bottom shifts the line-box
-        // up 1px, dragging the cap-middle to within ~0.1px of the
-        // row background's vertical center.
-        padding: "2px 8px 8px",
+        // Reason: the system-ui fallback chain in the deployed
+        // pipeline resolves to a font with a very tall ascender,
+        // pushing the visible cap-middle well below the line-box
+        // center. With symmetric 5/5 padding, the cap-middle
+        // landed several pixels below the row's geometric center.
+        // Iterated against Preview captures: 0px top / 10px bottom
+        // (= 10px delta) lands the cap-middle on the row's
+        // vertical center. minHeight stays the floor; bottom
+        // padding does the bulk of the visual centering.
+        padding: "0px 8px 10px",
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -826,20 +825,19 @@ function ShareCardRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top < bottom) lifts the
-        // line-box 1px above geometric center, which centers the
+        // Asymmetric vertical padding (top << bottom) lifts the
+        // line-box well above geometric center, which centers the
         // VISIBLE glyph in the row's bright-fill background.
-        // Reason: with `system-ui` on Windows Chrome resolving to
-        // Segoe UI, the font has an unusually tall ascender
-        // (~0.94em vs the ~0.8em that's typical), pushing the
-        // baseline well below the em-box center. With symmetric
-        // 5px/5px padding the title's cap-middle landed ~1.1px
-        // below the row's geometric center, so the bright fill
-        // appeared to have more headroom above the text than
-        // below. Padding 4px top / 6px bottom shifts the line-box
-        // up 1px, dragging the cap-middle to within ~0.1px of the
-        // row background's vertical center.
-        padding: "2px 8px 8px",
+        // Reason: the system-ui fallback chain in the deployed
+        // pipeline resolves to a font with a very tall ascender,
+        // pushing the visible cap-middle well below the line-box
+        // center. With symmetric 5/5 padding, the cap-middle
+        // landed several pixels below the row's geometric center.
+        // Iterated against Preview captures: 0px top / 10px bottom
+        // (= 10px delta) lands the cap-middle on the row's
+        // vertical center. minHeight stays the floor; bottom
+        // padding does the bulk of the visual centering.
+        padding: "0px 8px 10px",
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
