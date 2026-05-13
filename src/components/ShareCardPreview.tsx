@@ -78,16 +78,21 @@ const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
 
 /**
  * Line-height multiplier for song-title spans, paired with the row
- * `minHeight` floor above. PR #305 / v0.10.2 used 1.5 for desktop
- * html2canvas; iOS Safari needs more headroom — 1.8 × 13px font ≈
- * 24px line box, enough for Latin descenders + CJK glyph extents
- * even when the capture pipeline shaves a few pixels.
+ * `minHeight` floor above. Successive iOS Safari captures pushed this
+ * upward: PR #305 / v0.10.2 used 1.5 for desktop html2canvas, 1.8 was
+ * needed once mobile captures showed up, and 2.2 was needed after
+ * operator feedback that the bottom pixels of letters like e/v/B
+ * (which extend slightly below the baseline) were still being clipped
+ * by the title span's own `overflow: hidden`. 2.2 × 13px ≈ 28.6px
+ * line-box, giving ~7px of leading below the descender — enough buffer
+ * that any iOS Safari glyph-placement drift stays inside the span's
+ * visible bounds.
  *
  * Belt-and-suspenders with `CAPTURE_ROW_MIN_HEIGHT_PX`. If a future
  * browser quirk affects one of the two, the other should still keep
  * the glyph inside the captured bounds.
  */
-const CAPTURE_ROW_LINE_HEIGHT = 1.8;
+const CAPTURE_ROW_LINE_HEIGHT = 2.2;
 
 /**
  * Side length of the checkbox-style hit indicator that sits before
@@ -691,6 +696,8 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
@@ -698,11 +705,18 @@ function PredictionRow({
       <span
         style={{
           fontSize: 13,
-          // Bumped from 1.5 → 1.8 on top of the minHeight floor above.
-          // 1.5 was the v0.10.2 PR #305 fix on desktop; iOS Safari's
-          // html2canvas pipeline collapses the line-box more
-          // aggressively and needs more headroom to keep glyph
-          // descenders + the CJK glyph extent inside the row.
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -777,13 +791,44 @@ function ShareCardRow({
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            color: "white",
-            fontSize: 11,
-            fontWeight: 700,
-            lineHeight: 1,
+            // Shift the box up by 1px so it visually aligns with the
+            // title text's optical center. With `lineHeight: 1.8` on
+            // the title span, the text's line-box is ~23px tall but
+            // the visible glyph sits in the top ~70% of it (leading
+            // distribution puts more empty space below the baseline
+            // than above the cap-height). The box's physical center
+            // therefore appears slightly BELOW the title's optical
+            // center when flex-centered. `position: relative; top:
+            // -1px` is the standard pixel-hack — costs nothing in
+            // layout (relative-positioned children don't shift
+            // siblings) and gives a deterministic 1px upward nudge.
+            position: "relative",
+            top: -1,
           }}
         >
-          ✓
+          {/* Inline SVG check mark instead of the U+2713 text glyph.
+              The text glyph's vertical positioning varies by font —
+              with a Latin-first fontFamily, html2canvas picks up
+              SF Pro / system-ui, whose ✓ baselines higher than
+              Hiragino's and visibly drifts above the box center.
+              SVG geometry is deterministic: the polyline sits at
+              fixed coordinates inside the viewBox, and the parent
+              flex `alignItems: center` / `justifyContent: center`
+              then centers the 10×10 SVG cleanly inside the 14×14
+              box on every renderer. */}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         </span>
       ) : (
         <span
@@ -794,6 +839,13 @@ function ShareCardRow({
             border: `1.5px solid ${T.missColor}`,
             boxSizing: "border-box",
             flexShrink: 0,
+            // Same 1px upward shift as the filled-hit box above — see
+            // the comment there for the title-line-box-vs-glyph-
+            // center rationale. Keeping both variants in lockstep
+            // means hit + miss rows align identically with the
+            // title text.
+            position: "relative",
+            top: -1,
           }}
         />
       )}
@@ -805,6 +857,8 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
@@ -812,15 +866,18 @@ function ShareCardRow({
       <span
         style={{
           fontSize: 13,
-          // Bumped from 1.5 → 1.8 on top of the row's minHeight floor.
-          // PR #305 / v0.10.2 set 1.5 for desktop html2canvas which
-          // collapsed the line-box to ~the font-size and clipped glyph
-          // ascenders/descenders. iOS Safari's html2canvas pipeline
-          // collapses MORE aggressively (operator-spotted on the
-          // v0.11.5 capture — the bottom half of every song title
-          // was cut). 1.8 × 13px = ~24px per line box, plus the row
-          // minHeight: 28 floor, gives enough headroom for Latin
-          // descenders + CJK glyph extents on every browser tested.
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
