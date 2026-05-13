@@ -496,7 +496,21 @@ function ActualResultBody({
           >
             {labels.scoreLabel}
           </div>
-          <div>
+          <div
+            style={{
+              // Negative top margin pulls the big "NN%" line up so
+              // the visible glyph mass sits closer to the centre of
+              // its rendered space. With `lineHeight: 1` + Segoe UI
+              // metrics (ascender ~0.94em), the cap-top sits ~8px
+              // below the em-box top while only ~2px of leading
+              // remains below the baseline — visually the "100"
+              // reads as too far below the label, with empty
+              // headroom above and almost none below. Pulling the
+              // line up by 6px restores roughly symmetric breathing
+              // room on the captured card.
+              marginTop: -6,
+            }}
+          >
             <span
               style={{
                 fontSize: 36,
