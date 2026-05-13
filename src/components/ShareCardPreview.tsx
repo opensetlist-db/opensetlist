@@ -5,6 +5,21 @@ import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
 import { BRAND_NAME, BRAND_URL_DISPLAY } from "@/lib/config";
 import { isSongMatched } from "@/lib/songMatch";
+import {
+  CAPTURE_SHIFT_ATTR,
+  type CaptureShiftKey,
+} from "@/lib/shareCard";
+
+/**
+ * JSX prop spread that tags an element so html2canvas's onclone in
+ * shareCard.ts will apply its capture-only vertical centering
+ * shift. The key is typed via {@link CaptureShiftKey}, so a typo
+ * here fails at compile time instead of silently dropping the
+ * shift on capture.
+ */
+function captureShift(key: CaptureShiftKey) {
+  return { [CAPTURE_SHIFT_ATTR]: key };
+}
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
@@ -271,7 +286,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 from the title. */}
             {seriesName && (
               <div
-                data-capture-shift="series-caption"
+                {...captureShift("series-caption")}
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
@@ -285,7 +300,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               </div>
             )}
             <div
-              data-capture-shift="event-title"
+              {...captureShift("event-title")}
               style={{
                 fontSize: 18,
                 fontWeight: 700,
@@ -498,7 +513,7 @@ function ActualResultBody({
           >
             {labels.scoreLabel}
           </div>
-          <div data-capture-shift="score-percent">
+          <div {...captureShift("score-percent")}>
             <span
               style={{
                 fontSize: 36,
@@ -531,7 +546,7 @@ function ActualResultBody({
               "X of Y hit" subline — the big M/T fraction is the only
               right-column element now. */}
           <div
-            data-capture-shift="score-fraction"
+            {...captureShift("score-fraction")}
             style={{
               fontSize: 24,
               fontWeight: 700,
@@ -614,7 +629,7 @@ function LiveBadge({ label }: { label: string }) {
       }}
     >
       <span
-        data-capture-shift="live-badge-dot"
+        {...captureShift("live-badge-dot")}
         style={{
           width: 6,
           height: 6,
@@ -623,7 +638,7 @@ function LiveBadge({ label }: { label: string }) {
           flexShrink: 0,
         }}
       />
-      <span data-capture-shift="live-badge-label">{label}</span>
+      <span {...captureShift("live-badge-label")}>{label}</span>
     </span>
   );
 }
@@ -693,7 +708,7 @@ function PredictionRow({
           would break. */}
       <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
-        data-capture-shift="row-number"
+        {...captureShift("row-number")}
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -706,7 +721,7 @@ function PredictionRow({
         {rank}
       </span>
       <span
-        data-capture-shift="row-title"
+        {...captureShift("row-title")}
         style={{
           fontSize: 13,
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
@@ -836,7 +851,7 @@ function ShareCardRow({
         />
       )}
       <span
-        data-capture-shift="row-number"
+        {...captureShift("row-number")}
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -849,7 +864,7 @@ function ShareCardRow({
         {rank}
       </span>
       <span
-        data-capture-shift="row-title"
+        {...captureShift("row-title")}
         style={{
           fontSize: 13,
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,

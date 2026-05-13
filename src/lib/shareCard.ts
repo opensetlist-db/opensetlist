@@ -133,7 +133,9 @@ const DEFAULT_FILENAME = "opensetlist-result.png";
  * the element up; positive lifts down. Adjust here if a new
  * platform/font combination shifts the apparent baseline.
  */
-const CAPTURE_SHIFTS: Record<string, number> = {
+export const CAPTURE_SHIFT_ATTR = "data-capture-shift";
+
+const CAPTURE_SHIFTS = {
   // Header block
   "series-caption": -7,
   "event-title": -12,
@@ -149,19 +151,30 @@ const CAPTURE_SHIFTS: Record<string, number> = {
   // LIVE pill. The label rides -8 to lift the visible cap-middle
   // onto the badge's vertical center (same Segoe-UI-ascender
   // pattern as the row title). The dot doesn't carry a tall
-  // ascender, so it lands ~14px above where the eye expects when
-  // it shares the label's shift — pull it back down with +6 so
-  // it sits next to the visible "LIVE" cap-middle.
-  "live-badge-dot": 6,
+  // ascender of its own, but in capture it ends up co-aligned
+  // with the label when it shares the same shift — pulling it
+  // down (the previous +6 tuning) over-shot, floating the dot
+  // below the LIVE cap-middle. -8 matches the label so the dot
+  // sits next to the visible "LIVE" text.
+  "live-badge-dot": -8,
   "live-badge-label": -8,
-};
+} as const;
+
+/**
+ * The string-literal union of valid `data-capture-shift` values.
+ * Importing this in `ShareCardPreview.tsx` lets the compiler catch
+ * a typo at the JSX site — without it the attribute and key strings
+ * could drift independently and a misspelled key would silently
+ * drop the shift on capture.
+ */
+export type CaptureShiftKey = keyof typeof CAPTURE_SHIFTS;
 
 function applyCaptureShifts(clonedRoot: HTMLElement): void {
   const nodes = clonedRoot.querySelectorAll<HTMLElement>(
-    "[data-capture-shift]",
+    `[${CAPTURE_SHIFT_ATTR}]`,
   );
   nodes.forEach((node) => {
-    const key = node.getAttribute("data-capture-shift");
+    const key = node.getAttribute(CAPTURE_SHIFT_ATTR) as CaptureShiftKey | null;
     if (!key) return;
     const shift = CAPTURE_SHIFTS[key];
     if (shift === undefined) return;
