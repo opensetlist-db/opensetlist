@@ -201,44 +201,14 @@ export async function GET(request: NextRequest) {
   // Scope parse + validate is the only param family that can hard-fail
   // the request — everything else (q, includeVariants, expandVariants,
   // excludeIds) accepts garbage gracefully. Validate before any DB hit
-  // so a 400 doesn't waste a connection.
+  // so a 400 doesn't waste a connection. The resolver itself can hit
+  // the DB (event/series lookups), so it lives inside the try below
+  // alongside `findMany` — a connection error there would otherwise
+  // escape uncaught and Next.js would render its HTML 500 page that
+  // the component's `await res.json()` can't parse.
   const scopeResult = parseScope(searchParams);
   if (!scopeResult.ok) {
     return NextResponse.json({ error: scopeResult.error }, { status: 400 });
-  }
-  const scopeArtistIds = await resolveScopeArtistIds(scopeResult.scope);
-
-  const where: Prisma.SongWhereInput = {
-    isDeleted: false,
-    OR: [
-      { originalTitle: { contains: q, mode: "insensitive" } },
-      {
-        translations: {
-          some: { title: { contains: q, mode: "insensitive" } },
-        },
-      },
-    ],
-  };
-
-  // `expandVariants` implies base-only too: nested variants on a flat
-  // variant row would be a no-op (variants are leaves), so when v2's
-  // expansion is requested we force the same base-only filter that
-  // applies in the default (non-admin) case.
-  if (!includeVariants || expandVariants) {
-    where.baseVersionId = null;
-  }
-
-  if (excludeIds.length > 0) {
-    where.id = { notIn: excludeIds };
-  }
-
-  // Scope filter: only attached when the resolver returned a concrete
-  // list. `null` (scope=all) skips this entirely — byte-identical to v1
-  // for unscoped callers. An empty array (unknown event/series) still
-  // attaches as `artistId: { in: [] }`, which Prisma translates to
-  // "match nothing" → empty result set, exactly the spec's UX.
-  if (scopeArtistIds !== null) {
-    where.artists = { some: { artistId: { in: scopeArtistIds } } };
   }
 
   // Single typed select with conditional `variants` injection. v2's
@@ -292,6 +262,47 @@ export async function GET(request: NextRequest) {
   };
 
   try {
+    // Resolver can hit the DB (event/series lookups) — wrapped in
+    // this try so a connection error joins the same JSON-500 path as
+    // `findMany` below. Without this, a flaky DB during resolution
+    // would let the error escape uncaught and Next.js would render
+    // its HTML 500 page, which the component's `await res.json()`
+    // can't parse → unhandled rejection in the browser.
+    const scopeArtistIds = await resolveScopeArtistIds(scopeResult.scope);
+
+    const where: Prisma.SongWhereInput = {
+      isDeleted: false,
+      OR: [
+        { originalTitle: { contains: q, mode: "insensitive" } },
+        {
+          translations: {
+            some: { title: { contains: q, mode: "insensitive" } },
+          },
+        },
+      ],
+    };
+
+    // `expandVariants` implies base-only too: nested variants on a flat
+    // variant row would be a no-op (variants are leaves), so when v2's
+    // expansion is requested we force the same base-only filter that
+    // applies in the default (non-admin) case.
+    if (!includeVariants || expandVariants) {
+      where.baseVersionId = null;
+    }
+
+    if (excludeIds.length > 0) {
+      where.id = { notIn: excludeIds };
+    }
+
+    // Scope filter: only attached when the resolver returned a concrete
+    // list. `null` (scope=all) skips this entirely — byte-identical to v1
+    // for unscoped callers. An empty array (unknown event/series) still
+    // attaches as `artistId: { in: [] }`, which Prisma translates to
+    // "match nothing" → empty result set, exactly the spec's UX.
+    if (scopeArtistIds !== null) {
+      where.artists = { some: { artistId: { in: scopeArtistIds } } };
+    }
+
     const songs = await prisma.song.findMany({
       where,
       select,
