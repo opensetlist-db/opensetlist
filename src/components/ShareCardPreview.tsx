@@ -691,6 +691,11 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // See the title span's `top: -2` rationale below — the
+          // number rides the same shift so number + title stay
+          // optically in lockstep with the indicator box.
+          position: "relative",
+          top: -2,
         }}
       >
         {rank}
@@ -710,6 +715,18 @@ function PredictionRow({
           textOverflow: "ellipsis",
           color: T.missColor,
           fontWeight: 400,
+          // Shift the title up 2px to align its visible glyph center
+          // with the indicator box. With `lineHeight: 1.8` the line-
+          // box is ~23px tall and `alignItems: center` centers the
+          // LINE-BOX in the row — but iOS Safari's html2canvas
+          // pipeline renders glyphs in the LOWER portion of that
+          // line-box, so visible text drifts ~2px below the row's
+          // geometric center while the box sits exactly at it.
+          // Without this nudge the box reads as centered but titles
+          // hang low, with descenders scraping the row's bottom
+          // edge. -2 is empirical.
+          position: "relative",
+          top: -2,
         }}
       >
         {display.main}
@@ -843,6 +860,11 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // Rides the same -2 shift as the title (see below) so the
+          // rank number + title stay on the same optical baseline
+          // as the indicator box.
+          position: "relative",
+          top: -2,
         }}
       >
         {rank}
@@ -854,11 +876,11 @@ function ShareCardRow({
           // PR #305 / v0.10.2 set 1.5 for desktop html2canvas which
           // collapsed the line-box to ~the font-size and clipped glyph
           // ascenders/descenders. iOS Safari's html2canvas pipeline
-          // collapses MORE aggressively (operator-spotted on the
-          // v0.11.5 capture — the bottom half of every song title
-          // was cut). 1.8 × 13px = ~24px per line box, plus the row
-          // minHeight: 28 floor, gives enough headroom for Latin
-          // descenders + CJK glyph extents on every browser tested.
+          // collapses MORE aggressively (the bottom half of every
+          // song title was cut on a v0.11.5 capture). 1.8 × 13px =
+          // ~24px per line box, plus the row minHeight: 28 floor,
+          // gives enough headroom for Latin descenders + CJK glyph
+          // extents on every browser tested.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -870,6 +892,19 @@ function ShareCardRow({
           textDecorationColor: hit ? T.hitUnderline : "transparent",
           textUnderlineOffset: 3,
           textDecorationThickness: 2,
+          // Shift the title up 2px to align its visible glyph center
+          // with the indicator box. `lineHeight: 1.8` makes the
+          // line-box ~23px and `alignItems: center` centers that
+          // LINE-BOX in the row — but iOS Safari's html2canvas
+          // renders glyphs in the LOWER portion of the line-box,
+          // so visible text sits ~2px below the row's geometric
+          // center while the box is exactly at it. Without this
+          // nudge box + title look unaligned and title descenders
+          // scrape the bottom row edge. -2 is empirical; the box's
+          // separate -1 shift is preserved so the box remains where
+          // the operator expects after the earlier alignment pass.
+          position: "relative",
+          top: -2,
         }}
       >
         {display.main}
