@@ -109,6 +109,23 @@ export interface SongVariant {
   }[];
 }
 
+// Scope-filter discriminator (v2 multi-IP support). The server is the
+// source of truth for which artists are tied to an event — passing the
+// event id and letting the API resolve is one round-trip cheaper than
+// every host page pre-fetching the artist list. Default kind="all" =
+// catalog-wide search (admin SetlistBuilder + every v1 caller).
+//
+// IDs are typed `number` to match the rest of the client (see
+// `SongSearchResult.id` rationale above — `serializeBigInt` coerces
+// to Number, not String). The route parses URL strings to bigint for
+// Prisma; this discriminator carries the values the way the rest of
+// the client already handles them.
+export type SongSearchScope =
+  | { kind: "all" }
+  | { kind: "event"; eventId: number }
+  | { kind: "series"; seriesId: number }
+  | { kind: "artist"; artistIds: number[] };
+
 interface SongSearchProps {
   // v2 onSelect: optional `variant` second arg. `undefined` means either
   // (a) the song has no recorded variants → no stage 2; or (b) the user
@@ -149,6 +166,15 @@ interface SongSearchProps {
   // Independent of `variantPicker`. Wishlist + prediction leave this
   // false (no slot rendered at all).
   allowCreate?: boolean;
+  // v2: server-side filter for which songs are eligible. Default
+  // `{ kind: "all" }` preserves v1 catalog-wide behavior — admin
+  // SetlistBuilder relies on this default. Fan-facing pickers
+  // (wishlist / prediction / AddItemBottomSheet) should pass
+  // `{ kind: "event", eventId }` so a Hasunosora event doesn't
+  // surface Nijigasaki songs (or vice versa) once the June 2026
+  // multi-IP rollout lands. See
+  // `wiki/output/task-week3-songsearch-v2-scope-filter.md`.
+  scope?: SongSearchScope;
   // "default": admin-style — full-width input, base 16px text, gray
   // border, rounded-md. The shape every existing caller has been using.
   // "compact": wishlist-inline style — pill input (rounded-20px), 12px
@@ -166,6 +192,13 @@ interface SongSearchProps {
 
 const DEBOUNCE_MS = 300;
 
+// Module-scoped default so an omitted `scope` prop carries a stable
+// reference across renders. Object-literal defaults in the parameter
+// destructure would build a new object each render — harmless but
+// makes the useCallback dep list re-fire fetchResults every render
+// for v1 callers who don't pass scope (which is most of them).
+const DEFAULT_SCOPE: SongSearchScope = { kind: "all" };
+
 export function SongSearch({
   onSelect,
   locale,
@@ -174,6 +207,7 @@ export function SongSearch({
   includeVariants = false,
   variantPicker = false,
   allowCreate = false,
+  scope = DEFAULT_SCOPE,
   variant = "default",
   autoFocus = false,
 }: SongSearchProps) {
@@ -290,6 +324,20 @@ export function SongSearch({
       if (excludeSongIds.length > 0) {
         params.set("excludeIds", excludeSongIds.join(","));
       }
+      // v2 scope filter — server-side restriction to songs by artists
+      // tied to this event/series/explicit list. `all` is the default
+      // and emits no params at all, keeping v1's URL shape byte-stable
+      // for unscoped callers (admin SetlistBuilder, every v1 test).
+      if (scope.kind === "event") {
+        params.set("scope", "event");
+        params.set("scopeId", String(scope.eventId));
+      } else if (scope.kind === "series") {
+        params.set("scope", "series");
+        params.set("scopeId", String(scope.seriesId));
+      } else if (scope.kind === "artist") {
+        params.set("scope", "artist");
+        params.set("scopeArtistIds", scope.artistIds.join(","));
+      }
       try {
         const res = await fetch(`/api/songs/search?${params.toString()}`, {
           signal: controller.signal,
@@ -311,7 +359,7 @@ export function SongSearch({
         setLoading(false);
       }
     },
-    [includeVariants, variantPicker, excludeSongIds],
+    [includeVariants, variantPicker, excludeSongIds, scope],
   );
 
   function handleChange(value: string) {

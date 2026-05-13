@@ -33,6 +33,29 @@ import { serializeBigInt } from "@/lib/utils";
 // same payload that drove stage 1, with no second round-trip. The two
 // flags are independent: admin keeps `includeVariants=true` for its
 // flat-variant escape hatch; fan v2 callers pass `expandVariants=true`.
+//
+// `scope` (added for SongSearch v2 scope-filter, multi-IP support) is
+// independent of both flags above. It filters results server-side to
+// songs by artists tied to a given event / series / explicit artist
+// list. Default (param omitted) is `all`, which preserves v1 catalog-
+// wide behavior — admin SetlistBuilder relies on that default because
+// the operator legitimately records guest-IP songs.
+//
+// Resolution rules (per task-week3-songsearch-v2-scope-filter.md):
+//   scope=event   → event.eventSeries.artistId ∪
+//                    event.performers[].stageIdentity.artistLinks[].artistId
+//   scope=series  → series.artistId
+//   scope=artist  → passthrough of `scopeArtistIds`
+//   scope=all     → no filter (returns null from resolver)
+//
+// Unknown event/series id resolves to `[]` (empty filter set), so the
+// picker shows "no results" — same UX as a missing match. We do NOT
+// 404 the request: distinguishing "wrong id" from "no matches" is
+// opaque to the end user either way.
+//
+// Validation errors (missing/invalid scopeId, unknown scope name) DO
+// return 400 with a JSON body, mirroring the route's 500 path so the
+// component's `await res.json()` keeps working without a special-case.
 
 const RESULT_LIMIT = 20;
 
@@ -43,6 +66,121 @@ function parseExcludeIds(raw: string | null): bigint[] {
     .map((s) => s.trim())
     .filter((s) => /^\d+$/.test(s))
     .map((s) => BigInt(s));
+}
+
+// Server-side scope type — uses bigint to match Prisma's id columns.
+// Mirrors the component-side `SongSearchScope` (which uses `number`
+// because the client follows serializeBigInt's number-coerced convention).
+// The URL transport carries strings either way; this discriminated union
+// is the parsed-and-validated form we hand to the resolver.
+type RouteScope =
+  | { kind: "all" }
+  | { kind: "event"; eventId: bigint }
+  | { kind: "series"; seriesId: bigint }
+  | { kind: "artist"; artistIds: bigint[] };
+
+function parseScopeArtistIds(raw: string | null): bigint[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s))
+    .map((s) => BigInt(s));
+}
+
+// Parse + validate scope params off the URL. Returns either a typed
+// scope or a 400-bound error string. Centralising the validation here
+// keeps the GET handler's branching shallow and the error contract
+// uniform.
+function parseScope(
+  searchParams: URLSearchParams,
+): { ok: true; scope: RouteScope } | { ok: false; error: string } {
+  const kind = searchParams.get("scope");
+  // Missing / "all" → default catalog-wide search. Other scope params
+  // are ignored when scope is "all" (or absent).
+  if (!kind || kind === "all") {
+    return { ok: true, scope: { kind: "all" } };
+  }
+  if (kind === "event" || kind === "series") {
+    const raw = searchParams.get("scopeId");
+    if (!raw || !/^\d+$/.test(raw)) {
+      return {
+        ok: false,
+        error: `scope=${kind} requires a numeric scopeId`,
+      };
+    }
+    const id = BigInt(raw);
+    return kind === "event"
+      ? { ok: true, scope: { kind: "event", eventId: id } }
+      : { ok: true, scope: { kind: "series", seriesId: id } };
+  }
+  if (kind === "artist") {
+    const artistIds = parseScopeArtistIds(searchParams.get("scopeArtistIds"));
+    if (artistIds.length === 0) {
+      return {
+        ok: false,
+        error: "scope=artist requires at least one numeric scopeArtistIds entry",
+      };
+    }
+    return { ok: true, scope: { kind: "artist", artistIds } };
+  }
+  return { ok: false, error: `unknown scope value: ${kind}` };
+}
+
+// Resolve a parsed scope to the artist-id set we filter songs by, or
+// `null` for "no filter" (admin / scope=all path). Empty array means
+// "filter for zero artists" → empty result set, which is the spec's
+// required UX for an unknown event/series id (the picker just shows
+// "no results"; no 404, no different error state).
+//
+// Path through the schema (see prisma/schema.prisma):
+//   Event.performers → EventPerformer.stageIdentity →
+//     StageIdentity.artistLinks → StageIdentityArtist.artistId
+// Each performer's StageIdentity can be linked to multiple artists
+// (e.g. Megumi belongs to 蓮ノ空, Mira-Cra Park!, KahoMegu♡Gelato),
+// so we fan out and dedupe via Set.
+async function resolveScopeArtistIds(
+  scope: RouteScope,
+): Promise<bigint[] | null> {
+  switch (scope.kind) {
+    case "all":
+      return null;
+    case "event": {
+      const event = await prisma.event.findUnique({
+        where: { id: scope.eventId },
+        select: {
+          eventSeries: { select: { artistId: true } },
+          performers: {
+            select: {
+              stageIdentity: {
+                select: {
+                  artistLinks: { select: { artistId: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!event) return [];
+      const ids = new Set<bigint>();
+      if (event.eventSeries?.artistId) ids.add(event.eventSeries.artistId);
+      for (const p of event.performers) {
+        for (const link of p.stageIdentity.artistLinks) {
+          ids.add(link.artistId);
+        }
+      }
+      return [...ids];
+    }
+    case "series": {
+      const series = await prisma.eventSeries.findUnique({
+        where: { id: scope.seriesId },
+        select: { artistId: true },
+      });
+      return series?.artistId ? [series.artistId] : [];
+    }
+    case "artist":
+      return scope.artistIds;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -59,6 +197,16 @@ export async function GET(request: NextRequest) {
   const includeVariants = searchParams.get("includeVariants") === "true";
   const expandVariants = searchParams.get("expandVariants") === "true";
   const excludeIds = parseExcludeIds(searchParams.get("excludeIds"));
+
+  // Scope parse + validate is the only param family that can hard-fail
+  // the request — everything else (q, includeVariants, expandVariants,
+  // excludeIds) accepts garbage gracefully. Validate before any DB hit
+  // so a 400 doesn't waste a connection.
+  const scopeResult = parseScope(searchParams);
+  if (!scopeResult.ok) {
+    return NextResponse.json({ error: scopeResult.error }, { status: 400 });
+  }
+  const scopeArtistIds = await resolveScopeArtistIds(scopeResult.scope);
 
   const where: Prisma.SongWhereInput = {
     isDeleted: false,
@@ -82,6 +230,15 @@ export async function GET(request: NextRequest) {
 
   if (excludeIds.length > 0) {
     where.id = { notIn: excludeIds };
+  }
+
+  // Scope filter: only attached when the resolver returned a concrete
+  // list. `null` (scope=all) skips this entirely — byte-identical to v1
+  // for unscoped callers. An empty array (unknown event/series) still
+  // attaches as `artistId: { in: [] }`, which Prisma translates to
+  // "match nothing" → empty result set, exactly the spec's UX.
+  if (scopeArtistIds !== null) {
+    where.artists = { some: { artistId: { in: scopeArtistIds } } };
   }
 
   // Single typed select with conditional `variants` injection. v2's

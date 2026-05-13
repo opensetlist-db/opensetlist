@@ -411,6 +411,14 @@ export function EventWishSection({
                         noResults: t("searchNoResults"),
                       }}
                       excludeSongIds={excludeSongIds}
+                      // Multi-IP scope filter — wishlist on a Hasunosora
+                      // event must not surface Nijigasaki songs once
+                      // June 2026's IP rollout adds them to the catalog.
+                      // The eventId prop is a string upstream; the
+                      // server-side resolver expects bigint, the
+                      // component just forwards it via URL params so
+                      // a Number cast at this single site is enough.
+                      scope={{ kind: "event", eventId: Number(eventId) }}
                       variant="compact"
                       autoFocus
                     />
