@@ -5,6 +5,21 @@ import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
 import { BRAND_NAME, BRAND_URL_DISPLAY } from "@/lib/config";
 import { isSongMatched } from "@/lib/songMatch";
+import {
+  CAPTURE_SHIFT_ATTR,
+  type CaptureShiftKey,
+} from "@/lib/shareCard";
+
+/**
+ * JSX prop spread that tags an element so html2canvas's onclone in
+ * shareCard.ts will apply its capture-only vertical centering
+ * shift. The key is typed via {@link CaptureShiftKey}, so a typo
+ * here fails at compile time instead of silently dropping the
+ * shift on capture.
+ */
+function captureShift(key: CaptureShiftKey) {
+  return { [CAPTURE_SHIFT_ATTR]: key };
+}
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
@@ -271,6 +286,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 from the title. */}
             {seriesName && (
               <div
+                {...captureShift("series-caption")}
                 style={{
                   fontSize: 11,
                   fontWeight: 700,
@@ -284,6 +300,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               </div>
             )}
             <div
+              {...captureShift("event-title")}
               style={{
                 fontSize: 18,
                 fontWeight: 700,
@@ -496,7 +513,7 @@ function ActualResultBody({
           >
             {labels.scoreLabel}
           </div>
-          <div>
+          <div {...captureShift("score-percent")}>
             <span
               style={{
                 fontSize: 36,
@@ -529,6 +546,7 @@ function ActualResultBody({
               "X of Y hit" subline — the big M/T fraction is the only
               right-column element now. */}
           <div
+            {...captureShift("score-fraction")}
             style={{
               fontSize: 24,
               fontWeight: 700,
@@ -611,6 +629,7 @@ function LiveBadge({ label }: { label: string }) {
       }}
     >
       <span
+        {...captureShift("live-badge-dot")}
         style={{
           width: 6,
           height: 6,
@@ -619,7 +638,7 @@ function LiveBadge({ label }: { label: string }) {
           flexShrink: 0,
         }}
       />
-      {label}
+      <span {...captureShift("live-badge-label")}>{label}</span>
     </span>
   );
 }
@@ -689,6 +708,7 @@ function PredictionRow({
           would break. */}
       <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
+        {...captureShift("row-number")}
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -696,27 +716,14 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // No vertical shift here — see the title span below for
-          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
       <span
+        {...captureShift("row-title")}
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
-          // two jobs: (1) gives enough leading below the baseline
-          // that iOS Safari's html2canvas pipeline can't clip the
-          // round bottoms of letters that extend slightly past the
-          // baseline, and (2) grows the line-box and row enough
-          // that the title's flex-centered cap-middle lands within
-          // ~0.5px of the box's optical center, so no explicit
-          // `position: relative; top: -n` nudge is needed on the
-          // title or number spans to align with the indicator box.
-          // Earlier captures at lineHeight 1.8 needed a -2 nudge
-          // on title + number to compensate for the shorter line-
-          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
@@ -791,19 +798,14 @@ function ShareCardRow({
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            // Shift the box up by 1px so it visually aligns with the
-            // title text's optical center. With `lineHeight: 1.8` on
-            // the title span, the text's line-box is ~23px tall but
-            // the visible glyph sits in the top ~70% of it (leading
-            // distribution puts more empty space below the baseline
-            // than above the cap-height). The box's physical center
-            // therefore appears slightly BELOW the title's optical
-            // center when flex-centered. `position: relative; top:
-            // -1px` is the standard pixel-hack — costs nothing in
-            // layout (relative-positioned children don't shift
-            // siblings) and gives a deterministic 1px upward nudge.
-            position: "relative",
-            top: -1,
+            // Box stays at flex-center (no positional shift). The
+            // generous CAPTURE_ROW_LINE_HEIGHT (2.2) makes the row
+            // tall enough that the title's flex-centered cap-middle
+            // and the box's geometric center land within ~1.4px of
+            // each other — close enough to read as aligned without
+            // requiring a `position: relative; top: -n` nudge that
+            // would couple the box's position to the line-height in
+            // ways that drift as either is retuned.
           }}
         >
           {/* Inline SVG check mark instead of the U+2713 text glyph.
@@ -839,17 +841,17 @@ function ShareCardRow({
             border: `1.5px solid ${T.missColor}`,
             boxSizing: "border-box",
             flexShrink: 0,
-            // Same 1px upward shift as the filled-hit box above — see
-            // the comment there for the title-line-box-vs-glyph-
-            // center rationale. Keeping both variants in lockstep
-            // means hit + miss rows align identically with the
-            // title text.
-            position: "relative",
-            top: -1,
+            // Matches the filled-hit box above — both variants rely
+            // on the row's flex-centering + the generous line-height
+            // to land aligned with the title text without a manual
+            // shift. Keeping hit + miss in lockstep means rows stack
+            // with identical vertical positioning regardless of
+            // match status.
           }}
         />
       )}
       <span
+        {...captureShift("row-number")}
         style={{
           fontSize: 11,
           fontWeight: 500,
@@ -857,27 +859,14 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
-          // No vertical shift here — see the title span below for
-          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
       <span
+        {...captureShift("row-title")}
         style={{
           fontSize: 13,
-          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
-          // two jobs: (1) gives enough leading below the baseline
-          // that iOS Safari's html2canvas pipeline can't clip the
-          // round bottoms of letters that extend slightly past the
-          // baseline, and (2) grows the line-box and row enough
-          // that the title's flex-centered cap-middle lands within
-          // ~0.5px of the box's optical center, so no explicit
-          // `position: relative; top: -n` nudge is needed on the
-          // title or number spans to align with the indicator box.
-          // Earlier captures at lineHeight 1.8 needed a -2 nudge
-          // on title + number to compensate for the shorter line-
-          // box; the 2.2 bump removed that requirement.
           lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
