@@ -128,7 +128,6 @@ interface Props {
   matched: number;
   total: number;
   percentage: number;
-  predictedCount: number;
   /** Display locale (drives `displayOriginalTitle`). */
   locale: string;
 }
@@ -159,7 +158,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       matched,
       total,
       percentage,
-      predictedCount,
       locale,
     },
     ref,
@@ -330,8 +328,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               T={T}
               labels={{
                 scoreLabel: t("scoreLabel"),
-                scoreMatchedOf: t("scoreMatchedOf", { matched, total }),
-                scorePredicted: t("scorePredicted", { count: predictedCount }),
                 encore: t("encore"),
               }}
             />
@@ -463,8 +459,6 @@ function ActualResultBody({
   T: typeof shareCardColors.dark;
   labels: {
     scoreLabel: string;
-    scoreMatchedOf: string;
-    scorePredicted: string;
     encore: string;
   };
 }) {
@@ -520,21 +514,21 @@ function ActualResultBody({
               %
             </span>
           </div>
-          <div style={{ fontSize: 12, color: T.scoreSub, marginTop: 3 }}>
-            {labels.scoreMatchedOf}
-          </div>
+          {/* "X of Y songs hit" subline removed in v0.11.6 — the big
+              fraction in the right column already encodes that count,
+              and the captured card reads tighter without the
+              redundant phrasing under the percentage. */}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: T.scorePred }}>
-            {labels.scorePredicted}
-          </div>
+          {/* "X predicted" caption removed in v0.11.6 alongside the
+              "X of Y hit" subline — the big M/T fraction is the only
+              right-column element now. */}
           <div
             style={{
               fontSize: 24,
               fontWeight: 700,
               color: T.scoreFrac,
               lineHeight: 1,
-              marginTop: 4,
             }}
           >
             {matched} / {total}
