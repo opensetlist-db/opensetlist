@@ -278,6 +278,16 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   marginBottom: 4,
+                  // Pull the series caption up so its visible cap-top
+                  // sits closer to the card's top padding edge.
+                  // Default `line-height: ~1.2` on 11px text leaves
+                  // ~1.1px of leading above the em-box plus the
+                  // Segoe-UI ascender offset within, putting the
+                  // visible glyph ~3.6px below the line-box top.
+                  // -3 closes that gap without touching the card-
+                  // level padding (kept at 26px to preserve outer
+                  // breathing room).
+                  marginTop: -3,
                 }}
               >
                 {seriesName}
@@ -297,6 +307,19 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
                 // in the live browser preview.
                 lineHeight: 1.5,
                 marginBottom: 3,
+                // Same Segoe-UI-ascender-compensation pattern as the
+                // series caption + score-banner percentage. With
+                // `lineHeight: 1.5` × 18px font = 27px line-box, the
+                // visible cap-top sits ~8.6px below the line-box top
+                // (4.5 of half-leading + ~4 from the font's natural
+                // ascender offset). Without this pull-up the gap
+                // between the series caption baseline and the title
+                // cap-top read as ~14px of empty space on the
+                // captured card — visually disconnecting the two
+                // lines instead of reading as one header block. -6
+                // tightens the gap to ~8px, still legible separation
+                // without the visual disconnection.
+                marginTop: -6,
               }}
             >
               {eventTitle}
