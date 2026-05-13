@@ -599,7 +599,16 @@ function LiveBadge({ label }: { label: string }) {
         alignItems: "center",
         gap: 6,
         flexShrink: 0,
-        padding: "4px 10px",
+        // Asymmetric vertical padding (top < bottom) compensates
+        // for the Segoe UI ascender height that drags the cap-
+        // middle below the badge's geometric center with
+        // symmetric padding. With `lineHeight: 1` and `fontSize:
+        // 11`, the line-box exactly equals the em-box and
+        // there's no leading to absorb the font's natural
+        // baseline offset; padding 3px top / 5px bottom shifts
+        // the line-box up 1px so the visible "LIVE" cap-middle
+        // sits at the badge's vertical center.
+        padding: "3px 10px 5px",
         borderRadius: 999,
         background: LIVE_BADGE_BG,
         color: "white",
