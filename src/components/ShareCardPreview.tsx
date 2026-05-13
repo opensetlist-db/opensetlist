@@ -777,13 +777,44 @@ function ShareCardRow({
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            color: "white",
-            fontSize: 11,
-            fontWeight: 700,
-            lineHeight: 1,
+            // Shift the box up by 1px so it visually aligns with the
+            // title text's optical center. With `lineHeight: 1.8` on
+            // the title span, the text's line-box is ~23px tall but
+            // the visible glyph sits in the top ~70% of it (leading
+            // distribution puts more empty space below the baseline
+            // than above the cap-height). The box's physical center
+            // therefore appears slightly BELOW the title's optical
+            // center when flex-centered. `position: relative; top:
+            // -1px` is the standard pixel-hack — costs nothing in
+            // layout (relative-positioned children don't shift
+            // siblings) and gives a deterministic 1px upward nudge.
+            position: "relative",
+            top: -1,
           }}
         >
-          ✓
+          {/* Inline SVG check mark instead of the U+2713 text glyph.
+              The text glyph's vertical positioning varies by font —
+              with a Latin-first fontFamily, html2canvas picks up
+              SF Pro / system-ui, whose ✓ baselines higher than
+              Hiragino's and visibly drifts above the box center.
+              SVG geometry is deterministic: the polyline sits at
+              fixed coordinates inside the viewBox, and the parent
+              flex `alignItems: center` / `justifyContent: center`
+              then centers the 10×10 SVG cleanly inside the 14×14
+              box on every renderer. */}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         </span>
       ) : (
         <span
@@ -794,6 +825,13 @@ function ShareCardRow({
             border: `1.5px solid ${T.missColor}`,
             boxSizing: "border-box",
             flexShrink: 0,
+            // Same 1px upward shift as the filled-hit box above — see
+            // the comment there for the title-line-box-vs-glyph-
+            // center rationale. Keeping both variants in lockstep
+            // means hit + miss rows align identically with the
+            // title text.
+            position: "relative",
+            top: -1,
           }}
         />
       )}
