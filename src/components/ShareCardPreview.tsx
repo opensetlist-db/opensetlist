@@ -658,19 +658,20 @@ function PredictionRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top > bottom) compensates for
-        // the half-leading distribution + Latin font metrics that
-        // place the visible glyph (cap-top to baseline) in the
-        // upper portion of the line-box. With symmetric 5px/5px
-        // padding, titles without descenders ("Dream Believers")
-        // appeared ~1.4px above the row's geometric center because
-        // baseline sits at ~78% of em-height. Shifting the line-box
-        // down 1px via padding 6px top / 4px bottom moves the
-        // visible glyph cap-middle to within ~0.4px of the row
-        // background's vertical center — operator-visible test:
-        // hit-row's bright fill now reads as enclosing the title
-        // text symmetrically above + below.
-        padding: "6px 8px 4px",
+        // Asymmetric vertical padding (top < bottom) lifts the
+        // line-box 1px above geometric center, which centers the
+        // VISIBLE glyph in the row's bright-fill background.
+        // Reason: with `system-ui` on Windows Chrome resolving to
+        // Segoe UI, the font has an unusually tall ascender
+        // (~0.94em vs the ~0.8em that's typical), pushing the
+        // baseline well below the em-box center. With symmetric
+        // 5px/5px padding the title's cap-middle landed ~1.1px
+        // below the row's geometric center, so the bright fill
+        // appeared to have more headroom above the text than
+        // below. Padding 4px top / 6px bottom shifts the line-box
+        // up 1px, dragging the cap-middle to within ~0.1px of the
+        // row background's vertical center.
+        padding: "4px 8px 6px",
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -771,19 +772,20 @@ function ShareCardRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        // Asymmetric vertical padding (top > bottom) compensates for
-        // the half-leading distribution + Latin font metrics that
-        // place the visible glyph (cap-top to baseline) in the
-        // upper portion of the line-box. With symmetric 5px/5px
-        // padding, titles without descenders ("Dream Believers")
-        // appeared ~1.4px above the row's geometric center because
-        // baseline sits at ~78% of em-height. Shifting the line-box
-        // down 1px via padding 6px top / 4px bottom moves the
-        // visible glyph cap-middle to within ~0.4px of the row
-        // background's vertical center — operator-visible test:
-        // hit-row's bright fill now reads as enclosing the title
-        // text symmetrically above + below.
-        padding: "6px 8px 4px",
+        // Asymmetric vertical padding (top < bottom) lifts the
+        // line-box 1px above geometric center, which centers the
+        // VISIBLE glyph in the row's bright-fill background.
+        // Reason: with `system-ui` on Windows Chrome resolving to
+        // Segoe UI, the font has an unusually tall ascender
+        // (~0.94em vs the ~0.8em that's typical), pushing the
+        // baseline well below the em-box center. With symmetric
+        // 5px/5px padding the title's cap-middle landed ~1.1px
+        // below the row's geometric center, so the bright fill
+        // appeared to have more headroom above the text than
+        // below. Padding 4px top / 6px bottom shifts the line-box
+        // up 1px, dragging the cap-middle to within ~0.1px of the
+        // row background's vertical center.
+        padding: "4px 8px 6px",
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
