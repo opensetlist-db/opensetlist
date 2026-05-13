@@ -28,7 +28,14 @@ interface Props {
    */
   status: ResolvedEventStatus;
   startTime: Date | string | null;
+  /**
+   * Share-card header trio (v0.11.5+) — forwarded through to
+   * `<ShareCardPreview>`. See `<LiveSetlist>` for the per-field
+   * meaning and the iOS-feedback rationale.
+   */
   seriesName: string;
+  eventTitle: string;
+  dateLine: string;
   /**
    * D-7 open-window indicator (Wishlist + Predicted Setlist
    * visibility, from `raw/20260503-1b-1c-timeline.md` §"희망곡/예상곡
@@ -88,6 +95,8 @@ export function SetlistSection({
   status,
   startTime,
   seriesName,
+  eventTitle,
+  dateLine,
   isWishPredictOpen,
   emptyFallback,
 }: Props) {
@@ -250,6 +259,8 @@ export function SetlistSection({
         status={status}
         actualSongs={actualSongs}
         seriesName={seriesName}
+        eventTitle={eventTitle}
+        dateLine={dateLine}
       />
     );
 

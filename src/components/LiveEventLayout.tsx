@@ -67,6 +67,17 @@ interface Props {
   title: string;
   venue: string | null;
   city: string | null;
+  /**
+   * Localized short variants of `series.name` and `title`. The page
+   * already resolves both via `displayNameWithFallback(..., "short")`
+   * for the breadcrumb + sidebar; we pass them through here so the
+   * share card pipeline can prefer short over full when available
+   * (the captured PNG is space-constrained, full names overflow on
+   * long series like the Hasunosora tour). Both nullable — empty /
+   * null means "no short variant; use full instead".
+   */
+  seriesShortName: string | null;
+  eventShortName: string | null;
 
   // EventImpressions independent polling state (its own hook owns it).
   // The cursor + total are computed by the SSR fetch and threaded
@@ -142,6 +153,8 @@ export function LiveEventLayout({
   title,
   venue,
   city,
+  seriesShortName,
+  eventShortName,
   initialImpressions,
   initialImpressionsNextCursor,
   initialImpressionsTotalCount,
@@ -330,12 +343,30 @@ export function LiveEventLayout({
           locale={locale}
           status={effectiveStatus}
           isWishPredictOpen={isWishPredictOpen}
-          // `series.name` is already pre-resolved by the page via
-          // `displayNameWithFallback(...)` for the EventHeader card.
-          // Reuse for the share-card text payload; fall back to
-          // `title` (the localized event title) when the event
-          // doesn't belong to a series.
-          seriesName={series?.name ?? title}
+          // Share-card header pair. v0.11.6 added short-variant
+          // preference (operator preference): the captured PNG is
+          // space-constrained, and long series names like the
+          // Hasunosora tour ("ラブライブ！蓮ノ空女学院スクールアイドルクラブ
+          // 6TH LIVE DREAM ~BLOOM GARDEN PARTY~") wrap across multiple
+          // lines and visually dominate the card. Each input prefers
+          // its short variant via `displayNameWithFallback(..., "short")`
+          // resolved upstream by the page; falls back to the full
+          // variant when no short exists.
+          //
+          //   - `seriesName`: short series name when the event belongs
+          //     to a series, else empty string (preview hides the
+          //     series row in that case).
+          //   - `eventTitle`: short event-specific identifier (e.g.
+          //     "Hyogo Day.1" instead of "Garden Stage / Hyogo Day.1").
+          //
+          // `dateLine` stays as a forwarded prop on the chain (kept
+          // for forward-compatibility if the operator wants to surface
+          // date/venue/city on the captured PNG later) but is passed
+          // empty here per the operator's preference: the share card
+          // should show series + event title only, no date row.
+          seriesName={seriesShortName ?? series?.name ?? ""}
+          eventTitle={eventShortName ?? title}
+          dateLine=""
         />
 
         <EventImpressions

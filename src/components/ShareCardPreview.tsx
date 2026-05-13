@@ -43,6 +43,69 @@ export type ShareCardMode = "prediction" | "live" | "final";
  */
 const LIVE_BADGE_BG = "#dc2626";
 
+/**
+ * Pixel footprint reserved on the right of the title block when the
+ * LIVE badge is rendered absolutely-positioned in the corner. Drives
+ * the `paddingRight` on the title container so long event titles
+ * truncate (via natural wrap) rather than running under the badge.
+ *
+ * Locked to the badge's actual rendered width: 6px pulse dot + 6px
+ * gap + ~28px "LIVE" text at 11px font + 10px+10px horizontal padding
+ * + 0.5px×2 inner spacing = ~60px badge content + ~12px gap from
+ * title block + ~8px right-side breathing room ≈ 80px. If the badge
+ * geometry changes (font size, padding, label text), revisit this
+ * constant in lockstep — coupling is explicit by design so a future
+ * tweak to the badge doesn't silently overlap the title.
+ */
+const LIVE_BADGE_RESERVED_PX = 80;
+
+/**
+ * Row-height floor for song-title rows in the captured PNG. iOS
+ * Safari's html2canvas pipeline collapses line-boxes on `overflow:
+ * hidden + whiteSpace: nowrap` spans more aggressively than desktop
+ * browsers do, clipping the bottom half of each title in the saved
+ * image. Forcing the row's `minHeight` to a known floor bypasses
+ * line-box computation entirely — the row physically owns enough
+ * vertical space to contain the rendered text regardless of how the
+ * capture pipeline interprets line-height.
+ *
+ * 28px = 1.8 × ~15px (room for 13px font + 2px descender headroom)
+ * + small slop for cross-browser font-metrics variance. Browsers
+ * fold this into the natural row height (no visible change in the
+ * live preview); only the captured PNG depends on the floor.
+ */
+const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
+
+/**
+ * Line-height multiplier for song-title spans, paired with the row
+ * `minHeight` floor above. Successive iOS Safari captures pushed this
+ * upward: PR #305 / v0.10.2 used 1.5 for desktop html2canvas, 1.8 was
+ * needed once mobile captures showed up, and 2.2 was needed after
+ * operator feedback that the bottom pixels of letters like e/v/B
+ * (which extend slightly below the baseline) were still being clipped
+ * by the title span's own `overflow: hidden`. 2.2 × 13px ≈ 28.6px
+ * line-box, giving ~7px of leading below the descender — enough buffer
+ * that any iOS Safari glyph-placement drift stays inside the span's
+ * visible bounds.
+ *
+ * Belt-and-suspenders with `CAPTURE_ROW_MIN_HEIGHT_PX`. If a future
+ * browser quirk affects one of the two, the other should still keep
+ * the glyph inside the captured bounds.
+ */
+const CAPTURE_ROW_LINE_HEIGHT = 2.2;
+
+/**
+ * Side length of the checkbox-style hit indicator that sits before
+ * the position number on every song row. Must stay in lockstep
+ * across all three row variants — `ShareCardRow`'s filled-checkbox
+ * (hit), `ShareCardRow`'s outline-only box (miss), and
+ * `PredictionRow`'s transparent spacer — so the rank column's left
+ * edge lands at the same x in every captured PNG regardless of
+ * mode. 14px is the smallest size that keeps the ✓ glyph legible at
+ * scale=2 capture quality.
+ */
+const INDICATOR_SIZE_PX = 14;
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -70,7 +133,6 @@ interface Props {
   matched: number;
   total: number;
   percentage: number;
-  predictedCount: number;
   /** Display locale (drives `displayOriginalTitle`). */
   locale: string;
 }
@@ -101,14 +163,12 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       matched,
       total,
       percentage,
-      predictedCount,
       locale,
     },
     ref,
   ) {
     const t = useTranslations("ShareCard");
     const T = shareCardColors[theme];
-    const isLight = theme === "light";
     const isPredictionMode = mode === "prediction";
     const isLiveMode = mode === "live";
 
@@ -124,12 +184,35 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
           borderRadius: 20,
           overflow: "hidden",
           border: T.cardBorder,
-          fontFamily: "'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
+          // Latin-first fallback chain so ASCII characters (Latin
+          // letters, digits, spaces) render with the system Latin
+          // font's metrics — `system-ui` resolves to SF Pro on
+          // iOS/macOS, Segoe UI on Windows, Roboto on Android — and
+          // CJK characters fall through to Noto Sans JP / Pretendard
+          // / Noto Sans KR. The pre-v0.11.5 order put `Noto Sans JP`
+          // first which the live browser handled fine (modern CSS
+          // text-shaping uses per-script font selection), but
+          // html2canvas's capture pipeline on iOS Safari fell back
+          // wholesale to Hiragino for the whole run and rendered
+          // ASCII spaces at ideographic (full-width) metrics —
+          // operator-spotted: "Garden  Stage  /  兵庫  公演  Day .1"
+          // in the captured PNG vs tight "Garden Stage／兵庫公演 Day.1"
+          // in the live preview. Putting the Latin-resolving system
+          // font first makes the per-script selection more robust
+          // through the capture pipeline.
+          fontFamily:
+            "system-ui, -apple-system, BlinkMacSystemFont, 'Noto Sans JP', 'Pretendard', 'Noto Sans KR', sans-serif",
           position: "relative",
         }}
       >
-        {/* Dark: radial gradient overlay; light: top accent bar. */}
-        {!isLight && T.radialOverlay && (
+        {/* Dark: radial gradient overlay covers the whole card.
+            Both themes: 4px top accent bar (light-blue → brand-blue
+            gradient). The accent bar is rendered with explicit
+            stacking (position: relative, z-index: 2) so it sits
+            above the dark theme's absolutely-positioned radial
+            overlay — without the stacking, the overlay would paint
+            over the top 4px and hide the accent. */}
+        {T.radialOverlay && (
           <div
             style={{
               position: "absolute",
@@ -139,8 +222,15 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
             }}
           />
         )}
-        {isLight && T.topBar && (
-          <div style={{ height: 4, background: T.topBar }} />
+        {T.topBar && (
+          <div
+            style={{
+              position: "relative",
+              zIndex: 2,
+              height: 4,
+              background: T.topBar,
+            }}
+          />
         )}
 
         <div style={{ position: "relative", zIndex: 1, padding: "26px 32px 22px" }}>
@@ -149,17 +239,37 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               image after the show ends still knows it was captured
               mid-flight (the percentage in the banner is partial, not
               final). Pre-show prediction cards don't carry the pill —
-              there's no result to qualify. */}
+              there's no result to qualify.
+
+              v0.11.4 originally used `display: flex` here with a
+              `flex: 1` title block. Operator-spotted on the captured
+              PNG: the event title rendered noticeably wider than the
+              live browser preview, ignoring the flex constraint.
+              Cause: html2canvas doesn't reliably honor flexbox sizing
+              when capturing — flex children fall back to intrinsic
+              width rather than the computed share. Switched to
+              absolute positioning for the LIVE badge with explicit
+              `paddingRight` on the title block when present, so the
+              title's width is bounded by a paddingBox rather than a
+              flex computation. Renders identically in the live
+              preview (paddingRight reserves the badge's pixel
+              footprint, see LIVE_BADGE_RESERVED_PX) and the captured
+              PNG (paddingRight is a standard box-model property
+              html2canvas honors). */}
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
+              position: "relative",
               marginBottom: 20,
+              paddingRight: isLiveMode ? LIVE_BADGE_RESERVED_PX : 0,
             }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Series row: hidden entirely when seriesName is empty
+                so standalone events (no series) get a card with just
+                title + date instead of an empty caps-style row at the
+                top. v0.11.5 plumbed real seriesName values through;
+                pre-v0.11.5 the field was a placeholder duplicated
+                from the title. */}
+            {seriesName && (
               <div
                 style={{
                   fontSize: 11,
@@ -172,22 +282,35 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               >
                 {seriesName}
               </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 700,
-                  color: T.title,
-                  lineHeight: 1.3,
-                  marginBottom: 3,
-                }}
-              >
-                {eventTitle}
-              </div>
+            )}
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                color: T.title,
+                // Bumped from 1.3 → 1.5 to match the same html2canvas-
+                // glyph-clipping fix PR #305 applied to song-title
+                // rows. Tight line-heights collapse the line-box on
+                // capture and clip glyph extents; 1.5 reserves enough
+                // vertical room for Latin descenders + CJK glyph
+                // extents without making the title noticeably taller
+                // in the live browser preview.
+                lineHeight: 1.5,
+                marginBottom: 3,
+              }}
+            >
+              {eventTitle}
+            </div>
+            {dateLine && (
               <div style={{ fontSize: 12, color: T.date }}>
                 {dateLine}
               </div>
-            </div>
-            {isLiveMode && <LiveBadge label={t("liveBadge")} />}
+            )}
+            {isLiveMode && (
+              <div style={{ position: "absolute", top: 0, right: 0 }}>
+                <LiveBadge label={t("liveBadge")} />
+              </div>
+            )}
           </div>
 
           {isPredictionMode ? (
@@ -210,8 +333,6 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
               T={T}
               labels={{
                 scoreLabel: t("scoreLabel"),
-                scoreMatchedOf: t("scoreMatchedOf", { matched, total }),
-                scorePredicted: t("scorePredicted", { count: predictedCount }),
                 encore: t("encore"),
               }}
             />
@@ -343,8 +464,6 @@ function ActualResultBody({
   T: typeof shareCardColors.dark;
   labels: {
     scoreLabel: string;
-    scoreMatchedOf: string;
-    scorePredicted: string;
     encore: string;
   };
 }) {
@@ -400,21 +519,21 @@ function ActualResultBody({
               %
             </span>
           </div>
-          <div style={{ fontSize: 12, color: T.scoreSub, marginTop: 3 }}>
-            {labels.scoreMatchedOf}
-          </div>
+          {/* "X of Y songs hit" subline removed in v0.11.6 — the big
+              fraction in the right column already encodes that count,
+              and the captured card reads tighter without the
+              redundant phrasing under the percentage. */}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: T.scorePred }}>
-            {labels.scorePredicted}
-          </div>
+          {/* "X predicted" caption removed in v0.11.6 alongside the
+              "X of Y hit" subline — the big M/T fraction is the only
+              right-column element now. */}
           <div
             style={{
               fontSize: 24,
               fontWeight: 700,
               color: T.scoreFrac,
               lineHeight: 1,
-              marginTop: 4,
             }}
           >
             {matched} / {total}
@@ -540,9 +659,35 @@ function PredictionRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // Explicit minHeight so html2canvas can't compute a row taller
+        // than the line-box it ends up rendering. PR #305 / v0.11.4
+        // set `lineHeight: 1.5` on the title span; operator's iPhone
+        // capture still showed the bottom half of every song title
+        // clipped, which is too much to be just a descender issue —
+        // html2canvas on iOS Safari was rendering the line-box at
+        // roughly half the computed CSS height. Forcing a row floor
+        // of 28px (= 1.5 × 18px line-height for 13px font + 1px slop)
+        // means the row physically owns enough vertical space to
+        // contain the rendered text regardless of how html2canvas
+        // interprets line-height. Live preview reads the same since
+        // the natural row height with the same content is ~28px
+        // anyway — this is a no-op for the browser, a load-bearing
+        // floor for the capture.
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
       }}
     >
+      {/* 14px spacer placed BEFORE the rank, mirroring the live/final
+          mode's filled-checkbox / empty-box that occupies the same
+          slot. Pre-show there's nothing to compare against — every
+          prediction is just a prediction, no match status to show —
+          so a transparent spacer keeps the title's horizontal
+          position aligned with the post-show capture of the same
+          event. Without it (or with a 5px spacer matching the
+          pre-v0.11.6 hit-dot width), titles would shift between
+          modes and the "this is the same surface" mental model
+          would break. */}
+      <span style={{ width: INDICATOR_SIZE_PX, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 11,
@@ -551,23 +696,28 @@ function PredictionRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
-      {/* Spacer to keep predictions visually aligned with live/final
-          rows (which carry a 5px hit-dot here). Without it the
-          prediction title would shift 15px left vs the same event
-          rendered post-show, and the user's mental model of "this
-          is the same surface" would be undermined. */}
-      <span style={{ width: 5, flexShrink: 0 }} />
       <span
         style={{
           fontSize: 13,
-          // See live/final rendering for the lineHeight rationale —
-          // explicit value prevents html2canvas glyph-clipping on
-          // capture (CR #305 fix).
-          lineHeight: 1.5,
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",
@@ -610,10 +760,95 @@ function ShareCardRow({
         alignItems: "center",
         gap: 10,
         padding: "5px 8px",
+        // See <PredictionRow> for the minHeight rationale — iOS
+        // Safari's html2canvas pipeline collapses the line-box,
+        // forcing a 28px row floor keeps the rendered text fully
+        // inside the captured bounds. No-op for the live browser
+        // preview where the natural row height matches.
+        minHeight: CAPTURE_ROW_MIN_HEIGHT_PX,
         borderRadius: 5,
         background: hit ? T.hitRowBg : "transparent",
       }}
     >
+      {/* Checkbox-style hit indicator placed BEFORE the position
+          number (operator preference) so the matched/unmatched
+          signal is the first thing a viewer's eye lands on as the
+          list reads top-to-bottom. Filled box + white ✓ for hit
+          rows; same-size outline-only box for miss rows so titles
+          stay vertically aligned across the captured PNG. Pre-
+          v0.11.6 used a 5px dot on hit + a 5px spacer on miss; the
+          dot's vertical centering was inconsistent at small sizes
+          and the size-asymmetry between dot/spacer let titles
+          drift by ~half a pixel. */}
+      {hit ? (
+        <span
+          style={{
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
+            borderRadius: 3,
+            background: T.hitDot,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            // Shift the box up by 1px so it visually aligns with the
+            // title text's optical center. With `lineHeight: 1.8` on
+            // the title span, the text's line-box is ~23px tall but
+            // the visible glyph sits in the top ~70% of it (leading
+            // distribution puts more empty space below the baseline
+            // than above the cap-height). The box's physical center
+            // therefore appears slightly BELOW the title's optical
+            // center when flex-centered. `position: relative; top:
+            // -1px` is the standard pixel-hack — costs nothing in
+            // layout (relative-positioned children don't shift
+            // siblings) and gives a deterministic 1px upward nudge.
+            position: "relative",
+            top: -1,
+          }}
+        >
+          {/* Inline SVG check mark instead of the U+2713 text glyph.
+              The text glyph's vertical positioning varies by font —
+              with a Latin-first fontFamily, html2canvas picks up
+              SF Pro / system-ui, whose ✓ baselines higher than
+              Hiragino's and visibly drifts above the box center.
+              SVG geometry is deterministic: the polyline sits at
+              fixed coordinates inside the viewBox, and the parent
+              flex `alignItems: center` / `justifyContent: center`
+              then centers the 10×10 SVG cleanly inside the 14×14
+              box on every renderer. */}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </span>
+      ) : (
+        <span
+          style={{
+            width: INDICATOR_SIZE_PX,
+            height: INDICATOR_SIZE_PX,
+            borderRadius: 3,
+            border: `1.5px solid ${T.missColor}`,
+            boxSizing: "border-box",
+            flexShrink: 0,
+            // Same 1px upward shift as the filled-hit box above — see
+            // the comment there for the title-line-box-vs-glyph-
+            // center rationale. Keeping both variants in lockstep
+            // means hit + miss rows align identically with the
+            // title text.
+            position: "relative",
+            top: -1,
+          }}
+        />
+      )}
       <span
         style={{
           fontSize: 11,
@@ -622,38 +857,28 @@ function ShareCardRow({
           width: 18,
           textAlign: "right",
           flexShrink: 0,
+          // No vertical shift here — see the title span below for
+          // why the box + flex-centered text already land aligned.
         }}
       >
         {rank}
       </span>
-      {hit ? (
-        <span
-          style={{
-            width: 5,
-            height: 5,
-            borderRadius: "50%",
-            background: T.hitDot,
-            boxShadow: T.hitDotGlow,
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <span style={{ width: 5, flexShrink: 0 }} />
-      )}
       <span
         style={{
           fontSize: 13,
-          // Explicit lineHeight: html2canvas reads the line-box from the
-          // computed style, and a span with `overflow:hidden +
-          // whiteSpace:nowrap` plus the browser default line-height
-          // collapses to roughly the font size. The captured PNG then
-          // clips glyph ascenders/descenders (visible on Latin chars
-          // with descenders and on CJK glyphs that paint slightly
-          // above the cap height). 1.5 gives ~20px of vertical room
-          // per row — comfortably above any glyph's natural extent
-          // without making the row noticeably taller than the live
-          // browser preview.
-          lineHeight: 1.5,
+          // Generous line-height (see CAPTURE_ROW_LINE_HEIGHT) does
+          // two jobs: (1) gives enough leading below the baseline
+          // that iOS Safari's html2canvas pipeline can't clip the
+          // round bottoms of letters that extend slightly past the
+          // baseline, and (2) grows the line-box and row enough
+          // that the title's flex-centered cap-middle lands within
+          // ~0.5px of the box's optical center, so no explicit
+          // `position: relative; top: -n` nudge is needed on the
+          // title or number spans to align with the indicator box.
+          // Earlier captures at lineHeight 1.8 needed a -2 nudge
+          // on title + number to compensate for the shorter line-
+          // box; the 2.2 bump removed that requirement.
+          lineHeight: CAPTURE_ROW_LINE_HEIGHT,
           flex: 1,
           whiteSpace: "nowrap",
           overflow: "hidden",

@@ -53,7 +53,13 @@ interface Props {
  *
  *   - "confirmed": plain number, muted color, no border. Visual
  *     parity with the pre-Confirm-UI `<span>` it replaces.
- *   - "rumoured": side-by-side `[✓][✕]` 22×22 buttons. The viewer
+ *   - "rumoured": two `[✓][✕]` 22×22 buttons. Layout flips by
+ *     viewport: VERTICAL stack on mobile (22px-wide column ≅ 48px
+ *     tall) so `<SetlistRow>`'s mobile grid first track can be 28px
+ *     instead of 52px, which frees the ~24px the reactions row needs
+ *     to keep all four buttons on one line. HORIZONTAL pair on
+ *     desktop (22 + 8 + 22 = 52px) where the reactions column has
+ *     the room and consistent row height matters more. The viewer
  *     can vote either direction; mutual exclusivity (toggling ✓
  *     clears ✕ and vice versa) is enforced by the parent's tap
  *     handlers, not here. Visual state per `myVote`:
@@ -102,9 +108,35 @@ export function NumberSlot({
       </span>
     );
   }
-  // Two side-by-side 22×22 vote buttons with 8px gap (= 52px
-  // total). Geometry locked across both buttons; only border + bg
-  // + glyph differ per active state.
+  // Two 22×22 vote buttons. Geometry locked across both buttons;
+  // only border + bg + glyph differ per active state.
+  //
+  // Mobile (default): vertical stack — 22px wide, 22+4+22 = 48px
+  // tall. Lets `<SetlistRow>` use a 28px mobile grid first column
+  // (vs. 52px) so the reactions row below fits 4 buttons on one
+  // line on a 390px iPhone. See SetlistRow.tsx mobile-grid comment
+  // for the full width math.
+  //
+  // `row-span-2 self-center` on mobile is the second half of the
+  // fix: without it, the 48px-tall button stack pushed grid row 1
+  // (title row) to 48px tall, leaving ~26px of empty space in col 2
+  // between the title and the reactions row below it (the visible
+  // height gap between rumoured and confirmed rows on first-deploy).
+  // Spanning both rows lets the position cell occupy the full
+  // (row 1 title height + row-gap + row 2 reactions height) ≈ 60px
+  // combined cell, so the buttons vertically center within that and
+  // rumoured rows total to roughly the same height as confirmed rows.
+  //
+  // Desktop (≥ lg): horizontal pair — 22+8+22 = 52px wide, 22px
+  // tall. Matches `SETLIST_DESKTOP_GRID_COLS` first track, keeps
+  // rumoured + confirmed rows the same height on the desktop table.
+  // `lg:row-span-1 lg:self-auto` resets the mobile span so the cell
+  // sits in a single row 1 alongside the other 4-col-layout cells.
+  //
+  // `gap-1 lg:gap-2` controls cross-axis spacing in both
+  // directions (Tailwind `gap` resolves to row-gap OR column-gap
+  // based on flex direction); tighter vertical gap (4px) keeps the
+  // mobile cell from getting too tall.
   const isConfirmed = myVote === "confirm";
   const isDisagreed = myVote === "disagree";
   // Without a tap handler the button has no behavior — render it
@@ -120,8 +152,7 @@ export function NumberSlot({
   const canDisagreeTap = typeof onDisagreeTap === "function";
   return (
     <div
-      className="mt-0.5 inline-flex items-center"
-      style={{ gap: 8 }}
+      className="row-span-2 self-center mt-0.5 inline-flex flex-col items-center gap-1 lg:row-span-1 lg:self-auto lg:flex-row lg:gap-2"
     >
       {/* The text-symbol glyphs (✓ / ✕, U+2713 / U+2715) are
           monochromatic — they inherit the button's `color` style,

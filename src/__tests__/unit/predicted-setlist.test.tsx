@@ -78,6 +78,8 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         status="upcoming"
         actualSongs={[]}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.getByText("add")).toBeTruthy();
@@ -94,6 +96,8 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         status="ongoing"
         actualSongs={[actual(10)]}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.queryByText("add")).toBeNull();
@@ -113,6 +117,8 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         status="completed"
         actualSongs={[actual(10), actual(20)]}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.getByText("afterHint")).toBeTruthy();
@@ -130,6 +136,8 @@ describe("PredictedSetlist — add / remove", () => {
         status="upcoming"
         actualSongs={[]}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.queryByRole("combobox")).toBeNull();
@@ -149,6 +157,8 @@ describe("PredictedSetlist — add / remove", () => {
         status="upcoming"
         actualSongs={[]}
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.getByText("A")).toBeTruthy();
@@ -177,6 +187,8 @@ describe("PredictedSetlist — match-highlight states", () => {
         status="ongoing"
         actualSongs={[actual(10)]} // 1 actual; predicted song 10 at rank 1 → in-rank match
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     // The matched row's title span gets the wishlistMatchBg color.
@@ -201,6 +213,8 @@ describe("PredictedSetlist — match-highlight states", () => {
         status="ongoing"
         actualSongs={[actual(99)]} // 1 actual, no match
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     // Rows at rank 2 + 3 are below the divider (rank > total=1) → opacity 0.4.
@@ -220,6 +234,8 @@ describe("PredictedSetlist — match-highlight states", () => {
         status="ongoing"
         actualSongs={[actual(99)]} // 1 actual → divider after rank 1
         seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
       />,
     );
     expect(screen.getByText(/dividerLabel:/)).toBeTruthy();

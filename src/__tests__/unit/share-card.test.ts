@@ -29,50 +29,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/**
- * Stub `window.matchMedia` so the touch-primary gate in shareCard
- * reports the requested shape. `(pointer: coarse)` → true simulates
- * a phone/tablet finger; false simulates desktop mouse/trackpad. Any
- * other media query falls through to `matches: false` (the test
- * environment never uses them, but the spec demands a defined return).
- */
-function stubTouchPrimary(matches: boolean): void {
-  const matchMediaSpy = vi.fn((query: string) => ({
-    matches: query === "(pointer: coarse)" ? matches : false,
-    media: query,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-    onchange: null,
-  }));
-  // jsdom defines `window.matchMedia` as undefined by default, so
-  // assigning directly is fine; the unstubAllGlobals call in
-  // beforeEach/afterEach can't reach window.matchMedia (only
-  // vi.stubGlobal-managed entries) but the property is overwritten
-  // fresh on every stubTouchPrimary call.
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    writable: true,
-    value: matchMediaSpy,
-  });
-}
-
-describe("shareCard — native share path (touch-primary devices + canShare-capable browsers)", () => {
-  beforeEach(() => {
-    // Touch-primary by default for this describe block — these tests
-    // exist to exercise the share path. Individual specs override
-    // when they need to assert the desktop fallback (see "desktop
-    // even when canShare succeeds" below).
-    stubTouchPrimary(true);
-  });
-
-  it("calls navigator.share with the file when canShare({ files }) returns true, returns kind: shared", async () => {
+describe("shareCard — native share path (navigator.share present)", () => {
+  it("navigator.share present + resolves → calls share with the file, returns kind: shared", async () => {
+    // Post-iOS-feedback final shape: the gate is purely
+    // `typeof navigator.share === "function"`. canShare is NOT
+    // consulted — operator-spotted on iPhone that canShare({files})
+    // could return false even when share() would succeed, breaking
+    // the share path on a non-trivial slice of real iOS Safari
+    // installs. Trusting the call attempt instead is more permissive
+    // and more reliable; failure modes fall through to download.
     const shareSpy = vi.fn().mockResolvedValue(undefined);
-    const canShareSpy = vi.fn().mockReturnValue(true);
     vi.stubGlobal("navigator", {
-      canShare: canShareSpy,
       share: shareSpy,
     });
     const cardEl = document.createElement("div");
@@ -83,9 +50,6 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
     });
 
     expect(outcome).toEqual({ kind: "shared" });
-    expect(canShareSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ files: expect.any(Array) }),
-    );
     expect(shareSpy).toHaveBeenCalledTimes(1);
     const payload = shareSpy.mock.calls[0][0];
     expect(payload.files).toHaveLength(1);
@@ -96,10 +60,33 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
     expect(payload.url).toBe("https://example.com");
   });
 
+  it("share attempted even when canShare({files}) would return false → exercises the iOS workaround path", async () => {
+    // Defensive pin on the post-iOS-feedback design decision: we
+    // call navigator.share REGARDLESS of canShare's verdict. This
+    // test stubs canShare to return false (simulating the unreliable
+    // iOS Safari behavior) AND share to resolve — the helper should
+    // still attempt share and return `shared`. If a future refactor
+    // re-introduces a canShare gate, this test fails loudly so the
+    // iOS regression doesn't sneak back in.
+    const shareSpy = vi.fn().mockResolvedValue(undefined);
+    const canShareSpy = vi.fn().mockReturnValue(false);
+    vi.stubGlobal("navigator", {
+      canShare: canShareSpy,
+      share: shareSpy,
+    });
+    const cardEl = document.createElement("div");
+
+    const outcome = await shareCard({ cardEl });
+
+    expect(outcome).toEqual({ kind: "shared" });
+    expect(shareSpy).toHaveBeenCalledTimes(1);
+    // canShare may or may not have been called by other code paths,
+    // but the helper itself doesn't gate on its return value.
+  });
+
   it("returns kind: cancelled when navigator.share rejects with AbortError (user dismissed sheet)", async () => {
     const abort = new DOMException("aborted", "AbortError");
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
       share: vi.fn().mockRejectedValue(abort),
     });
     const cardEl = document.createElement("div");
@@ -110,8 +97,10 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
   });
 
   it("falls back to download when navigator.share rejects with a non-abort error", async () => {
+    // The catch-all path: any non-abort share failure (platform
+    // can't share files, file-too-large, permission-policy, etc.)
+    // routes to download so the user always ends up with the image.
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
       share: vi.fn().mockRejectedValue(new Error("permission denied")),
     });
     vi.stubGlobal("URL", {
@@ -129,39 +118,10 @@ describe("shareCard — native share path (touch-primary devices + canShare-capa
     );
     expect(appended).toBeTruthy();
   });
-
-  it("falls back to download on desktop (pointer: fine) even when canShare({ files }) returns true — macOS regression", async () => {
-    // macOS Safari + Chrome both pass `canShare({ files })`, but
-    // their OS share sheet has no "save to Downloads" entry. A user
-    // who taps 이미지 저장 on a MacBook gets stuck in a Mail / Messages
-    // / AirDrop sheet with no way to save the PNG. The touch-primary
-    // gate (`(pointer: coarse)`) skips the share branch on desktop
-    // regardless of capability so the download fallback always runs.
-    stubTouchPrimary(false);
-    const shareSpy = vi.fn();
-    vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(true),
-      share: shareSpy,
-    });
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:fake"),
-      revokeObjectURL: vi.fn(),
-    });
-    const cardEl = document.createElement("div");
-
-    const outcome = await shareCard({ cardEl });
-
-    expect(outcome).toEqual({ kind: "downloaded" });
-    // canShare succeeds but the touch-primary gate blocks the
-    // share branch — navigator.share must NOT be invoked.
-    expect(shareSpy).not.toHaveBeenCalled();
-  });
 });
 
-describe("shareCard — download fallback (no canShare support)", () => {
-  it("rasterizes via html2canvas and triggers an anchor download, returning kind: downloaded", async () => {
-    // No navigator stub → typeof navigator.canShare !== 'function' →
-    // skip the share branch entirely and go straight to download.
+describe("shareCard — download fallback (navigator.share missing)", () => {
+  it("no navigator stub → typeof navigator.share !== 'function' → download fallback", async () => {
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
       revokeObjectURL: vi.fn(),
@@ -201,14 +161,13 @@ describe("shareCard — download fallback (no canShare support)", () => {
     );
   });
 
-  it("falls back to download when canShare({ files }) returns false (e.g. desktop without file-share)", async () => {
-    // navigator exists, share fn exists, but the platform refuses to
-    // share files (typical on older desktop Chrome). Should skip the
-    // share path and download instead.
-    const shareSpy = vi.fn();
+  it("navigator.clipboard-only stub (no share) → download fallback", async () => {
+    // Some browsers expose `navigator` without the Web Share API
+    // (older Chrome, every desktop Firefox). The download path is
+    // the unconditional fallback. The stub deliberately includes
+    // `clipboard` but not `share` to mirror that real-world shape.
     vi.stubGlobal("navigator", {
-      canShare: vi.fn().mockReturnValue(false),
-      share: shareSpy,
+      clipboard: { write: vi.fn() },
     });
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:fake"),
@@ -219,7 +178,6 @@ describe("shareCard — download fallback (no canShare support)", () => {
     const outcome = await shareCard({ cardEl });
 
     expect(outcome).toEqual({ kind: "downloaded" });
-    expect(shareSpy).not.toHaveBeenCalled();
   });
 });
 

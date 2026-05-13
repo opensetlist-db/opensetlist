@@ -197,25 +197,43 @@ export function SetlistRow({
       // would double-mount the stateful `<ReactionButtons>` and let
       // their optimistic-counts state diverge.
       //
-      // Mobile (default): 2-col grid `[52px_1fr]` (position cell sized
-      // to fit the ✓+✕ dual-button content exactly — 22+8+22 = 52px).
-      // Title spans col 2 row 1; reactions span col 2 row 2.
+      // Mobile (default): 2-col grid `[28px_1fr]`. Title spans col 2
+      // row 1; reactions span col 2 row 2.
       //
-      // Pre-v0.11.2 this was `[64px_1fr]` — 12px of slack between the
-      // position cell content and the gap. On a 390px iPhone the
-      // slack pushed the 4-reaction row past the available width and
-      // wrapped the 4th button onto a second line (operator caught
-      // post-v0.11.1 deploy). Tightening to 52px gives the reactions
-      // row those 12px back; confirmed-row numbers still fit cleanly
-      // (1–2 digit position right-aligned inside 52px).
+      // Width history & coupling to <NumberSlot>:
+      //   - pre-v0.11.2: 64px (~12px of dead slack)
+      //   - v0.11.2:     52px — matches the horizontal ✓+✕ dual-button
+      //                  footprint exactly (22+8+22), but on iPhone the
+      //                  reactions row still wrapped the 4th button
+      //                  because per-button iOS render is ~70–74px
+      //                  (4 × ~74 + 3 × 6 ≅ 314px > the ~294px col-2
+      //                  budget on a 390px viewport).
+      //   - now:         28px — paired with <NumberSlot> stacking the
+      //                  ✓/✕ buttons VERTICALLY on mobile (22px wide
+      //                  column instead of 52px wide row). Frees ~24px
+      //                  for the reactions row → 4 buttons fit cleanly
+      //                  through iPhone SE 3 (375px). <NumberSlot>
+      //                  also `row-span-2`s on mobile so the button
+      //                  stack spans (title row 1) + (reactions row 2)
+      //                  and self-centers within that combined cell;
+      //                  this keeps rumoured rows the same total
+      //                  height as confirmed rows (no more ~26px gap
+      //                  between title and reactions on rumoured
+      //                  rows from the first deploy).
+      //
+      // ⚠️ The 28px mobile column width and <NumberSlot>'s
+      // `flex-col lg:flex-row` direction switch must stay in lockstep
+      // — widening the column without also flipping <NumberSlot> back
+      // to horizontal leaves dead space; narrowing <NumberSlot>'s
+      // buttons without shrinking the column wastes the savings.
       //
       // Desktop (≥ lg): pulls the column template from the shared
       // CSS var so `<SetlistColumnHeader>` and `<SetlistRow>` can't
       // drift. Position col 1, title col 2, performers col 3,
       // reactions col 4 — single row. The desktop position column
-      // also widened to 52px in `setlistLayout.ts` for the same
-      // dual-button reason.
-      className="grid grid-cols-[52px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
+      // is 52px in `setlistLayout.ts` (horizontal ✓+✕ dual-button
+      // layout — desktop has the room).
+      className="grid grid-cols-[28px_1fr] items-start gap-x-3 px-4 py-3 lg:grid-cols-[var(--setlist-cols)] lg:gap-x-[var(--setlist-gap)] lg:px-5 lg:py-2.5 lg:hover:bg-[var(--row-hover-bg)] lg:transition-colors lg:duration-[120ms]"
     >
       {/* Position slot — col 1, row 1. NumberSlot renders the right
           glyph for the row state: plain number for confirmed,

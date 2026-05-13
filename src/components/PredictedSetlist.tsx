@@ -48,8 +48,14 @@ interface Props {
    * needs the full shape downstream for its preview render.
    */
   actualSongs: LiveSetlistItem[];
-  /** Series + event name for the share card text payload. */
+  /**
+   * Share-card header trio (v0.11.5+) — forwarded to
+   * `<ShareCardButton>`. See `<LiveSetlist>` for the per-field
+   * meaning and the iOS-feedback rationale.
+   */
   seriesName: string;
+  eventTitle: string;
+  dateLine: string;
 }
 
 /**
@@ -84,6 +90,8 @@ export function PredictedSetlist({
   status,
   actualSongs,
   seriesName,
+  eventTitle,
+  dateLine,
 }: Props) {
   const t = useTranslations("Predict");
   const mounted = useMounted();
@@ -494,6 +502,8 @@ export function PredictedSetlist({
       <ShareCardButton
         eventId={eventId}
         seriesName={seriesName}
+        eventTitle={eventTitle}
+        dateLine={dateLine}
         locale={locale}
         status={status}
         actualSongs={actualSongs}

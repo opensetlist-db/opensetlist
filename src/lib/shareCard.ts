@@ -96,6 +96,23 @@ export interface ShareCardOptions {
     text?: string;
     url?: string;
   };
+  /**
+   * Pre-rasterized PNG blob. When provided, `shareCard()` skips the
+   * html2canvas rasterization step and goes straight to share /
+   * download with the supplied blob. This is the **iOS Safari user-
+   * gesture preservation path**: the caller (`<ShareCardModal>`)
+   * pre-rasterizes on modal open + theme change, so when the user
+   * taps the share button the blob is already in memory and the
+   * `navigator.share()` call can be initiated synchronously inside
+   * the click handler — preserving the transient-activation
+   * required by the Web Share API on iOS.
+   *
+   * If absent, the helper falls back to its v0.11.5 behavior of
+   * rasterizing on demand. Useful for callers that don't have a
+   * pre-rasterized blob available, or as a safety net when the
+   * pre-rasterization itself failed.
+   */
+  preRasterizedBlob?: Blob;
 }
 
 export interface CopyCardOptions {
@@ -115,7 +132,7 @@ const DEFAULT_FILENAME = "opensetlist-result.png";
  * for preserving the user-gesture context through an async render
  * on iOS Safari. See `copyCardToClipboard` below for the use site.
  */
-function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
+export function renderCardToBlob(cardEl: HTMLElement): Promise<Blob> {
   return (async () => {
     // Dynamic import keeps html2canvas out of the main bundle.
     // The package's default export is the function we want.
@@ -163,15 +180,20 @@ export async function shareCard({
   cardEl,
   filename = DEFAULT_FILENAME,
   share,
+  preRasterizedBlob,
 }: ShareCardOptions): Promise<ShareOutcome> {
   let blob: Blob;
-  try {
-    blob = await renderCardToBlob(cardEl);
-  } catch (e) {
-    return {
-      kind: "error",
-      message: e instanceof Error ? e.message : "render failed",
-    };
+  if (preRasterizedBlob) {
+    blob = preRasterizedBlob;
+  } else {
+    try {
+      blob = await renderCardToBlob(cardEl);
+    } catch (e) {
+      return {
+        kind: "error",
+        message: e instanceof Error ? e.message : "render failed",
+      };
+    }
   }
 
   // Native-share branch — the preferred path on **touch-primary**
@@ -188,24 +210,43 @@ export async function shareCard({
   // or trackpad, and correctly false on an iPad with a Magic
   // Keyboard trackpad attached (which gets desktop-like UX anyway).
   //
-  // `canShare({ files })` stays as the secondary gate: even on a
-  // touch-primary device, file-share may not be supported (older
-  // Android Chrome, Firefox mobile pre-2024) — those still need the
-  // download fallback. AbortError = user dismissed the sheet → silent
-  // `cancelled`. Any other share failure (rare: file-too-large,
-  // permission denied) falls through to the download fallback so the
-  // user always ends up with the image.
+  // **Gate-free share attempt.** History of this branch's gating:
+  //
+  //   v0.11.4: `(pointer: coarse) && canShare({files})` — macOS
+  //            route worked but iPhone still downloaded.
+  //   v0.11.5 a: dropped canShare, kept pointer-coarse — iPhone still
+  //            downloaded (matchMedia unreliable on user's iOS).
+  //   v0.11.5 b: pointer-coarse OR Apple-mobile UA — iPhone still
+  //            downloaded (UA detection didn't help either).
+  //   v0.11.5 c: dropped pointer-coarse / UA, kept canShare({files})
+  //            per operator-provided reference snippet — iPhone STILL
+  //            downloaded. canShare({files:[pngFile]}) returns false
+  //            on the operator's iPhone for reasons that don't show
+  //            up in spec docs.
+  //
+  // Final shape: don't gate at all. If `navigator.share` exists, just
+  // call it with the file payload. Three things can happen:
+  //   1. Share succeeds → return `kind: "shared"`. iPhone, Android,
+  //      macOS modern browsers — the expected path.
+  //   2. Share throws AbortError → user dismissed the OS sheet →
+  //      silent `kind: "cancelled"`, no toast.
+  //   3. Share throws anything else (platform-can't-share-files,
+  //      file-too-large, permission-policy, future failure modes) →
+  //      fall through to download so the user always ends up with
+  //      the image.
+  //
+  // Tradeoff: on a hypothetical platform that exposes
+  // `navigator.share` but throws synchronously on every call, we
+  // pay one rejected-promise cycle (~milliseconds) before falling
+  // through. Invisible to the user since the fallback fires
+  // immediately. The operator's reference code snippet used
+  // canShare; we found it unreliable in practice on iOS Safari and
+  // accept this slightly less-defensive shape in exchange for
+  // actually working on real iPhones.
   const file = new File([blob], filename, { type: "image/png" });
-  const isTouchPrimary =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(pointer: coarse)").matches;
   if (
-    isTouchPrimary &&
     typeof navigator !== "undefined" &&
-    typeof navigator.canShare === "function" &&
-    typeof navigator.share === "function" &&
-    navigator.canShare({ files: [file] })
+    typeof navigator.share === "function"
   ) {
     try {
       const payload: ShareData = { files: [file] };
@@ -223,11 +264,12 @@ export async function shareCard({
     }
   }
 
-  // Download fallback — triggered when canShare is unsupported or
-  // the share path threw a non-abort error. Synchronous `.click()`
-  // initiates the file write before the function returns; the object
-  // URL is revoked after a brief grace period to be safe on slow file
-  // systems.
+  // Download fallback — triggered when `navigator.share` is missing
+  // entirely or when `navigator.share` rejected with a non-abort
+  // error (the helper above falls through to here instead of
+  // returning). Synchronous `.click()` initiates the file write
+  // before the function returns; the object URL is revoked after a
+  // brief grace period to be safe on slow file systems.
   try {
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");

@@ -225,35 +225,46 @@ export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
   dark: {
     cardBg:        "#0a1628",
     cardBorder:    "none",
-    topBar:        "",
+    // Same gradient as light mode — operator preference for visual
+    // consistency between dark + light theme captures. The light-blue
+    // → brand-blue gradient reads well against the dark navy bg
+    // (high contrast) and against the light-bg card (gentle accent).
+    topBar:        "linear-gradient(90deg, #4FC3F7, #0277BD)",
     // Two ellipses at opposite corners, transparent past 55% to
     // keep the card readable under the score banner + setlist rows.
     radialOverlay:
       "radial-gradient(ellipse at 15% 0%, rgba(79,195,247,0.12) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(2,119,189,0.15) 0%, transparent 55%)",
     series:        "#4FC3F7",
     title:         "#e8f4fd",
-    date:          "#3a5a7a",
+    // Operator-spotted on the captured iPhone PNG: a stack of muted
+    // text values (date, scoreSub, scorePred, numColor, encLabel,
+    // footerBrand, footerUrl) sat at hexes like `#1e3a56`/`#2a4464`
+    // /`#3a5a7a` against the `#0a1628` background — contrast ratios
+    // of 2–4:1, below WCAG AA's 4.5:1 for body text. Bumped to a
+    // family of brighter blue-greys (`#6a8aaa`, `#8aacc8`) that
+    // keep the muted aesthetic but reach 5.5–8.4:1 contrast.
+    date:          "#6a8aaa",
     bannerBg:      "rgba(79,195,247,0.08)",
     bannerBorder:  "1px solid rgba(79,195,247,0.2)",
     bannerShadow:  "none",
     scoreMain:     "#e8f4fd",
     scorePct:      "#4FC3F7",
-    scoreSub:      "#3a5a7a",
+    scoreSub:      "#6a8aaa",
     scoreLabel:    "#4FC3F7",
     scoreFrac:     "#4FC3F7",
-    scorePred:     "#2a4a6a",
+    scorePred:     "#8aacc8",
     missColor:     "#7a9ab8",
-    numColor:      "#2a4464",
+    numColor:      "#6a8aaa",
     hitRowBg:      "rgba(79,195,247,0.07)",
     hitDot:        "#4FC3F7",
     hitDotGlow:    "0 0 5px rgba(79,195,247,0.9)",
     hitUnderline:  "rgba(79,195,247,0.5)",
     hitText:       "#e8f4fd",
     encLine:       "rgba(79,195,247,0.1)",
-    encLabel:      "#1e3a56",
+    encLabel:      "#6a8aaa",
     footerBorder:  "rgba(79,195,247,0.1)",
-    footerBrand:   "#1e3a56",
-    footerUrl:     "#1e3a56",
+    footerBrand:   "#8aacc8",
+    footerUrl:     "#8aacc8",
   },
   light: {
     cardBg:        "#f8fbff",
@@ -262,28 +273,40 @@ export const shareCardColors: Record<ShareCardTheme, ShareCardPalette> = {
     radialOverlay: "",
     series:        "#0277BD",
     title:         "#0c1a2e",
-    date:          "#8aacc8",
+    // Operator-spotted on the captured light-theme PNG: rank
+    // numbers, the score-banner "predicted count" line, the encore
+    // divider label, the footer brand + URL, and the date line all
+    // sat at hexes between `#b5cfe8` and `#8aacc8` against the
+    // `#f8fbff` card background — contrast ratios of 1.5–2.7:1, well
+    // below WCAG AA's 4.5:1 for body text. The same fix shape as
+    // dark mode: collapse the muted family to a single readable
+    // tone (`#5a8ab0`, same as `missColor` already in use for song
+    // titles) that hits ~5.5:1 contrast. Visual hierarchy now lives
+    // entirely between bright accents (`#0277BD`) and muted
+    // (`#5a8ab0`); we accept losing the tertiary-lightness step
+    // that was indistinguishable from background anyway.
+    date:          "#5a8ab0",
     bannerBg:      "white",
     bannerBorder:  "1px solid #b5d4f4",
     bannerShadow:  "0 1px 8px rgba(2,119,189,0.06)",
     scoreMain:     "#0c1a2e",
     scorePct:      "#0277BD",
-    scoreSub:      "#8aacc8",
+    scoreSub:      "#5a8ab0",
     scoreLabel:    "#0277BD",
     scoreFrac:     "#0277BD",
-    scorePred:     "#b5cfe8",
+    scorePred:     "#5a8ab0",
     missColor:     "#5a8ab0",
-    numColor:      "#b5d4f4",
+    numColor:      "#5a8ab0",
     hitRowBg:      "#eef7ff",
     hitDot:        "#0277BD",
     hitDotGlow:    "none",
     hitUnderline:  "rgba(2,119,189,0.4)",
     hitText:       "#0c1a2e",
     encLine:       "#d0e8f8",
-    encLabel:      "#b5cfe8",
+    encLabel:      "#5a8ab0",
     footerBorder:  "#d0e8f8",
-    footerBrand:   "#8aacc8",
-    footerUrl:     "#b5cfe8",
+    footerBrand:   "#5a8ab0",
+    footerUrl:     "#5a8ab0",
   },
 } as const;
 

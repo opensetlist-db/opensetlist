@@ -90,6 +90,8 @@ describe("ShareCardButton — display gates", () => {
         <ShareCardButton
           eventId="1"
           seriesName="Test"
+          eventTitle="Test Event"
+          dateLine="2026-05-23"
           locale="ko"
           status={status}
           actualSongs={[actual(10)]}
@@ -105,6 +107,8 @@ describe("ShareCardButton — display gates", () => {
       <ShareCardButton
         eventId="1"
         seriesName="Test"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         locale="ko"
         status="upcoming"
         actualSongs={[]}
@@ -127,6 +131,8 @@ describe("ShareCardButton — display gates", () => {
       <ShareCardButton
         eventId="1"
         seriesName="Test"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         locale="ko"
         status="ongoing"
         actualSongs={[actual(10)]}
@@ -152,6 +158,8 @@ describe("ShareCardButton — display gates", () => {
       <ShareCardButton
         eventId="1"
         seriesName="Test"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         locale="ko"
         status="ongoing"
         actualSongs={[]}
@@ -172,6 +180,8 @@ describe("ShareCardButton — display gates", () => {
       <ShareCardButton
         eventId="1"
         seriesName="Test"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         locale="ko"
         status="completed"
         actualSongs={[actual(10)]}
@@ -194,6 +204,8 @@ describe("ShareCardButton — display gates", () => {
       <ShareCardButton
         eventId="1"
         seriesName="Test"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
         locale="ko"
         status="completed"
         actualSongs={[]}

@@ -69,12 +69,27 @@ interface Props {
    */
   isWishPredictOpen: boolean;
   /**
-   * Pre-resolved series + event display string for the share-card
-   * text payload (`{seriesName} 예상 세트리스트 ...`). The page already
-   * runs the i18n cascade for the page header; we reuse that result
-   * rather than re-doing it inside Predicted Setlist.
+   * Share-card header trio (v0.11.5+). Forwarded through to
+   * `<ShareCardPreview>` so the captured PNG identifies the event
+   * correctly. The page already runs the i18n cascade for the
+   * EventHeader card; reused here rather than re-doing it inside
+   * the predict surface.
+   *
+   *   - `seriesName`: localized series name when the event belongs to
+   *     a series; empty string otherwise (preview hides the row).
+   *   - `eventTitle`: the event-specific identifier (e.g.
+   *     "Day 2 · Marine Messe Fukuoka"). Always present.
+   *   - `dateLine`: locale-formatted "date · venue · city" with empty
+   *     segments dropped.
+   *
+   * Pre-v0.11.5 only `seriesName` was threaded; the share-card
+   * synthesized a placeholder `eventTitle = seriesName` which made
+   * the captured PNG show the series name twice and no actual event
+   * identifier. Operator-spotted on iOS testing.
    */
   seriesName: string;
+  eventTitle: string;
+  dateLine: string;
 }
 
 export function LiveSetlist({
@@ -90,6 +105,8 @@ export function LiveSetlist({
   status,
   isWishPredictOpen,
   seriesName,
+  eventTitle,
+  dateLine,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -276,6 +293,8 @@ export function LiveSetlist({
         status={status}
         startTime={startTime}
         seriesName={seriesName}
+        eventTitle={eventTitle}
+        dateLine={dateLine}
         isWishPredictOpen={isWishPredictOpen}
         emptyFallback={
           <p style={{ padding: "24px 20px", color: colors.textMuted }}>
