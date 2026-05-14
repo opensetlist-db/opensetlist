@@ -33,8 +33,7 @@ export function AddItemButton({ onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-      style={{ padding: "12px 20px", borderTop: "1px dashed #e5e7eb" }}
+      className="w-full text-left text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors py-3 px-5 border-t border-dashed border-gray-200"
     >
       {t("addButtonLabel")}
     </button>
