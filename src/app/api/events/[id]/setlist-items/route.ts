@@ -526,19 +526,24 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           { status: 500 },
         );
       }
-      if (!merged) {
+      if (!merged || merged.isDeleted) {
         // Race: the dedup-hit row was soft-deleted between the
-        // findFirst (Gate 6.5) and this re-fetch (e.g. another
-        // user's promotion transaction hit the same row first and
-        // auto-hid it as a losing sibling). The confirm row we just
-        // wrote is still valid — it now references a soft-deleted
-        // SetlistItem, which is acceptable per the soft-delete
-        // pattern (the FK stays valid, just invisible from public
-        // reads). Surface 500 so the client knows the response
-        // didn't carry the item it expected; on retry the user will
-        // see a fresh state.
+        // findFirst (Gate 6.5) and this re-fetch — e.g. another
+        // user's promotion transaction in /api/setlist-items/[id]/confirm
+        // hit the same row first and auto-hid it as a losing sibling.
+        // `findUnique` returns the row regardless of `isDeleted`
+        // (Prisma doesn't apply partial-index filters), so we check
+        // both: a hard delete (theoretical — our schema only soft-
+        // deletes) AND `isDeleted === true`. Either case means the
+        // response can't carry a usable item — surface 500 so the
+        // client falls back to retry rather than receive a
+        // soft-deleted row in a "successful" response.
+        //
+        // The confirm row we just wrote is still persisted; per the
+        // soft-delete pattern the FK to a soft-deleted SetlistItem
+        // stays valid (just invisible from public reads).
         console.error(
-          "[POST /api/events/[id]/setlist-items] auto-merge target vanished between findFirst and findUnique",
+          "[POST /api/events/[id]/setlist-items] auto-merge target vanished or soft-deleted between findFirst and findUnique",
         );
         return NextResponse.json(
           { ok: false, error: "internal_error" },
