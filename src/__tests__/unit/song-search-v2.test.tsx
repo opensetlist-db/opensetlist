@@ -63,6 +63,7 @@ function makeSong(
       {
         artist: {
           id: 1,
+          type: "group",
           originalName: "Hasunosora",
           originalShortName: null,
           originalLanguage: "ja",
