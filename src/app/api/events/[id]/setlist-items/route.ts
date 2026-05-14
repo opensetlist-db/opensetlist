@@ -66,6 +66,18 @@ type RouteProps = { params: Promise<{ id: string }> };
  * Conflict handling (duplicate-detect, parallel candidates) is a
  * SEPARATE task (`task-week3-conflict-handling.md`, Stage 3) that
  * layers on top of this endpoint. Out of scope here.
+ *
+ * Authentication NOTE: this endpoint is INTENTIONALLY unauthenticated
+ * at Phase 1C, matching every other write-side fan-facing endpoint in
+ * the project: `POST /api/events/[id]/wishes` (wishlist),
+ * `POST /api/setlist-items/[id]/confirm` (Confirm UI), and reactions.
+ * Per `wiki/conflicts.md #9` (schema-simplification decision), Phase 1C
+ * fan writes carry no anonId / userId / sourceUrl — the localStorage
+ * gate is the only per-viewer check, and dedup-on-write is the
+ * separate Stage-3 conflict-handling task. NextAuth ships in Phase 2
+ * alongside the trust-tier system; THIS endpoint adopts session-based
+ * auth then, NOT at 1C. Push-review has flagged the missing
+ * `getServerSession` check more than once; the answer is "Phase 2."
  */
 
 const VALID_ITEM_TYPES: ReadonlyArray<ItemType> = [

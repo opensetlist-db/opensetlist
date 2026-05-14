@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { CONTACT_EMAIL } from "@/lib/config";
 
 /**
  * Footer link in `<AddItemBottomSheet>` — the spec's "out-of-event
@@ -21,7 +22,7 @@ export function GuestFooterLink() {
   const subject = encodeURIComponent(t("guestReportSubject"));
   return (
     <a
-      href={`mailto:help@opensetlist.com?subject=${subject}`}
+      href={`mailto:${CONTACT_EMAIL}?subject=${subject}`}
       className="block text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2"
     >
       {t("guestFooter")}
