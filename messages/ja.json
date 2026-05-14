@@ -358,13 +358,7 @@
     "errorPositionConflict": "他のユーザーが同時に曲を追加しました。もう一度お試しください",
     "songSearchPlaceholder": "曲を検索...",
     "songSearchLoading": "検索中...",
-    "songSearchNoResults": "結果なし",
-    "songSearchVariantPickerTitle": "どのバージョンですか？",
-    "songSearchVariantPickerBack": "← 別の曲を選ぶ",
-    "songSearchVariantPickerOriginalLabel": "原曲",
-    "songSearchCreateSongRow": "+ 「{query}」を新しい曲として追加",
-    "songSearchCreateVariantRow": "+ 「{query}」を新しい variant として追加",
-    "songSearchCreateDisabledTooltip": "Phase 2 で利用可能"
+    "songSearchNoResults": "結果なし"
   },
   "SongSearch": {
     "variantPickerTitle": "どのバージョンですか？",

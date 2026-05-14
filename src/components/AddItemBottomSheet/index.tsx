@@ -170,6 +170,14 @@ export function AddItemBottomSheet({
   onSubmitSuccess,
 }: Props) {
   const t = useTranslations("AddItem");
+  // SongSearch's variant-picker + create-row copy is sourced from
+  // the SongSearch namespace directly (rather than duplicated into
+  // AddItem). Keeps one authoritative copy across every SongSearch
+  // consumer — a translator editing 원곡 in one namespace doesn't
+  // silently diverge from another. Placeholder / loading / noResults
+  // are caller-supplied per the SongSearch decoupling architecture,
+  // so those stay in AddItem.
+  const songSearchT = useTranslations("SongSearch");
 
   const [state, dispatch] = useReducer(reducer, undefined, initialState);
   const {
@@ -329,14 +337,17 @@ export function AddItemBottomSheet({
       placeholder: t("songSearchPlaceholder"),
       loading: t("songSearchLoading"),
       noResults: t("songSearchNoResults"),
-      variantPickerTitle: t("songSearchVariantPickerTitle"),
-      variantPickerBack: t("songSearchVariantPickerBack"),
-      variantPickerOriginalLabel: t("songSearchVariantPickerOriginalLabel"),
-      createSongRow: t("songSearchCreateSongRow"),
-      createVariantRow: t("songSearchCreateVariantRow"),
-      createDisabledTooltip: t("songSearchCreateDisabledTooltip"),
+      // The next 6 come from the SongSearch namespace directly so
+      // there's one source of truth for the variant-picker + future-
+      // slot copy across every SongSearch consumer.
+      variantPickerTitle: songSearchT("variantPickerTitle"),
+      variantPickerBack: songSearchT("variantPickerBack"),
+      variantPickerOriginalLabel: songSearchT("variantPickerOriginalLabel"),
+      createSongRow: songSearchT("createSongRow"),
+      createVariantRow: songSearchT("createVariantRow"),
+      createDisabledTooltip: songSearchT("createDisabledTooltip"),
     }),
-    [t],
+    [t, songSearchT],
   );
 
   const handleSongPick = useCallback(

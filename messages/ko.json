@@ -358,13 +358,7 @@
     "errorPositionConflict": "다른 사용자가 동시에 곡을 추가했습니다. 다시 시도해주세요",
     "songSearchPlaceholder": "곡 검색...",
     "songSearchLoading": "검색 중...",
-    "songSearchNoResults": "검색 결과 없음",
-    "songSearchVariantPickerTitle": "어떤 버전인가요?",
-    "songSearchVariantPickerBack": "← 다른 곡 선택",
-    "songSearchVariantPickerOriginalLabel": "원곡",
-    "songSearchCreateSongRow": "+ \"{query}\" 새 곡으로 추가",
-    "songSearchCreateVariantRow": "+ \"{query}\"{josa} 새 variant로 추가",
-    "songSearchCreateDisabledTooltip": "Phase 2에서 가능"
+    "songSearchNoResults": "검색 결과 없음"
   },
   "SongSearch": {
     "variantPickerTitle": "어떤 버전인가요?",

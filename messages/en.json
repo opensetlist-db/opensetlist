@@ -358,13 +358,7 @@
     "errorPositionConflict": "Another user added a song at the same time. Please try again.",
     "songSearchPlaceholder": "Search songs...",
     "songSearchLoading": "Searching...",
-    "songSearchNoResults": "No results",
-    "songSearchVariantPickerTitle": "Which version?",
-    "songSearchVariantPickerBack": "← Pick a different song",
-    "songSearchVariantPickerOriginalLabel": "Original",
-    "songSearchCreateSongRow": "+ Add \"{query}\" as a new song",
-    "songSearchCreateVariantRow": "+ Add \"{query}\" as a new variant",
-    "songSearchCreateDisabledTooltip": "Available in Phase 2"
+    "songSearchNoResults": "No results"
   },
   "SongSearch": {
     "variantPickerTitle": "Which version?",
