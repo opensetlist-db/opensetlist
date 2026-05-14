@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { REGISTERED_IP_KEYS } from "@/lib/translator/prompts";
 
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -8,6 +9,11 @@ type Locale = (typeof LOCALES)[number];
 type Provider = "gemini" | "openai";
 // "default" means: let the server fall back to TRANSLATION_PROVIDER env.
 type ProviderChoice = Provider | "default";
+
+// Picks the system prompt to send. Registered IP slugs come from the
+// IP_PROMPTS keys; "generic" sends FALLBACK_PROMPT. The server validates
+// against the same whitelist (see api/admin/translation-debug/route.ts).
+const IP_CHOICES: readonly string[] = [...REGISTERED_IP_KEYS, "generic"];
 
 type DebugResponse = {
   systemPrompt: string;
@@ -17,11 +23,16 @@ type DebugResponse = {
   parseError: string | null;
   sourceLocale: Locale;
   provider: Provider;
+  ipKey: string;
 };
 
 export default function TranslationDebugPage() {
   const [sourceLocale, setSourceLocale] = useState<Locale>("ko");
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>("default");
+  // Default to "hasunosora" for parity with pre-multi-IP behavior. The
+  // server defaults to the same value when ipKey is omitted, but sending
+  // it explicitly makes the dropdown UI state the source of truth.
+  const [ipKey, setIpKey] = useState<string>("hasunosora");
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -40,6 +51,7 @@ export default function TranslationDebugPage() {
         body: JSON.stringify({
           sourceLocale,
           text,
+          ipKey,
           // Only send `provider` when the admin explicitly picked one; an
           // absent field lets the server use TRANSLATION_PROVIDER env.
           ...(providerChoice !== "default" ? { provider: providerChoice } : {}),
@@ -59,6 +71,7 @@ export default function TranslationDebugPage() {
             parseError: null,
             sourceLocale: data.sourceLocale ?? sourceLocale,
             provider: data.provider ?? "gemini",
+            ipKey: data.ipKey ?? ipKey,
           });
         }
       } else {
@@ -79,7 +92,7 @@ export default function TranslationDebugPage() {
         번역 캐시를 우회합니다. 매 요청마다 번역기 호출이 발생합니다.
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="mb-4 grid grid-cols-3 gap-3">
         <div>
           <label htmlFor="td-source-locale" className="mb-1 block text-sm font-medium">
             원본 로케일
@@ -110,6 +123,23 @@ export default function TranslationDebugPage() {
             <option value="default">기본 (환경 변수)</option>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="td-ip-key" className="mb-1 block text-sm font-medium">
+            IP 프롬프트
+          </label>
+          <select
+            id="td-ip-key"
+            value={ipKey}
+            onChange={(e) => setIpKey(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            {IP_CHOICES.map((key) => (
+              <option key={key} value={key}>
+                {key}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -144,7 +174,7 @@ export default function TranslationDebugPage() {
 
       {result && (
         <div className="space-y-4">
-          <SystemPromptBlock content={result.systemPrompt} />
+          <SystemPromptBlock content={result.systemPrompt} ipKey={result.ipKey} />
 
           {result.parseError && (
             <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -167,12 +197,12 @@ export default function TranslationDebugPage() {
   );
 }
 
-function SystemPromptBlock({ content }: { content: string }) {
+function SystemPromptBlock({ content, ipKey }: { content: string; ipKey: string }) {
   const lineCount = content.split("\n").length;
   return (
     <details className="rounded border border-zinc-200 bg-zinc-50">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-zinc-700">
-        시스템 프롬프트 (캐시되는 접두부, {lineCount}줄 / {content.length}자)
+        시스템 프롬프트 ({ipKey}, 캐시되는 접두부, {lineCount}줄 / {content.length}자)
       </summary>
       <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t border-zinc-200 bg-white p-3 font-mono text-xs">
         {content}

@@ -1,24 +1,23 @@
-import { HASUNOSORA_GLOSSARY_PROMPT } from "./prompts/hasunosora";
-
-// Exported so the admin debug route can display the exact cached prefix the
-// providers send. Phase 1B will replace this constant with a per-event
-// generator — see task-translation-implicit-cache-rewrite.md §Follow-ups.
-export const SYSTEM_PROMPT = HASUNOSORA_GLOSSARY_PROMPT;
-
 export type MultilingualOutput = { ko: string; ja: string; en: string };
 
-// The system prompt is a glossary first and a translation instruction
-// second — section [1] (고유명사 사전) consumes ~95% of its 1073 tokens.
+// The active system prompt is now resolved per-request from
+// src/lib/translator/promptResolver.ts → src/lib/translator/prompts
+// (IP_PROMPTS / FALLBACK_PROMPT). All registered prompts are
+// glossary-heavy and follow the hasunosora.ts shape (a §1 글로서리 or
+// §1 번역 원칙 section + a §2 번역 규칙 section + a final JSON-array
+// format clause). Each registered prompt MUST measure ≥1024 tokens to
+// satisfy the implicit-cache invariant; see prompts/hasunosora.ts:5.
+//
 // On long inputs that mention dictionary entries the framing is anchored
 // and the model translates idiomatically. On inputs with zero glossary
 // matches (e.g. a generic Korean verb like `시작한다`), the model's
 // interpretation can flip to "extract glossary entries" and emit `[]`,
 // which the parser correctly rejects → 502 to the user (F13, 2026-05-02).
 //
-// We can't edit the system prompt to clarify the task — its >1024 token
-// count is the implicit-cache invariant (see prompts/hasunosora.ts).
-// Instead, we disambiguate on the user turn, which is NOT cached, so we
-// can spend tokens here freely without perturbing cache hits:
+// We can't edit the active prompt to clarify the task per-call — that
+// would break the implicit-cache prefix. Instead, we disambiguate on the
+// user turn, which is NOT cached, so we can spend tokens here freely
+// without perturbing cache hits:
 //   1. `source_locale:` line — the original hint. Latin-script titles and
 //      short strings that exist verbatim across ko/ja/en are hard for the
 //      model to detect on content alone; without the hint the source row
