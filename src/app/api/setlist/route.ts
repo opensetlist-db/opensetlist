@@ -32,6 +32,19 @@ export async function GET(req: NextRequest) {
       orderBy: { position: "asc" },
       omit: { note: true },
       include: {
+        // Per-item Confirm count. Drives:
+        //   1. The visual count rendered next to the ✓ button on
+        //      rumoured rows (existing PR #283 UX, currently
+        //      derives the count from a separate path on the
+        //      client; this surface unifies it).
+        //   2. The conflict-handling sort order — sibling rumoured
+        //      rows at the same position render top-down by
+        //      confirmCount DESC, createdAt ASC. See
+        //      `<ActualSetlist>` position-bucketing logic.
+        //   3. The N-confirm-tap promotion threshold check in
+        //      `/api/setlist-items/[id]/confirm` (server reads from
+        //      DB; client uses the polled count for the sort key).
+        _count: { select: { confirms: true } },
         songs: {
           include: {
             song: {
@@ -114,9 +127,20 @@ export async function GET(req: NextRequest) {
   // the SSR-initial value" (see `<LiveEventLayout>`).
   const status = event ? getEventStatus(event) : null;
 
+  // Flatten Prisma's `_count: { confirms }` → top-level
+  // `confirmCount` so the LiveSetlistItem type stays a flat shape
+  // (and the client doesn't have to know about Prisma's `_count`
+  // convention). Done BEFORE serializeBigInt so the recursive walk
+  // sees the renamed property; serializeBigInt only cares about
+  // BigInt values and passes the rest through unchanged.
+  const itemsWithConfirmCount = items.map(({ _count, ...rest }) => ({
+    ...rest,
+    confirmCount: _count.confirms,
+  }));
+
   return NextResponse.json(
     {
-      items: serializeBigInt(items),
+      items: serializeBigInt(itemsWithConfirmCount),
       reactionCounts,
       top3Wishes,
       status,

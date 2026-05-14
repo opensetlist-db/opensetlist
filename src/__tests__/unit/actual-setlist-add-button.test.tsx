@@ -55,6 +55,7 @@ function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
     performanceType: "live_performance",
     type: "song",
     createdAt: "2026-05-13T00:00:00.000Z",
+    confirmCount: 0,
     songs: [],
     performers: [],
     artists: [],

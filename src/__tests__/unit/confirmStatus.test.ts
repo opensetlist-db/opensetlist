@@ -102,4 +102,66 @@ describe("getConfirmStatus", () => {
       ),
     ).toBe("confirmed");
   });
+
+  // ───── Conflict-handling extension (PR feature/conflict-handling) ─────
+
+  describe("siblings suspension (conflict groups)", () => {
+    it("siblings undefined — behaves as pre-conflict-handling (existing 60s auto-promote)", () => {
+      // rumoured + 90s old + no siblings → confirmed (60s rule fires)
+      expect(getConfirmStatus(item("rumoured", -90_000), NOW)).toBe("confirmed");
+    });
+
+    it("siblings empty array — equivalent to undefined (length > 0 is the guard)", () => {
+      // The helper specifically checks `siblings.length > 0`; an
+      // empty array shouldn't suspend.
+      expect(getConfirmStatus(item("rumoured", -90_000), NOW, [])).toBe(
+        "confirmed",
+      );
+    });
+
+    it("rumoured + siblings non-empty + 60s+ → still rumoured (auto-promote suspended)", () => {
+      // The core conflict-handling rule. A row in a contested
+      // position stays rumoured visually until N-confirm-tap
+      // resolves the conflict at the DB level. 60s isn't a
+      // correctness signal in a multi-candidate scenario, so the
+      // auto-promote is suspended.
+      expect(
+        getConfirmStatus(item("rumoured", -90_000), NOW, [{ id: 2 }]),
+      ).toBe("rumoured");
+    });
+
+    it("rumoured + siblings + just-created → rumoured (same as pre-conflict-handling)", () => {
+      expect(
+        getConfirmStatus(item("rumoured", 0), NOW, [{ id: 2 }]),
+      ).toBe("rumoured");
+    });
+
+    it("status='confirmed' overrides siblings (DB-level promotion wins)", () => {
+      // Once a row in a conflict has been promoted (DB write from
+      // the /confirm route's transaction), it should render as
+      // confirmed regardless of any stale siblings the caller passes
+      // in. In practice the auto-hide transaction removes losers in
+      // the same atomic block, but the helper must be robust against
+      // a brief inconsistency window.
+      expect(
+        getConfirmStatus(item("confirmed", 0), NOW, [{ id: 2 }]),
+      ).toBe("confirmed");
+    });
+
+    it("status='live' overrides siblings (same as confirmed)", () => {
+      expect(
+        getConfirmStatus(item("live", 0), NOW, [{ id: 2 }]),
+      ).toBe("confirmed");
+    });
+
+    it("multiple siblings — any non-empty count suspends", () => {
+      expect(
+        getConfirmStatus(item("rumoured", -90_000), NOW, [
+          { id: 2 },
+          { id: 3 },
+          { id: 4 },
+        ]),
+      ).toBe("rumoured");
+    });
+  });
 });

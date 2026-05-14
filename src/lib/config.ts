@@ -35,3 +35,22 @@ export type ImpressionLocale = (typeof IMPRESSION_LOCALES)[number];
 // drift out of sync; changing this value adjusts both surfaces in
 // lockstep.
 export const IMPRESSION_PAGE_SIZE = 50;
+
+// Conflict-handling: number of distinct `SetlistItemConfirm` rows
+// required to flip a rumoured row in a conflict group to `confirmed`
+// and auto-hide its siblings.
+//
+// Default 3 matches `wiki/crowdsourcing.md` §"rumoured → confirmed
+// transition" Rule A — "≥ N general-tier confirmations (default
+// CONFIRMATION_THRESHOLD = 3, env-tunable)". For Phase 1C only Rule A
+// applies; B/C/D depend on the tier system that ships in Phase 2.
+//
+// Env-tunability deferred — operationally we expect to ship N=3 and
+// only revisit if real engagement data shows the threshold is too
+// high (slow resolution) or too low (abuse-vulnerable). Tuning then
+// is a one-line PR rather than env-var infra.
+//
+// Single-row 1-minute auto-promote (`src/lib/confirmStatus.ts`) is
+// intentionally not gated by this threshold — that's a render-time
+// concept for non-conflict rows and never mutates DB.
+export const CONFLICT_CONFIRMATION_THRESHOLD = 3;

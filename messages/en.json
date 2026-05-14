@@ -356,6 +356,10 @@
     "errorEventNotOngoing": "Songs can only be added while the show is ongoing",
     "errorPerformerNotInEvent": "Some selected performers aren't in this event's lineup",
     "errorPositionConflict": "Another user added a song at the same time. Please try again.",
+    "errorPositionAlreadyConfirmed": "This position is already confirmed. Please contact the operator for corrections.",
+    "targetPositionLabel": "Adding at position {position}",
+    "occupantAppearedNotice": "Another user added a song at this position. Same song will merge; different song will show as a conflict.",
+    "contestRowLabel": "Different song here",
     "songSearchPlaceholder": "Search songs...",
     "songSearchLoading": "Searching...",
     "songSearchNoResults": "No results"

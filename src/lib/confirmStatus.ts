@@ -47,18 +47,32 @@ export const AUTO_CONFIRM_TICK_MS = 5_000;
  *   2. DB-level `status === "live"` (currently happening; treated as
  *      confirmed for visual purposes — the row is happening now and
  *      verified by the system)
- *   3. Past the 1-min auto-promote window → confirmed
- *   4. Otherwise → rumoured
+ *   3. Conflict-group suspension: if `siblings` is non-empty, skip
+ *      the 1-min auto-promote — a row in an unresolved conflict
+ *      stays `rumoured` visually until the N-confirm-tap threshold
+ *      resolves it via DB-level promotion (see
+ *      `src/app/api/setlist-items/[id]/confirm/route.ts`).
+ *      Rationale: 1-min auto-promote is a render-time UI bridge,
+ *      not a correctness signal. Promoting one of N siblings on a
+ *      timer would be arbitrary (no vote signal to break the tie).
+ *   4. Past the 1-min auto-promote window → confirmed
+ *   5. Otherwise → rumoured
  *
  * `localConfirmedIds` is intentionally NOT consulted here. A
  * locally-confirmed row stays semantically "rumoured" (the system
  * doesn't yet know about a threshold of confirms); the caller
  * combines this return with the local set to choose between the
  * `rumoured` and `my-confirmed` visual variants.
+ *
+ * `siblings` is optional and backwards-compatible: callers that don't
+ * pass it (existing 1-row callers) get pre-conflict-handling
+ * behavior. Conflict-aware callers (`<ActualSetlist>` after position
+ * bucketing) pass `siblings` as the OTHER rows at the same position.
  */
 export function getConfirmStatus(
   item: { id: number; status: string; createdAt: Date | string },
   now: Date = new Date(),
+  siblings?: ReadonlyArray<{ id: number }>,
 ): "confirmed" | "rumoured" {
   if (item.status === "confirmed") return "confirmed";
   if (item.status === "live") return "confirmed";
@@ -69,6 +83,12 @@ export function getConfirmStatus(
     // non-rumoured rows.
     return "confirmed";
   }
+  // Conflict-group suspension. `siblings` non-empty → this row has
+  // peers at the same position; keep it rumoured visually so the
+  // ✓/✕ vote buttons remain active. The N-confirm-tap path in the
+  // /confirm route will eventually promote a winner + auto-hide
+  // losers at the DB level.
+  if (siblings && siblings.length > 0) return "rumoured";
   const createdAt =
     item.createdAt instanceof Date
       ? item.createdAt

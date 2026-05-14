@@ -3,7 +3,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
-import { nextSetlistPosition } from "@/lib/setlist-position";
 import { getEventStatus } from "@/lib/eventStatus";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
 
@@ -14,70 +13,73 @@ type RouteProps = { params: Promise<{ id: string }> };
  *
  *   Body: {
  *     itemType: "song" | "mc" | "video" | "interval",
- *     songId?: number,           // required when itemType === 'song';
+ *     songId?: number | string,  // required when itemType === 'song';
  *                                // the variant's Song.id (variants are
- *                                // separate rows linked via baseVersionId)
+ *                                // separate rows linked via baseVersionId).
+ *                                // Accepts safe-integer number OR
+ *                                // decimal string (BigInt round-trip)
  *     performerIds: string[],    // stageIdentityId[]; ignored for non-song
  *     isEncore: boolean,
+ *     position: number,          // explicit position the client chose
+ *                                // from the visible setlist; server
+ *                                // lands there exactly (no
+ *                                // `nextSetlistPosition` computation)
  *   }
  *
- *   → 201 { ok: true, item: SerializedSetlistItem }   (success)
+ *   → 201 { ok: true, item: SerializedSetlistItem }   (create)
+ *   → 200 { ok: true, item: SerializedSetlistItem, action: "auto-confirm-merge" }
+ *         (same-position same-song dedup → SetlistItemConfirm on the
+ *         existing row instead of creating a sibling)
  *   → 403 { ok: false, error: "feature_flag_disabled" }
- *   → 400 { ok: false, error: <validation> }
+ *   → 400 { ok: false, error: <validation> | "event_not_ongoing"
+ *                              | "performer_not_in_event"
+ *                              | "position_already_confirmed" }
  *   → 404 { ok: false, error: "event_not_found" | "song_not_found" }
- *   → 409 { ok: false, error: "position_conflict" }   (after 3 retries)
+ *   → 409 { ok: false, error: "position_conflict" }   (after retries)
  *
  * Backs the Phase 1C `<AddItemBottomSheet>` — user-submitted setlist
- * rows. Mirrors the admin `insert-after` endpoint
+ * rows. The conflict-handling extension (this PR) flips the position
+ * model from server-computed (`nextSetlistPosition(items)`) to
+ * client-supplied. The race-loss-misplacement bug that motivated the
+ * change: with server-side position computation, User B's intended
+ * "next position N+1" submission could silently land at N+2 if User A
+ * grabbed N+1 first. With explicit position, both submissions land at
+ * exactly N+1 — same song merges via dedup, different song creates a
+ * rumoured sibling (conflict group).
+ *
+ * Mirrors the admin `insert-after` endpoint
  * (`src/app/api/admin/setlist-items/insert-after/route.ts`) but:
  *
- *   - Always appends at the end (`nextSetlistPosition`); users can't
- *     mid-list-insert at 1C. Operator retains that capability via the
- *     admin route.
- *   - Forces `status: 'rumoured'` (the default is `confirmed` — admin
- *     rows ship live-trusted; user rows always start unconfirmed and
- *     promote via the existing Confirm flow / 1-min auto-promote).
- *   - Recomputes `stageType` server-side from the song's actual
- *     `SongArtist` rows; client-passed stageType is ignored. Prevents
- *     tampering and drift between the client's loaded songArtists
- *     and the DB.
- *   - Accepts `performers` as an explicit, user-edited list — admin
- *     route auto-fills from event.performers. The user has already
- *     edited the checklist (auto-fill happens client-side via
- *     `deriveStageType` + the unit-current-members endpoint), so the
- *     server takes the list as-is after validating it's a subset of
- *     event.performers.
+ *   - Position from `body.position`, not server-computed
+ *   - Forces `status: 'rumoured'` (admin default is `confirmed`)
+ *   - Recomputes `stageType` server-side from the song's
+ *     `SongArtist` rows; client-passed stageType is ignored
+ *   - Accepts `performers` as an explicit, user-edited list
+ *   - Rejects if the target position is already owned by a
+ *     non-rumoured row (operator/promoted): 400
+ *     `position_already_confirmed`. The follow-up ContestReport PR
+ *     will provide the proper contest path for confirmed rows
+ *   - Auto-merges if a rumoured row at the SAME position with the
+ *     SAME songId exists within the dedup window → writes a
+ *     `SetlistItemConfirm` instead of creating a sibling
+ *   - Allows multiple rumoured rows at the same position (conflict
+ *     siblings) — the partial unique index is gated on
+ *     `status != 'rumoured'`, so the negation form permits siblings.
+ *     Vote-driven promotion in `/api/setlist-items/[id]/confirm`
+ *     resolves the conflict (winner promoted + siblings auto-hidden)
+ *     when one candidate crosses `CONFLICT_CONFIRMATION_THRESHOLD`
  *
- * Path param is `[id]` (not `[eventId]`) because the parent dynamic
- * segment is already `[id]` (see `src/app/api/events/[id]/wishes/`)
- * and Next.js disallows different slug names at the same depth.
- * Body field `eventId` would be redundant — the path carries it.
+ * Path param is `[id]` because the parent dynamic segment is
+ * `[id]` for the events tree and Next.js disallows different slug
+ * names at the same depth.
  *
- * Returns JSON 4xx for ALL failure modes (no Next.js HTML 500 page).
- * The bottom sheet's `await res.json()` parse path stays predictable;
- * the matching pattern to /api/songs/search (the same component
- * family) and /api/setlist-items/[id]/confirm.
+ * Returns JSON 4xx/5xx for ALL failure modes. Realtime broadcasts
+ * the INSERT automatically (postgres_changes on SetlistItem).
  *
- * Realtime: no endpoint-side push code. Supabase Realtime
- * (`postgres_changes` on `SetlistItem` with `eventId` filter,
- * shipped v0.11.0) broadcasts the INSERT automatically; subscribed
- * viewers see the new row within ~1s.
- *
- * Conflict handling (duplicate-detect, parallel candidates) is a
- * SEPARATE task (`task-week3-conflict-handling.md`, Stage 3) that
- * layers on top of this endpoint. Out of scope here.
- *
- * Authentication NOTE: this endpoint is INTENTIONALLY unauthenticated
- * at Phase 1C, matching every other write-side fan-facing endpoint in
- * the project: `POST /api/events/[id]/wishes` (wishlist),
- * `POST /api/setlist-items/[id]/confirm` (Confirm UI), and reactions.
- * Per `wiki/conflicts.md #9` (schema-simplification decision), Phase 1C
- * fan writes carry no anonId / userId / sourceUrl — the localStorage
- * gate is the only per-viewer check, and dedup-on-write is the
- * separate Stage-3 conflict-handling task. NextAuth ships in Phase 2
- * alongside the trust-tier system; THIS endpoint adopts session-based
- * auth then, NOT at 1C. Push-review has flagged the missing
- * `getServerSession` check more than once; the answer is "Phase 2."
+ * Authentication NOTE: intentionally unauthenticated at Phase 1C,
+ * matching every other fan-facing write endpoint. Per
+ * `wiki/conflicts.md #9`, 1C fan writes carry no anonId / userId.
+ * NextAuth ships in Phase 2 with the trust-tier system.
  */
 
 const VALID_ITEM_TYPES: ReadonlyArray<ItemType> = [
@@ -89,11 +91,28 @@ const VALID_ITEM_TYPES: ReadonlyArray<ItemType> = [
 
 const POSITION_RETRY_MAX = 3;
 
+// Dedup window for the auto-confirm-merge path (Gate 6.5). Two
+// users independently submitting the same song at the same
+// position within this window collapses into one row with a
+// SetlistItemConfirm row added. 5 minutes matches the original
+// task spec; longer windows risk false-positive merges of
+// genuinely-distinct submissions (rare song repeats in special
+// live setlists), shorter windows risk missing real race-ties.
+const DEDUP_WINDOW_MS = 5 * 60 * 1000;
+
 interface ParsedBody {
   itemType: ItemType;
   songId: bigint | null;
   performerIds: string[];
   isEncore: boolean;
+  // Conflict-handling: explicit position is now part of the request.
+  // The client computes this from the visible setlist at button-
+  // click time and freezes it for the duration of the sheet's
+  // deliberation period. Server uses this value as-is — no longer
+  // computes `nextSetlistPosition` internally. See plan section
+  // "Server position computation: eliminated" for the race-loss
+  // rationale.
+  position: number;
 }
 
 // Body parse + shape validation. Returns either a parsed body or a
@@ -169,6 +188,25 @@ function parseBody(
     return { ok: false, error: "isEncore must be boolean" };
   }
 
+  // Position is required for all item types — the client decides
+  // where the row lands based on the live setlist it sees, then
+  // freezes that value through the sheet's deliberation window.
+  // Must be a positive integer matching the `Int` column on
+  // `SetlistItem.position` (PostgreSQL int4, max 2,147,483,647).
+  // We enforce the upper bound here too so an oversized value
+  // surfaces as a 4xx instead of bubbling through Prisma into the
+  // catch path as `internal_error` 500 (which would hide the real
+  // cause from the client).
+  const rawPosition = body.position;
+  if (
+    typeof rawPosition !== "number" ||
+    !Number.isInteger(rawPosition) ||
+    rawPosition <= 0 ||
+    rawPosition > 2_147_483_647
+  ) {
+    return { ok: false, error: "position must be a positive integer" };
+  }
+
   return {
     ok: true,
     body: {
@@ -176,6 +214,7 @@ function parseBody(
       songId,
       performerIds,
       isEncore,
+      position: rawPosition,
     },
   };
 }
@@ -222,7 +261,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       { status: 400 },
     );
   }
-  const { itemType, songId, performerIds, isEncore } = parsed.body;
+  const { itemType, songId, performerIds, isEncore, position } = parsed.body;
 
   // Gate 4 — event exists, not soft-deleted, status === 'ongoing'.
   // The 'ongoing' gate is a server-side mirror of the client's button
@@ -280,6 +319,42 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   if (getEventStatus(event) !== "ongoing") {
     return NextResponse.json(
       { ok: false, error: "event_not_ongoing" },
+      { status: 400 },
+    );
+  }
+
+  // Gate 4.5 — position not already owned by a finalized (non-rumoured)
+  // row. The partial unique index permits multiple rumoured rows at the
+  // same position (conflict siblings), but only one `status != 'rumoured'`
+  // row. If the target position already has a confirmed/live row, the
+  // user's submission cannot land there as a rumoured sibling without
+  // the eventual promotion transaction tripping the index. Reject up
+  // front with a clear error and a hint about the operator path
+  // (which the follow-up ContestReport PR will expose).
+  let occupant;
+  try {
+    occupant = await prisma.setlistItem.findFirst({
+      where: {
+        eventId,
+        position,
+        isDeleted: false,
+        status: { not: "rumoured" },
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    console.error(
+      "[POST /api/events/[id]/setlist-items] occupant lookup failed",
+      err,
+    );
+    return NextResponse.json(
+      { ok: false, error: "internal_error" },
+      { status: 500 },
+    );
+  }
+  if (occupant) {
+    return NextResponse.json(
+      { ok: false, error: "position_already_confirmed" },
       { status: 400 },
     );
   }
@@ -354,28 +429,160 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
     })),
   );
 
-  // Gate 7 — transaction with position retry. Two simultaneous user
-  // submissions can compute the same `nextPos` (both read MAX(position)
-  // before either commits). The partial unique index
-  // `[eventId, position] WHERE isDeleted = false` (post-deploy.sql:181)
-  // catches the collision with Prisma P2002; we retry up to
-  // POSITION_RETRY_MAX times before surfacing 409. With ≤3 users
-  // tapping submit within milliseconds of each other on the same
-  // event, retry resolves; with a higher contention rate the 409 is
-  // legitimately surfaceable as "try again."
+  // Gate 6.5 — exact-position-same-song dedup (auto-confirm-merge).
+  // If a rumoured row already exists at the SAME position with the
+  // SAME songId within the dedup window, write a SetlistItemConfirm
+  // on the existing row instead of creating a sibling. Two users
+  // independently submitting the same song at the same position
+  // (race-tied submissions, or sequential agreement) is a stronger
+  // correctness signal than counting upvotes — collapse into one
+  // row + bump confirmCount.
   //
-  // Stage-type is computed OUTSIDE the transaction (deterministic
-  // from the song's artists; the loop doesn't change it).
+  // SCOPE NARROWED FROM THE TASK SPEC: the original spec checked
+  // position ±1 (proposedPosition ± 1) to catch race-loss scenarios
+  // where User B's "next position" submission landed at N+2 because
+  // User A grabbed N+1 first. With the explicit-position model the
+  // race-loss path is closed (client sends explicit position, server
+  // doesn't compute), so the ±1 expansion would now over-match —
+  // legitimate "same song played twice consecutively" cases (rare
+  // but possible in special live setlists) would be mis-merged. We
+  // check the exact position only.
+  if (itemType === "song" && songId !== null) {
+    const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
+    let dupRow;
+    try {
+      dupRow = await prisma.setlistItem.findFirst({
+        where: {
+          eventId,
+          position,
+          isDeleted: false,
+          status: "rumoured",
+          createdAt: { gte: cutoff },
+          songs: { some: { songId } },
+        },
+        select: { id: true },
+      });
+    } catch (err) {
+      console.error(
+        "[POST /api/events/[id]/setlist-items] dup lookup failed",
+        err,
+      );
+      return NextResponse.json(
+        { ok: false, error: "internal_error" },
+        { status: 500 },
+      );
+    }
+    if (dupRow) {
+      // Write a SetlistItemConfirm on the existing row + return its
+      // re-included payload so the client gets the same response
+      // shape as a create. The confirm POST route's promotion
+      // transaction is NOT triggered from here — it runs on the
+      // user's own /confirm POSTs, not this auto-merge path. The
+      // auto-merge confirm represents "two users independently
+      // submitted the same song" which is a strong signal but not
+      // necessarily a user explicitly voting through the
+      // ConfirmButton.
+      try {
+        await prisma.setlistItemConfirm.create({
+          data: { setlistItemId: dupRow.id },
+        });
+      } catch (err) {
+        console.error(
+          "[POST /api/events/[id]/setlist-items] auto-merge confirm write failed",
+          err,
+        );
+        return NextResponse.json(
+          { ok: false, error: "internal_error" },
+          { status: 500 },
+        );
+      }
+      let merged;
+      try {
+        merged = await prisma.setlistItem.findUnique({
+          where: { id: dupRow.id },
+          include: {
+            // `confirmCount` is part of the LiveSetlistItem contract
+            // (src/lib/types/setlist.ts), flattened from
+            // `_count.confirms` before serialisation. Mirrors the
+            // pattern in /api/setlist's polling endpoint.
+            _count: { select: { confirms: true } },
+            songs: {
+              include: { song: { include: { translations: true } } },
+              orderBy: { order: "asc" },
+            },
+            performers: {
+              include: {
+                stageIdentity: { include: { translations: true } },
+              },
+            },
+            artists: {
+              include: { artist: { include: { translations: true } } },
+            },
+          },
+        });
+      } catch (err) {
+        console.error(
+          "[POST /api/events/[id]/setlist-items] auto-merge re-fetch failed",
+          err,
+        );
+        return NextResponse.json(
+          { ok: false, error: "internal_error" },
+          { status: 500 },
+        );
+      }
+      if (!merged || merged.isDeleted) {
+        // Race: the dedup-hit row was soft-deleted between the
+        // findFirst (Gate 6.5) and this re-fetch — e.g. another
+        // user's promotion transaction in /api/setlist-items/[id]/confirm
+        // hit the same row first and auto-hid it as a losing sibling.
+        // `findUnique` returns the row regardless of `isDeleted`
+        // (Prisma doesn't apply partial-index filters), so we check
+        // both: a hard delete (theoretical — our schema only soft-
+        // deletes) AND `isDeleted === true`. Either case means the
+        // response can't carry a usable item — surface 500 so the
+        // client falls back to retry rather than receive a
+        // soft-deleted row in a "successful" response.
+        //
+        // The confirm row we just wrote is still persisted; per the
+        // soft-delete pattern the FK to a soft-deleted SetlistItem
+        // stays valid (just invisible from public reads).
+        console.error(
+          "[POST /api/events/[id]/setlist-items] auto-merge target vanished or soft-deleted between findFirst and findUnique",
+        );
+        return NextResponse.json(
+          { ok: false, error: "internal_error" },
+          { status: 500 },
+        );
+      }
+      const { _count, ...mergedRest } = merged;
+      return NextResponse.json(
+        {
+          ok: true,
+          item: serializeBigInt({
+            ...mergedRest,
+            confirmCount: _count.confirms,
+          }),
+          action: "auto-confirm-merge",
+        },
+        { status: 200 },
+      );
+    }
+  }
+
+  // Gate 7 — create transaction. With the explicit-position model
+  // the client owns position computation, so the legacy
+  // `nextSetlistPosition` race + retry-on-P2002 loop is mostly
+  // historical: the negation index (post-deploy.sql:181 area) now
+  // permits multiple rumoured rows at the same position, so user
+  // POSTs through this route shouldn't see a position-target P2002
+  // at all. The retry remains as defensive infrastructure in case a
+  // future code path inserts a non-rumoured row via this handler;
+  // the in-loop `isPositionRace` filter + post-loop target-substring
+  // match still discriminate correctly.
   let lastError: unknown = null;
   for (let attempt = 0; attempt < POSITION_RETRY_MAX; attempt++) {
     try {
       const created = await prisma.$transaction(async (tx) => {
-        const existing = await tx.setlistItem.findMany({
-          where: { eventId, isDeleted: false },
-          select: { position: true },
-        });
-        const position = nextSetlistPosition(existing);
-
         return tx.setlistItem.create({
           data: {
             eventId,
@@ -409,6 +616,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           // primitive, optimistic insert into the local items array)
           // can use one shared type.
           include: {
+            // `confirmCount` is part of the LiveSetlistItem
+            // contract. A freshly-created row has zero confirms
+            // but we still go through Prisma's `_count` for shape
+            // consistency with the auto-merge path + /api/setlist.
+            _count: { select: { confirms: true } },
             songs: {
               include: { song: { include: { translations: true } } },
               orderBy: { order: "asc" },
@@ -425,8 +637,15 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         });
       });
 
+      const { _count, ...createdRest } = created;
       return NextResponse.json(
-        { ok: true, item: serializeBigInt(created) },
+        {
+          ok: true,
+          item: serializeBigInt({
+            ...createdRest,
+            confirmCount: _count.confirms,
+          }),
+        },
         { status: 201 },
       );
     } catch (err) {
@@ -443,8 +662,16 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         // target shape varies by adapter (array vs string).
         JSON.stringify(err.meta?.target ?? "").includes("position");
       if (!isPositionRace) break;
-      // Loop continues; recomputes nextPosition with the (now larger)
-      // active-position set the colliding writer committed.
+      // Loop continues. NOTE — under the explicit-position model
+      // the loop no longer recomputes a new position (the old
+      // server-side `nextSetlistPosition` path is gone), so a
+      // retry simply re-attempts the SAME body.position. That
+      // makes this loop largely defensive infrastructure: today's
+      // user POSTs all set `status='rumoured'` which the negation
+      // partial unique index permits, so the loop body's create
+      // shouldn't actually trip P2002 on the position target. The
+      // retry remains as guard rail in case a future code path
+      // inserts a non-rumoured row through this handler.
     }
   }
 
