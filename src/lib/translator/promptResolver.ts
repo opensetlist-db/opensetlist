@@ -52,7 +52,13 @@ const MAX_ENTRIES = 10_000;
 const cache = new Map<string, { resolvedAt: number; data: ResolvedPrompt }>();
 
 function recordInCache(impressionId: string, data: ResolvedPrompt): void {
-  if (cache.size >= MAX_ENTRIES) {
+  // Only sweep/evict when inserting a NEW key. Refreshing an existing
+  // entry's data field replaces it in place (insertion order is
+  // preserved by Map.set on an existing key for our purposes), so it
+  // can't push the cache past MAX_ENTRIES — running eviction in that
+  // case would needlessly drop unrelated hot entries.
+  const isNewKey = !cache.has(impressionId);
+  if (isNewKey && cache.size >= MAX_ENTRIES) {
     const now = Date.now();
     for (const [key, entry] of cache) {
       if (now - entry.resolvedAt >= TTL_MS) cache.delete(key);

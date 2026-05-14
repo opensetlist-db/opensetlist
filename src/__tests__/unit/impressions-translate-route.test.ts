@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { FALLBACK_PROMPT } from "@/lib/translator/prompts";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -243,14 +244,12 @@ describe("POST /api/impressions/translate", () => {
       }) as unknown as Parameters<typeof POST>[0],
     );
     expect(res.status).toBe(200);
-    // Translator was still called — with FALLBACK_PROMPT as the systemPrompt
-    // arg (matched loosely: we don't import the constant here, just assert
-    // it's a non-empty string distinct from "MOCK_PROMPT").
+    // Translator must have been called with the actual FALLBACK_PROMPT —
+    // a stricter check than "non-empty + not MOCK_PROMPT" so the assertion
+    // fails if the fallback ever changes to a different constant.
     expect(translateMock).toHaveBeenCalledTimes(1);
     const systemPromptArg = (translateMock.mock.calls[0] as unknown[])[2];
-    expect(typeof systemPromptArg).toBe("string");
-    expect(systemPromptArg).not.toBe("MOCK_PROMPT");
-    expect((systemPromptArg as string).length).toBeGreaterThan(0);
+    expect(systemPromptArg).toBe(FALLBACK_PROMPT);
   });
 
   it("falls through and still returns translation when createMany throws", async () => {
