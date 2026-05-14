@@ -205,6 +205,10 @@ export function AddItemBottomSheet({
   // effect only runs on a real {open, eventId} change.
   const fetchedKeyRef = useRef<string | null>(null);
 
+  // Effect 1 — performers data fetch (once per mount-per-event).
+  // Does NOT dispatch SET_PERFORMERS itself; that lives in the
+  // defaults-effect below so re-opens of the sheet (where the data
+  // is already cached) still re-apply the defaults after a RESET.
   useEffect(() => {
     if (!open) return;
     if (fetchedKeyRef.current === eventId) return;
@@ -219,15 +223,6 @@ export function AddItemBottomSheet({
       .then((data: { performers: PerformerOption[] }) => {
         if (cancelled) return;
         setEventPerformers(data.performers);
-        // Default all non-guest performers checked for the initial
-        // song-itemType state (spec: full-group song defaults to all
-        // performers). Mirrors the admin SetlistBuilder default.
-        const defaults = new Set(
-          data.performers
-            .filter((p) => !p.isGuest)
-            .map((p) => p.stageIdentityId),
-        );
-        dispatch({ type: "SET_PERFORMERS", payload: defaults });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -242,6 +237,30 @@ export function AddItemBottomSheet({
       cancelled = true;
     };
   }, [open, eventId, t]);
+
+  // Effect 2 — performer defaults. Fires whenever the sheet is open
+  // with `itemType === 'song'` and no song has been picked yet. The
+  // separation from the fetch effect above is load-bearing: on a
+  // close-then-reopen cycle the data fetch is skipped
+  // (`fetchedKeyRef.current === eventId`), but the RESET that fired
+  // on close cleared `performerIds`. Without this effect, the second
+  // open would render the checklist with every box unchecked.
+  //
+  // The song-pick effect below overrides these defaults once a song
+  // is picked (with the unit-intersection or full-group all-performers
+  // logic), so this only paints the initial "no song picked yet"
+  // state.
+  useEffect(() => {
+    if (!open || !eventPerformers) return;
+    if (selectedSong) return;
+    if (itemType !== "song") return;
+    const defaults = new Set(
+      eventPerformers
+        .filter((p) => !p.isGuest)
+        .map((p) => p.stageIdentityId),
+    );
+    dispatch({ type: "SET_PERFORMERS", payload: defaults });
+  }, [open, eventPerformers, selectedSong, itemType]);
 
   // Auto-fill performers when the user picks a song. The classification
   // (unit-vs-full-group) is the same deriveStageType the server runs
