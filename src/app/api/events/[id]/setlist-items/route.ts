@@ -492,23 +492,54 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           { status: 500 },
         );
       }
-      const merged = await prisma.setlistItem.findUnique({
-        where: { id: dupRow.id },
-        include: {
-          songs: {
-            include: { song: { include: { translations: true } } },
-            orderBy: { order: "asc" },
-          },
-          performers: {
-            include: {
-              stageIdentity: { include: { translations: true } },
+      let merged;
+      try {
+        merged = await prisma.setlistItem.findUnique({
+          where: { id: dupRow.id },
+          include: {
+            songs: {
+              include: { song: { include: { translations: true } } },
+              orderBy: { order: "asc" },
+            },
+            performers: {
+              include: {
+                stageIdentity: { include: { translations: true } },
+              },
+            },
+            artists: {
+              include: { artist: { include: { translations: true } } },
             },
           },
-          artists: {
-            include: { artist: { include: { translations: true } } },
-          },
-        },
-      });
+        });
+      } catch (err) {
+        console.error(
+          "[POST /api/events/[id]/setlist-items] auto-merge re-fetch failed",
+          err,
+        );
+        return NextResponse.json(
+          { ok: false, error: "internal_error" },
+          { status: 500 },
+        );
+      }
+      if (!merged) {
+        // Race: the dedup-hit row was soft-deleted between the
+        // findFirst (Gate 6.5) and this re-fetch (e.g. another
+        // user's promotion transaction hit the same row first and
+        // auto-hid it as a losing sibling). The confirm row we just
+        // wrote is still valid — it now references a soft-deleted
+        // SetlistItem, which is acceptable per the soft-delete
+        // pattern (the FK stays valid, just invisible from public
+        // reads). Surface 500 so the client knows the response
+        // didn't carry the item it expected; on retry the user will
+        // see a fresh state.
+        console.error(
+          "[POST /api/events/[id]/setlist-items] auto-merge target vanished between findFirst and findUnique",
+        );
+        return NextResponse.json(
+          { ok: false, error: "internal_error" },
+          { status: 500 },
+        );
+      }
       return NextResponse.json(
         {
           ok: true,
