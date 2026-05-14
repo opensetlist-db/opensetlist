@@ -25,8 +25,8 @@ import {
   IP_PROMPTS,
   FALLBACK_PROMPT,
 } from "../src/lib/translator/prompts/index";
+import { GEMINI_MODEL } from "../src/lib/translator/gemini";
 
-const MODEL = "gemini-3.1-flash-lite-preview";
 const MIN_TOKENS = 1024;
 
 async function main() {
@@ -47,7 +47,7 @@ async function main() {
   let failed = 0;
   for (const [key, prompt] of entries) {
     const { totalTokens } = await client.models.countTokens({
-      model: MODEL,
+      model: GEMINI_MODEL,
       contents: prompt,
     });
     const ok = (totalTokens ?? 0) >= MIN_TOKENS;

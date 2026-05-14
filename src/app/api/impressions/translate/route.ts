@@ -84,14 +84,15 @@ export async function POST(req: NextRequest) {
   // Resolver failures (transient Prisma error, etc.) fall back to the
   // generic prompt rather than 500-ing the user. Translation quality
   // degrades to "no IP context" for this request — better than failure
-  // for an isolated DB blip. The fallback ResolvedPrompt is tagged
-  // `resolverErrored: true` in the Sentry breadcrumb extras so the
-  // operator can spot resolver failures distinctly from organic
-  // generic-fallback traffic.
+  // for an isolated DB blip. The downstream success/failure breadcrumbs
+  // carry `resolverErrored` so resolver failures stay distinguishable
+  // from organic generic-fallback traffic in Sentry.
   let resolved;
+  let resolverErrored = false;
   try {
     resolved = await resolvePromptForImpression(impressionId);
   } catch (err) {
+    resolverErrored = true;
     Sentry.addBreadcrumb({
       category: "translator",
       level: "warning",
@@ -141,6 +142,7 @@ export async function POST(req: NextRequest) {
         ipKey: resolved.ipKey,
         multiIp: resolved.multiIp,
         unregisteredSlug: resolved.unregisteredSlug,
+        resolverErrored,
       },
     });
     Sentry.captureMessage("translator.translate_failed", {
@@ -154,6 +156,7 @@ export async function POST(req: NextRequest) {
         multiIp: resolved.multiIp,
         unregisteredSlug: resolved.unregisteredSlug,
         franchiseSlugs: resolved.franchiseSlugs,
+        resolverErrored,
       },
     });
     console.error("Translator call failed", { name: errorName });
@@ -202,6 +205,7 @@ export async function POST(req: NextRequest) {
       ipKey: resolved.ipKey,
       multiIp: resolved.multiIp,
       unregisteredSlug: resolved.unregisteredSlug,
+      resolverErrored,
       sourceLocale,
       targetLocale,
       textLength: impression.content.length,

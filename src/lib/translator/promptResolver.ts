@@ -33,12 +33,40 @@ export type ResolvedPrompt = {
 // the franchise set, matching how the glossary substrate handles them in
 // src/lib/glossary.ts:226.
 //
-// Cache: module-scope Map<impressionId, …> with 1h TTL. Impression → IP
-// only changes when the event's performer list changes (rare; not a
-// real-time concern). Mirror of the cache pattern in
-// src/lib/glossary.ts:157-168.
+// Cache: bounded module-scope Map<impressionId, …> with 1h TTL.
+// Impression → IP only changes when the event's performer list changes
+// (rare; not a real-time concern). Pattern is similar to
+// src/lib/glossary.ts:157-168 but with a hard size cap — that cache
+// keys by artistId (small fixed set across the catalog) while this one
+// keys by impressionId (unbounded over time, one per fan post), so an
+// unbounded Map would leak memory in a long-running Node process.
+//
+// When `MAX_ENTRIES` is reached on insert, we first sweep expired
+// entries; if the cache is still full, the oldest insertion-order
+// entry is evicted (Map preserves insertion order, so the first key
+// from `cache.keys()` is the oldest). Eviction policy is approximate
+// LRU — good enough for the 1h-TTL granularity we care about.
 const TTL_MS = 60 * 60 * 1000;
+const MAX_ENTRIES = 10_000;
 const cache = new Map<string, { resolvedAt: number; data: ResolvedPrompt }>();
+
+function recordInCache(impressionId: string, data: ResolvedPrompt): void {
+  if (cache.size >= MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [key, entry] of cache) {
+      if (now - entry.resolvedAt >= TTL_MS) cache.delete(key);
+    }
+    while (cache.size >= MAX_ENTRIES) {
+      // Map iteration order is insertion order — the first key is the
+      // oldest. Drop one and re-check (the `while` handles the rare
+      // case where MAX_ENTRIES is reached after the sweep above).
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  }
+  cache.set(impressionId, { resolvedAt: Date.now(), data });
+}
 
 export async function resolvePromptForImpression(
   impressionId: string,
@@ -52,7 +80,7 @@ export async function resolvePromptForImpression(
   });
   if (!impression) {
     const resolved = makeGeneric([]);
-    cache.set(impressionId, { resolvedAt: Date.now(), data: resolved });
+    recordInCache(impressionId, resolved);
     return resolved;
   }
 
