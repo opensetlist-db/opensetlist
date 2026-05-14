@@ -3,7 +3,9 @@ import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, type ImpressionLocale } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
-import { SYSTEM_PROMPT, type MultilingualOutput } from "@/lib/translator/prompt";
+import type { MultilingualOutput } from "@/lib/translator/prompt";
+import { resolvePromptForImpression } from "@/lib/translator/promptResolver";
+import { FALLBACK_PROMPT } from "@/lib/translator/prompts";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -74,13 +76,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ translatedText: cached.translatedText });
   }
 
+  // Resolve which system prompt to send — walks the event's performers
+  // to a franchise Group and picks IP_PROMPTS[slug] or FALLBACK_PROMPT.
+  // Run only after the cache-hit short-circuit above: cache hits don't
+  // call the LLM, so they don't need (or pay for) the Prisma walk.
+  //
+  // Resolver failures (transient Prisma error, etc.) fall back to the
+  // generic prompt rather than 500-ing the user. Translation quality
+  // degrades to "no IP context" for this request — better than failure
+  // for an isolated DB blip. The fallback ResolvedPrompt is tagged
+  // `resolverErrored: true` in the Sentry breadcrumb extras so the
+  // operator can spot resolver failures distinctly from organic
+  // generic-fallback traffic.
+  let resolved;
+  try {
+    resolved = await resolvePromptForImpression(impressionId);
+  } catch (err) {
+    Sentry.addBreadcrumb({
+      category: "translator",
+      level: "warning",
+      message: "prompt_resolver_failed",
+      data: { name: err instanceof Error ? err.name : typeof err },
+    });
+    resolved = {
+      prompt: FALLBACK_PROMPT,
+      ipKey: "generic",
+      multiIp: false,
+      unregisteredSlug: null,
+      franchiseSlugs: [] as string[],
+    };
+  }
+
   let multilingual: MultilingualOutput;
   try {
     const translator = getTranslator();
     multilingual = await translator.translate(
       impression.content,
       sourceLocale,
-      SYSTEM_PROMPT,
+      resolved.prompt,
       AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
     );
   } catch (err) {
@@ -99,12 +132,29 @@ export async function POST(req: NextRequest) {
       category: "translator",
       level: "error",
       message: "translate_failed",
-      data: { provider, sourceLocale, targetLocale, errorName, textLength },
+      data: {
+        provider,
+        sourceLocale,
+        targetLocale,
+        errorName,
+        textLength,
+        ipKey: resolved.ipKey,
+        multiIp: resolved.multiIp,
+        unregisteredSlug: resolved.unregisteredSlug,
+      },
     });
     Sentry.captureMessage("translator.translate_failed", {
       level: "error",
-      tags: { provider, sourceLocale, targetLocale, errorName },
-      extra: { textLength },
+      // ipKey is a low-cardinality tag (≤ a handful of registered IPs +
+      // "generic") so Sentry can group failures by IP. franchiseSlugs is
+      // high-cardinality — keep it in extras only.
+      tags: { provider, sourceLocale, targetLocale, errorName, ipKey: resolved.ipKey },
+      extra: {
+        textLength,
+        multiIp: resolved.multiIp,
+        unregisteredSlug: resolved.unregisteredSlug,
+        franchiseSlugs: resolved.franchiseSlugs,
+      },
     });
     console.error("Translator call failed", { name: errorName });
     return NextResponse.json(
@@ -138,6 +188,25 @@ export async function POST(req: NextRequest) {
       { status: 502 },
     );
   }
+
+  // Mirror of the error-path tagging: also emit a success breadcrumb so
+  // non-error traffic is partitionable by ipKey in Sentry. No
+  // captureMessage on the success path — we only care about the trail,
+  // not a Sentry event per request. Breadcrumb-only is cheap and
+  // doesn't count toward Sentry's event quota.
+  Sentry.addBreadcrumb({
+    category: "translator",
+    level: "info",
+    message: "translate_ok",
+    data: {
+      ipKey: resolved.ipKey,
+      multiIp: resolved.multiIp,
+      unregisteredSlug: resolved.unregisteredSlug,
+      sourceLocale,
+      targetLocale,
+      textLength: impression.content.length,
+    },
+  });
 
   // Cache all non-source locales the LLM actually produced in one write.
   // `skipDuplicates: true` tolerates a concurrent writer racing us for the
