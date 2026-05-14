@@ -152,6 +152,81 @@ describe("POST /api/events/[id]/setlist-items", () => {
     expect(body.error).toMatch(/songId/);
   });
 
+  it("accepts a decimal-string songId (BigInt IDs > 2^53-1 round-tripped as JSON strings)", async () => {
+    // Number.MAX_SAFE_INTEGER is 2^53-1. BigInt IDs that exceed
+    // that lose precision through `JSON.parse` if sent as numbers;
+    // clients that serialise via String(bigint) need the string
+    // form to land cleanly. Validates the BigInt(rawSongId) branch
+    // for the string case.
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: "42",
+        performerIds: ["si-host-1"],
+        isEncore: false,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(201);
+    // Song lookup must have happened with BigInt(42).
+    expect(prisma.song.findFirst).toHaveBeenCalledWith({
+      where: { id: BigInt(42), isDeleted: false },
+      select: expect.anything(),
+    });
+  });
+
+  it("returns 400 when songId is an unsafe-integer number (would lose precision via BigInt)", async () => {
+    // A number above Number.MAX_SAFE_INTEGER (2^53-1) silently rounds
+    // when JSON-parsed; we reject those rather than convert and look
+    // up a slightly-different DB row.
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: Number.MAX_SAFE_INTEGER + 100, // unsafe
+        performerIds: ["si-host-1"],
+        isEncore: false,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.song.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when songId is a non-digit string", async () => {
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: "abc",
+        performerIds: ["si-host-1"],
+        isEncore: false,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.song.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when performerIds contains duplicate stageIdentityIds (avoids opaque P2002)", async () => {
+    // A duplicate stageIdentityId would otherwise trip the
+    // SetlistItemMember composite unique [setlistItemId,
+    // stageIdentityId] at create time and surface as a non-position
+    // P2002 (500 internal_error). Catching dup input upfront turns
+    // the same client mistake into a clear 400.
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1", "si-host-1"],
+        isEncore: false,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/unique/);
+    expect(prisma.song.findFirst).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when performerIds includes a stageIdentity not in event.performers", async () => {
     const res = await POST(
       postRequest("1", {

@@ -122,18 +122,29 @@ function parseBody(
   // it's silently ignored if present (defensive; the client shouldn't
   // send it on a non-song row, but if it does, dropping is friendlier
   // than 400-ing).
+  //
+  // Accepts BOTH a JS number (must pass `Number.isSafeInteger` so big
+  // BigInt IDs that exceed 2^53-1 aren't silently lost-precision) AND
+  // a decimal string (clients hitting this from a fetch that
+  // pre-serialises BigInt → string can route through unchanged).
+  // `Song.id` is `BigInt @default(autoincrement())` and we currently
+  // sit well under 2^53, but the validator should not assume that
+  // forever.
   let songId: bigint | null = null;
   if (itemType === "song") {
     const rawSongId = body.songId;
-    if (
-      typeof rawSongId !== "number" ||
-      !Number.isFinite(rawSongId) ||
-      !Number.isInteger(rawSongId) ||
-      rawSongId <= 0
-    ) {
+    const isSafeNumber =
+      typeof rawSongId === "number" &&
+      Number.isSafeInteger(rawSongId) &&
+      rawSongId > 0;
+    // `^[1-9]\d*$` rejects leading zeros and "0" itself, mirroring
+    // the `> 0` check on the number path.
+    const isDigitString =
+      typeof rawSongId === "string" && /^[1-9]\d*$/.test(rawSongId);
+    if (!isSafeNumber && !isDigitString) {
       return { ok: false, error: "songId required for itemType=song" };
     }
-    songId = BigInt(rawSongId);
+    songId = BigInt(rawSongId as number | string);
   }
 
   const performerIds = body.performerIds;
@@ -142,6 +153,15 @@ function parseBody(
   }
   if (!performerIds.every((id) => typeof id === "string" && id.length > 0)) {
     return { ok: false, error: "performerIds must be non-empty strings" };
+  }
+  // Duplicate stageIdentityIds would otherwise trip the
+  // `SetlistItemMember` composite unique on `[setlistItemId,
+  // stageIdentityId]` at create time — that surfaces as a non-position
+  // P2002 which (correctly) routes to 500 internal_error in the
+  // catch path. Catching dup IDs HERE turns the same malformed input
+  // into a clear 400 instead of an opaque 500.
+  if (new Set(performerIds).size !== performerIds.length) {
+    return { ok: false, error: "performerIds must be unique" };
   }
 
   const isEncore = body.isEncore;
