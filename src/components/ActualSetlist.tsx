@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SetlistRow } from "@/components/SetlistRow";
+import { AddItemButton } from "@/components/AddItemBottomSheet/AddItemButton";
+import { AddItemBottomSheet } from "@/components/AddItemBottomSheet";
 import type { RowState, RowVote } from "@/components/NumberSlot";
 import type {
   LiveSetlistItem,
@@ -18,12 +20,22 @@ import { useLocalConfirm } from "@/hooks/useLocalConfirm";
 import { useLocalDisagree } from "@/hooks/useLocalDisagree";
 import { trackEvent } from "@/lib/analytics";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 interface Props {
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
   locale: string;
   eventId: string;
+  /**
+   * Resolved event status (upcoming / ongoing / completed / cancelled)
+   * — gates the `+ 곡 추가` button. Per Phase 1C spec the button is
+   * only visible during `ongoing` (operator-only window pre-show and
+   * post-show; mid-show is the user-contribution window). Threaded
+   * through from `<SetlistSection>` which already owns this prop for
+   * the Predicted-tab gating.
+   */
+  status: ResolvedEventStatus;
 }
 
 /**
@@ -47,10 +59,26 @@ export function ActualSetlist({
   reactionCounts,
   locale,
   eventId,
+  status,
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
   const confirmT = useTranslations("Confirm");
+
+  // Bottom-sheet open state lives here (the button is mounted inside
+  // this component's tree). Opening + closing is a pure UI concern;
+  // submission writes through to the existing useLocalConfirm hook
+  // below so the user's own row renders [✓] without a separate
+  // localStorage key.
+  const [addItemSheetOpen, setAddItemSheetOpen] = useState(false);
+
+  // Gate the AddItemBottomSheet entry point on (a) the launch flag —
+  // false at Kobe (5/23), flips true at Kanagawa (5/30) by deleting
+  // the flag entry — and (b) the event being currently ongoing. The
+  // POST endpoint enforces the same `ongoing` check server-side
+  // (defense in depth: a curl POST mid-show would otherwise bypass
+  // the client gate).
+  const canAddItem = LAUNCH_FLAGS.addItemEnabled && status === "ongoing";
 
   // Auto-promote ticker for `getConfirmStatus`'s 1-min boundary.
   // The function reads `new Date()` per call, so the row's visual
@@ -189,6 +217,33 @@ export function ActualSetlist({
           />
         ))}
       </ol>
+      {/* `+ 곡 추가` button + sheet — mounted between the main and
+          encore lists per the spec's positional intent. Pre-show and
+          post-show the entire conditional is false: `canAddItem`
+          requires both the launch flag (false at Kobe 5/23) AND
+          `event.status === 'ongoing'`. Realtime push delivers the
+          new row to the items array; no optimistic insert here. */}
+      {canAddItem && (
+        <>
+          <AddItemButton onClick={() => setAddItemSheetOpen(true)} />
+          <AddItemBottomSheet
+            eventId={eventId}
+            locale={locale}
+            open={addItemSheetOpen}
+            onClose={() => setAddItemSheetOpen(false)}
+            onSubmitSuccess={(itemId) => {
+              // Auto-mark the user's own row as confirmed by writing
+              // through the existing useLocalConfirm hook. The
+              // server's `confirmDbEnabled` gating inside the hook
+              // decides whether a POST also fires; at 1C with the
+              // confirm-DB gate flipped, the local-only path is
+              // exercised (the auto-promote at 60s handles the
+              // visual settle for everyone else).
+              toggleConfirm(itemId);
+            }}
+          />
+        </>
+      )}
       {encoreItems.length > 0 && (
         <>
           <EncoreDivider label={ct("encore")} />

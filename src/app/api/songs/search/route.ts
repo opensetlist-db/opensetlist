@@ -235,6 +235,15 @@ export async function GET(request: NextRequest) {
         artist: {
           select: {
             id: true,
+            // Artist.type — needed by AddItemBottomSheet's client-
+            // side stageType classification (unit-vs-full-group
+            // determines whether to default-check the unit's members
+            // vs all event performers). Adding here so v2's only
+            // payload-shape change for this PR is the new scalar
+            // field; v1 callers (wishlist / prediction / admin
+            // SetlistBuilder) keep the same flat list and just
+            // ignore the field.
+            type: true,
             originalName: true,
             originalShortName: true,
             originalLanguage: true,

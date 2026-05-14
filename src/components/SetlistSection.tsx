@@ -240,6 +240,7 @@ export function SetlistSection({
         reactionCounts={reactionCounts}
         locale={locale}
         eventId={eventId}
+        status={status}
       />
     ) : (
       // `key={eventId}` forces a remount on event navigation so
