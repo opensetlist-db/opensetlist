@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_LOCALES, type ImpressionLocale } from "@/lib/config";
 import { getTranslator } from "@/lib/translator";
-import type { MultilingualOutput } from "@/lib/translator/prompt";
+import { SYSTEM_PROMPT, type MultilingualOutput } from "@/lib/translator/prompt";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
     multilingual = await translator.translate(
       impression.content,
       sourceLocale,
+      SYSTEM_PROMPT,
       AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
     );
   } catch (err) {

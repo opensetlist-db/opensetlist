@@ -1,7 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { TranslationTruncatedError, type Translator } from "./types";
 import {
-  SYSTEM_PROMPT,
   buildUserInput,
   estimateMaxTokens,
   parseMultilingualResponse,
@@ -18,9 +17,16 @@ export class GeminiTranslator implements Translator {
   async translate(
     text: string,
     sourceLocale: string,
+    systemPrompt: string,
     signal?: AbortSignal,
   ): Promise<MultilingualOutput> {
-    const raw = await geminiRawTranslate(this.client, text, sourceLocale, signal);
+    const raw = await geminiRawTranslate(
+      this.client,
+      text,
+      sourceLocale,
+      systemPrompt,
+      signal,
+    );
     return parseMultilingualResponse(raw);
   }
 }
@@ -31,13 +37,14 @@ export async function geminiRawTranslate(
   client: GoogleGenAI,
   text: string,
   sourceLocale: string,
+  systemPrompt: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const response = await client.models.generateContent({
     model: "gemini-3.1-flash-lite-preview",
     contents: buildUserInput(text, sourceLocale),
     config: {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: systemPrompt,
       maxOutputTokens: estimateMaxTokens(text),
       // Translation is low-creativity; low temperature keeps output close
       // to a direct reading of the source and reduces phrasing drift on

@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
         new GoogleGenAI({ apiKey: key }),
         text,
         sourceLocale,
+        SYSTEM_PROMPT,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else if (provider === "openai") {
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
         new OpenAI({ apiKey: key }),
         text,
         sourceLocale,
+        SYSTEM_PROMPT,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else {
