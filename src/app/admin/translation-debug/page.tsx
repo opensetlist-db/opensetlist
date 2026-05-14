@@ -3,7 +3,11 @@
 import { useState } from "react";
 // Import from the slug-only module (NOT "@/lib/translator/prompts") so the
 // client bundle doesn't include the multi-KB prompt-content strings.
-import { REGISTERED_IP_KEYS, GENERIC_IP_KEY } from "@/lib/translator/prompts/keys";
+import {
+  REGISTERED_IP_KEYS,
+  GENERIC_IP_KEY,
+  DEFAULT_IP_KEY,
+} from "@/lib/translator/prompts/keys";
 
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -31,10 +35,10 @@ type DebugResponse = {
 export default function TranslationDebugPage() {
   const [sourceLocale, setSourceLocale] = useState<Locale>("ko");
   const [providerChoice, setProviderChoice] = useState<ProviderChoice>("default");
-  // Default to "hasunosora" for parity with pre-multi-IP behavior. The
-  // server defaults to the same value when ipKey is omitted, but sending
-  // it explicitly makes the dropdown UI state the source of truth.
-  const [ipKey, setIpKey] = useState<string>("hasunosora");
+  // DEFAULT_IP_KEY is the shared default with the server route. Sending
+  // it explicitly makes the dropdown UI state the source of truth even
+  // though the server would fall back to the same value if omitted.
+  const [ipKey, setIpKey] = useState<string>(DEFAULT_IP_KEY);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

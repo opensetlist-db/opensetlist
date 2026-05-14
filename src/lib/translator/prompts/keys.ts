@@ -15,3 +15,9 @@
 export const REGISTERED_IP_KEYS: readonly string[] = ["hasunosora"];
 
 export const GENERIC_IP_KEY = "generic";
+
+// Default ipKey for the admin debug surface (UI initial state +
+// server-side default when the field is omitted). Single source of truth
+// shared between page.tsx and the route. Picked as "hasunosora" for
+// parity with the pre-multi-IP behavior — the admin can switch on demand.
+export const DEFAULT_IP_KEY = "hasunosora";

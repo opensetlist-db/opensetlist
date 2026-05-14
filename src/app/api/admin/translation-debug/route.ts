@@ -12,6 +12,7 @@ import { IP_PROMPTS, FALLBACK_PROMPT } from "@/lib/translator/prompts";
 import {
   REGISTERED_IP_KEYS,
   GENERIC_IP_KEY,
+  DEFAULT_IP_KEY,
 } from "@/lib/translator/prompts/keys";
 import { geminiRawTranslate } from "@/lib/translator/gemini";
 import { openaiRawTranslate } from "@/lib/translator/openai";
@@ -91,11 +92,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid ipKey" }, { status: 400 });
   }
 
-  // Default to hasunosora for parity with pre-multi-IP behavior. The
-  // hasunosora slug is guaranteed in IP_PROMPTS by the registry contract
-  // (see src/lib/translator/prompts/index.ts).
+  // DEFAULT_IP_KEY (currently "hasunosora") is guaranteed in IP_PROMPTS
+  // by the registry contract (see src/lib/translator/prompts/index.ts).
   const ipKey: string =
-    typeof ipKeyInput === "string" ? ipKeyInput : "hasunosora";
+    typeof ipKeyInput === "string" ? ipKeyInput : DEFAULT_IP_KEY;
   const systemPrompt: string =
     ipKey === GENERIC_IP_KEY
       ? FALLBACK_PROMPT
