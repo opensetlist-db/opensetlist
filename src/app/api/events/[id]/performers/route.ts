@@ -49,57 +49,69 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
     return NextResponse.json({ error: "Invalid eventId" }, { status: 400 });
   }
 
-  const event = await prisma.event.findFirst({
-    where: { id: eventId, isDeleted: false },
-    select: {
-      performers: {
-        select: {
-          stageIdentityId: true,
-          isGuest: true,
-          stageIdentity: {
-            select: {
-              originalName: true,
-              originalShortName: true,
-              originalLanguage: true,
-              translations: {
-                select: {
-                  locale: true,
-                  name: true,
-                  shortName: true,
+  try {
+    const event = await prisma.event.findFirst({
+      where: { id: eventId, isDeleted: false },
+      select: {
+        performers: {
+          select: {
+            stageIdentityId: true,
+            isGuest: true,
+            stageIdentity: {
+              select: {
+                originalName: true,
+                originalShortName: true,
+                originalLanguage: true,
+                translations: {
+                  select: {
+                    locale: true,
+                    name: true,
+                    shortName: true,
+                  },
                 },
-              },
-              artistLinks: {
-                select: { artistId: true },
+                artistLinks: {
+                  select: { artistId: true },
+                },
               },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!event) {
-    return NextResponse.json({ error: "Event not found" }, { status: 404 });
-  }
+    if (!event) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
 
-  const performers = event.performers.map((ep) => ({
-    stageIdentityId: ep.stageIdentityId,
-    isGuest: ep.isGuest,
-    originalName: ep.stageIdentity.originalName,
-    originalShortName: ep.stageIdentity.originalShortName,
-    originalLanguage: ep.stageIdentity.originalLanguage,
-    translations: ep.stageIdentity.translations,
-    artistLinks: ep.stageIdentity.artistLinks.map((l) => ({
-      artistId: Number(l.artistId),
-    })),
-  }));
+    const performers = event.performers.map((ep) => ({
+      stageIdentityId: ep.stageIdentityId,
+      isGuest: ep.isGuest,
+      originalName: ep.stageIdentity.originalName,
+      originalShortName: ep.stageIdentity.originalShortName,
+      originalLanguage: ep.stageIdentity.originalLanguage,
+      translations: ep.stageIdentity.translations,
+      artistLinks: ep.stageIdentity.artistLinks.map((l) => ({
+        artistId: Number(l.artistId),
+      })),
+    }));
 
-  return NextResponse.json(
-    { performers },
-    {
-      headers: {
-        "Cache-Control": "s-maxage=60, stale-while-revalidate=300",
+    return NextResponse.json(
+      { performers },
+      {
+        headers: {
+          "Cache-Control": "s-maxage=60, stale-while-revalidate=300",
+        },
       },
-    },
-  );
+    );
+  } catch (err) {
+    // DB connection / Prisma errors — return a JSON 500 (not the
+    // Next.js HTML error page) so the client's `await res.json()`
+    // path keeps parsing. Same defensive pattern as
+    // /api/songs/search.
+    console.error("[GET /api/events/[id]/performers] DB error", err);
+    return NextResponse.json(
+      { error: "internal_error" },
+      { status: 500 },
+    );
+  }
 }

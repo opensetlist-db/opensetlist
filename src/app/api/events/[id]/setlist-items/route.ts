@@ -220,17 +220,37 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   // are people who aren't on the EventPerformer list at all. The
   // admin route's `isGuest: false` filter is for auto-fill defaults
   // (operator pre-checks main lineup), not membership validation.
-  const event = await prisma.event.findFirst({
-    where: { id: eventId, isDeleted: false },
-    select: {
-      id: true,
-      status: true,
-      startTime: true,
-      performers: {
-        select: { stageIdentityId: true },
+  //
+  // Both the Gate 4 event lookup and the Gate 5 song lookup are
+  // wrapped in try/catch — a DB connection error during either
+  // would otherwise escape uncaught and Next.js would render its
+  // HTML 500 page, which the bottom sheet's `await res.json()`
+  // can't parse. The transaction inside the retry loop below has
+  // its own scoped error handling; this outer try only covers the
+  // pre-transaction validation lookups.
+  let event;
+  try {
+    event = await prisma.event.findFirst({
+      where: { id: eventId, isDeleted: false },
+      select: {
+        id: true,
+        status: true,
+        startTime: true,
+        performers: {
+          select: { stageIdentityId: true },
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error(
+      "[POST /api/events/[id]/setlist-items] event lookup failed",
+      err,
+    );
+    return NextResponse.json(
+      { ok: false, error: "internal_error" },
+      { status: 500 },
+    );
+  }
   if (!event) {
     return NextResponse.json(
       { ok: false, error: "event_not_found" },
@@ -250,18 +270,30 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   // copy from the client's earlier load.
   let songArtists: { artistId: bigint; type: "solo" | "group" | "unit" }[] = [];
   if (itemType === "song") {
-    const song = await prisma.song.findFirst({
-      where: { id: songId!, isDeleted: false },
-      select: {
-        id: true,
-        artists: {
-          select: {
-            artistId: true,
-            artist: { select: { type: true } },
+    let song;
+    try {
+      song = await prisma.song.findFirst({
+        where: { id: songId!, isDeleted: false },
+        select: {
+          id: true,
+          artists: {
+            select: {
+              artistId: true,
+              artist: { select: { type: true } },
+            },
           },
         },
-      },
-    });
+      });
+    } catch (err) {
+      console.error(
+        "[POST /api/events/[id]/setlist-items] song lookup failed",
+        err,
+      );
+      return NextResponse.json(
+        { ok: false, error: "internal_error" },
+        { status: 500 },
+      );
+    }
     if (!song) {
       return NextResponse.json(
         { ok: false, error: "song_not_found" },

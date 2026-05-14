@@ -46,24 +46,39 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
     return NextResponse.json({ error: "Invalid artistId" }, { status: 400 });
   }
 
-  const now = new Date();
-  const links = await prisma.stageIdentityArtist.findMany({
-    where: {
-      artistId: id,
-      AND: [
-        { OR: [{ startDate: null }, { startDate: { lte: now } }] },
-        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
-      ],
-    },
-    select: { stageIdentityId: true },
-  });
-
-  return NextResponse.json(
-    { stageIdentityIds: links.map((l) => l.stageIdentityId) },
-    {
-      headers: {
-        "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
+  try {
+    const now = new Date();
+    const links = await prisma.stageIdentityArtist.findMany({
+      where: {
+        artistId: id,
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: now } }] },
+          { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+        ],
       },
-    },
-  );
+      select: { stageIdentityId: true },
+    });
+
+    return NextResponse.json(
+      { stageIdentityIds: links.map((l) => l.stageIdentityId) },
+      {
+        headers: {
+          "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
+        },
+      },
+    );
+  } catch (err) {
+    // DB connection / Prisma errors — return a JSON 500 (not the
+    // Next.js HTML error page) so the client's `await res.json()`
+    // path keeps parsing. Same defensive pattern as
+    // /api/songs/search and the new POST setlist-items route.
+    console.error(
+      "[GET /api/artists/[artistId]/current-members] DB error",
+      err,
+    );
+    return NextResponse.json(
+      { error: "internal_error" },
+      { status: 500 },
+    );
+  }
 }
