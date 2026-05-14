@@ -157,7 +157,7 @@ export async function resolvePromptForImpression(
 function makeGeneric(slugs: string[]): ResolvedPrompt {
   return {
     prompt: FALLBACK_PROMPT,
-    ipKey: "generic",
+    ipKey: GENERIC_IP_KEY,
     multiIp: slugs.length > 1,
     unregisteredSlug: null,
     franchiseSlugs: slugs,
