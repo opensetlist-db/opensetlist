@@ -266,6 +266,16 @@ export function AddItemBottomSheet({
   // we don't need to suppress redundant state writes.
   useEffect(() => {
     if (!open || presetPosition === null) return;
+    // Intentional setState-in-effect: this is an explicit
+    // prop-to-local-state snapshot fired on open/retarget. The
+    // recommended alternative (compute on render via useMemo)
+    // doesn't work here because we specifically want to FREEZE
+    // the value at the transition moment and ignore subsequent
+    // prop changes — that freeze is the whole point of the
+    // anti-race design. The `react-hooks/set-state-in-effect`
+    // rule's default heuristic flags this; we disable it
+    // narrowly here with the rationale documented.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrozenPosition(presetPosition);
     setInitialOccupantIds(
       new Set(
@@ -435,6 +445,12 @@ export function AddItemBottomSheet({
   useEffect(() => {
     if (!open) {
       dispatch({ type: "RESET" });
+      // Intentional setState-in-effect: the sheet's local "frozen
+      // target" + "initial occupants" caches MUST clear on close so
+      // the next open captures fresh. There's no derivable signal
+      // for "open just transitioned to false" that's available on
+      // render — the boolean prop change is the trigger.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFrozenPosition(null);
       setInitialOccupantIds(null);
     }

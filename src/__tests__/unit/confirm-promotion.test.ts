@@ -145,7 +145,7 @@ describe("POST /api/setlist-items/[id]/confirm — conflict-handling promotion",
     });
     expect(winnerCall).toBeDefined();
     expect(winnerCall![0]).toEqual({
-      where: { id: BigInt(42), status: "rumoured" },
+      where: { id: BigInt(42), status: "rumoured", isDeleted: false },
       data: { status: "confirmed" },
     });
   });

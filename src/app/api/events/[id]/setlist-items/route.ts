@@ -191,14 +191,18 @@ function parseBody(
   // Position is required for all item types — the client decides
   // where the row lands based on the live setlist it sees, then
   // freezes that value through the sheet's deliberation window.
-  // Must be a positive integer (matches the `Int` column on
-  // `SetlistItem.position`). Plain JS number suffices — position
-  // values won't exceed 2^53-1 in any realistic setlist.
+  // Must be a positive integer matching the `Int` column on
+  // `SetlistItem.position` (PostgreSQL int4, max 2,147,483,647).
+  // We enforce the upper bound here too so an oversized value
+  // surfaces as a 4xx instead of bubbling through Prisma into the
+  // catch path as `internal_error` 500 (which would hide the real
+  // cause from the client).
   const rawPosition = body.position;
   if (
     typeof rawPosition !== "number" ||
     !Number.isInteger(rawPosition) ||
-    rawPosition <= 0
+    rawPosition <= 0 ||
+    rawPosition > 2_147_483_647
   ) {
     return { ok: false, error: "position must be a positive integer" };
   }
@@ -658,8 +662,16 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         // target shape varies by adapter (array vs string).
         JSON.stringify(err.meta?.target ?? "").includes("position");
       if (!isPositionRace) break;
-      // Loop continues; recomputes nextPosition with the (now larger)
-      // active-position set the colliding writer committed.
+      // Loop continues. NOTE — under the explicit-position model
+      // the loop no longer recomputes a new position (the old
+      // server-side `nextSetlistPosition` path is gone), so a
+      // retry simply re-attempts the SAME body.position. That
+      // makes this loop largely defensive infrastructure: today's
+      // user POSTs all set `status='rumoured'` which the negation
+      // partial unique index permits, so the loop body's create
+      // shouldn't actually trip P2002 on the position target. The
+      // retry remains as guard rail in case a future code path
+      // inserts a non-rumoured row through this handler.
     }
   }
 

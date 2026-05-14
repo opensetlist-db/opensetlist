@@ -161,16 +161,33 @@ export async function POST(_req: Request, { params }: RouteProps) {
         confirmCount >= CONFLICT_CONFIRMATION_THRESHOLD;
 
       if (shouldPromote) {
-        // Atomic promotion + auto-hide. Order is load-bearing:
-        // siblings out of the `status != 'rumoured'` set BEFORE the
-        // winner enters it. Reversed order would have two confirmed
-        // rows at the same position in the intermediate state →
-        // negation partial-unique index P2002.
+        // Atomic promotion + auto-hide. Ordering note: today the
+        // partial-unique-index predicate is
+        // `WHERE isDeleted = false AND status != 'rumoured'`, so
+        // soft-deleting siblings removes them from the constrained
+        // set FIRST regardless of whether their `status` is later
+        // updated. Strictly speaking the partial index would not
+        // trip even if the order were reversed, because the
+        // siblings stay `status='rumoured'` throughout this
+        // transaction (only `isDeleted` flips). So the order is
+        // NOT load-bearing for index safety today.
         //
-        // The `where: { status: 'rumoured' }` filter on the winner
-        // update makes this idempotent: a second confirm POST racing
-        // past the threshold finds the winner already `confirmed`
-        // and updates nothing. updateMany doesn't throw on zero rows.
+        // We still pin the order for two reasons: (1) read clarity
+        // — "hide losers, then promote winner" matches the
+        // operational mental model; (2) future-proofing — if the
+        // partial-index predicate ever drops the `isDeleted = false`
+        // gate (so any `status != 'rumoured'` row is constrained),
+        // reversing the order would briefly produce two confirmed
+        // rows at the same position and trip the index. Pinning the
+        // order now means a future schema change can't silently
+        // introduce that race.
+        //
+        // `where: { status: 'rumoured', isDeleted: false }` on the
+        // winner update is the idempotency guard: a second confirm
+        // POST racing past the threshold finds the winner already
+        // `confirmed` (or already soft-deleted by another racing
+        // promotion against a different sibling) and updates zero
+        // rows. updateMany doesn't throw on zero rows.
         await prisma.$transaction([
           prisma.setlistItem.updateMany({
             where: {
@@ -183,7 +200,20 @@ export async function POST(_req: Request, { params }: RouteProps) {
             data: { isDeleted: true, deletedAt: new Date() },
           }),
           prisma.setlistItem.updateMany({
-            where: { id: item.id, status: "rumoured" },
+            where: {
+              id: item.id,
+              status: "rumoured",
+              // `isDeleted: false` defends against the
+              // racing-promotion scenario where a sibling
+              // promotion in a different transaction already
+              // soft-deleted this row (e.g. two parallel conflict
+              // groups settled to different winners). Without
+              // this, we'd promote a soft-deleted row to
+              // `confirmed`, which would surface as a confirmed
+              // row that's also `isDeleted=true` — a
+              // self-contradictory state.
+              isDeleted: false,
+            },
             data: { status: "confirmed" },
           }),
         ]);
