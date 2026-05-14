@@ -59,7 +59,17 @@ import { serializeBigInt } from "@/lib/utils";
 
 const RESULT_LIMIT = 20;
 
-function parseExcludeIds(raw: string | null): bigint[] {
+// Parse a comma-separated list of positive integer IDs off a URL
+// param into BigInts (Prisma's id type). Silently drops any segment
+// that isn't a bare run of digits — garbage input shouldn't 400 a
+// search request whose other params are fine.
+//
+// Used for both `excludeIds` (dedup pruning on the result list) and
+// `scopeArtistIds` (multi-IP scope filter). The two share a wire
+// format and validation rules, so they share a parser to keep them
+// from drifting (e.g. one adding a max-length cap or dedup pass
+// without the other).
+function parseCsvBigIntIds(raw: string | null): bigint[] {
   if (!raw) return [];
   return raw
     .split(",")
@@ -78,15 +88,6 @@ type RouteScope =
   | { kind: "event"; eventId: bigint }
   | { kind: "series"; seriesId: bigint }
   | { kind: "artist"; artistIds: bigint[] };
-
-function parseScopeArtistIds(raw: string | null): bigint[] {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => /^\d+$/.test(s))
-    .map((s) => BigInt(s));
-}
 
 // Parse + validate scope params off the URL. Returns either a typed
 // scope or a 400-bound error string. Centralising the validation here
@@ -115,7 +116,7 @@ function parseScope(
       : { ok: true, scope: { kind: "series", seriesId: id } };
   }
   if (kind === "artist") {
-    const artistIds = parseScopeArtistIds(searchParams.get("scopeArtistIds"));
+    const artistIds = parseCsvBigIntIds(searchParams.get("scopeArtistIds"));
     if (artistIds.length === 0) {
       return {
         ok: false,
@@ -196,7 +197,7 @@ export async function GET(request: NextRequest) {
 
   const includeVariants = searchParams.get("includeVariants") === "true";
   const expandVariants = searchParams.get("expandVariants") === "true";
-  const excludeIds = parseExcludeIds(searchParams.get("excludeIds"));
+  const excludeIds = parseCsvBigIntIds(searchParams.get("excludeIds"));
 
   // Scope parse + validate is the only param family that can hard-fail
   // the request — everything else (q, includeVariants, expandVariants,
