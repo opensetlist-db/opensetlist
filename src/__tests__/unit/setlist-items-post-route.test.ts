@@ -99,6 +99,7 @@ function setupHappyPath() {
     stageType: "full_group",
     status: "rumoured",
     type: "song",
+    _count: { confirms: 0 },
     songs: [],
     performers: [],
     artists: [],
@@ -396,6 +397,7 @@ describe("POST /api/events/[id]/setlist-items", () => {
         stageType: "full_group",
         status: "rumoured",
         type: "song",
+        _count: { confirms: 0 },
         songs: [],
         performers: [],
         artists: [],
@@ -533,10 +535,13 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
       },
     );
     // The auto-merge path then calls findUnique for the merged row.
+    // The route's response flattens `_count.confirms` → `confirmCount`
+    // before serialisation, so the mock must include `_count`.
     (prisma.setlistItem.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: BigInt(888),
       position: 5,
       status: "rumoured",
+      _count: { confirms: 1 },
       songs: [],
       performers: [],
       artists: [],

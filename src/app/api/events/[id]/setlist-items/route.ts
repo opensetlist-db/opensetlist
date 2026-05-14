@@ -497,6 +497,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         merged = await prisma.setlistItem.findUnique({
           where: { id: dupRow.id },
           include: {
+            // `confirmCount` is part of the LiveSetlistItem contract
+            // (src/lib/types/setlist.ts), flattened from
+            // `_count.confirms` before serialisation. Mirrors the
+            // pattern in /api/setlist's polling endpoint.
+            _count: { select: { confirms: true } },
             songs: {
               include: { song: { include: { translations: true } } },
               orderBy: { order: "asc" },
@@ -540,10 +545,14 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           { status: 500 },
         );
       }
+      const { _count, ...mergedRest } = merged;
       return NextResponse.json(
         {
           ok: true,
-          item: serializeBigInt(merged),
+          item: serializeBigInt({
+            ...mergedRest,
+            confirmCount: _count.confirms,
+          }),
           action: "auto-confirm-merge",
         },
         { status: 200 },
@@ -598,6 +607,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
           // primitive, optimistic insert into the local items array)
           // can use one shared type.
           include: {
+            // `confirmCount` is part of the LiveSetlistItem
+            // contract. A freshly-created row has zero confirms
+            // but we still go through Prisma's `_count` for shape
+            // consistency with the auto-merge path + /api/setlist.
+            _count: { select: { confirms: true } },
             songs: {
               include: { song: { include: { translations: true } } },
               orderBy: { order: "asc" },
@@ -614,8 +628,15 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         });
       });
 
+      const { _count, ...createdRest } = created;
       return NextResponse.json(
-        { ok: true, item: serializeBigInt(created) },
+        {
+          ok: true,
+          item: serializeBigInt({
+            ...createdRest,
+            confirmCount: _count.confirms,
+          }),
+        },
         { status: 201 },
       );
     } catch (err) {
