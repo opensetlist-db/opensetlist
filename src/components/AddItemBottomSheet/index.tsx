@@ -23,12 +23,39 @@ import {
 import { EncoreToggleRow } from "@/components/AddItemBottomSheet/EncoreToggleRow";
 import { GuestFooterLink } from "@/components/AddItemBottomSheet/GuestFooterLink";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
+import type { LiveSetlistItem } from "@/lib/types/setlist";
 
 interface Props {
   eventId: string;
   locale: string;
   open: boolean;
   onClose: () => void;
+  /**
+   * Target position the sheet should send in the POST body. Captured
+   * by the parent (`<ActualSetlist>`) at button-click time — either
+   * `currentMax + 1` for the footer "+ 곡 추가" or the contested
+   * row's `position` for the per-row contest button.
+   *
+   * The sheet snapshots this on open into local state and never
+   * updates it during the deliberation window — even if Realtime
+   * push delivers new rows to `items` while the user is typing,
+   * the target stays frozen. Auto-updating would re-introduce the
+   * race condition the explicit-position model exists to close.
+   *
+   * `null` is the parent's "no current open intent" signal; an
+   * open sheet always has a non-null preset.
+   */
+  presetPosition: number | null;
+  /**
+   * Live items array from the parent — Realtime-updated. The sheet
+   * READS this to detect mid-deliberation occupant changes at its
+   * (frozen) target position; it does NOT use it to re-compute the
+   * target. When `items.filter(it => it.position === target)`
+   * diverges from the snapshot captured at sheet open, the sheet
+   * renders an in-place notice so the user can decide whether to
+   * proceed or cancel.
+   */
+  items: LiveSetlistItem[];
   /**
    * Called with the newly-created SetlistItem id after a successful
    * submit. The parent uses this to (a) close the sheet and (b)
@@ -166,6 +193,8 @@ export function AddItemBottomSheet({
   eventId,
   locale,
   open,
+  presetPosition,
+  items,
   onClose,
   onSubmitSuccess,
 }: Props) {
@@ -205,6 +234,61 @@ export function AddItemBottomSheet({
   // effect only runs on a real {open, eventId} change.
   const fetchedKeyRef = useRef<string | null>(null);
 
+  // Frozen target position. Captured from `presetPosition` at open;
+  // unchanged for the rest of the sheet's lifecycle. The parent's
+  // `presetPosition` IS allowed to change (e.g. user closes and
+  // reopens via a different entry point), but the local copy stays
+  // stable across the deliberation window so a Realtime push to
+  // `items` doesn't auto-shift the target.
+  const [frozenPosition, setFrozenPosition] = useState<number | null>(null);
+
+  // Snapshot of `items` at this target position at sheet-open time.
+  // Used to detect mid-deliberation occupant changes — if the
+  // current items prop has rows at `frozenPosition` that weren't in
+  // the snapshot, the sheet renders a notice (without changing the
+  // target). Set of ids for cheap diff.
+  const [initialOccupantIds, setInitialOccupantIds] = useState<
+    ReadonlySet<number> | null
+  >(null);
+
+  // Snapshot frozen state on open + presetPosition transitions only.
+  // `items` is intentionally NOT in the dep array — its array
+  // reference changes on every parent render (e.g. Realtime push),
+  // which would re-fire this effect and cascade re-renders that fire
+  // the fetch effect's cleanup mid-flight (cancelling the
+  // eventPerformers fetch). The latest `items` is read at fire time
+  // through the closure; that's the right semantic anyway because
+  // the snapshot is meant to capture the occupants AT THE MOMENT the
+  // sheet opens / re-targets, not on every Realtime update.
+  //
+  // For the same reason there's no `frozenPosition` guard — once
+  // open + presetPosition stabilise, the effect doesn't re-fire, so
+  // we don't need to suppress redundant state writes.
+  useEffect(() => {
+    if (!open || presetPosition === null) return;
+    setFrozenPosition(presetPosition);
+    setInitialOccupantIds(
+      new Set(
+        items
+          .filter((it) => it.position === presetPosition)
+          .map((it) => it.id),
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, presetPosition]);
+
+  // Detect mid-deliberation occupant change at the frozen position.
+  // The sheet shows a notice when the current set of ids at
+  // `frozenPosition` diverges from the initial snapshot — typically
+  // because Realtime delivered a new sibling submission while the
+  // user was typing. Doesn't shift the target; just informs.
+  const occupantNoticeVisible = useMemo(() => {
+    if (frozenPosition === null || initialOccupantIds === null) return false;
+    const current = items.filter((it) => it.position === frozenPosition);
+    if (current.length !== initialOccupantIds.size) return true;
+    return current.some((it) => !initialOccupantIds.has(it.id));
+  }, [items, frozenPosition, initialOccupantIds]);
+
   // Effect 1 — performers data fetch (once per mount-per-event).
   // Does NOT dispatch SET_PERFORMERS itself; that lives in the
   // defaults-effect below so re-opens of the sheet (where the data
@@ -236,7 +320,16 @@ export function AddItemBottomSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, eventId, t]);
+    // `t` is intentionally NOT in deps — `useTranslations` returns
+    // a fresh function reference each render, which would re-fire
+    // this effect on every render and trigger the cleanup (set
+    // `cancelled = true`) mid-flight. The fetch only NEEDS to
+    // re-run on a real `(open, eventId)` change; reading `t` in the
+    // catch via closure is fine because the catch path is rare and
+    // an off-by-one render's worth of stale translation is
+    // acceptable for an error message.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, eventId]);
 
   // Effect 2 — performer defaults. Fires whenever the sheet is open
   // with `itemType === 'song'` and no song has been picked yet. The
@@ -337,9 +430,13 @@ export function AddItemBottomSheet({
   // Reset the form on close so the next open starts clean. The
   // eventPerformers cache is preserved (the data hasn't changed)
   // but the reducer state goes back to initial.
+  // Frozen target + occupant snapshot ALSO reset on close so the
+  // next open captures fresh.
   useEffect(() => {
     if (!open) {
       dispatch({ type: "RESET" });
+      setFrozenPosition(null);
+      setInitialOccupantIds(null);
     }
   }, [open]);
 
@@ -384,6 +481,7 @@ export function AddItemBottomSheet({
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    if (frozenPosition === null) return; // defensive — submit only fires from rendered sheet
     dispatch({ type: "SUBMIT_START" });
 
     // The variant pick (if any) supersedes the base song — variants
@@ -403,6 +501,7 @@ export function AddItemBottomSheet({
           songId,
           performerIds: itemType === "song" ? [...performerIds] : [],
           isEncore,
+          position: frozenPosition,
         }),
       });
 
@@ -419,6 +518,8 @@ export function AddItemBottomSheet({
         else if (code === "performer_not_in_event")
           msg = t("errorPerformerNotInEvent");
         else if (code === "position_conflict") msg = t("errorPositionConflict");
+        else if (code === "position_already_confirmed")
+          msg = t("errorPositionAlreadyConfirmed");
         dispatch({ type: "SUBMIT_ERROR", payload: msg });
         return;
       }
@@ -458,6 +559,7 @@ export function AddItemBottomSheet({
     performerIds,
     isEncore,
     eventId,
+    frozenPosition,
     t,
     onClose,
     onSubmitSuccess,
@@ -483,7 +585,7 @@ export function AddItemBottomSheet({
           <Drawer.Title className="sr-only">{t("sheetTitle")}</Drawer.Title>
 
           <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-semibold text-gray-900">
                 {t("sheetTitle")}
               </h2>
@@ -496,6 +598,30 @@ export function AddItemBottomSheet({
                 ✕
               </button>
             </div>
+            {frozenPosition !== null && (
+              // Frozen target position display. Renders immediately
+              // below the sheet title so the user always knows what
+              // slot they're filling. Realtime updates to the parent's
+              // items don't shift this — only the next sheet open
+              // (with a fresh capture at button-click time) does.
+              <div className="mb-3 text-sm text-gray-500">
+                {t("targetPositionLabel", { position: frozenPosition })}
+              </div>
+            )}
+            {occupantNoticeVisible && (
+              // Mid-deliberation occupant change at the frozen target.
+              // Either another user submitted a row here while we
+              // were typing, or an existing sibling was promoted/
+              // hidden. We don't shift the target — user decides
+              // whether to cancel (✕) or proceed (same-song will
+              // merge, different-song creates a conflict sibling).
+              <div
+                role="status"
+                className="mb-3 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800"
+              >
+                {t("occupantAppearedNotice")}
+              </div>
+            )}
 
             <div className="space-y-4">
               <ItemTypeSelector

@@ -177,10 +177,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS event_impression_anon_unique
 -- "SetlistItem_eventId_position_key" once the @@unique leaves the schema,
 -- but we DROP defensively so re-running post-deploy in any order (or on
 -- a DB that briefly holds both indexes) converges to the right state.
+--
+-- Conflict-handling extension (Phase 1C, 2026-05-14): the partial is
+-- further narrowed to apply only to `status != 'rumoured'` rows.
+-- Multiple `rumoured` rows at the same (eventId, position) are now
+-- permitted — that's the conflict-sibling representation. Rule:
+--   * confirmed/live (status != 'rumoured') → uniquely position-
+--     constrained (operator/promoted rows own their slot)
+--   * rumoured → unconstrained on position (siblings allowed; the
+--     vote-driven promotion in /api/setlist-items/[id]/confirm
+--     auto-hides losers when a winner crosses
+--     CONFLICT_CONFIRMATION_THRESHOLD)
+--
+-- The old `setlist_item_event_position_active_unique` is dropped
+-- explicitly and replaced with a new name (`_finalized_unique`) so
+-- subsequent post-deploy runs are idempotent — DROP IF EXISTS on the
+-- old name becomes a no-op once it's gone, and CREATE IF NOT EXISTS
+-- on the new name becomes a no-op once it's present.
 DROP INDEX IF EXISTS "SetlistItem_eventId_position_key";
-CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_event_position_active_unique
+DROP INDEX IF EXISTS setlist_item_event_position_active_unique;
+CREATE UNIQUE INDEX IF NOT EXISTS setlist_item_event_position_finalized_unique
   ON "SetlistItem" ("eventId", "position")
-  WHERE "isDeleted" = false;
+  WHERE "isDeleted" = false AND "status" != 'rumoured';
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Supabase Realtime publication — Phase 1C R1 (SetlistItem only).

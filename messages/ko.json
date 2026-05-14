@@ -356,6 +356,10 @@
     "errorEventNotOngoing": "공연이 진행 중일 때만 추가할 수 있습니다",
     "errorPerformerNotInEvent": "출연진 목록에 없는 멤버가 포함되어 있습니다",
     "errorPositionConflict": "다른 사용자가 동시에 곡을 추가했습니다. 다시 시도해주세요",
+    "errorPositionAlreadyConfirmed": "이 위치는 이미 확정되었습니다. 정정이 필요하면 운영자에게 알려주세요",
+    "targetPositionLabel": "{position}번 자리에 추가",
+    "occupantAppearedNotice": "다른 사용자가 이 위치에 곡을 추가했습니다. 같은 곡이면 추가되지 않고, 다른 곡이면 충돌로 표시됩니다.",
+    "contestRowLabel": "이 자리에 다른 곡",
     "songSearchPlaceholder": "곡 검색...",
     "songSearchLoading": "검색 중...",
     "songSearchNoResults": "검색 결과 없음"

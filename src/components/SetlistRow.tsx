@@ -8,6 +8,7 @@ import {
 } from "@/lib/display";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
+import { RowContestButton } from "@/components/RowContestButton";
 import {
   NumberSlot,
   type RowState,
@@ -66,6 +67,28 @@ interface Props {
    * against `useLocalConfirm`).
    */
   onDisagreeTap?: () => void;
+  /**
+   * Conflict-group siblings — the OTHER rumoured rows at the same
+   * `(eventId, position)`. Non-empty when this row is in a conflict
+   * group; undefined (or empty) for non-contested rows. Drives
+   * visibility of `<RowContestButton>` and is the basis for the
+   * parent's `getConfirmStatus(item, siblings)` 1-min-suspension
+   * call (`<ActualSetlist>` precomputes `rowState` with siblings
+   * context so this component stays purely presentational).
+   *
+   * Reserved affordance slot in this row will accept the follow-up
+   * "ContestReport" PR's "이슈 제기" button for any-status rows
+   * (missing performer / wrong variant / etc.) — the slot pattern
+   * is the integration point.
+   */
+  siblings?: ReadonlyArray<{ id: number }>;
+  /**
+   * Callback fired when the per-row contest affordance is tapped.
+   * `<ActualSetlist>` lifts this up to drive the AddItemBottomSheet
+   * open + presetPosition state. Optional so callers that don't
+   * support contest (admin SetlistBuilder etc.) omit the handler.
+   */
+  onContest?: (position: number) => void;
 }
 
 export function SetlistRow({
@@ -78,7 +101,20 @@ export function SetlistRow({
   myVote = "none",
   onConfirmTap,
   onDisagreeTap,
+  siblings,
+  onContest,
 }: Props) {
+  // Conflict-group affordance is gated on three conditions, all
+  // required: row is rumoured (no contest on confirmed at 1C —
+  // ContestReport PR handles that), has siblings (no contest on a
+  // single rumoured row — the footer "+ 곡 추가" covers next-
+  // position intent), and the parent provided a contest handler
+  // (admin contexts omit it).
+  const showContest =
+    rowState !== "confirmed" &&
+    siblings !== undefined &&
+    siblings.length > 0 &&
+    onContest !== undefined;
   const t = useTranslations("Event");
   const confirmT = useTranslations("Confirm");
 
@@ -309,6 +345,22 @@ export function SetlistRow({
             button is the lightweight successor. Aggregation
             behavior (N disagrees → row hidden / disputed) ships in
             Week 3 alongside `<AddItemBottomSheet>`. */}
+
+        {/* Affordance slot — extension point for per-row contest
+            actions. This PR populates it for rumoured-in-conflict
+            rows with `<RowContestButton>` ("이 자리에 다른 곡").
+            The follow-up "ContestReport" PR will plug in a sibling
+            "이슈 제기" button here for any-status rows (missing
+            performer / wrong variant / etc.). Stays empty for
+            confirmed rows + single rumoured rows. */}
+        {showContest && (
+          <div className="mt-1">
+            <RowContestButton
+              position={item.position}
+              onContest={onContest!}
+            />
+          </div>
+        )}
       </div>
 
       {/* Performers — desktop col 3 only. `hidden` on mobile so the

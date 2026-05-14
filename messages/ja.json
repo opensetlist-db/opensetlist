@@ -356,6 +356,10 @@
     "errorEventNotOngoing": "公演中のみ追加できます",
     "errorPerformerNotInEvent": "出演者リストに含まれていないメンバーがあります",
     "errorPositionConflict": "他のユーザーが同時に曲を追加しました。もう一度お試しください",
+    "errorPositionAlreadyConfirmed": "この位置は確定済みです。修正が必要な場合は運営者に連絡してください。",
+    "targetPositionLabel": "ポジション {position} に追加",
+    "occupantAppearedNotice": "他のユーザーがこの位置に曲を追加しました。同じ曲なら追加されず、異なる曲なら衝突として表示されます。",
+    "contestRowLabel": "ここに別の曲",
     "songSearchPlaceholder": "曲を検索...",
     "songSearchLoading": "検索中...",
     "songSearchNoResults": "結果なし"
