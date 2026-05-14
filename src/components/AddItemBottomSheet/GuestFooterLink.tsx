@@ -16,7 +16,9 @@ import { useTranslations } from "next-intl";
  */
 export function GuestFooterLink() {
   const t = useTranslations("AddItem");
-  const subject = encodeURIComponent("출연자 추가 제보");
+  // i18n-keyed so a ja/en viewer doesn't get a Korean email subject
+  // landing in the operator's inbox alongside their non-Korean body.
+  const subject = encodeURIComponent(t("guestReportSubject"));
   return (
     <a
       href={`mailto:help@opensetlist.com?subject=${subject}`}

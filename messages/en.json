@@ -350,6 +350,7 @@
     "submit": "Add",
     "submitting": "Adding…",
     "guestFooter": "Performer missing from the list? Let the operator know",
+    "guestReportSubject": "Performer registration request",
     "errorGeneric": "Add failed. Please try again.",
     "errorFeatureDisabled": "Not available yet",
     "errorEventNotOngoing": "Songs can only be added while the show is ongoing",

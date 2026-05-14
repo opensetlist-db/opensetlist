@@ -29,6 +29,14 @@ export function EncoreToggleRow({ checked, onChange }: Props) {
       <button
         type="button"
         role="switch"
+        // `aria-label` is required here even though the wrapping
+        // `<label>` reads "앙코르" beside the switch: a `<label>` only
+        // supplies an accessible name to native form controls
+        // (`<input>`, `<select>`, etc.). For a `<button role="switch">`
+        // the label association doesn't propagate, so screen readers
+        // would announce an empty name without this attribute. Same
+        // text as the label so visual + AT users hear the same thing.
+        aria-label={t("encoreToggle")}
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={

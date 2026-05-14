@@ -350,6 +350,7 @@
     "submit": "추가",
     "submitting": "추가 중…",
     "guestFooter": "출연자 목록에 없나요? 운영자에게 제보해주세요",
+    "guestReportSubject": "출연자 추가 제보",
     "errorGeneric": "추가 실패. 다시 시도해주세요",
     "errorFeatureDisabled": "지금은 사용할 수 없습니다",
     "errorEventNotOngoing": "공연이 진행 중일 때만 추가할 수 있습니다",

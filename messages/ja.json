@@ -350,6 +350,7 @@
     "submit": "追加",
     "submitting": "追加中…",
     "guestFooter": "出演者リストに見当たりませんか？運営者へお知らせください",
+    "guestReportSubject": "出演者追加のお知らせ",
     "errorGeneric": "追加に失敗しました。もう一度お試しください",
     "errorFeatureDisabled": "現在ご利用いただけません",
     "errorEventNotOngoing": "公演中のみ追加できます",
