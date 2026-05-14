@@ -336,6 +336,14 @@
     "disagreeAria": "Mark as incorrect",
     "description": "If a newly added song is correct, tap ✓ — if not, tap ✕."
   },
+  "SongSearch": {
+    "variantPickerTitle": "Which version?",
+    "variantPickerBack": "← Pick a different song",
+    "variantPickerOriginalLabel": "Original",
+    "createSongRow": "+ Add \"{query}\" as a new song",
+    "createVariantRow": "+ Add \"{query}\" as a new variant",
+    "createDisabledTooltip": "Available in Phase 2"
+  },
   "Wishlist": {
     "title": "Songs you want to hear at this show",
     "lockedTitle": "Everyone's wishlist",

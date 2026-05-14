@@ -461,6 +461,10 @@ export function PredictedSetlist({
                   noResults: t("searchNoResults"),
                 }}
                 excludeSongIds={predictions.map((p) => p.songId)}
+                // Same multi-IP scope as the wishlist picker — see
+                // EventWishSection.tsx for the rationale. eventId
+                // upstream is a string; cast at the single boundary.
+                scope={{ kind: "event", eventId: Number(eventId) }}
                 variant="compact"
                 autoFocus
               />

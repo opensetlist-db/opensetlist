@@ -336,6 +336,14 @@
     "disagreeAria": "잘못됨",
     "description": "새로 등록된 곡이 정확하면 ✓를, 아니면 ✕를 눌러 주세요."
   },
+  "SongSearch": {
+    "variantPickerTitle": "어떤 버전인가요?",
+    "variantPickerBack": "← 다른 곡 선택",
+    "variantPickerOriginalLabel": "원곡",
+    "createSongRow": "+ \"{query}\" 새 곡으로 추가",
+    "createVariantRow": "+ \"{query}\"{josa} 새 variant로 추가",
+    "createDisabledTooltip": "Phase 2에서 가능"
+  },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",
     "lockedTitle": "모두의 희망곡",
