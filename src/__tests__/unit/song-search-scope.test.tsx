@@ -33,6 +33,25 @@ function mockFetchOnceWith(songs: unknown[] = []) {
   return fetchSpy;
 }
 
+// Extract the URL the component handed to `fetch`. The component
+// currently passes a plain string, but `fetch` accepts string | URL |
+// Request, so the helper handles all three rather than casting blindly
+// — if a refactor ever swaps the call site to `new URL(...)` or a
+// `Request`, the tests don't silently start asserting against
+// `"[object Object]"` (the result of `Object.toString()` on a non-string).
+function urlFromFetchCall(
+  fetchSpy: ReturnType<typeof vi.fn>,
+  callIndex = 0,
+): string {
+  const arg = fetchSpy.mock.calls[callIndex]?.[0];
+  if (typeof arg === "string") return arg;
+  if (arg instanceof URL) return arg.toString();
+  if (arg instanceof Request) return arg.url;
+  throw new Error(
+    `Unexpected fetch arg type at call ${callIndex}: ${Object.prototype.toString.call(arg)}`,
+  );
+}
+
 // Type the props loosely — only `scope` is the variable here, and we
 // want to be able to pass it (or omit it) without retyping the whole
 // prop bag for each test.
@@ -71,7 +90,7 @@ describe("SongSearch v2 — scope URL params", () => {
 
   it("omitted scope → URL has no scope/scopeId/scopeArtistIds params (byte-identical to v1)", async () => {
     const fetchSpy = await renderAndTypeOnce();
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).not.toContain("scope=");
     expect(url).not.toContain("scopeId=");
     expect(url).not.toContain("scopeArtistIds=");
@@ -83,7 +102,7 @@ describe("SongSearch v2 — scope URL params", () => {
     // would diverge from the v1 baseline used in song-search-component.test.tsx
     // for backward-compat assertions.
     const fetchSpy = await renderAndTypeOnce({ scope: { kind: "all" } });
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).not.toContain("scope=");
   });
 
@@ -91,7 +110,7 @@ describe("SongSearch v2 — scope URL params", () => {
     const fetchSpy = await renderAndTypeOnce({
       scope: { kind: "event", eventId: 42 },
     });
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).toContain("scope=event");
     expect(url).toContain("scopeId=42");
   });
@@ -100,32 +119,42 @@ describe("SongSearch v2 — scope URL params", () => {
     const fetchSpy = await renderAndTypeOnce({
       scope: { kind: "series", seriesId: 7 },
     });
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).toContain("scope=series");
     expect(url).toContain("scopeId=7");
   });
 
-  it("scope={ kind: 'artist', artistIds: [3, 5] } → URL has scope=artist&scopeArtistIds=3,5", async () => {
+  it("scope={ kind: 'artist', artistIds: [3, 5] } → URL has scope=artist&scopeArtistIds=3%2C5", async () => {
     const fetchSpy = await renderAndTypeOnce({
       scope: { kind: "artist", artistIds: [3, 5] },
     });
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).toContain("scope=artist");
-    // URLSearchParams encodes commas as %2C
-    expect(url).toMatch(/scopeArtistIds=3(,|%2C)5/);
+    // URLSearchParams MUST percent-encode the comma to %2C — if the
+    // implementation ever switches to a raw `,` (e.g. by building the
+    // string with template literals instead of URLSearchParams) the
+    // server's `parseCsvBigIntIds` would still parse it, but the
+    // wire shape would silently diverge from our documented contract
+    // and from `excludeIds`. The strict check pins the contract.
+    expect(url).toContain("scopeArtistIds=3%2C5");
   });
 
-  it("scope coexists with other v2 params (includeVariants, excludeIds, expandVariants)", async () => {
+  it("scope coexists with other v2 params (excludeIds, expandVariants)", async () => {
     // The four URL-building blocks in fetchResults are independent —
     // adding scope shouldn't disturb any of the existing param plumbing.
     // Belt-and-suspenders for future refactors that might reorder them.
+    //
+    // `includeVariants` is intentionally NOT set here: as of the CR
+    // #353 fixup, the component suppresses `includeVariants` whenever
+    // `variantPicker` is on (the two are conceptually exclusive — see
+    // the comment block in `fetchResults`). The dedicated suppression
+    // test below pins that behavior.
     const fetchSpy = mockFetchOnceWith([]);
     render(
       <SongSearch
         onSelect={vi.fn()}
         locale="ko"
         texts={TEXTS}
-        includeVariants
         variantPicker
         excludeSongIds={[10, 20]}
         scope={{ kind: "event", eventId: 99 }}
@@ -137,12 +166,68 @@ describe("SongSearch v2 — scope URL params", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(305);
     });
-    const url = (fetchSpy.mock.calls[0][0] as string).toString();
-    expect(url).toContain("includeVariants=true");
+    const url = urlFromFetchCall(fetchSpy);
     expect(url).toContain("expandVariants=true");
-    expect(url).toMatch(/excludeIds=10(,|%2C)20/);
+    expect(url).toContain("excludeIds=10%2C20");
     expect(url).toContain("scope=event");
     expect(url).toContain("scopeId=99");
+  });
+
+  it("variantPicker suppresses includeVariants — the two flags are conceptually exclusive", async () => {
+    // CR #353 fixup: a caller that opts into the v2 two-stage picker
+    // should not also send `includeVariants=true`, because the server
+    // forces base-only when `expandVariants=true` and the redundant
+    // param is misleading on the wire. The component drops
+    // `includeVariants` itself rather than expecting callers to know.
+    //
+    // This test pins the suppression. If a future refactor decouples
+    // the params on the route side, the same combination would
+    // resurrect a real bug (child variants reaching stage 1), so the
+    // assertion is the trip-wire.
+    const fetchSpy = mockFetchOnceWith([]);
+    render(
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        includeVariants
+        variantPicker
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "x" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+    const url = urlFromFetchCall(fetchSpy);
+    expect(url).not.toContain("includeVariants=true");
+    expect(url).toContain("expandVariants=true");
+  });
+
+  it("includeVariants alone (no variantPicker) still rides the URL — admin flat-variant path", async () => {
+    // Admin SetlistBuilder relies on `includeVariants=true` to surface
+    // flat variant rows in its search results. The suppression must
+    // ONLY trigger when `variantPicker` is also on; otherwise this
+    // legitimate admin use case would silently lose its variant rows.
+    const fetchSpy = mockFetchOnceWith([]);
+    render(
+      <SongSearch
+        onSelect={vi.fn()}
+        locale="ko"
+        texts={TEXTS}
+        includeVariants
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "x" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(305);
+    });
+    const url = urlFromFetchCall(fetchSpy);
+    expect(url).toContain("includeVariants=true");
+    expect(url).not.toContain("expandVariants=true");
   });
 });
 
@@ -176,9 +261,7 @@ describe("SongSearch v2 — scope change triggers refetch", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(305);
     });
-    expect(
-      (fetchSpy.mock.calls[0][0] as string).toString(),
-    ).toContain("scopeId=1");
+    expect(urlFromFetchCall(fetchSpy)).toContain("scopeId=1");
 
     // Parent swaps scope; user types again.
     rerender(
@@ -195,9 +278,10 @@ describe("SongSearch v2 — scope change triggers refetch", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(305);
     });
-    const lastCallUrl = (
-      fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1][0] as string
-    ).toString();
+    const lastCallUrl = urlFromFetchCall(
+      fetchSpy,
+      fetchSpy.mock.calls.length - 1,
+    );
     expect(lastCallUrl).toContain("scopeId=2");
   });
 });

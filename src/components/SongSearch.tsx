@@ -316,7 +316,27 @@ export function SongSearch({
       abortRef.current = controller;
 
       const params = new URLSearchParams({ q });
-      if (includeVariants) params.set("includeVariants", "true");
+      // `includeVariants` (admin flat-variant escape hatch) and
+      // `variantPicker` (v2 two-stage picker) are conceptually
+      // exclusive: the former hands the caller a flat list with both
+      // bases AND variants at the top level, the latter expects only
+      // bases in stage 1 and resolves variant choice via stage 2.
+      //
+      // The route already enforces this exclusivity server-side
+      // (route.ts:289 forces `baseVersionId = null` whenever
+      // `expandVariants=true`, regardless of `includeVariants`), so a
+      // caller that sets both today still gets the correct base-only
+      // stage-1 payload. We suppress the param here anyway:
+      //   1. Cleaner URL contract — no stale param riding along that
+      //      does nothing.
+      //   2. Defense-in-depth — a future route refactor that decouples
+      //      `expandVariants` from the base-only filter would otherwise
+      //      resurrect a real bug (child variant rows reaching
+      //      handleResultClick as if they were bases, losing the
+      //      variantId on click).
+      if (includeVariants && !variantPicker) {
+        params.set("includeVariants", "true");
+      }
       // v2: only ask the API to expand nested variants when the picker
       // is actually going to render stage 2. Saves the variant join for
       // v1 callers (wishlist, prediction, admin) on every keystroke.
@@ -718,6 +738,14 @@ export function SongSearch({
     return (
       <div
         role="option"
+        // `option` requires `aria-selected` per WAI-ARIA. The row is
+        // never selectable at 1C (the click handler is a no-op + the
+        // tooltip surfaces "Phase 2"), so explicit `false` is the
+        // truthful state and silences jsx-a11y / RTL accessibility
+        // warnings. Keeping `role="option"` (rather than dropping it)
+        // preserves the listbox geometry so screen readers announce
+        // "N of M" consistently across real and future-slot rows.
+        aria-selected={false}
         aria-disabled="true"
         tabIndex={-1}
         title={tooltip}
