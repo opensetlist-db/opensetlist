@@ -36,6 +36,7 @@ function makeSong(
       {
         artist: {
           id: 1,
+          type: "group",
           originalName: artistName,
           originalShortName: null,
           originalLanguage: "ja",

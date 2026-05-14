@@ -86,6 +86,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -110,6 +111,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -135,6 +137,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -175,6 +178,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
           reactionCounts={{}}
           locale="ko"
           eventId="1"
+          status="ongoing"
         />,
       );
 

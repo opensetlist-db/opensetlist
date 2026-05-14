@@ -77,6 +77,14 @@ export interface SongSearchResult {
   artists: {
     artist: {
       id: number;
+      // Artist.type ('solo' | 'group' | 'unit') — added in
+      // PR #post-353 so consumers can classify stageType client-side
+      // (the AddItemBottomSheet uses this to decide unit auto-fill
+      // defaults). Existing v1 + v2 callers (wishlist / prediction /
+      // admin SetlistBuilder) ignore the field; carrying it adds ~5
+      // bytes per artist credit, and `findMany` already returns it
+      // for free since `type` is a scalar column on Artist.
+      type: string;
       originalName: string;
       originalShortName: string | null;
       originalLanguage: string;
