@@ -339,4 +339,37 @@ describe("POST /api/events/[id]/setlist-items", () => {
     const body = await res.json();
     expect(body).toEqual({ ok: false, error: "position_conflict" });
   });
+
+  it("returns 500 (NOT 409) on a P2002 against a non-position unique constraint", async () => {
+    // The retry loop's `isPositionRace` filter discriminates on the
+    // target substring "position". Anything else (e.g. a
+    // SetlistItemMember composite-unique violation if a future
+    // client bug submits duplicate performerIds) breaks out of the
+    // loop on the first attempt and must NOT be surfaced as
+    // "position_conflict" — that would be a misleading error message.
+    // CR PR #360 caught the post-loop check being too broad.
+    const nonPositionError = new Prisma.PrismaClientKnownRequestError(
+      "Unique constraint failed on SetlistItemMember",
+      {
+        code: "P2002",
+        clientVersion: "test",
+        meta: { target: ["setlistItemId", "stageIdentityId"] },
+      },
+    );
+    (prisma.setlistItem.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      nonPositionError,
+    );
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: "internal_error" });
+  });
 });

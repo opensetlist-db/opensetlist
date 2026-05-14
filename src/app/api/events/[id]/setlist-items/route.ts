@@ -429,10 +429,20 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   }
 
   // Exhausted retries or non-retryable error.
-  const wasRace =
+  // Mirror the in-loop `isPositionRace` target-substring check so a
+  // P2002 on some OTHER unique constraint (e.g. `SetlistItemMember`'s
+  // composite `[setlistItemId, stageIdentityId]` if a future client
+  // bug submitted duplicate performerIds) is surfaced as 500, not as
+  // a misleading "position_conflict" 409. The looser
+  // `code === "P2002"`-only check we had before would 409 those, and
+  // also flip the in-loop `break` path's intent: the loop already
+  // discriminates and only retries on a position-target hit, so the
+  // post-loop check must agree with that classifier.
+  const wasPositionRace =
     lastError instanceof Prisma.PrismaClientKnownRequestError &&
-    lastError.code === "P2002";
-  if (wasRace) {
+    lastError.code === "P2002" &&
+    JSON.stringify(lastError.meta?.target ?? "").includes("position");
+  if (wasPositionRace) {
     return NextResponse.json(
       { ok: false, error: "position_conflict" },
       { status: 409 },

@@ -332,9 +332,6 @@ export function AddItemBottomSheet({
         .map((p) => p.stageIdentityId),
     );
     dispatch({ type: "SET_PERFORMERS", payload: allActive });
-    // Effect intentionally re-runs only on song change; eventPerformers
-    // identity is stable post-fetch so deps stay quiet.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSong, itemType, eventPerformers]);
 
   // Reset the form on close so the next open starts clean. The
