@@ -149,7 +149,7 @@ export async function resolvePromptForImpression(
     resolved = makeGeneric(slugList);
   }
 
-  cache.set(impressionId, { resolvedAt: Date.now(), data: resolved });
+  recordInCache(impressionId, resolved);
   return resolved;
 }
 
