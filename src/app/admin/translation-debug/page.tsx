@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { REGISTERED_IP_KEYS } from "@/lib/translator/prompts";
+// Import from the slug-only module (NOT "@/lib/translator/prompts") so the
+// client bundle doesn't include the multi-KB prompt-content strings.
+import { REGISTERED_IP_KEYS, GENERIC_IP_KEY } from "@/lib/translator/prompts/keys";
 
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -13,7 +15,7 @@ type ProviderChoice = Provider | "default";
 // Picks the system prompt to send. Registered IP slugs come from the
 // IP_PROMPTS keys; "generic" sends FALLBACK_PROMPT. The server validates
 // against the same whitelist (see api/admin/translation-debug/route.ts).
-const IP_CHOICES: readonly string[] = [...REGISTERED_IP_KEYS, "generic"];
+const IP_CHOICES: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
 
 type DebugResponse = {
   systemPrompt: string;

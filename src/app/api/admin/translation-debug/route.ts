@@ -8,11 +8,11 @@ import {
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "@/lib/translator/prompt";
+import { IP_PROMPTS, FALLBACK_PROMPT } from "@/lib/translator/prompts";
 import {
-  IP_PROMPTS,
-  FALLBACK_PROMPT,
   REGISTERED_IP_KEYS,
-} from "@/lib/translator/prompts";
+  GENERIC_IP_KEY,
+} from "@/lib/translator/prompts/keys";
 import { geminiRawTranslate } from "@/lib/translator/gemini";
 import { openaiRawTranslate } from "@/lib/translator/openai";
 
@@ -24,7 +24,6 @@ type Provider = (typeof PROVIDERS)[number];
 // Admin can target any registered IP prompt by slug, or the generic
 // fallback. The dropdown UI is bounded by REGISTERED_IP_KEYS + "generic"
 // so the request shape is always validated against a known whitelist.
-const GENERIC_IP_KEY = "generic" as const;
 const VALID_IP_KEYS: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
 
 // POST /api/admin/translation-debug

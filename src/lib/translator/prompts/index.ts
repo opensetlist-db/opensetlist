@@ -1,5 +1,11 @@
 import { HASUNOSORA_GLOSSARY_PROMPT } from "./hasunosora";
 import { GENERIC_FALLBACK_PROMPT } from "./generic";
+import { REGISTERED_IP_KEYS } from "./keys";
+
+// Re-export so server-side consumers can grab everything from the barrel.
+// Client-side consumers MUST import from "./keys" directly to avoid
+// transitively bundling the large prompt strings — see keys.ts header.
+export { REGISTERED_IP_KEYS } from "./keys";
 
 // Per-IP system-prompt registry.
 //
@@ -46,6 +52,24 @@ export const IP_PROMPTS: Partial<Record<string, string>> = {
 // Liella) is deferred — see task-multi-ip-translation-context.md §Follow-ups.
 export const FALLBACK_PROMPT = GENERIC_FALLBACK_PROMPT;
 
-// Public for the admin /admin/translation-debug dropdown so the operator
-// can preview any registered IP's prompt without needing a real event.
-export const REGISTERED_IP_KEYS: readonly string[] = Object.keys(IP_PROMPTS);
+// Invariant guard: the runtime IP_PROMPTS keys must match REGISTERED_IP_KEYS
+// (which the client bundle imports without seeing the prompt strings).
+// If they drift, the admin UI dropdown and the server-side whitelist
+// disagree about which keys are valid. Fail loud at module load.
+if (process.env.NODE_ENV !== "production") {
+  const runtimeKeys = Object.keys(IP_PROMPTS).filter(
+    (k) => IP_PROMPTS[k] !== undefined,
+  );
+  const declared = [...REGISTERED_IP_KEYS].sort();
+  const actual = runtimeKeys.slice().sort();
+  if (
+    declared.length !== actual.length ||
+    declared.some((k, i) => k !== actual[i])
+  ) {
+    throw new Error(
+      `IP_PROMPTS / REGISTERED_IP_KEYS drift: declared=${declared.join(",")} ` +
+        `actual=${actual.join(",")}. Update src/lib/translator/prompts/keys.ts ` +
+        `whenever IP_PROMPTS gains or loses an entry.`,
+    );
+  }
+}
