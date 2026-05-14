@@ -19,11 +19,22 @@ vi.mock("@/lib/launchFlags", () => ({
 // `Prisma` namespace (PrismaClientKnownRequestError) must be the real
 // import so `err instanceof Prisma.PrismaClientKnownRequestError` works
 // in the route's catch branch. We only fake the actual client methods.
+//
+// Conflict-handling extension added:
+//   - setlistItem.findFirst    — occupant check (Gate 4.5) +
+//                                exact-position dedup check (Gate 6.5)
+//   - setlistItemConfirm.create — auto-merge path writes here when
+//                                dedup detects same-position-same-song
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findFirst: vi.fn() },
     song: { findFirst: vi.fn() },
-    setlistItem: { findMany: vi.fn(), create: vi.fn() },
+    setlistItem: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+    },
+    setlistItemConfirm: { create: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -33,17 +44,29 @@ import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { Prisma } from "@/generated/prisma/client";
 
-function postRequest(eventId: string, body: unknown) {
+// `position` is now a required body field (conflict-handling PR). The
+// helper auto-fills it with a default when the test body doesn't
+// specify, so existing pre-conflict-handling tests stay readable —
+// they're verifying flag / event-status / song-validation behavior
+// where the exact position value doesn't matter. Tests that
+// specifically exercise the position flow can pass an explicit
+// `position` in their body override.
+const DEFAULT_TEST_POSITION = 8;
+function postRequest(eventId: string, body: Record<string, unknown>) {
+  const withPosition =
+    "position" in body ? body : { ...body, position: DEFAULT_TEST_POSITION };
   return new Request(`http://localhost/api/events/${eventId}/setlist-items`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(withPosition),
   });
 }
 
 const params1 = Promise.resolve({ id: "1" });
 
 // Default mock fixtures — an ongoing event with one host performer.
+// Happy path returns: no occupant at target position, no dedup match,
+// create succeeds.
 function setupHappyPath() {
   (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
     id: BigInt(1),
@@ -57,17 +80,18 @@ function setupHappyPath() {
       { artistId: BigInt(100), artist: { type: "group" } },
     ],
   });
+  // findFirst is used for BOTH the occupant gate (Gate 4.5) and the
+  // exact-position dedup (Gate 6.5). Happy path: both return null →
+  // create path proceeds.
+  (prisma.setlistItem.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(
+    null,
+  );
   // `$transaction(callback)` invokes the callback with a tx client whose
   // method shapes match the prisma mock above. We delegate straight back
   // to the same mocks so per-test assertions read consistent state.
   (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
     async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma),
   );
-  (prisma.setlistItem.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
-    { position: 5 },
-    { position: 7 },
-    { position: 3 },
-  ]);
   (prisma.setlistItem.create as ReturnType<typeof vi.fn>).mockResolvedValue({
     id: BigInt(900),
     position: 8,
@@ -242,27 +266,25 @@ describe("POST /api/events/[id]/setlist-items", () => {
     expect(body.error).toBe("performer_not_in_event");
   });
 
-  it("creates row at MAX(position)+1 ignoring soft-deleted rows", async () => {
+  it("creates row at the client-supplied position (conflict-handling: client owns position)", async () => {
+    // Conflict-handling PR flipped position computation from server
+    // (`nextSetlistPosition(items)`) to client (sent in body). Server
+    // now writes whatever the client supplied — verified via the
+    // create call's `position` field. This is the core mechanism
+    // that closes the race-loss-misplacement bug.
     await POST(
       postRequest("1", {
         itemType: "song",
         songId: 42,
         performerIds: ["si-host-1"],
         isEncore: false,
+        position: 17,
       }) as never,
       { params: params1 },
     );
-    // findMany must filter by `isDeleted: false` — verifies the
-    // position calc uses only the active set (partial unique index
-    // semantics).
-    expect(prisma.setlistItem.findMany).toHaveBeenCalledWith({
-      where: { eventId: BigInt(1), isDeleted: false },
-      select: { position: true },
-    });
-    // Three rows with positions 3, 5, 7 → nextPosition is 8.
     expect(prisma.setlistItem.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ position: 8 }),
+        data: expect.objectContaining({ position: 17 }),
       }),
     );
   });
@@ -446,5 +468,168 @@ describe("POST /api/events/[id]/setlist-items", () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body).toEqual({ ok: false, error: "internal_error" });
+  });
+});
+
+// ───── Conflict-handling specific scenarios ─────
+
+describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+    mutableFlags.addItemEnabled = true;
+  });
+
+  it("returns 400 position_already_confirmed when target position has a confirmed row", async () => {
+    // Gate 4.5 — partial unique negation index permits multiple
+    // rumoured rows at one position, but only one non-rumoured.
+    // If the user targets a position already owned by
+    // confirmed/live, reject upfront (the follow-up ContestReport PR
+    // adds the proper queue-based path for those).
+    (prisma.setlistItem.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) => {
+        // The occupant check filters on `status: { not: "rumoured" }`.
+        if (
+          (where.status as { not?: string })?.not === "rumoured"
+        ) {
+          return Promise.resolve({ id: BigInt(999) });
+        }
+        return Promise.resolve(null);
+      },
+    );
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+        position: 5,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: "position_already_confirmed" });
+    // No create call should have happened — Gate 4.5 short-circuits.
+    expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+  });
+
+  it("same-position same-song within window → auto-confirm-merge (no INSERT, writes SetlistItemConfirm)", async () => {
+    // Gate 6.5 — exact-position dedup. Two users independently
+    // submitting the same song at the same position is a stronger
+    // correctness signal than counting upvotes; collapse into one
+    // row + bump confirmCount via a SetlistItemConfirm write.
+    (prisma.setlistItem.findFirst as ReturnType<typeof vi.fn>).mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) => {
+        // Occupant check (looking for non-rumoured): null
+        if ((where.status as { not?: string })?.not === "rumoured") {
+          return Promise.resolve(null);
+        }
+        // Dedup check (looking for rumoured + same song): hit
+        if (where.status === "rumoured") {
+          return Promise.resolve({ id: BigInt(888) });
+        }
+        return Promise.resolve(null);
+      },
+    );
+    // The auto-merge path then calls findUnique for the merged row.
+    (prisma.setlistItem.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(888),
+      position: 5,
+      status: "rumoured",
+      songs: [],
+      performers: [],
+      artists: [],
+    });
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+        position: 5,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.action).toBe("auto-confirm-merge");
+    // Confirms-only write — no new SetlistItem created
+    expect(prisma.setlistItemConfirm.create).toHaveBeenCalledWith({
+      data: { setlistItemId: BigInt(888) },
+    });
+    expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+  });
+
+  it("same-position different-song → INSERTs as rumoured sibling (no merge)", async () => {
+    // Negation index permits multiple rumoured rows at the same
+    // position. The dedup check (Gate 6.5) only triggers for SAME
+    // song; a different song at the same position falls through to
+    // the normal INSERT path, creating a conflict-group sibling.
+    (prisma.setlistItem.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+        position: 5,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(201);
+    expect(prisma.setlistItem.create).toHaveBeenCalledTimes(1);
+    expect(prisma.setlistItemConfirm.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when position is missing", async () => {
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+        // explicitly omit position (postRequest helper would inject
+        // a default; bypass by stringifying without it)
+        position: undefined,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/position/);
+  });
+
+  it("returns 400 when position is zero or negative", async () => {
+    for (const bad of [0, -1, -100]) {
+      const res = await POST(
+        postRequest("1", {
+          itemType: "song",
+          songId: 42,
+          performerIds: ["si-host-1"],
+          isEncore: false,
+          position: bad,
+        }) as never,
+        { params: params1 },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/position/);
+    }
+  });
+
+  it("returns 400 when position is non-integer", async () => {
+    const res = await POST(
+      postRequest("1", {
+        itemType: "song",
+        songId: 42,
+        performerIds: ["si-host-1"],
+        isEncore: false,
+        position: 1.5,
+      }) as never,
+      { params: params1 },
+    );
+    expect(res.status).toBe(400);
   });
 });

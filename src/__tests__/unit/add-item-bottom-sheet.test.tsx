@@ -223,6 +223,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open={false}
+        presetPosition={null}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -239,6 +241,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -258,6 +262,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -279,6 +285,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -312,6 +320,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -340,6 +350,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
@@ -360,6 +372,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={onSubmitSuccess}
       />,
@@ -389,6 +403,9 @@ describe("AddItemBottomSheet", () => {
       songId: 1,
       performerIds: expect.any(Array),
       isEncore: false,
+      // Conflict-handling: position is now client-supplied. Test
+      // passes presetPosition={5}, so body.position should mirror.
+      position: 5,
     });
     expect(body.performerIds.length).toBe(4); // all four checked
   });
@@ -404,6 +421,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={onSubmitSuccess}
       />,
@@ -460,6 +479,8 @@ describe("AddItemBottomSheet", () => {
         eventId="1"
         locale="ko"
         open
+        presetPosition={5}
+        items={[]}
         onClose={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
