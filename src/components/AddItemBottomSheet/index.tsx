@@ -396,8 +396,17 @@ export function AddItemBottomSheet({
         return;
       }
 
-      const itemId: number | undefined = data?.item?.id;
-      if (typeof itemId !== "number") {
+      // `serializeBigInt` (src/lib/utils.ts:30) coerces BigInt → Number
+      // via `Number(value)` inside the replacer, so `data.item.id`
+      // arrives as a JSON number — but `Number(rawId)` is defensive
+      // belt-and-suspenders against the same field becoming a string
+      // someday (e.g. if a future refactor switches to `String(value)`
+      // to avoid Number.MAX_SAFE_INTEGER overflow). The single
+      // `Number.isFinite` guard then covers both an actual missing
+      // field and a NaN-producing coercion.
+      const rawId = data?.item?.id;
+      const itemId = rawId == null ? NaN : Number(rawId);
+      if (!Number.isFinite(itemId)) {
         // Defensive: success with malformed payload. Should never
         // happen given the server's response contract, but if it
         // does, fall back to closing the sheet without the local
