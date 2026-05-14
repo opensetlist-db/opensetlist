@@ -25,7 +25,12 @@ import { GENERIC_FALLBACK_PROMPT } from "./generic";
 //      in the file header.
 //   3. Add the slug → prompt mapping below.
 //   4. Smoke-test via /admin/translation-debug with the new ipKey.
-export const IP_PROMPTS: Record<string, string> = {
+// Partial<Record<…>>, not Record<…>: arbitrary string lookups on a
+// dictionary literal return `string | undefined` at runtime, and the
+// resolver's "is this slug registered?" guard depends on TypeScript
+// surfacing that. A plain Record types the index access as `string`
+// (never undefined), which silently hides the guard.
+export const IP_PROMPTS: Partial<Record<string, string>> = {
   hasunosora: HASUNOSORA_GLOSSARY_PROMPT,
   // nijigasaki: NIJIGASAKI_GLOSSARY_PROMPT, // pending operator authoring
   // umamusume:  UMAMUSUME_GLOSSARY_PROMPT,  // pending operator authoring
