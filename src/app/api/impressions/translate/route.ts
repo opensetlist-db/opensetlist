@@ -6,6 +6,7 @@ import { getTranslator } from "@/lib/translator";
 import type { MultilingualOutput } from "@/lib/translator/prompt";
 import { resolvePromptForImpression } from "@/lib/translator/promptResolver";
 import { FALLBACK_PROMPT } from "@/lib/translator/prompts";
+import { GENERIC_IP_KEY } from "@/lib/translator/prompts/keys";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
     });
     resolved = {
       prompt: FALLBACK_PROMPT,
-      ipKey: "generic",
+      ipKey: GENERIC_IP_KEY,
       multiIp: false,
       unregisteredSlug: null,
       franchiseSlugs: [] as string[],

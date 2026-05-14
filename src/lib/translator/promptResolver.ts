@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { IP_PROMPTS, FALLBACK_PROMPT } from "./prompts";
+import { GENERIC_IP_KEY } from "./prompts/keys";
 
 export type ResolvedPrompt = {
   prompt: string;
@@ -137,7 +138,7 @@ export async function resolvePromptForImpression(
     } else {
       resolved = {
         prompt: FALLBACK_PROMPT,
-        ipKey: "generic",
+        ipKey: GENERIC_IP_KEY,
         multiIp: false,
         unregisteredSlug: slug,
         franchiseSlugs: slugList,
