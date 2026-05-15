@@ -269,17 +269,20 @@ export function ContestReportSheet({
     if (type === "wrong_song" && selectedSong) {
       payload = { proposedSongId: selectedSong.id };
     } else if (type === "wrong_variant" && selectedSong) {
-      // For wrong_variant: if the user picked a specific variant
-      // (stage 2 of SongSearch v2), pass both the variant's
-      // baseVersionId as `proposedSongId` AND the variant id as
-      // `proposedVariantId`. If they picked 원곡 (no variant),
-      // pass only `proposedSongId` = the base song.
-      if (selectedVariant && selectedSong.baseVersionId !== null) {
-        // SongSearch v2 picks the variant Song directly; its id is
-        // the variantId we want, and its baseVersionId is the base
-        // song id. But since the picker returns the BASE song with
-        // a variant attached, `selectedSong.id` IS the base id and
-        // `selectedVariant.id` is the variant id.
+      // For wrong_variant: SongSearch v2's two-stage picker returns
+      // the BASE song as `selectedSong` (with baseVersionId=null by
+      // definition — it IS the base) plus a `selectedVariant` for
+      // the picked child variant (or undefined if the user picked
+      // 원곡). So:
+      //   - selectedSong.id    → proposedSongId (the base)
+      //   - selectedVariant.id → proposedVariantId (the child, if picked)
+      //
+      // The earlier guard `selectedSong.baseVersionId !== null` was
+      // always false because the base song has baseVersionId=null
+      // by construction — that branch never fired and
+      // proposedVariantId was silently dropped. Checking
+      // `selectedVariant` alone is the right gate.
+      if (selectedVariant) {
         payload = {
           proposedSongId: selectedSong.id,
           proposedVariantId: selectedVariant.id,
