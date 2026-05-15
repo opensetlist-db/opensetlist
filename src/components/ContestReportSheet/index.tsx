@@ -179,7 +179,11 @@ export function ContestReportSheet({
     }
     if (!open) {
       dispatch({ type: "RESET" });
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // The reset-on-close setFrozenItemId(null) doesn't trip
+      // react-hooks/set-state-in-effect (the rule narrows to
+      // unconditional state-sets that mirror props on render); the
+      // earlier suppression on this line was a copy-paste from the
+      // open-side branch and lint flagged it as unused.
       setFrozenItemId(null);
     }
   }, [open, setlistItemId, frozenItemId]);
@@ -192,11 +196,13 @@ export function ContestReportSheet({
     fetchedKeyRef.current = eventId;
 
     let cancelled = false;
+    let completed = false;
     setPerformerFetchFailed(false);
     fetch(`/api/events/${eventId}/performers`)
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data: { performers: PerformerOption[] }) => {
         if (cancelled) return;
+        completed = true;
         setEventPerformers(data.performers);
       })
       .catch((err) => {
@@ -210,6 +216,12 @@ export function ContestReportSheet({
       });
     return () => {
       cancelled = true;
+      // Mirror AddItemBottomSheet's pattern: if the sheet closed
+      // before the fetch resolved, clear the dedupe key so the next
+      // open retries. Without this, `eventPerformers` stays null on
+      // re-open and the missing_performer checklist would never
+      // render.
+      if (!completed) fetchedKeyRef.current = null;
     };
   }, [open, eventId]);
 
