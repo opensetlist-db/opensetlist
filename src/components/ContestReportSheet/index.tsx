@@ -20,6 +20,7 @@ import {
   type PerformerOption,
 } from "@/components/AddItemBottomSheet/PerformerChecklist";
 import { IssueTypeSelector } from "@/components/ContestReportSheet/IssueTypeSelector";
+import { MAX_COMMENT_CHARS } from "@/lib/contestReportPayload";
 import type { ContestReportType } from "@/generated/prisma/enums";
 
 interface Props {
@@ -156,6 +157,11 @@ export function ContestReportSheet({
   const [eventPerformers, setEventPerformers] = useState<
     PerformerOption[] | null
   >(null);
+  // Surfaces a friendly message in the missing_performer branch
+  // when the performers fetch failed (network, 404, 500). Without
+  // this, the user would see a blank area with no indication that
+  // loading went sideways.
+  const [performerFetchFailed, setPerformerFetchFailed] = useState(false);
   const fetchedKeyRef = useRef<string | null>(null);
 
   // Capture setlistItemId on open transition. Reset on close.
@@ -179,6 +185,7 @@ export function ContestReportSheet({
     fetchedKeyRef.current = eventId;
 
     let cancelled = false;
+    setPerformerFetchFailed(false);
     fetch(`/api/events/${eventId}/performers`)
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((data: { performers: PerformerOption[] }) => {
@@ -188,7 +195,11 @@ export function ContestReportSheet({
       .catch((err) => {
         if (cancelled) return;
         console.error("[ContestReportSheet] performers fetch failed", err);
+        // Reset the ref so a subsequent open can retry. Surface the
+        // failure to the missing_performer branch so the user sees
+        // an error instead of a blank area.
         fetchedKeyRef.current = null;
+        setPerformerFetchFailed(true);
       });
     return () => {
       cancelled = true;
@@ -416,17 +427,33 @@ export function ContestReportSheet({
               )}
 
               {/* missing_performer: PerformerChecklist (multi-select) */}
-              {type === "missing_performer" && eventPerformers && (
+              {type === "missing_performer" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     {t("missingPerformersSection")}
                   </label>
-                  <PerformerChecklist
-                    performers={eventPerformers}
-                    checkedIds={missingPerformerIds}
-                    onToggle={handleTogglePerformer}
-                    locale={locale}
-                  />
+                  {eventPerformers ? (
+                    <PerformerChecklist
+                      performers={eventPerformers}
+                      checkedIds={missingPerformerIds}
+                      onToggle={handleTogglePerformer}
+                      locale={locale}
+                    />
+                  ) : performerFetchFailed ? (
+                    // Fetch failed (network, 404, 500). Surface the
+                    // error so the user knows the checklist isn't
+                    // just slow loading. Tapping "submit" with no
+                    // performers checked stays disabled — they can
+                    // close and re-open to retry.
+                    <div
+                      role="alert"
+                      className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"
+                    >
+                      {t("errorGeneric")}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">…</div>
+                  )}
                 </div>
               )}
 
@@ -451,7 +478,7 @@ export function ContestReportSheet({
                       ? t("commentRequiredPlaceholder")
                       : t("commentPlaceholder")
                   }
-                  maxLength={500}
+                  maxLength={MAX_COMMENT_CHARS}
                   rows={3}
                   className="w-full rounded-md border border-gray-200 px-2.5 py-2 text-sm focus:border-gray-400 focus:outline-none"
                 />

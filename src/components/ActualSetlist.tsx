@@ -367,9 +367,10 @@ export function ActualSetlist({
           onClose={closeContestSheet}
           onSubmitSuccess={() => {
             // 1C: no local follow-up state for filed reports.
-            // Operator triages via /admin/contest-reports; the user
-            // sees the success toast inside the sheet and the
-            // sheet closes itself.
+            // Operator triages via /admin/contest-reports; the
+            // sheet closes itself on success. A user-facing toast/
+            // notification is Phase 2 polish (would need a toast
+            // primitive the project doesn't ship yet).
           }}
         />
       )}

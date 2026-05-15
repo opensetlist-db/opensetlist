@@ -357,7 +357,6 @@
     "commentRequired": "必須",
     "submit": "送信",
     "submitting": "送信中…",
-    "successToast": "運営者に問題を送信しました",
     "errorGeneric": "送信に失敗しました。もう一度お試しください",
     "errorFeatureDisabled": "現在ご利用いただけません",
     "errorSetlistItemNotFound": "対象の row が見つかりません",

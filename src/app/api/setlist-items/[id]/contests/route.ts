@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import {
   parseContestReportPayload,
+  MAX_COMMENT_CHARS,
   type ContestReportPayload,
 } from "@/lib/contestReportPayload";
 
@@ -42,8 +43,6 @@ type RouteProps = { params: Promise<{ id: string }> };
  * matching every other fan-facing write endpoint. Account-bound
  * abuse mitigation lands at Phase 2.
  */
-
-const MAX_COMMENT_CHARS = 500;
 
 function isCommentValid(
   comment: unknown,

@@ -1,5 +1,11 @@
 import type { ContestReportType } from "@/generated/prisma/enums";
 
+// Single source of truth for the comment column's character cap.
+// Imported by both the POST route (server-side enforcement) and
+// the ContestReportSheet (client-side textarea maxLength). Drift
+// would let the client accept input the server rejects.
+export const MAX_COMMENT_CHARS = 500;
+
 // ContestReport.payload is a Prisma `Json` column, which Prisma
 // types as the opaque `JsonValue` on read/write. That's accurate for
 // the wire format but useless at call sites — every consumer would

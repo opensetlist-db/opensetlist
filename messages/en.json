@@ -357,7 +357,6 @@
     "commentRequired": "Required",
     "submit": "Submit",
     "submitting": "Submitting…",
-    "successToast": "Issue submitted to the operator",
     "errorGeneric": "Submit failed. Please try again.",
     "errorFeatureDisabled": "Not available yet",
     "errorSetlistItemNotFound": "This row could not be found",
