@@ -18,7 +18,7 @@ import {
 import {
   PerformerChecklist,
   type PerformerOption,
-} from "@/components/AddItemBottomSheet/PerformerChecklist";
+} from "@/components/PerformerChecklist";
 import { IssueTypeSelector } from "@/components/ContestReportSheet/IssueTypeSelector";
 import { MAX_COMMENT_CHARS } from "@/lib/contestReportPayload";
 import type { ContestReportType } from "@/generated/prisma/enums";
@@ -165,6 +165,13 @@ export function ContestReportSheet({
   const fetchedKeyRef = useRef<string | null>(null);
 
   // Capture setlistItemId on open transition. Reset on close.
+  // The `react-hooks/set-state-in-effect` rule (ships with
+  // eslint-config-next 16.x) flags intentional prop-to-local-state
+  // snapshots — but the freeze IS the design (mirrors
+  // AddItemBottomSheet's pattern; same rationale in PR #362). The
+  // recommended alternative (compute on render via useMemo) does
+  // not work here because we specifically want to capture-and-stop-
+  // listening, not re-derive on every parent render.
   useEffect(() => {
     if (open && setlistItemId !== null && frozenItemId === null) {
       // eslint-disable-next-line react-hooks/set-state-in-effect

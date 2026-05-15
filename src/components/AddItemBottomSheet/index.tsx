@@ -19,7 +19,7 @@ import { ItemTypeSelector } from "@/components/AddItemBottomSheet/ItemTypeSelect
 import {
   PerformerChecklist,
   type PerformerOption,
-} from "@/components/AddItemBottomSheet/PerformerChecklist";
+} from "@/components/PerformerChecklist";
 import { EncoreToggleRow } from "@/components/AddItemBottomSheet/EncoreToggleRow";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
 import type { LiveSetlistItem } from "@/lib/types/setlist";

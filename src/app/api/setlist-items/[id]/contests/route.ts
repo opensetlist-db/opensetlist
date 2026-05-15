@@ -21,10 +21,9 @@ type RouteProps = { params: Promise<{ id: string }> };
  *
  *   → 201 { ok: true, report: { id, type, status, createdAt } }
  *   → 403 { ok: false, error: "feature_flag_disabled" }
- *   → 400 { ok: false, error: <validation> }
+ *   → 400 { ok: false, error: <validation> | "performer_not_in_event" }
  *   → 404 { ok: false, error: "setlist_item_not_found"
- *                              | "song_not_found"
- *                              | "performer_not_in_event" }
+ *                              | "song_not_found" }
  *
  * Backs the per-row `<IssueReportButton>` affordance + the
  * `<ContestReportSheet>` form (Phase 1C operator-queue path).
