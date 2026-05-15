@@ -36,6 +36,13 @@ export function ContestReportActions({ reportId }: Props) {
       } else {
         alert(`${label} 처리에 실패했습니다.`);
       }
+    } catch {
+      // Network failure (DNS, timeout, offline). Without this,
+      // the rejection would surface as an unhandled promise
+      // rejection with no operator-visible feedback — the
+      // buttons re-enable in `finally` but the action never
+      // ran. Mirror the non-ok branch's alert UX.
+      alert(`${label} 처리 중 오류가 발생했습니다.`);
     } finally {
       setBusy(false);
     }
