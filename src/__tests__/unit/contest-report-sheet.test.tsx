@@ -55,15 +55,21 @@ vi.mock("@/components/SongSearch", () => ({
         | undefined,
     ) => void;
   }) => {
+    // Narrow the casts to just the empty-array fields so the rest
+    // of the shape stays type-checked against the local onSelect
+    // mock signature above. `never[]` is the parameter type in
+    // that signature; bare `[]` literals widen to `any[]` outside
+    // a contextual position, which is what was forcing the
+    // earlier `as never` sledgehammer.
     const baseSong = {
       id: 100,
       originalTitle: "Dream Believers",
       baseVersionId: null,
       originalLanguage: "ja",
       variantLabel: null,
-      translations: [],
-      artists: [],
-    } as never;
+      translations: [] as never[],
+      artists: [] as never[],
+    };
     return (
       <>
         <button
