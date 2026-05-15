@@ -336,6 +336,37 @@
     "disagreeAria": "Mark as incorrect",
     "description": "If a newly added song is correct, tap ✓ — if not, tap ✕."
   },
+  "IssueReport": {
+    "buttonLabel": "Report issue",
+    "sheetTitle": "Report an issue",
+    "close": "Close",
+    "typeSection": "What's the issue?",
+    "typeLabel": {
+      "wrong_song": "Wrong song",
+      "missing_performer": "Missing performer",
+      "wrong_variant": "Wrong variant",
+      "other": "Other"
+    },
+    "proposedSongSection": "The correct song",
+    "proposedVariantSection": "The correct variant",
+    "missingPerformersSection": "Missing performer(s)",
+    "commentSection": "Additional notes",
+    "commentPlaceholder": "Add detail (optional)",
+    "commentRequiredPlaceholder": "Describe the issue",
+    "commentOptional": "Optional",
+    "commentRequired": "Required",
+    "submit": "Submit",
+    "submitting": "Submitting…",
+    "successToast": "Issue submitted to the operator",
+    "errorGeneric": "Submit failed. Please try again.",
+    "errorFeatureDisabled": "Not available yet",
+    "errorSetlistItemNotFound": "This row could not be found",
+    "errorSongNotFound": "The selected song could not be found",
+    "errorPerformerNotInEvent": "Selected performer isn't on this event's lineup",
+    "songSearchPlaceholder": "Search songs...",
+    "songSearchLoading": "Searching...",
+    "songSearchNoResults": "No results"
+  },
   "AddItem": {
     "addButtonLabel": "+ Add song",
     "sheetTitle": "Add song",
