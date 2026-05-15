@@ -19,9 +19,8 @@ import { ItemTypeSelector } from "@/components/AddItemBottomSheet/ItemTypeSelect
 import {
   PerformerChecklist,
   type PerformerOption,
-} from "@/components/AddItemBottomSheet/PerformerChecklist";
+} from "@/components/PerformerChecklist";
 import { EncoreToggleRow } from "@/components/AddItemBottomSheet/EncoreToggleRow";
-import { GuestFooterLink } from "@/components/AddItemBottomSheet/GuestFooterLink";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 
@@ -719,7 +718,13 @@ export function AddItemBottomSheet({
                 {submitting ? t("submitting") : t("submit")}
               </button>
 
-              <GuestFooterLink />
+              {/* GuestFooterLink (mailto "performer missing — let the
+                  operator know") was removed in the ContestReport
+                  PR: that affordance is now subsumed by the per-row
+                  `<IssueReportButton>` + ContestReportSheet's
+                  `missing_performer` issue type, which collects the
+                  exact same signal (which performers are missing)
+                  into the operator queue instead of an email. */}
             </div>
           </div>
         </Drawer.Content>

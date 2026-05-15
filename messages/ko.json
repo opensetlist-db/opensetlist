@@ -336,6 +336,36 @@
     "disagreeAria": "잘못됨",
     "description": "새로 등록된 곡이 정확하면 ✓를, 아니면 ✕를 눌러 주세요."
   },
+  "IssueReport": {
+    "buttonLabel": "이슈 제기",
+    "sheetTitle": "이슈 제기",
+    "close": "닫기",
+    "typeSection": "어떤 이슈인가요?",
+    "typeLabel": {
+      "wrong_song": "곡이 잘못됨",
+      "missing_performer": "출연자가 빠짐",
+      "wrong_variant": "버전이 잘못됨",
+      "other": "기타"
+    },
+    "proposedSongSection": "올바른 곡",
+    "proposedVariantSection": "올바른 버전",
+    "missingPerformersSection": "빠진 출연자",
+    "commentSection": "추가 설명",
+    "commentPlaceholder": "구체적인 내용을 작성해주세요 (선택)",
+    "commentRequiredPlaceholder": "이슈 내용을 작성해주세요",
+    "commentOptional": "선택",
+    "commentRequired": "필수",
+    "submit": "제출",
+    "submitting": "제출 중…",
+    "errorGeneric": "제출 실패. 다시 시도해주세요",
+    "errorFeatureDisabled": "지금은 사용할 수 없습니다",
+    "errorSetlistItemNotFound": "해당 row를 찾을 수 없습니다",
+    "errorSongNotFound": "선택한 곡을 찾을 수 없습니다",
+    "errorPerformerNotInEvent": "선택한 출연자가 이 공연 출연자 목록에 없습니다",
+    "songSearchPlaceholder": "곡 검색...",
+    "songSearchLoading": "검색 중...",
+    "songSearchNoResults": "결과 없음"
+  },
   "AddItem": {
     "addButtonLabel": "+ 곡 추가",
     "sheetTitle": "곡 추가",

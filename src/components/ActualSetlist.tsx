@@ -12,6 +12,7 @@ import { useTranslations } from "next-intl";
 import { SetlistRow } from "@/components/SetlistRow";
 import { AddItemButton } from "@/components/AddItemBottomSheet/AddItemButton";
 import { AddItemBottomSheet } from "@/components/AddItemBottomSheet";
+import { ContestReportSheet } from "@/components/ContestReportSheet";
 import type { RowState, RowVote } from "@/components/NumberSlot";
 import type {
   LiveSetlistItem,
@@ -94,6 +95,17 @@ export function ActualSetlist({
     open: boolean;
     presetPosition: number | null;
   }>({ open: false, presetPosition: null });
+
+  // ContestReportSheet state — separate sheet, separate intent
+  // from the AddItemBottomSheet. Opens via `<IssueReportButton>`
+  // on any row when `LAUNCH_FLAGS.contestReportEnabled` is true.
+  // Captured at button click; setlistItemId is the row the user
+  // intends to file a report against.
+  const [contestSheetState, setContestSheetState] = useState<{
+    open: boolean;
+    setlistItemId: number | null;
+  }>({ open: false, setlistItemId: null });
+  const canReport = LAUNCH_FLAGS.contestReportEnabled;
 
   // Gate the AddItemBottomSheet entry point on (a) the launch flag —
   // false at Kobe (5/23), flips true at Kanagawa (5/30) by deleting
@@ -246,6 +258,14 @@ export function ActualSetlist({
     setSheetState({ open: false, presetPosition: null });
   }, []);
 
+  const onIssueReport = useCallback((id: number) => {
+    setContestSheetState({ open: true, setlistItemId: id });
+  }, []);
+
+  const closeContestSheet = useCallback(() => {
+    setContestSheetState({ open: false, setlistItemId: null });
+  }, []);
+
   return (
     <>
       <SetlistColumnHeader
@@ -290,6 +310,8 @@ export function ActualSetlist({
                   onDisagreeTap={() => handleDisagreeTap(item.id)}
                   siblings={siblings}
                   onContest={canAddItem ? onContest : undefined}
+                  canReport={canReport}
+                  onIssueReport={canReport ? onIssueReport : undefined}
                 />
               );
             })}
@@ -329,6 +351,29 @@ export function ActualSetlist({
           />
         </>
       )}
+      {/* ContestReportSheet — separate sheet for the operator-queue
+          path. Mounted independently of `canAddItem` because reports
+          are valid against ANY row (rumoured or confirmed),
+          regardless of whether the event is currently ongoing.
+          Gated only by `LAUNCH_FLAGS.contestReportEnabled` (via
+          `canReport`). The sheet itself returns null when
+          `open=false`, so mounting it conditional-free is cheap. */}
+      {canReport && (
+        <ContestReportSheet
+          eventId={eventId}
+          setlistItemId={contestSheetState.setlistItemId}
+          locale={locale}
+          open={contestSheetState.open}
+          onClose={closeContestSheet}
+          onSubmitSuccess={() => {
+            // 1C: no local follow-up state for filed reports.
+            // Operator triages via /admin/contest-reports; the
+            // sheet closes itself on success. A user-facing toast/
+            // notification is Phase 2 polish (would need a toast
+            // primitive the project doesn't ship yet).
+          }}
+        />
+      )}
       {encoreBuckets.length > 0 && (
         <>
           <EncoreDivider label={ct("encore")} />
@@ -360,6 +405,8 @@ export function ActualSetlist({
                       onDisagreeTap={() => handleDisagreeTap(item.id)}
                       siblings={siblings}
                       onContest={canAddItem ? onContest : undefined}
+                      canReport={canReport}
+                      onIssueReport={canReport ? onIssueReport : undefined}
                     />
                   );
                 })}

@@ -336,6 +336,36 @@
     "disagreeAria": "間違っている",
     "description": "新しく登録された曲が正確なら ✓ を、間違っていれば ✕ を押してください。"
   },
+  "IssueReport": {
+    "buttonLabel": "問題を報告",
+    "sheetTitle": "問題を報告",
+    "close": "閉じる",
+    "typeSection": "どんな問題ですか？",
+    "typeLabel": {
+      "wrong_song": "曲が違う",
+      "missing_performer": "出演者が抜けている",
+      "wrong_variant": "バージョンが違う",
+      "other": "その他"
+    },
+    "proposedSongSection": "正しい曲",
+    "proposedVariantSection": "正しいバージョン",
+    "missingPerformersSection": "抜けている出演者",
+    "commentSection": "追加メモ",
+    "commentPlaceholder": "具体的に書いてください（任意）",
+    "commentRequiredPlaceholder": "問題内容を書いてください",
+    "commentOptional": "任意",
+    "commentRequired": "必須",
+    "submit": "送信",
+    "submitting": "送信中…",
+    "errorGeneric": "送信に失敗しました。もう一度お試しください",
+    "errorFeatureDisabled": "現在ご利用いただけません",
+    "errorSetlistItemNotFound": "対象の row が見つかりません",
+    "errorSongNotFound": "選択した曲が見つかりません",
+    "errorPerformerNotInEvent": "選択した出演者がこの公演の出演者リストにありません",
+    "songSearchPlaceholder": "曲を検索...",
+    "songSearchLoading": "検索中...",
+    "songSearchNoResults": "結果なし"
+  },
   "AddItem": {
     "addButtonLabel": "+ 曲を追加",
     "sheetTitle": "曲を追加",
