@@ -83,12 +83,19 @@ export function getConfirmStatus(
     // non-rumoured rows.
     return "confirmed";
   }
-  // Conflict-group suspension. `siblings` non-empty → this row has
-  // peers at the same position; keep it rumoured visually so the
-  // ✓/✕ vote buttons remain active. The N-confirm-tap path in the
-  // /confirm route will eventually promote a winner + auto-hide
-  // losers at the DB level.
-  if (siblings && siblings.length > 0) return "rumoured";
+  // Conflict-group suspension. `siblings` non-empty (excluding the
+  // row itself) → this row has peers at the same position; keep it
+  // rumoured visually so the ✓/✕ vote buttons remain active. The
+  // N-confirm-tap path in the /confirm route will eventually
+  // promote a winner + auto-hide losers at the DB level.
+  //
+  // Defensive `s.id !== item.id` filter: every current caller in
+  // ActualSetlist already excludes self when building the siblings
+  // array, but the function shouldn't silently misclassify a
+  // singleton row as "conflict" if a future caller forgets that
+  // filter — the cost of the filter is one Array.some() per row,
+  // the cost of the bug is a row permanently stuck rumoured.
+  if (siblings && siblings.some((s) => s.id !== item.id)) return "rumoured";
   const createdAt =
     item.createdAt instanceof Date
       ? item.createdAt

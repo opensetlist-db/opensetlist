@@ -32,8 +32,10 @@ vi.mock("vaul", () => {
   };
 });
 
-// SongSearch stub — exposes a button per test scenario to simulate
-// the picker resolving to a Song (with optional variant).
+// SongSearch stub — exposes one button per scenario to simulate the
+// picker resolving to a base song with no variant (pick-song) OR a
+// base song plus a variant (pick-variant). Both buttons render
+// unconditionally; tests pick whichever path they're exercising.
 vi.mock("@/components/SongSearch", () => ({
   SongSearch: ({
     onSelect,
@@ -48,29 +50,49 @@ vi.mock("@/components/SongSearch", () => ({
         variantLabel: null;
         translations: never[];
       },
-      variant: { id: number; variantLabel: string | null } | undefined,
+      variant:
+        | { id: number; variantLabel: string | null; translations: never[] }
+        | undefined,
     ) => void;
-  }) => (
-    <button
-      data-testid="pick-song"
-      onClick={() =>
-        onSelect(
-          {
-            id: 100,
-            originalTitle: "Dream Believers",
-            baseVersionId: null,
-            originalLanguage: "ja",
-            variantLabel: null,
-            translations: [],
-            artists: [],
-          } as never,
-          undefined,
-        )
-      }
-    >
-      pick song
-    </button>
-  ),
+  }) => {
+    // Narrow the casts to just the empty-array fields so the rest
+    // of the shape stays type-checked against the local onSelect
+    // mock signature above. `never[]` is the parameter type in
+    // that signature; bare `[]` literals widen to `any[]` outside
+    // a contextual position, which is what was forcing the
+    // earlier `as never` sledgehammer.
+    const baseSong = {
+      id: 100,
+      originalTitle: "Dream Believers",
+      baseVersionId: null,
+      originalLanguage: "ja",
+      variantLabel: null,
+      translations: [] as never[],
+      artists: [] as never[],
+    };
+    return (
+      <>
+        <button
+          data-testid="pick-song"
+          onClick={() => onSelect(baseSong, undefined)}
+        >
+          pick song
+        </button>
+        <button
+          data-testid="pick-variant"
+          onClick={() =>
+            onSelect(baseSong, {
+              id: 200,
+              variantLabel: "105th Ver.",
+              translations: [],
+            })
+          }
+        >
+          pick variant
+        </button>
+      </>
+    );
+  },
 }));
 
 const EVENT_PERFORMERS = [
@@ -220,6 +242,86 @@ describe("ContestReportSheet", () => {
     });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "submit" })).not.toBeDisabled();
+    });
+  });
+
+  it("wrong_variant + base song only → payload carries proposedSongId only", async () => {
+    const fetchSpy = mockFetch({
+      "/api/setlist-items/42/contests": {
+        ok: true,
+        report: { id: "report-uuid-2" },
+      },
+    });
+    render(
+      <ContestReportSheet
+        eventId="1"
+        setlistItemId={42}
+        locale="ko"
+        open
+        onClose={vi.fn()}
+        onSubmitSuccess={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("radio", { name: "typeLabel.wrong_variant" }),
+    );
+    // Base song picked, no variant — represents the user picking
+    // 원곡 in SongSearch v2's stage 2.
+    fireEvent.click(screen.getByTestId("pick-song"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "submit" })).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    await waitFor(() => {
+      const postCall = fetchSpy.mock.calls.find((call) => {
+        const init = call[1] as RequestInit | undefined;
+        return init?.method === "POST";
+      });
+      expect(postCall).toBeDefined();
+      const body = JSON.parse((postCall![1] as RequestInit).body as string);
+      expect(body.type).toBe("wrong_variant");
+      expect(body.payload).toEqual({ proposedSongId: 100 });
+      expect(body.payload.proposedVariantId).toBeUndefined();
+    });
+  });
+
+  it("wrong_variant + variant picked → payload carries proposedSongId + proposedVariantId", async () => {
+    const fetchSpy = mockFetch({
+      "/api/setlist-items/42/contests": {
+        ok: true,
+        report: { id: "report-uuid-3" },
+      },
+    });
+    render(
+      <ContestReportSheet
+        eventId="1"
+        setlistItemId={42}
+        locale="ko"
+        open
+        onClose={vi.fn()}
+        onSubmitSuccess={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("radio", { name: "typeLabel.wrong_variant" }),
+    );
+    fireEvent.click(screen.getByTestId("pick-variant"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "submit" })).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "submit" }));
+    await waitFor(() => {
+      const postCall = fetchSpy.mock.calls.find((call) => {
+        const init = call[1] as RequestInit | undefined;
+        return init?.method === "POST";
+      });
+      expect(postCall).toBeDefined();
+      const body = JSON.parse((postCall![1] as RequestInit).body as string);
+      expect(body.type).toBe("wrong_variant");
+      expect(body.payload).toEqual({
+        proposedSongId: 100,
+        proposedVariantId: 200,
+      });
     });
   });
 

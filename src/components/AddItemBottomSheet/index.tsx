@@ -308,6 +308,7 @@ export function AddItemBottomSheet({
     fetchedKeyRef.current = eventId;
 
     let cancelled = false;
+    let completed = false;
     fetch(`/api/events/${eventId}/performers`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -315,6 +316,7 @@ export function AddItemBottomSheet({
       })
       .then((data: { performers: PerformerOption[] }) => {
         if (cancelled) return;
+        completed = true;
         setEventPerformers(data.performers);
       })
       .catch((err) => {
@@ -328,6 +330,14 @@ export function AddItemBottomSheet({
       });
     return () => {
       cancelled = true;
+      // If the sheet closed before the fetch resolved, clear the
+      // dedupe key so the next open retries. Without this,
+      // `fetchedKeyRef.current === eventId` stays set forever and
+      // `eventPerformers` remains null on every subsequent open —
+      // PerformerChecklist never renders. The `completed` flag
+      // distinguishes "close after success (cache still valid, keep
+      // the dedupe)" from "close before success (must clear)".
+      if (!completed) fetchedKeyRef.current = null;
     };
     // `t` is intentionally NOT in deps — `useTranslations` returns
     // a fresh function reference each render, which would re-fire
@@ -411,6 +421,12 @@ export function AddItemBottomSheet({
           dispatch({ type: "SET_PERFORMERS", payload: intersection });
         })
         .catch((err) => {
+          // Bail out if the sheet closed while the request was in
+          // flight. Without this guard a stale failure would
+          // dispatch SET_PERFORMERS into a post-RESET state on the
+          // next open — re-introducing a partially-populated form
+          // the user already abandoned.
+          if (cancelled) return;
           console.error("[AddItemBottomSheet] current-members fetch failed", err);
           // Fall back to default (all non-guest performers) — the
           // user can manually adjust. Spec §"Performer override"
