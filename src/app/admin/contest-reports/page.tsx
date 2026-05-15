@@ -91,11 +91,20 @@ export default async function ContestReportsAdminPage({
       },
     },
   });
-  // `serializeBigInt` strips Prisma's typed includes (it goes
-  // through `JSON.parse`); cast back to the include-aware shape so
-  // the table renderer below stays type-safe. Per-row payload
-  // typing happens in `summarizePayload`.
-  type SerializedReport = (typeof reportsRaw)[number] & {
+  // `serializeBigInt` goes through `JSON.parse(JSON.stringify(...))`,
+  // which (a) drops Prisma's typed includes and (b) converts every
+  // Date column on the row to an ISO string. Cast back to the
+  // include-aware shape while acknowledging the Date → string
+  // coercion so callers below (`formatDate`) get a typed input.
+  // `formatDate` already accepts `Date | string`, so the runtime
+  // behaviour is fine; this cast just makes that explicit at the
+  // TS layer instead of letting it slide through `unknown`.
+  type SerializedReport = Omit<
+    (typeof reportsRaw)[number],
+    "createdAt" | "resolvedAt" | "payload"
+  > & {
+    createdAt: string;
+    resolvedAt: string | null;
     payload: unknown;
   };
   const reports = serializeBigInt(reportsRaw) as unknown as SerializedReport[];
