@@ -34,7 +34,21 @@ export function ContestReportActions({ reportId }: Props) {
       if (res.ok) {
         router.refresh();
       } else {
-        alert(`${label} 처리에 실패했습니다.`);
+        // Surface the server's Korean `message` if it was sent (the
+        // route returns `{ errorCode, message }` for failures);
+        // fall back to a generic action-named string. Lets the
+        // operator distinguish "already terminal" / "not found" /
+        // "internal error" without parsing errorCode.
+        let msg = `${label} 처리에 실패했습니다.`;
+        try {
+          const body = (await res.json()) as { message?: string };
+          if (typeof body.message === "string" && body.message.length > 0) {
+            msg = body.message;
+          }
+        } catch {
+          // ignore — fall through to the default
+        }
+        alert(msg);
       }
     } catch {
       // Network failure (DNS, timeout, offline). Without this,

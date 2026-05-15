@@ -8,7 +8,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     contestReport: {
       findUnique: vi.fn(),
-      update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -31,13 +31,10 @@ describe("PATCH /api/admin/contest-reports/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (verifyAdminAPI as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    // Happy-path default: atomic updateMany succeeds (count=1)
     (
-      prisma.contestReport.findUnique as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
-      id: "abc-uuid",
-      status: "pending",
-    });
-    (prisma.contestReport.update as ReturnType<typeof vi.fn>).mockResolvedValue({});
+      prisma.contestReport.updateMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ count: 1 });
   });
 
   it("returns 401 without admin session", async () => {
@@ -48,7 +45,7 @@ describe("PATCH /api/admin/contest-reports/[id]", () => {
       params: paramsAbc,
     });
     expect(res.status).toBe(401);
-    expect(prisma.contestReport.update).not.toHaveBeenCalled();
+    expect(prisma.contestReport.updateMany).not.toHaveBeenCalled();
   });
 
   it("returns 400 on bad status value", async () => {
@@ -56,33 +53,44 @@ describe("PATCH /api/admin/contest-reports/[id]", () => {
       params: paramsAbc,
     });
     expect(res.status).toBe(400);
+    // Korean message + machine-readable errorCode per CLAUDE.md
+    // admin-i18n exemption.
+    const body = await res.json();
+    expect(body.errorCode).toBe("invalid_status");
+    expect(typeof body.message).toBe("string");
   });
 
-  it("PATCH to resolved sets status + resolvedAt", async () => {
+  it("PATCH to resolved uses atomic updateMany with pending guard", async () => {
     const res = await PATCH(patchRequest({ status: "resolved" }) as never, {
       params: paramsAbc,
     });
     expect(res.status).toBe(200);
     const call = (
-      prisma.contestReport.update as ReturnType<typeof vi.fn>
+      prisma.contestReport.updateMany as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
-    expect(call.where).toEqual({ id: "abc-uuid" });
+    // `where` MUST include `status: "pending"` — that's the atomic
+    // primitive closing the read-then-write TOCTOU race two
+    // operators racing to resolve the same report.
+    expect(call.where).toEqual({ id: "abc-uuid", status: "pending" });
     expect(call.data.status).toBe("resolved");
     expect(call.data.resolvedAt).toBeInstanceOf(Date);
   });
 
-  it("PATCH to dismissed sets status + resolvedAt", async () => {
+  it("PATCH to dismissed uses the same atomic primitive", async () => {
     const res = await PATCH(patchRequest({ status: "dismissed" }) as never, {
       params: paramsAbc,
     });
     expect(res.status).toBe(200);
     const call = (
-      prisma.contestReport.update as ReturnType<typeof vi.fn>
+      prisma.contestReport.updateMany as ReturnType<typeof vi.fn>
     ).mock.calls[0][0];
     expect(call.data.status).toBe("dismissed");
   });
 
-  it("idempotent on already-terminal report (no-op + 200)", async () => {
+  it("idempotent on already-terminal report (count=0 + existing row → 200 no-op)", async () => {
+    (
+      prisma.contestReport.updateMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ count: 0 });
     (
       prisma.contestReport.findUnique as ReturnType<typeof vi.fn>
     ).mockResolvedValue({
@@ -95,10 +103,12 @@ describe("PATCH /api/admin/contest-reports/[id]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true, skipped: "already_terminal" });
-    expect(prisma.contestReport.update).not.toHaveBeenCalled();
   });
 
-  it("returns 404 on missing report", async () => {
+  it("returns 404 on missing report (count=0 + findUnique returns null)", async () => {
+    (
+      prisma.contestReport.updateMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ count: 0 });
     (
       prisma.contestReport.findUnique as ReturnType<typeof vi.fn>
     ).mockResolvedValue(null);
@@ -106,5 +116,7 @@ describe("PATCH /api/admin/contest-reports/[id]", () => {
       params: paramsAbc,
     });
     expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.errorCode).toBe("contest_report_not_found");
   });
 });
