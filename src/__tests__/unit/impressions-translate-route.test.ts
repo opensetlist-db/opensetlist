@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { FALLBACK_PROMPT } from "@/lib/translator/prompts";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -15,6 +16,16 @@ vi.mock("@/lib/prisma", () => ({
 const translateMock = vi.fn();
 vi.mock("@/lib/translator", () => ({
   getTranslator: () => ({ translate: translateMock }),
+}));
+
+// The route resolves the per-IP system prompt before the translator call.
+// Tests don't exercise the resolver internals — that's covered by the
+// dedicated prompt-resolver.test.ts. Here we just stub a deterministic
+// ResolvedPrompt so the route can thread it into translateMock and we can
+// assert on the third positional arg.
+const resolvePromptMock = vi.fn();
+vi.mock("@/lib/translator/promptResolver", () => ({
+  resolvePromptForImpression: (...args: unknown[]) => resolvePromptMock(...args),
 }));
 
 import { POST } from "@/app/api/impressions/translate/route";
@@ -49,6 +60,15 @@ describe("POST /api/impressions/translate", () => {
       ko: "오늘 라이브 최고였어요",
       ja: "今日のライブ最高でした",
       en: "Today's live was amazing",
+    });
+    // Default resolver: pretend the impression's event maps to Hasunosora.
+    // Individual tests can override by re-mocking resolvePromptMock.
+    resolvePromptMock.mockResolvedValue({
+      prompt: "MOCK_PROMPT",
+      ipKey: "hasunosora",
+      multiIp: false,
+      unregisteredSlug: null,
+      franchiseSlugs: ["hasunosora"],
     });
   });
 
@@ -114,6 +134,8 @@ describe("POST /api/impressions/translate", () => {
     expect(translateMock).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.findUnique).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.createMany).not.toHaveBeenCalled();
+    // Resolver is downstream of the same-locale check — must not run.
+    expect(resolvePromptMock).not.toHaveBeenCalled();
   });
 
   it("returns cached translation without calling the translator", async () => {
@@ -132,6 +154,8 @@ describe("POST /api/impressions/translate", () => {
     expect(body.translatedText).toBe("캐시된 번역");
     expect(translateMock).not.toHaveBeenCalled();
     expect(prisma.impressionTranslation.createMany).not.toHaveBeenCalled();
+    // Cache hits skip the resolver — no LLM call to inform, no need to walk.
+    expect(resolvePromptMock).not.toHaveBeenCalled();
   });
 
   it("calls translator on cache miss and writes both non-source rows in one insert", async () => {
@@ -144,13 +168,17 @@ describe("POST /api/impressions/translate", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.translatedText).toBe("오늘 라이브 최고였어요");
-    // Translator signature is now 3-arg (no targetLocale) — all targets come
-    // back in one MultilingualOutput.
+    // Translator signature: (text, sourceLocale, systemPrompt, signal).
+    // All targets come back in one MultilingualOutput; the resolved
+    // systemPrompt comes from the mocked resolver above.
     expect(translateMock).toHaveBeenCalledWith(
       "今日のライブ最高でした",
       "ja",
+      "MOCK_PROMPT",
       expect.any(AbortSignal),
     );
+    // Resolver invoked with the impression id once per cache miss.
+    expect(resolvePromptMock).toHaveBeenCalledWith("imp-1");
     // Both non-source (ja) locales cached from a single LLM round-trip.
     expect(prisma.impressionTranslation.createMany).toHaveBeenCalledWith({
       data: [
@@ -201,6 +229,27 @@ describe("POST /api/impressions/translate", () => {
     );
     expect(res.status).toBe(502);
     expect(prisma.impressionTranslation.createMany).not.toHaveBeenCalled();
+  });
+
+  it("falls back to FALLBACK_PROMPT when the resolver throws", async () => {
+    // Transient Prisma failure on the resolver walk should NOT 500 the
+    // handler — the route catches and falls back to FALLBACK_PROMPT so
+    // translation still succeeds (with degraded IP context).
+    resolvePromptMock.mockRejectedValueOnce(new Error("resolver db down"));
+
+    const res = await POST(
+      makeRequest({
+        impressionId: "imp-1",
+        targetLocale: "ko",
+      }) as unknown as Parameters<typeof POST>[0],
+    );
+    expect(res.status).toBe(200);
+    // Translator must have been called with the actual FALLBACK_PROMPT —
+    // a stricter check than "non-empty + not MOCK_PROMPT" so the assertion
+    // fails if the fallback ever changes to a different constant.
+    expect(translateMock).toHaveBeenCalledTimes(1);
+    const systemPromptArg = (translateMock.mock.calls[0] as unknown[])[2];
+    expect(systemPromptArg).toBe(FALLBACK_PROMPT);
   });
 
   it("falls through and still returns translation when createMany throws", async () => {
