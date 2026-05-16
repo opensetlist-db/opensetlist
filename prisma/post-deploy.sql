@@ -291,29 +291,59 @@ BEGIN
 END $$;
 
 -- ─────────────────────────────────────────────────────────────────────
--- Realtime R2: REPLICA IDENTITY FULL for diff-merge tables.
+-- Realtime R2: REPLICA IDENTITY FULL for every published table.
 --
--- Postgres logical replication ships only the primary key in DELETE
--- WAL events by default. Supabase Realtime exposes that as
--- `payload.old = { id }` — which is enough for SetlistItem (Path B
--- refetch on push) and SongWish (Path B refetch top3) but NOT for
--- the per-row diff merge (Path A) the realtime hook does for
--- SetlistItemReaction and EventImpression:
+-- The original assumption here was "only diff-merge tables (Path A)
+-- need FULL; refetch-on-push tables (Path B) can stay at DEFAULT
+-- because the handler doesn't read the WAL payload." That was
+-- wrong, and the SongWish realtime outage on 2026-05-16 was the
+-- forcing function.
 --
---   - SetlistItemReaction DELETE → need (setlistItemId, reactionType)
---     to decrement the right reactionCounts cell. Without FULL we
---     only get the row's UUID.
---   - EventImpression UPDATE (supersede) → need (rootImpressionId,
---     supersededAt, isHidden, isDeleted) on the OLD row to know
---     whether the row was previously visible. INSERT carries `new`
---     fully regardless; the gap is only on UPDATE/DELETE.
+-- Two distinct reasons every published table needs FULL:
 --
--- REPLICA IDENTITY FULL widens those payloads to the full row at
--- the cost of extra WAL bytes per change. Trivial at our table
--- sizes (reactions ≤ ~10⁵ rows/year, impressions ≤ ~10⁴) and the
--- bytes only ship for changes, not on idle.
+--   1. Path A diff-merge needs the full OLD row to decrement the
+--      right cell on DELETE / detect supersede on UPDATE.
+--        - SetlistItemReaction DELETE → need
+--          (setlistItemId, reactionType) to decrement reactionCounts.
+--        - EventImpression UPDATE (supersede) → need
+--          (rootImpressionId, supersededAt, isHidden, isDeleted) on
+--          OLD to know whether the row was previously visible.
 --
--- These are idempotent: ALTER TABLE ... REPLICA IDENTITY FULL is
--- safe to re-run, no IF NOT EXISTS guard needed.
+--   2. Supabase Realtime's `realtime.check_filters` function
+--      validates filtered subscriptions at subscribe-time against
+--      a per-table cache of "filterable columns." On the prod
+--      Supabase project, that cache only marks a column as
+--      filterable when REPLICA IDENTITY FULL is set on the table —
+--      even for filters used only on INSERT events (where the
+--      `new` payload would carry the column anyway). A subscription
+--      with a filter on a non-FULL-covered column is rejected with
+--        P0001 "invalid column for filter <col>"
+--      and the channel never reaches SUBSCRIBED.
+--
+--      SongWish + SetlistItem were left at REPLICA IDENTITY DEFAULT
+--      under the (wrong) Path B assumption, so prod subscriptions
+--      using filter `eventId=eq.X` on those tables were silently
+--      rejected. Dev had REPLICA IDENTITY FULL on those tables from
+--      ad-hoc manual SQL during R1/R2 dev work, masking the issue
+--      until prod traffic exposed it.
+--
+-- Resolution at the SQL layer: set REPLICA IDENTITY FULL on every
+-- table in `supabase_realtime`. Idempotent (re-runs no-op), and the
+-- WAL overhead is trivial at our table sizes (≤ ~10⁵ rows/year).
+--
+-- Resolution at the code layer (see
+-- src/hooks/useRealtimeEventChannel.ts:417-446, 470-499): drop the
+-- per-event `filter:` from the SongWish + SetlistItem subscriptions
+-- — both are Path B refetch consumers that don't need the filter to
+-- be correct, only to be efficient. Even with FULL applied here,
+-- the Realtime service's filter-validation cache had additional
+-- state that resisted refresh (publication kick + project restart
+-- did not clear it). Removing the filter sidesteps that
+-- still-mysterious cache entirely; we re-add the filter once
+-- traffic grows enough that the wasted refetches matter AND we've
+-- verified Supabase Realtime accepts it again (test by re-adding
+-- on a Preview deploy and watching WS frames).
+ALTER TABLE "SetlistItem" REPLICA IDENTITY FULL;
 ALTER TABLE "SetlistItemReaction" REPLICA IDENTITY FULL;
 ALTER TABLE "EventImpression" REPLICA IDENTITY FULL;
+ALTER TABLE "SongWish" REPLICA IDENTITY FULL;
