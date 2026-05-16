@@ -12,7 +12,7 @@ import {
 // (scripts/count-prompt-tokens.ts). Bumping the model in one place
 // without the other would silently measure tokens against the wrong
 // tokenizer.
-export const GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
+export const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 export class GeminiTranslator implements Translator {
   private client: GoogleGenAI;
