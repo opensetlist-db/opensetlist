@@ -15,7 +15,11 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  */
 export const WISH_PREDICT_OPEN_DAYS = 7;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+// Exported so callers that need rolling-day windows
+// (e.g. `now + N * MS_PER_DAY` cutoffs in queries) reference the
+// same constant as the gate / dDay math instead of re-spelling
+// `24 * 60 * 60 * 1000` inline.
+export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // Exported so unit tests pin the boundary against the same constant the
 // gate uses, instead of re-deriving the formula locally and silently

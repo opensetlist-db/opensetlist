@@ -11,7 +11,11 @@ import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
-import { daysUntil, shouldShowWishBadge } from "@/lib/eventTiming";
+import {
+  MS_PER_DAY,
+  daysUntil,
+  shouldShowWishBadge,
+} from "@/lib/eventTiming";
 import { routing } from "@/i18n/routing";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -51,7 +55,7 @@ const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 // ±30-day window so the home stays relevant even when the catalog has
 // long-tail events that would otherwise dominate take(5).
 const HOME_WINDOW_DAYS = 30;
-const HOME_WINDOW_MS = HOME_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+const HOME_WINDOW_MS = HOME_WINDOW_DAYS * MS_PER_DAY;
 
 // Card-specific date formats. UpcomingCard shows the full day with a
 // weekday tag ("5월 23일 (토)"); RecentEventRow date pill shows just
