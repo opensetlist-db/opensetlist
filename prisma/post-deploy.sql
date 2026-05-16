@@ -347,3 +347,138 @@ ALTER TABLE "SetlistItem" REPLICA IDENTITY FULL;
 ALTER TABLE "SetlistItemReaction" REPLICA IDENTITY FULL;
 ALTER TABLE "EventImpression" REPLICA IDENTITY FULL;
 ALTER TABLE "SongWish" REPLICA IDENTITY FULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Song variant invariants — orphan + duplicate prevention.
+--
+-- Two structural failure modes were observed during CSV-import passes
+-- (2026-05-16 incident — see [[wiki/log.md]] for the Dream Believers
+-- cleanup). Both are caught at INSERT time by the constraints below
+-- so future CSV passes can't silently regrow them.
+--
+--   1. ORPHAN VARIANT — a row with `variantLabel IS NOT NULL` but
+--      `baseVersionId IS NULL`. Structurally wrong: a variant has
+--      no parent. The picker treats it as a base song (because
+--      baseVersionId IS NULL) and the operator sees a "Dream
+--      Believers (SAKURA Ver.)" row alongside the canonical
+--      "Dream Believers." Caught by CHECK constraint.
+--
+--   2. DUPLICATE VARIANT — two rows with the same
+--      `(baseVersionId, variantLabel)` for the same canonical base.
+--      Created when a second CSV pass uses a different slug than
+--      the first (slug-based upsert misses the existing row and
+--      inserts a new one). Caught by partial UNIQUE index, scoped
+--      to non-deleted rows so soft-deleted rows can coexist with
+--      their replacement.
+--
+-- Preflight DO block (below) RAISEs with a readable message if the
+-- DB has pre-existing violations, so a deploy on a dirty DB fails
+-- loudly before the partial migration commits — otherwise the raw
+-- Postgres constraint error names the row id but not the failure
+-- class, and the deploy state is mid-applied.
+--
+-- Idempotent: pg_constraint guard for CHECK, IF NOT EXISTS for index.
+DO $$
+DECLARE
+  orphan_count INTEGER;
+  duplicate_count INTEGER;
+  orphan_sample TEXT;
+  duplicate_sample TEXT;
+BEGIN
+  -- Orphan variants: variantLabel set but baseVersionId NULL.
+  SELECT COUNT(*) INTO orphan_count
+  FROM "Song"
+  WHERE "variantLabel" IS NOT NULL
+    AND "baseVersionId" IS NULL
+    AND "isDeleted" = false;
+
+  IF orphan_count > 0 THEN
+    SELECT string_agg(format('id=%s slug=%s', id, slug), ', ' ORDER BY id)
+      INTO orphan_sample
+      FROM (
+        SELECT id, slug FROM "Song"
+        WHERE "variantLabel" IS NOT NULL
+          AND "baseVersionId" IS NULL
+          AND "isDeleted" = false
+        LIMIT 5
+      ) AS s;
+    RAISE EXCEPTION
+      'song_variant_must_have_base preflight failed: % orphan variants (variantLabel set, baseVersionId NULL). First few: %. Repoint baseVersionId or clear variantLabel before re-running migrate.',
+      orphan_count, orphan_sample;
+  END IF;
+
+  -- Duplicate (baseVersionId, variantLabel) pairs among non-deleted
+  -- LABELED variants. variantLabel IS NOT NULL is required for the
+  -- preflight scope to match the partial UNIQUE index's WHERE clause
+  -- below — without it, GROUP BY treats multiple NULL variantLabels
+  -- as equal and false-positives "duplicates" that the index would
+  -- actually permit (Postgres B-tree indexes treat NULLs as distinct,
+  -- so multiple `(baseVersionId=X, variantLabel=NULL)` rows can
+  -- legitimately coexist as unlabeled-variant-of-X).
+  SELECT COUNT(*) INTO duplicate_count
+  FROM (
+    SELECT "baseVersionId", "variantLabel"
+    FROM "Song"
+    WHERE "baseVersionId" IS NOT NULL
+      AND "variantLabel" IS NOT NULL
+      AND "isDeleted" = false
+    GROUP BY "baseVersionId", "variantLabel"
+    HAVING COUNT(*) > 1
+  ) AS dups;
+
+  IF duplicate_count > 0 THEN
+    SELECT string_agg(format('(base=%s, label=%s)', "baseVersionId", "variantLabel"), ', ')
+      INTO duplicate_sample
+      FROM (
+        SELECT "baseVersionId", "variantLabel"
+        FROM "Song"
+        WHERE "baseVersionId" IS NOT NULL
+          AND "variantLabel" IS NOT NULL
+          AND "isDeleted" = false
+        GROUP BY "baseVersionId", "variantLabel"
+        HAVING COUNT(*) > 1
+        LIMIT 5
+      ) AS d;
+    RAISE EXCEPTION
+      'song_variant_unique_per_base preflight failed: % duplicate (baseVersionId, variantLabel) groups. First few: %. Merge duplicates before re-running migrate.',
+      duplicate_count, duplicate_sample;
+  END IF;
+END $$;
+
+-- 1. CHECK constraint: a variantLabel without a base is structurally
+--    wrong. Catches future orphans at INSERT/UPDATE time.
+--    Scope matches the partial unique index below (active rows only)
+--    so historical soft-deleted orphans don't block a clean deploy.
+--    `ADD CONSTRAINT IF NOT EXISTS` is not a Postgres syntax — guard
+--    via pg_constraint lookup instead.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'song_variant_must_have_base'
+      AND conrelid = '"Song"'::regclass
+  ) THEN
+    ALTER TABLE "Song"
+      ADD CONSTRAINT song_variant_must_have_base
+      CHECK (
+        "isDeleted" = true
+        OR "variantLabel" IS NULL
+        OR "baseVersionId" IS NOT NULL
+      );
+  END IF;
+END $$;
+
+-- 2. Partial UNIQUE index: only one row per (base, variantLabel) for
+--    non-deleted LABELED variants. variantLabel IS NOT NULL is part
+--    of the WHERE clause so unlabeled variants (baseVersionId set,
+--    variantLabel NULL) can coexist — Postgres B-tree indexes treat
+--    NULLs as distinct anyway, so including them in the index would
+--    be a no-op semantically AND a false-positive surface in the
+--    matching preflight query.
+--
+--    Soft-deleted rows can coexist with their replacement.
+CREATE UNIQUE INDEX IF NOT EXISTS song_variant_unique_per_base
+  ON "Song" ("baseVersionId", "variantLabel")
+  WHERE "baseVersionId" IS NOT NULL
+    AND "variantLabel" IS NOT NULL
+    AND "isDeleted" = false;
