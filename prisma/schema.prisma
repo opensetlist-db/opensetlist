@@ -110,6 +110,24 @@ enum SetlistItemType {
   interval  // intermission, costume change
 }
 
+// ── CONTEST REPORT ────────────────────────────────────
+// Per-row issue reports users file against existing SetlistItems
+// when the real-time conflict-sibling path can't express the
+// concern. See `src/lib/contestReportPayload.ts` for the per-type
+// payload schema. Operator triages via /admin/contest-reports.
+enum ContestReportType {
+  wrong_song          // user proposes a different song at this position
+  missing_performer   // user marks performer(s) absent from the row's roster
+  wrong_variant       // user proposes the row should be a specific variant
+  other               // catch-all; payload empty, comment carries the report
+}
+
+enum ContestReportStatus {
+  pending     // newly filed, awaiting operator review
+  resolved    // operator applied a fix (manually via admin row-edit at 1C)
+  dismissed   // operator rejected the report
+}
+
 enum SongArtistRole {
   primary
   featured
@@ -552,6 +570,7 @@ model SetlistItem {
   performers  SetlistItemMember[]
   reactions   SetlistItemReaction[]
   confirms    SetlistItemConfirm[]
+  contestReports ContestReport[]
 
   // Partial unique on (eventId, position) WHERE isDeleted = false lives in
   // prisma/post-deploy.sql — Prisma can't express partial uniques in schema.
@@ -1108,4 +1127,48 @@ model SetlistItemConfirm {
   setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
 
   @@index([setlistItemId])
+}
+
+// ── CONTEST REPORT (Phase 1C operator-queue) ──────────
+// Per-row issue report filed by a user against a SetlistItem when
+// the real-time conflict-sibling path doesn't apply (confirmed
+// rows, or non-song corrections on rumoured rows).
+//
+// DB writes flag-gated by `LAUNCH_FLAGS.contestReportEnabled`
+// (false 5/23 Kobe, true 5/30 Kanagawa). Like SetlistItemConfirm,
+// no anonId / userId at 1C — full identifier-bound dedup arrives
+// at Phase 2. Operator triages the queue at /admin/contest-reports;
+// "resolved" means operator applied a fix via the existing admin
+// row-edit tools (auto-apply per-type is Phase 2 polish).
+//
+// `payload` is a JSON column — the only one in the schema —
+// justified by per-type structural variability:
+//   wrong_song:        { proposedSongId: number }
+//   missing_performer: { stageIdentityIds: string[] }
+//   wrong_variant:     { proposedSongId: number, proposedVariantId?: number }
+//   other:             {}  (payload empty; the `comment` field carries it)
+//
+// Validation + TS types live in `src/lib/contestReportPayload.ts`.
+//
+// Indexes:
+//   - (setlistItemId)     — row-context lookup for the row-detail page
+//   - (status, createdAt) — admin queue list view's primary sort
+//
+// NOT in the `supabase_realtime` publication — operator polls the
+// admin list; live push for queueing entities adds infra for ~0
+// benefit at 1C.
+model ContestReport {
+  id            String              @id @default(uuid())
+  setlistItemId BigInt
+  type          ContestReportType
+  payload       Json
+  comment       String?             @db.Text
+  status        ContestReportStatus @default(pending)
+  createdAt     DateTime            @default(now())
+  resolvedAt    DateTime?
+
+  setlistItem   SetlistItem         @relation(fields: [setlistItemId], references: [id])
+
+  @@index([setlistItemId])
+  @@index([status, createdAt])
 }

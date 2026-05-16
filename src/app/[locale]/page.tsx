@@ -100,12 +100,6 @@ async function getOngoingEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // See `src/lib/setlistCounts.ts` for what `SONG_COUNT_WHERE`
-      // includes / excludes. Without a filter, `_count` sweeps in
-      // mc/video/interval rows, empty song placeholders, and
-      // soft-delete tombstones, so the home-page badge would over-
-      // report against the event-detail header.
-      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "asc" },
   });
@@ -160,14 +154,40 @@ async function getRecentEvents(now: Date) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
-      // Same filter as the ongoing query above — see
-      // `src/lib/setlistCounts.ts` for rationale.
-      _count: { select: { setlistItems: { where: SONG_COUNT_WHERE } } },
     },
     orderBy: { startTime: "desc" },
     take: HOME_TAKE,
   });
   return serializeBigInt(events);
+}
+
+// Pulled out of the per-event `_count` include so the home render emits
+// one batched aggregate instead of two per-findMany `SELECT COUNT(*)`
+// spans with identical SQL templates — Sentry's N+1 detector latches
+// onto repeating spans within a single transaction
+// (issue 7455520633 fired on the duplicate pair). Same predicate as
+// before via `SONG_COUNT_WHERE` so the badge totals are unchanged; the
+// upcoming bucket is intentionally excluded because future events have
+// no setlist to count yet. Mirrors the existing groupBy pattern in
+// `src/app/[locale]/artists/[id]/[[...slug]]/page.tsx`.
+async function getSongCountByEvent(
+  eventIds: bigint[],
+): Promise<Map<string, number>> {
+  if (eventIds.length === 0) return new Map();
+  const groups = await prisma.setlistItem.groupBy({
+    by: ["eventId"],
+    where: {
+      ...SONG_COUNT_WHERE,
+      eventId: { in: eventIds },
+    },
+    _count: { _all: true },
+  });
+  const result = new Map<string, number>();
+  for (const g of groups) {
+    if (g.eventId == null) continue;
+    result.set(String(g.eventId), g._count._all);
+  }
+  return result;
 }
 
 type OngoingEvent = Awaited<ReturnType<typeof getOngoingEvents>>[number];
@@ -282,6 +302,16 @@ export default async function HomePage({
     getRecentEvents(now),
   ]);
 
+  // One batched aggregate across both buckets that need a song count.
+  // `serializeBigInt` already turned `e.id` into a string, so we
+  // convert back to bigint here for the FK predicate. See
+  // `getSongCountByEvent` above for why this lives outside the
+  // findMany `_count` include.
+  const songCountByEvent = await getSongCountByEvent([
+    ...ongoingEvents.map((e) => BigInt(e.id)),
+    ...recentEvents.map((e) => BigInt(e.id)),
+  ]);
+
   // Prisma's runtime row has `startTime: Date`, but `serializeBigInt`
   // round-trips through JSON so values arrive here as strings. TS still
   // sees the Prisma type — `new Date(...).toISOString()` works on either,
@@ -298,7 +328,7 @@ export default async function HomePage({
       eventName: eventName || evT("unknownEvent"),
       venue: projectVenue(e, locale),
       songCountLabel: t("songCountOngoing", {
-        count: e._count.setlistItems,
+        count: songCountByEvent.get(String(e.id)) ?? 0,
       }),
     };
   });
@@ -332,7 +362,9 @@ export default async function HomePage({
       seriesName,
       eventName: eventName || evT("unknownEvent"),
       venue: projectVenue(e, locale),
-      songCountLabel: t("songCount", { count: e._count.setlistItems }),
+      songCountLabel: t("songCount", {
+        count: songCountByEvent.get(String(e.id)) ?? 0,
+      }),
       monthLabel: formatDate(start, locale, RECENT_MONTH_FORMAT),
       dayNumber: formatDate(start, locale, RECENT_DAY_FORMAT),
     };

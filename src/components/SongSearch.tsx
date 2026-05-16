@@ -7,8 +7,10 @@ import {
   useLayoutEffect,
   useRef,
   useCallback,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { josa } from "es-hangul";
 import {
   displayOriginalTitle,
   displayNameWithFallback,
@@ -21,10 +23,31 @@ import { colors, zIndex } from "@/styles/tokens";
 // layout intentionally omits NextIntlClientProvider per CLAUDE.md's
 // admin-i18n exemption. Fan callers should compose this from
 // `useTranslations("SongSearch")`; admin callers pass Korean literals.
+//
+// v2 strings (variantPicker* / create*) are optional — only required
+// when the caller opts into `variantPicker` / `allowCreate`. v1 callers
+// (wishlist / prediction / admin SetlistBuilder) keep their existing
+// 3-key shape with no changes.
+//
+// IMPORTANT — no hardcoded language fallbacks. If a v2-opting caller
+// omits one of these strings, the component renders the row empty
+// rather than fall back to a Korean default. CLAUDE.md requires
+// user-facing surfaces to be strictly i18n-keyed, and a "Korean leak"
+// for a ja/en caller that forgets a key would silently violate that
+// rule. Empty UI is a visible bug; a Korean leak is invisible to a
+// Korean-reading reviewer. Consumers using `useTranslations("SongSearch")`
+// get every key from the locale's messages file, so the empty-string
+// branch only fires for misconfigured callers.
 export interface SongSearchTexts {
   placeholder: string;
   loading: string;
   noResults: string;
+  variantPickerTitle?: string;
+  variantPickerBack?: string;
+  variantPickerOriginalLabel?: string;
+  createSongRow?: string;
+  createVariantRow?: string;
+  createDisabledTooltip?: string;
 }
 
 // Shape returned by GET /api/songs/search. Mirrors the route's `select`
@@ -54,6 +77,14 @@ export interface SongSearchResult {
   artists: {
     artist: {
       id: number;
+      // Artist.type ('solo' | 'group' | 'unit') — added in
+      // PR #post-353 so consumers can classify stageType client-side
+      // (the AddItemBottomSheet uses this to decide unit auto-fill
+      // defaults). Existing v1 + v2 callers (wishlist / prediction /
+      // admin SetlistBuilder) ignore the field; carrying it adds ~5
+      // bytes per artist credit, and `findMany` already returns it
+      // for free since `type` is a scalar column on Artist.
+      type: string;
       originalName: string;
       originalShortName: string | null;
       originalLanguage: string;
@@ -64,10 +95,53 @@ export interface SongSearchResult {
       }[];
     };
   }[];
+  // Populated only when the route was called with `expandVariants=true`.
+  // v1 callers (admin / wishlist / prediction) leave this undefined; v2
+  // callers (AddItemBottomSheet) get a (possibly empty) array of child
+  // variants ordered by id ascending. An empty array = base has no
+  // recorded variants; an undefined value = the API was not asked for
+  // expansion (the picker treats both the same way: skip stage 2).
+  variants?: SongVariant[];
 }
 
+// Child-variant subset, returned only when the API is called with
+// `expandVariants=true`. Shape mirrors the route's nested select —
+// just enough for the picker's row labels + the consumer's variantId.
+export interface SongVariant {
+  id: number;
+  variantLabel: string | null;
+  translations: {
+    locale: string;
+    title: string;
+    variantLabel: string | null;
+  }[];
+}
+
+// Scope-filter discriminator (v2 multi-IP support). The server is the
+// source of truth for which artists are tied to an event — passing the
+// event id and letting the API resolve is one round-trip cheaper than
+// every host page pre-fetching the artist list. Default kind="all" =
+// catalog-wide search (admin SetlistBuilder + every v1 caller).
+//
+// IDs are typed `number` to match the rest of the client (see
+// `SongSearchResult.id` rationale above — `serializeBigInt` coerces
+// to Number, not String). The route parses URL strings to bigint for
+// Prisma; this discriminator carries the values the way the rest of
+// the client already handles them.
+export type SongSearchScope =
+  | { kind: "all" }
+  | { kind: "event"; eventId: number }
+  | { kind: "series"; seriesId: number }
+  | { kind: "artist"; artistIds: number[] };
+
 interface SongSearchProps {
-  onSelect: (song: SongSearchResult) => void;
+  // v2 onSelect: optional `variant` second arg. `undefined` means either
+  // (a) the song has no recorded variants → no stage 2; or (b) the user
+  // picked 원곡 in stage 2. Consumers treat both as variantId=null —
+  // single downstream branch (per plan §1: confirmed by owner).
+  // v1 callers' `(song) => void` handlers continue to work — TS allows
+  // passing an extra arg the receiver ignores.
+  onSelect: (song: SongSearchResult, variant?: SongVariant) => void;
   // Display locale for title/artist rendering. Wishlist/prediction read
   // it from useLocale(); admin pins to "ko".
   locale: string;
@@ -84,6 +158,31 @@ interface SongSearchProps {
   // admin will likely keep this prop as the "flat list" mode even after
   // v2 ships.
   includeVariants?: boolean;
+  // v2: enable the two-stage variant picker. When true, the route is
+  // called with `expandVariants=true` so each base row carries its
+  // child variants in `.variants`. On a stage-1 pick:
+  //   - `song.variants` empty/undefined → fire `onSelect(song, undefined)`
+  //     immediately (no stage 2);
+  //   - otherwise → render stage 2 (원곡 + each variant) and fire
+  //     `onSelect(pickedBase, chosen)` on the user's pick (chosen is
+  //     `undefined` for 원곡, the variant object otherwise).
+  // Independent of `includeVariants`; v1 callers leave both false.
+  variantPicker?: boolean;
+  // v2: render disabled "+ new song / + new variant" rows at the
+  // bottom of stage 1 / stage 2 to reserve the future-slot visually.
+  // Click is a no-op; rows carry aria-disabled + a Phase-2-tooltip.
+  // Independent of `variantPicker`. Wishlist + prediction leave this
+  // false (no slot rendered at all).
+  allowCreate?: boolean;
+  // v2: server-side filter for which songs are eligible. Default
+  // `{ kind: "all" }` preserves v1 catalog-wide behavior — admin
+  // SetlistBuilder relies on this default. Fan-facing pickers
+  // (wishlist / prediction / AddItemBottomSheet) should pass
+  // `{ kind: "event", eventId }` so a Hasunosora event doesn't
+  // surface Nijigasaki songs (or vice versa) once the June 2026
+  // multi-IP rollout lands. See
+  // `wiki/output/task-week3-songsearch-v2-scope-filter.md`.
+  scope?: SongSearchScope;
   // "default": admin-style — full-width input, base 16px text, gray
   // border, rounded-md. The shape every existing caller has been using.
   // "compact": wishlist-inline style — pill input (rounded-20px), 12px
@@ -101,12 +200,22 @@ interface SongSearchProps {
 
 const DEBOUNCE_MS = 300;
 
+// Module-scoped default so an omitted `scope` prop carries a stable
+// reference across renders. Object-literal defaults in the parameter
+// destructure would build a new object each render — harmless but
+// makes the useCallback dep list re-fire fetchResults every render
+// for v1 callers who don't pass scope (which is most of them).
+const DEFAULT_SCOPE: SongSearchScope = { kind: "all" };
+
 export function SongSearch({
   onSelect,
   locale,
   texts,
   excludeSongIds = [],
   includeVariants = false,
+  variantPicker = false,
+  allowCreate = false,
+  scope = DEFAULT_SCOPE,
   variant = "default",
   autoFocus = false,
 }: SongSearchProps) {
@@ -119,6 +228,13 @@ export function SongSearch({
   // -1 = no active descendant (input has focus, no row "highlighted").
   // Set by ArrowDown/ArrowUp; consumed by Enter and aria-activedescendant.
   const [activeIndex, setActiveIndex] = useState<number>(-1);
+  // v2 two-stage picker state. "search" = stage 1 (default; the v1 flow).
+  // "variant" = stage 2; rendered iff the user picked a base that has
+  // recorded variants. `pickedBase` holds the stage-1 selection so
+  // stage 2 can render its title + emit the onSelect with the right
+  // parent song. Both reset on back-link / pick / new-query.
+  const [stage, setStage] = useState<"search" | "variant">("search");
+  const [pickedBase, setPickedBase] = useState<SongSearchResult | null>(null);
   // Compact-variant focus tracking. We need this only because the
   // compact input renders its border via inline `style` (so the
   // wishlist token values from `colors` are the single source of
@@ -208,9 +324,47 @@ export function SongSearch({
       abortRef.current = controller;
 
       const params = new URLSearchParams({ q });
-      if (includeVariants) params.set("includeVariants", "true");
+      // `includeVariants` (admin flat-variant escape hatch) and
+      // `variantPicker` (v2 two-stage picker) are conceptually
+      // exclusive: the former hands the caller a flat list with both
+      // bases AND variants at the top level, the latter expects only
+      // bases in stage 1 and resolves variant choice via stage 2.
+      //
+      // The route already enforces this exclusivity server-side
+      // (route.ts:289 forces `baseVersionId = null` whenever
+      // `expandVariants=true`, regardless of `includeVariants`), so a
+      // caller that sets both today still gets the correct base-only
+      // stage-1 payload. We suppress the param here anyway:
+      //   1. Cleaner URL contract — no stale param riding along that
+      //      does nothing.
+      //   2. Defense-in-depth — a future route refactor that decouples
+      //      `expandVariants` from the base-only filter would otherwise
+      //      resurrect a real bug (child variant rows reaching
+      //      handleResultClick as if they were bases, losing the
+      //      variantId on click).
+      if (includeVariants && !variantPicker) {
+        params.set("includeVariants", "true");
+      }
+      // v2: only ask the API to expand nested variants when the picker
+      // is actually going to render stage 2. Saves the variant join for
+      // v1 callers (wishlist, prediction, admin) on every keystroke.
+      if (variantPicker) params.set("expandVariants", "true");
       if (excludeSongIds.length > 0) {
         params.set("excludeIds", excludeSongIds.join(","));
+      }
+      // v2 scope filter — server-side restriction to songs by artists
+      // tied to this event/series/explicit list. `all` is the default
+      // and emits no params at all, keeping v1's URL shape byte-stable
+      // for unscoped callers (admin SetlistBuilder, every v1 test).
+      if (scope.kind === "event") {
+        params.set("scope", "event");
+        params.set("scopeId", String(scope.eventId));
+      } else if (scope.kind === "series") {
+        params.set("scope", "series");
+        params.set("scopeId", String(scope.seriesId));
+      } else if (scope.kind === "artist") {
+        params.set("scope", "artist");
+        params.set("scopeArtistIds", scope.artistIds.join(","));
       }
       try {
         const res = await fetch(`/api/songs/search?${params.toString()}`, {
@@ -233,7 +387,7 @@ export function SongSearch({
         setLoading(false);
       }
     },
-    [includeVariants, excludeSongIds],
+    [includeVariants, variantPicker, excludeSongIds, scope],
   );
 
   function handleChange(value: string) {
@@ -247,6 +401,13 @@ export function SongSearch({
 
     setQuery(value);
     setOpen(true);
+    // v2: typing while parked on stage 2 means the user changed their
+    // mind — drop back to stage 1 so the new query drives stage-1
+    // results, not stage-2's frozen variant list for the previous pick.
+    if (stage !== "search") {
+      setStage("search");
+      setPickedBase(null);
+    }
     // New query → previous active row is meaningless. Reset so the
     // user has to press Down to start navigating the new result set.
     setActiveIndex(-1);
@@ -261,17 +422,69 @@ export function SongSearch({
     }, DEBOUNCE_MS);
   }
 
-  function handleSelect(song: SongSearchResult) {
-    // Cancel any debounce + in-flight fetch before clearing state, so
-    // a request scheduled right before the click can't resolve into
-    // setResults(stale) after we've already cleared the dropdown.
+  // Common teardown after the consumer has been notified — clears
+  // dropdown state and cancels any racing fetch. Shared between the
+  // v1 single-stage path and both v2 stage-2 branches (원곡 / variant).
+  function finishSelect() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (abortRef.current) abortRef.current.abort();
-    onSelect(song);
     setQuery("");
     setResults([]);
     setLoading(false);
     setOpen(false);
+    setActiveIndex(-1);
+    setStage("search");
+    setPickedBase(null);
+  }
+
+  // Stage-1 row click. v1 callers (`variantPicker=false`) always emit
+  // and tear down here. v2 callers branch on whether the picked base
+  // has child variants — empty → emit immediately (no stage 2); else
+  // park on stage 2 with the input cleared of typing state but the
+  // query string preserved so the back-link returns to the same
+  // stage-1 result set.
+  //
+  // Arity note: v1 callers' onSelect is typed `(song) => void` and
+  // their tests assert `toHaveBeenCalledWith(song)` — strict on
+  // argument count. We invoke with exactly one arg when variantPicker
+  // is off so that strict-arity check stays valid. v2 callers get
+  // `(song, undefined)` in the no-variants branch, matching the plan
+  // §1 contract.
+  function handleResultClick(song: SongSearchResult) {
+    if (variantPicker) {
+      const childVariants = song.variants ?? [];
+      if (childVariants.length > 0) {
+        setPickedBase(song);
+        setStage("variant");
+        // Reset row highlight: stage 2 has a different list, the
+        // stage-1 index would point at a wrong row otherwise.
+        setActiveIndex(-1);
+        return;
+      }
+      onSelect(song, undefined);
+    } else {
+      onSelect(song);
+    }
+    finishSelect();
+  }
+
+  // Stage-2 row click. `variant === undefined` is the 원곡 (base) row —
+  // per the plan §1 owner decision, this fires `onSelect(song, undefined)`
+  // so the consumer's `variantId` is null in both the no-variants and
+  // base-picked paths (single downstream branch).
+  function handleVariantClick(variant: SongVariant | undefined) {
+    if (!pickedBase) return;
+    onSelect(pickedBase, variant);
+    finishSelect();
+  }
+
+  // Back-link from stage 2 → stage 1. Preserves the user's query so
+  // the stage-1 result list reappears immediately (no re-fetch needed
+  // because `results` is still the stage-1 payload — we never refetched
+  // when transitioning to stage 2).
+  function handleBackToSearch() {
+    setStage("search");
+    setPickedBase(null);
     setActiveIndex(-1);
   }
 
@@ -283,20 +496,48 @@ export function SongSearch({
   );
 
   const hasQuery = query.trim().length > 0;
+  // Stable, scoped option IDs. Songs and variants live in disjoint
+  // BigInt key spaces (separate Prisma tables would not collide; same
+  // table here, but a base and one of its variants are still distinct
+  // rows with distinct ids) — adding a kind prefix is belt-and-
+  // suspenders for the future where a variant could theoretically
+  // share an id range, and keeps the IDs readable for debugging.
   const optionId = (songId: number) => `${listboxId}-option-${songId}`;
+  const variantOptionId = (variantId: number | "original") =>
+    `${listboxId}-variant-${variantId}`;
+
+  // Stage-2 navigable rows: 원곡 first (sentinel `undefined`), then each
+  // recorded variant in API order. activeIndex into this list maps to
+  // `variantOptions[activeIndex]` — `undefined` at index 0 fires
+  // onSelect(base, undefined); a variant object fires onSelect(base, v).
+  const variantOptions: (SongVariant | undefined)[] =
+    stage === "variant" && pickedBase
+      ? [undefined, ...(pickedBase.variants ?? [])]
+      : [];
+
+  // Active row length depends on the stage. Stage 1 navigates result
+  // rows; stage 2 navigates 원곡 + variants. Disabled future-slot rows
+  // are intentionally excluded from navigation (they're not actionable
+  // at 1C — keyboard would be a confusing affordance).
+  const navigableLength =
+    stage === "search" ? visibleResults.length : variantOptions.length;
+
   // aria-activedescendant must point only at a DOM element that
   // actually exists. The listbox renders iff `open && hasQuery`, so
   // gate the descendant id on the same condition — otherwise a
   // click-outside (which closes via setOpen(false) but leaves
   // activeIndex untouched) would leave aria-activedescendant
   // referencing an id that's no longer in the tree.
-  const activeOptionId =
-    open &&
-    hasQuery &&
-    activeIndex >= 0 &&
-    activeIndex < visibleResults.length
-      ? optionId(visibleResults[activeIndex].id)
-      : undefined;
+  const activeOptionId = (() => {
+    if (!open || !hasQuery) return undefined;
+    if (activeIndex < 0 || activeIndex >= navigableLength) return undefined;
+    if (stage === "search") {
+      return optionId(visibleResults[activeIndex].id);
+    }
+    // Stage 2.
+    const v = variantOptions[activeIndex];
+    return variantOptionId(v ? v.id : "original");
+  })();
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown") {
@@ -304,21 +545,30 @@ export function SongSearch({
       if (!open) setOpen(true);
       // Wrap-around vs clamp: clamp keeps things predictable on small
       // result sets (Down at the bottom doesn't jump back to top).
-      setActiveIndex((prev) =>
-        Math.min(prev + 1, visibleResults.length - 1),
-      );
+      setActiveIndex((prev) => Math.min(prev + 1, navigableLength - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((prev) => Math.max(prev - 1, 0));
     } else if (e.key === "Enter") {
-      if (activeIndex >= 0 && activeIndex < visibleResults.length) {
-        e.preventDefault();
-        handleSelect(visibleResults[activeIndex]);
+      if (activeIndex < 0 || activeIndex >= navigableLength) return;
+      e.preventDefault();
+      if (stage === "search") {
+        handleResultClick(visibleResults[activeIndex]);
+      } else {
+        handleVariantClick(variantOptions[activeIndex]);
       }
     } else if (e.key === "Escape") {
       // Don't preventDefault unconditionally — if the dropdown is
       // already closed, let Escape bubble (some parent forms wire
       // Esc to cancel/close themselves).
+      // Stage 2: Escape backs up to stage 1 (matching the back-link),
+      // not "close the dropdown" — saves the user a re-search if they
+      // hit Esc by reflex.
+      if (open && stage === "variant") {
+        e.preventDefault();
+        handleBackToSearch();
+        return;
+      }
       if (open) {
         e.preventDefault();
         setOpen(false);
@@ -334,16 +584,30 @@ export function SongSearch({
   // is fine (visual nicety, not correctness).
   useEffect(() => {
     if (activeIndex < 0) return;
-    const song = visibleResults[activeIndex];
-    if (!song) return;
-    const el = document.getElementById(optionId(song.id));
+    // Pick the active row's DOM id based on stage. Stage 1: the song
+    // option id; stage 2: the variant option id (or "original" sentinel
+    // for the 원곡 row).
+    let elId: string | null = null;
+    if (stage === "search") {
+      const song = visibleResults[activeIndex];
+      if (song) elId = optionId(song.id);
+    } else {
+      const v = variantOptions[activeIndex];
+      // `v === undefined` at index 0 = 원곡 row.
+      if (activeIndex < variantOptions.length) {
+        elId = variantOptionId(v ? v.id : "original");
+      }
+    }
+    if (!elId) return;
+    const el = document.getElementById(elId);
     if (el && typeof el.scrollIntoView === "function") {
       el.scrollIntoView({ block: "nearest" });
     }
-    // optionId closes over listboxId; depending on activeIndex +
-    // visibleResults is enough to fire on every nav step.
+    // optionId/variantOptionId close over listboxId; `pickedBase` (not
+    // `variantOptions`, which is a fresh array per render) is the
+    // structural input that changes the stage-2 row identity set.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIndex, visibleResults]);
+  }, [activeIndex, stage, visibleResults, pickedBase]);
 
   // Compute the portalled dropdown's coords from the input's bounding
   // rect, stored in **document-relative** coordinates so the dropdown
@@ -433,6 +697,80 @@ export function SongSearch({
     };
   }, [open, hasQuery]);
 
+  // Variant-row label resolution: prefer the locale-matched translation
+  // from SongTranslation.variantLabel; fall back to the source-language
+  // variantLabel; final fallback is the 원곡 label (which the picker
+  // should never actually hit for child variants, but defensive code is
+  // cheap). 원곡 (the base) is handled separately via a sentinel row
+  // and uses `texts.variantPickerOriginalLabel` directly.
+  function resolveVariantLabel(v: SongVariant): string {
+    const localized = v.translations.find((t) => t.locale === locale);
+    // No hardcoded language fallback — see the SongSearchTexts comment.
+    // Empty string would be a data bug (variants are required to have a
+    // label by domain rules); falling back to a Korean "원곡" would
+    // silently leak Korean into a ja/en surface, which is worse.
+    return localized?.variantLabel || v.variantLabel || "";
+  }
+
+  // Future-slot rows are intentionally non-interactive at 1C — they
+  // reserve the visual slot so Phase 2's lit-up workflow doesn't shift
+  // the rest of the UI. `aria-disabled` + `tabIndex=-1` keep them out
+  // of keyboard focus + screenreader actionable tree; the click handler
+  // is a no-op (no toast, no setState — the tooltip is the affordance).
+  function renderCreateRow(kind: "song" | "variant"): ReactNode {
+    if (!allowCreate) return null;
+    let label: string | undefined;
+    if (kind === "song") {
+      label = texts.createSongRow?.replace("{query}", query.trim());
+    } else {
+      // Variant row: Korean object particle 을/를 needs to follow the
+      // user's query. `josa(query, "을/를")` picks the right one based
+      // on the last char's jongseong (per CLAUDE.md feedback rule).
+      // The locale's `createVariantRow` string has `{query}` and an
+      // explicit `{josa}` placeholder we substitute here — keeps the
+      // grammar correct for ko, and the placeholder is a no-op for
+      // ja/en where the string ignores it.
+      //
+      // `josa.pick` returns the particle alone (no word prefix) so we
+      // can drop it straight into the placeholder. Earlier shape
+      // (`josa(q, "을/를").slice(q.length)`) leaned on the word+particle
+      // length math; CR #353 swap.
+      const q = query.trim();
+      const particle = q ? josa.pick(q, "을/를") : "";
+      label = texts.createVariantRow
+        ?.replace("{query}", q)
+        .replace("{josa}", particle);
+    }
+    if (!label) return null;
+    const tooltip = texts.createDisabledTooltip;
+    return (
+      <div
+        role="option"
+        // `option` requires `aria-selected` per WAI-ARIA. The row is
+        // never selectable at 1C (the click handler is a no-op + the
+        // tooltip surfaces "Phase 2"), so explicit `false` is the
+        // truthful state and silences jsx-a11y / RTL accessibility
+        // warnings. Keeping `role="option"` (rather than dropping it)
+        // preserves the listbox geometry so screen readers announce
+        // "N of M" consistently across real and future-slot rows.
+        aria-selected={false}
+        aria-disabled="true"
+        tabIndex={-1}
+        title={tooltip}
+        className={
+          isCompact
+            ? "px-2.5 py-1.5 text-xs text-gray-400 cursor-not-allowed border-t border-gray-100"
+            : "px-3 py-2 text-sm text-gray-400 cursor-not-allowed border-t border-gray-100"
+        }
+        // Block stray mousedown so a click on the disabled row can't
+        // trip the click-outside handler before the tooltip shows.
+        onMouseDown={(e) => e.preventDefault()}
+      >
+        {label}
+      </div>
+    );
+  }
+
   const dropdown = open && hasQuery && dropdownPos !== null && (
     <div
       ref={dropdownRef}
@@ -458,109 +796,221 @@ export function SongSearch({
         ...(isCompact ? { borderColor: colors.wishlistBorder } : {}),
       }}
     >
-      {loading && (
-        <div
-          className={
-            isCompact
-              ? "px-2.5 py-1.5 text-xs text-gray-500"
-              : "px-3 py-2 text-sm text-gray-500"
-          }
-        >
-          {texts.loading}
-        </div>
-      )}
-      {!loading && visibleResults.length === 0 && (
-        <div
-          className={
-            isCompact
-              ? "px-2.5 py-1.5 text-xs text-gray-500"
-              : "px-3 py-2 text-sm text-gray-500"
-          }
-        >
-          {texts.noResults}
-        </div>
-      )}
-      {!loading &&
-        visibleResults.map((song, index) => {
-          const title = displayOriginalTitle(
-            {
-              originalTitle: song.originalTitle,
-              originalLanguage: song.originalLanguage,
-              variantLabel: song.variantLabel,
-            },
-            song.translations,
-            locale,
-          );
-          const artist = song.artists[0]?.artist;
-          const artistName = artist
-            ? displayNameWithFallback(
-                {
-                  originalName: artist.originalName,
-                  originalShortName: artist.originalShortName,
-                  originalLanguage: artist.originalLanguage,
-                },
-                artist.translations,
-                locale,
-                "full",
-              )
-            : null;
-          const isActive = index === activeIndex;
-          return (
-            <button
-              key={song.id}
-              id={optionId(song.id)}
-              type="button"
-              role="option"
-              aria-selected={isActive}
-              // tabIndex=-1 keeps the option out of the tab order
-              // so focus stays on the input (the canonical ARIA
-              // combobox + aria-activedescendant pattern). Tab
-              // from the input then moves OUT of the composite,
-              // not through individual option buttons.
-              tabIndex={-1}
-              onMouseEnter={() => setActiveIndex(index)}
-              onClick={() => handleSelect(song)}
+      {stage === "search" && (
+        <>
+          {loading && (
+            <div
               className={
                 isCompact
-                  ? `w-full text-left px-2.5 py-1.5 ${
-                      isActive ? "bg-gray-100" : "hover:bg-gray-50"
-                    } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
-                  : `w-full text-left px-3 py-2 ${
-                      isActive ? "bg-gray-100" : "hover:bg-gray-50"
-                    } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                  ? "px-2.5 py-1.5 text-xs text-gray-500"
+                  : "px-3 py-2 text-sm text-gray-500"
               }
             >
-              <div
+              {texts.loading}
+            </div>
+          )}
+          {!loading && visibleResults.length === 0 && (
+            <div
+              className={
+                isCompact
+                  ? "px-2.5 py-1.5 text-xs text-gray-500"
+                  : "px-3 py-2 text-sm text-gray-500"
+              }
+            >
+              {texts.noResults}
+            </div>
+          )}
+          {!loading &&
+            visibleResults.map((song, index) => {
+              const title = displayOriginalTitle(
+                {
+                  originalTitle: song.originalTitle,
+                  originalLanguage: song.originalLanguage,
+                  variantLabel: song.variantLabel,
+                },
+                song.translations,
+                locale,
+              );
+              const artist = song.artists[0]?.artist;
+              const artistName = artist
+                ? displayNameWithFallback(
+                    {
+                      originalName: artist.originalName,
+                      originalShortName: artist.originalShortName,
+                      originalLanguage: artist.originalLanguage,
+                    },
+                    artist.translations,
+                    locale,
+                    "full",
+                  )
+                : null;
+              const isActive = index === activeIndex;
+              return (
+                <button
+                  key={song.id}
+                  id={optionId(song.id)}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  // tabIndex=-1 keeps the option out of the tab order
+                  // so focus stays on the input (the canonical ARIA
+                  // combobox + aria-activedescendant pattern). Tab
+                  // from the input then moves OUT of the composite,
+                  // not through individual option buttons.
+                  tabIndex={-1}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => handleResultClick(song)}
+                  className={
+                    isCompact
+                      ? `w-full text-left px-2.5 py-1.5 ${
+                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                      : `w-full text-left px-3 py-2 ${
+                          isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                        } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                  }
+                >
+                  <div
+                    className={
+                      isCompact
+                        ? "text-xs font-medium text-gray-900"
+                        : "text-sm font-medium text-gray-900"
+                    }
+                  >
+                    {title.main}
+                    {title.variant && (
+                      <span className="text-gray-500">
+                        {" "}
+                        ({title.variant})
+                      </span>
+                    )}
+                  </div>
+                  {(title.sub || artistName) && (
+                    <div
+                      className={
+                        isCompact
+                          ? "text-[11px] text-gray-500 mt-0.5"
+                          : "text-xs text-gray-500 mt-0.5"
+                      }
+                    >
+                      {title.sub && <span>{title.sub}</span>}
+                      {title.sub && artistName && <span> · </span>}
+                      {artistName && <span>{artistName}</span>}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          {!loading && renderCreateRow("song")}
+        </>
+      )}
+
+      {stage === "variant" && pickedBase && (
+        <>
+          {/* Back-link row to return to stage 1. Rendered as a button
+              (not a link) so it lives inside the same listbox container
+              and inherits the click-outside guard. tabIndex=-1 keeps it
+              out of the keyboard navigation list — Escape is the
+              keyboard affordance for going back (handled in
+              handleKeyDown). */}
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={handleBackToSearch}
+            className={
+              isCompact
+                ? "w-full text-left px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 border-b border-gray-100"
+                : "w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 border-b border-gray-100"
+            }
+          >
+            {texts.variantPickerBack ?? ""}
+          </button>
+          {/* Stage-2 header: the picked base's title. Decorative — the
+              picker's job is to disambiguate WHICH version of this
+              song, so showing the base's title up top reinforces the
+              context the user just came from. */}
+          <div
+            className={
+              isCompact
+                ? "px-2.5 py-1.5 border-b border-gray-100"
+                : "px-3 py-2 border-b border-gray-100"
+            }
+          >
+            <div
+              className={
+                isCompact
+                  ? "text-[11px] uppercase tracking-wide text-gray-500"
+                  : "text-xs uppercase tracking-wide text-gray-500"
+              }
+            >
+              {texts.variantPickerTitle ?? ""}
+            </div>
+            <div
+              className={
+                isCompact
+                  ? "text-xs font-medium text-gray-900 mt-0.5"
+                  : "text-sm font-medium text-gray-900 mt-0.5"
+              }
+            >
+              {(() => {
+                const t = displayOriginalTitle(
+                  {
+                    originalTitle: pickedBase.originalTitle,
+                    originalLanguage: pickedBase.originalLanguage,
+                    variantLabel: pickedBase.variantLabel,
+                  },
+                  pickedBase.translations,
+                  locale,
+                );
+                return t.main;
+              })()}
+            </div>
+          </div>
+          {/* Variant rows: 원곡 first (sentinel), then each child
+              variant. Same role="option" + aria-selected pattern as
+              stage-1 rows so the keyboard nav from the input behaves
+              identically. */}
+          {variantOptions.map((v, index) => {
+            const isActive = index === activeIndex;
+            const isOriginal = v === undefined;
+            const label = isOriginal
+              ? texts.variantPickerOriginalLabel ?? ""
+              : resolveVariantLabel(v);
+            return (
+              <button
+                key={isOriginal ? "original" : v.id}
+                id={variantOptionId(isOriginal ? "original" : v.id)}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                tabIndex={-1}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => handleVariantClick(v)}
                 className={
                   isCompact
-                    ? "text-xs font-medium text-gray-900"
-                    : "text-sm font-medium text-gray-900"
+                    ? `w-full text-left px-2.5 py-1.5 ${
+                        isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                      } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
+                    : `w-full text-left px-3 py-2 ${
+                        isActive ? "bg-gray-100" : "hover:bg-gray-50"
+                      } active:bg-gray-100 border-b border-gray-100 last:border-b-0`
                 }
               >
-                {title.main}
-                {title.variant && (
-                  <span className="text-gray-500">
-                    {" "}
-                    ({title.variant})
-                  </span>
-                )}
-              </div>
-              {(title.sub || artistName) && (
                 <div
                   className={
                     isCompact
-                      ? "text-[11px] text-gray-500 mt-0.5"
-                      : "text-xs text-gray-500 mt-0.5"
+                      ? "text-xs font-medium text-gray-900"
+                      : "text-sm font-medium text-gray-900"
                   }
                 >
-                  {title.sub && <span>{title.sub}</span>}
-                  {title.sub && artistName && <span> · </span>}
-                  {artistName && <span>{artistName}</span>}
+                  {label}
                 </div>
-              )}
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+          {renderCreateRow("variant")}
+        </>
+      )}
     </div>
   );
 

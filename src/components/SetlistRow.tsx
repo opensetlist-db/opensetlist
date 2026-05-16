@@ -8,6 +8,8 @@ import {
 } from "@/lib/display";
 import { trackEvent } from "@/lib/analytics";
 import { ReactionButtons } from "@/components/ReactionButtons";
+import { RowContestButton } from "@/components/RowContestButton";
+import { IssueReportButton } from "@/components/IssueReportButton";
 import {
   NumberSlot,
   type RowState,
@@ -66,6 +68,44 @@ interface Props {
    * against `useLocalConfirm`).
    */
   onDisagreeTap?: () => void;
+  /**
+   * Conflict-group siblings — the OTHER rumoured rows at the same
+   * `(eventId, position)`. Non-empty when this row is in a conflict
+   * group; undefined (or empty) for non-contested rows. Drives
+   * visibility of `<RowContestButton>` and is the basis for the
+   * parent's `getConfirmStatus(item, siblings)` 1-min-suspension
+   * call (`<ActualSetlist>` precomputes `rowState` with siblings
+   * context so this component stays purely presentational).
+   *
+   * Reserved affordance slot in this row will accept the follow-up
+   * "ContestReport" PR's "이슈 제기" button for any-status rows
+   * (missing performer / wrong variant / etc.) — the slot pattern
+   * is the integration point.
+   */
+  siblings?: ReadonlyArray<{ id: number }>;
+  /**
+   * Callback fired when the per-row contest affordance is tapped.
+   * `<ActualSetlist>` lifts this up to drive the AddItemBottomSheet
+   * open + presetPosition state. Optional so callers that don't
+   * support contest (admin SetlistBuilder etc.) omit the handler.
+   */
+  onContest?: (position: number) => void;
+  /**
+   * Whether the issue-report affordance (the slower, queue-based
+   * "이슈 제기" button) should be rendered on this row. Driven by
+   * `LAUNCH_FLAGS.contestReportEnabled` at the parent level. When
+   * true AND `onIssueReport` is provided, the button surfaces on
+   * EVERY row (rumoured + confirmed), distinct from the
+   * conflict-only `<RowContestButton>` above.
+   */
+  canReport?: boolean;
+  /**
+   * Callback fired when the issue-report affordance is tapped.
+   * `<ActualSetlist>` lifts this up to drive ContestReportSheet's
+   * open + setlistItemId state. Optional for callers that don't
+   * support reporting (admin SetlistBuilder etc.).
+   */
+  onIssueReport?: (setlistItemId: number) => void;
 }
 
 export function SetlistRow({
@@ -78,7 +118,26 @@ export function SetlistRow({
   myVote = "none",
   onConfirmTap,
   onDisagreeTap,
+  siblings,
+  onContest,
+  canReport,
+  onIssueReport,
 }: Props) {
+  // Conflict-group affordance is gated on three conditions, all
+  // required: row is rumoured (no real-time sibling contest on
+  // confirmed rows — use the ContestReport queue path for those),
+  // has siblings (no contest on a single rumoured row — the footer
+  // "+ 곡 추가" covers next-position intent), and the parent
+  // provided a contest handler (admin contexts omit it).
+  const showContest =
+    rowState !== "confirmed" &&
+    siblings !== undefined &&
+    siblings.length > 0 &&
+    onContest !== undefined;
+  // Issue-report affordance — visible on EVERY row (rumoured AND
+  // confirmed) when the launch flag is on and the parent provided
+  // a handler. Distinct from the real-time sibling path above.
+  const showIssueReport = canReport === true && onIssueReport !== undefined;
   const t = useTranslations("Event");
   const confirmT = useTranslations("Confirm");
 
@@ -309,6 +368,37 @@ export function SetlistRow({
             button is the lightweight successor. Aggregation
             behavior (N disagrees → row hidden / disputed) ships in
             Week 3 alongside `<AddItemBottomSheet>`. */}
+
+        {/* Affordance slot — per-row action area. Holds up to two
+            buttons today:
+              1. `<RowContestButton>` (conflict-handling PR): shows
+                 only on rumoured rows in a conflict group. Opens
+                 AddItemBottomSheet pre-targeted at this position
+                 so the user can add a real-time sibling.
+              2. `<IssueReportButton>` (ContestReport PR): shows on
+                 EVERY row when `canReport && onIssueReport` are
+                 set. Opens ContestReportSheet, which files a
+                 queued report for operator triage (slower path,
+                 broader issue types: missing performer / wrong
+                 variant / other).
+            The two affordances have distinct intents and can
+            co-exist on a rumoured-in-conflict row.  */}
+        {(showContest || showIssueReport) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2">
+            {showContest && (
+              <RowContestButton
+                position={item.position}
+                onContest={onContest!}
+              />
+            )}
+            {showIssueReport && (
+              <IssueReportButton
+                setlistItemId={item.id}
+                onReport={onIssueReport!}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Performers — desktop col 3 only. `hidden` on mobile so the

@@ -24,6 +24,7 @@ function makeItem(overrides: Partial<LiveSetlistItem> = {}): LiveSetlistItem {
     performanceType: "live_performance",
     type: "song",
     createdAt: "2026-05-09T12:00:00.000Z",
+    confirmCount: 0,
     songs: [
       {
         song: {
@@ -86,6 +87,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -110,6 +112,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -135,6 +138,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
         reactionCounts={{}}
         locale="ko"
         eventId="1"
+        status="ongoing"
       />,
     );
 
@@ -175,6 +179,7 @@ describe("ActualSetlist — auto-promote ticker", () => {
           reactionCounts={{}}
           locale="ko"
           eventId="1"
+          status="ongoing"
         />,
       );
 

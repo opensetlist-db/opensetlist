@@ -125,6 +125,28 @@ export type LiveSetlistItem = {
    * visible to TS consumers.
    */
   createdAt: string;
+  /**
+   * Count of `SetlistItemConfirm` rows associated with this item.
+   * Sourced from Prisma's `_count: { confirms: true }` aggregation
+   * on the polling endpoint, flattened to a top-level field server-
+   * side so consumers don't need to know about Prisma's `_count`
+   * convention.
+   *
+   * Consumed by:
+   *   1. The conflict-group sort in `<ActualSetlist>` — sibling
+   *      rumoured rows at the same position render top-down by
+   *      `confirmCount DESC, createdAt ASC`.
+   *   2. The `[count]` badge on the ConfirmButton (PR #283 surface).
+   *   3. Eventually, the client-side trip-wire for showing "almost
+   *      promoted" state when `confirmCount` approaches
+   *      `CONFLICT_CONFIRMATION_THRESHOLD` — the server still owns
+   *      the authoritative promotion decision via the /confirm
+   *      route's transaction.
+   *
+   * Defaults to 0 on a row with no confirms (Prisma's `_count` gives
+   * 0 when the relation has zero rows).
+   */
+  confirmCount: number;
   songs: Array<{ song: SongRef }>;
   performers: Array<{
     stageIdentity: StageIdentityRef;
