@@ -20,9 +20,6 @@
  * separate per-locale translation (e.g. Latin-script "Cerise Bouquet") fall
  * back to the parent original so the term still appears in every locale-pair
  * direction — preventing the LLM from transliterating it.
- *
- * Not related to the dead `src/lib/translation.ts` `applyDictionary` helpers,
- * which target the deferred `DictionaryTerm` admin-curated schema.
  */
 
 import { prisma } from "./prisma";
