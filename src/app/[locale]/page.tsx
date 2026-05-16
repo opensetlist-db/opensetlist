@@ -337,8 +337,9 @@ export default async function HomePage({
     (e: UpcomingEvent) => {
       const { eventName, seriesName } = projectNames(e, locale);
       const start = new Date(e.startTime);
-      // Compute days once so the dDay label and the wish-badge
-      // condition can't drift apart (they share the same `now`).
+      // dDay chip uses calendar-day distance (operator/fan mental
+      // model of "D-N"); the wish badge uses strict 168h to match
+      // the detail-page gate exactly. Both share the same `now`.
       const days = daysUntilUTC(start, now);
       return {
         eventId: String(e.id),
@@ -349,7 +350,7 @@ export default async function HomePage({
         venue: projectVenue(e, locale),
         formattedDate: formatDate(start, locale, UPCOMING_DATE_FORMAT),
         dDayLabel: t("dDay", { days }),
-        showWishBadge: shouldShowWishBadge(days),
+        showWishBadge: shouldShowWishBadge(start, now),
       };
     }
   );

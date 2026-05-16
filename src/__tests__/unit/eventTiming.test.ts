@@ -9,6 +9,8 @@ import {
 } from "@/lib/eventTiming";
 
 const NOW = new Date("2026-05-15T03:00:00.000Z"); // mid-morning KST, mid-evening US East
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const OPEN_WINDOW_MS = WISH_PREDICT_OPEN_DAYS * MS_PER_DAY;
 
 describe("WISH_PREDICT_OPEN_DAYS", () => {
   it("is 7 — single source of truth for the gate window", () => {
@@ -64,63 +66,73 @@ describe("daysUntilUTC", () => {
 });
 
 describe("isWishPredictOpen", () => {
-  function dayOffset(days: number): Date {
-    // Exactly N UTC-days from NOW's UTC-day-start (offset hours added
-    // so we're definitely in the target UTC day, not on its boundary).
-    return new Date(
-      Date.UTC(2026, 4, 15 + days, 12, 0, 0), // May = month 4 (0-indexed)
-    );
+  // Helper: exact ms offset from NOW. Use this (not UTC-day arithmetic)
+  // so tests pin the strict 168h-window semantics rather than the old
+  // calendar-day approximation.
+  function msOffset(deltaMs: number): Date {
+    return new Date(NOW.getTime() + deltaMs);
   }
 
-  it("returns true for an upcoming event exactly 7 days out (boundary, inclusive)", () => {
-    const ev = { startTime: dayOffset(7), status: "upcoming" as const };
+  it("returns true at exactly the 168h boundary (inclusive)", () => {
+    // start - now === OPEN_WINDOW_MS exactly. The earlier UTC-day
+    // implementation also passed this; the new strict-ms gate still
+    // does, just via a different code path.
+    const ev = {
+      startTime: msOffset(OPEN_WINDOW_MS),
+      status: "upcoming" as const,
+    };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
   });
 
-  it("returns false for an upcoming event 8 days out (just outside the window)", () => {
-    const ev = { startTime: dayOffset(8), status: "upcoming" as const };
+  it("returns false at 7d 2h 43m out — past the strict 168h boundary", () => {
+    // This is the bug the gate rewrite targeted. Operator reported
+    // the gate showing OPEN at "7 days 2 hours 43 minutes before
+    // event start" because the old UTC-day-distance implementation
+    // opened at calendar-day-D-7 instead of 168h-D-7. With strict
+    // ms semantics the gate now stays closed in this state.
+    const sevenDaysTwoHoursFortyThreeMinutes =
+      OPEN_WINDOW_MS + 2 * 60 * 60 * 1000 + 43 * 60 * 1000;
+    const ev = {
+      startTime: msOffset(sevenDaysTwoHoursFortyThreeMinutes),
+      status: "upcoming" as const,
+    };
     expect(isWishPredictOpen(ev, NOW)).toBe(false);
   });
 
-  it("returns true for an upcoming event 1 day out", () => {
-    const ev = { startTime: dayOffset(1), status: "upcoming" as const };
+  it("returns true at 6d 23h 59m out — just inside the boundary", () => {
+    const ev = {
+      startTime: msOffset(OPEN_WINDOW_MS - 60 * 1000), // -1 minute
+      status: "upcoming" as const,
+    };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
   });
 
-  it("returns true for an upcoming event same UTC day (D-0)", () => {
-    // D-0 in `isWishPredictOpen` is true (event is later today).
-    // `shouldShowWishBadge(0)` also returns true after this PR — the
-    // earlier `> 0` "stricter rule" has been removed so both
-    // surfaces agree on D-0. See the consistency assertion in the
-    // `shouldShowWishBadge` suite below.
-    const ev = { startTime: dayOffset(0), status: "upcoming" as const };
+  it("returns true at 1 hour before startTime (the lower edge of the open window)", () => {
+    const ev = {
+      startTime: msOffset(60 * 60 * 1000),
+      status: "upcoming" as const,
+    };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
   });
 
-  it("returns false for past startTime even if status hasn't flipped yet", () => {
-    // Edge: status auto-flip races with UTC-day-rollover; defensive.
-    const ev = { startTime: dayOffset(-1), status: "upcoming" as const };
+  it("returns false at exactly startTime (gate closes when the show begins)", () => {
+    const ev = { startTime: NOW, status: "upcoming" as const };
     expect(isWishPredictOpen(ev, NOW)).toBe(false);
   });
 
-  it("returns false when startTime is earlier today (same UTC day, already past) — strict-future guard, CR #282", () => {
-    // The UTC-day-distance check alone would return true here:
-    // `daysUntilUTC` reports 0 (same UTC day) and 0 satisfies
-    // `>= 0 && <= 7`. But the event is in the past — the open
-    // window for predicting/wishing is closed. Without the strict
-    // `start > now` guard the helper would silently green-light
-    // a stale `status: "upcoming"` row whose DB `scheduled` flag
-    // hadn't yet been auto-flipped to `ongoing` — a real edge case
-    // when the auto-status ticker lags behind real time by a few
-    // minutes around startMs.
-    const start = new Date(NOW.getTime() - 60 * 60 * 1000); // -1h, same UTC day
-    expect(
-      isWishPredictOpen({ startTime: start, status: "upcoming" }, NOW),
-    ).toBe(false);
+  it("returns false for past startTime even if status hasn't flipped yet (CR #282)", () => {
+    // Status auto-flip can lag a few minutes behind real time around
+    // startMs. The strict-future ms check keeps the gate closed even
+    // when the DB still reports `scheduled`.
+    const ev = {
+      startTime: msOffset(-60 * 60 * 1000), // -1h
+      status: "upcoming" as const,
+    };
+    expect(isWishPredictOpen(ev, NOW)).toBe(false);
   });
 
   it("returns false for ongoing/completed/cancelled regardless of timing", () => {
-    const start = dayOffset(3);
+    const start = msOffset(3 * MS_PER_DAY);
     expect(
       isWishPredictOpen({ startTime: start, status: "ongoing" }, NOW),
     ).toBe(false);
@@ -139,8 +151,10 @@ describe("isWishPredictOpen", () => {
   });
 
   it("accepts ISO string startTime (page serializeBigInt produces strings)", () => {
+    // 2026-05-22T03:00 UTC is exactly 7 UTC days × 24h from
+    // 2026-05-15T03:00 UTC — boundary-inclusive.
     const ev = {
-      startTime: "2026-05-22T12:00:00.000Z", // exactly 7 UTC days
+      startTime: "2026-05-22T03:00:00.000Z",
       status: "upcoming" as const,
     };
     expect(isWishPredictOpen(ev, NOW)).toBe(true);
@@ -156,51 +170,52 @@ describe("isWishPredictOpen", () => {
 });
 
 describe("shouldShowWishBadge", () => {
-  it("returns true for daysUntil 1..7", () => {
-    for (let d = 1; d <= 7; d++) {
-      expect(shouldShowWishBadge(d)).toBe(true);
-    }
+  function msOffset(deltaMs: number): Date {
+    return new Date(NOW.getTime() + deltaMs);
+  }
+
+  it("returns true at exactly 168h before start (inclusive boundary)", () => {
+    expect(shouldShowWishBadge(msOffset(OPEN_WINDOW_MS), NOW)).toBe(true);
   });
 
-  it("returns true for daysUntil 0 — same UTC day as start, pre-startTime (regression)", () => {
-    // v0.10.0 had `daysUntil > 0` on the rationale that "D-0 is
-    // about to flip to Live Now via the auto-status ticker." That
-    // was wrong: the ticker fires at `now >= startTime`, not when
-    // `daysUntilUTC` drops to 0. There's a window of up to ~24h
-    // on the event's UTC day where the event hasn't started yet
-    // but `daysUntil === 0` — the badge MUST stay visible there
-    // (it's the highest-engagement window of all). v0.10.0 smoke
-    // caught: a 4h-before-start view dropped the badge while a
-    // 12h-before-start view kept it because the 12h sample sat
-    // across the UTC midnight boundary. Both should show.
-    expect(shouldShowWishBadge(0)).toBe(true);
+  it("returns false at 7d 2h 43m out (mirrors isWishPredictOpen)", () => {
+    const sevenDaysTwoHoursFortyThreeMinutes =
+      OPEN_WINDOW_MS + 2 * 60 * 60 * 1000 + 43 * 60 * 1000;
+    expect(
+      shouldShowWishBadge(msOffset(sevenDaysTwoHoursFortyThreeMinutes), NOW),
+    ).toBe(false);
   });
 
-  it("returns false for daysUntil 8+ (outside the open window)", () => {
-    expect(shouldShowWishBadge(8)).toBe(false);
-    expect(shouldShowWishBadge(30)).toBe(false);
+  it("returns true at 1h before start", () => {
+    expect(shouldShowWishBadge(msOffset(60 * 60 * 1000), NOW)).toBe(true);
   });
 
-  it("returns false for negative daysUntil", () => {
-    expect(shouldShowWishBadge(-1)).toBe(false);
+  it("returns false at exactly start (gate closes when show begins)", () => {
+    expect(shouldShowWishBadge(NOW, NOW)).toBe(false);
   });
 
-  it("matches isWishPredictOpen on the inclusive D-0 lower bound — both should agree", () => {
-    // Behavioral consistency check: the home-card badge and the
-    // event-detail surface gate must say the same thing about a
-    // D-0 upcoming event. Drift between them is what produced the
-    // v0.10.0 smoke bug — surfaces visible on event detail but the
-    // home card hiding the predict-open indicator.
-    const dayOffset = (days: number) =>
-      new Date(Date.UTC(2026, 4, 15 + days, 12, 0, 0));
-    // Use the module-level `NOW` constant — re-declaring `NOW_LOCAL`
-    // with the same value drifted away from the rest of the suite
-    // and risked silent skew if `NOW` ever changes. CR #297 nit.
+  it("returns false for past start (defensive, even though caller pre-filters)", () => {
+    expect(shouldShowWishBadge(msOffset(-60 * 60 * 1000), NOW)).toBe(false);
+  });
+
+  it("agrees with isWishPredictOpen on the 168h boundary — no drift between home card and detail page", () => {
+    // Operator-confusing drift between the two surfaces was the
+    // original bug. Both helpers MUST agree on the boundary.
+    const boundary = msOffset(OPEN_WINDOW_MS);
     const detailGate = isWishPredictOpen(
-      { startTime: dayOffset(0), status: "upcoming" },
+      { startTime: boundary, status: "upcoming" },
       NOW,
     );
     expect(detailGate).toBe(true);
-    expect(shouldShowWishBadge(0)).toBe(true);
+    expect(shouldShowWishBadge(boundary, NOW)).toBe(true);
+
+    const justOutside = msOffset(OPEN_WINDOW_MS + 60 * 1000); // +1 min
+    expect(
+      isWishPredictOpen(
+        { startTime: justOutside, status: "upcoming" },
+        NOW,
+      ),
+    ).toBe(false);
+    expect(shouldShowWishBadge(justOutside, NOW)).toBe(false);
   });
 });
