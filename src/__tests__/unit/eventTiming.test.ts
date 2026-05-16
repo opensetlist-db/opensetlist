@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  OPEN_WINDOW_MS,
   WISH_PREDICT_OPEN_DAYS,
   daysUntilUTC,
   isWishPredictOpen,
@@ -10,7 +11,6 @@ import {
 
 const NOW = new Date("2026-05-15T03:00:00.000Z"); // mid-morning KST, mid-evening US East
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const OPEN_WINDOW_MS = WISH_PREDICT_OPEN_DAYS * MS_PER_DAY;
 
 describe("WISH_PREDICT_OPEN_DAYS", () => {
   it("is 7 — single source of truth for the gate window", () => {

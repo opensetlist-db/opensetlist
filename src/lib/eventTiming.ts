@@ -16,7 +16,11 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 export const WISH_PREDICT_OPEN_DAYS = 7;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const OPEN_WINDOW_MS = WISH_PREDICT_OPEN_DAYS * MS_PER_DAY;
+
+// Exported so unit tests pin the boundary against the same constant the
+// gate uses, instead of re-deriving the formula locally and silently
+// diverging if WISH_PREDICT_OPEN_DAYS or the day length ever changes.
+export const OPEN_WINDOW_MS = WISH_PREDICT_OPEN_DAYS * MS_PER_DAY;
 
 /**
  * UTC-midnight floor of the given instant. Anchoring on UTC (not
