@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   OPEN_WINDOW_MS,
   WISH_PREDICT_OPEN_DAYS,
+  daysUntil,
   daysUntilUTC,
   isWishPredictOpen,
   shouldShowWishBadge,
@@ -65,6 +66,55 @@ describe("daysUntilUTC", () => {
   it("returns negative for past targets", () => {
     const target = new Date("2026-05-12T03:00:00.000Z");
     expect(daysUntilUTC(target, NOW)).toBe(-3);
+  });
+});
+
+describe("daysUntil (absolute-time D-N, TZ-agnostic)", () => {
+  it("returns floor of (target - now) over 24h — exact 7d boundary", () => {
+    const target = new Date(NOW.getTime() + 7 * MS_PER_DAY);
+    expect(daysUntil(target, NOW)).toBe(7);
+  });
+
+  it("returns 7 for 7d 23h 59m remaining — full 24h periods only", () => {
+    const target = new Date(
+      NOW.getTime() + 7 * MS_PER_DAY + 23 * 60 * 60 * 1000 + 59 * 60 * 1000,
+    );
+    expect(daysUntil(target, NOW)).toBe(7);
+  });
+
+  it("returns 8 once a full 8th 24h period has accrued", () => {
+    const target = new Date(NOW.getTime() + 8 * MS_PER_DAY);
+    expect(daysUntil(target, NOW)).toBe(8);
+  });
+
+  it("returns 0 for events under 24h away (same D-day)", () => {
+    expect(daysUntil(new Date(NOW.getTime() + 60 * 1000), NOW)).toBe(0);
+    expect(
+      daysUntil(new Date(NOW.getTime() + 23 * 60 * 60 * 1000), NOW),
+    ).toBe(0);
+  });
+
+  it("returns negative for past targets (caller decides whether to render)", () => {
+    expect(daysUntil(new Date(NOW.getTime() - 60 * 1000), NOW)).toBe(-1);
+    expect(
+      daysUntil(new Date(NOW.getTime() - 3 * MS_PER_DAY), NOW),
+    ).toBe(-3);
+  });
+
+  it("answer does NOT depend on what timezone you're 'in' — UTC-day buckets did", () => {
+    // The TZ-bug regression case. UTC NOW = 2026-05-15T03:00Z. Event 7
+    // strict-ms days from now = 2026-05-22T03:00Z. The OLD daysUntilUTC
+    // would have returned 7 for this case (correct), but also returned
+    // 7 for a target at 2026-05-22T23:00Z (= ~8 days later by clock,
+    // 8 UTC calendar days). daysUntil distinguishes the two.
+    const sevenDaysOut = new Date("2026-05-22T03:00:00.000Z");
+    const almostEightDaysOut = new Date("2026-05-22T23:00:00.000Z");
+    expect(daysUntil(sevenDaysOut, NOW)).toBe(7);
+    expect(daysUntil(almostEightDaysOut, NOW)).toBe(7);
+    // The OLD daysUntilUTC returns 7 for both — same answer here because
+    // the difference is in time-of-day, not in calendar day. But for
+    // an early-morning KST viewer the UTC-bucket bug shows up:
+    expect(daysUntilUTC(almostEightDaysOut, NOW)).toBe(7);
   });
 });
 

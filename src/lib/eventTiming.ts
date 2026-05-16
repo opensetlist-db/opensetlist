@@ -23,36 +23,45 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const OPEN_WINDOW_MS = WISH_PREDICT_OPEN_DAYS * MS_PER_DAY;
 
 /**
- * UTC-midnight floor of the given instant. Anchoring on UTC (not
- * local-time `setHours(0,0,0,0)`) keeps day-bucket boundaries stable
- * across regions — a Vercel edge running in `Asia/Seoul` would
- * otherwise classify the same stored UTC instant differently from a
- * developer laptop in `America/New_York`. CLAUDE.md "Date & Time"
- * section makes this rule project-wide.
+ * Floor of full 24-hour periods until `target` (positive = future,
+ * negative = past). Computed directly from absolute time differences
+ * — no calendar or timezone math.
+ *
+ * Replaces the prior `daysUntilUTC` for user-visible D-N counts.
+ * UTC-day floors gave a calendar-day distance that landed on the
+ * correct integer ONLY for viewers whose local clock matched UTC;
+ * KST/JST viewers (the primary audience) saw the chip lag by a day
+ * for several hours every morning because the UTC-day boundary
+ * (09:00 KST) doesn't match the KST-day boundary (00:00 KST).
+ *
+ * Absolute-time math sidesteps the whole TZ question: D-7 means
+ * "between 7 and 8 full 24-hour periods remain until startTime,"
+ * which is the same for every viewer everywhere.
+ *
+ * Examples (DAY_MS = 24h):
+ *   diff = 7d 23h → D-7
+ *   diff = 8d 0h  → D-8
+ *   diff = 0      → D-0
+ *   diff = -1d    → D-(-1)  (caller decides whether to render)
  */
+export function daysUntil(target: Date, now: Date): number {
+  return Math.floor((target.getTime() - now.getTime()) / MS_PER_DAY);
+}
+
+// Retained UTC-day helpers for the rare case where a caller genuinely
+// needs to compare against a UTC-stored `@db.Date` value (e.g., aligning
+// to `Event.date` exactly as stored). For user-visible "today" math,
+// use `daysUntil` (above) instead — see the rationale in its docstring.
 export function utcDayStart(d: Date): Date {
   return new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
   );
 }
-
-/**
- * UTC day at `now + days`. Same UTC-anchoring rationale as
- * `utcDayStart` — needed so the home page's 30-day Upcoming window
- * has stable edges regardless of the server's running time-of-day.
- */
 export function utcDayOffset(d: Date, days: number): Date {
   return new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days),
   );
 }
-
-/**
- * Whole UTC days from `now`'s UTC-day-start to `target`'s UTC-day-
- * start (positive = future, negative = past, 0 = same UTC day).
- * Rounds against millisecond drift so DST or leap-second weirdness
- * can't smear an integer day into a 0.999... result.
- */
 export function daysUntilUTC(target: Date, now: Date): number {
   const diff = utcDayStart(target).getTime() - utcDayStart(now).getTime();
   return Math.round(diff / MS_PER_DAY);
