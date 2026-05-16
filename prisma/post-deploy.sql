@@ -407,12 +407,21 @@ BEGIN
       orphan_count, orphan_sample;
   END IF;
 
-  -- Duplicate (baseVersionId, variantLabel) pairs among non-deleted variants.
+  -- Duplicate (baseVersionId, variantLabel) pairs among non-deleted
+  -- LABELED variants. variantLabel IS NOT NULL is required for the
+  -- preflight scope to match the partial UNIQUE index's WHERE clause
+  -- below — without it, GROUP BY treats multiple NULL variantLabels
+  -- as equal and false-positives "duplicates" that the index would
+  -- actually permit (Postgres B-tree indexes treat NULLs as distinct,
+  -- so multiple `(baseVersionId=X, variantLabel=NULL)` rows can
+  -- legitimately coexist as unlabeled-variant-of-X).
   SELECT COUNT(*) INTO duplicate_count
   FROM (
     SELECT "baseVersionId", "variantLabel"
     FROM "Song"
-    WHERE "baseVersionId" IS NOT NULL AND "isDeleted" = false
+    WHERE "baseVersionId" IS NOT NULL
+      AND "variantLabel" IS NOT NULL
+      AND "isDeleted" = false
     GROUP BY "baseVersionId", "variantLabel"
     HAVING COUNT(*) > 1
   ) AS dups;
@@ -423,7 +432,9 @@ BEGIN
       FROM (
         SELECT "baseVersionId", "variantLabel"
         FROM "Song"
-        WHERE "baseVersionId" IS NOT NULL AND "isDeleted" = false
+        WHERE "baseVersionId" IS NOT NULL
+          AND "variantLabel" IS NOT NULL
+          AND "isDeleted" = false
         GROUP BY "baseVersionId", "variantLabel"
         HAVING COUNT(*) > 1
         LIMIT 5
@@ -458,8 +469,16 @@ BEGIN
 END $$;
 
 -- 2. Partial UNIQUE index: only one row per (base, variantLabel) for
---    non-deleted variants. Soft-deleted rows can coexist with their
---    replacement.
+--    non-deleted LABELED variants. variantLabel IS NOT NULL is part
+--    of the WHERE clause so unlabeled variants (baseVersionId set,
+--    variantLabel NULL) can coexist — Postgres B-tree indexes treat
+--    NULLs as distinct anyway, so including them in the index would
+--    be a no-op semantically AND a false-positive surface in the
+--    matching preflight query.
+--
+--    Soft-deleted rows can coexist with their replacement.
 CREATE UNIQUE INDEX IF NOT EXISTS song_variant_unique_per_base
   ON "Song" ("baseVersionId", "variantLabel")
-  WHERE "baseVersionId" IS NOT NULL AND "isDeleted" = false;
+  WHERE "baseVersionId" IS NOT NULL
+    AND "variantLabel" IS NOT NULL
+    AND "isDeleted" = false;
