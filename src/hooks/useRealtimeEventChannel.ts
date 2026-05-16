@@ -370,7 +370,25 @@ export function useRealtimeEventChannel<T>({
     scheduleNextStatusBoundary();
 
     // ──── Reaction diff merge (Path A) ────
+    //
+    // Both handlers scope-check `row.eventId` against the current
+    // page's eventId. The subscription no longer carries a server-side
+    // `filter: eventId=eq.X` because Supabase Realtime's per-table
+    // filter-validation cache rejected SetlistItemReaction DELETE on
+    // prod (incident 2026-05-16, after the SongWish + SetlistItem
+    // workaround had already been deployed — same validator cache
+    // bug, now cascading to the only remaining Path A subscription).
+    //
+    // Client-side scope-check is correct because REPLICA IDENTITY
+    // FULL is set on SetlistItemReaction (see prisma/post-deploy.sql),
+    // so `payload.new.eventId` and `payload.old.eventId` are both
+    // populated for INSERT and DELETE respectively. Without the
+    // check, cross-event pushes would bloat (or with same
+    // setlistItemId across events — impossible by FK design but worth
+    // pinning) corrupt this event's reactionCounts.
+    const currentEventIdStr = String(eventId);
     const applyReactionInsert = (row: ReactionRowPayload) => {
+      if (String(row.eventId) !== currentEventIdStr) return;
       const sid = String(row.setlistItemId);
       const rType = row.reactionType;
       setReactionCounts((prev) => {
@@ -383,10 +401,12 @@ export function useRealtimeEventChannel<T>({
     };
     const applyReactionDelete = (row: ReactionRowPayload) => {
       // Requires REPLICA IDENTITY FULL on SetlistItemReaction so
-      // setlistItemId + reactionType are present in payload.old —
-      // see prisma/post-deploy.sql. Defensive guard: bail if either
-      // field is missing (REPLICA IDENTITY misconfigured) so we
-      // don't accidentally decrement a wrong cell.
+      // setlistItemId + reactionType + eventId are present in
+      // payload.old — see prisma/post-deploy.sql. Defensive guards:
+      // bail if eventId scope mismatches, OR if either of the count-
+      // cell fields is missing (REPLICA IDENTITY misconfigured) so
+      // we don't accidentally decrement a wrong cell.
+      if (String(row.eventId) !== currentEventIdStr) return;
       if (row.setlistItemId == null || !row.reactionType) return;
       const sid = String(row.setlistItemId);
       const rType = row.reactionType;
@@ -451,37 +471,27 @@ export function useRealtimeEventChannel<T>({
       )
       // SetlistItemReaction — Path A (diff merge).
       //
-      // Filter intentionally KEPT here despite being dropped on the
-      // Path B tables above. Two reasons:
-      //   1. Path A applies cross-event pushes incorrectly — if a
-      //      reaction on event 5 reached an event 3 viewer's
-      //      applyReactionInsert, it would increment a cell in
-      //      event 3's reactionCounts that should never have been
-      //      touched. Path B refetches are safe because they
-      //      re-pull /api/setlist scoped to the current page; Path
-      //      A diff-merge has no such scope guard.
-      //   2. SetlistItemReaction's REPLICA IDENTITY FULL was applied
-      //      in the same migration that added the table to the
-      //      supabase_realtime publication, so the validator cache
-      //      was seeded correctly from the start. No staleness
-      //      observed in dev or prod for this table.
+      // Filter dropped (same prod incident as SongWish + SetlistItem
+      // — the validator-cache staleness cascaded to SetlistItemReaction
+      // DELETE on 2026-05-16 even after REPLICA IDENTITY FULL was
+      // confirmed). Filter would have been a perf optimization; the
+      // diff-merge handlers (applyReactionInsert / applyReactionDelete
+      // above) scope-check `row.eventId` against this page's eventId,
+      // so cross-event pushes are dropped before they can touch
+      // reactionCounts. Correctness preserved without the filter.
       //
-      // Risk: if the validator cache for this table ever goes stale
-      // the way SongWish's did (e.g., after a future REPLICA
-      // IDENTITY change), the channel will fail to subscribe with
-      // the same P0001 error. Detection: Sentry breadcrumb at
-      // channel-status transition (warning level for non-SUBSCRIBED)
-      // — see the .subscribe() handler below. Mitigation if that
-      // happens: convert this branch to a Path B refetch like
-      // SongWish, accepting the bandwidth trade-off — wasted
-      // refetches are correct, cross-event diff-merges are not.
+      // The Path A vs Path B trade-off still applies: cross-event
+      // pushes arrive here too, but instead of triggering a wasted
+      // /api/setlist refetch (Path B), they hit the cheap scope
+      // check and exit. So Path A is actually *more* efficient than
+      // Path B under no-filter operation — the handler is O(1), no
+      // network call.
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "SetlistItemReaction",
-          filter: `eventId=eq.${eventId}`,
         },
         (payload) => {
           applyReactionInsert(payload.new as ReactionRowPayload);
@@ -493,7 +503,6 @@ export function useRealtimeEventChannel<T>({
           event: "DELETE",
           schema: "public",
           table: "SetlistItemReaction",
-          filter: `eventId=eq.${eventId}`,
         },
         (payload) => {
           applyReactionDelete(payload.old as ReactionRowPayload);
