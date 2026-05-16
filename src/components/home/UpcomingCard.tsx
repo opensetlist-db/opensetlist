@@ -181,7 +181,7 @@ export function UpcomingCard({
         </div>
         {showWishBadge && (
           <span
-            className="whitespace-nowrap self-start text-[11px] font-semibold"
+            className="inline-flex items-center gap-1 whitespace-nowrap self-start text-[11px] font-semibold"
             style={{
               color: colors.wishlistText,
               background: colors.wishlistBg,
@@ -190,7 +190,8 @@ export function UpcomingCard({
               padding: "2px 8px",
             }}
           >
-            🌸 {t("wishOpen")}
+            <ListChecksIcon />
+            {t("wishOpen")}
           </span>
         )}
       </div>
@@ -218,5 +219,35 @@ export function UpcomingCard({
       )}
       <EventStatusTicker startTime={startTimeIso} />
     </Link>
+  );
+}
+
+/**
+ * Inline lucide `ListChecks` (no new dependency). Mirrors the
+ * inline-SVG pattern documented in `ShareCardModal.tsx:797-805` —
+ * keeps the client bundle lean since this card and the share-card
+ * modal are the only icon consumers. `currentColor` lets the
+ * badge's `colors.wishlistText` flow through; size matches the
+ * 11px label visually without crowding the badge interior.
+ */
+function ListChecksIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </svg>
   );
 }
