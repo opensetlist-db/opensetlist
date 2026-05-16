@@ -201,6 +201,22 @@ export function useRealtimeImpressions({
     hasReportedFallbackRef.current = false;
 
     const supabase = getSupabaseBrowserClient();
+    // Pre-computed scope key for each handler's eventId check. The
+    // EventImpression subscriptions below drop the `filter:` clause
+    // and scope-check `row.eventId` inside each handler instead —
+    // see the SetlistItemReaction comment block in
+    // useRealtimeEventChannel.ts for the full story. Pre-emptive
+    // here: the prod incident on 2026-05-16 took out three of four
+    // filtered subscriptions on the event:N channel (SongWish +
+    // SetlistItem + SetlistItemReaction) via Supabase Realtime's
+    // per-table filter-validation cache going stale. This channel
+    // is separate (`event:N:impressions`), so EventImpression's
+    // validator cache hasn't been observed bitten yet, but the
+    // priors are bad — converting now before a real incident.
+    // Correctness is preserved by the in-handler eventId check
+    // (REPLICA IDENTITY FULL on EventImpression guarantees
+    // payload.new.eventId and payload.old.eventId are present).
+    const currentEventIdStr = String(eventId);
     const channel = supabase
       .channel(`event:${eventId}:impressions`)
       .on(
@@ -209,10 +225,10 @@ export function useRealtimeImpressions({
           event: "INSERT",
           schema: "public",
           table: "EventImpression",
-          filter: `eventId=eq.${eventId}`,
         },
         (payload) => {
           const row = payload.new as ImpressionRowPayload;
+          if (String(row.eventId) !== currentEventIdStr) return;
           if (!isVisible(row)) return;
           onUpsertRef.current?.(rowToImpression(row));
           setLastUpdated(new Date().toISOString());
@@ -224,10 +240,10 @@ export function useRealtimeImpressions({
           event: "UPDATE",
           schema: "public",
           table: "EventImpression",
-          filter: `eventId=eq.${eventId}`,
         },
         (payload) => {
           const newRow = payload.new as ImpressionRowPayload;
+          if (String(newRow.eventId) !== currentEventIdStr) return;
           // Same payload shape as INSERT: both halves of the
           // supersede dance flow through here. If the new state is
           // still visible (e.g., a moderator un-hid the row), the
@@ -246,17 +262,19 @@ export function useRealtimeImpressions({
           event: "DELETE",
           schema: "public",
           table: "EventImpression",
-          filter: `eventId=eq.${eventId}`,
         },
         (payload) => {
           // payload.old has the full row only with REPLICA IDENTITY
-          // FULL on the table (see prisma/post-deploy.sql). We only
-          // need `id` for removal, which is the primary key — that's
-          // populated even without FULL — but the cast still requires
-          // the field to be present on the type. Defensive: bail if
-          // missing rather than passing undefined to the consumer.
+          // FULL on the table (see prisma/post-deploy.sql). Both
+          // `id` (PK, always present) and `eventId` (present under
+          // FULL) are required here — `eventId` for the scope check
+          // now that the server-side filter is gone, `id` for the
+          // consumer's remove-by-id. Defensive: bail if either is
+          // missing.
           const oldRow = payload.old as Partial<ImpressionRowPayload>;
           if (!oldRow.id) return;
+          if (oldRow.eventId == null) return;
+          if (String(oldRow.eventId) !== currentEventIdStr) return;
           onRemoveRef.current?.(oldRow.id);
           setLastUpdated(new Date().toISOString());
         },
