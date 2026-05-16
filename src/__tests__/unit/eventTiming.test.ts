@@ -10,7 +10,10 @@ import {
 } from "@/lib/eventTiming";
 
 const NOW = new Date("2026-05-15T03:00:00.000Z"); // mid-morning KST, mid-evening US East
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+// Derived from the lib's exported boundary so the test can't silently
+// disagree with the source constant. Used only for status-filter
+// assertions that need an arbitrary future offset.
+const MS_PER_DAY = OPEN_WINDOW_MS / WISH_PREDICT_OPEN_DAYS;
 
 describe("WISH_PREDICT_OPEN_DAYS", () => {
   it("is 7 — single source of truth for the gate window", () => {
