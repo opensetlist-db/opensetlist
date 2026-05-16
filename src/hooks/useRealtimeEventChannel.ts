@@ -450,6 +450,31 @@ export function useRealtimeEventChannel<T>({
         },
       )
       // SetlistItemReaction — Path A (diff merge).
+      //
+      // Filter intentionally KEPT here despite being dropped on the
+      // Path B tables above. Two reasons:
+      //   1. Path A applies cross-event pushes incorrectly — if a
+      //      reaction on event 5 reached an event 3 viewer's
+      //      applyReactionInsert, it would increment a cell in
+      //      event 3's reactionCounts that should never have been
+      //      touched. Path B refetches are safe because they
+      //      re-pull /api/setlist scoped to the current page; Path
+      //      A diff-merge has no such scope guard.
+      //   2. SetlistItemReaction's REPLICA IDENTITY FULL was applied
+      //      in the same migration that added the table to the
+      //      supabase_realtime publication, so the validator cache
+      //      was seeded correctly from the start. No staleness
+      //      observed in dev or prod for this table.
+      //
+      // Risk: if the validator cache for this table ever goes stale
+      // the way SongWish's did (e.g., after a future REPLICA
+      // IDENTITY change), the channel will fail to subscribe with
+      // the same P0001 error. Detection: Sentry breadcrumb at
+      // channel-status transition (warning level for non-SUBSCRIBED)
+      // — see the .subscribe() handler below. Mitigation if that
+      // happens: convert this branch to a Path B refetch like
+      // SongWish, accepting the bandwidth trade-off — wasted
+      // refetches are correct, cross-event diff-merges are not.
       .on(
         "postgres_changes",
         {

@@ -331,11 +331,11 @@ END $$;
 -- table in `supabase_realtime`. Idempotent (re-runs no-op), and the
 -- WAL overhead is trivial at our table sizes (≤ ~10⁵ rows/year).
 --
--- Resolution at the code layer (see
--- src/hooks/useRealtimeEventChannel.ts:417-446, 470-499): drop the
--- per-event `filter:` from the SongWish + SetlistItem subscriptions
--- — both are Path B refetch consumers that don't need the filter to
--- be correct, only to be efficient. Even with FULL applied here,
+-- Resolution at the code layer (see the SongWish + SetlistItem
+-- subscription blocks in src/hooks/useRealtimeEventChannel.ts):
+-- drop the per-event `filter:` from those two subscriptions — both
+-- are Path B refetch consumers that don't need the filter to be
+-- correct, only to be efficient. Even with FULL applied here,
 -- the Realtime service's filter-validation cache had additional
 -- state that resisted refresh (publication kick + project restart
 -- did not clear it). Removing the filter sidesteps that
