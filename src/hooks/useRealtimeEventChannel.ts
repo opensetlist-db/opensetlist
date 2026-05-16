@@ -415,19 +415,66 @@ export function useRealtimeEventChannel<T>({
     const channel = supabase
       .channel(`event:${eventId}`)
       // SetlistItem — Path B (refetch).
+      //
+      // No eventId filter despite the channel being per-event. Why:
+      // Supabase Realtime's filter-validation function (`realtime
+      // .check_filters`) maintains a per-table column-filterability
+      // cache that's seeded when a table joins the supabase_realtime
+      // publication and is NOT refreshed by subsequent
+      // `ALTER TABLE ... REPLICA IDENTITY FULL` or project restarts.
+      // On prod we hit the stale-cache case for SongWish (incident
+      // 2026-05-16, [[wiki/log.md#[2026-05-16] incident | SongWish
+      // realtime filter rejected on prod]]) and pre-emptively dropped
+      // the SetlistItem filter too — same Path B refetch pattern,
+      // same risk surface. The fetchSnapshot() handler re-pulls
+      // /api/setlist scoped to *this page's* eventId regardless of
+      // which event triggered the push, so receiving cross-event
+      // pushes is just a few wasted refetches per minute at prod
+      // scale (~10s of wishes per show). Filter cost
+      // (perf optimization) < filter risk (subscription rejected).
+      //
+      // Filters stay on SetlistItemReaction (Path A diff-merge —
+      // needs row data, which the validator's stale cache for that
+      // table happens to be in sync because REPLICA IDENTITY FULL
+      // was set in the same migration that added it to the
+      // publication) and EventImpression (separate channel anyway).
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "SetlistItem",
-          filter: `eventId=eq.${eventId}`,
         },
         () => {
           void fetchSnapshot();
         },
       )
       // SetlistItemReaction — Path A (diff merge).
+      //
+      // Filter intentionally KEPT here despite being dropped on the
+      // Path B tables above. Two reasons:
+      //   1. Path A applies cross-event pushes incorrectly — if a
+      //      reaction on event 5 reached an event 3 viewer's
+      //      applyReactionInsert, it would increment a cell in
+      //      event 3's reactionCounts that should never have been
+      //      touched. Path B refetches are safe because they
+      //      re-pull /api/setlist scoped to the current page; Path
+      //      A diff-merge has no such scope guard.
+      //   2. SetlistItemReaction's REPLICA IDENTITY FULL was applied
+      //      in the same migration that added the table to the
+      //      supabase_realtime publication, so the validator cache
+      //      was seeded correctly from the start. No staleness
+      //      observed in dev or prod for this table.
+      //
+      // Risk: if the validator cache for this table ever goes stale
+      // the way SongWish's did (e.g., after a future REPLICA
+      // IDENTITY change), the channel will fail to subscribe with
+      // the same P0001 error. Detection: Sentry breadcrumb at
+      // channel-status transition (warning level for non-SUBSCRIBED)
+      // — see the .subscribe() handler below. Mitigation if that
+      // happens: convert this branch to a Path B refetch like
+      // SongWish, accepting the bandwidth trade-off — wasted
+      // refetches are correct, cross-event diff-merges are not.
       .on(
         "postgres_changes",
         {
@@ -457,13 +504,21 @@ export function useRealtimeEventChannel<T>({
       // to mirror client-side. Refetch frequency is low (wishes
       // arrive at ~tens-per-show, mostly pre-show) so the bandwidth
       // cost of re-pulling /api/setlist on each push is acceptable.
+      //
+      // No eventId filter — see the SetlistItem subscription above
+      // for the full incident write-up. tl;dr: Supabase Realtime's
+      // filter-validation cache went stale on prod and rejected the
+      // filter despite the column being in the publication with
+      // REPLICA IDENTITY FULL. fetchSnapshot() is scoped to *this
+      // page's* eventId regardless of trigger, so cross-event
+      // pushes just cost a few wasted refetches per minute at
+      // current scale.
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "SongWish",
-          filter: `eventId=eq.${eventId}`,
         },
         () => {
           void fetchSnapshot();
