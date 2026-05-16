@@ -97,6 +97,18 @@ export function daysUntilUTC(target: Date, now: Date): number {
  * `now` and threaded as a boolean prop. A page kept open across the
  * 168h-mark boundary won't auto-unlock — refresh does.
  */
+// Shared by isWishPredictOpen + shouldShowWishBadge so the gate and
+// the home-card badge can't drift on the 168h boundary check.
+// Strict-future check doubles as the "gate closes at startTime"
+// upper bound (CR #282: a stale `status: "upcoming"` row with a
+// past startTime caught by the auto-status-flip ticker lag still
+// reads as closed here).
+function isWithinWishOpenWindow(start: Date, now: Date): boolean {
+  const msUntilStart = start.getTime() - now.getTime();
+  if (msUntilStart <= 0) return false;
+  return msUntilStart <= OPEN_WINDOW_MS;
+}
+
 export function isWishPredictOpen(
   event: { startTime: Date | string | null; status: ResolvedEventStatus },
   now: Date = new Date(),
@@ -108,13 +120,7 @@ export function isWishPredictOpen(
       ? event.startTime
       : new Date(event.startTime);
   if (Number.isNaN(start.getTime())) return false;
-  // Strict-future check doubles as the "gate closes at startTime"
-  // upper bound. CR #282 also caught a stale `status: "upcoming"` +
-  // past-startTime edge when the auto-status ticker lags behind real
-  // time — explicit guard keeps that path closed.
-  const msUntilStart = start.getTime() - now.getTime();
-  if (msUntilStart <= 0) return false;
-  return msUntilStart <= OPEN_WINDOW_MS;
+  return isWithinWishOpenWindow(start, now);
 }
 
 /**
@@ -133,7 +139,5 @@ export function isWishPredictOpen(
  * helper — the strict-future check is belt-and-suspenders.
  */
 export function shouldShowWishBadge(start: Date, now: Date): boolean {
-  const msUntilStart = start.getTime() - now.getTime();
-  if (msUntilStart <= 0) return false;
-  return msUntilStart <= OPEN_WINDOW_MS;
+  return isWithinWishOpenWindow(start, now);
 }
