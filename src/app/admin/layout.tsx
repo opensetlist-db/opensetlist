@@ -11,6 +11,7 @@ const navItems = [
   { href: "/admin/events", label: "이벤트" },
   { href: "/admin/impressions", label: "한줄감상" },
   { href: "/admin/reactions", label: "감정 태그" },
+  { href: "/admin/wishes", label: "희망곡" },
   { href: "/admin/contest-reports", label: "정정 요청" },
   { href: "/admin/import", label: "CSV 가져오기" },
   { href: "/admin/slug-generator", label: "Slug 생성기" },
