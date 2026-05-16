@@ -12,9 +12,9 @@ import { SectionHeader } from "@/components/home/SectionHeader";
 import { BASE_URL } from "@/lib/config";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
-  daysUntilUTC,
+  MS_PER_DAY,
+  daysUntil,
   shouldShowWishBadge,
-  utcDayOffset,
 } from "@/lib/eventTiming";
 import { routing } from "@/i18n/routing";
 import { colors, radius, shadows } from "@/styles/tokens";
@@ -55,6 +55,7 @@ const ONGOING_BUFFER_MS = 12 * 60 * 60 * 1000;
 // ±30-day window so the home stays relevant even when the catalog has
 // long-tail events that would otherwise dominate take(5).
 const HOME_WINDOW_DAYS = 30;
+const HOME_WINDOW_MS = HOME_WINDOW_DAYS * MS_PER_DAY;
 
 // Card-specific date formats. UpcomingCard shows the full day with a
 // weekday tag ("5월 23일 (토)"); RecentEventRow date pill shows just
@@ -75,11 +76,12 @@ const RECENT_DAY_FORMAT: Intl.DateTimeFormatOptions = {
   timeZone: "UTC",
 };
 
-// `utcDayOffset` / `daysUntilUTC` / `utcDayStart` previously lived
-// inline here; relocated to `src/lib/eventTiming.ts` so the D-7 gate
-// (Wishlist + Predicted Setlist visibility) shares one definition
-// instead of forking. Same UTC-anchoring discipline per CLAUDE.md
-// §"Date & Time"; see the helper file for the full rationale.
+// `daysUntil` and the home window cutoffs are absolute-time math
+// (rolling 24h periods from `now`) rather than UTC-calendar-day
+// floors. The earlier UTC-day approach gave a calendar-day distance
+// that was only accurate for viewers on the UTC clock — KR/JP
+// viewers (the bulk audience) saw boundaries that lagged their wall
+// clock by up to ~9h every morning. Strict ms math is TZ-agnostic.
 
 async function getOngoingEvents(now: Date) {
   const ongoingStart = new Date(now.getTime() - ONGOING_BUFFER_MS);
@@ -107,9 +109,12 @@ async function getOngoingEvents(now: Date) {
 }
 
 async function getUpcomingEvents(now: Date) {
-  // End-exclusive: "events scheduled before the start of day +31",
-  // i.e. all events up to and including the 30-days-from-today UTC day.
-  const upcomingCutoff = utcDayOffset(now, HOME_WINDOW_DAYS + 1);
+  // Rolling 30×24h window from `now`. Absolute-time bound (rather
+  // than a calendar-day cutoff) keeps the window length identical
+  // for every viewer regardless of timezone — KR/JP viewers no
+  // longer see the boundary lag their wall clock by a few hours
+  // each morning.
+  const upcomingCutoff = new Date(now.getTime() + HOME_WINDOW_MS);
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
@@ -128,9 +133,9 @@ async function getUpcomingEvents(now: Date) {
 
 async function getRecentEvents(now: Date) {
   const completedCutoff = new Date(now.getTime() - ONGOING_BUFFER_MS);
-  // Inclusive: events starting on or after the start of the UTC day
-  // that is `HOME_WINDOW_DAYS` days before today.
-  const windowStart = utcDayOffset(now, -HOME_WINDOW_DAYS);
+  // Rolling 30×24h window into the past from `now`. Mirror of the
+  // upcoming-side bound; see the rationale in `getUpcomingEvents`.
+  const windowStart = new Date(now.getTime() - HOME_WINDOW_MS);
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
@@ -337,9 +342,12 @@ export default async function HomePage({
     (e: UpcomingEvent) => {
       const { eventName, seriesName } = projectNames(e, locale);
       const start = new Date(e.startTime);
-      // Compute days once so the dDay label and the wish-badge
-      // condition can't drift apart (they share the same `now`).
-      const days = daysUntilUTC(start, now);
+      // dDay chip and wish badge both use absolute-time math —
+      // floor of (start - now) over 24h. UTC-calendar-day distance
+      // (the prior implementation) was only accurate for viewers on
+      // the UTC clock; KR/JP viewers saw the chip lag their wall
+      // clock by up to ~9h every morning.
+      const days = daysUntil(start, now);
       return {
         eventId: String(e.id),
         href: eventHref(locale, e.id, eventName),
@@ -349,7 +357,7 @@ export default async function HomePage({
         venue: projectVenue(e, locale),
         formattedDate: formatDate(start, locale, UPCOMING_DATE_FORMAT),
         dDayLabel: t("dDay", { days }),
-        showWishBadge: shouldShowWishBadge(days),
+        showWishBadge: shouldShowWishBadge(start, now),
       };
     }
   );
