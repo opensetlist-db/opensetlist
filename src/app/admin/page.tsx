@@ -10,6 +10,7 @@ async function getCounts() {
     setlistItems,
     impressions,
     reactions,
+    wishes,
   ] = await Promise.all([
     prisma.group.count(),
     prisma.artist.count({ where: { isDeleted: false } }),
@@ -26,6 +27,11 @@ async function getCounts() {
       where: { supersededAt: null, isDeleted: false },
     }),
     prisma.setlistItemReaction.count(),
+    // SongWish has no soft-delete column (Phase 1A schema comment:
+    // append-only event-scoped wish ledger; the (eventId, songId)
+    // index is for aggregation reads, not uniqueness). Total count
+    // is lifetime wishes ever recorded.
+    prisma.songWish.count(),
   ]);
   return {
     groups,
@@ -36,6 +42,7 @@ async function getCounts() {
     setlistItems,
     impressions,
     reactions,
+    wishes,
   };
 }
 
@@ -51,6 +58,7 @@ export default async function AdminDashboard() {
     { label: "세트리스트 항목", count: counts.setlistItems, href: "#" },
     { label: "한줄감상", count: counts.impressions, href: "/admin/impressions" },
     { label: "감정 태그", count: counts.reactions, href: "/admin/reactions" },
+    { label: "희망곡", count: counts.wishes, href: "/admin/wishes" },
   ];
 
   return (
