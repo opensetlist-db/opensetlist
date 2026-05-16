@@ -219,11 +219,11 @@ interface UpcomingView {
   dDayLabel: string;
   /**
    * D-7 open-window indicator: `daysUntil > 0 && daysUntil <= 7`.
-   * Drives the `🌸 세트리스트 예상 가능` badge + emphasized border on the card.
-   * Computed server-side from the same `now` that drove `dDayLabel`
-   * so both badges agree exactly — see `shouldShowWishBadge` for
-   * why D-0 is excluded (auto-status flip is about to swap the card
-   * to ongoing).
+   * Drives the ListChecks-icon `세트리스트 예상 가능` badge + emphasized
+   * border on the card. Computed server-side from the same `now`
+   * that drove `dDayLabel` so both badges agree exactly — see
+   * `shouldShowWishBadge` for why D-0 is excluded (auto-status flip
+   * is about to swap the card to ongoing).
    */
   showWishBadge: boolean;
 }

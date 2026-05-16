@@ -303,7 +303,7 @@ help@opensetlist.com
 ### v0.8.0 (2026-04-20)
 - Per-cell Translate button on impressions — toggles between original and viewer-locale translation, no re-fetch on subsequent toggles.
 - `POST /api/impressions/translate` with server-side cache (new `ImpressionTranslation` table keyed on `impressionId + sourceLocale + targetLocale`, naturally per-version against the append-only chain); P2002 race re-SELECTs the winner instead of erroring.
-- Provider abstraction (`src/lib/translator`): OpenAI Responses API (gpt-4o-mini) and Google Gemini (gemini-3.1-flash-lite-preview) behind a single `Translator` interface; `TRANSLATION_PROVIDER` selects (Vercel preview = Gemini, prod = OpenAI).
+- Provider abstraction (`src/lib/translator`): OpenAI Responses API (gpt-4o-mini) and Google Gemini (gemini-3.1-flash-lite) behind a single `Translator` interface; `TRANSLATION_PROVIDER` selects (Vercel preview = Gemini, prod = OpenAI).
 - Hardening: shared JSON-shaped system prompt, max-token truncation detection on both providers, 256-token floor, `AbortSignal.timeout(30s)`, error-payload redaction in logs.
 - Schema: new `impression_translations` table with `onDelete: Cascade` FK to `event_impressions`.
 
