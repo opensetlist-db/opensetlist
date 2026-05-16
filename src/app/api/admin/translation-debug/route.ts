@@ -4,11 +4,16 @@ import OpenAI from "openai";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { IMPRESSION_LOCALES } from "@/lib/config";
 import {
-  SYSTEM_PROMPT,
   buildUserInput,
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "@/lib/translator/prompt";
+import { IP_PROMPTS, FALLBACK_PROMPT } from "@/lib/translator/prompts";
+import {
+  REGISTERED_IP_KEYS,
+  GENERIC_IP_KEY,
+  DEFAULT_IP_KEY,
+} from "@/lib/translator/prompts/keys";
 import { geminiRawTranslate } from "@/lib/translator/gemini";
 import { openaiRawTranslate } from "@/lib/translator/openai";
 
@@ -17,15 +22,23 @@ const TRANSLATOR_TIMEOUT_MS = 30_000;
 const PROVIDERS = ["gemini", "openai"] as const;
 type Provider = (typeof PROVIDERS)[number];
 
+// Admin can target any registered IP prompt by slug, or the generic
+// fallback. The dropdown UI is bounded by REGISTERED_IP_KEYS + "generic"
+// so the request shape is always validated against a known whitelist.
+const VALID_IP_KEYS: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
+
 // POST /api/admin/translation-debug
-// Body: { sourceLocale: "ko" | "ja" | "en", text: string, provider?: "gemini" | "openai" }
-// Response: { systemPrompt, input, raw, parsed, parseError, sourceLocale, provider }
+// Body: { sourceLocale: "ko" | "ja" | "en", text: string,
+//         provider?: "gemini" | "openai",
+//         ipKey?: <REGISTERED_IP_KEYS> | "generic" }
+// Response: { systemPrompt, input, raw, parsed, parseError, sourceLocale,
+//             provider, ipKey }
 //
-// Phase 1A uses a hardcoded Hasunosora prompt (see
-// src/lib/translator/prompts/hasunosora.ts), so `eventId` is no longer
-// part of the request shape — per-event prompts arrive in Phase 1B.
-// `sourceLocale` is used by the UI to dim the source row in the parsed
-// output table; the prompt itself does not inject it.
+// `ipKey` picks which prompt to send: any slug in IP_PROMPTS, or "generic"
+// for the fallback prompt. Default "hasunosora" preserves pre-multi-IP
+// behavior for existing operator workflows. `sourceLocale` is used by
+// the UI to dim the source row in the parsed output table; the prompt
+// itself does not inject it.
 //
 // `provider` overrides TRANSLATION_PROVIDER for this request only — lets
 // admins A/B the same prompt across both providers without touching env.
@@ -44,10 +57,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { sourceLocale, text, provider: providerInput } = (body ?? {}) as {
+  const {
+    sourceLocale,
+    text,
+    provider: providerInput,
+    ipKey: ipKeyInput,
+  } = (body ?? {}) as {
     sourceLocale?: unknown;
     text?: unknown;
     provider?: unknown;
+    ipKey?: unknown;
   };
 
   if (
@@ -66,6 +85,21 @@ export async function POST(req: NextRequest) {
   ) {
     return NextResponse.json({ error: "Invalid provider" }, { status: 400 });
   }
+  if (
+    ipKeyInput !== undefined &&
+    (typeof ipKeyInput !== "string" || !VALID_IP_KEYS.includes(ipKeyInput))
+  ) {
+    return NextResponse.json({ error: "Invalid ipKey" }, { status: 400 });
+  }
+
+  // DEFAULT_IP_KEY (currently "hasunosora") is guaranteed in IP_PROMPTS
+  // by the registry contract (see src/lib/translator/prompts/index.ts).
+  const ipKey: string =
+    typeof ipKeyInput === "string" ? ipKeyInput : DEFAULT_IP_KEY;
+  const systemPrompt: string =
+    ipKey === GENERIC_IP_KEY
+      ? FALLBACK_PROMPT
+      : (IP_PROMPTS[ipKey] ?? FALLBACK_PROMPT);
 
   const provider: Provider =
     (providerInput as Provider | undefined) ??
@@ -88,6 +122,7 @@ export async function POST(req: NextRequest) {
         new GoogleGenAI({ apiKey: key }),
         text,
         sourceLocale,
+        systemPrompt,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else if (provider === "openai") {
@@ -97,6 +132,7 @@ export async function POST(req: NextRequest) {
         new OpenAI({ apiKey: key }),
         text,
         sourceLocale,
+        systemPrompt,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
     } else {
@@ -124,10 +160,11 @@ export async function POST(req: NextRequest) {
       {
         error: "Translation unavailable",
         detail,
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt,
         input,
         sourceLocale,
         provider,
+        ipKey,
       },
       { status: 502 },
     );
@@ -142,12 +179,13 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt,
     input,
     raw,
     parsed,
     parseError,
     sourceLocale,
     provider,
+    ipKey,
   });
 }

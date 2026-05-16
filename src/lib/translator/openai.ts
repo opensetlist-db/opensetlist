@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { TranslationTruncatedError, type Translator } from "./types";
 import {
-  SYSTEM_PROMPT,
   buildUserInput,
   estimateMaxTokens,
   parseMultilingualResponse,
@@ -18,9 +17,16 @@ export class OpenAITranslator implements Translator {
   async translate(
     text: string,
     sourceLocale: string,
+    systemPrompt: string,
     signal?: AbortSignal,
   ): Promise<MultilingualOutput> {
-    const raw = await openaiRawTranslate(this.client, text, sourceLocale, signal);
+    const raw = await openaiRawTranslate(
+      this.client,
+      text,
+      sourceLocale,
+      systemPrompt,
+      signal,
+    );
     return parseMultilingualResponse(raw);
   }
 }
@@ -30,12 +36,13 @@ export async function openaiRawTranslate(
   client: OpenAI,
   text: string,
   sourceLocale: string,
+  systemPrompt: string,
   signal?: AbortSignal,
 ): Promise<string> {
   const res = await client.responses.create(
     {
       model: "gpt-4o-mini",
-      instructions: SYSTEM_PROMPT,
+      instructions: systemPrompt,
       input: buildUserInput(text, sourceLocale),
       max_output_tokens: estimateMaxTokens(text),
       // Mirror of gemini.ts: translation is low-creativity, so lower temp
