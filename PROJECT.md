@@ -156,7 +156,7 @@ After clicking, translation cached — no API call on refresh
     → "관련 후기/글" section on Event pages
 [ ] Comment rollup feed with source labels
     "Hanamusubi @ 사이타마 Day1"
-[ ] Report system (comment + dict_entry)
+[ ] Report system (comment)
 [ ] Auto-hide threshold (3 reports → hidden pending review)
 [ ] Admin moderation queue (/admin/reports)
 [ ] UserRole system (board_mod scope)

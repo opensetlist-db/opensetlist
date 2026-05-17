@@ -156,7 +156,6 @@ enum CommentType {
 
 enum ReportTarget {
   comment      // Comment (type=comment or type=post)
-  dict_entry   // TranslationDictionary entry
 }
 
 enum ReportReason {
@@ -165,7 +164,6 @@ enum ReportReason {
   spam            // 스팸/광고
   misinformation  // 오정보 (잘못된 세트리스트 데이터 포함)
   copyright       // 저작권 침해
-  bad_translation // 의도적 오번역 (dict_entry only)
   other
 }
 
