@@ -114,5 +114,15 @@ export function formatDate(
     en: "en-US",
     "zh-CN": "zh-CN",
   };
-  return d.toLocaleDateString(localeMap[locale] ?? locale, options);
+  // Defense in depth: a request whose locale segment bypasses the
+  // [locale] page guards (e.g. scanner traffic to /.env, /.git) can
+  // reach here with an arbitrary string. Intl.DateTimeFormat throws
+  // RangeError on unknown locale tags, so try the resolved locale and
+  // fall back to en-US on any rejection rather than 500ing the page.
+  const resolved = localeMap[locale] ?? locale;
+  try {
+    return d.toLocaleDateString(resolved, options);
+  } catch {
+    return d.toLocaleDateString("en-US", options);
+  }
 }
