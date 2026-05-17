@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, nonBlank, formatDate } from "@/lib/utils";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
@@ -294,6 +296,18 @@ export default async function HomePage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+
+  // Mirror the [locale]/layout.tsx guard. RSC streaming runs the layout
+  // and page in parallel, so the layout's notFound() doesn't short-circuit
+  // the page's data fetching — without this guard, requests like /.env or
+  // /.git (which bypass the next-intl middleware matcher because the path
+  // contains a dot) reach formatDate() with locale=".env" and crash inside
+  // Date.toLocaleDateString with RangeError. The guard has to run before
+  // any locale-dependent work, not just before render.
+  if (!hasLocale(routing.locales, locale)) {
+    notFound();
+  }
+
   const t = await getTranslations("Home");
   const evT = await getTranslations("Event");
 
