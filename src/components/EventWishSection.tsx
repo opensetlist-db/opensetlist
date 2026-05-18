@@ -432,22 +432,22 @@ export function EventWishSection({
                     </button>
                   </div>
                 ) : (
-                  // Column-width gradient bar matching the
-                  // `<AddItemButton>` + Predict surface treatment.
-                  // The earlier muted text link was easy to miss
-                  // and Wishlist is one of the load-bearing
-                  // pre-show participation hooks — bumping
-                  // prominence to a gradient bar lines it up with
-                  // the share CTA tone the rest of the page uses.
+                  // Left-aligned pill button — same shape as
+                  // `<AddItemButton>`, Predict `+ 곡 추가`, and the
+                  // share-card `결과 공유 🎯` CTA. Pill is sized
+                  // down slightly (text-xs vs the others' text-sm)
+                  // to fit the narrower "내 선택" column inside the
+                  // 2-col grid without overlapping the divider.
                   <button
                     type="button"
                     onClick={() => setSearchOpen(true)}
-                    className="w-full text-xs font-semibold text-white py-2.5 px-3 hover:opacity-90 active:opacity-80 transition-opacity"
+                    className="text-xs font-medium rounded-full px-4 py-1.5 hover:opacity-90 active:opacity-80 transition-opacity"
                     style={{
                       background: colors.brandGradient,
+                      color: "white",
                       border: "none",
+                      whiteSpace: "nowrap",
                       cursor: "pointer",
-                      textAlign: "left",
                     }}
                   >
                     {t("add")}

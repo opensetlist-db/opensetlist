@@ -484,24 +484,29 @@ export function PredictedSetlist({
               </button>
             </div>
           ) : (
-            // Visual treatment mirrors `<AddItemButton>` and the
-            // Wishlist `+ 곡 추가` button — cyan→blue gradient bar
-            // for prominence. The CTA is the entry point to the
-            // pre-show prediction funnel, so the earlier muted
-            // primary-color text was under-selling it.
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="w-full text-sm font-semibold text-white py-3 px-4 hover:opacity-90 active:opacity-80 transition-opacity"
-              style={{
-                background: colors.brandGradient,
-                border: "none",
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {t("add")}
-            </button>
+            // Left-aligned pill button mirroring `<AddItemButton>` +
+            // Wishlist `+ 곡 추가` and matching the `결과 공유 🎯`
+            // share CTA shape. The earlier muted primary-color text
+            // was under-selling the pre-show prediction funnel
+            // entry point; an intermediate full-width gradient bar
+            // (PR #390) overshot. The pill landing matches the
+            // share button's compact prominence.
+            <div style={{ padding: "10px 14px" }}>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="text-sm font-medium rounded-full px-5 py-2 hover:opacity-90 active:opacity-80 transition-opacity"
+                style={{
+                  background: colors.brandGradient,
+                  color: "white",
+                  border: "none",
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                }}
+              >
+                {t("add")}
+              </button>
+            </div>
           )}
         </div>
       )}
