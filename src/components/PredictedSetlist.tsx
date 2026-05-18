@@ -491,7 +491,7 @@ export function PredictedSetlist({
             // entry point; an intermediate full-width gradient bar
             // (PR #390) overshot. The pill landing matches the
             // share button's compact prominence.
-            <div style={{ padding: "6px 14px" }}>
+            <div style={{ padding: "2px 14px" }}>
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
@@ -502,6 +502,10 @@ export function PredictedSetlist({
                   border: "none",
                   whiteSpace: "nowrap",
                   cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
                 }}
               >
                 {t("add")}
