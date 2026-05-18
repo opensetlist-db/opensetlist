@@ -316,6 +316,19 @@ function entry(songId: number, originalTitle = `t${songId}`): PredictionEntry {
   };
 }
 
+function variantEntry(songId: number, baseVersionId: number): PredictionEntry {
+  return {
+    songId,
+    song: {
+      originalTitle: `variant of ${baseVersionId}`,
+      originalLanguage: "ja",
+      variantLabel: "Variant Ver.",
+      baseVersionId,
+      translations: [],
+    },
+  };
+}
+
 describe("mergeAppendUnique", () => {
   it("from empty existing: returns incoming as-is", () => {
     const merged = mergeAppendUnique([], [entry(1), entry(2)]);
@@ -343,6 +356,30 @@ describe("mergeAppendUnique", () => {
       [entry(1), entry(2)],
     );
     expect(merged.map((e) => e.songId)).toEqual([1, 2]);
+  });
+
+  it("variant↔base canonical dedup: existing variant (id 105 → base 100), incoming base (id 100) is a duplicate", () => {
+    // User manually predicted the SAKURA variant; past-event seed
+    // transformed variants → base. Same song under isSongMatched's
+    // equivalence, so no second entry should be appended.
+    const merged = mergeAppendUnique([variantEntry(105, 100)], [entry(100)]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].songId).toBe(105); // existing preserved
+  });
+
+  it("variant↔base canonical dedup: incoming variant is duplicate of existing base", () => {
+    const merged = mergeAppendUnique([entry(100)], [variantEntry(105, 100)]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].songId).toBe(100);
+  });
+
+  it("two variants of the same base both in incoming: first wins, second skipped", () => {
+    const merged = mergeAppendUnique(
+      [],
+      [variantEntry(105, 100), variantEntry(106, 100)],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].songId).toBe(105);
   });
 });
 
@@ -393,5 +430,17 @@ describe("dedupCountForMerge", () => {
 
   it("empty existing: always 0", () => {
     expect(dedupCountForMerge([], [entry(1), entry(2)])).toBe(0);
+  });
+
+  it("variant↔base canonical: existing variant + incoming base counts as 1 overlap", () => {
+    expect(
+      dedupCountForMerge([variantEntry(105, 100)], [entry(100), entry(200)]),
+    ).toBe(1);
+  });
+
+  it("variant↔base canonical: existing base + incoming variant counts as 1 overlap", () => {
+    expect(
+      dedupCountForMerge([entry(100)], [variantEntry(105, 100), entry(200)]),
+    ).toBe(1);
   });
 });

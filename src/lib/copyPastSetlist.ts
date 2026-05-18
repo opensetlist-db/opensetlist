@@ -163,9 +163,28 @@ export function flattenSetlistToPredictions(
 }
 
 /**
- * Append `incoming` entries to `existing` that are not already there,
- * matched by `songId`. Preserves the existing entries' order and pushes
- * new entries to the end in their incoming order.
+ * Canonical dedup key for a `PredictionEntry`: the base song's id when
+ * the entry is a variant, otherwise the song's own id. This matches
+ * the variant↔base equivalence `isSongMatched` uses at score time —
+ * "Dream Believers" and "Dream Believers (SAKURA Ver.)" are the same
+ * song for matching purposes, so the merge contract should treat them
+ * the same way.
+ *
+ * Without this, a user who manually predicted the SAKURA variant
+ * (songId=105, baseVersionId=100) and then seeds from a past show
+ * (which transforms variants → base, songId=100) would get both
+ * entries appended under "추가하기 (중복 제외)" — visually two rows
+ * for the same song. CR #392-#397 caught this on the merge helpers.
+ */
+function canonicalSongKey(entry: PredictionEntry): number {
+  return entry.song.baseVersionId ?? entry.songId;
+}
+
+/**
+ * Append `incoming` entries to `existing` that aren't already there,
+ * matched by `canonicalSongKey` (base id when variant, else songId).
+ * Preserves the existing entries' order and pushes new entries to the
+ * end in their incoming order.
  *
  * Used by the "추가하기 (중복 제외)" merge mode. The "새로 시작하기"
  * mode just discards `existing` and uses `incoming` directly, so it
@@ -175,29 +194,31 @@ export function mergeAppendUnique(
   existing: PredictionEntry[],
   incoming: PredictionEntry[],
 ): PredictionEntry[] {
-  const have = new Set(existing.map((e) => e.songId));
+  const have = new Set(existing.map(canonicalSongKey));
   const result = existing.slice();
   for (const e of incoming) {
-    if (have.has(e.songId)) continue;
-    have.add(e.songId);
+    const key = canonicalSongKey(e);
+    if (have.has(key)) continue;
+    have.add(key);
     result.push(e);
   }
   return result;
 }
 
 /**
- * Count how many `incoming` songIds are already present in `existing`.
- * Drives the confirm panel's "중복 D곡 제외" preview number. Pure
- * counting only — no allocation of the merged list.
+ * Count how many `incoming` entries are already present in `existing`,
+ * keyed by `canonicalSongKey`. Drives the confirm panel's
+ * "중복 D곡 제외" preview number. Pure counting only — no allocation
+ * of the merged list.
  */
 export function dedupCountForMerge(
   existing: PredictionEntry[],
   incoming: PredictionEntry[],
 ): number {
-  const have = new Set(existing.map((e) => e.songId));
+  const have = new Set(existing.map(canonicalSongKey));
   let dup = 0;
   for (const e of incoming) {
-    if (have.has(e.songId)) dup++;
+    if (have.has(canonicalSongKey(e))) dup++;
   }
   return dup;
 }
