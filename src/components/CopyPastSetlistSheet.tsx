@@ -348,31 +348,36 @@ function SongPreview({
   if (songs.length === 0) return null;
   const previewCount = Math.min(SONG_PREVIEW_COUNT, songs.length);
   const preview = songs.slice(0, previewCount);
-  const moreCount = songs.length - previewCount;
+  const rest = songs.slice(previewCount);
+  const renderTitle = (p: PredictionEntry) =>
+    displayOriginalTitle(
+      {
+        originalTitle: p.song.originalTitle,
+        originalLanguage: p.song.originalLanguage,
+        variantLabel: p.song.variantLabel,
+      },
+      p.song.translations,
+      locale,
+    ).main;
+  const previewLine = preview.map(renderTitle).join(" · ");
+  // No overflow → no disclosure widget. A `<details>` whose body is
+  // empty would still render an expand arrow that does nothing on
+  // click (CR caught the dead-expansion shape in the prior revision).
+  if (rest.length === 0) {
+    return <div className="mt-2 text-xs text-gray-600">{previewLine}</div>;
+  }
   return (
     <details className="mt-2 text-xs">
       <summary className="cursor-pointer text-gray-600">
-        {preview
-          .map((p) => {
-            const td = displayOriginalTitle(
-              {
-                originalTitle: p.song.originalTitle,
-                originalLanguage: p.song.originalLanguage,
-                variantLabel: p.song.variantLabel,
-              },
-              p.song.translations,
-              locale,
-            );
-            return td.main;
-          })
-          .join(" · ")}
-        {moreCount > 0 && (
-          <span className="text-gray-400">
-            {" "}
-            {t("copy.previewMore", { count: moreCount })}
-          </span>
-        )}
+        {previewLine}
+        <span className="text-gray-400">
+          {" "}
+          {t("copy.previewMore", { count: rest.length })}
+        </span>
       </summary>
+      <div className="mt-1 pl-3 text-gray-500">
+        {rest.map(renderTitle).join(" · ")}
+      </div>
     </details>
   );
 }
