@@ -305,7 +305,26 @@
     "duringHint": "{count}곡 예상 입력됨",
     "afterHint": "공연 종료 · 최종 결과",
     "finalScore": "{matched}/{total} 적중 ({pct}%) 🎯",
-    "description": "공연 시작 전까지 곡을 추가해 주세요. 실제 세트리스트와 비교하여 적중률이 계산됩니다. 예상 세트리스트 곡 수에는 제한이 없지만, 실제 세트리스트 곡 수 만큼의 상위 순번곡만이 판정에 사용됩니다."
+    "description": "공연 시작 전까지 곡을 추가해 주세요. 실제 세트리스트와 비교하여 적중률이 계산됩니다. 예상 세트리스트 곡 수에는 제한이 없지만, 실제 세트리스트 곡 수 만큼의 상위 순번곡만이 판정에 사용됩니다.",
+    "copyFromPast": "📋 지난 공연 세트리스트로 시작하기",
+    "copy": {
+      "sheetTitle": "지난 공연에서 가져오기",
+      "loading": "지난 공연 정보를 불러오는 중...",
+      "fetchError": "지난 공연 정보를 불러오지 못했어요. 다시 시도해 주세요.",
+      "emptyHint": "같은 시리즈에서 확정된 세트리스트가 있는 지난 공연이 없어요",
+      "songCount": "🎵 {count}곡",
+      "previewMore": "외 {count}곡 더 보기",
+      "selectButton": "이 공연에서 가져오기",
+      "confirmIncoming": "가져올 곡: {count}곡",
+      "confirmExisting": "현재 예상: {count}곡",
+      "confirmDup": "중복 {count}곡은 제외돼요",
+      "modeAppend": "추가하기 (중복 제외)",
+      "modeReplace": "새로 시작하기 (현재 예상 삭제 후 교체)",
+      "back": "← 다른 공연 선택",
+      "apply": "적용",
+      "cancel": "취소",
+      "close": "닫기"
+    }
   },
   "ShareCard": {
     "modalTitle": "결과 공유",
