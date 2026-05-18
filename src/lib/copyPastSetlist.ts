@@ -29,6 +29,34 @@
 
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const MIN_SAFE_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+
+/**
+ * Convert a `bigint` to `number` only when the value fits inside the
+ * JS safe-integer range. A naïve `Number(bigint)` silently truncates
+ * values above 2^53-1, which is corrupting in two distinct ways here:
+ *
+ *  1. The `seen` Set keys the dedup by the converted number — two
+ *     distinct unsafe BigInts would collide and silently merge into
+ *     one entry.
+ *  2. `PredictionEntry.songId` is typed `number` and surfaces all the
+ *     way to localStorage / `isSongMatched`; a truncated id matches
+ *     the wrong song or no song at all.
+ *
+ * Returning `null` for out-of-range values lets the caller treat the
+ * row as data damage and skip it (mirroring the project-wide
+ * `nullableBigIntId` policy of rejecting silently-rounded JSON
+ * numbers at write time). At Phase 1 scale autoincrement ids stay
+ * well below 2^53, so this guard is belt-and-suspenders — but the
+ * dedup correctness contract is real-time, not theoretical.
+ */
+export function safeBigIntToNumber(value: bigint): number | null {
+  if (value > MAX_SAFE_BIGINT) return null;
+  if (value < MIN_SAFE_BIGINT) return null;
+  return Number(value);
+}
+
 /**
  * Subset of the `Song` row the API selects for this feature. We deliberately
  * keep the shape minimal — `flattenSetlistToPredictions` is the single
@@ -105,17 +133,28 @@ export function flattenSetlistToPredictions(
     }
     if (!effective) continue;
     if (effective.isDeleted) continue;
-    const id = Number(effective.id);
+    const id = safeBigIntToNumber(effective.id);
+    // Unsafe id → skip the whole entry. Dropping it from `seen` /
+    // `out` keeps the dedup Set keyed on values where number equality
+    // still implies bigint equality.
+    if (id === null) continue;
     if (seen.has(id)) continue;
     seen.add(id);
+    // `baseVersionId` is metadata only (display + downstream
+    // matching), never a Set key here — but if it's unsafe we still
+    // null it out rather than emitting a truncated value the client
+    // might compare against another truncated id elsewhere.
+    const carriedBaseVersionId =
+      effective.baseVersionId === null
+        ? null
+        : safeBigIntToNumber(effective.baseVersionId);
     out.push({
       songId: id,
       song: {
         originalTitle: effective.originalTitle,
         originalLanguage: effective.originalLanguage,
         variantLabel: effective.variantLabel,
-        baseVersionId:
-          effective.baseVersionId === null ? null : Number(effective.baseVersionId),
+        baseVersionId: carriedBaseVersionId,
         translations: effective.translations,
       },
     });
