@@ -1,5 +1,25 @@
+// Resolution order:
+//   1. NEXT_PUBLIC_BASE_URL — explicit env override (set in prod to
+//      "https://opensetlist.com"; preview/local intentionally leave it
+//      unset so the fallbacks below kick in).
+//   2. VERCEL_URL — automatically injected by Vercel on every
+//      deployment with the deployment-specific hostname (preview
+//      branches included). Critical for testing OG cards / sitemap /
+//      anything that needs `metadataBase` to resolve self-referentially
+//      on a preview branch: without it, preview pages emit absolute
+//      URLs pointing at the canonical project domain
+//      (opensetlist.vercel.app), which serves PROD code — a new route
+//      shipped only on the preview branch would 404 there. Vercel
+//      reports `VERCEL_URL` without scheme so we prepend `https://`.
+//   3. opensetlist.vercel.app — fallback for local `next dev` and
+//      anywhere the prior two are absent. Matches the historical
+//      default; safe because nothing in this fallback path generates
+//      shareable links.
 export const BASE_URL =
-  process.env.NEXT_PUBLIC_BASE_URL ?? "https://opensetlist.vercel.app";
+  process.env.NEXT_PUBLIC_BASE_URL ??
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "https://opensetlist.vercel.app");
 
 /**
  * Display brand name. Same string in every locale (per
