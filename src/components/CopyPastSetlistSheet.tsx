@@ -218,13 +218,21 @@ export function CopyPastSetlistSheet({
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 bg-black/40 z-[200]" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[210] mt-24 flex h-fit max-h-[90vh] flex-col rounded-t-2xl bg-white outline-none">
+        {/* `min-h-[60vh]` keeps the drawer at a usable height even
+            when the body content is small (loading spinner alone,
+            empty-state, single-card picker). Without it vaul renders
+            at content height — on mobile that landed as a ~120 px
+            sliver glued to the bottom of the screen that the user
+            couldn't comfortably interact with. `max-h-[90vh]` still
+            caps growth so a 10-card picker scrolls inside the
+            drawer rather than pushing past the address bar. */}
+        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[210] mt-24 flex h-fit min-h-[60vh] max-h-[90vh] flex-col rounded-t-2xl bg-white outline-none">
           <div className="mx-auto mt-3 h-1.5 w-12 flex-shrink-0 rounded-full bg-gray-300" />
 
           <Drawer.Title className="sr-only">{t("copy.sheetTitle")}</Drawer.Title>
 
-          <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <h2 className="text-lg font-semibold text-gray-900">
                 {t("copy.sheetTitle")}
               </h2>
@@ -239,7 +247,10 @@ export function CopyPastSetlistSheet({
             </div>
 
             {loading && (
-              <div className="py-8 text-center text-sm text-gray-500">
+              // flex-1 + items-center vertically centers the spinner
+              // inside the now-min-60vh drawer instead of pinning it
+              // to the top with a slab of empty space below.
+              <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
                 {t("copy.loading")}
               </div>
             )}
@@ -254,7 +265,7 @@ export function CopyPastSetlistSheet({
             )}
 
             {!loading && !error && data !== null && data.length === 0 && (
-              <div className="py-8 text-center text-sm text-gray-500">
+              <div className="flex-1 flex items-center justify-center text-sm text-gray-500 px-4 text-center">
                 {t("copy.emptyHint")}
               </div>
             )}

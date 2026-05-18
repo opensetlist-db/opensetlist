@@ -526,14 +526,27 @@ export function PredictedSetlist({
               </button>
             </div>
           ) : (
-            // Left-aligned pill button mirroring `<AddItemButton>` +
+            // Left-aligned pill buttons mirroring `<AddItemButton>` +
             // Wishlist `+ 곡 추가` and matching the `결과 공유 🎯`
             // share CTA shape. The earlier muted primary-color text
             // was under-selling the pre-show prediction funnel
             // entry point; an intermediate full-width gradient bar
             // (PR #390) overshot. The pill landing matches the
             // share button's compact prominence.
-            <div style={{ padding: "2px 14px" }}>
+            //
+            // Two-button row: `+ 곡 추가` opens inline search,
+            // `📋 …` opens the past-setlist seed sheet. Same pill
+            // style on both so they read as siblings; `flexWrap`
+            // lets them stack on the narrowest viewports rather
+            // than overflowing the row.
+            <div
+              style={{
+                padding: "2px 14px",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
@@ -552,39 +565,29 @@ export function PredictedSetlist({
               >
                 {t("add")}
               </button>
+              <button
+                type="button"
+                onClick={() => setCopyOpen(true)}
+                className="text-sm font-medium rounded-full px-5 py-2 hover:opacity-90 active:opacity-80 transition-opacity"
+                style={{
+                  background: colors.brandGradient,
+                  color: "white",
+                  border: "none",
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
+                }}
+              >
+                {t("copyFromPast")}
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Copy-from-past-event trigger (pre-show only, not while the
-          inline search is open — keeps the two affordances from
-          competing visually). Always rendered when pre-show; the
-          sheet itself surfaces an empty-state hint when the current
-          event has no series mates with confirmed setlists. */}
-      {isPreShow && !searchOpen && (
-        <div
-          style={{
-            borderTop: `0.5px solid ${colors.borderLight}`,
-            padding: "8px 14px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setCopyOpen(true)}
-            className="text-xs"
-            style={{
-              color: colors.textSecondary,
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            {t("copyFromPast")}
-          </button>
-        </div>
-      )}
       {isPreShow && (
         <CopyPastSetlistSheet
           eventId={eventId}
