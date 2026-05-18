@@ -10,6 +10,18 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 type RouteProps = { params: Promise<{ id: string }> };
 
 /**
+ * Cap on the number of past sibling events returned. 10 covers the
+ * realistic ceiling: even an active tour series typically has ≤ 10
+ * past dates by the time a user opens predictions for the next show,
+ * and a long-running brand series (Animelo Summer Live's hierarchy)
+ * is scoped to the direct `eventSeriesId` here — not parent traversal —
+ * so it doesn't pile up either. Bumping this is cheap if a real
+ * series eventually exceeds it; the trade-off is response size and
+ * picker scroll length.
+ */
+const PAST_EVENTS_LIMIT = 10;
+
+/**
  * `GET /api/events/[id]/past-setlists`
  *
  * Powers the "지난 공연 세트리스트로 예상 시드 채우기" affordance on
@@ -88,7 +100,7 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
       },
     },
     orderBy: { date: "desc" },
-    take: 10,
+    take: PAST_EVENTS_LIMIT,
     select: {
       id: true,
       date: true,

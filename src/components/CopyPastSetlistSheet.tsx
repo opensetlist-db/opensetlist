@@ -12,6 +12,14 @@ import {
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 
 /**
+ * Number of song titles shown in the per-card preview before the
+ * "+N more" affordance. Five fits a typical card height without
+ * forcing a scroll AND is enough to identify the show — "처음 5곡으로
+ * 어떤 공연인지 알아볼 수 있다"가 큐레이션 가이드.
+ */
+const SONG_PREVIEW_COUNT = 5;
+
+/**
  * Bottom sheet that lets the user pre-fill their predicted setlist
  * from a past event in the same EventSeries.
  *
@@ -338,7 +346,7 @@ function SongPreview({
   t: ReturnType<typeof useTranslations<"Predict">>;
 }) {
   if (songs.length === 0) return null;
-  const previewCount = Math.min(5, songs.length);
+  const previewCount = Math.min(SONG_PREVIEW_COUNT, songs.length);
   const preview = songs.slice(0, previewCount);
   const moreCount = songs.length - previewCount;
   return (
