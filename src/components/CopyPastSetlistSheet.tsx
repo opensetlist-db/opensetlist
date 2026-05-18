@@ -111,16 +111,30 @@ export function CopyPastSetlistSheet({
   // confirmed past setlists are effectively immutable for the duration
   // of a page session.
   //
+  // **Why `loading` is NOT in the dep array, and not used as a guard**:
+  // a previous revision put it in both. The flow was self-cancelling:
+  //   1. open → effect runs → `setLoading(true)`
+  //   2. `loading` changes → effect cleanup fires → `cancelled = true`
+  //      on the *current* fetch's closure
+  //   3. fetch resolves → the `if (cancelled) return` short-circuits
+  //      → `setData` + `setLoading(false)` never run
+  //   4. the drawer sticks at "Loading past shows…" forever
+  // Caught on dev preview. The `cancelled` cleanup pattern already
+  // handles racing fetches correctly (only the latest run's success
+  // callback survives because earlier runs' closures are flagged),
+  // so the in-flight guard is redundant — dropping it removes the
+  // race. `data` stays in deps with its guard: it transitions
+  // null → list exactly once per mount, and the guard catches the
+  // re-trigger from that transition.
+  //
   // `react-hooks/set-state-in-effect` flags the synchronous
   // `setLoading(true)` / `setError(null)` here. They're an intentional
   // pair with the fetch (an external-system call): we mark "request
   // in flight" before kicking it off so a re-render mid-flight reads
-  // the loading flag instead of restarting. AddItemBottomSheet uses
-  // the same disable for the same shape.
+  // the loading flag. AddItemBottomSheet uses the same disable.
   useEffect(() => {
     if (!open) return;
     if (data !== null) return;
-    if (loading) return;
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
@@ -154,7 +168,7 @@ export function CopyPastSetlistSheet({
     // time concern (each card renders its title via the user's
     // current locale) and never triggers a refetch — the server
     // already ships every locale's translations.
-  }, [open, data, loading, eventId, t, onFetched]);
+  }, [open, data, eventId, t, onFetched]);
 
   // Reset the "selected for confirm" state when the sheet closes so
   // the next open starts back at the picker grid. The fetched `data`
