@@ -125,7 +125,11 @@ export function CopyPastSetlistSheet({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
-    fetch(`/api/events/${eventId}/past-setlists?locale=${encodeURIComponent(locale)}`)
+    // Locale is handled fully client-side (via `displayOriginalName` /
+    // `displayOriginalTitle` / `formatDate` on the picker cards), so
+    // no query param is appended — the server ships every locale's
+    // translations and never reads a `?locale=` filter.
+    fetch(`/api/events/${eventId}/past-setlists`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`http_${res.status}`);
         return res.json() as Promise<PastEventsResponse>;
@@ -146,7 +150,11 @@ export function CopyPastSetlistSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, data, loading, eventId, locale, t, onFetched]);
+    // `locale` intentionally not in this dep array: it's a render-
+    // time concern (each card renders its title via the user's
+    // current locale) and never triggers a refetch — the server
+    // already ships every locale's translations.
+  }, [open, data, loading, eventId, t, onFetched]);
 
   // Reset the "selected for confirm" state when the sheet closes so
   // the next open starts back at the picker grid. The fetched `data`
@@ -410,9 +418,15 @@ function ConfirmPanel({
       <div className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 space-y-0.5">
         <div>{t("copy.confirmIncoming", { count: source.songs.length })}</div>
         <div>{t("copy.confirmExisting", { count: existingCount })}</div>
-        <div className="text-xs text-gray-500">
-          {t("copy.confirmDup", { count: dupCount })}
-        </div>
+        {/* Dup-skip preview is only meaningful in append mode —
+            replace discards `existingPredictions` and applies every
+            incoming song, so "N duplicates will be skipped" is false
+            for replace. */}
+        {mode === "append" && (
+          <div className="text-xs text-gray-500">
+            {t("copy.confirmDup", { count: dupCount })}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
