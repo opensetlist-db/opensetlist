@@ -54,11 +54,33 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const current = await prisma.event.findFirst({
-    where: { id: eventId, isDeleted: false },
-    select: { id: true, date: true, eventSeriesId: true },
-  });
-  if (!current) {
+  // Both Prisma calls fall back to `null` via a `.catch` so a
+  // transient DB error (connection drop, Supabase pooler restart)
+  // surfaces as a typed `{ ok: false, error: "db_error" }` 500
+  // instead of an unformatted Next.js error page. The
+  // `<CopyPastSetlistSheet>` client treats any `!res.ok` response as
+  // `copy.fetchError`, but the typed code keeps server-side logs
+  // greppable.
+  //
+  // `current` uses `undefined` as the db-error sentinel (since `null`
+  // already means "not found"); the order of the next two checks
+  // distinguishes them: db_error → 500, then event_not_found → 404.
+  const current = await prisma.event
+    .findFirst({
+      where: { id: eventId, isDeleted: false },
+      select: { id: true, date: true, eventSeriesId: true },
+    })
+    .catch((err: unknown) => {
+      console.error("[past-setlists] event.findFirst failed", err);
+      return undefined;
+    });
+  if (current === undefined) {
+    return NextResponse.json(
+      { ok: false, error: "db_error" },
+      { status: 500 },
+    );
+  }
+  if (current === null) {
     return NextResponse.json(
       { ok: false, error: "event_not_found" },
       { status: 404 },
@@ -86,7 +108,8 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const siblings = await prisma.event.findMany({
+  const siblings = await prisma.event
+    .findMany({
     where: {
       eventSeriesId: current.eventSeriesId,
       isDeleted: false,
@@ -162,7 +185,17 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
         },
       },
     },
-  });
+    })
+    .catch((err: unknown) => {
+      console.error("[past-setlists] event.findMany failed", err);
+      return null;
+    });
+  if (siblings === null) {
+    return NextResponse.json(
+      { ok: false, error: "db_error" },
+      { status: 500 },
+    );
+  }
 
   const pastEvents = siblings
     .map((ev) => {

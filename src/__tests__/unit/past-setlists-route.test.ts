@@ -166,6 +166,32 @@ describe("GET /api/events/[id]/past-setlists", () => {
     });
   });
 
+  it("returns 500 db_error when event.findFirst rejects", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("connection reset"),
+    );
+    const res = await GET(getRequest() as never, { params: params1 });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: "db_error" });
+    expect(prisma.event.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 db_error when event.findMany rejects", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(1),
+      date: new Date("2025-05-02T00:00:00Z"),
+      eventSeriesId: BigInt(5),
+    });
+    (prisma.event.findMany as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("pooler restart"),
+    );
+    const res = await GET(getRequest() as never, { params: params1 });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: "db_error" });
+  });
+
   it("drops siblings whose songCount collapses to 0 after flatten (every effective song soft-deleted)", async () => {
     (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: BigInt(1),
