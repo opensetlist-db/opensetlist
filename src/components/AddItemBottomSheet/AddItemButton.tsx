@@ -20,12 +20,16 @@ interface Props {
  * mounted. Keeps the unit-test surface tight (visibility = mount,
  * not internal predicate).
  *
- * Visual treatment: full-width "ghost" row matching the project's
- * Wishlist + Predict surface add-row CTAs (`AddItem.addButtonLabel`
- * sets the "+ 곡 추가" copy). Anchored just below the last main row
- * (above the encore divider) so encore rows still sort beneath the
- * add affordance — submitting an encore song uses the per-row
- * encore toggle inside the sheet, not the position of the button.
+ * Visual treatment: full-width gradient bar (cyan → blue) matching
+ * the share-card CTA tone. The earlier "ghost row" treatment was too
+ * quiet for a load-bearing crowdsourcing affordance — Phase 1C's
+ * participation funnel starts here, and a muted row buried under the
+ * setlist was getting overlooked. Sibling `+ 곡 추가` CTAs in the
+ * Predict + Wishlist surfaces share the same gradient tone for
+ * consistency. Anchored just below the last main row (above the
+ * encore divider) so encore rows still sort beneath the add
+ * affordance — submitting an encore song uses the per-row encore
+ * toggle inside the sheet, not the position of the button.
  */
 export function AddItemButton({ onClick }: Props) {
   const t = useTranslations("AddItem");
@@ -33,7 +37,12 @@ export function AddItemButton({ onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors py-3 px-5 border-t border-dashed border-gray-200"
+      className="w-full text-sm font-semibold text-white py-3.5 px-5 hover:opacity-90 active:opacity-80 transition-opacity"
+      style={{
+        background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+        border: "none",
+        cursor: "pointer",
+      }}
     >
       {t("addButtonLabel")}
     </button>

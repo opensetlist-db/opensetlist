@@ -484,16 +484,20 @@ export function PredictedSetlist({
               </button>
             </div>
           ) : (
+            // Visual treatment mirrors `<AddItemButton>` and the
+            // Wishlist `+ 곡 추가` button — cyan→blue gradient bar
+            // for prominence. The CTA is the entry point to the
+            // pre-show prediction funnel, so the earlier muted
+            // primary-color text was under-selling it.
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="text-xs w-full text-left"
+              className="w-full text-sm font-semibold text-white py-3 px-4 hover:opacity-90 active:opacity-80 transition-opacity"
               style={{
-                padding: "10px 14px",
-                color: colors.primary,
-                background: "transparent",
+                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
                 border: "none",
                 cursor: "pointer",
+                textAlign: "left",
               }}
             >
               {t("add")}

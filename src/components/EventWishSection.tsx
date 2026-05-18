@@ -432,11 +432,23 @@ export function EventWishSection({
                     </button>
                   </div>
                 ) : (
+                  // Column-width gradient bar matching the
+                  // `<AddItemButton>` + Predict surface treatment.
+                  // The earlier muted text link was easy to miss
+                  // and Wishlist is one of the load-bearing
+                  // pre-show participation hooks — bumping
+                  // prominence to a gradient bar lines it up with
+                  // the share CTA tone the rest of the page uses.
                   <button
                     type="button"
                     onClick={() => setSearchOpen(true)}
-                    className="text-xs"
-                    style={{ color: colors.wishlistMuted, cursor: "pointer" }}
+                    className="w-full text-xs font-semibold text-white py-2.5 px-3 hover:opacity-90 active:opacity-80 transition-opacity"
+                    style={{
+                      background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                      border: "none",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
                   >
                     {t("add")}
                   </button>
