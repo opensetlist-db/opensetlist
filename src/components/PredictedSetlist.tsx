@@ -494,7 +494,7 @@ export function PredictedSetlist({
               onClick={() => setSearchOpen(true)}
               className="w-full text-sm font-semibold text-white py-3 px-4 hover:opacity-90 active:opacity-80 transition-opacity"
               style={{
-                background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                background: colors.brandGradient,
                 border: "none",
                 cursor: "pointer",
                 textAlign: "left",

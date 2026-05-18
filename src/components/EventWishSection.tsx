@@ -444,7 +444,7 @@ export function EventWishSection({
                     onClick={() => setSearchOpen(true)}
                     className="w-full text-xs font-semibold text-white py-2.5 px-3 hover:opacity-90 active:opacity-80 transition-opacity"
                     style={{
-                      background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+                      background: colors.brandGradient,
                       border: "none",
                       cursor: "pointer",
                       textAlign: "left",

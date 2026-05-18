@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { colors } from "@/styles/tokens";
 
 interface Props {
   onClick: () => void;
@@ -39,7 +40,7 @@ export function AddItemButton({ onClick }: Props) {
       onClick={onClick}
       className="w-full text-sm font-semibold text-white py-3.5 px-5 hover:opacity-90 active:opacity-80 transition-opacity"
       style={{
-        background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
+        background: colors.brandGradient,
         border: "none",
         cursor: "pointer",
       }}
