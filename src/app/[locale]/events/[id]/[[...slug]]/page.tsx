@@ -212,7 +212,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // reflect current state. Existing shares (no `&s=`) fall through to
   // the route's clock-derived path — byte-for-byte the prior behavior.
   const ogStatus = getEventStatus(event);
-  const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}&s=${ogStatus}`;
+  // /v2 path mirror of the canonical /api/og/event/[id] route — see
+  // src/app/api/og/v2/event/[id]/route.tsx for the full rationale.
+  // Short version: X negative-cached the original og:image URL
+  // pattern during the 2026-05-02→05-18 `robots.txt` block window;
+  // moving to /v2 forces a fresh crawl with no prior verdict.
+  const ogImage = `/api/og/v2/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}&s=${ogStatus}`;
   const pageUrl = `/${locale}/events/${id}/${event.slug}`;
 
   return {
