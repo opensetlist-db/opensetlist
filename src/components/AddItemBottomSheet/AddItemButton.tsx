@@ -38,7 +38,7 @@ export function AddItemButton({ onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-sm font-semibold text-white py-3.5 px-5 hover:opacity-90 active:opacity-80 transition-opacity"
+      className="w-full text-left text-sm font-semibold text-white py-3.5 px-5 hover:opacity-90 active:opacity-80 transition-opacity"
       style={{
         background: colors.brandGradient,
         border: "none",
