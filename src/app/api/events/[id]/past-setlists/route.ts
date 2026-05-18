@@ -1,0 +1,180 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { serializeBigInt } from "@/lib/utils";
+import {
+  flattenSetlistToPredictions,
+  type SetlistItemSlim,
+} from "@/lib/copyPastSetlist";
+import type { PredictionEntry } from "@/lib/predictionsStorage";
+
+type RouteProps = { params: Promise<{ id: string }> };
+
+/**
+ * `GET /api/events/[id]/past-setlists`
+ *
+ * Powers the "지난 공연 세트리스트로 예상 시드 채우기" affordance on
+ * `<PredictedSetlist>`. Returns past sibling events (same
+ * `eventSeriesId`, strictly before the current event's date) that
+ * carry at least one `confirmed` song-type `SetlistItem`, along with
+ * a pre-flattened/pre-deduped `PredictionEntry[]` per event so the
+ * client can call `writePredictions` directly.
+ *
+ * The transform rules — first-song-of-medley only, variant → base,
+ * songId dedup — live in `flattenSetlistToPredictions`. Keeping the
+ * server as the single transform site means a future tweak to the
+ * dedup contract doesn't have to ship to N clients.
+ *
+ * Empty results (no series; series exists but no confirmed-song
+ * sibling) collapse to `{ ok: true, pastEvents: [] }` so the client
+ * can render a single empty-state branch regardless of which
+ * upstream condition was the cause.
+ */
+export async function GET(req: NextRequest, { params }: RouteProps) {
+  const { id } = await params;
+
+  let eventId: bigint;
+  try {
+    eventId = BigInt(id);
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "invalid_event_id" },
+      { status: 400 },
+    );
+  }
+
+  const current = await prisma.event.findFirst({
+    where: { id: eventId, isDeleted: false },
+    select: { id: true, date: true, eventSeriesId: true },
+  });
+  if (!current) {
+    return NextResponse.json(
+      { ok: false, error: "event_not_found" },
+      { status: 404 },
+    );
+  }
+
+  // No series → no siblings. Short-circuit before findMany to keep the
+  // empty-state path cheap.
+  if (current.eventSeriesId === null) {
+    return NextResponse.json(
+      { ok: true, pastEvents: [] },
+      { headers: { "Cache-Control": "private, max-age=0, must-revalidate" } },
+    );
+  }
+
+  // TBA current event (date === null): we still don't know the
+  // ordering point, so there's no defensible "strictly before" filter
+  // to apply. Treat as empty rather than silently widening to "any
+  // sibling regardless of order" — which would let a future tour
+  // bleed backwards into a TBA opener's seed.
+  if (current.date === null) {
+    return NextResponse.json(
+      { ok: true, pastEvents: [] },
+      { headers: { "Cache-Control": "private, max-age=0, must-revalidate" } },
+    );
+  }
+
+  const siblings = await prisma.event.findMany({
+    where: {
+      eventSeriesId: current.eventSeriesId,
+      isDeleted: false,
+      id: { not: eventId },
+      // Prisma Date columns are stored as UTC instants. `lt` is a
+      // direct instant comparison — no server-local boundary games
+      // (CLAUDE.md UTC hard rule).
+      date: { lt: current.date },
+      setlistItems: {
+        some: { isDeleted: false, status: "confirmed", type: "song" },
+      },
+    },
+    orderBy: { date: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      date: true,
+      originalName: true,
+      originalShortName: true,
+      originalLanguage: true,
+      originalVenue: true,
+      translations: {
+        select: { locale: true, name: true, shortName: true, venue: true },
+      },
+      setlistItems: {
+        where: { isDeleted: false, status: "confirmed", type: "song" },
+        orderBy: { position: "asc" },
+        select: {
+          position: true,
+          // Pulling the full medley + base alongside the row keeps
+          // this to a single round-trip. `take: 1` on `songs` would
+          // shave bytes but the medley rule is enforced in the
+          // flatten helper (which the unit tests cover), and a
+          // single-source-of-truth rule beats a marginal byte saving.
+          songs: {
+            orderBy: { order: "asc" },
+            select: {
+              order: true,
+              song: {
+                select: {
+                  id: true,
+                  originalTitle: true,
+                  originalLanguage: true,
+                  variantLabel: true,
+                  baseVersionId: true,
+                  isDeleted: true,
+                  translations: {
+                    select: { locale: true, title: true, variantLabel: true },
+                  },
+                  // Self-relation defined at prisma/schema.prisma:736
+                  // `baseVersion Song? @relation("SongVariants", ...)`.
+                  baseVersion: {
+                    select: {
+                      id: true,
+                      originalTitle: true,
+                      originalLanguage: true,
+                      variantLabel: true,
+                      baseVersionId: true,
+                      isDeleted: true,
+                      translations: {
+                        select: {
+                          locale: true,
+                          title: true,
+                          variantLabel: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const pastEvents = siblings
+    .map((ev) => {
+      const songs: PredictionEntry[] = flattenSetlistToPredictions(
+        ev.setlistItems as SetlistItemSlim[],
+      );
+      return {
+        eventId: Number(ev.id),
+        originalName: ev.originalName,
+        originalShortName: ev.originalShortName,
+        originalLanguage: ev.originalLanguage,
+        originalVenue: ev.originalVenue,
+        translations: ev.translations,
+        date: ev.date ? ev.date.toISOString() : null,
+        songCount: songs.length,
+        songs,
+      };
+    })
+    // A sibling whose every song was either soft-deleted or had a
+    // broken base reference collapses to 0 songs after flatten. Hide
+    // it — there's nothing to seed.
+    .filter((e) => e.songCount > 0);
+
+  return NextResponse.json(serializeBigInt({ ok: true, pastEvents }), {
+    headers: { "Cache-Control": "private, max-age=0, must-revalidate" },
+  });
+}
