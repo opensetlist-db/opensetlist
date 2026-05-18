@@ -432,11 +432,23 @@ export function EventWishSection({
                     </button>
                   </div>
                 ) : (
+                  // Left-aligned pill button — same shape as
+                  // `<AddItemButton>`, Predict `+ 곡 추가`, and the
+                  // share-card `결과 공유 🎯` CTA. Pill is sized
+                  // down slightly (text-xs vs the others' text-sm)
+                  // to fit the narrower "내 선택" column inside the
+                  // 2-col grid without overlapping the divider.
                   <button
                     type="button"
                     onClick={() => setSearchOpen(true)}
-                    className="text-xs"
-                    style={{ color: colors.wishlistMuted, cursor: "pointer" }}
+                    className="text-xs font-medium rounded-full px-4 py-1.5 hover:opacity-90 active:opacity-80 transition-opacity"
+                    style={{
+                      background: colors.brandGradient,
+                      color: "white",
+                      border: "none",
+                      whiteSpace: "nowrap",
+                      cursor: "pointer",
+                    }}
                   >
                     {t("add")}
                   </button>
