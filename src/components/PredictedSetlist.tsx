@@ -22,10 +22,6 @@ import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { PredictSongRow, type PredictRowState } from "@/components/PredictSongRow";
 import { ShareCardButton } from "@/components/ShareCardButton";
 import {
-  CopyPastSetlistSheet,
-  type CopyApplyMeta,
-} from "@/components/CopyPastSetlistSheet";
-import {
   readPredictionEntries,
   writePredictions,
   markLocked,
@@ -190,9 +186,6 @@ export function PredictedSetlist({
   // ─── Search reveal toggle (pre-show only) ───────────────────
   const [searchOpen, setSearchOpen] = useState(false);
 
-  // ─── Copy-from-past sheet state (pre-show only) ─────────────
-  const [copyOpen, setCopyOpen] = useState(false);
-
   // ─── Score (live + post-show) ───────────────────────────────
   const score = useMemo(
     () => calcPredictScore(predictions, actualSongs),
@@ -288,41 +281,6 @@ export function PredictedSetlist({
       writePredictions(eventId, next);
     },
     [eventId, predictions, isLocked],
-  );
-
-  // Copy-from-past commit. Defensive isLocked guard mirrors
-  // handleAdd / handleRemove — the sheet's trigger only renders
-  // inside the `isPreShow` block, but a long-open sheet that crosses
-  // `startMs` mid-deliberation must not commit. Sheet's onApply
-  // builds the merged list (append-unique or replace) so the parent
-  // here just persists it and fires the analytics event with the
-  // metadata the sheet supplied.
-  const handleCopyApply = useCallback(
-    (merged: PredictionEntry[], meta: CopyApplyMeta) => {
-      if (isLocked) return;
-      setPredictions(merged);
-      writePredictions(eventId, merged);
-      setCopyOpen(false);
-      trackEvent("predict_copy_apply", {
-        event_id: String(eventId),
-        source_event_id: String(meta.sourceEventId),
-        mode: meta.mode,
-        incoming_count: meta.incoming,
-        added_count: meta.added,
-        final_count: meta.final,
-      });
-    },
-    [eventId, isLocked],
-  );
-
-  const handleCopyFetched = useCallback(
-    (pastEventCount: number) => {
-      trackEvent("predict_copy_open", {
-        event_id: String(eventId),
-        past_event_count: pastEventCount,
-      });
-    },
-    [eventId],
   );
 
   // ─── Per-row state derivation ───────────────────────────────
@@ -555,47 +513,6 @@ export function PredictedSetlist({
             </div>
           )}
         </div>
-      )}
-
-      {/* Copy-from-past-event trigger (pre-show only, not while the
-          inline search is open — keeps the two affordances from
-          competing visually). Always rendered when pre-show; the
-          sheet itself surfaces an empty-state hint when the current
-          event has no series mates with confirmed setlists. */}
-      {isPreShow && !searchOpen && (
-        <div
-          style={{
-            borderTop: `0.5px solid ${colors.borderLight}`,
-            padding: "8px 14px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setCopyOpen(true)}
-            className="text-xs"
-            style={{
-              color: colors.textSecondary,
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            {t("copyFromPast")}
-          </button>
-        </div>
-      )}
-      {isPreShow && (
-        <CopyPastSetlistSheet
-          eventId={eventId}
-          locale={locale}
-          isLocked={isLocked}
-          existingPredictions={predictions}
-          open={copyOpen}
-          onOpenChange={setCopyOpen}
-          onApply={handleCopyApply}
-          onFetched={handleCopyFetched}
-        />
       )}
 
       {/* Post-show: share button (gated by ShareCardButton itself) */}
