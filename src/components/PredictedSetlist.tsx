@@ -484,20 +484,33 @@ export function PredictedSetlist({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="text-xs w-full text-left"
-              style={{
-                padding: "10px 14px",
-                color: colors.primary,
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              {t("add")}
-            </button>
+            // Left-aligned pill button mirroring `<AddItemButton>` +
+            // Wishlist `+ 곡 추가` and matching the `결과 공유 🎯`
+            // share CTA shape. The earlier muted primary-color text
+            // was under-selling the pre-show prediction funnel
+            // entry point; an intermediate full-width gradient bar
+            // (PR #390) overshot. The pill landing matches the
+            // share button's compact prominence.
+            <div style={{ padding: "2px 14px" }}>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="text-sm font-medium rounded-full px-5 py-2 hover:opacity-90 active:opacity-80 transition-opacity"
+                style={{
+                  background: colors.brandGradient,
+                  color: "white",
+                  border: "none",
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  lineHeight: 1,
+                }}
+              >
+                {t("add")}
+              </button>
+            </div>
           )}
         </div>
       )}
