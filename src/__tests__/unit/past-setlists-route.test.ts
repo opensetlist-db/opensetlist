@@ -192,6 +192,45 @@ describe("GET /api/events/[id]/past-setlists", () => {
     expect(body).toEqual({ ok: false, error: "db_error" });
   });
 
+  it("drops siblings whose event id is beyond Number.MAX_SAFE_INTEGER (no truncated eventId in response)", async () => {
+    const unsafeId = BigInt(2) ** BigInt(53) + BigInt(7);
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(1),
+      date: new Date("2025-05-02T00:00:00Z"),
+      eventSeriesId: BigInt(5),
+    });
+    (prisma.event.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: unsafeId,
+        date: new Date("2025-04-02T00:00:00Z"),
+        originalName: "Unsafe id",
+        originalShortName: null,
+        originalLanguage: "ja",
+        originalVenue: null,
+        translations: [],
+        setlistItems: [
+          { position: 1, songs: [{ order: 0, song: songRow({ id: BigInt(100) }) }] },
+        ],
+      },
+      {
+        id: BigInt(3),
+        date: new Date("2025-04-01T00:00:00Z"),
+        originalName: "Safe",
+        originalShortName: null,
+        originalLanguage: "ja",
+        originalVenue: null,
+        translations: [],
+        setlistItems: [
+          { position: 1, songs: [{ order: 0, song: songRow({ id: BigInt(200) }) }] },
+        ],
+      },
+    ]);
+    const res = await GET(getRequest() as never, { params: params1 });
+    const body = await res.json();
+    expect(body.pastEvents).toHaveLength(1);
+    expect(body.pastEvents[0].eventId).toBe(3);
+  });
+
   it("drops siblings whose songCount collapses to 0 after flatten (every effective song soft-deleted)", async () => {
     (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: BigInt(1),

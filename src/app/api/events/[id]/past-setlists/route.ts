@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import {
   flattenSetlistToPredictions,
+  safeBigIntToNumber,
   type SetlistItemSlim,
 } from "@/lib/copyPastSetlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
@@ -198,26 +199,36 @@ export async function GET(req: NextRequest, { params }: RouteProps) {
   }
 
   const pastEvents = siblings
-    .map((ev) => {
+    .flatMap((ev) => {
+      // Drop siblings whose `id` falls outside the JS safe-integer
+      // range — same guard rationale as `flattenSetlistToPredictions`
+      // applies (a truncated eventId in the response surfaces to the
+      // client and could route a subsequent action at the wrong row).
+      // Phase 1 autoincrement ids stay far below 2^53, so this is
+      // belt-and-suspenders, but we'd rather skip than emit.
+      const eventIdSafe = safeBigIntToNumber(ev.id);
+      if (eventIdSafe === null) return [];
       const songs: PredictionEntry[] = flattenSetlistToPredictions(
         ev.setlistItems as SetlistItemSlim[],
       );
-      return {
-        eventId: Number(ev.id),
-        originalName: ev.originalName,
-        originalShortName: ev.originalShortName,
-        originalLanguage: ev.originalLanguage,
-        originalVenue: ev.originalVenue,
-        translations: ev.translations,
-        date: ev.date ? ev.date.toISOString() : null,
-        songCount: songs.length,
-        songs,
-      };
-    })
-    // A sibling whose every song was either soft-deleted or had a
-    // broken base reference collapses to 0 songs after flatten. Hide
-    // it — there's nothing to seed.
-    .filter((e) => e.songCount > 0);
+      // A sibling whose every song was either soft-deleted or had a
+      // broken base reference collapses to 0 songs after flatten.
+      // Hide it — there's nothing to seed.
+      if (songs.length === 0) return [];
+      return [
+        {
+          eventId: eventIdSafe,
+          originalName: ev.originalName,
+          originalShortName: ev.originalShortName,
+          originalLanguage: ev.originalLanguage,
+          originalVenue: ev.originalVenue,
+          translations: ev.translations,
+          date: ev.date ? ev.date.toISOString() : null,
+          songCount: songs.length,
+          songs,
+        },
+      ];
+    });
 
   return NextResponse.json(serializeBigInt({ ok: true, pastEvents }), {
     headers: { "Cache-Control": "private, max-age=0, must-revalidate" },

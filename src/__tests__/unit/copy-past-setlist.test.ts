@@ -3,6 +3,7 @@ import {
   flattenSetlistToPredictions,
   mergeAppendUnique,
   dedupCountForMerge,
+  safeBigIntToNumber,
   type SetlistItemSlim,
 } from "@/lib/copyPastSetlist";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
@@ -235,6 +236,54 @@ describe("flattenSetlistToPredictions", () => {
     expect(out[0].songId).toBe(80);
   });
 
+  it("skips entries whose effective.id exceeds Number.MAX_SAFE_INTEGER (dedup-set correctness)", () => {
+    // 2^53 — just past the safe range. A naïve Number(bigint) would
+    // truncate this to 9007199254740992 and collide with the actual
+    // safe-range neighbour, silently merging two distinct songs.
+    const unsafeId = BigInt(2) ** BigInt(53) + BigInt(1);
+    const items: SetlistItemSlim[] = [
+      setlistItem(1, [
+        { order: 0, song: songCore({ id: unsafeId, originalTitle: "Overflow" }) },
+      ]),
+      setlistItem(2, [
+        { order: 0, song: songCore({ id: BigInt(42), originalTitle: "Safe" }) },
+      ]),
+    ];
+    const out = flattenSetlistToPredictions(items);
+    expect(out).toHaveLength(1);
+    expect(out[0].songId).toBe(42);
+  });
+
+  it("nulls out carried baseVersionId when it would be unsafe (degenerate variant→base chain)", () => {
+    // Reaches the carried-baseVersionId branch via the variant→base
+    // path: the effective row (the base) is itself stamped with a
+    // non-null baseVersionId pointing further up the chain. Schema
+    // allows it; convention says no, so this is data damage we want
+    // to handle without emitting a truncated metadata value.
+    const unsafeBaseOfBase = BigInt(2) ** BigInt(53) + BigInt(5);
+    const items: SetlistItemSlim[] = [
+      setlistItem(1, [
+        {
+          order: 0,
+          song: songCore({
+            id: BigInt(105),
+            baseVersionId: BigInt(100),
+            baseVersion: songCore({
+              id: BigInt(100),
+              originalTitle: "Base with unsafe pointer",
+              // Degenerate: this base's own baseVersionId is unsafe.
+              baseVersionId: unsafeBaseOfBase,
+            }),
+          }),
+        },
+      ]),
+    ];
+    const out = flattenSetlistToPredictions(items);
+    expect(out).toHaveLength(1);
+    expect(out[0].songId).toBe(100);
+    expect(out[0].song.baseVersionId).toBeNull();
+  });
+
   it("the same non-variant song repeated across positions appears once", () => {
     const items: SetlistItemSlim[] = [
       setlistItem(1, [
@@ -294,6 +343,28 @@ describe("mergeAppendUnique", () => {
       [entry(1), entry(2)],
     );
     expect(merged.map((e) => e.songId)).toEqual([1, 2]);
+  });
+});
+
+describe("safeBigIntToNumber", () => {
+  it("returns a number for safe-range values", () => {
+    expect(safeBigIntToNumber(BigInt(0))).toBe(0);
+    expect(safeBigIntToNumber(BigInt(42))).toBe(42);
+    expect(safeBigIntToNumber(BigInt(Number.MAX_SAFE_INTEGER))).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+    expect(safeBigIntToNumber(BigInt(Number.MIN_SAFE_INTEGER))).toBe(
+      Number.MIN_SAFE_INTEGER,
+    );
+  });
+
+  it("returns null for values past the positive boundary", () => {
+    expect(safeBigIntToNumber(BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1))).toBeNull();
+    expect(safeBigIntToNumber(BigInt(2) ** BigInt(64))).toBeNull();
+  });
+
+  it("returns null for values past the negative boundary", () => {
+    expect(safeBigIntToNumber(BigInt(Number.MIN_SAFE_INTEGER) - BigInt(1))).toBeNull();
   });
 });
 
