@@ -346,6 +346,52 @@ describe("<SongPickerContent>", () => {
     expect(screen.getByText(/picker\.resultCount:.*"count":5.*"selected":2/)).toBeTruthy();
   });
 
+  it("filter chips expose active state via aria-pressed", () => {
+    render(
+      <SongPickerContent
+        songs={SONGS}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    // Initial: `all` chip is active by default.
+    expect(screen.getByText("All").getAttribute("aria-pressed")).toBe("true");
+    // Filter labels also appear on row badges; pick the chip
+    // (first DOM occurrence).
+    const hasunosoraChip = screen.getAllByText("Hasunosora")[0];
+    expect(hasunosoraChip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(hasunosoraChip);
+    expect(hasunosoraChip.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("All").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("song rows expose selection state via aria-pressed", () => {
+    const { rerender } = render(
+      <SongPickerContent
+        songs={SONGS}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    const row = screen.getByText("Dream Believers").closest('[role="button"]');
+    expect(row?.getAttribute("aria-pressed")).toBe("false");
+    rerender(
+      <SongPickerContent
+        songs={SONGS}
+        selectedIds={[10]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    const rowAfter = screen.getByText("Dream Believers").closest('[role="button"]');
+    expect(rowAfter?.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("clearing the search input via × button restores all rows", () => {
     render(
       <SongPickerContent

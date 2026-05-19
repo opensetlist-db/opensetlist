@@ -242,6 +242,10 @@ export function SongPickerContent({
                 key={f.key}
                 type="button"
                 onClick={() => setActiveFilterKey(f.key)}
+                // aria-pressed surfaces the active-filter state to
+                // screen readers. The visual cue (border + 12%-alpha
+                // bg tint) is invisible to assistive tech otherwise.
+                aria-pressed={active}
                 style={style}
               >
                 {f.label}
@@ -364,6 +368,10 @@ function SongRow({
     <div
       role="button"
       tabIndex={0}
+      // aria-pressed surfaces the row's selection state to screen
+      // readers. Without it the checkbox / row-bg-tint cues are
+      // invisible to assistive tech.
+      aria-pressed={selected}
       onClick={() => onToggle(song.songId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
