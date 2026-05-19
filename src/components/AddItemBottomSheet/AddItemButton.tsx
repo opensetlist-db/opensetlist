@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { colors } from "@/styles/tokens";
+import { SecondaryButton } from "@/components/ui/Button";
 
 interface Props {
   onClick: () => void;
@@ -21,18 +21,18 @@ interface Props {
  * mounted. Keeps the unit-test surface tight (visibility = mount,
  * not internal predicate).
  *
- * Visual treatment: left-aligned pill button (cyan → blue gradient)
- * matching the share-card CTA shape exactly. The earlier "ghost row"
- * was too quiet for a load-bearing crowdsourcing affordance — Phase
- * 1C's participation funnel starts here — and an intermediate
- * full-width gradient bar (PR #390) read as too heavy. The pill
- * shape lands at the same prominence as `결과 공유 🎯` so the two
- * primary CTAs feel like siblings. Sibling `+ 곡 추가` pills in the
- * Predict + Wishlist surfaces share the same shape and left-aligned
- * placement (operator preference — center alignment looked floaty
- * against the left-anchored setlist row content). Wrapper row keeps
- * a dashed top border so the section break between main and encore
- * rows reads visually even with the pill replacing the bar.
+ * Visual treatment: full-width SecondaryButton — the unified
+ * utility-row style shared with the wishlist `+ Add a song` and the
+ * Predict two-button row. The earlier gradient pill (PR #390 → v0.13.9)
+ * was the same prominence as the Share CTA, which read as a CTA-
+ * level competition with the actual-setlist content. The wishlist-
+ * button-polish mockup (`raw/mockups/wishlist-button-polish-mockup.jsx`)
+ * splits the hierarchy: utility actions get secondary styling, only
+ * Share keeps the gradient PrimaryButton. The wrapper keeps its
+ * dashed top border so the section break between main rows and the
+ * encore section stays visible — that border is load-bearing for the
+ * section break, not the button's prominence.
+ *
  * Anchored just below the last main row (above the encore divider)
  * so encore rows still sort beneath the add affordance — submitting
  * an encore song uses the per-row encore toggle inside the sheet,
@@ -42,20 +42,9 @@ export function AddItemButton({ onClick }: Props) {
   const t = useTranslations("AddItem");
   return (
     <div className="py-3 px-5 border-t border-dashed border-gray-200">
-      <button
-        type="button"
-        onClick={onClick}
-        className="text-sm font-medium rounded-full px-5 py-2 hover:opacity-90 active:opacity-80 transition-opacity"
-        style={{
-          background: colors.brandGradient,
-          color: "white",
-          border: "none",
-          whiteSpace: "nowrap",
-          cursor: "pointer",
-        }}
-      >
+      <SecondaryButton onClick={onClick} fullWidth>
         {t("addButtonLabel")}
-      </button>
+      </SecondaryButton>
     </div>
   );
 }

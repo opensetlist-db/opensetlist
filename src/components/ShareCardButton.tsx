@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
+import { PrimaryButton } from "@/components/ui/Button";
 import type { ShareCardMode } from "@/components/ShareCardPreview";
 import { calcShareCardScore } from "@/lib/predictScore";
 import { trackEvent } from "@/lib/analytics";
@@ -145,14 +146,15 @@ export function ShareCardButton({
           padding: "14px 14px",
           borderTop: `0.5px solid ${colors.borderLight}`,
           background: colors.bgSubtle,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          gap: "10px",
         }}
       >
-        <button
-          type="button"
+        {/* Share is the only PrimaryButton on the event detail page —
+            the utility row above (Predict add + copy, Wishlist add,
+            Actual setlist add) is uniformly SecondaryButton. The
+            wrapper's `borderTop` plays the role of the "divider line
+            before primary CTA" the wishlist-button-polish mockup
+            calls for. */}
+        <PrimaryButton
           onClick={() => {
             // GA4 Phase 1B: include `mode` so post-analysis can
             // segment the share funnel by lifecycle stage —
@@ -164,17 +166,10 @@ export function ShareCardButton({
             });
             setOpen(true);
           }}
-          className="text-sm font-medium rounded-full px-5 py-2"
-          style={{
-            background: "linear-gradient(135deg, #4FC3F7, #0277BD)",
-            color: "white",
-            border: "none",
-            whiteSpace: "nowrap",
-            cursor: "pointer",
-          }}
+          fullWidth
         >
           {buttonLabel}
-        </button>
+        </PrimaryButton>
       </div>
 
       <ShareCardModal

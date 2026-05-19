@@ -22,6 +22,11 @@ import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import { PredictSongRow, type PredictRowState } from "@/components/PredictSongRow";
 import { ShareCardButton } from "@/components/ShareCardButton";
 import {
+  CopyPastSetlistSheet,
+  type CopyApplyMeta,
+} from "@/components/CopyPastSetlistSheet";
+import { SecondaryButton } from "@/components/ui/Button";
+import {
   readPredictionEntries,
   writePredictions,
   markLocked,
@@ -186,6 +191,9 @@ export function PredictedSetlist({
   // ─── Search reveal toggle (pre-show only) ───────────────────
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // ─── Copy-from-past sheet state (pre-show only) ─────────────
+  const [copyOpen, setCopyOpen] = useState(false);
+
   // ─── Score (live + post-show) ───────────────────────────────
   const score = useMemo(
     () => calcPredictScore(predictions, actualSongs),
@@ -281,6 +289,41 @@ export function PredictedSetlist({
       writePredictions(eventId, next);
     },
     [eventId, predictions, isLocked],
+  );
+
+  // Copy-from-past commit. Defensive isLocked guard mirrors
+  // handleAdd / handleRemove — the sheet's trigger only renders
+  // inside the `isPreShow` block, but a long-open sheet that crosses
+  // `startMs` mid-deliberation must not commit. Sheet's onApply
+  // builds the merged list (append-unique or replace) so the parent
+  // here just persists it and fires the analytics event with the
+  // metadata the sheet supplied.
+  const handleCopyApply = useCallback(
+    (merged: PredictionEntry[], meta: CopyApplyMeta) => {
+      if (isLocked) return;
+      setPredictions(merged);
+      writePredictions(eventId, merged);
+      setCopyOpen(false);
+      trackEvent("predict_copy_apply", {
+        event_id: String(eventId),
+        source_event_id: String(meta.sourceEventId),
+        mode: meta.mode,
+        incoming_count: meta.incoming,
+        added_count: meta.added,
+        final_count: meta.final,
+      });
+    },
+    [eventId, isLocked],
+  );
+
+  const handleCopyFetched = useCallback(
+    (pastEventCount: number) => {
+      trackEvent("predict_copy_open", {
+        event_id: String(eventId),
+        past_event_count: pastEventCount,
+      });
+    },
+    [eventId],
   );
 
   // ─── Per-row state derivation ───────────────────────────────
@@ -484,35 +527,51 @@ export function PredictedSetlist({
               </button>
             </div>
           ) : (
-            // Left-aligned pill button mirroring `<AddItemButton>` +
-            // Wishlist `+ 곡 추가` and matching the `결과 공유 🎯`
-            // share CTA shape. The earlier muted primary-color text
-            // was under-selling the pre-show prediction funnel
-            // entry point; an intermediate full-width gradient bar
-            // (PR #390) overshot. The pill landing matches the
-            // share button's compact prominence.
-            <div style={{ padding: "2px 14px" }}>
-              <button
-                type="button"
+            // Two-button utility row matching the wishlist-button-
+            // polish mockup. Both buttons use the SecondaryButton
+            // variant (`<ShareCardButton>`'s primary gradient is the
+            // only PrimaryButton in this surface, and lives below)
+            // with `flex: 1` so they share the row width evenly.
+            // No `flexWrap` — at iPhone SE width the two ~150 px
+            // buttons still fit; ko / ja / en labels are short
+            // enough that `whiteSpace: nowrap` (inherited from
+            // SecondaryButton) never truncates on supported
+            // viewports.
+            <div
+              style={{
+                padding: "8px 14px 0",
+                display: "flex",
+                gap: 8,
+              }}
+            >
+              <SecondaryButton
                 onClick={() => setSearchOpen(true)}
-                className="text-sm font-medium rounded-full px-5 py-2 hover:opacity-90 active:opacity-80 transition-opacity"
-                style={{
-                  background: colors.brandGradient,
-                  color: "white",
-                  border: "none",
-                  whiteSpace: "nowrap",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  lineHeight: 1,
-                }}
+                style={{ flex: 1 }}
               >
                 {t("add")}
-              </button>
+              </SecondaryButton>
+              <SecondaryButton
+                onClick={() => setCopyOpen(true)}
+                style={{ flex: 1 }}
+              >
+                {t("copyFromPast")}
+              </SecondaryButton>
             </div>
           )}
         </div>
+      )}
+
+      {isPreShow && (
+        <CopyPastSetlistSheet
+          eventId={eventId}
+          locale={locale}
+          isLocked={isLocked}
+          existingPredictions={predictions}
+          open={copyOpen}
+          onOpenChange={setCopyOpen}
+          onApply={handleCopyApply}
+          onFetched={handleCopyFetched}
+        />
       )}
 
       {/* Post-show: share button (gated by ShareCardButton itself) */}
