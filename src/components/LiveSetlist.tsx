@@ -18,6 +18,7 @@ import type {
 } from "@/lib/types/setlist";
 import { EventWishSection } from "@/components/EventWishSection";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 export type {
   ArtistRef,
@@ -90,6 +91,14 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  /**
+   * Catalog + filter chips for the predicted-tab song picker.
+   * Threaded through to `<SetlistSection>` → `<PredictedSetlist>`.
+   * Empty arrays hide the picker (multi-artist festival, non-
+   * upcoming status, or empty artist catalog).
+   */
+  availableSongs: AvailableSong[];
+  unitFilters: UnitFilter[];
 }
 
 export function LiveSetlist({
@@ -107,6 +116,8 @@ export function LiveSetlist({
   seriesName,
   eventTitle,
   dateLine,
+  availableSongs,
+  unitFilters,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -301,6 +312,8 @@ export function LiveSetlist({
             {t("noSetlist")}
           </p>
         }
+        availableSongs={availableSongs}
+        unitFilters={unitFilters}
       />
     </section>
     </>

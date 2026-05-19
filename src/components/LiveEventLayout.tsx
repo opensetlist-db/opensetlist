@@ -26,6 +26,7 @@ import {
 } from "@/lib/sidebarDerivations";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 interface Props {
   // ───── Event-level static (forwarded to children unchanged) ─────
@@ -104,6 +105,16 @@ interface Props {
   // shows real data, then polling refreshes the same shape via the
   // /api/setlist channel. Empty array when no fans have wished yet.
   initialFanTop3: FanTop3Entry[];
+  /**
+   * Predicted-setlist song picker catalog + chip set. Server-fetched
+   * in `page.tsx` (gated on `status === "upcoming"` + non-null
+   * primary artist). Forwarded through `<LiveSetlist>` →
+   * `<SetlistSection>` → `<PredictedSetlist>`. Empty arrays hide
+   * the picker; the rest of the predict surface degrades to the
+   * pre-picker shape (copy-from-past + share CTA only).
+   */
+  availableSongs: AvailableSong[];
+  unitFilters: UnitFilter[];
 }
 
 /**
@@ -166,6 +177,8 @@ export function LiveEventLayout({
   initialReactionsValue,
   initialTrendingSongs,
   initialFanTop3,
+  availableSongs,
+  unitFilters,
 }: Props) {
   // Stays enabled for ongoing AND upcoming events: the wishlist fan
   // TOP-3 needs to update pre-show as more fans submit wishes (per
@@ -367,6 +380,8 @@ export function LiveEventLayout({
           seriesName={seriesShortName ?? series?.name ?? ""}
           eventTitle={eventShortName ?? title}
           dateLine=""
+          availableSongs={availableSongs}
+          unitFilters={unitFilters}
         />
 
         <EventImpressions
