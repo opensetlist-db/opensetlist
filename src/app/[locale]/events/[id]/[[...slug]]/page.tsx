@@ -355,28 +355,34 @@ async function getTrendingSongs(
   // this exact shape into a single LATERAL JOIN with JSONB
   // aggregation. Same query, same result, one roundtrip instead of
   // four.
-  const items = await prisma.setlistItem.findMany({
-    where: { id: { in: itemIds } },
-    include: {
-      songs: {
-        include: {
-          song: {
-            include: {
-              translations: { where: { locale: { in: [locale, "ja"] } } },
+  //
+  // q2 (items) and q3 (typeBreakdown) both only depend on `itemIds`
+  // from q1 above, so they run in parallel. Trace
+  // 5086a051fbe14d3384b7000ceda86503 had these chained sequentially,
+  // burning ~194ms of wall-clock that the second query didn't need.
+  const [items, typeBreakdown] = await Promise.all([
+    prisma.setlistItem.findMany({
+      where: { id: { in: itemIds } },
+      include: {
+        songs: {
+          include: {
+            song: {
+              include: {
+                translations: { where: { locale: { in: [locale, "ja"] } } },
+              },
             },
           },
+          orderBy: { order: "asc" },
+          take: 1,
         },
-        orderBy: { order: "asc" },
-        take: 1,
       },
-    },
-  });
-
-  const typeBreakdown = await prisma.setlistItemReaction.groupBy({
-    by: ["setlistItemId", "reactionType"],
-    where: { setlistItemId: { in: itemIds } },
-    _count: true,
-  });
+    }),
+    prisma.setlistItemReaction.groupBy({
+      by: ["setlistItemId", "reactionType"],
+      where: { setlistItemId: { in: itemIds } },
+      _count: true,
+    }),
+  ]);
 
   const typeMap: Record<string, Record<string, number>> = {};
   for (const g of typeBreakdown) {
