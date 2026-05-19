@@ -11,7 +11,7 @@ import {
 } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 import { isWishPredictOpen } from "@/lib/eventTiming";
-import { deriveOgPaletteFromEvent } from "@/lib/ogPalette";
+import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { LiveSetlistItem } from "@/components/LiveSetlist";
@@ -147,11 +147,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const metaT = await getTranslations({ locale, namespace: "Meta" });
   if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const eventId = BigInt(id);
-  const [event, palette] = await Promise.all([
-    getEvent(eventId, locale),
-    deriveOgPaletteFromEvent(eventId),
-  ]);
+  // Sequential, not Promise.all: the palette derivation reads
+  // `eventSeries.artist.color` + every `setlistItem.performers[].
+  // stageIdentity.color`, all of which `getEvent` already pulls into
+  // its single `relationJoins` mega-query. Running the previous
+  // `deriveOgPaletteFromEvent(eventId)` in parallel was firing two
+  // duplicate queries (Event.findUnique + SetlistItem.findMany)
+  // against columns already in the cache — Sentry trace
+  // 5086a051fbe14d3384b7000ceda86503 measured them at 570ms + 579ms
+  // each. The cached-event variant computes the same palette
+  // in-process and only touches the DB for the rare empty-roster
+  // fallback (a setlist with no member colors at all).
+  const event = await getEvent(eventId, locale);
   if (!event) return { title: metaT("notFound") };
+  const palette = await deriveOgPaletteFromCachedEvent(event);
   const t = await getTranslations({ locale, namespace: "Event" });
   const seriesFullName = event.eventSeries
     ? displayNameWithFallback(
