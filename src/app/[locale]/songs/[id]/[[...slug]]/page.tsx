@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -12,7 +13,7 @@ import {
   displayNameWithFallback,
   displayOriginalTitle,
 } from "@/lib/display";
-import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
+import { deriveOgPaletteFromCachedSong } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import {
@@ -59,7 +60,15 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "history";
 }
 
-async function getSong(id: bigint) {
+// Wrapped in `react.cache()` so the duplicate call across
+// `generateMetadata` and `SongPage` collapses to one DB fetch per
+// request. Cache is per-request, scoped by RSC's request memoization
+// — no cross-request leakage. Matches the same pattern PR #260 set
+// up for `getEvent` on the event detail page; without this wrapper,
+// every full SongPage render fired the nested-include mega-query
+// twice (~220ms each in Sentry trace
+// feb38ab569e7432b8960b6a42f6cffaf).
+const getSong = cache(async (id: bigint) => {
   const song = await prisma.song.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -86,7 +95,7 @@ async function getSong(id: bigint) {
   });
   if (!song) return null;
   return serializeBigInt(song);
-}
+});
 
 async function getFirstAlbumTrack(songId: bigint) {
   // Multi-album case: pick the earliest-released album as the
@@ -108,7 +117,31 @@ async function getFirstAlbumTrack(songId: bigint) {
   return track ? serializeBigInt(track) : null;
 }
 
-async function getSongPerformances(songId: bigint) {
+// Wrapped in `react.cache()` for the same reason as `getSong` above:
+// `generateMetadata` now consumes the performance list to derive the
+// OG palette (via `deriveOgPaletteFromCachedSong`), and `SongPage`
+// then iterates the same list for the history-tab rendering. Without
+// the cache the two callers would each fire a separate (identical)
+// query.
+//
+// The `performers.stageIdentity.color` projection is added solely
+// for the palette derivation — the page body itself never reads it.
+// Adding it here (instead of a separate query) is the substitute for
+// the standalone `collectSongPerformerColors` SQL the prior
+// `deriveOgPaletteFromSong(songId)` was firing: Sentry trace
+// feb38ab569e7432b8960b6a42f6cffaf measured that query at 392ms
+// against /ja/songs/17/deepness. Folding it into this query — which
+// was going to run anyway for the history tab — saves the entire
+// roundtrip on a full page render.
+//
+// Trade-off vs the standalone query: `take: 50` now bounds the
+// palette's frequency sample to the 50 most recent performances. For
+// Phase 1A this is invisible (no song hits 50 performances), but it
+// IS a quiet behavior change for songs that eventually exceed that
+// threshold — the palette will shift slightly toward whichever units
+// have been performing the song recently. The operator accepted this
+// trade-off when scoping the fix.
+const getSongPerformances = cache(async (songId: bigint) => {
   // Limit to 50 for now — Phase 1A songs don't exceed that yet.
   // The total count is fetched separately so the sidebar number is
   // accurate even if the list is truncated.
@@ -130,6 +163,14 @@ async function getSongPerformances(songId: bigint) {
               eventSeries: { include: { translations: true } },
             },
           },
+          // Performer colors only — used by
+          // `deriveOgPaletteFromCachedSong` to build the frequency
+          // map. The page body does not read these.
+          performers: {
+            select: {
+              stageIdentity: { select: { color: true } },
+            },
+          },
         },
       },
     },
@@ -137,7 +178,7 @@ async function getSongPerformances(songId: bigint) {
     take: 50,
   });
   return serializeBigInt(performances);
-}
+});
 
 async function getPerformanceCount(songId: bigint) {
   return prisma.setlistItemSong.count({
@@ -153,11 +194,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const metaT = await getTranslations({ locale, namespace: "Meta" });
   if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const songId = BigInt(id);
-  const [song, palette] = await Promise.all([
+  // Load the cached song + the cached performance list in parallel.
+  // Both are wrapped in `react.cache`, so `SongPage` re-uses the same
+  // results (no second roundtrip). The palette is derived
+  // in-process from those two payloads — see
+  // `deriveOgPaletteFromCachedSong` for what was previously two extra
+  // Prisma queries (`SongArtist.findFirst` for the anchor +
+  // `SetlistItemSong.findMany` for the performer frequency map, 237ms
+  // and 392ms respectively in Sentry trace
+  // feb38ab569e7432b8960b6a42f6cffaf on /ja/songs/17/deepness).
+  const [song, performances] = await Promise.all([
     getSong(songId),
-    deriveOgPaletteFromSong(songId),
+    getSongPerformances(songId),
   ]);
   if (!song) return { title: metaT("notFound") };
+  const palette = await deriveOgPaletteFromCachedSong(song, performances);
   // Songs are work-primary: OG title shows the original-language
   // title with the locale-resolved variant label. Going through
   // `displayOriginalTitle` instead of hand-resolving via
