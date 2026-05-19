@@ -61,9 +61,9 @@ describe("<SongPickerSheet>", () => {
   it("renders SongPickerContent when open=true", () => {
     render(
       <SongPickerSheet
-        eventId="1"
+        
         locale="ko"
-        isLocked={false}
+        
         songs={SONGS}
         selectedIds={[]}
         unitFilters={FILTERS}
@@ -79,9 +79,9 @@ describe("<SongPickerSheet>", () => {
   it("renders nothing when open=false (drawer collapsed)", () => {
     render(
       <SongPickerSheet
-        eventId="1"
+        
         locale="ko"
-        isLocked={false}
+        
         songs={SONGS}
         selectedIds={[]}
         unitFilters={FILTERS}
@@ -98,9 +98,9 @@ describe("<SongPickerSheet>", () => {
     const onOpenChange = vi.fn();
     render(
       <SongPickerSheet
-        eventId="1"
+        
         locale="ko"
-        isLocked={false}
+        
         songs={SONGS}
         selectedIds={[]}
         unitFilters={FILTERS}
@@ -117,9 +117,9 @@ describe("<SongPickerSheet>", () => {
     const onOpenChange = vi.fn();
     render(
       <SongPickerSheet
-        eventId="1"
+        
         locale="ko"
-        isLocked={false}
+        
         songs={SONGS}
         selectedIds={[10]}
         unitFilters={FILTERS}
@@ -136,9 +136,9 @@ describe("<SongPickerSheet>", () => {
     const onToggle = vi.fn();
     render(
       <SongPickerSheet
-        eventId="1"
+        
         locale="ko"
-        isLocked={false}
+        
         songs={SONGS}
         selectedIds={[]}
         unitFilters={FILTERS}

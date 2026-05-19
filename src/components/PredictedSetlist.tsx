@@ -426,10 +426,19 @@ export function PredictedSetlist({
   // populated picker switches the surface into a 2-col layout
   // (picker on the right, always visible — no trigger button
   // needed for the picker, only for copy-from-past).
+  //
+  // `mounted` guard on `isDesktopPicker`: `useIsDesktop`'s server
+  // snapshot is always `false`, so SSR + first hydration paint
+  // render the mobile shape. Without the `mounted` gate, the
+  // client snapshot flips to `true` for desktop users on the
+  // very next render — flashing the layout from single-col to
+  // 2-col grid. Gating on `mounted` defers the 2-col path until
+  // after the mount commit, matching the project's canonical
+  // pattern for SSR-safe responsive components (handoff §12).
   const selectedIds = predictions.map((p) => p.songId);
   const showPicker =
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
-  const isDesktopPicker = isDesktop && showPicker;
+  const isDesktopPicker = mounted && isDesktop && showPicker;
 
   return (
     <div
@@ -604,9 +613,7 @@ export function PredictedSetlist({
           close. */}
       {showPicker && !isDesktopPicker && (
         <SongPickerSheet
-          eventId={eventId}
           locale={locale}
-          isLocked={isLocked}
           songs={availableSongs}
           selectedIds={selectedIds}
           unitFilters={unitFilters}

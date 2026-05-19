@@ -25,15 +25,21 @@
  *   4. Individual sub-unit chips, slug ASC
  */
 
-import { colors } from "@/styles/tokens";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
+/**
+ * `primaryColor` is passed in (instead of imported from
+ * `@/styles/tokens`) so this lib utility stays a pure data
+ * derivation — no coupling to the styles layer. The single call
+ * site in `page.tsx` supplies `colors.primary`.
+ */
 export function deriveUnitFilters(
   songs: readonly AvailableSong[],
   primaryArtistId: number | null,
   primaryArtistLabel: string,
   filterAllLabel: string,
   filterSubLabel: string,
+  primaryColor: string,
 ): UnitFilter[] {
   const out: UnitFilter[] = [
     { key: "all", label: filterAllLabel, color: null, kind: "all", artistId: null },
@@ -50,7 +56,7 @@ export function deriveUnitFilters(
     out.push({
       key: "group",
       label: primaryArtistLabel,
-      color: groupSong?.unit.color ?? colors.primary,
+      color: groupSong?.unit.color ?? primaryColor,
       kind: "group",
       artistId: primaryArtistId,
     });
@@ -84,7 +90,7 @@ export function deriveUnitFilters(
     out.push({
       key: "sub",
       label: filterSubLabel,
-      color: colors.primary,
+      color: primaryColor,
       kind: "sub",
       artistId: null,
     });

@@ -7,9 +7,7 @@ import { colors } from "@/styles/tokens";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 interface Props {
-  eventId: string;
   locale: string;
-  isLocked: boolean;
   songs: AvailableSong[];
   selectedIds: number[];
   unitFilters: UnitFilter[];
@@ -31,19 +29,12 @@ interface Props {
  * narrow viewports. Caller decides via `useIsDesktop()` which
  * surface to mount.
  *
- * `eventId` + `isLocked` are accepted but unused in this layer —
- * they're documented for symmetry with `<CopyPastSetlistSheet>`
- * (the lock guard lives in the parent's `onToggle` callback so the
- * sheet doesn't need to know). Reserved for future analytics
- * (e.g. `predict_picker_open` with the event_id) without breaking
- * the call sites.
+ * Lock guard lives in the parent's `onToggle` callback (mirrors
+ * `handleAdd` / `handleRemove`); the sheet itself doesn't take an
+ * `isLocked` prop.
  */
 export function SongPickerSheet({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  eventId,
   locale,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  isLocked,
   songs,
   selectedIds,
   unitFilters,

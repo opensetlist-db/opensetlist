@@ -654,6 +654,7 @@ export default async function EventPage({ params }: Props) {
       primaryArtistLabel,
       predictPickerTrans("filterAll"),
       predictPickerTrans("filterSub"),
+      colors.primary,
     );
   }
 

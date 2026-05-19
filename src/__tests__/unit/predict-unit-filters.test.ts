@@ -26,14 +26,14 @@ function makeSong(
 
 describe("deriveUnitFilters", () => {
   it("empty songs + null primaryArtistId → only `all`", () => {
-    const out = deriveUnitFilters([], null, "", "All", "Units / Solo");
+    const out = deriveUnitFilters([], null, "", "All", "Units / Solo", "#0277BD");
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ key: "all", kind: "all", color: null });
   });
 
   it("songs include only group-direct → [all, group] (no sub composite)", () => {
     const songs = [makeSong(10, { artistId: 1, isSubUnit: false })];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
     expect(out).toHaveLength(2);
     expect(out[0].kind).toBe("all");
     expect(out[1]).toMatchObject({
@@ -53,7 +53,7 @@ describe("deriveUnitFilters", () => {
         isSubUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
     const groupChip = out.find((f) => f.kind === "group");
     expect(groupChip).toBeDefined();
     // Brand primary fallback — not the sub-unit's color.
@@ -71,7 +71,7 @@ describe("deriveUnitFilters", () => {
         isSubUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
     expect(out.map((f) => f.kind)).toEqual([
       "all",
       "group",
@@ -97,7 +97,7 @@ describe("deriveUnitFilters", () => {
         isSubUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
     const individualChips = out.filter((f) => f.kind === "individual");
     expect(individualChips).toHaveLength(1);
   });
@@ -126,7 +126,7 @@ describe("deriveUnitFilters", () => {
         isSubUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
     const individualChips = out.filter((f) => f.kind === "individual");
     expect(individualChips.map((f) => f.key)).toEqual([
       "cerise",
@@ -145,7 +145,7 @@ describe("deriveUnitFilters", () => {
         isSubUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, null, "", "All", "Units / Solo");
+    const out = deriveUnitFilters(songs, null, "", "All", "Units / Solo", "#0277BD");
     expect(out.map((f) => f.kind)).toEqual(["all", "sub", "individual"]);
   });
 });
