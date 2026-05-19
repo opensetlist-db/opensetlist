@@ -424,6 +424,16 @@ export async function deriveOgPaletteFromEvent(
   }
 }
 
+// Accept any ID-shaped scalar at the cached-helper boundary. Cached
+// page data goes through `serializeBigInt` (top-level BigInt → Number)
+// and through Prisma's `relationJoins` LATERAL JOIN which emits
+// nested IDs as `::text` strings inside JSONB. Prisma's declared TS
+// types still say `bigint`, so the runtime shape doesn't line up
+// with the types — widening here lets callers pass the cached
+// objects without an `as unknown as` cast, and `BigInt(...)` accepts
+// all three forms at the conversion boundary.
+type SerializedId = string | number | bigint;
+
 // Cached-event variant of deriveOgPaletteFromEvent. The event detail
 // page's `getEvent` (wrapped in react.cache) already fetches both
 // pieces of data the palette derivation needs:
@@ -449,17 +459,6 @@ export async function deriveOgPaletteFromEvent(
 // The OG image route (`/api/og/event/[id]`) keeps using
 // `deriveOgPaletteFromEvent` since its own Event fetch is intentionally
 // minimal (translations only) and doesn't carry the color columns.
-// Accept any ID-shaped scalar. The cached event's `eventSeries.
-// artistId` is typed as `bigint` by Prisma (matches the schema), but
-// at runtime it arrives as a `string` because the `relationJoins`
-// LATERAL JOIN inside `getEvent` builds nested objects with
-// `JSONB_BUILD_OBJECT(..., 'artistId', "t5"."artistId"::text, ...)`.
-// `serializeBigInt` also normalizes top-level BigInts to Number.
-// `BigInt(...)` accepts all three, so we widen the input type and
-// convert at the fallback boundary instead of forcing the caller to
-// cast.
-type SerializedId = string | number | bigint;
-
 export type CachedEventForOgPalette = {
   eventSeries: {
     artistId: SerializedId | null;
@@ -527,6 +526,149 @@ async function collectFallbackArtistRosterColors(
   }
   const rootId = await findRootArtistId(BigInt(seedArtistIdRaw));
   return collectRosterColorsByArtistId(rootId);
+}
+
+// Cached-song variant of `deriveOgPaletteFromSong`. The song detail
+// page's `getSong` (now wrapped in react.cache) already fetches every
+// SongArtist + its `artist.color`, and `getSongPerformances` (also
+// cached) now also pulls each setlistItem's `performers.stageIdentity.
+// color`. Both pieces are exactly what the palette derivation needs:
+//
+//   - song.artists[role:"primary"][lowest artistId].artist.color
+//                                             → the anchor
+//   - performances[].setlistItem.performers[].stageIdentity.color
+//                                             → the frequency map
+//
+// The previous DB-loading `deriveOgPaletteFromSong(songId)` was firing
+// two queries inside `generateMetadata` — a `SongArtist.findFirst` on
+// the primary artist's color (237ms in Sentry trace
+// feb38ab569e7432b8960b6a42f6cffaf) and a `SetlistItemSong.findMany`
+// on every performer color across every performance (392ms in the
+// same trace). Both were redundant against data the cached getters
+// already had on hand (or could trivially carry).
+//
+// `/api/og/song/[id]` keeps using `deriveOgPaletteFromSong(songId)`
+// since its standalone Event fetch doesn't carry these columns.
+//
+// Anchor-selection logic mirrors `getSongAnchorColor` exactly: the
+// SongArtist row with `role: "primary"` and the smallest `artistId`
+// (tie-break: smallest `id`), so deterministic with the
+// `orderBy: [{ artistId: "asc" }, { id: "asc" }]` the SQL version
+// uses. Important for fingerprint stability on songs credited equally
+// to two primary artists.
+//
+// Empty-roster fallback (no member colors on any of the 50 most-recent
+// performances) goes to `collectSongCreditedArtistColorsFromCachedSong`,
+// which queries the StageIdentity roster of every credited Artist —
+// matching the existing `collectSongCreditedArtistColors` shape, just
+// keyed off the cached song's artistIds instead of an extra Song
+// roundtrip.
+export type CachedSongForOgPalette = {
+  artists: ReadonlyArray<{
+    id: string;
+    role: string;
+    artistId: SerializedId;
+    artist: {
+      color: string | null;
+    };
+  }>;
+};
+
+export type CachedSongPerformancesForOgPalette = ReadonlyArray<{
+  setlistItem: {
+    performers: ReadonlyArray<{
+      stageIdentity: {
+        color: string | null;
+      };
+    }>;
+  };
+}>;
+
+export async function deriveOgPaletteFromCachedSong(
+  song: CachedSongForOgPalette,
+  performances: CachedSongPerformancesForOgPalette,
+): Promise<OgPalette> {
+  try {
+    // Find the primary SongArtist with the smallest (artistId, id)
+    // — same ordering as the DB version's `findFirst` with
+    // `orderBy: [{ artistId: "asc" }, { id: "asc" }]`.
+    let bestSa: CachedSongForOgPalette["artists"][number] | null = null;
+    for (const sa of song.artists) {
+      if (sa.role !== "primary") continue;
+      if (bestSa === null) {
+        bestSa = sa;
+        continue;
+      }
+      const ai = BigInt(sa.artistId);
+      const bi = BigInt(bestSa.artistId);
+      if (ai < bi || (ai === bi && sa.id < bestSa.id)) {
+        bestSa = sa;
+      }
+    }
+    // `paletteFromAnchorAndFrequency` does its own `isValidHex` check
+    // and falls through to the null-anchor branches when the value
+    // isn't a valid hex — so we pass `color` through as-is and let
+    // the assembly function decide. Same effective behavior as the
+    // DB version's `isValidHex(color) ? color : null`.
+    const anchor = bestSa?.artist?.color ?? null;
+
+    // Per-item dedupe: if two members in the same setlistItem share
+    // a color, that color contributes one count for the item, not
+    // two. Across items, counts sum. Matches
+    // `collectSongPerformerColors`'s `seenItems` + `perItem` Set
+    // logic — kept defensively even though the bounded `take: 50`
+    // means each setlistItem appears at most once per
+    // `SetlistItemSong` row for a given song.
+    const frequency = new Map<string, number>();
+    for (const p of performances) {
+      const perItem = new Set<string>();
+      for (const performer of p.setlistItem.performers) {
+        const color = performer.stageIdentity?.color;
+        if (isValidHex(color)) perItem.add(color.toLowerCase());
+      }
+      for (const color of perItem) {
+        frequency.set(color, (frequency.get(color) ?? 0) + 1);
+      }
+    }
+
+    const finalFreq =
+      frequency.size > 0
+        ? frequency
+        : await collectSongCreditedArtistColorsFromCachedSong(song);
+    return paletteFromAnchorAndFrequency(anchor, finalFreq);
+  } catch (err) {
+    console.error(
+      "[ogPalette] cached song derivation failed, using fallback",
+      err,
+    );
+    return fallbackPalette();
+  }
+}
+
+// Cached-song variant of `collectSongCreditedArtistColors`. The
+// original query joins through `Artist.songCredits` to find every
+// StageIdentity that's ever been credited on any artist tied to the
+// song; we already know those artist IDs from the cached song, so
+// we skip the relation traversal and query StageIdentityArtist
+// directly with an `artistId IN (...)` filter.
+async function collectSongCreditedArtistColorsFromCachedSong(
+  song: CachedSongForOgPalette,
+): Promise<Map<string, number>> {
+  if (song.artists.length === 0) return new Map();
+  const artistIds = song.artists.map((sa) => BigInt(sa.artistId));
+  const links = await prisma.stageIdentityArtist.findMany({
+    where: { artistId: { in: artistIds } },
+    select: { stageIdentity: { select: { color: true } } },
+  });
+  const frequency = new Map<string, number>();
+  for (const link of links) {
+    const color = link.stageIdentity.color;
+    if (isValidHex(color)) {
+      const key = color.toLowerCase();
+      frequency.set(key, (frequency.get(key) ?? 0) + 1);
+    }
+  }
+  return frequency;
 }
 
 export async function deriveOgPaletteFromSong(
