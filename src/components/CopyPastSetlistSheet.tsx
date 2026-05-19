@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Drawer } from "vaul";
 import { displayOriginalName, displayOriginalTitle } from "@/lib/display";
@@ -106,6 +106,21 @@ export function CopyPastSetlistSheet({
   const [selected, setSelected] = useState<PastEvent | null>(null);
   const [mode, setMode] = useState<"append" | "replace">("append");
 
+  // Ref-mirror `onFetched` so the fetch effect can call the latest
+  // callback without taking a dep on the prop reference. Today's only
+  // caller (`<PredictedSetlist>`) wraps it in `useCallback([eventId])`
+  // so the reference is stable in practice — but the contract
+  // ("first open → exactly one fetch per mount") shouldn't depend on
+  // every future caller doing the same wrapping. A bare inline
+  // `onFetched={(n) => ...}` would otherwise produce a new reference
+  // each render → effect cleanup + re-run → duplicate fetch with
+  // racing `cancelled` closures. The ref pattern decouples
+  // identity churn from fetch-trigger semantics.
+  const onFetchedRef = useRef(onFetched);
+  useEffect(() => {
+    onFetchedRef.current = onFetched;
+  }, [onFetched]);
+
   // Fetch on first open. We keep the cache across open/close cycles so
   // re-opening the sheet within the same mount doesn't re-hit the API —
   // confirmed past setlists are effectively immutable for the duration
@@ -153,7 +168,11 @@ export function CopyPastSetlistSheet({
         const list = body.pastEvents ?? [];
         setData(list);
         setLoading(false);
-        onFetched?.(list.length);
+        // Always call the LATEST `onFetched` (via the ref). The
+        // reference may have changed mid-fetch if the parent re-
+        // rendered with a new closure; we want the freshest analytics
+        // wiring, not the one frozen at fetch-start.
+        onFetchedRef.current?.(list.length);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -168,7 +187,11 @@ export function CopyPastSetlistSheet({
     // time concern (each card renders its title via the user's
     // current locale) and never triggers a refetch — the server
     // already ships every locale's translations.
-  }, [open, data, eventId, t, onFetched]);
+    //
+    // `onFetched` intentionally not in this dep array — see the
+    // `onFetchedRef` block above for the rationale (decouples
+    // callback identity from fetch-trigger semantics).
+  }, [open, data, eventId, t]);
 
   // Reset the "selected for confirm" state when the sheet closes so
   // the next open starts back at the picker grid. The fetched `data`
