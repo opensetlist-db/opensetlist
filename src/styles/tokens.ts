@@ -439,6 +439,14 @@ export const motion = {
 export const gradients = {
   liveBanner: `linear-gradient(135deg, ${colors.textPrimary}, ${colors.navyDeep})`,
   progressBar: `linear-gradient(90deg, ${colors.primaryLight}, ${colors.primary})`,
+  // Pressed-state variant of `colors.brandGradient` used by
+  // `<PrimaryButton>` (`src/components/ui/Button.tsx`). Material 700 →
+  // 800 step — two shade steps deeper than the default brand ramp so
+  // the press registers visibly under the scale-down transform
+  // without going so dark the button reads as "disabled" mid-
+  // interaction. Mockup:
+  // `F:\work\vaults\opensetlist\raw\mockups\wishlist-button-polish-mockup.jsx`.
+  brandGradientPressed: "linear-gradient(135deg, #0288d1, #01579b)",
 } as const;
 
 /*
