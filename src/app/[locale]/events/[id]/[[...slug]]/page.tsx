@@ -270,9 +270,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * Locale filter mirrors `getEvent`'s `[locale, "ja"]` policy.
  */
 async function getAvailableSongs(
-  primaryArtistId: bigint,
+  // Accept `bigint | number` because the call site reads
+  // `event.eventSeries.artist.id` from a `serializeBigInt`-processed
+  // cached event — TypeScript still thinks it's bigint, but
+  // serializeBigInt's JSON-roundtrip converted every BigInt scalar to
+  // a JS number at runtime. Without the BigInt(...) normalization
+  // below, the post-fetch `a.parentArtistId === primaryArtistId`
+  // comparison (Prisma returns parentArtistId as bigint) silently
+  // fails — `1n === 1` is `false` in strict equality even when
+  // numerically equal. That bug discards every matched row and the
+  // picker shows zero songs (caught on dev preview, 2026-05-19).
+  primaryArtistId: bigint | number,
   locale: string,
 ): Promise<AvailableSong[]> {
+  const primaryAsBigInt = BigInt(primaryArtistId);
   const localeFilter = { locale: { in: [locale, "ja"] } };
   const rows = await prisma.song.findMany({
     where: {
@@ -281,8 +292,8 @@ async function getAvailableSongs(
         some: {
           artist: {
             OR: [
-              { id: primaryArtistId },
-              { parentArtistId: primaryArtistId },
+              { id: primaryAsBigInt },
+              { parentArtistId: primaryAsBigInt },
             ],
             isDeleted: false,
           },
@@ -335,8 +346,8 @@ async function getAvailableSongs(
     // Sub-unit wins over group when both match — keeps section
     // headers organised by the smaller scope.
     const unitArtist =
-      aliveArtists.find((a) => a.parentArtistId === primaryArtistId) ??
-      aliveArtists.find((a) => a.id === primaryArtistId);
+      aliveArtists.find((a) => a.parentArtistId === primaryAsBigInt) ??
+      aliveArtists.find((a) => a.id === primaryAsBigInt);
     if (!unitArtist) continue;
     const unitArtistId = safeBigIntToNumber(unitArtist.id);
     if (unitArtistId === null) continue;
