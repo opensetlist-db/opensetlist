@@ -85,7 +85,7 @@ function renderLiveSetlist({
       isWishPredictOpen={isWishPredictOpen}
       seriesName="Test Series"
       eventTitle="Test Event"
-      dateLine="2026-05-23"
+      dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
     />,
   );
 }

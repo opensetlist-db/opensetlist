@@ -63,7 +63,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -89,7 +89,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -99,7 +99,7 @@ describe("SetlistSection", () => {
     expect(screen.getByRole("tab", { name: /tabPredicted/ })).toBeTruthy();
     // PredictedSetlist (Stage C) renders the pre-show full UI
     // — `+ 곡 추가` link is the load-bearing affordance for it.
-    expect(screen.getByText("add")).toBeTruthy();
+    expect(screen.getByText("copyFromPast")).toBeTruthy();
     expect(screen.getByRole("tabpanel")).toBeTruthy();
     // Empty fallback is NOT rendered — predictions present.
     expect(screen.queryByTestId("empty")).toBeNull();
@@ -121,14 +121,14 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByTestId("empty")).toBeNull();
     // PredictedSetlist (Stage C) renders the pre-show full UI.
-    expect(screen.getByText("add")).toBeTruthy();
+    expect(screen.getByText("copyFromPast")).toBeTruthy();
   });
 
   it("first-visitor on an upcoming event (no predictions, no actual): predict UI renders as the entry point", () => {
@@ -148,14 +148,14 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
     );
     expect(screen.queryByTestId("empty")).toBeNull();
     // PredictedSetlist's `+ 곡 추가` is the entry point.
-    expect(screen.getByText("add")).toBeTruthy();
+    expect(screen.getByText("copyFromPast")).toBeTruthy();
   });
 
   it("completed/cancelled event with no actuals + no predictions: emptyFallback renders (no predict tab — nothing to score)", () => {
@@ -173,7 +173,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -195,7 +195,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={true}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -213,7 +213,7 @@ describe("SetlistSection", () => {
     expect(actualTab.getAttribute("aria-selected")).toBe("false");
     expect(predictedTab.getAttribute("aria-selected")).toBe("true");
     // Body swaps to PredictedSetlist (pre-show full UI: `+ 곡 추가`).
-    expect(screen.getByText("add")).toBeTruthy();
+    expect(screen.getByText("copyFromPast")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
   });
 
@@ -233,7 +233,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -258,7 +258,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -287,7 +287,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -314,7 +314,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -349,7 +349,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,
@@ -375,7 +375,7 @@ describe("SetlistSection", () => {
         startTime={null}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
         isWishPredictOpen={false}
         emptyFallback={<p data-testid="empty">empty</p>}
       />,

@@ -18,6 +18,10 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { Impression } from "@/components/EventImpressions";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { LiveEventLayout } from "@/components/LiveEventLayout";
+import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
+import { resolveUnitColor } from "@/lib/artistColor";
+import { deriveUnitFilters } from "@/lib/predict/unitFilters";
+import type { AvailableSong } from "@/lib/types/predict";
 import {
   deriveSidebarUnitsAndPerformers,
   deriveSongsCount,
@@ -244,6 +248,120 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       site: "@opensetlistdb",
     },
   };
+}
+
+/**
+ * Server-side fetch for the Predicted Setlist song picker (v0.13.14+
+ * — `task-song-picker-predict-mode.md`). Returns every non-deleted
+ * song whose `SongArtist.artist` is either the event's primary
+ * artist OR a sub-unit of it (`artist.parentArtistId === primary`).
+ *
+ * `safeBigIntToNumber` (`src/lib/copyPastSetlist.ts`) guards the
+ * BigInt → JS-number conversion at the response boundary — same
+ * outbound contract as the past-setlists route. Unsafe ids
+ * (> 2^53-1) are dropped rather than truncated; at Phase 1
+ * autoincrement scale this is belt-and-suspenders.
+ *
+ * Unit identity routing: a song credited to both the group and a
+ * sub-unit picks the sub-unit row for filter routing (sub-unit
+ * wins). This keeps section-header grouping organised by the
+ * smaller scope under composite `all` / `sub` filters.
+ *
+ * Locale filter mirrors `getEvent`'s `[locale, "ja"]` policy.
+ */
+async function getAvailableSongs(
+  primaryArtistId: bigint,
+  locale: string,
+): Promise<AvailableSong[]> {
+  const localeFilter = { locale: { in: [locale, "ja"] } };
+  const rows = await prisma.song.findMany({
+    where: {
+      isDeleted: false,
+      artists: {
+        some: {
+          artist: {
+            OR: [
+              { id: primaryArtistId },
+              { parentArtistId: primaryArtistId },
+            ],
+            isDeleted: false,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      originalTitle: true,
+      originalLanguage: true,
+      variantLabel: true,
+      baseVersionId: true,
+      translations: {
+        where: localeFilter,
+        select: { locale: true, title: true, variantLabel: true },
+      },
+      artists: {
+        select: {
+          artist: {
+            select: {
+              id: true,
+              slug: true,
+              color: true,
+              parentArtistId: true,
+              originalName: true,
+              originalShortName: true,
+              originalLanguage: true,
+              isDeleted: true,
+              translations: {
+                where: localeFilter,
+                select: { locale: true, name: true, shortName: true },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { originalTitle: "asc" },
+  });
+
+  const out: AvailableSong[] = [];
+  for (const row of rows) {
+    const songId = safeBigIntToNumber(row.id);
+    if (songId === null) continue;
+    const baseVersionId =
+      row.baseVersionId === null ? null : safeBigIntToNumber(row.baseVersionId);
+    const aliveArtists = row.artists
+      .map((sa) => sa.artist)
+      .filter((a) => !a.isDeleted);
+    // Sub-unit wins over group when both match — keeps section
+    // headers organised by the smaller scope.
+    const unitArtist =
+      aliveArtists.find((a) => a.parentArtistId === primaryArtistId) ??
+      aliveArtists.find((a) => a.id === primaryArtistId);
+    if (!unitArtist) continue;
+    const unitArtistId = safeBigIntToNumber(unitArtist.id);
+    if (unitArtistId === null) continue;
+    out.push({
+      songId,
+      originalTitle: row.originalTitle,
+      originalLanguage: row.originalLanguage,
+      variantLabel: row.variantLabel,
+      baseVersionId,
+      translations: row.translations,
+      unit: {
+        artistId: unitArtistId,
+        slug: unitArtist.slug,
+        label: displayNameWithFallback(
+          unitArtist,
+          unitArtist.translations,
+          locale,
+          "short",
+        ),
+        color: resolveUnitColor(unitArtist),
+        isSubUnit: unitArtist.parentArtistId !== null,
+      },
+    });
+  }
+  return out;
 }
 
 async function getReactionCounts(eventId: bigint) {
@@ -497,6 +615,48 @@ export default async function EventPage({ params }: Props) {
   const trendingSongs = isOngoing
     ? []
     : await getTrendingSongs(eventId, locale, st("unknown"));
+
+  // Predicted-setlist song-picker catalog (v0.13.14+). Gated:
+  //   - `resolvedStatus === "upcoming"` — past-lock the picker UI
+  //     is hidden anyway; running the query would be dead weight.
+  //   - `eventSeries.artist` non-deleted and non-null — multi-artist
+  //     festivals have no defensible "primary artist" scope, so the
+  //     picker hides and the surface degrades to copy-from-past +
+  //     share CTA only.
+  //
+  // The `unitFilters` chip set is derived from the loaded catalog
+  // (a sub-unit with zero songs produces no chip). Composite
+  // chips ("all" + "sub") use the corresponding `Predict.picker`
+  // translations; "group" / individual labels come from the
+  // artist's localized name via `displayNameWithFallback`.
+  const seriesPrimaryArtist =
+    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
+      ? event.eventSeries.artist
+      : null;
+  let availableSongs: AvailableSong[] = [];
+  let unitFilters: ReturnType<typeof deriveUnitFilters> = [];
+  if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
+    const [songs, predictPickerTrans] = await Promise.all([
+      getAvailableSongs(seriesPrimaryArtist.id, locale),
+      getTranslations("Predict.picker"),
+    ]);
+    availableSongs = songs;
+    const primaryArtistLabel = displayNameWithFallback(
+      seriesPrimaryArtist,
+      seriesPrimaryArtist.translations,
+      locale,
+      "short",
+    );
+    const safePrimaryArtistId = safeBigIntToNumber(seriesPrimaryArtist.id);
+    unitFilters = deriveUnitFilters(
+      songs,
+      safePrimaryArtistId,
+      primaryArtistLabel,
+      predictPickerTrans("filterAll"),
+      predictPickerTrans("filterSub"),
+      colors.primary,
+    );
+  }
 
   const eventFullName = displayNameWithFallback(
     event,
@@ -772,6 +932,8 @@ export default async function EventPage({ params }: Props) {
         initialReactionsValue={reactionsValue}
         initialTrendingSongs={trendingSongs}
         initialFanTop3={fanTop3}
+        availableSongs={availableSongs}
+        unitFilters={unitFilters}
       />
     </main>
   );

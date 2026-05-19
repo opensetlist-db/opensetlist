@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useMounted } from "@/hooks/useMounted";
-import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { PredictSongRow, type PredictRowState } from "@/components/PredictSongRow";
 import { ShareCardButton } from "@/components/ShareCardButton";
 import {
@@ -26,6 +26,9 @@ import {
   type CopyApplyMeta,
 } from "@/components/CopyPastSetlistSheet";
 import { SecondaryButton } from "@/components/ui/Button";
+import { SongPickerContent } from "@/components/predict/SongPickerContent";
+import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
   readPredictionEntries,
   writePredictions,
@@ -38,6 +41,25 @@ import { trackEvent } from "@/lib/analytics";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
+
+/**
+ * Desktop right-column picker width. Matches `event-page-desktop-v2-
+ * mockup.jsx`'s `gridTemplateColumns: "1fr 360px"` — narrow enough
+ * that the 1fr left column keeps comfortable prediction-row width
+ * at 1024px viewport but wide enough to fit the picker's unit
+ * filter chips on one row in most locales.
+ */
+const DESKTOP_PICKER_COL_PX = 360;
+
+/**
+ * Floor for the 2-col grid wrapper. Without a `minHeight`, an event
+ * with zero predictions + an empty actual setlist collapses the
+ * predict surface to ~120px on desktop — picker panel still
+ * renders but the left column shows as a near-empty row, breaking
+ * the visual symmetry. 520px keeps both columns at a usable height
+ * even for the empty case. Mockup default.
+ */
+const DESKTOP_PICKER_MIN_HEIGHT_PX = 520;
 
 interface Props {
   eventId: string;
@@ -61,6 +83,16 @@ interface Props {
   seriesName: string;
   eventTitle: string;
   dateLine: string;
+  /**
+   * Catalog for the song picker (server-fetched in `page.tsx` via
+   * `getAvailableSongs`). Empty array on multi-artist festivals or
+   * when the resolved status isn't `upcoming` — the picker hides
+   * itself in those cases and the surface degrades to the same
+   * "📋 지난 공연에서" + share affordances that already exist.
+   */
+  availableSongs: AvailableSong[];
+  /** Filter chip set derived from `availableSongs` server-side. */
+  unitFilters: UnitFilter[];
 }
 
 /**
@@ -97,9 +129,12 @@ export function PredictedSetlist({
   seriesName,
   eventTitle,
   dateLine,
+  availableSongs,
+  unitFilters,
 }: Props) {
   const t = useTranslations("Predict");
   const mounted = useMounted();
+  const isDesktop = useIsDesktop();
 
   // ─── Lock state (mirror <EventWishSection>) ─────────────────
   // Treat null startTime as "never lock" — the Predicted tab is
@@ -188,8 +223,8 @@ export function PredictedSetlist({
     setPredictions(readPredictionEntries(eventId));
   }
 
-  // ─── Search reveal toggle (pre-show only) ───────────────────
-  const [searchOpen, setSearchOpen] = useState(false);
+  // ─── Picker sheet state (mobile pre-show only) ──────────────
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // ─── Copy-from-past sheet state (pre-show only) ─────────────
   const [copyOpen, setCopyOpen] = useState(false);
@@ -237,58 +272,71 @@ export function PredictedSetlist({
   );
 
   // ─── Add / remove handlers ──────────────────────────────────
-  const handleAdd = useCallback(
-    (song: SongSearchResult) => {
-      // Defensive isLocked check: the `+ 곡 추가` link + inline
-      // `<SongSearch>` are gated by `isPreShow` (which requires
-      // !isLocked), so this branch is normally unreachable. But a
-      // long-open page that crossed `startMs` between user-tap and
-      // here could still hit it. v0.10.0 smoke caught the
-      // post-lock-edit symptom; this guard pairs with the new
-      // wall-clock-fallback isLocked derivation above and the
-      // server-side 403 (no equivalent for predictions since they're
-      // localStorage-only — server check is wishlist-only).
+  /**
+   * Single toggle handler shared by the picker (mobile sheet + desktop
+   * panel) AND the prediction-row ✕ delete button. Lock guard mirrors
+   * the historical `handleAdd` / `handleRemove` shape: trigger UI is
+   * gated by `isPreShow`, but a long-open page that crossed `startMs`
+   * mid-tap can still reach the callback. v0.10.0 smoke caught the
+   * post-lock-edit symptom; the wall-clock-fallback `isLocked`
+   * derivation upstream pairs with this guard.
+   *
+   * Analytics: `predict_add` on insert, `predict_remove` on removal.
+   * Both fire after the `writePredictions` commit so dedup / lock
+   * short-circuits never stamp the funnel.
+   */
+  const handleToggle = useCallback(
+    (songId: number) => {
       if (isLocked) return;
-      // Client-side dedup: don't re-add a song already in the list.
-      if (predictions.some((p) => p.songId === song.id)) {
-        setSearchOpen(false);
+      const existing = predictions.find((p) => p.songId === songId);
+      if (existing) {
+        const next = predictions.filter((p) => p.songId !== songId);
+        setPredictions(next);
+        writePredictions(eventId, next);
+        trackEvent("predict_remove", {
+          event_id: String(eventId),
+          song_id: String(songId),
+        });
         return;
       }
+      // Defensive: client doesn't know about the song. Should never
+      // happen because the picker only emits ids from its loaded
+      // `availableSongs` set, but a stale payload + a future call
+      // path that reuses `handleToggle` for an arbitrary id would
+      // otherwise write an entry with no embedded `WishSongDisplay`.
+      const found = availableSongs.find((s) => s.songId === songId);
+      if (!found) return;
       const entry: PredictionEntry = {
-        songId: song.id,
+        songId: found.songId,
         song: {
-          originalTitle: song.originalTitle,
-          originalLanguage: song.originalLanguage,
-          variantLabel: song.variantLabel,
-          baseVersionId: song.baseVersionId,
-          translations: song.translations,
+          originalTitle: found.originalTitle,
+          originalLanguage: found.originalLanguage,
+          variantLabel: found.variantLabel,
+          baseVersionId: found.baseVersionId,
+          translations: found.translations,
         },
       };
       const next = [...predictions, entry];
       setPredictions(next);
       writePredictions(eventId, next);
-      setSearchOpen(false);
-      // GA4 Phase 1B: track after the localStorage commit so a
-      // dedup short-circuit above never fires the event. No
-      // server confirmation needed — predictions are
-      // localStorage-only at v0.10.x.
       trackEvent("predict_add", {
         event_id: String(eventId),
-        song_id: String(song.id),
+        song_id: String(songId),
       });
     },
-    [eventId, predictions, isLocked],
+    [eventId, predictions, isLocked, availableSongs],
   );
 
+  /**
+   * Per-row ✕ delete. Today's only caller is `<PredictSongRow>` (the
+   * picker uses `handleToggle` directly). Kept as a thin wrapper so
+   * the row API stays stable — flipping the row's onRemove to
+   * `handleToggle` would also work, but the explicit name documents
+   * intent at the call site.
+   */
   const handleRemove = useCallback(
-    (songId: number) => {
-      // Defensive isLocked check, same rationale as handleAdd.
-      if (isLocked) return;
-      const next = predictions.filter((p) => p.songId !== songId);
-      setPredictions(next);
-      writePredictions(eventId, next);
-    },
-    [eventId, predictions, isLocked],
+    (songId: number) => handleToggle(songId),
+    [handleToggle],
   );
 
   // Copy-from-past commit. Defensive isLocked guard mirrors
@@ -392,8 +440,49 @@ export function PredictedSetlist({
   const showDivider =
     isDuringShow && total > 0 && total < predictions.length;
 
+  // Picker visibility: only when pre-show, the artist has a non-
+  // empty catalog AND filter chips were derivable. On desktop a
+  // populated picker switches the surface into a 2-col layout
+  // (picker on the right, always visible — no trigger button
+  // needed for the picker, only for copy-from-past).
+  //
+  // `mounted` guard on `isDesktopPicker`: `useIsDesktop`'s server
+  // snapshot is always `false`, so SSR + first hydration paint
+  // render the mobile shape. Without the `mounted` gate, the
+  // client snapshot flips to `true` for desktop users on the
+  // very next render — flashing the layout from single-col to
+  // 2-col grid. Gating on `mounted` defers the 2-col path until
+  // after the mount commit, matching the project's canonical
+  // pattern for SSR-safe responsive components (handoff §12).
+  const selectedIds = predictions.map((p) => p.songId);
+  const showPicker =
+    isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
+  const isDesktopPicker = mounted && isDesktop && showPicker;
+
   return (
-    <div>
+    <div
+      style={
+        isDesktopPicker
+          ? {
+              display: "grid",
+              gridTemplateColumns: `1fr ${DESKTOP_PICKER_COL_PX}px`,
+              minHeight: DESKTOP_PICKER_MIN_HEIGHT_PX,
+            }
+          : undefined
+      }
+    >
+      <div
+        style={
+          isDesktopPicker
+            ? {
+                borderRight: `1px solid ${colors.borderLight}`,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+              }
+            : undefined
+        }
+      >
       {/* Top status strip — mirrors mockup-wish-predict.jsx PredictTab top bar */}
       <div
         className="flex items-center justify-between"
@@ -490,74 +579,37 @@ export function PredictedSetlist({
         </div>
       )}
 
-      {/* + Add (pre-show only) */}
+      {/* Action row (pre-show only). Mobile shape: two SecondaryButtons
+          side-by-side — picker trigger + copy-from-past trigger.
+          Desktop with a populated picker: only copy-from-past
+          (the picker itself is the always-visible right column,
+          so a separate trigger button would be redundant). Desktop
+          fallback (no picker — multi-artist festival or empty
+          catalog): same as mobile shape, just without the picker
+          trigger since `showPicker` is false. */}
       {isPreShow && (
-        <div style={{ borderTop: `0.5px solid ${colors.borderLight}` }}>
-          {searchOpen ? (
-            <div style={{ padding: "8px 14px", background: colors.bgSubtle }}>
-              <SongSearch
-                onSelect={handleAdd}
-                locale={locale}
-                texts={{
-                  placeholder: t("searchPlaceholder"),
-                  loading: t("searchLoading"),
-                  noResults: t("searchNoResults"),
-                }}
-                excludeSongIds={predictions.map((p) => p.songId)}
-                // Same multi-IP scope as the wishlist picker — see
-                // EventWishSection.tsx for the rationale. eventId
-                // upstream is a string; cast at the single boundary.
-                scope={{ kind: "event", eventId: Number(eventId) }}
-                variant="compact"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setSearchOpen(false)}
-                className="mt-1 text-[11px]"
-                style={{
-                  color: colors.textMuted,
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                {t("cancel")}
-              </button>
-            </div>
-          ) : (
-            // Two-button utility row matching the wishlist-button-
-            // polish mockup. Both buttons use the SecondaryButton
-            // variant (`<ShareCardButton>`'s primary gradient is the
-            // only PrimaryButton in this surface, and lives below)
-            // with `flex: 1` so they share the row width evenly.
-            // No `flexWrap` — at iPhone SE width the two ~150 px
-            // buttons still fit; ko / ja / en labels are short
-            // enough that `whiteSpace: nowrap` (inherited from
-            // SecondaryButton) never truncates on supported
-            // viewports.
-            <div
-              style={{
-                padding: "8px 14px 0",
-                display: "flex",
-                gap: 8,
-              }}
+        <div
+          style={{
+            borderTop: `0.5px solid ${colors.borderLight}`,
+            padding: "8px 14px 0",
+            display: "flex",
+            gap: 8,
+          }}
+        >
+          {showPicker && !isDesktopPicker && (
+            <SecondaryButton
+              onClick={() => setPickerOpen(true)}
+              style={{ flex: 1 }}
             >
-              <SecondaryButton
-                onClick={() => setSearchOpen(true)}
-                style={{ flex: 1 }}
-              >
-                {t("add")}
-              </SecondaryButton>
-              <SecondaryButton
-                onClick={() => setCopyOpen(true)}
-                style={{ flex: 1 }}
-              >
-                {t("copyFromPast")}
-              </SecondaryButton>
-            </div>
+              {t("add")}
+            </SecondaryButton>
           )}
+          <SecondaryButton
+            onClick={() => setCopyOpen(true)}
+            style={{ flex: 1 }}
+          >
+            {t("copyFromPast")}
+          </SecondaryButton>
         </div>
       )}
 
@@ -574,6 +626,22 @@ export function PredictedSetlist({
         />
       )}
 
+      {/* Mobile picker sheet — mounted only when the picker is
+          available AND we're on a mobile-shape viewport. Desktop
+          picker lives in the right column below the outer-div
+          close. */}
+      {showPicker && !isDesktopPicker && (
+        <SongPickerSheet
+          locale={locale}
+          songs={availableSongs}
+          selectedIds={selectedIds}
+          unitFilters={unitFilters}
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          onToggle={handleToggle}
+        />
+      )}
+
       {/* Post-show: share button (gated by ShareCardButton itself) */}
       <ShareCardButton
         eventId={eventId}
@@ -585,6 +653,18 @@ export function PredictedSetlist({
         actualSongs={actualSongs}
         predictions={predictions}
       />
+      </div>
+      {isDesktopPicker && (
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <SongPickerContent
+            songs={availableSongs}
+            selectedIds={selectedIds}
+            unitFilters={unitFilters}
+            onToggle={handleToggle}
+            locale={locale}
+          />
+        </div>
+      )}
     </div>
   );
 }
