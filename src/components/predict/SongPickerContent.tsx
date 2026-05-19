@@ -20,6 +20,13 @@ interface Props {
   /** Mobile-only confirm bar. Omit on desktop (always-visible panel
    *  has no concept of "done"). */
   onClose?: () => void;
+  /** Focus the search input on mount. Mobile sheet sets this `true`
+   *  (sheet open is the user's "I want to search" signal). Desktop
+   *  side panel passes `false` — auto-focusing on every page load
+   *  would steal keyboard flow + announce the placeholder before
+   *  the page's primary content. Default `false` so omission on
+   *  the desktop mount is safe. */
+  autoFocus?: boolean;
 }
 
 /**
@@ -52,6 +59,7 @@ export function SongPickerContent({
   onToggle,
   locale,
   onClose,
+  autoFocus = false,
 }: Props) {
   const t = useTranslations("Predict");
   const [query, setQuery] = useState("");
@@ -173,14 +181,12 @@ export function SongPickerContent({
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("picker.searchPlaceholder")}
             aria-label={t("picker.searchPlaceholder")}
-            // Autofocus on mobile: the sheet just opened and the
-            // user's intent is to type. Desktop: not critical
-            // (panel is always visible) but the page-scope tab-
-            // order policy still routes here naturally. We keep
-            // autofocus unconditional — the cost on desktop is a
-            // mild keyboard-trap if the page is loaded with the
-            // picker pre-rendered, which is an acceptable trade.
-            autoFocus
+            // Mobile sheet opt-in only. Desktop panel passes
+            // `false` (default) — the picker is always visible,
+            // so unconditional autofocus would steal keyboard
+            // flow on every page load and announce the
+            // placeholder before any other content.
+            autoFocus={autoFocus}
             style={{
               flex: 1,
               border: "none",

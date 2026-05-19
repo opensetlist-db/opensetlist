@@ -42,6 +42,25 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { colors } from "@/styles/tokens";
 
+/**
+ * Desktop right-column picker width. Matches `event-page-desktop-v2-
+ * mockup.jsx`'s `gridTemplateColumns: "1fr 360px"` — narrow enough
+ * that the 1fr left column keeps comfortable prediction-row width
+ * at 1024px viewport but wide enough to fit the picker's unit
+ * filter chips on one row in most locales.
+ */
+const DESKTOP_PICKER_COL_PX = 360;
+
+/**
+ * Floor for the 2-col grid wrapper. Without a `minHeight`, an event
+ * with zero predictions + an empty actual setlist collapses the
+ * predict surface to ~120px on desktop — picker panel still
+ * renders but the left column shows as a near-empty row, breaking
+ * the visual symmetry. 520px keeps both columns at a usable height
+ * even for the empty case. Mockup default.
+ */
+const DESKTOP_PICKER_MIN_HEIGHT_PX = 520;
+
 interface Props {
   eventId: string;
   locale: string;
@@ -446,8 +465,8 @@ export function PredictedSetlist({
         isDesktopPicker
           ? {
               display: "grid",
-              gridTemplateColumns: "1fr 360px",
-              minHeight: 520,
+              gridTemplateColumns: `1fr ${DESKTOP_PICKER_COL_PX}px`,
+              minHeight: DESKTOP_PICKER_MIN_HEIGHT_PX,
             }
           : undefined
       }

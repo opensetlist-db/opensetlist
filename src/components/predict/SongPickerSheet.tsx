@@ -119,6 +119,7 @@ export function SongPickerSheet({
             onToggle={onToggle}
             locale={locale}
             onClose={() => onOpenChange(false)}
+            autoFocus
           />
         </Drawer.Content>
       </Drawer.Portal>
