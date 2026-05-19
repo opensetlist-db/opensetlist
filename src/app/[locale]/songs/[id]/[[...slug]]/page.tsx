@@ -13,7 +13,7 @@ import {
   displayNameWithFallback,
   displayOriginalTitle,
 } from "@/lib/display";
-import { deriveOgPaletteFromSong } from "@/lib/ogPalette";
+import { deriveOgPaletteFromCachedSong } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import {
@@ -194,11 +194,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const metaT = await getTranslations({ locale, namespace: "Meta" });
   if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const songId = BigInt(id);
-  const [song, palette] = await Promise.all([
+  // Load the cached song + the cached performance list in parallel.
+  // Both are wrapped in `react.cache`, so `SongPage` re-uses the same
+  // results (no second roundtrip). The palette is derived
+  // in-process from those two payloads — see
+  // `deriveOgPaletteFromCachedSong` for what was previously two extra
+  // Prisma queries (`SongArtist.findFirst` for the anchor +
+  // `SetlistItemSong.findMany` for the performer frequency map, 237ms
+  // and 392ms respectively in Sentry trace
+  // feb38ab569e7432b8960b6a42f6cffaf on /ja/songs/17/deepness).
+  const [song, performances] = await Promise.all([
     getSong(songId),
-    deriveOgPaletteFromSong(songId),
+    getSongPerformances(songId),
   ]);
   if (!song) return { title: metaT("notFound") };
+  const palette = await deriveOgPaletteFromCachedSong(song, performances);
   // Songs are work-primary: OG title shows the original-language
   // title with the locale-resolved variant label. Going through
   // `displayOriginalTitle` instead of hand-resolving via
