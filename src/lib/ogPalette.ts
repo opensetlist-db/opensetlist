@@ -424,6 +424,111 @@ export async function deriveOgPaletteFromEvent(
   }
 }
 
+// Cached-event variant of deriveOgPaletteFromEvent. The event detail
+// page's `getEvent` (wrapped in react.cache) already fetches both
+// pieces of data the palette derivation needs:
+//
+//   - event.eventSeries.artist.color  → the anchor
+//   - event.setlistItems[].performers[].stageIdentity.color
+//                                     → the frequency map
+//
+// The DB-loading `deriveOgPaletteFromEvent` was firing two queries
+// (an Event.findUnique reading `eventSeries.artist.color` and a
+// SetlistItem.findMany reading `stageIdentity.color`) that were pure
+// duplicates of work `getEvent` already did. Sentry trace
+// (event 5086a051fbe14d3384b7000ceda86503) showed these at 570ms +
+// 579ms of DB time per request, against an event whose
+// `relationJoins` mega-query was already hydrating the same columns.
+//
+// This variant takes the loaded event and computes the palette
+// in-process. Only the empty-roster fallback path (no member colors
+// at all in the setlist) still touches the DB — that branch needs
+// `StageIdentityArtist` rows which `getEvent` does not pull. Common
+// case: zero DB queries for the palette.
+//
+// The OG image route (`/api/og/event/[id]`) keeps using
+// `deriveOgPaletteFromEvent` since its own Event fetch is intentionally
+// minimal (translations only) and doesn't carry the color columns.
+// Accept any ID-shaped scalar. The cached event's `eventSeries.
+// artistId` is typed as `bigint` by Prisma (matches the schema), but
+// at runtime it arrives as a `string` because the `relationJoins`
+// LATERAL JOIN inside `getEvent` builds nested objects with
+// `JSONB_BUILD_OBJECT(..., 'artistId', "t5"."artistId"::text, ...)`.
+// `serializeBigInt` also normalizes top-level BigInts to Number.
+// `BigInt(...)` accepts all three, so we widen the input type and
+// convert at the fallback boundary instead of forcing the caller to
+// cast.
+type SerializedId = string | number | bigint;
+
+export type CachedEventForOgPalette = {
+  eventSeries: {
+    artistId: SerializedId | null;
+    artist: {
+      color: string | null;
+    } | null;
+  } | null;
+  setlistItems: ReadonlyArray<{
+    performers: ReadonlyArray<{
+      stageIdentity: {
+        color: string | null;
+      };
+    }>;
+  }>;
+};
+
+export async function deriveOgPaletteFromCachedEvent(
+  event: CachedEventForOgPalette,
+): Promise<OgPalette> {
+  try {
+    const artistColor = event.eventSeries?.artist?.color;
+    const anchor = isValidHex(artistColor) ? artistColor : null;
+
+    // Mirrors `collectEventSetlistColors`: per-item dedupe via Set
+    // (so two members in one setlist item with the same color count
+    // once for that item), then sum across items.
+    const setlistFrequency = new Map<string, number>();
+    for (const item of event.setlistItems) {
+      const perItem = new Set<string>();
+      for (const performer of item.performers) {
+        const color = performer.stageIdentity?.color;
+        if (isValidHex(color)) perItem.add(color.toLowerCase());
+      }
+      for (const color of perItem) {
+        setlistFrequency.set(color, (setlistFrequency.get(color) ?? 0) + 1);
+      }
+    }
+
+    const frequency =
+      setlistFrequency.size > 0
+        ? setlistFrequency
+        : await collectFallbackArtistRosterColors(
+            event.eventSeries?.artistId ?? null,
+          );
+    return paletteFromAnchorAndFrequency(anchor, frequency);
+  } catch (err) {
+    console.error(
+      "[ogPalette] cached event derivation failed, using fallback",
+      err,
+    );
+    return fallbackPalette();
+  }
+}
+
+// Empty-roster fallback for the cached-event path. The series'
+// `artistId` is already known (carried in the cached event), so
+// unlike `collectEventArtistRosterColors` we skip the redundant
+// Event.findUnique and go straight to the parent-chain walk +
+// StageIdentityArtist gather.
+async function collectFallbackArtistRosterColors(
+  seedArtistIdRaw: SerializedId | null,
+): Promise<Map<string, number>> {
+  if (seedArtistIdRaw === null || seedArtistIdRaw === undefined) {
+    return new Map();
+  }
+  const rootId = await findRootArtistId(BigInt(seedArtistIdRaw));
+  return collectRosterColorsByArtistId(rootId);
+}
+
 export async function deriveOgPaletteFromSong(
   songId: bigint
 ): Promise<OgPalette> {
