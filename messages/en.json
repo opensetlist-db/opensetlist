@@ -305,7 +305,26 @@
     "duringHint": "{count, plural, one {# prediction entered} other {# predictions entered}}",
     "afterHint": "Show ended · Final result",
     "finalScore": "{matched}/{total} hit ({pct}%) 🎯",
-    "description": "Add your predictions before the show starts. Your hit rate is scored against the actual setlist. There's no limit on how many songs you predict, but only the top N predictions (where N = the number of songs in the actual setlist) count toward the score."
+    "description": "Add your predictions before the show starts. Your hit rate is scored against the actual setlist. There's no limit on how many songs you predict, but only the top N predictions (where N = the number of songs in the actual setlist) count toward the score.",
+    "copyFromPast": "📋 From past show",
+    "copy": {
+      "sheetTitle": "Copy from a past show",
+      "loading": "Loading past shows...",
+      "fetchError": "Failed to load past shows. Please try again.",
+      "emptyHint": "No past show in the same series has a confirmed setlist yet",
+      "songCount": "{count, plural, one {🎵 # song} other {🎵 # songs}}",
+      "previewMore": "{count, plural, one {# more} other {# more}}",
+      "selectButton": "Copy from this show",
+      "confirmIncoming": "{count, plural, one {Importing # song} other {Importing # songs}}",
+      "confirmExisting": "{count, plural, one {Current prediction: # song} other {Current prediction: # songs}}",
+      "confirmDup": "{count, plural, one {# duplicate will be skipped} other {# duplicates will be skipped}}",
+      "modeAppend": "Append (skip duplicates)",
+      "modeReplace": "Start over (replace current prediction)",
+      "back": "← Pick a different show",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "close": "Close"
+    }
   },
   "ShareCard": {
     "modalTitle": "Share result",
