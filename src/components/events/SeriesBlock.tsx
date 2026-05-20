@@ -7,12 +7,17 @@ import { EVENT_TABLE_COLUMNS } from "@/components/events/tableLayout";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
-  seriesName: string;
   /**
-   * Locale-resolved short name of the root series's artist, or null
-   * when the series has no `artistId` (multi-artist festival). Mirrors
-   * the same prop on `SeriesSection`; rendered as a small primary-tinted
-   * pill at the start of the header badge row.
+   * Block header label. Pre-resolved by the page based on the group's
+   * kind: a series's locale-resolved name, a per-artist "단독 공연"
+   * template, an organizer's free-text name, or the locale catchall.
+   */
+  title: string;
+  /**
+   * Locale-resolved short name of the artist pill rendered before
+   * the title. Only meaningful for series groups whose root series
+   * has an artistId; the artist/organizer/ungrouped group kinds
+   * pass null (the title already carries the identity).
    */
   artistShortName: string | null;
   hasOngoing: boolean;
@@ -31,7 +36,7 @@ interface Props {
 }
 
 export function SeriesBlock({
-  seriesName,
+  title,
   artistShortName,
   hasOngoing,
   eventCountLabel,
@@ -92,7 +97,7 @@ export function SeriesBlock({
             className="text-[15px] font-bold"
             style={{ color: colors.textPrimary }}
           >
-            {seriesName}
+            {title}
           </div>
         </div>
         {!hasOngoing && (

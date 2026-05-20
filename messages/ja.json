@@ -173,6 +173,8 @@
     "upcoming": "今後のイベント",
     "past": "過去のイベント",
     "ungrouped": "その他のイベント",
+    "standaloneTitle": "{artist} — 単独公演",
+    "unknownArtist": "不明なアーティスト",
     "noEvents": "表示できるイベントはありません",
     "filter": {
       "all": "すべて",
