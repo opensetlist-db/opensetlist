@@ -132,23 +132,39 @@ export function SongPickerContent({
   // under their first-seen unit. Sub-unit chips are slug-asc; the
   // group unit (if any) lands first by virtue of appearing in the
   // server's order before any sub-unit song.
+  //
+  // **Multi-artist songs get their own bucket** rather than
+  // landing under the first-credited solo's section. `unit.label`
+  // points at that solo as a display fallback, but rendering
+  // "Hanamusubi" under "Kozue" misleads the user into thinking
+  // it's that single solo's song. We collect all multi-artist
+  // songs into a dedicated "여러 솔로 / Multiple soloists" section
+  // with a muted color (no specific unit owns it). Sentinel key
+  // `MULTI_ARTIST_BUCKET_KEY = -1` is safe since artistIds are
+  // positive Postgres autoincrement BigInts.
   const grouped = useMemo(() => {
     if (!showSectionHeaders) {
       return [{ unitKey: null as string | null, label: "", color: "", songs: filtered }];
     }
+    const MULTI_ARTIST_BUCKET_KEY = -1;
     const buckets = new Map<
       number,
       { unitKey: string; label: string; color: string; songs: AvailableSong[] }
     >();
     for (const song of filtered) {
-      const existing = buckets.get(song.unit.artistId);
+      const bucketKey = song.isMultiArtist
+        ? MULTI_ARTIST_BUCKET_KEY
+        : song.unit.artistId;
+      const existing = buckets.get(bucketKey);
       if (existing) {
         existing.songs.push(song);
       } else {
-        buckets.set(song.unit.artistId, {
-          unitKey: song.unit.slug,
-          label: song.unit.label,
-          color: song.unit.color,
+        buckets.set(bucketKey, {
+          unitKey: song.isMultiArtist ? "_multi" : song.unit.slug,
+          label: song.isMultiArtist
+            ? t("picker.multiArtistSection")
+            : song.unit.label,
+          color: song.isMultiArtist ? colors.textMuted : song.unit.color,
           songs: [song],
         });
       }
@@ -159,7 +175,7 @@ export function SongPickerContent({
       color: b.color,
       songs: b.songs,
     }));
-  }, [filtered, showSectionHeaders]);
+  }, [filtered, showSectionHeaders, t]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -478,7 +494,14 @@ function SongRow({
               ({title.variant})
             </span>
           )}
-          {showInlineBadge && (
+          {showInlineBadge && !song.isMultiArtist && (
+            // Multi-artist collab songs don't get an inline badge —
+            // `song.unit.label` only points at the first sub-unit
+            // for display fallback, but surfacing it as the song's
+            // unit badge misleads the user into thinking it's that
+            // single solo's song. Section header context (under
+            // composite filters) already conveys "this is in the
+            // `others` bucket" without the badge.
             <span
               style={{
                 fontSize: 10,

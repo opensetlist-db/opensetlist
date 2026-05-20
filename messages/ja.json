@@ -337,7 +337,8 @@
       "confirmButton": "{count}曲を選択",
       "emptyHint": "右側から曲を選んでください",
       "filterAll": "全体",
-      "filterOthers": "その他"
+      "filterOthers": "その他",
+      "multiArtistSection": "数名のソロ"
     }
   },
   "ShareCard": {

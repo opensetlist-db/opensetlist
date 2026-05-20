@@ -475,6 +475,43 @@ describe("<SongPickerContent>", () => {
     expect(rowAfter?.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("multi-artist songs render under a dedicated section header (not under the first-credited solo)", () => {
+    // A multi-artist song whose `unit` happens to point at Cerise
+    // as a display fallback. Under the composite `all` filter, the
+    // section grouping must place it under the generic "multi
+    // soloists" section — NOT under the Cerise section header
+    // alongside legitimate Cerise-only songs.
+    const multi = song(
+      500,
+      "Multi-Solo Collab",
+      CERISE, // display fallback only; routing must ignore
+      [],
+      null,
+      true, // isMultiArtist
+    );
+    render(
+      <SongPickerContent
+        songs={[...SONGS, multi]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    // The multi-artist song shows up …
+    expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
+    // … and the dedicated section header is rendered.
+    expect(screen.getByText("picker.multiArtistSection")).toBeTruthy();
+    // The inline unit badge ("Cerise Bouquet") is suppressed on the
+    // multi-artist row. Under `all`, the label appears on:
+    //   1. the Cerise filter chip,
+    //   2. the Cerise section header,
+    //   3-4. the two Cerise-only song badges (Aoku Haruka + Cerise Tune)
+    // → exactly 4 occurrences. If the multi row leaked a badge,
+    //   the count would be 5.
+    expect(screen.getAllByText("Cerise Bouquet").length).toBe(4);
+  });
+
   it("clearing the search input via × button restores all rows", () => {
     render(
       <SongPickerContent
