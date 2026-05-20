@@ -116,9 +116,18 @@ export function deriveUnitFilters(
     count: number;
   };
   const buckets = new Map<number, Bucket>();
+  // Multi-artist collab songs route to `others` regardless of the
+  // per-artist threshold. We accumulate the count inline (instead
+  // of a second pass over `songs`) so the loop visits each row
+  // exactly once. Songs credited to the primary artist's group row
+  // skip both — the `group` chip handles them above.
+  let multiArtistCount = 0;
   for (const song of songs) {
     if (song.unit.artistId === primaryArtistId) continue;
-    if (song.isMultiArtist) continue;
+    if (song.isMultiArtist) {
+      multiArtistCount++;
+      continue;
+    }
     const existing = buckets.get(song.unit.artistId);
     if (existing) {
       existing.count++;
@@ -133,7 +142,8 @@ export function deriveUnitFilters(
     }
   }
 
-  // Partition into individual-chip vs others-bucket.
+  // Partition into individual-chip vs others-bucket. Multi-artist
+  // collabs all route to `others` (see `multiArtistCount` above).
   const individuals: Array<{
     artistId: number;
     slug: string;
@@ -141,7 +151,7 @@ export function deriveUnitFilters(
     color: string;
     isMainUnit: boolean;
   }> = [];
-  let othersSongCount = 0;
+  let othersSongCount = multiArtistCount;
   for (const [artistId, info] of buckets) {
     if (info.isMainUnit || info.count > OTHERS_THRESHOLD) {
       individuals.push({
@@ -154,13 +164,6 @@ export function deriveUnitFilters(
     } else {
       othersSongCount += info.count;
     }
-  }
-  // Multi-artist collab songs route to `others` regardless of the
-  // per-artist threshold — they didn't contribute to any bucket
-  // (see the `if (song.isMultiArtist) continue;` skip above). If
-  // any exist, ensure the `others` chip is emitted.
-  for (const song of songs) {
-    if (song.isMultiArtist) othersSongCount++;
   }
 
   // Sort: main units first (slug ASC within), then non-main

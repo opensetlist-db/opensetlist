@@ -101,8 +101,8 @@ export interface AvailableSongUnit {
 export type UnitFilterKind = "all" | "group" | "individual" | "others";
 
 export interface UnitFilter {
-  /** Stable React key + active-filter state value. `all` / `sub` for
-   *  the composites; the artist's `slug` for `group` + `individual`. */
+  /** Stable React key + active-filter state value. `all` / `others`
+   *  for the composites; the artist's `slug` for `group` + `individual`. */
   key: string;
   label: string;
   /** Used for the active-chip border + tint. `null` for the "all"
@@ -110,6 +110,6 @@ export interface UnitFilter {
   color: string | null;
   kind: UnitFilterKind;
   /** Filled for `kind: "group"` + `"individual"`. Null for the
-   *  composite `"all"` + `"sub"` filters. */
+   *  composite `"all"` + `"others"` filters. */
   artistId: number | null;
 }
