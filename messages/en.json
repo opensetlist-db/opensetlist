@@ -324,6 +324,21 @@
       "apply": "Apply",
       "cancel": "Cancel",
       "close": "Close"
+    },
+    "picker": {
+      "title": "Song list",
+      "sheetTitle": "Add predicted song",
+      "closeAria": "Close",
+      "searchPlaceholder": "Search songs...",
+      "searchClearAria": "Clear search",
+      "resultCount": "{count, plural, one {# song} other {# songs}} · {selected} selected",
+      "noResults": "No matches",
+      "emptyCatalog": "No songs to show",
+      "confirmButton": "Done ({count} selected)",
+      "emptyHint": "Pick songs from the panel on the right",
+      "filterAll": "All",
+      "filterOthers": "Others",
+      "multiArtistSection": "Others"
     }
   },
   "ShareCard": {

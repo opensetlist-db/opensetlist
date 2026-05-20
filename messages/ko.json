@@ -324,6 +324,21 @@
       "apply": "적용",
       "cancel": "취소",
       "close": "닫기"
+    },
+    "picker": {
+      "title": "곡 목록",
+      "sheetTitle": "예상 곡 추가",
+      "closeAria": "닫기",
+      "searchPlaceholder": "곡 검색...",
+      "searchClearAria": "검색어 지우기",
+      "resultCount": "{count}곡 · 선택됨 {selected}곡",
+      "noResults": "검색 결과가 없어요",
+      "emptyCatalog": "표시할 곡이 없어요",
+      "confirmButton": "{count}곡 선택 완료",
+      "emptyHint": "우측에서 곡을 선택해보세요",
+      "filterAll": "전체",
+      "filterOthers": "그 외",
+      "multiArtistSection": "그 외"
     }
   },
   "ShareCard": {

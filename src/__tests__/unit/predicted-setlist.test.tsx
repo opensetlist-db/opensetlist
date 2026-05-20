@@ -12,11 +12,65 @@ vi.mock("@/hooks/useMounted", () => ({
   useMounted: () => true,
 }));
 
+// Force the mobile shape across these tests — the "+ 곡 추가" trigger
+// only appears when `!isDesktopPicker`. Tests that specifically need
+// the desktop 2-col layout cover that path in
+// `predicted-setlist-desktop-picker.test.tsx`.
+vi.mock("@/hooks/useIsDesktop", () => ({
+  useIsDesktop: () => false,
+}));
+
+// Stub `vaul` so the picker sheet's `Drawer.*` primitives render
+// as plain divs in jsdom — we test the "sheet opens" semantics by
+// asserting on the visible body content, not on portal mounting.
+vi.mock("vaul", () => {
+  const passthrough = ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  );
+  return {
+    Drawer: {
+      Root: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+        open ? <div data-testid="drawer-root">{children}</div> : null,
+      Portal: passthrough,
+      Overlay: passthrough,
+      Content: passthrough,
+      Title: passthrough,
+    },
+  };
+});
+
 import { PredictedSetlist } from "@/components/PredictedSetlist";
 import { DIMMED_ROW_OPACITY } from "@/components/PredictSongRow";
 import { writePredictions, type PredictionEntry } from "@/lib/predictionsStorage";
 import type { WishSongDisplay } from "@/lib/wishStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
+
+// Minimal `availableSongs` + `unitFilters` so the picker trigger
+// actually renders pre-show. Tests that need the trigger absent
+// (locked / post-show) override with empty arrays inline.
+const SAMPLE_AVAILABLE: AvailableSong[] = [
+  {
+    songId: 10,
+    originalTitle: "残陽",
+    originalLanguage: "ja",
+    variantLabel: null,
+    baseVersionId: null,
+    translations: [],
+    unit: {
+      artistId: 1,
+      slug: "hasunosora",
+      label: "Hasunosora",
+      color: "#0277BD",
+      isSubUnit: false,
+      isMainUnit: false,
+    },
+    isMultiArtist: false,
+  },
+];
+const SAMPLE_FILTERS: UnitFilter[] = [
+  { key: "all", label: "All", color: null, kind: "all", artistId: null },
+];
 
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000); // +1h
 const PAST = new Date(Date.now() - 60 * 60 * 1000); // -1h
@@ -81,6 +135,8 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         seriesName="Test Series"
         eventTitle="Test Event"
         dateLine="2026-05-23"
+        availableSongs={SAMPLE_AVAILABLE}
+        unitFilters={SAMPLE_FILTERS}
       />,
     );
     expect(screen.getByText("add")).toBeTruthy();
@@ -98,7 +154,7 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         actualSongs={[actual(10)]}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     expect(screen.queryByText("add")).toBeNull();
@@ -119,7 +175,7 @@ describe("PredictedSetlist — render gates by status + lock", () => {
         actualSongs={[actual(10), actual(20)]}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     expect(screen.getByText("afterHint")).toBeTruthy();
@@ -128,7 +184,7 @@ describe("PredictedSetlist — render gates by status + lock", () => {
 });
 
 describe("PredictedSetlist — add / remove", () => {
-  it("pre-show: + 추가 reveals the SongSearch input; cancel hides it", () => {
+  it("pre-show + populated catalog: clicking add opens the picker sheet", () => {
     render(
       <PredictedSetlist
         eventId="1"
@@ -139,13 +195,33 @@ describe("PredictedSetlist — add / remove", () => {
         seriesName="Test Series"
         eventTitle="Test Event"
         dateLine="2026-05-23"
+        availableSongs={SAMPLE_AVAILABLE}
+        unitFilters={SAMPLE_FILTERS}
       />,
     );
-    expect(screen.queryByRole("combobox")).toBeNull();
+    // Sheet's title is rendered through the mocked `t("picker.sheetTitle")`.
+    expect(screen.queryByText("picker.sheetTitle")).toBeNull();
     fireEvent.click(screen.getByText("add"));
-    expect(screen.getByRole("combobox")).toBeTruthy();
-    fireEvent.click(screen.getByText("cancel"));
-    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("picker.sheetTitle")).toBeTruthy();
+  });
+
+  it("pre-show + empty catalog: picker trigger is hidden (only copy-from-past renders)", () => {
+    render(
+      <PredictedSetlist
+        eventId="1"
+        locale="ko"
+        startTime={FUTURE}
+        status="upcoming"
+        actualSongs={[]}
+        seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-05-23"
+        availableSongs={[]}
+        unitFilters={[]}
+      />,
+    );
+    expect(screen.queryByText("add")).toBeNull();
+    expect(screen.getByText("copyFromPast")).toBeTruthy();
   });
 
   it("pre-show: ✕ removes a row + persists to localStorage", () => {
@@ -159,7 +235,7 @@ describe("PredictedSetlist — add / remove", () => {
         actualSongs={[]}
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     expect(screen.getByText("A")).toBeTruthy();
@@ -189,7 +265,7 @@ describe("PredictedSetlist — match-highlight states", () => {
         actualSongs={[actual(10)]} // 1 actual; predicted song 10 at rank 1 → in-rank match
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     // The matched row's title span gets the wishlistMatchBg color.
@@ -215,7 +291,7 @@ describe("PredictedSetlist — match-highlight states", () => {
         actualSongs={[actual(99)]} // 1 actual, no match
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     // Rows at rank 2 + 3 are below the divider (rank > total=1) → opacity 0.4.
@@ -236,7 +312,7 @@ describe("PredictedSetlist — match-highlight states", () => {
         actualSongs={[actual(99)]} // 1 actual → divider after rank 1
         seriesName="Test Series"
         eventTitle="Test Event"
-        dateLine="2026-05-23"
+        dateLine="2026-05-23" availableSongs={[]} unitFilters={[]}
       />,
     );
     expect(screen.getByText(/dividerLabel:/)).toBeTruthy();

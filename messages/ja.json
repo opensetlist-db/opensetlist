@@ -324,6 +324,21 @@
       "apply": "適用",
       "cancel": "キャンセル",
       "close": "閉じる"
+    },
+    "picker": {
+      "title": "曲リスト",
+      "sheetTitle": "予想曲を追加",
+      "closeAria": "閉じる",
+      "searchPlaceholder": "曲を検索...",
+      "searchClearAria": "検索をクリア",
+      "resultCount": "{count}曲 · 選択中 {selected}曲",
+      "noResults": "該当する曲がありません",
+      "emptyCatalog": "表示できる曲がありません",
+      "confirmButton": "{count}曲を選択",
+      "emptyHint": "右側から曲を選んでください",
+      "filterAll": "全体",
+      "filterOthers": "その他",
+      "multiArtistSection": "その他"
     }
   },
   "ShareCard": {

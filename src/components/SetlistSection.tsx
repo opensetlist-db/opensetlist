@@ -12,6 +12,7 @@ import type {
   ReactionCountsMap,
 } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 interface Props {
   eventId: string;
@@ -58,6 +59,15 @@ interface Props {
    * the full visibility table.
    */
   emptyFallback: ReactNode;
+  /**
+   * Catalog for the song picker in the Predicted tab (forwarded
+   * through to `<PredictedSetlist>`). Empty array hides the picker
+   * — falls back to the copy-from-past trigger only. See
+   * `src/lib/types/predict.ts` for the shape.
+   */
+  availableSongs: AvailableSong[];
+  /** Filter chip set (server-derived). Empty array hides the picker. */
+  unitFilters: UnitFilter[];
 }
 
 /**
@@ -99,6 +109,8 @@ export function SetlistSection({
   dateLine,
   isWishPredictOpen,
   emptyFallback,
+  availableSongs,
+  unitFilters,
 }: Props) {
   const t = useTranslations("Setlist");
   const mounted = useMounted();
@@ -262,6 +274,8 @@ export function SetlistSection({
         seriesName={seriesName}
         eventTitle={eventTitle}
         dateLine={dateLine}
+        availableSongs={availableSongs}
+        unitFilters={unitFilters}
       />
     );
 
