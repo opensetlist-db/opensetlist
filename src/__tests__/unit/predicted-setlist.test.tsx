@@ -65,6 +65,7 @@ const SAMPLE_AVAILABLE: AvailableSong[] = [
       isSubUnit: false,
       isMainUnit: false,
     },
+    isMultiArtist: false,
   },
 ];
 const SAMPLE_FILTERS: UnitFilter[] = [

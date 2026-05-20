@@ -5,6 +5,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 function makeSong(
   songId: number,
   unitOver: Partial<AvailableSong["unit"]>,
+  songOver: Partial<Pick<AvailableSong, "isMultiArtist">> = {},
 ): AvailableSong {
   return {
     songId,
@@ -22,6 +23,8 @@ function makeSong(
       isMainUnit: false,
       ...unitOver,
     },
+    isMultiArtist: false,
+    ...songOver,
   };
 }
 
@@ -212,6 +215,75 @@ describe("deriveUnitFilters", () => {
     // 1 catch-all `others` chip — not 3 individual.
     expect(out.filter((f) => f.kind === "others")).toHaveLength(1);
     expect(out.filter((f) => f.kind === "individual")).toHaveLength(0);
+  });
+
+  it("multi-artist songs don't contribute to any individual chip count (skip in per-artist bucket walk)", () => {
+    // Member A has 8 solo songs (normally → 'others' since
+    // ≤ 10) + 5 multi-artist collabs. Without the skip, the
+    // multi-artist songs would inflate A's bucket to 13 → push
+    // A into its own `individual` chip. With the skip, A stays
+    // at 8 → bucketed into `others` as expected.
+    const aSolos = Array.from({ length: 8 }, (_, i) =>
+      makeSong(100 + i, {
+        artistId: 5,
+        slug: "kozue",
+        label: "Kozue",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+    );
+    const collabs = Array.from({ length: 5 }, (_, i) =>
+      makeSong(
+        200 + i,
+        {
+          artistId: 5,
+          slug: "kozue",
+          label: "Kozue",
+          isSubUnit: true,
+          isMainUnit: false,
+        },
+        { isMultiArtist: true },
+      ),
+    );
+    const out = deriveUnitFilters(
+      [...aSolos, ...collabs],
+      1,
+      "Hasunosora",
+      "All",
+      "Others",
+      "#0277BD",
+    );
+    // No individual chip for Kozue (count would be 8 + 5 = 13
+    // without the skip, but the skip drops Kozue to 8 → others).
+    expect(out.find((f) => f.key === "kozue")).toBeUndefined();
+    // `others` chip emitted because both kinds of song route there.
+    expect(out.find((f) => f.kind === "others")).toBeDefined();
+  });
+
+  it("'others' chip is emitted purely from multi-artist collabs (zero per-artist bucket overflow)", () => {
+    // No solo songs at all, only multi-artist collabs whose `unit`
+    // points at sub-unit fallback. The bucket walk skips them, so
+    // `othersSongCount` from buckets is 0. But the explicit
+    // multi-artist pass still increments the count → chip emitted.
+    const songs = Array.from({ length: 3 }, (_, i) =>
+      makeSong(
+        100 + i,
+        {
+          artistId: 2,
+          slug: "cerise",
+          label: "Cerise",
+          isSubUnit: true,
+          isMainUnit: true, // Main unit; would normally get its own chip…
+        },
+        { isMultiArtist: true }, // …but multi-artist skips bucket population.
+      ),
+    );
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    // Cerise's individual chip is NOT emitted because all 3 songs
+    // were skipped by the multi-artist filter on the bucket walk.
+    expect(out.find((f) => f.key === "cerise")).toBeUndefined();
+    // But `others` IS emitted (3 multi-artist songs route there).
+    expect(out.find((f) => f.kind === "others")).toBeDefined();
   });
 
   it("primaryArtistId null + sub-unit songs → no `group` chip, but other chips still apply", () => {

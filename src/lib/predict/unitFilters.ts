@@ -98,6 +98,16 @@ export function deriveUnitFilters(
   // Per-artist bucket walk — collapse same-unit songs into one
   // entry with a running count. Skip the primary artist (already
   // handled by the `group` chip above).
+  //
+  // **Multi-artist songs are EXCLUDED from per-artist counts.** A
+  // song credited to multiple non-main solo artists ("Hanamusubi"
+  // → all 5 members) has `isMultiArtist === true` and would
+  // otherwise inflate whichever solo's `unit.artistId` happened to
+  // sort first. We want the threshold check to consider only songs
+  // a given solo "owns" exclusively (or with a main unit), so the
+  // count reflects their real solo catalog. Multi-artist songs all
+  // route to the `others` composite chip — picked up by
+  // `othersSongCount` below.
   type Bucket = {
     slug: string;
     label: string;
@@ -108,6 +118,7 @@ export function deriveUnitFilters(
   const buckets = new Map<number, Bucket>();
   for (const song of songs) {
     if (song.unit.artistId === primaryArtistId) continue;
+    if (song.isMultiArtist) continue;
     const existing = buckets.get(song.unit.artistId);
     if (existing) {
       existing.count++;
@@ -143,6 +154,13 @@ export function deriveUnitFilters(
     } else {
       othersSongCount += info.count;
     }
+  }
+  // Multi-artist collab songs route to `others` regardless of the
+  // per-artist threshold — they didn't contribute to any bucket
+  // (see the `if (song.isMultiArtist) continue;` skip above). If
+  // any exist, ensure the `others` chip is emitted.
+  for (const song of songs) {
+    if (song.isMultiArtist) othersSongCount++;
   }
 
   // Sort: main units first (slug ASC within), then non-main

@@ -351,11 +351,35 @@ async function getAvailableSongs(
     const aliveArtists = row.artists
       .map((sa) => sa.artist)
       .filter((a) => !a.isDeleted);
-    // Sub-unit wins over group when both match — keeps section
-    // headers organised by the smaller scope.
-    const unitArtist =
-      aliveArtists.find((a) => a.parentArtistId === primaryAsBigInt) ??
-      aliveArtists.find((a) => a.id === primaryAsBigInt);
+    const subUnits = aliveArtists.filter(
+      (a) => a.parentArtistId === primaryAsBigInt,
+    );
+    const groupArtist = aliveArtists.find((a) => a.id === primaryAsBigInt);
+
+    // Routing preference (matches the docstring on
+    // `AvailableSong.unit`):
+    //   - 0 sub-units → group fallback
+    //   - 1 sub-unit  → that sub-unit (main or non-main)
+    //   - ≥2 sub-units with a main unit → main unit wins
+    //   - ≥2 sub-units, all non-main → multi-solo collab, mark
+    //     `isMultiArtist` so the picker routes it to `others`
+    //     only. `unit` still points at the first sub-unit row for
+    //     fallback display (the in-row badge).
+    let unitArtist: (typeof subUnits)[number] | typeof groupArtist | undefined;
+    let isMultiArtist = false;
+    if (subUnits.length === 0) {
+      unitArtist = groupArtist;
+    } else if (subUnits.length === 1) {
+      unitArtist = subUnits[0];
+    } else {
+      const mainSubUnit = subUnits.find((a) => a.isMainUnit);
+      if (mainSubUnit) {
+        unitArtist = mainSubUnit;
+      } else {
+        unitArtist = subUnits[0];
+        isMultiArtist = true;
+      }
+    }
     if (!unitArtist) continue;
     const unitArtistId = safeBigIntToNumber(unitArtist.id);
     if (unitArtistId === null) continue;
@@ -379,6 +403,7 @@ async function getAvailableSongs(
         isSubUnit: unitArtist.parentArtistId !== null,
         isMainUnit: unitArtist.isMainUnit,
       },
+      isMultiArtist,
     });
   }
   return out;

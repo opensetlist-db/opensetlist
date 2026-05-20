@@ -40,11 +40,25 @@ export interface AvailableSong {
   }>;
   /** Unit identity used for the filter chip + section header
    *  routing. Picked server-side from the song's `SongArtist`
-   *  rows: sub-unit row wins over the group-direct row when both
-   *  match (a song credited to both group + sub-unit routes to the
-   *  sub-unit chip rather than the group chip — section headers
-   *  stay organised by the smaller scope). */
+   *  rows. Routing preference (highest → lowest):
+   *    1. Main sub-unit (`isMainUnit === true`) — wins over solos
+   *    2. Single non-main sub-unit / solo — that artist
+   *    3. Multiple non-main sub-units / solos — first one (for
+   *       display), but `isMultiArtist` is set so routing skips
+   *       any individual chip and goes to `others` instead
+   *    4. Group-direct fallback — when no sub-unit credit exists
+   */
   unit: AvailableSongUnit;
+  /** True when the song is credited to ≥2 non-main sub-unit / solo
+   *  artists (no main unit wins). These multi-solo collab songs
+   *  ("Hanamusubi" credited to all 5 Hasunosora members as solo
+   *  artists) shouldn't be attributed to any single solo's chip —
+   *  picker routes them to the `others` composite chip only. The
+   *  `unit` field still points at the first sub-unit row for
+   *  fallback display purposes (badge / section header), but
+   *  routing predicates in `<SongPickerContent>` consult this
+   *  flag before `unit.artistId`. */
+  isMultiArtist: boolean;
 }
 
 export interface AvailableSongUnit {

@@ -44,6 +44,7 @@ function song(
   unit: AvailableSong["unit"],
   translations: AvailableSong["translations"] = [],
   variantLabel: string | null = null,
+  isMultiArtist: boolean = false,
 ): AvailableSong {
   return {
     songId,
@@ -53,6 +54,7 @@ function song(
     baseVersionId: null,
     translations,
     unit,
+    isMultiArtist,
   };
 }
 
@@ -186,6 +188,7 @@ describe("<SongPickerContent>", () => {
         isSubUnit: true,
         isMainUnit: false,
       },
+      isMultiArtist: false,
     };
     render(
       <SongPickerContent
@@ -375,6 +378,55 @@ describe("<SongPickerContent>", () => {
     );
     // mocked t() emits `picker.resultCount:{"count":5,"selected":2}`
     expect(screen.getByText(/picker\.resultCount:.*"count":5.*"selected":2/)).toBeTruthy();
+  });
+
+  it("multi-artist song routes to `others` only — never under any individual chip", () => {
+    // A song whose `unit` happens to point at Cerise (artistId 2)
+    // but `isMultiArtist: true` (multi-solo collab where Cerise is
+    // just the display fallback). It must NOT show under the
+    // Cerise individual chip; it MUST show under `others`.
+    const multi = song(
+      500,
+      "Multi-Solo Collab",
+      CERISE, // unit points here, but routing must ignore it
+      [],
+      null,
+      true, // isMultiArtist
+    );
+    const orphan = song(999, "Orphan", {
+      artistId: 99,
+      slug: "solo-misc",
+      label: "Misc Solo",
+      color: "#888",
+      isSubUnit: true,
+      isMainUnit: false,
+    });
+    const { rerender } = render(
+      <SongPickerContent
+        songs={[...SONGS, multi, orphan]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    // Under Cerise filter → multi-artist song should be excluded.
+    fireEvent.click(screen.getAllByText("Cerise Bouquet")[0]);
+    expect(screen.queryByText("Multi-Solo Collab")).toBeNull();
+    expect(screen.getByText("Aoku Haruka")).toBeTruthy(); // sanity
+    // Under others filter → multi-artist song must be included.
+    rerender(
+      <SongPickerContent
+        songs={[...SONGS, multi, orphan]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getByText("Others"));
+    expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
+    expect(screen.getByText("Orphan")).toBeTruthy();
   });
 
   it("filter chips expose active state via aria-pressed", () => {

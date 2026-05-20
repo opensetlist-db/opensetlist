@@ -93,11 +93,16 @@ export function SongPickerContent({
       if (activeFilter) {
         const kind: UnitFilterKind = activeFilter.kind;
         if (kind === "group" || kind === "individual") {
+          // Multi-artist collab songs never appear under a single
+          // artist's chip — they're routed to `others` only.
+          // `unit.artistId` still points at the fallback solo for
+          // display purposes, but routing should ignore it.
+          if (song.isMultiArtist) return false;
           if (song.unit.artistId !== activeFilter.artistId) return false;
         } else if (kind === "others") {
-          // Catch-all: include songs whose unit lacks an individual
-          // chip. Same predicate `deriveUnitFilters` uses to decide
-          // which artistIds get bucketed into `others` server-side.
+          // Catch-all: includes (a) multi-artist collabs unconditionally,
+          // and (b) songs whose unit lacks an individual / group chip.
+          if (song.isMultiArtist) return true;
           if (coveredArtistIds.has(song.unit.artistId)) return false;
         }
       }
@@ -212,10 +217,18 @@ export function SongPickerContent({
               flex: 1,
               border: "none",
               background: "transparent",
-              fontSize: 13,
+              // 16px is iOS Safari's auto-zoom threshold —
+              // anything smaller triggers a viewport zoom on
+              // focus, which visually widens the whole layout
+              // (the bug operator reported as "검색창에 포커스 주면
+              // 가로폭이 다시 커져"). Keeping at 16px disables the
+              // zoom. Other typography in the picker stays at
+              // 11-13px since they're non-interactive.
+              fontSize: 16,
               color: colors.textPrimary,
               outline: "none",
               fontFamily: "inherit",
+              minWidth: 0,
             }}
           />
           {query && (
@@ -320,7 +333,6 @@ export function SongPickerContent({
                     fontSize: 11,
                     fontWeight: 700,
                     color: bucket.color,
-                    textTransform: "uppercase",
                     letterSpacing: "0.04em",
                   }}
                 >
