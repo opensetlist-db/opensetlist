@@ -100,10 +100,20 @@ export function SongPickerContent({
           if (song.isMultiArtist) return false;
           if (song.unit.artistId !== activeFilter.artistId) return false;
         } else if (kind === "others") {
-          // Catch-all: includes (a) multi-artist collabs unconditionally,
-          // and (b) songs whose unit lacks an individual / group chip.
-          if (song.isMultiArtist) return true;
-          if (coveredArtistIds.has(song.unit.artistId)) return false;
+          // Catch-all ROUTING only. Two kinds of song land here:
+          //   (a) multi-artist collabs (`isMultiArtist === true`) —
+          //       bypass the `coveredArtistIds` predicate since their
+          //       `unit.artistId` is just a display fallback,
+          //   (b) songs whose `unit.artistId` lacks a `group` /
+          //       `individual` chip in this filter set.
+          // Critically, we do NOT short-circuit with `return true`
+          // here — that would bypass the search-query filter below
+          // and cause multi-artist songs to ignore the search input.
+          // Both kinds must still flow through the `q` filter to
+          // respect the user's typed query.
+          if (!song.isMultiArtist && coveredArtistIds.has(song.unit.artistId)) {
+            return false;
+          }
         }
       }
       if (!q) return true;
