@@ -60,6 +60,8 @@ export default async function EditEventPage({ params }: Props) {
             type: data.type,
             status: data.status,
             eventSeriesId: data.eventSeriesId ? Number(data.eventSeriesId) : null,
+            artistId: data.artistId ? Number(data.artistId) : null,
+            organizerName: data.organizerName ?? null,
             date: data.date
               ? new Date(data.date).toISOString().split("T")[0]
               : null,
