@@ -429,6 +429,43 @@ describe("<SongPickerContent>", () => {
     expect(screen.getByText("Orphan")).toBeTruthy();
   });
 
+  it("under `others` filter, multi-artist songs still respect the search query (no short-circuit bypass)", () => {
+    // Regression for a CR-caught bug: the `kind === "others"` branch
+    // used to `return true` early on `song.isMultiArtist`, which
+    // skipped the search-query filter below. Result: a multi-artist
+    // song matched the `others` chip even when the typed query
+    // matched nothing about it. The fix routes multi-artist songs
+    // through the same search filter as every other row.
+    const multi = song(
+      500,
+      "Multi-Solo Collab", // does NOT contain "xyznomatch"
+      CERISE,
+      [],
+      null,
+      true, // isMultiArtist
+    );
+    render(
+      <SongPickerContent
+        songs={[...SONGS, multi]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getByText("Others"));
+    // Sanity: with no query, the multi-artist row IS visible.
+    expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
+    // Type a query that doesn't match the title / translations /
+    // unit.label of the multi-artist row.
+    const input = screen.getByPlaceholderText("picker.searchPlaceholder");
+    fireEvent.change(input, { target: { value: "xyznomatch" } });
+    // Multi-artist row must now be filtered out by the search query.
+    expect(screen.queryByText("Multi-Solo Collab")).toBeNull();
+    // And the empty-results message appears.
+    expect(screen.getByText("picker.noResults")).toBeTruthy();
+  });
+
   it("filter chips expose active state via aria-pressed", () => {
     render(
       <SongPickerContent
