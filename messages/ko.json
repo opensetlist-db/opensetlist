@@ -337,7 +337,7 @@
       "confirmButton": "{count}곡 선택 완료",
       "emptyHint": "우측에서 곡을 선택해보세요",
       "filterAll": "전체",
-      "filterSub": "유닛/솔로곡"
+      "filterOthers": "그 외"
     }
   },
   "ShareCard": {

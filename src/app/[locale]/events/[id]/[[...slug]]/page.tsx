@@ -288,6 +288,13 @@ async function getAvailableSongs(
   const rows = await prisma.song.findMany({
     where: {
       isDeleted: false,
+      // Variants hidden — the picker only surfaces canonical (base)
+      // songs. A song with `baseVersionId !== null` is a variant
+      // ("Dream Believers (SAKURA Ver.)"); only the base row is
+      // pickable. `isSongMatched` already handles variant↔base
+      // equivalence at score time so predicting the base also
+      // matches a variant performance.
+      baseVersionId: null,
       artists: {
         some: {
           artist: {
@@ -318,6 +325,7 @@ async function getAvailableSongs(
               slug: true,
               color: true,
               parentArtistId: true,
+              isMainUnit: true,
               originalName: true,
               originalShortName: true,
               originalLanguage: true,
@@ -369,6 +377,7 @@ async function getAvailableSongs(
         ),
         color: resolveUnitColor(unitArtist),
         isSubUnit: unitArtist.parentArtistId !== null,
+        isMainUnit: unitArtist.isMainUnit,
       },
     });
   }
@@ -664,7 +673,7 @@ export default async function EventPage({ params }: Props) {
       safePrimaryArtistId,
       primaryArtistLabel,
       predictPickerTrans("filterAll"),
-      predictPickerTrans("filterSub"),
+      predictPickerTrans("filterOthers"),
       colors.primary,
     );
   }

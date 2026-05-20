@@ -337,7 +337,7 @@
       "confirmButton": "Done ({count} selected)",
       "emptyHint": "Pick songs from the panel on the right",
       "filterAll": "All",
-      "filterSub": "Units / Solo"
+      "filterOthers": "Others"
     }
   },
   "ShareCard": {

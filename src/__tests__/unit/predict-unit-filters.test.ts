@@ -19,6 +19,7 @@ function makeSong(
       label: "Hasunosora",
       color: "#0277BD",
       isSubUnit: false,
+      isMainUnit: false,
       ...unitOver,
     },
   };
@@ -26,16 +27,15 @@ function makeSong(
 
 describe("deriveUnitFilters", () => {
   it("empty songs + null primaryArtistId → only `all`", () => {
-    const out = deriveUnitFilters([], null, "", "All", "Units / Solo", "#0277BD");
+    const out = deriveUnitFilters([], null, "", "All", "Others", "#0277BD");
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ key: "all", kind: "all", color: null });
   });
 
-  it("songs include only group-direct → [all, group] (no sub composite)", () => {
+  it("songs include only group-direct → [all, group] (no individual chips, no others)", () => {
     const songs = [makeSong(10, { artistId: 1, isSubUnit: false })];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
-    expect(out).toHaveLength(2);
-    expect(out[0].kind).toBe("all");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "group"]);
     expect(out[1]).toMatchObject({
       kind: "group",
       label: "Hasunosora",
@@ -51,16 +51,16 @@ describe("deriveUnitFilters", () => {
         label: "Cerise",
         color: "#e91e8c",
         isSubUnit: true,
+        isMainUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
     const groupChip = out.find((f) => f.kind === "group");
     expect(groupChip).toBeDefined();
-    // Brand primary fallback — not the sub-unit's color.
-    expect(groupChip?.color).not.toBe("#e91e8c");
+    expect(groupChip?.color).toBe("#0277BD");
   });
 
-  it("songs include sub-unit → [all, group, sub, individual]", () => {
+  it("isMainUnit=true sub-unit always gets its own chip (1 song, well under threshold)", () => {
     const songs = [
       makeSong(10, { artistId: 1, isSubUnit: false }),
       makeSong(20, {
@@ -69,83 +69,162 @@ describe("deriveUnitFilters", () => {
         label: "Cerise",
         color: "#e91e8c",
         isSubUnit: true,
+        isMainUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
-    expect(out.map((f) => f.kind)).toEqual([
-      "all",
-      "group",
-      "sub",
-      "individual",
-    ]);
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "group", "individual"]);
+    expect(out[2]).toMatchObject({ kind: "individual", artistId: 2, label: "Cerise" });
   });
 
-  it("sub-unit chips deduped by artistId (multiple songs from same unit → one chip)", () => {
-    const songs = [
-      makeSong(10, {
-        artistId: 2,
-        slug: "cerise",
-        label: "Cerise",
-        color: "#e91e8c",
+  it("isMainUnit=false sub-unit with count ≤ threshold (10) is bucketed into 'others'", () => {
+    // 3 songs from a non-main solo artist — under threshold, lands in `others`.
+    const songs = [1, 2, 3].map((i) =>
+      makeSong(100 + i, {
+        artistId: 5,
+        slug: "kozue",
+        label: "Kozue",
+        color: "#a0a0a0",
         isSubUnit: true,
+        isMainUnit: false,
       }),
-      makeSong(11, {
-        artistId: 2,
-        slug: "cerise",
-        label: "Cerise",
-        color: "#e91e8c",
-        isSubUnit: true,
-      }),
-    ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
-    const individualChips = out.filter((f) => f.kind === "individual");
-    expect(individualChips).toHaveLength(1);
+    );
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "group", "others"]);
+    expect(out.find((f) => f.kind === "others")).toMatchObject({
+      label: "Others",
+      artistId: null,
+    });
   });
 
-  it("sub-unit chips ordered by slug ASC", () => {
+  it("isMainUnit=false sub-unit with count > threshold (11+) earns its own chip", () => {
+    // 12 songs from a non-main solo (e.g. future Nijigasaki member) — > 10
+    // threshold, gets its own `individual` chip.
+    const songs = Array.from({ length: 12 }, (_, i) =>
+      makeSong(200 + i, {
+        artistId: 9,
+        slug: "ayumu",
+        label: "Ayumu",
+        color: "#ff7e94",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+    );
+    const out = deriveUnitFilters(songs, 8, "Nijigasaki", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "group", "individual"]);
+    expect(out[2]).toMatchObject({ artistId: 9, label: "Ayumu" });
+  });
+
+  it("threshold is strictly greater than 10 (10 songs from non-main → 'others')", () => {
+    const songs = Array.from({ length: 10 }, (_, i) =>
+      makeSong(300 + i, {
+        artistId: 7,
+        slug: "border",
+        label: "Border",
+        color: "#888",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+    );
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "group", "others"]);
+  });
+
+  it("main units sort before non-main individual chips, slug ASC within each group", () => {
     const songs = [
+      // Two main units + one high-count non-main
       makeSong(10, {
         artistId: 4,
         slug: "mira-cra-park",
         label: "Mira-Cra Park!",
-        color: "#f57c00",
         isSubUnit: true,
+        isMainUnit: true,
       }),
       makeSong(11, {
         artistId: 2,
         slug: "cerise",
         label: "Cerise",
-        color: "#e91e8c",
         isSubUnit: true,
+        isMainUnit: true,
       }),
-      makeSong(12, {
-        artistId: 3,
-        slug: "dollchestra",
-        label: "DOLLCHESTRA",
-        color: "#6c3fc5",
-        isSubUnit: true,
-      }),
+      // High-count non-main solo (count > 10)
+      ...Array.from({ length: 11 }, (_, i) =>
+        makeSong(200 + i, {
+          artistId: 9,
+          slug: "ayumu-solo",
+          label: "Ayumu",
+          isSubUnit: true,
+          isMainUnit: false,
+        }),
+      ),
     ];
-    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Units / Solo", "#0277BD");
-    const individualChips = out.filter((f) => f.kind === "individual");
-    expect(individualChips.map((f) => f.key)).toEqual([
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    const individuals = out.filter((f) => f.kind === "individual");
+    // Main units (slug ASC) → non-main individual (slug ASC). Cerise + Mira are
+    // both main; Cerise < Mira-Cra Park lexicographically. Ayumu non-main comes
+    // last regardless of slug.
+    expect(individuals.map((f) => f.key)).toEqual([
       "cerise",
-      "dollchestra",
       "mira-cra-park",
+      "ayumu-solo",
     ]);
   });
 
-  it("primaryArtistId null + sub-unit songs → no `group` chip, but `sub` composite still appears", () => {
+  it("'others' chip absent when every non-primary artist either is main or exceeds threshold", () => {
     const songs = [
       makeSong(10, {
         artistId: 2,
         slug: "cerise",
         label: "Cerise",
-        color: "#e91e8c",
         isSubUnit: true,
+        isMainUnit: true,
       }),
     ];
-    const out = deriveUnitFilters(songs, null, "", "All", "Units / Solo", "#0277BD");
-    expect(out.map((f) => f.kind)).toEqual(["all", "sub", "individual"]);
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    expect(out.find((f) => f.kind === "others")).toBeUndefined();
+  });
+
+  it("multiple low-count non-main units collapse into the same 'others' chip (one chip, not many)", () => {
+    const songs = [
+      makeSong(10, {
+        artistId: 5,
+        slug: "kozue-solo",
+        label: "Kozue",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+      makeSong(11, {
+        artistId: 6,
+        slug: "rurino-solo",
+        label: "Rurino",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+      makeSong(12, {
+        artistId: 7,
+        slug: "tsuzuri-solo",
+        label: "Tsuzuri",
+        isSubUnit: true,
+        isMainUnit: false,
+      }),
+    ];
+    const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    // 1 catch-all `others` chip — not 3 individual.
+    expect(out.filter((f) => f.kind === "others")).toHaveLength(1);
+    expect(out.filter((f) => f.kind === "individual")).toHaveLength(0);
+  });
+
+  it("primaryArtistId null + sub-unit songs → no `group` chip, but other chips still apply", () => {
+    const songs = [
+      makeSong(10, {
+        artistId: 2,
+        slug: "cerise",
+        label: "Cerise",
+        isSubUnit: true,
+        isMainUnit: true,
+      }),
+    ];
+    const out = deriveUnitFilters(songs, null, "", "All", "Others", "#0277BD");
+    expect(out.map((f) => f.kind)).toEqual(["all", "individual"]);
   });
 });

@@ -58,8 +58,14 @@ export interface AvailableSongUnit {
    *  null on the wire. */
   color: string;
   /** True iff the artist's `parentArtistId` is the event's primary
-   *  artist. Drives the `kind: "sub"` composite filter. */
+   *  artist (i.e. a sub-unit / solo of the group). */
   isSubUnit: boolean;
+  /** Schema's `Artist.isMainUnit` — operator-flagged canonical /
+   *  headline unit (e.g. DOLLCHESTRA). Drives the filter chip
+   *  policy: main units always get their own chip, non-main units
+   *  + solos fall back to the song-count threshold (see
+   *  `deriveUnitFilters`). */
+  isMainUnit: boolean;
 }
 
 /**
@@ -67,15 +73,18 @@ export interface AvailableSongUnit {
  * `<SongPickerContent>`:
  *   - `all`         → no filter
  *   - `group`       → `song.unit.artistId === filter.artistId`
- *   - `sub`         → `song.unit.isSubUnit === true`
  *   - `individual`  → `song.unit.artistId === filter.artistId`
+ *   - `others`      → `song.unit.artistId` is not covered by any
+ *                     `group` or `individual` chip in the same
+ *                     `UnitFilter[]` (composite catch-all)
  *
  * `group` + `individual` use the same predicate but the kind is kept
  * distinct because their `label` source differs (`group` uses the
  * artist's display name; `individual` uses the sub-unit's display
- * name).
+ * name) and so the picker can prefer the group chip for routing
+ * preference when both exist.
  */
-export type UnitFilterKind = "all" | "group" | "sub" | "individual";
+export type UnitFilterKind = "all" | "group" | "individual" | "others";
 
 export interface UnitFilter {
   /** Stable React key + active-filter state value. `all` / `sub` for

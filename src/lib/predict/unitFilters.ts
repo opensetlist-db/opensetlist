@@ -4,41 +4,74 @@
  * routing logic is unit-testable in isolation (same split as
  * `deriveSidebarUnitsAndPerformers` in `src/lib/sidebarDerivations.ts`).
  *
+ * Rule (set per `task-song-picker-predict-mode.md` follow-up,
+ * 2026-05-19):
+ *
+ *   1. `all` — always emitted first.
+ *   2. `group` — when `primaryArtistId !== null`. The event's group
+ *      artist (e.g. Hasunosora). Filters to songs credited directly
+ *      to the group (not a sub-unit).
+ *   3. For every OTHER artistId that appears in the catalog
+ *      (sub-units + solos):
+ *      - If `Artist.isMainUnit === true` → own `individual` chip.
+ *        Operator-flagged canonical/headline units always get their
+ *        own chip regardless of song count (Hasunosora's Cerise /
+ *        DOLLCHESTRA / Mira-Cra Park! / Edel Note).
+ *      - Else if `count > OTHERS_THRESHOLD` (10) → own `individual`
+ *        chip. High-count solos / non-main sub-units earn their own
+ *        chip (future Nijigasaki member solos with 10+ entries
+ *        each).
+ *      - Otherwise → bucketed into the `others` composite. Low-count
+ *        solos / one-off sub-unit collabs end up here so they don't
+ *        clutter the chip row.
+ *   4. `others` — emitted only when at least one song falls under
+ *      it. Catch-all routing predicate is "artistId not covered by
+ *      any `group` or `individual` chip in this filter set".
+ *
  * Inputs:
- *   - `songs`              — the loaded `AvailableSong[]`. Used to
- *     decide which sub-unit chips to emit (a sub-unit with zero songs
- *     in the loaded catalog produces no chip).
+ *   - `songs`              — the loaded `AvailableSong[]`.
  *   - `primaryArtistId`    — `Event.eventSeries.artistId`. `null` on
- *     multi-artist festivals (the picker is hidden there anyway, but
- *     we still build a valid `UnitFilter[]` for type safety).
+ *     multi-artist festivals (picker hidden anyway, but we still
+ *     return a valid `UnitFilter[]` for type safety).
  *   - `primaryArtistLabel` — pre-cascaded localized name for the
  *     primary artist. Used as the `group` chip label.
- *   - `filterAllLabel` / `filterSubLabel` — pre-translated copies
- *     from `Predict.picker.filterAll` / `filterSub`. The composite
- *     chips don't depend on artist identity, so the labels come
- *     through next-intl rather than from the song catalog.
+ *   - `filterAllLabel` / `filterOthersLabel` — pre-translated copies
+ *     from `Predict.picker.filterAll` / `filterOthers`.
+ *   - `primaryColor`       — `colors.primary` token forwarded as a
+ *     parameter (this file is a pure data helper; no `@/styles`
+ *     import).
  *
  * Output ordering:
  *   1. `all`
- *   2. `group` (when `primaryArtistId !== null`)
- *   3. `sub` composite (when at least one sub-unit song exists)
- *   4. Individual sub-unit chips, slug ASC
+ *   2. `group` (when known)
+ *   3. Individual chips: main units first (slug ASC), then high-
+ *      count non-main (slug ASC). Sort key documented at the
+ *      construction site below.
+ *   4. `others` (when non-empty).
  */
 
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 /**
- * `primaryColor` is passed in (instead of imported from
- * `@/styles/tokens`) so this lib utility stays a pure data
- * derivation — no coupling to the styles layer. The single call
- * site in `page.tsx` supplies `colors.primary`.
+ * Song-count cutoff for "non-main" artists (sub-units that aren't
+ * `isMainUnit` + solos): under this, the artist's songs are
+ * absorbed into the `others` composite chip; over this, the artist
+ * gets its own `individual` chip. Strictly greater than (`> 10`)
+ * matches the operator's threshold ("10곡이 넘으면 고유 필터").
+ *
+ * Tuned for the Hasunosora vs Nijigasaki split — Hasunosora member
+ * solos sit at ~1-3 songs each (→ "others"), Nijigasaki member
+ * solos sit at ~10-25 (→ individual chips per member). Re-tune
+ * when a future artist catalog falls between these regimes.
  */
+const OTHERS_THRESHOLD = 10;
+
 export function deriveUnitFilters(
   songs: readonly AvailableSong[],
   primaryArtistId: number | null,
   primaryArtistLabel: string,
   filterAllLabel: string,
-  filterSubLabel: string,
+  filterOthersLabel: string,
   primaryColor: string,
 ): UnitFilter[] {
   const out: UnitFilter[] = [
@@ -62,50 +95,81 @@ export function deriveUnitFilters(
     });
   }
 
-  // Walk the catalog once; record each sub-unit by artistId so
-  // duplicate-unit songs collapse to one chip. Map preserves
-  // insertion order, but we sort by slug afterwards for stable
-  // chip ordering across renders / regions.
-  const subUnits = new Map<
-    number,
-    { slug: string; label: string; color: string }
-  >();
+  // Per-artist bucket walk — collapse same-unit songs into one
+  // entry with a running count. Skip the primary artist (already
+  // handled by the `group` chip above).
+  type Bucket = {
+    slug: string;
+    label: string;
+    color: string;
+    isMainUnit: boolean;
+    count: number;
+  };
+  const buckets = new Map<number, Bucket>();
   for (const song of songs) {
-    if (!song.unit.isSubUnit) continue;
-    if (subUnits.has(song.unit.artistId)) continue;
-    subUnits.set(song.unit.artistId, {
-      slug: song.unit.slug,
-      label: song.unit.label,
-      color: song.unit.color,
+    if (song.unit.artistId === primaryArtistId) continue;
+    const existing = buckets.get(song.unit.artistId);
+    if (existing) {
+      existing.count++;
+    } else {
+      buckets.set(song.unit.artistId, {
+        slug: song.unit.slug,
+        label: song.unit.label,
+        color: song.unit.color,
+        isMainUnit: song.unit.isMainUnit,
+        count: 1,
+      });
+    }
+  }
+
+  // Partition into individual-chip vs others-bucket.
+  const individuals: Array<{
+    artistId: number;
+    slug: string;
+    label: string;
+    color: string;
+    isMainUnit: boolean;
+  }> = [];
+  let othersSongCount = 0;
+  for (const [artistId, info] of buckets) {
+    if (info.isMainUnit || info.count > OTHERS_THRESHOLD) {
+      individuals.push({
+        artistId,
+        slug: info.slug,
+        label: info.label,
+        color: info.color,
+        isMainUnit: info.isMainUnit,
+      });
+    } else {
+      othersSongCount += info.count;
+    }
+  }
+
+  // Sort: main units first (slug ASC within), then non-main
+  // (slug ASC within). Operator-flagged canonical units want
+  // visual priority in the chip row.
+  individuals.sort((a, b) => {
+    if (a.isMainUnit !== b.isMainUnit) return a.isMainUnit ? -1 : 1;
+    return a.slug.localeCompare(b.slug);
+  });
+  for (const ind of individuals) {
+    out.push({
+      key: ind.slug,
+      label: ind.label,
+      color: ind.color,
+      kind: "individual",
+      artistId: ind.artistId,
     });
   }
 
-  if (subUnits.size > 0) {
-    // `sub` composite chip color: the brand primary. We don't pick a
-    // representative sub-unit's color because the composite isn't
-    // routing to any one of them — a violet/purple ramp would also
-    // be defensible (mockup uses #7B1FA2) but we'd lose the token
-    // discipline. Sticking with the primary keeps the chip readable
-    // and tokenised.
+  if (othersSongCount > 0) {
     out.push({
-      key: "sub",
-      label: filterSubLabel,
+      key: "others",
+      label: filterOthersLabel,
       color: primaryColor,
-      kind: "sub",
+      kind: "others",
       artistId: null,
     });
-    const sortedSubs = [...subUnits.entries()].sort(([, a], [, b]) =>
-      a.slug.localeCompare(b.slug),
-    );
-    for (const [artistId, info] of sortedSubs) {
-      out.push({
-        key: info.slug,
-        label: info.label,
-        color: info.color,
-        kind: "individual",
-        artistId,
-      });
-    }
   }
 
   return out;

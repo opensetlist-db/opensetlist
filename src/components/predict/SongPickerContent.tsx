@@ -71,6 +71,20 @@ export function SongPickerContent({
     (f) => f.key === activeFilterKey,
   );
 
+  // Set of artistIds covered by a `group` or `individual` chip in
+  // this filter set. Used by the `others` routing predicate so the
+  // composite catch-all only shows songs whose unit lacks its own
+  // chip. Built once per render via `useMemo`.
+  const coveredArtistIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const f of unitFilters) {
+      if (f.artistId !== null && (f.kind === "group" || f.kind === "individual")) {
+        ids.add(f.artistId);
+      }
+    }
+    return ids;
+  }, [unitFilters]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return songs.filter((song) => {
@@ -80,8 +94,11 @@ export function SongPickerContent({
         const kind: UnitFilterKind = activeFilter.kind;
         if (kind === "group" || kind === "individual") {
           if (song.unit.artistId !== activeFilter.artistId) return false;
-        } else if (kind === "sub") {
-          if (!song.unit.isSubUnit) return false;
+        } else if (kind === "others") {
+          // Catch-all: include songs whose unit lacks an individual
+          // chip. Same predicate `deriveUnitFilters` uses to decide
+          // which artistIds get bucketed into `others` server-side.
+          if (coveredArtistIds.has(song.unit.artistId)) return false;
         }
       }
       if (!q) return true;
@@ -95,10 +112,14 @@ export function SongPickerContent({
       if (song.unit.label.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [songs, query, activeFilter]);
+  }, [songs, query, activeFilter, coveredArtistIds]);
 
+  // Section headers appear under composite filters (`all` + `others`)
+  // where the song list mixes multiple units. Under `group` /
+  // `individual` the section header would be redundant — every row
+  // belongs to the same unit.
   const showSectionHeaders =
-    activeFilter?.kind === "all" || activeFilter?.kind === "sub";
+    activeFilter?.kind === "all" || activeFilter?.kind === "others";
 
   // Group the filtered list by unit when section headers are
   // active. Maps preserve insertion order; we walk filtered (which

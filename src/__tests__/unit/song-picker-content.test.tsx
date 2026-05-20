@@ -17,6 +17,7 @@ const HASUNOSORA = {
   label: "Hasunosora",
   color: "#0277BD",
   isSubUnit: false,
+  isMainUnit: false,
 };
 
 const CERISE = {
@@ -25,6 +26,7 @@ const CERISE = {
   label: "Cerise Bouquet",
   color: "#e91e8c",
   isSubUnit: true,
+  isMainUnit: true,
 };
 
 const DOLLCHESTRA = {
@@ -33,6 +35,7 @@ const DOLLCHESTRA = {
   label: "DOLLCHESTRA",
   color: "#6c3fc5",
   isSubUnit: true,
+  isMainUnit: true,
 };
 
 function song(
@@ -70,7 +73,6 @@ const FILTERS: UnitFilter[] = [
     kind: "group",
     artistId: 1,
   },
-  { key: "sub", label: "Units / Solo", color: "#0277BD", kind: "sub", artistId: null },
   {
     key: "cerise",
     label: "Cerise Bouquet",
@@ -85,6 +87,13 @@ const FILTERS: UnitFilter[] = [
     kind: "individual",
     artistId: 3,
   },
+  // Catch-all `others` chip — for testing the bucket-routing.
+  // SONGS doesn't include any artistId not covered by group/individual,
+  // so this chip will render nothing in the picker (matches the
+  // server-side rule: emit `others` only when ≥1 song falls in).
+  // Tests that need the "covered → empty" path use FILTERS_WITH_ORPHAN
+  // below.
+  { key: "others", label: "Others", color: "#0277BD", kind: "others", artistId: null },
 ];
 
 describe("<SongPickerContent>", () => {
@@ -156,20 +165,42 @@ describe("<SongPickerContent>", () => {
     expect(screen.queryByText("Dollscape")).toBeNull();
   });
 
-  it("filters by unit kind=sub → only sub-unit songs (group excluded)", () => {
+  it("filters by unit kind=others → only songs whose unit lacks an individual chip", () => {
+    // SONGS' Cerise + Dollchestra are covered by individual chips,
+    // and Hasunosora by the group chip — every song's unit is
+    // covered. Add a synthetic orphan song whose unit (`solo-misc`,
+    // artistId 99) has no individual / group chip → should be the
+    // only result under `others`.
+    const orphan: AvailableSong = {
+      songId: 999,
+      originalTitle: "Orphan Solo",
+      originalLanguage: "ja",
+      variantLabel: null,
+      baseVersionId: null,
+      translations: [],
+      unit: {
+        artistId: 99,
+        slug: "solo-misc",
+        label: "Misc Solo",
+        color: "#888",
+        isSubUnit: true,
+        isMainUnit: false,
+      },
+    };
     render(
       <SongPickerContent
-        songs={SONGS}
+        songs={[...SONGS, orphan]}
         selectedIds={[]}
         unitFilters={FILTERS}
         onToggle={() => {}}
         locale="ko"
       />,
     );
-    fireEvent.click(screen.getByText("Units / Solo"));
+    fireEvent.click(screen.getByText("Others"));
     expect(screen.queryByText("Dream Believers")).toBeNull();
-    expect(screen.getByText("Aoku Haruka")).toBeTruthy();
-    expect(screen.getByText("Dollscape")).toBeTruthy();
+    expect(screen.queryByText("Aoku Haruka")).toBeNull();
+    expect(screen.queryByText("Dollscape")).toBeNull();
+    expect(screen.getByText("Orphan Solo")).toBeTruthy();
   });
 
   it("filters by unit kind=individual → only the matching artist", () => {

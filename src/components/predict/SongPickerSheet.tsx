@@ -45,7 +45,14 @@ export function SongPickerSheet({
   const t = useTranslations("Predict");
 
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    // `dismissible={false}` — swipe-down doesn't auto-close the
+    // sheet. Operator-spotted on iPhone 13: a small downward
+    // scroll inside the song list (trying to read further down
+    // the catalog) triggered vaul's drag-to-dismiss heuristic and
+    // closed the sheet, losing the picker state. With this off,
+    // the sheet only closes via the × button or backdrop tap (the
+    // ~30vh strip of dim above the sheet at 70vh height).
+    <Drawer.Root open={open} onOpenChange={onOpenChange} dismissible={false}>
       <Drawer.Portal>
         <Drawer.Overlay
           className="fixed inset-0 z-[200]"
@@ -57,7 +64,20 @@ export function SongPickerSheet({
         <Drawer.Content
           className="fixed bottom-0 left-0 right-0 z-[210] flex flex-col bg-white outline-none"
           style={{
-            height: "82vh",
+            // 70vh (was 82vh). Mockup specced 82vh but the iPhone 13
+            // viewport with the keyboard up left almost no room to
+            // peek at the prediction list below the sheet — operator
+            // reported "want to verify what I just added but the
+            // sheet covers everything". 70vh keeps the picker tall
+            // enough for the song list while leaving a ~30vh strip
+            // of the prediction surface visible underneath.
+            height: "70vh",
+            // Block horizontal scroll on narrow viewports — without
+            // this, a long unit chip label or song title that
+            // doesn't wrap can push the content past the right edge
+            // on iPhone 13 (390pt) and the user sees a horizontal
+            // scrollbar / cut-off content.
+            overflowX: "hidden",
             borderRadius: "20px 20px 0 0",
             boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.15)",
           }}
@@ -119,7 +139,13 @@ export function SongPickerSheet({
             onToggle={onToggle}
             locale={locale}
             onClose={() => onOpenChange(false)}
-            autoFocus
+            // autoFocus intentionally OFF on mobile. Operator-spotted
+            // on iPhone 13: opening the sheet would auto-pop the
+            // soft keyboard, eating ~40% of the already-truncated
+            // 70vh height + leaving the picker visually cramped.
+            // User taps the search input to focus when they want
+            // to type, which is the natural touch-first flow.
+            autoFocus={false}
           />
         </Drawer.Content>
       </Drawer.Portal>
