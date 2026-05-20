@@ -40,11 +40,25 @@ export interface AvailableSong {
   }>;
   /** Unit identity used for the filter chip + section header
    *  routing. Picked server-side from the song's `SongArtist`
-   *  rows: sub-unit row wins over the group-direct row when both
-   *  match (a song credited to both group + sub-unit routes to the
-   *  sub-unit chip rather than the group chip — section headers
-   *  stay organised by the smaller scope). */
+   *  rows. Routing preference (highest → lowest):
+   *    1. Main sub-unit (`isMainUnit === true`) — wins over solos
+   *    2. Single non-main sub-unit / solo — that artist
+   *    3. Multiple non-main sub-units / solos — first one (for
+   *       display), but `isMultiArtist` is set so routing skips
+   *       any individual chip and goes to `others` instead
+   *    4. Group-direct fallback — when no sub-unit credit exists
+   */
   unit: AvailableSongUnit;
+  /** True when the song is credited to ≥2 non-main sub-unit / solo
+   *  artists (no main unit wins). These multi-solo collab songs
+   *  ("Hanamusubi" credited to all 5 Hasunosora members as solo
+   *  artists) shouldn't be attributed to any single solo's chip —
+   *  picker routes them to the `others` composite chip only. The
+   *  `unit` field still points at the first sub-unit row for
+   *  fallback display purposes (badge / section header), but
+   *  routing predicates in `<SongPickerContent>` consult this
+   *  flag before `unit.artistId`. */
+  isMultiArtist: boolean;
 }
 
 export interface AvailableSongUnit {
@@ -58,8 +72,14 @@ export interface AvailableSongUnit {
    *  null on the wire. */
   color: string;
   /** True iff the artist's `parentArtistId` is the event's primary
-   *  artist. Drives the `kind: "sub"` composite filter. */
+   *  artist (i.e. a sub-unit / solo of the group). */
   isSubUnit: boolean;
+  /** Schema's `Artist.isMainUnit` — operator-flagged canonical /
+   *  headline unit (e.g. DOLLCHESTRA). Drives the filter chip
+   *  policy: main units always get their own chip, non-main units
+   *  + solos fall back to the song-count threshold (see
+   *  `deriveUnitFilters`). */
+  isMainUnit: boolean;
 }
 
 /**
@@ -67,19 +87,22 @@ export interface AvailableSongUnit {
  * `<SongPickerContent>`:
  *   - `all`         → no filter
  *   - `group`       → `song.unit.artistId === filter.artistId`
- *   - `sub`         → `song.unit.isSubUnit === true`
  *   - `individual`  → `song.unit.artistId === filter.artistId`
+ *   - `others`      → `song.unit.artistId` is not covered by any
+ *                     `group` or `individual` chip in the same
+ *                     `UnitFilter[]` (composite catch-all)
  *
  * `group` + `individual` use the same predicate but the kind is kept
  * distinct because their `label` source differs (`group` uses the
  * artist's display name; `individual` uses the sub-unit's display
- * name).
+ * name) and so the picker can prefer the group chip for routing
+ * preference when both exist.
  */
-export type UnitFilterKind = "all" | "group" | "sub" | "individual";
+export type UnitFilterKind = "all" | "group" | "individual" | "others";
 
 export interface UnitFilter {
-  /** Stable React key + active-filter state value. `all` / `sub` for
-   *  the composites; the artist's `slug` for `group` + `individual`. */
+  /** Stable React key + active-filter state value. `all` / `others`
+   *  for the composites; the artist's `slug` for `group` + `individual`. */
   key: string;
   label: string;
   /** Used for the active-chip border + tint. `null` for the "all"
@@ -87,6 +110,6 @@ export interface UnitFilter {
   color: string | null;
   kind: UnitFilterKind;
   /** Filled for `kind: "group"` + `"individual"`. Null for the
-   *  composite `"all"` + `"sub"` filters. */
+   *  composite `"all"` + `"others"` filters. */
   artistId: number | null;
 }

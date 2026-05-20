@@ -71,6 +71,20 @@ export function SongPickerContent({
     (f) => f.key === activeFilterKey,
   );
 
+  // Set of artistIds covered by a `group` or `individual` chip in
+  // this filter set. Used by the `others` routing predicate so the
+  // composite catch-all only shows songs whose unit lacks its own
+  // chip. Built once per render via `useMemo`.
+  const coveredArtistIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const f of unitFilters) {
+      if (f.artistId !== null && (f.kind === "group" || f.kind === "individual")) {
+        ids.add(f.artistId);
+      }
+    }
+    return ids;
+  }, [unitFilters]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return songs.filter((song) => {
@@ -79,9 +93,17 @@ export function SongPickerContent({
       if (activeFilter) {
         const kind: UnitFilterKind = activeFilter.kind;
         if (kind === "group" || kind === "individual") {
+          // Multi-artist collab songs never appear under a single
+          // artist's chip — they're routed to `others` only.
+          // `unit.artistId` still points at the fallback solo for
+          // display purposes, but routing should ignore it.
+          if (song.isMultiArtist) return false;
           if (song.unit.artistId !== activeFilter.artistId) return false;
-        } else if (kind === "sub") {
-          if (!song.unit.isSubUnit) return false;
+        } else if (kind === "others") {
+          // Catch-all: includes (a) multi-artist collabs unconditionally,
+          // and (b) songs whose unit lacks an individual / group chip.
+          if (song.isMultiArtist) return true;
+          if (coveredArtistIds.has(song.unit.artistId)) return false;
         }
       }
       if (!q) return true;
@@ -95,10 +117,14 @@ export function SongPickerContent({
       if (song.unit.label.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [songs, query, activeFilter]);
+  }, [songs, query, activeFilter, coveredArtistIds]);
 
+  // Section headers appear under composite filters (`all` + `others`)
+  // where the song list mixes multiple units. Under `group` /
+  // `individual` the section header would be redundant — every row
+  // belongs to the same unit.
   const showSectionHeaders =
-    activeFilter?.kind === "all" || activeFilter?.kind === "sub";
+    activeFilter?.kind === "all" || activeFilter?.kind === "others";
 
   // Group the filtered list by unit when section headers are
   // active. Maps preserve insertion order; we walk filtered (which
@@ -106,23 +132,39 @@ export function SongPickerContent({
   // under their first-seen unit. Sub-unit chips are slug-asc; the
   // group unit (if any) lands first by virtue of appearing in the
   // server's order before any sub-unit song.
+  //
+  // **Multi-artist songs get their own bucket** rather than
+  // landing under the first-credited solo's section. `unit.label`
+  // points at that solo as a display fallback, but rendering
+  // "Hanamusubi" under "Kozue" misleads the user into thinking
+  // it's that single solo's song. We collect all multi-artist
+  // songs into a dedicated "여러 솔로 / Multiple soloists" section
+  // with a muted color (no specific unit owns it). Sentinel key
+  // `MULTI_ARTIST_BUCKET_KEY = -1` is safe since artistIds are
+  // positive Postgres autoincrement BigInts.
   const grouped = useMemo(() => {
     if (!showSectionHeaders) {
       return [{ unitKey: null as string | null, label: "", color: "", songs: filtered }];
     }
+    const MULTI_ARTIST_BUCKET_KEY = -1;
     const buckets = new Map<
       number,
       { unitKey: string; label: string; color: string; songs: AvailableSong[] }
     >();
     for (const song of filtered) {
-      const existing = buckets.get(song.unit.artistId);
+      const bucketKey = song.isMultiArtist
+        ? MULTI_ARTIST_BUCKET_KEY
+        : song.unit.artistId;
+      const existing = buckets.get(bucketKey);
       if (existing) {
         existing.songs.push(song);
       } else {
-        buckets.set(song.unit.artistId, {
-          unitKey: song.unit.slug,
-          label: song.unit.label,
-          color: song.unit.color,
+        buckets.set(bucketKey, {
+          unitKey: song.isMultiArtist ? "_multi" : song.unit.slug,
+          label: song.isMultiArtist
+            ? t("picker.multiArtistSection")
+            : song.unit.label,
+          color: song.isMultiArtist ? colors.textMuted : song.unit.color,
           songs: [song],
         });
       }
@@ -133,7 +175,7 @@ export function SongPickerContent({
       color: b.color,
       songs: b.songs,
     }));
-  }, [filtered, showSectionHeaders]);
+  }, [filtered, showSectionHeaders, t]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -191,10 +233,18 @@ export function SongPickerContent({
               flex: 1,
               border: "none",
               background: "transparent",
-              fontSize: 13,
+              // 16px is iOS Safari's auto-zoom threshold —
+              // anything smaller triggers a viewport zoom on
+              // focus, which visually widens the whole layout
+              // (the bug operator reported as "검색창에 포커스 주면
+              // 가로폭이 다시 커져"). Keeping at 16px disables the
+              // zoom. Other typography in the picker stays at
+              // 11-13px since they're non-interactive.
+              fontSize: 16,
               color: colors.textPrimary,
               outline: "none",
               fontFamily: "inherit",
+              minWidth: 0,
             }}
           />
           {query && (
@@ -299,7 +349,6 @@ export function SongPickerContent({
                     fontSize: 11,
                     fontWeight: 700,
                     color: bucket.color,
-                    textTransform: "uppercase",
                     letterSpacing: "0.04em",
                   }}
                 >
@@ -445,7 +494,14 @@ function SongRow({
               ({title.variant})
             </span>
           )}
-          {showInlineBadge && (
+          {showInlineBadge && !song.isMultiArtist && (
+            // Multi-artist collab songs don't get an inline badge —
+            // `song.unit.label` only points at the first sub-unit
+            // for display fallback, but surfacing it as the song's
+            // unit badge misleads the user into thinking it's that
+            // single solo's song. Section header context (under
+            // composite filters) already conveys "this is in the
+            // `others` bucket" without the badge.
             <span
               style={{
                 fontSize: 10,

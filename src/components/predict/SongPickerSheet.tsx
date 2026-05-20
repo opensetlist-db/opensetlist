@@ -45,7 +45,20 @@ export function SongPickerSheet({
   const t = useTranslations("Predict");
 
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    // `closeThreshold={0.5}` requires dragging the sheet half-way
+    // down before vaul commits the close. Default vaul threshold
+    // (~0.25) was too sensitive — operator-spotted on iPhone 13: a
+    // small downward scroll inside the song list (trying to scroll
+    // further down the catalog) triggered drag-to-dismiss and
+    // closed the sheet. Bumping the threshold restores the natural
+    // swipe-down-to-close gesture while ignoring incidental small
+    // drags. `dismissible` stays default (true) — overlay tap +
+    // Escape + drag-past-threshold all close as expected.
+    <Drawer.Root
+      open={open}
+      onOpenChange={onOpenChange}
+      closeThreshold={0.5}
+    >
       <Drawer.Portal>
         <Drawer.Overlay
           className="fixed inset-0 z-[200]"
@@ -57,7 +70,24 @@ export function SongPickerSheet({
         <Drawer.Content
           className="fixed bottom-0 left-0 right-0 z-[210] flex flex-col bg-white outline-none"
           style={{
+            // 82vh per the mockup. Earlier dropped to 70vh to make
+            // room for the prediction list underneath, but with
+            // drag-to-dismiss back on (closeThreshold tuned), the
+            // user can swipe down to peek and 82vh is the right
+            // default again.
             height: "82vh",
+            // Block horizontal scroll on narrow viewports — without
+            // this, a long unit chip label or song title that
+            // doesn't wrap can push the content past the right edge
+            // on iPhone 13 (390pt) and the user sees a horizontal
+            // scrollbar / cut-off content. `maxWidth: 100vw` defends
+            // the iOS Safari focus-resize case where the layout
+            // viewport briefly reports a wider width when the soft
+            // keyboard opens — without the cap, vaul's
+            // `width: 100%` on Drawer.Content can stretch past the
+            // visual viewport's right edge.
+            maxWidth: "100vw",
+            overflowX: "hidden",
             borderRadius: "20px 20px 0 0",
             boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.15)",
           }}
@@ -119,7 +149,13 @@ export function SongPickerSheet({
             onToggle={onToggle}
             locale={locale}
             onClose={() => onOpenChange(false)}
-            autoFocus
+            // autoFocus intentionally OFF on mobile. Operator-spotted
+            // on iPhone 13: opening the sheet would auto-pop the
+            // soft keyboard, eating ~40% of the already-truncated
+            // 70vh height + leaving the picker visually cramped.
+            // User taps the search input to focus when they want
+            // to type, which is the natural touch-first flow.
+            autoFocus={false}
           />
         </Drawer.Content>
       </Drawer.Portal>

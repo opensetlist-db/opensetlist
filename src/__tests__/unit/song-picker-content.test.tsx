@@ -17,6 +17,7 @@ const HASUNOSORA = {
   label: "Hasunosora",
   color: "#0277BD",
   isSubUnit: false,
+  isMainUnit: false,
 };
 
 const CERISE = {
@@ -25,6 +26,7 @@ const CERISE = {
   label: "Cerise Bouquet",
   color: "#e91e8c",
   isSubUnit: true,
+  isMainUnit: true,
 };
 
 const DOLLCHESTRA = {
@@ -33,6 +35,7 @@ const DOLLCHESTRA = {
   label: "DOLLCHESTRA",
   color: "#6c3fc5",
   isSubUnit: true,
+  isMainUnit: true,
 };
 
 function song(
@@ -41,6 +44,7 @@ function song(
   unit: AvailableSong["unit"],
   translations: AvailableSong["translations"] = [],
   variantLabel: string | null = null,
+  isMultiArtist: boolean = false,
 ): AvailableSong {
   return {
     songId,
@@ -50,6 +54,7 @@ function song(
     baseVersionId: null,
     translations,
     unit,
+    isMultiArtist,
   };
 }
 
@@ -70,7 +75,6 @@ const FILTERS: UnitFilter[] = [
     kind: "group",
     artistId: 1,
   },
-  { key: "sub", label: "Units / Solo", color: "#0277BD", kind: "sub", artistId: null },
   {
     key: "cerise",
     label: "Cerise Bouquet",
@@ -85,6 +89,13 @@ const FILTERS: UnitFilter[] = [
     kind: "individual",
     artistId: 3,
   },
+  // Catch-all `others` chip — for testing the bucket-routing.
+  // SONGS doesn't include any artistId not covered by group/individual,
+  // so this chip will render nothing in the picker (matches the
+  // server-side rule: emit `others` only when ≥1 song falls in).
+  // Tests that need the "covered → empty" path use FILTERS_WITH_ORPHAN
+  // below.
+  { key: "others", label: "Others", color: "#0277BD", kind: "others", artistId: null },
 ];
 
 describe("<SongPickerContent>", () => {
@@ -156,20 +167,43 @@ describe("<SongPickerContent>", () => {
     expect(screen.queryByText("Dollscape")).toBeNull();
   });
 
-  it("filters by unit kind=sub → only sub-unit songs (group excluded)", () => {
+  it("filters by unit kind=others → only songs whose unit lacks an individual chip", () => {
+    // SONGS' Cerise + Dollchestra are covered by individual chips,
+    // and Hasunosora by the group chip — every song's unit is
+    // covered. Add a synthetic orphan song whose unit (`solo-misc`,
+    // artistId 99) has no individual / group chip → should be the
+    // only result under `others`.
+    const orphan: AvailableSong = {
+      songId: 999,
+      originalTitle: "Orphan Solo",
+      originalLanguage: "ja",
+      variantLabel: null,
+      baseVersionId: null,
+      translations: [],
+      unit: {
+        artistId: 99,
+        slug: "solo-misc",
+        label: "Misc Solo",
+        color: "#888",
+        isSubUnit: true,
+        isMainUnit: false,
+      },
+      isMultiArtist: false,
+    };
     render(
       <SongPickerContent
-        songs={SONGS}
+        songs={[...SONGS, orphan]}
         selectedIds={[]}
         unitFilters={FILTERS}
         onToggle={() => {}}
         locale="ko"
       />,
     );
-    fireEvent.click(screen.getByText("Units / Solo"));
+    fireEvent.click(screen.getByText("Others"));
     expect(screen.queryByText("Dream Believers")).toBeNull();
-    expect(screen.getByText("Aoku Haruka")).toBeTruthy();
-    expect(screen.getByText("Dollscape")).toBeTruthy();
+    expect(screen.queryByText("Aoku Haruka")).toBeNull();
+    expect(screen.queryByText("Dollscape")).toBeNull();
+    expect(screen.getByText("Orphan Solo")).toBeTruthy();
   });
 
   it("filters by unit kind=individual → only the matching artist", () => {
@@ -346,6 +380,55 @@ describe("<SongPickerContent>", () => {
     expect(screen.getByText(/picker\.resultCount:.*"count":5.*"selected":2/)).toBeTruthy();
   });
 
+  it("multi-artist song routes to `others` only — never under any individual chip", () => {
+    // A song whose `unit` happens to point at Cerise (artistId 2)
+    // but `isMultiArtist: true` (multi-solo collab where Cerise is
+    // just the display fallback). It must NOT show under the
+    // Cerise individual chip; it MUST show under `others`.
+    const multi = song(
+      500,
+      "Multi-Solo Collab",
+      CERISE, // unit points here, but routing must ignore it
+      [],
+      null,
+      true, // isMultiArtist
+    );
+    const orphan = song(999, "Orphan", {
+      artistId: 99,
+      slug: "solo-misc",
+      label: "Misc Solo",
+      color: "#888",
+      isSubUnit: true,
+      isMainUnit: false,
+    });
+    const { rerender } = render(
+      <SongPickerContent
+        songs={[...SONGS, multi, orphan]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    // Under Cerise filter → multi-artist song should be excluded.
+    fireEvent.click(screen.getAllByText("Cerise Bouquet")[0]);
+    expect(screen.queryByText("Multi-Solo Collab")).toBeNull();
+    expect(screen.getByText("Aoku Haruka")).toBeTruthy(); // sanity
+    // Under others filter → multi-artist song must be included.
+    rerender(
+      <SongPickerContent
+        songs={[...SONGS, multi, orphan]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getByText("Others"));
+    expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
+    expect(screen.getByText("Orphan")).toBeTruthy();
+  });
+
   it("filter chips expose active state via aria-pressed", () => {
     render(
       <SongPickerContent
@@ -390,6 +473,43 @@ describe("<SongPickerContent>", () => {
     );
     const rowAfter = screen.getByText("Dream Believers").closest('[role="button"]');
     expect(rowAfter?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("multi-artist songs render under a dedicated section header (not under the first-credited solo)", () => {
+    // A multi-artist song whose `unit` happens to point at Cerise
+    // as a display fallback. Under the composite `all` filter, the
+    // section grouping must place it under the generic "multi
+    // soloists" section — NOT under the Cerise section header
+    // alongside legitimate Cerise-only songs.
+    const multi = song(
+      500,
+      "Multi-Solo Collab",
+      CERISE, // display fallback only; routing must ignore
+      [],
+      null,
+      true, // isMultiArtist
+    );
+    render(
+      <SongPickerContent
+        songs={[...SONGS, multi]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    // The multi-artist song shows up …
+    expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
+    // … and the dedicated section header is rendered.
+    expect(screen.getByText("picker.multiArtistSection")).toBeTruthy();
+    // The inline unit badge ("Cerise Bouquet") is suppressed on the
+    // multi-artist row. Under `all`, the label appears on:
+    //   1. the Cerise filter chip,
+    //   2. the Cerise section header,
+    //   3-4. the two Cerise-only song badges (Aoku Haruka + Cerise Tune)
+    // → exactly 4 occurrences. If the multi row leaked a badge,
+    //   the count would be 5.
+    expect(screen.getAllByText("Cerise Bouquet").length).toBe(4);
   });
 
   it("clearing the search input via × button restores all rows", () => {

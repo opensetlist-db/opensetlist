@@ -49,7 +49,9 @@ const SONGS: AvailableSong[] = [
       label: "Hasunosora",
       color: "#0277BD",
       isSubUnit: false,
+      isMainUnit: false,
     },
+    isMultiArtist: false,
   },
 ];
 

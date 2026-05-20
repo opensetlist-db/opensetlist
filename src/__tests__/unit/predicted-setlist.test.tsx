@@ -63,7 +63,9 @@ const SAMPLE_AVAILABLE: AvailableSong[] = [
       label: "Hasunosora",
       color: "#0277BD",
       isSubUnit: false,
+      isMainUnit: false,
     },
+    isMultiArtist: false,
   },
 ];
 const SAMPLE_FILTERS: UnitFilter[] = [
