@@ -199,9 +199,11 @@ export async function PUT(request: NextRequest, { params }: Props) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
     }
-    // P2003: artistId / eventSeriesId points at a non-existent row.
-    // Without this guard, an FK violation surfaces as a generic 500
-    // and the operator has no idea which field is stale.
+    // P2003: an FK column (artistId, eventSeriesId, or stageIdentityId
+    // on the replaced eventPerformer rows) points at a non-existent
+    // row. Without this guard, an FK violation surfaces as a generic
+    // 500 and the operator has no idea which field is stale. See
+    // fkViolationResponse for the field-neutral 400 mapping.
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2003"

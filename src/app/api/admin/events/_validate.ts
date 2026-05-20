@@ -80,25 +80,31 @@ export function stageIdentityNotFoundResponse(
 
 /**
  * Convert a Prisma P2003 foreign-key violation into a readable 400.
- * Both event routes funnel artistId / eventSeriesId through `validateArtistId`
- * / `validateEventSeriesId` (shape check only — they don't probe row
- * existence), so a syntactically valid FK that doesn't resolve to a real
- * Artist or EventSeries reaches Prisma and trips P2003. Without this
- * helper the request surfaces as a generic 500.
+ *
+ * Both event routes accept several FK fields whose shape-validators
+ * (`validateArtistId`, `validateEventSeriesId`, `ensureStageIdentitiesExist`)
+ * don't probe row existence — a syntactically valid ID that points at a
+ * non-existent or concurrently-deleted row reaches Prisma and trips
+ * P2003. Without this helper the request surfaces as a generic 500.
+ *
+ * The message is intentionally field-neutral: P2003 can fire on
+ * artistId, eventSeriesId, or stageIdentityId (the latter from
+ * `eventPerformer.createMany` if a stage identity is deleted between
+ * the pre-flight `ensureStageIdentitiesExist` check and the insert).
+ * Naming a specific field in the human-readable string would
+ * misdirect the operator on the wrong-FK case; the actual offending
+ * column rides along in `field` from `err.meta.field_name`.
  *
  * The 400 is preferable to a 409: the operator submitted a malformed
  * input (a stale or made-up ID), not a state conflict between two
- * concurrent writes. `err.meta.field_name` carries Postgres's view of
- * which FK failed — surface it so the operator can fix the offending
- * field without guessing.
+ * concurrent writes.
  */
 export function fkViolationResponse(
   err: Prisma.PrismaClientKnownRequestError
 ): NextResponse {
   return NextResponse.json(
     {
-      error:
-        "유효하지 않은 artistId 또는 eventSeriesId입니다. 입력값을 확인해 주세요.",
+      error: "유효하지 않은 참조 ID가 포함되어 있습니다. 입력값을 확인해 주세요.",
       field: err.meta?.field_name ?? null,
     },
     { status: 400 }

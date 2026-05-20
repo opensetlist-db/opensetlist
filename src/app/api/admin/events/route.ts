@@ -168,8 +168,9 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
-      // P2003: artistId / eventSeriesId points at a non-existent row.
-      // See fkViolationResponse comment for why this is a 400, not 409.
+      // P2003: an FK column (artistId, eventSeriesId, or stageIdentityId
+      // on the nested eventPerformer rows) points at a non-existent row.
+      // See fkViolationResponse for the field-neutral 400 mapping.
       if (err.code === "P2003") {
         return fkViolationResponse(err);
       }
