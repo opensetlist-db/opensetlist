@@ -79,11 +79,18 @@ export function stageIdentityNotFoundResponse(
 }
 
 /**
- * Parse an optional `eventSeriesId` body field. Strings must be digits-only
- * so `BigInt(...)` can't throw a SyntaxError (e.g. on `"abc"` or `"1.5"`).
+ * Parse an optional nullable BigInt FK body field. Strings must be
+ * digits-only so `BigInt(...)` can't throw a SyntaxError (e.g. on
+ * `"abc"` or `"1.5"`). Empty string / null / undefined all coerce to
+ * null — the admin form submits `""` for "no selection."
+ *
+ * Shared by validateEventSeriesId, validateArtistId, and any future
+ * nullable-FK fields on Event so the accepted shapes + error wording
+ * stay in lockstep across the POST and PUT routes.
  */
-export function validateEventSeriesId(
-  value: unknown
+function validateNullableBigIntFk(
+  value: unknown,
+  field: string
 ):
   | { ok: true; value: bigint | null }
   | { ok: false; response: NextResponse } {
@@ -99,10 +106,18 @@ export function validateEventSeriesId(
   return {
     ok: false,
     response: NextResponse.json(
-      { error: "eventSeriesId must be a non-negative integer or digit string" },
+      { error: `${field} must be a non-negative integer or digit string` },
       { status: 400 }
     ),
   };
+}
+
+export function validateEventSeriesId(value: unknown) {
+  return validateNullableBigIntFk(value, "eventSeriesId");
+}
+
+export function validateArtistId(value: unknown) {
+  return validateNullableBigIntFk(value, "artistId");
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
+  validateArtistId,
   validateDateInput,
   validateEventOriginals,
   validateEventSeriesId,
@@ -65,6 +66,16 @@ export async function POST(request: NextRequest) {
   if (!seriesCheck.ok) return seriesCheck.response;
   const eventSeriesId = seriesCheck.value;
 
+  const artistCheck = validateArtistId(body.artistId);
+  if (!artistCheck.ok) return artistCheck.response;
+  const artistId = artistCheck.value;
+
+  // Free-text display name for multi-artist standalone events.
+  // No further validation — the operator may use any organizer
+  // string ("Bandai Namco / Lantis", "Animelo Summer Live", etc.).
+  const organizerName = nullableString(body.organizerName, "organizerName");
+  if (!organizerName.ok) return badRequest(organizerName.message);
+
   const translationsCheck = validateEventTranslations(body.translations);
   if (!translationsCheck.ok) return translationsCheck.response;
   const translations = translationsCheck.value;
@@ -98,6 +109,8 @@ export async function POST(request: NextRequest) {
           type: typeCheck.value,
           status: statusCheck.value ?? "scheduled",
           eventSeriesId,
+          artistId,
+          organizerName: organizerName.value,
           date,
           startTime,
           country: country.value,

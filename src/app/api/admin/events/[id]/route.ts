@@ -14,6 +14,7 @@ import {
   ensureStageIdentitiesExist,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
+  validateArtistId,
   validateDateInput,
   validateEventOriginals,
   validateEventSeriesId,
@@ -114,6 +115,13 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!seriesCheck.ok) return seriesCheck.response;
   const eventSeriesId = seriesCheck.value;
 
+  const artistCheck = validateArtistId(body.artistId);
+  if (!artistCheck.ok) return artistCheck.response;
+  const artistId = artistCheck.value;
+
+  const organizerName = nullableString(body.organizerName, "organizerName");
+  if (!organizerName.ok) return badRequest(organizerName.message);
+
   const translationsCheck = validateEventTranslations(body.translations);
   if (!translationsCheck.ok) return translationsCheck.response;
   const translations = translationsCheck.value;
@@ -150,6 +158,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
           // would be silently reset to "scheduled" on any unrelated edit.
           ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
           eventSeriesId,
+          artistId,
+          organizerName: organizerName.value,
           date,
           startTime,
           country: country.value,
