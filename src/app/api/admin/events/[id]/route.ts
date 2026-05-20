@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
@@ -12,6 +13,7 @@ import {
 } from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
+  fkViolationResponse,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
   validateArtistId,
@@ -196,6 +198,15 @@ export async function PUT(request: NextRequest, { params }: Props) {
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
+    }
+    // P2003: artistId / eventSeriesId points at a non-existent row.
+    // Without this guard, an FK violation surfaces as a generic 500
+    // and the operator has no idea which field is stale.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2003"
+    ) {
+      return fkViolationResponse(err);
     }
     throw err;
   }

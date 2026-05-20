@@ -14,6 +14,7 @@ import {
 } from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
+  fkViolationResponse,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
   validateArtistId,
@@ -148,26 +149,30 @@ export async function POST(request: NextRequest) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
     }
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      // EventTranslation has a (eventId, locale) composite unique;
-      // duplicate-locale rows in the form payload land here as
-      // P2002 with a non-slug target. Distinguish so the operator
-      // sees the real cause.
-      if (isSlugUniqueViolation(err.meta?.target)) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === "P2002") {
+        // EventTranslation has a (eventId, locale) composite unique;
+        // duplicate-locale rows in the form payload land here as
+        // P2002 with a non-slug target. Distinguish so the operator
+        // sees the real cause.
+        if (isSlugUniqueViolation(err.meta?.target)) {
+          return NextResponse.json(
+            {
+              error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
+            },
+            { status: 409 }
+          );
+        }
         return NextResponse.json(
-          {
-            error: `슬러그 '${slug}'가 이미 사용 중입니다. 다른 슬러그를 입력하세요.`,
-          },
+          { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
           { status: 409 }
         );
       }
-      return NextResponse.json(
-        { error: "중복된 항목이 있습니다. 입력값을 확인해 주세요." },
-        { status: 409 }
-      );
+      // P2003: artistId / eventSeriesId points at a non-existent row.
+      // See fkViolationResponse comment for why this is a 400, not 409.
+      if (err.code === "P2003") {
+        return fkViolationResponse(err);
+      }
     }
     throw err;
   }

@@ -79,10 +79,45 @@ export function stageIdentityNotFoundResponse(
 }
 
 /**
+ * Convert a Prisma P2003 foreign-key violation into a readable 400.
+ * Both event routes funnel artistId / eventSeriesId through `validateArtistId`
+ * / `validateEventSeriesId` (shape check only — they don't probe row
+ * existence), so a syntactically valid FK that doesn't resolve to a real
+ * Artist or EventSeries reaches Prisma and trips P2003. Without this
+ * helper the request surfaces as a generic 500.
+ *
+ * The 400 is preferable to a 409: the operator submitted a malformed
+ * input (a stale or made-up ID), not a state conflict between two
+ * concurrent writes. `err.meta.field_name` carries Postgres's view of
+ * which FK failed — surface it so the operator can fix the offending
+ * field without guessing.
+ */
+export function fkViolationResponse(
+  err: Prisma.PrismaClientKnownRequestError
+): NextResponse {
+  return NextResponse.json(
+    {
+      error:
+        "유효하지 않은 artistId 또는 eventSeriesId입니다. 입력값을 확인해 주세요.",
+      field: err.meta?.field_name ?? null,
+    },
+    { status: 400 }
+  );
+}
+
+/**
  * Parse an optional nullable BigInt FK body field. Strings must be
  * digits-only so `BigInt(...)` can't throw a SyntaxError (e.g. on
  * `"abc"` or `"1.5"`). Empty string / null / undefined all coerce to
  * null — the admin form submits `""` for "no selection."
+ *
+ * The numeric branch only accepts values inside `Number.isSafeInteger`
+ * range. Anything past 2^53 - 1 has already lost precision by the time
+ * it reaches JSON.parse on the request body — the bytes that arrived
+ * over the wire can't be recovered. Rather than silently casting a
+ * lossy value to a 64-bit BigInt (and pointing at a row the operator
+ * never meant to touch), reject and force the caller to use the string
+ * form. Strings carry full 64-bit precision through the JSON layer.
  *
  * Shared by validateEventSeriesId, validateArtistId, and any future
  * nullable-FK fields on Event so the accepted shapes + error wording
@@ -97,7 +132,7 @@ function validateNullableBigIntFk(
   if (value === undefined || value === null || value === "") {
     return { ok: true, value: null };
   }
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return { ok: true, value: BigInt(value) };
   }
   if (typeof value === "string" && /^\d+$/.test(value)) {
