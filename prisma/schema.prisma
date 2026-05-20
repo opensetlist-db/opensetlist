@@ -274,6 +274,7 @@ model Artist {
   stageLinks     StageIdentityArtist[]
   songCredits    SongArtist[]
   eventSeries    EventSeries[]
+  events         Event[]
   albums         AlbumArtist[]
   setlistItems   SetlistItemArtist[]
 
@@ -466,6 +467,26 @@ model Event {
   id                BigInt             @id @default(autoincrement())
   slug              String             @unique
   eventSeriesId     BigInt?
+  // Primary artist for this event. Mirrors EventSeries.artistId.
+  //
+  // Set for every single-artist event (whether standalone or in a
+  // series). Null for genuinely multi-artist events — those use
+  // `organizerName` for display (mirrors EventSeries.organizerName).
+  //
+  // The events list page uses this to group series-less events by
+  // their headlining artist, instead of dumping every standalone
+  // show into a single "기타 이벤트" bucket. Backfilled by
+  // prisma/post-deploy.sql for events without a series, when the
+  // EventPerformer roster resolves to exactly 1 distinct non-guest
+  // artist.
+  artistId          BigInt?
+  // Display name for multi-artist standalone events (e.g.
+  // "Bandai Namco / Lantis"). Only meaningful when artistId is null
+  // AND eventSeriesId is null — i.e. a truly multi-artist event
+  // that isn't part of a multi-artist EventSeries. Standalone
+  // multi-artist events with organizerName set get their own group
+  // on the events list page rather than landing in the catchall.
+  organizerName     String?
   type              EventType
   status            EventStatus        @default(scheduled)
   date              DateTime?          @db.Date
@@ -482,6 +503,7 @@ model Event {
   createdAt         DateTime           @default(now())
 
   eventSeries   EventSeries?       @relation(fields: [eventSeriesId], references: [id])
+  artist        Artist?            @relation(fields: [artistId], references: [id])
   translations  EventTranslation[]
   setlistItems  SetlistItem[]
   performers    EventPerformer[]
@@ -495,6 +517,7 @@ model Event {
   reactions     SetlistItemReaction[]
 
   @@index([eventSeriesId])
+  @@index([artistId])
   @@index([date, status])
   @@index([isDeleted])
 }
