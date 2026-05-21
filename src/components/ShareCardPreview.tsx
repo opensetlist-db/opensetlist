@@ -140,6 +140,24 @@ const CAPTURE_ROW_LINE_HEIGHT = 2.2;
 const INDICATOR_SIZE_PX = 14;
 
 /**
+ * Fixed pixel width of the captured share card. Drives both the card
+ * element's own `style.width` and the off-screen capture container in
+ * `<ShareCardModal>` (the container must match this width so
+ * html2canvas reads a consistent layout box across viewports).
+ *
+ * Exported so the modal doesn't duplicate the literal — if this ever
+ * needs to change (e.g., bumping to 720px for better long-title
+ * legibility), both the card's own width and the off-screen capture
+ * wrapper move in lockstep without one drifting from the other.
+ *
+ * The constant also encodes the column-geometry rationale documented
+ * on `TWO_COLUMN_MIN_SONG_COUNT` below — column widths are derived
+ * from this number, so a change here cascades into the column-fit
+ * math too.
+ */
+export const CARD_CAPTURE_WIDTH_PX = 600;
+
+/**
  * Total-song-count threshold at and above which the row list splits
  * into two side-by-side columns. Below this, the rows stack in a
  * single column the way they always have.
@@ -262,7 +280,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       <div
         ref={ref}
         style={{
-          width: 600,
+          width: CARD_CAPTURE_WIDTH_PX,
           background: T.cardBg,
           borderRadius: 20,
           overflow: "hidden",

@@ -10,6 +10,7 @@ import {
 import { useTranslations } from "next-intl";
 import {
   ShareCardPreview,
+  CARD_CAPTURE_WIDTH_PX,
   type ShareCardMode,
 } from "@/components/ShareCardPreview";
 import {
@@ -765,7 +766,13 @@ export function ShareCardModal({
             position: "fixed",
             left: -10000,
             top: 0,
-            width: 600,
+            // Must match the card element's own `width`
+            // (`CARD_CAPTURE_WIDTH_PX` in ShareCardPreview.tsx) so the
+            // off-screen layout box is the same size the card draws
+            // itself at — html2canvas reads computed layout from the
+            // node tree, and a mismatch here would re-introduce the
+            // very inconsistency this clone exists to prevent.
+            width: CARD_CAPTURE_WIDTH_PX,
             pointerEvents: "none",
           }}
         >
