@@ -2,6 +2,27 @@ import { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
 import { BASE_URL } from "@/lib/config";
 
+// Sitemap is computed on demand, not statically prerendered at build
+// time. Background — the v0.13.16 deploy (the first v0.13.x release
+// to touch the schema) revealed a race between Vercel's auto-deploy
+// and `migrate-prod.yml`: both fire on the tag push, Vercel runs
+// `next build` immediately, the build prerenders /sitemap.xml against
+// prod, but `prisma.event.findMany()` issues `SELECT ..., "artistId", ...`
+// against a DB that hasn't received the new column yet (because the
+// schema-migration workflow is still queued). Result: build fails
+// with P2022 ColumnNotFound, Vercel keeps serving the previous tag.
+//
+// `force-dynamic` decouples the sitemap from build-time DB state — it
+// renders at request time, by which point the migration has long
+// since landed. The runtime cost is negligible (sitemap is requested
+// at low frequency by crawlers, not by users) and Next.js still
+// caches via the standard HTTP layer.
+//
+// This guard doesn't cover every page that touches the DB at build
+// time. If a future schema release breaks another statically-rendered
+// route the right fix is the same `force-dynamic` opt-out there.
+export const dynamic = "force-dynamic";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const locales = ["ko", "ja", "en"];
 
