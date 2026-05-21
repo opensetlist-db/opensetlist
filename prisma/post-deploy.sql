@@ -482,3 +482,60 @@ CREATE UNIQUE INDEX IF NOT EXISTS song_variant_unique_per_base
   WHERE "baseVersionId" IS NOT NULL
     AND "variantLabel" IS NOT NULL
     AND "isDeleted" = false;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Event.artistId backfill / safety net.
+--
+-- For series-less events without an explicit artistId, derive a primary
+-- artist from the performer roster: walk EventPerformer (non-guest) →
+-- StageIdentityArtist → Artist (top-level only, parentArtistId IS NULL).
+-- If exactly one distinct top-level artist resolves across all non-guest
+-- performers, set that as Event.artistId.
+--
+-- Why a backfill + safety net, not just a one-off migration:
+--   - The events list page groups series-less events by Event.artistId
+--     (introduced alongside the new column). Existing rows pre-dating
+--     this column all have artistId IS NULL — the first run fills them
+--     in from the performer roster.
+--   - Going forward, the admin form sets artistId explicitly on create.
+--     But if the operator forgets (or scripts/CSV imports skip the
+--     field), this safety net re-fills it on the next deploy, keeping
+--     the events list display consistent.
+--
+-- Idempotent: WHERE artistId IS NULL guards against overwriting an
+-- operator-set value. A row that resolves to artistId=X here, then
+-- gets manually edited to artistId=Y, then is re-deployed → the WHERE
+-- clause skips it (no longer NULL), so Y stays.
+--
+-- Heuristic limitations (acceptable at catalog scale, operator can
+-- override via the admin form):
+--   - Restricts to top-level artists (parentArtistId IS NULL). Stage
+--     identities link to both their top-level group AND sub-units (e.g.
+--     Megumi → 蓮ノ空 + Mira-Cra Park!); we want the headlining
+--     top-level group, not the sub-unit. Events whose performers
+--     genuinely span multiple top-level groups stay NULL (correctly
+--     classifying as multi-artist) and should set organizerName instead.
+--   - Ignores StageIdentityArtist date ranges (startDate/endDate). A
+--     pre-debut guest appearance where the stage identity's
+--     StageIdentityArtist link isn't yet active at the event date will
+--     still count toward the distinct-artist tally. At launch catalog
+--     scale this is rare enough to fix manually.
+UPDATE "Event" e
+SET "artistId" = sub.artist_id
+FROM (
+  SELECT
+    ep."eventId",
+    MIN(sia."artistId") AS artist_id
+  FROM "EventPerformer" ep
+  JOIN "StageIdentityArtist" sia ON sia."stageIdentityId" = ep."stageIdentityId"
+  JOIN "Artist" a ON a.id = sia."artistId"
+  WHERE ep."isGuest" = false
+    AND a."parentArtistId" IS NULL
+    AND a."isDeleted" = false
+  GROUP BY ep."eventId"
+  HAVING COUNT(DISTINCT sia."artistId") = 1
+) sub
+WHERE e.id = sub."eventId"
+  AND e."artistId" IS NULL
+  AND e."eventSeriesId" IS NULL
+  AND e."isDeleted" = false;

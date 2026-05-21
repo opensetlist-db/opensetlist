@@ -173,6 +173,8 @@
     "upcoming": "Upcoming Events",
     "past": "Past Events",
     "ungrouped": "Other events",
+    "standaloneTitle": "{artist} — Standalone shows",
+    "unknownArtist": "Unknown artist",
     "noEvents": "No events to show",
     "filter": {
       "all": "All",

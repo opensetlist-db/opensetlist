@@ -32,6 +32,8 @@ type EventFormProps = {
     type: string;
     status: string;
     eventSeriesId: number | null;
+    artistId: number | null;
+    organizerName: string | null;
     date: string | null;
     country: string | null;
     posterUrl: string | null;
@@ -44,6 +46,14 @@ type EventFormProps = {
     translations: Translation[];
     performers: InitialPerformer[];
   };
+};
+
+type ArtistOption = {
+  id: number;
+  translations: { locale: string; name: string }[];
+  parentArtist: {
+    translations: { locale: string; name: string }[];
+  } | null;
 };
 
 const EVENT_TYPES = ["concert", "festival", "fan_meeting", "showcase", "virtual_live"];
@@ -67,6 +77,19 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [eventSeriesId, setEventSeriesId] = useState(
     initialData?.eventSeriesId?.toString() ?? ""
   );
+  // artistId / organizerName mirror the EventSeries.artistId /
+  // EventSeries.organizerName pattern at the Event level — see the
+  // schema comment on Event. The events list page groups series-less
+  // events by these fields, so an unset standalone event will land
+  // in the catchall "기타 이벤트" bucket until the operator picks
+  // one (or the post-deploy.sql safety net infers artistId from the
+  // performer roster).
+  const [artistId, setArtistId] = useState(
+    initialData?.artistId?.toString() ?? ""
+  );
+  const [organizerName, setOrganizerName] = useState(
+    initialData?.organizerName ?? ""
+  );
   const [date, setDate] = useState(initialData?.date ?? "");
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
@@ -89,6 +112,8 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [seriesList, setSeriesList] = useState<
     { id: number; translations: { locale: string; name: string }[] }[]
   >([]);
+
+  const [artistList, setArtistList] = useState<ArtistOption[]>([]);
 
   const [stageIdentities, setStageIdentities] = useState<StageIdentityOption[]>([]);
 
@@ -116,6 +141,9 @@ export default function EventForm({ initialData }: EventFormProps) {
     fetch("/api/admin/event-series")
       .then((r) => r.json())
       .then(setSeriesList);
+    fetch("/api/admin/artists")
+      .then((r) => r.json())
+      .then(setArtistList);
     fetch("/api/admin/stage-identities")
       .then((r) => r.json())
       .then(setStageIdentities);
@@ -200,6 +228,8 @@ export default function EventForm({ initialData }: EventFormProps) {
       type,
       status,
       eventSeriesId: eventSeriesId || null,
+      artistId: artistId || null,
+      organizerName: organizerName.trim() || null,
       date: date || null,
       country: country || null,
       posterUrl: posterUrl || null,
@@ -388,6 +418,62 @@ export default function EventForm({ initialData }: EventFormProps) {
             );
           })}
         </select>
+      </div>
+
+      {/*
+        아티스트 / 주최자 — 시리즈가 없는 단독 공연을 이벤트 목록 페이지에서
+        아티스트별로 묶기 위해 사용한다. 우선순위: 시리즈 > 아티스트 >
+        organizerName > 기타. 시리즈를 선택했다면 보통 비워둬도 무방하다
+        (시리즈의 artistId가 그룹 헤더의 아티스트 뱃지를 결정).
+
+        멀티-아티스트 단독 공연은 아티스트를 비워두고 organizerName에
+        주최자명을 적는다 (예: "Bandai Namco / Lantis").
+
+        operator가 비워둬도 post-deploy.sql 백필이 EventPerformer
+        rosters에서 유일한 top-level 아티스트가 결정되면 자동으로 채워준다.
+      */}
+      <div className="rounded border border-zinc-300 bg-zinc-50 p-4">
+        <div className="mb-3 text-sm font-medium">
+          아티스트 / 주최자 (시리즈 없는 단독 공연용)
+        </div>
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-zinc-600">아티스트</label>
+          <select
+            value={artistId}
+            onChange={(e) => setArtistId(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="">없음 / 자동 결정</option>
+            {artistList.map((a) => {
+              const name =
+                a.translations.find((t) => t.locale === "ko")?.name ??
+                a.translations[0]?.name ??
+                `ID: ${a.id}`;
+              const parentName = a.parentArtist
+                ? (a.parentArtist.translations.find((t) => t.locale === "ko")?.name ??
+                  a.parentArtist.translations[0]?.name ??
+                  null)
+                : null;
+              const label = parentName ? `${name} (${parentName})` : name;
+              return (
+                <option key={a.id} value={a.id}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-zinc-600">
+            주최자명 (멀티-아티스트 단독 공연용)
+          </label>
+          <input
+            placeholder="예: Bandai Namco / Lantis"
+            value={organizerName}
+            onChange={(e) => setOrganizerName(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
