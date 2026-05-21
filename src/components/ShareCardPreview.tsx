@@ -9,6 +9,7 @@ import {
   CAPTURE_SHIFT_ATTR,
   type CaptureShiftKey,
 } from "@/lib/shareCard";
+import { CARD_CAPTURE_WIDTH_PX } from "@/lib/shareCardConstants";
 
 /**
  * JSX prop spread that tags an element so html2canvas's onclone in
@@ -138,43 +139,6 @@ const CAPTURE_ROW_LINE_HEIGHT = 2.2;
  * scale=2 capture quality.
  */
 const INDICATOR_SIZE_PX = 14;
-
-/**
- * Fixed pixel width of the captured share card. Drives both the card
- * element's own `style.width` and the off-screen capture container in
- * `<ShareCardModal>` (the container must match this width so
- * html2canvas reads a consistent layout box across viewports).
- *
- * Exported so the modal doesn't duplicate the literal — if this ever
- * needs to change (e.g., bumping to 720px for better long-title
- * legibility), both the card's own width and the off-screen capture
- * wrapper move in lockstep without one drifting from the other.
- *
- * The constant also encodes the column-geometry rationale documented
- * on `TWO_COLUMN_MIN_SONG_COUNT` below — column widths are derived
- * from this number, so a change here cascades into the column-fit
- * math too.
- */
-export const CARD_CAPTURE_WIDTH_PX = 600;
-
-/**
- * Horizontal `left` offset (in px) used by `<ShareCardModal>` to push
- * its off-screen capture clone safely outside any plausible viewport.
- * Negative — the value is applied as `style.left`, so it shifts the
- * wrapper that many pixels to the left of the viewport origin.
- *
- * Lives alongside `CARD_CAPTURE_WIDTH_PX` because both numbers
- * cooperate to define the off-screen capture surface: the wrapper is
- * `CARD_CAPTURE_WIDTH_PX` wide and sits `OFF_SCREEN_LEFT_PX` to the
- * left of `x: 0`. Keeping them together makes the capture-clone
- * geometry one place to read and change.
- *
- * 10000 is a comfortable safety margin past any realistic monitor
- * width (8K = 7680px, ultrawide multi-display rigs ~10000–12000px
- * for the rightmost edge from `x: 0`). Bumping to a larger absolute
- * value is fine if a wider display ever creeps in.
- */
-export const OFF_SCREEN_LEFT_PX = -10000;
 
 /**
  * Total-song-count threshold at and above which the row list splits

@@ -10,10 +10,12 @@ import {
 import { useTranslations } from "next-intl";
 import {
   ShareCardPreview,
-  CARD_CAPTURE_WIDTH_PX,
-  OFF_SCREEN_LEFT_PX,
   type ShareCardMode,
 } from "@/components/ShareCardPreview";
+import {
+  CARD_CAPTURE_WIDTH_PX,
+  OFF_SCREEN_LEFT_PX,
+} from "@/lib/shareCardConstants";
 import {
   shareCard,
   copyCardToClipboard,
