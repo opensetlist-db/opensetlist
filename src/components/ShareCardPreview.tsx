@@ -92,6 +92,24 @@ const LIVE_BADGE_RESERVED_PX = 80;
 const CAPTURE_ROW_MIN_HEIGHT_PX = 28;
 
 /**
+ * Vertical padding inside each song-title row. Tuned down from 5px
+ * (pre-v0.13.18) to 2px because 32-song setlists were producing
+ * portrait share images that scrolled well past the viewer's
+ * attention. The row's effective height is `max(minHeight, line-box) +
+ * 2 × paddingY`; with `CAPTURE_ROW_LINE_HEIGHT = 2.2` driving a
+ * ~28.6px line-box, the row floor is the line-box itself and padding
+ * is pure inter-row whitespace. Cutting 6px per row × 32 rows trims
+ * ~190px off the captured PNG without touching the line-height
+ * safeguards that PR #305 layered in for iOS Safari glyph-clipping.
+ *
+ * Horizontal padding stays at 8px — the rank column needs its left
+ * breathing room and the title needs room to truncate cleanly before
+ * the row's rounded-corner edge.
+ */
+const ROW_PADDING_Y_PX = 2;
+const ROW_PADDING_X_PX = 8;
+
+/**
  * Line-height multiplier for song-title spans, paired with the row
  * `minHeight` floor above. Successive iOS Safari captures pushed this
  * upward: PR #305 / v0.10.2 used 1.5 for desktop html2canvas, 1.8 was
@@ -677,7 +695,7 @@ function PredictionRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "5px 8px",
+        padding: `${ROW_PADDING_Y_PX}px ${ROW_PADDING_X_PX}px`,
         // Explicit minHeight so html2canvas can't compute a row taller
         // than the line-box it ends up rendering. PR #305 / v0.11.4
         // set `lineHeight: 1.5` on the title span; operator's iPhone
@@ -766,7 +784,7 @@ function ShareCardRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "5px 8px",
+        padding: `${ROW_PADDING_Y_PX}px ${ROW_PADDING_X_PX}px`,
         // See <PredictionRow> for the minHeight rationale — iOS
         // Safari's html2canvas pipeline collapses the line-box,
         // forcing a 28px row floor keeps the rendered text fully
