@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invalid eventId" }, { status: 400 });
   }
 
-  const [items, reactionGroups, top3Wishes, event] = await Promise.all([
+  const [items, reactionGroups, top3Wishes] = await Promise.all([
     prisma.setlistItem.findMany({
       where: { eventId, isDeleted: false },
       orderBy: { position: "asc" },
@@ -45,6 +45,27 @@ export async function GET(req: NextRequest) {
         //      `/api/setlist-items/[id]/confirm` (server reads from
         //      DB; client uses the polled count for the sort key).
         _count: { select: { confirms: true } },
+        // Event status + startTime folded onto each row so the polled
+        // `status` field doesn't need its own slot in this route's
+        // Promise.all. Pre-fold, the route fanned out to 4 concurrent
+        // connections and Sentry trace
+        // 9dc342f6b276465c8ebbb1964ac8ae70 caught the cheapest query
+        // — a 3-column Event.findFirst PK lookup — queueing ~1.08 s
+        // for a connection slot under the prior `max: 3` cap.
+        // PR #431 raised the cap to 5; this fold drops the
+        // steady-state fan-out from 4 → 3 so a future +1 awaited
+        // query doesn't silently re-introduce the queue wait.
+        //
+        // Same value across every row (Prisma materializes via a
+        // LATERAL join on the same parent event), stripped before
+        // serialization below so the wire shape is byte-identical.
+        // Empty-items fallback handled after the Promise.all —
+        // scheduled-but-empty events still need the authoritative
+        // status so the wishlist/predicted-setlist editors lock at
+        // startTime regardless of client clock skew (the original
+        // motivation for surfacing status here at all; see v0.10.0
+        // smoke note below).
+        event: { select: { status: true, startTime: true } },
         songs: {
           include: {
             song: {
@@ -97,21 +118,6 @@ export async function GET(req: NextRequest) {
     // sequential against the DB; from this Promise.all's point of
     // view it's a single awaited slot.
     fetchEventWishlistTop3(eventId, locale),
-    // Event status + startTime for the polled `status` field below.
-    // Lets the client lock the wishlist + predicted-setlist editors
-    // when the server's authoritative clock crosses startTime, even
-    // if the client's local clock is skewed (e.g. user with a slow
-    // device clock would see the editor remain open past startTime
-    // because their `Date.now() < startMs`; the polled status
-    // overrides the client wall-clock check). v0.10.0 smoke caught
-    // the symptom + the operator confirmed clock-skew is the
-    // realistic bypass at this scale (manipulating localStorage
-    // requires understanding the format; changing device time is
-    // trivial).
-    prisma.event.findFirst({
-      where: { id: eventId, isDeleted: false },
-      select: { status: true, startTime: true },
-    }),
   ]);
 
   const reactionCounts: Record<string, Record<string, number>> = {};
@@ -121,6 +127,37 @@ export async function GET(req: NextRequest) {
     reactionCounts[key][g.reactionType] = g._count;
   }
 
+  // Event status + startTime are needed so the client can lock the
+  // wishlist + predicted-setlist editors when the server's
+  // authoritative clock crosses startTime, even if the client's
+  // local clock is skewed (e.g. a user with a slow device clock
+  // would see the editor remain open past startTime because their
+  // `Date.now() < startMs`; the polled status overrides the client
+  // wall-clock check). v0.10.0 smoke caught the symptom + the
+  // operator confirmed clock-skew is the realistic bypass at this
+  // scale (manipulating localStorage requires understanding the
+  // format; changing device time is trivial).
+  //
+  // Sourced from the first setlistItem's `event` LATERAL include
+  // above (every row carries the same parent's status/startTime).
+  // The fallback below runs only when the event has zero non-
+  // deleted setlist items — a scheduled-but-empty event polled by a
+  // client watching for the first item to appear, or an event whose
+  // items have all been soft-deleted. Sequential not parallel so it
+  // doesn't reintroduce the pool contention this fold removes.
+  // `items.length > 0` branch over `items[0]?.event ?? findFirst()` —
+  // the project's tsconfig doesn't enable `noUncheckedIndexedAccess`,
+  // so TS types `items[0]` as non-undefined and would either reject
+  // the `??` fallback's nullable result or collapse the union back to
+  // non-null. The explicit length check matches both the runtime
+  // intent and the type system without an annotation crutch.
+  const event =
+    items.length > 0
+      ? items[0].event
+      : await prisma.event.findFirst({
+          where: { id: eventId, isDeleted: false },
+          select: { status: true, startTime: true },
+        });
   // Resolve status server-side via the same `getEventStatus`
   // helper the page uses at SSR. `null` when the event was missing
   // or soft-deleted — clients treat null as "no fresh status; keep
@@ -132,8 +169,13 @@ export async function GET(req: NextRequest) {
   // (and the client doesn't have to know about Prisma's `_count`
   // convention). Done BEFORE serializeBigInt so the recursive walk
   // sees the renamed property; serializeBigInt only cares about
-  // BigInt values and passes the rest through unchanged.
-  const itemsWithConfirmCount = items.map(({ _count, ...rest }) => ({
+  // BigInt values and passes the rest through unchanged. The
+  // `event` field (populated by the LATERAL include for the status
+  // derivation above) is dropped here so the wire shape stays
+  // byte-identical to the pre-fold response — shipping 25 copies
+  // of the same parent's status/startTime to the client would be
+  // pure bloat.
+  const itemsWithConfirmCount = items.map(({ _count, event: _event, ...rest }) => ({
     ...rest,
     confirmCount: _count.confirms,
   }));
