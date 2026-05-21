@@ -93,26 +93,42 @@ export function SongPickerContent({
       if (activeFilter) {
         const kind: UnitFilterKind = activeFilter.kind;
         if (kind === "group" || kind === "individual") {
-          // Multi-artist collab songs never appear under a single
-          // artist's chip — they're routed to `others` only.
-          // `unit.artistId` still points at the fallback solo for
-          // display purposes, but routing should ignore it.
+          // Multi-solo collab songs (`isMultiArtist === true`) never
+          // appear under a single artist's chip — they're routed to
+          // `others` only. `unit.artistId` still points at the
+          // fallback solo for display purposes, but routing ignores
+          // it.
           if (song.isMultiArtist) return false;
-          if (song.unit.artistId !== activeFilter.artistId) return false;
+          // Use `creditedArtistIds` (set of ALL credited unit IDs)
+          // instead of just the canonical `unit.artistId`. This is
+          // what lets a multi-MAIN-unit collab song (e.g. Cerise +
+          // DOLLCHESTRA + Mira-Cra Park!) appear under EVERY one of
+          // those unit's chips, not just the canonical one that
+          // happened to win the server-side routing preference.
+          if (!song.creditedArtistIds.includes(activeFilter.artistId!)) {
+            return false;
+          }
         } else if (kind === "others") {
           // Catch-all ROUTING only. Two kinds of song land here:
-          //   (a) multi-artist collabs (`isMultiArtist === true`) —
-          //       bypass the `coveredArtistIds` predicate since their
-          //       `unit.artistId` is just a display fallback,
-          //   (b) songs whose `unit.artistId` lacks a `group` /
-          //       `individual` chip in this filter set.
-          // Critically, we do NOT short-circuit with `return true`
-          // here — that would bypass the search-query filter below
-          // and cause multi-artist songs to ignore the search input.
-          // Both kinds must still flow through the `q` filter to
-          // respect the user's typed query.
-          if (!song.isMultiArtist && coveredArtistIds.has(song.unit.artistId)) {
-            return false;
+          //   (a) multi-solo collabs (`isMultiArtist === true`) —
+          //       bypass the credited-coverage predicate since their
+          //       credited solos typically lack individual chips
+          //       anyway,
+          //   (b) songs where NONE of their credited unit IDs has a
+          //       `group` / `individual` chip in this filter set
+          //       (i.e. fully unreachable via any specific chip).
+          // We check the full `creditedArtistIds` set, not just the
+          // canonical `unit.artistId` — a multi-credit song reachable
+          // via at least one individual chip is NOT homeless and
+          // shouldn't double-appear in `others`.
+          // Critically, no `return true` short-circuit here — both
+          // kinds still flow through the `q` filter below so the
+          // search input is respected.
+          if (!song.isMultiArtist) {
+            const anyCovered = song.creditedArtistIds.some((id) =>
+              coveredArtistIds.has(id),
+            );
+            if (anyCovered) return false;
           }
         }
       }
