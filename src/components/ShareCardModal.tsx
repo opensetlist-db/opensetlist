@@ -176,6 +176,34 @@ export function ShareCardModal({
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Dedicated capture target rendered off-screen at a hard-coded 600px
+  // parent width. Until v0.13.18 the helper captured `cardRef` (the
+  // visible modal preview), but on mobile the modal's outer wrapper
+  // collapses to `width: 100%` and the card's `width: 600` lives
+  // inside that constrained box — html2canvas reads the constrained
+  // layout box and produces a PNG that's noticeably narrower than the
+  // desktop capture (operator-spotted by comparing iPhone vs MacBook
+  // captures of the same 32-song prediction card).
+  //
+  // The fix decouples capture from display: a second
+  // `<ShareCardPreview>` instance with identical props mounts in a
+  // `position: fixed; left: -10000` container whose `width: 600` is
+  // unaffected by viewport size, and every capture-helper call site
+  // below points at this ref instead of `cardRef`. The visible
+  // preview keeps `cardRef` only as an inert anchor; html2canvas
+  // never reads from it. Off-screen-position rather than
+  // `visibility: hidden` because the latter elides computed-style
+  // reads that html2canvas depends on, while off-screen-position
+  // leaves the element fully laid out and painted in the parent
+  // doc.
+  //
+  // This is also load-bearing for the upcoming two-column row layout
+  // in `<ShareCardPreview>` — at column widths derived from 600px
+  // total, the mobile-constrained capture would have produced
+  // columns too narrow to fit titles cleanly. Anchoring capture to a
+  // fixed 600px keeps the two-column geometry consistent across
+  // every device.
+  const captureRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // Pre-rasterized PNG blob, refreshed on modal open + theme change.
   // **Critical for iOS Safari Web Share**: navigator.share requires
@@ -365,8 +393,11 @@ export function ShareCardModal({
     if (!open) return;
     let cancelled = false;
     const delay = setTimeout(() => {
-      if (cancelled || !cardRef.current) return;
-      renderCardToBlob(cardRef.current)
+      // Capture from the off-screen 600px-fixed clone, NOT the visible
+      // modal preview — see `captureRef` declaration for the
+      // mobile-width-mismatch rationale.
+      if (cancelled || !captureRef.current) return;
+      renderCardToBlob(captureRef.current)
         .then((blob) => {
           if (!cancelled) setPreRasterizedBlob(blob);
         })
@@ -437,7 +468,7 @@ export function ShareCardModal({
   };
 
   const handleShare = async () => {
-    if (!cardRef.current || busy) return;
+    if (!captureRef.current || busy) return;
     setBusy(true);
     try {
       // Per-mode native-share text. The post-show `shareText` carries
@@ -454,7 +485,7 @@ export function ShareCardModal({
             ? t("shareTextLive", { matched, total, percentage })
             : t("shareText", { matched, total, percentage });
       const outcome: ShareOutcome = await shareCard({
-        cardEl: cardRef.current,
+        cardEl: captureRef.current,
         // Pass the pre-rasterized blob (may be null if rasterization
         // hadn't completed before the user tapped — the helper falls
         // back to on-demand rasterization in that case). The
@@ -529,11 +560,11 @@ export function ShareCardModal({
   };
 
   const handleCopy = async () => {
-    if (!cardRef.current || busy) return;
+    if (!captureRef.current || busy) return;
     setBusy(true);
     try {
       const outcome: CopyOutcome = await copyCardToClipboard({
-        cardEl: cardRef.current,
+        cardEl: captureRef.current,
       });
       if (outcome.kind === "copied") {
         // Same GA4 event family as download/share, with a distinct
@@ -687,10 +718,59 @@ export function ShareCardModal({
           ))}
         </div>
 
-        {/* Card preview */}
+        {/* Card preview — visible in the modal. Responsive to the
+            modal's wrapper width on small viewports (this is fine; it's
+            just a preview anchor). The captured PNG is rendered from
+            the off-screen clone below, not from this node. */}
         <div className="flex justify-center">
           <ShareCardPreview
             ref={cardRef}
+            theme={theme}
+            mode={mode}
+            seriesName={seriesName}
+            eventTitle={eventTitle}
+            dateLine={dateLine}
+            actualSongs={actualSongs}
+            predictions={predictions}
+            matched={matched}
+            total={total}
+            percentage={percentage}
+            locale={locale}
+          />
+        </div>
+
+        {/* Off-screen capture clone — identical props to the visible
+            preview, wrapped in a `position: fixed; left: -10000` box
+            whose `width: 600` is decoupled from the modal's
+            responsive layout. html2canvas reads from this node via
+            `captureRef`, so the captured PNG is always sourced from
+            a 600px parent regardless of viewport.
+
+            `aria-hidden` + `pointer-events: none` keep the clone out
+            of the accessibility tree and out of click targets. No
+            `visibility: hidden` — html2canvas needs the element to be
+            fully painted to capture it. The deep negative `left`
+            pushes it well outside any plausible viewport without
+            relying on `overflow: hidden` on an ancestor (the modal's
+            outer container does scroll-overflow vertically, so we
+            can't depend on it clipping horizontally).
+
+            `top: 0` rather than a deep negative — both work, but
+            staying at the document's top keeps the captured element
+            within easy reach of devtools if a future debugging
+            session needs to inspect the actual capture source. */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: -10000,
+            top: 0,
+            width: 600,
+            pointerEvents: "none",
+          }}
+        >
+          <ShareCardPreview
+            ref={captureRef}
             theme={theme}
             mode={mode}
             seriesName={seriesName}
