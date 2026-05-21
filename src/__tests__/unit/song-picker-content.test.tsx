@@ -454,11 +454,11 @@ describe("<SongPickerContent>", () => {
     const filtersWith3rd = [
       ...FILTERS,
       {
-        key: "mira-cra-park",
-        label: "Mira-Cra Park!",
-        color: "#fbc02d",
+        key: THIRD_MAIN.slug,
+        label: THIRD_MAIN.label,
+        color: THIRD_MAIN.color,
         kind: "individual" as const,
-        artistId: 4,
+        artistId: THIRD_MAIN.artistId,
       },
     ];
     // Canonical `unit` points at Cerise (won the routing race).
@@ -469,7 +469,7 @@ describe("<SongPickerContent>", () => {
       [],
       null,
       false, // NOT isMultiArtist (main unit credits exist)
-      [2, 3, 4], // creditedArtistIds — Cerise, DOLLCHESTRA, MCP
+      [CERISE.artistId, DOLLCHESTRA.artistId, THIRD_MAIN.artistId],
     );
 
     // Filter by Cerise (canonical) → song visible.
