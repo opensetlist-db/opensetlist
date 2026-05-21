@@ -2,32 +2,43 @@ import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 // Per-lambda pool cap pinned to the actual peak concurrent DB-touching
-// query count on user-facing pages. The heaviest user route is the
-// event detail page, whose render-time Promise.all fans out to 3
-// connections (1 for getReactionCounts + 2 internal to
-// getEventImpressions's own findMany/count Promise.all). All other
-// user-facing routes peak at ≤ 2. Without `max` set, pg defaults to
-// 10, which combined with Supabase free-tier's 200-client ceiling on
-// PgBouncer means EMAXCONN fires at just 20 concurrent warm Vercel
-// lambdas — observed at the Day-1 launch ramp (2026-05-01, T+5 and
-// T+11 minutes). Pinning to 3 aligns the per-lambda budget to the
-// real peak (zero latency penalty on user pages) and raises the
-// ceiling to ~66 concurrent lambdas before saturation.
+// query count on user-facing pages. Originally calibrated to 3 against
+// the event detail page (`/[locale]/events/[id]` — render-time
+// Promise.all fans out to 3 connections: getReactionCounts + 2 internal
+// to getEventImpressions's own findMany/count Promise.all). Without
+// `max` set, pg defaults to 10, which combined with Supabase free-tier's
+// 200-client ceiling on PgBouncer means EMAXCONN fires at just 20
+// concurrent warm Vercel lambdas — observed at the Day-1 launch ramp
+// (2026-05-01, T+5 and T+11 minutes). See wiki/launch-day-retros.md#F14.
+//
+// Raised 3 → 5 (2026-05-21) after Sentry flagged a false-positive N+1
+// on `GET /api/setlist`. The route's render-time Promise.all
+// (`src/app/api/setlist/route.ts`) fans out to **4** concurrent
+// connections — setlistItem.findMany + setlistItemReaction.groupBy +
+// fetchEventWishlistTop3's first groupBy + event.findFirst — which
+// under max: 3 left the cheapest query (Event.findFirst on a primary
+// key) queueing ~1.08 s waiting for a connection slot (Sentry trace
+// 9dc342f6b276465c8ebbb1964ac8ae70 measured a 1084 ms span for a
+// SELECT-3-columns PK lookup). The polled endpoint runs every few
+// seconds during live shows; that 1 s tax compounded across every
+// audience client. max: 5 gives one slot of headroom over the
+// observed peak so a future +1 fan-out doesn't silently re-introduce
+// the queue wait. Concurrent-warm-lambda ceiling drops from ~66 to
+// ~40 (still well above current traffic and the projected Phase 2
+// audience peak; revisit if we see EMAXCONN again).
 //
 // Admin dashboard fans to 8 count() queries via Promise.all
-// (`src/app/admin/page.tsx`); under max: 3 the surplus queue and add
-// ~80 ms to render. Acceptable — admin is operator-only and never
+// (`src/app/admin/page.tsx`); under max: 5 the surplus queue and add
+// ~50 ms to render. Acceptable — admin is operator-only and never
 // runs during a live show audience window.
 //
 // idleTimeoutMillis: connections released after 20s idle so warm
 // lambdas don't hold slots during quiet stretches.
 // connectionTimeoutMillis: fail fast if the pool is contended,
 // rather than holding the request open indefinitely.
-//
-// See wiki/launch-day-retros.md#F14 for the full retro context.
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
-  max: 3,
+  max: 5,
   idleTimeoutMillis: 20_000,
   connectionTimeoutMillis: 10_000,
 });
