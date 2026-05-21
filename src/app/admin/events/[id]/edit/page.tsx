@@ -60,6 +60,18 @@ export default async function EditEventPage({ params }: Props) {
             type: data.type,
             status: data.status,
             eventSeriesId: data.eventSeriesId ? Number(data.eventSeriesId) : null,
+            // `serializeBigInt` already replaced BigInt with Number at
+            // runtime, so the `Number(...)` wrapper here is a no-op on
+            // the wire. It stays in the source as a *type-level* narrow:
+            // `serializeBigInt<T>(...)` returns `T` unchanged, so TS
+            // still sees `data.artistId` as `bigint | null` even though
+            // the actual value is a JS number. Stripping the cast
+            // tripped TS2322 against `EventFormProps.artistId: number |
+            // null`. Same pattern as `eventSeriesId` above — keep them
+            // mirrored so a future refactor of `serializeBigInt`'s
+            // return type can drop both at once.
+            artistId: data.artistId ? Number(data.artistId) : null,
+            organizerName: data.organizerName ?? null,
             date: data.date
               ? new Date(data.date).toISOString().split("T")[0]
               : null,

@@ -58,7 +58,13 @@ interface PreparedEvent {
 
 interface PreparedGroup {
   key: string;
-  seriesName: string;
+  // Pre-resolved title for the section header. Kind-specific:
+  //   - series    → series's locale-resolved name
+  //   - artist    → "{artist} — 단독 공연" (i18n template)
+  //   - organizer → organizerName as stored
+  //   - ungrouped → locale "기타 이벤트"
+  // Always non-empty (falls back to unknownArtist / ungrouped labels).
+  groupTitle: string;
   artistShortName: string | null;
   hasOngoing: boolean;
   eventCountLabel: string;
@@ -102,6 +108,7 @@ export default async function EventsPage({
   const liveLabel = t("live");
   const ungroupedName = t("ungrouped");
   const unknownEventName = t("unknownEvent");
+  const unknownArtistName = t("unknownArtist");
 
   // Per-event filter applied to the active section (ongoing/upcoming
   // filters narrow events within their series; completed sends the
@@ -169,6 +176,28 @@ export default async function EventsPage({
     };
   }
 
+  function resolveGroupTitle(g: EventsListGroup): string {
+    switch (g.kind) {
+      case "series":
+        return g.title ?? ungroupedName;
+      case "artist":
+        // Wrap the locale-resolved artist name in the "단독 공연"
+        // template so each artist's series-less shows read as their
+        // own bucket (e.g. "하스노소라 — 단독 공연"). Falls back to
+        // the unknown-artist label if displayNameWithFallback
+        // returned empty for the locale + original chain.
+        return t("standaloneTitle", { artist: g.title ?? unknownArtistName });
+      case "organizer":
+        // organizerName is operator-entered free text; no translation
+        // table exists. Empty-string organizerName is filtered out at
+        // the lib layer (falls through to ungrouped), so a non-null
+        // title here is always a meaningful display value.
+        return g.title ?? ungroupedName;
+      case "ungrouped":
+        return ungroupedName;
+    }
+  }
+
   function prepareGroup(
     g: EventsListGroup,
     keyPrefix: string,
@@ -180,8 +209,8 @@ export default async function EventsPage({
       : g.events;
     if (filteredEvents.length === 0) return null;
     return {
-      key: `${keyPrefix}-${g.seriesId ?? "ungrouped"}`,
-      seriesName: g.seriesName ?? ungroupedName,
+      key: `${keyPrefix}-${g.id}`,
+      groupTitle: resolveGroupTitle(g),
       artistShortName: g.artistShortName,
       hasOngoing: g.hasOngoing && (eventStatusFilter !== "upcoming"),
       eventCountLabel: t("eventCount", { count: filteredEvents.length }),
@@ -281,7 +310,7 @@ export default async function EventsPage({
                   {preparedActive.map((g) => (
                     <SeriesSection
                       key={g.key}
-                      seriesName={g.seriesName}
+                      title={g.groupTitle}
                       artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
@@ -309,7 +338,7 @@ export default async function EventsPage({
                   {preparedActive.map((g) => (
                     <SeriesBlock
                       key={g.key}
-                      seriesName={g.seriesName}
+                      title={g.groupTitle}
                       artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
@@ -341,7 +370,7 @@ export default async function EventsPage({
                   {pastSlice.map((g) => (
                     <SeriesSection
                       key={g.key}
-                      seriesName={g.seriesName}
+                      title={g.groupTitle}
                       artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}
@@ -368,7 +397,7 @@ export default async function EventsPage({
                   {pastSlice.map((g) => (
                     <SeriesBlock
                       key={g.key}
-                      seriesName={g.seriesName}
+                      title={g.groupTitle}
                       artistShortName={g.artistShortName}
                       hasOngoing={g.hasOngoing}
                       eventCountLabel={g.eventCountLabel}

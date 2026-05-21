@@ -6,12 +6,19 @@ import { ArtistBadge } from "@/components/events/ArtistBadge";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 interface Props {
-  seriesName: string;
   /**
-   * Locale-resolved short name of the root series's artist, or null
-   * when the series has no `artistId` (multi-artist festival). When
-   * non-null, rendered as a small primary-tinted pill at the start of
-   * the header badge row.
+   * Section header label. Pre-resolved by the page based on the
+   * group's kind: a series's locale-resolved name, a per-artist
+   * "단독 공연" template, an organizer's free-text name, or the
+   * locale catchall.
+   */
+  title: string;
+  /**
+   * Locale-resolved short name of the artist pill rendered before
+   * the title. Only meaningful for series groups whose root series
+   * has an artistId (multi-artist festival series and the
+   * artist/organizer/ungrouped group kinds pass null — the title
+   * itself already carries the identity).
    */
   artistShortName: string | null;
   hasOngoing: boolean;
@@ -24,7 +31,7 @@ interface Props {
 }
 
 export function SeriesSection({
-  seriesName,
+  title,
   artistShortName,
   hasOngoing,
   eventCountLabel,
@@ -82,7 +89,7 @@ export function SeriesSection({
             className="text-[14px] font-bold"
             style={{ color: colors.textPrimary, lineHeight: 1.35 }}
           >
-            {seriesName}
+            {title}
           </div>
           <div
             className="mt-0.5 text-[11px]"

@@ -79,18 +79,66 @@ export function stageIdentityNotFoundResponse(
 }
 
 /**
- * Parse an optional `eventSeriesId` body field. Strings must be digits-only
- * so `BigInt(...)` can't throw a SyntaxError (e.g. on `"abc"` or `"1.5"`).
+ * Convert a Prisma P2003 foreign-key violation into a readable 400.
+ *
+ * Both event routes accept several FK fields whose shape-validators
+ * (`validateArtistId`, `validateEventSeriesId`, `ensureStageIdentitiesExist`)
+ * don't probe row existence — a syntactically valid ID that points at a
+ * non-existent or concurrently-deleted row reaches Prisma and trips
+ * P2003. Without this helper the request surfaces as a generic 500.
+ *
+ * The message is intentionally field-neutral: P2003 can fire on
+ * artistId, eventSeriesId, or stageIdentityId (the latter from
+ * `eventPerformer.createMany` if a stage identity is deleted between
+ * the pre-flight `ensureStageIdentitiesExist` check and the insert).
+ * Naming a specific field in the human-readable string would
+ * misdirect the operator on the wrong-FK case; the actual offending
+ * column rides along in `field` from `err.meta.field_name`.
+ *
+ * The 400 is preferable to a 409: the operator submitted a malformed
+ * input (a stale or made-up ID), not a state conflict between two
+ * concurrent writes.
  */
-export function validateEventSeriesId(
-  value: unknown
+export function fkViolationResponse(
+  err: Prisma.PrismaClientKnownRequestError
+): NextResponse {
+  return NextResponse.json(
+    {
+      error: "유효하지 않은 참조 ID가 포함되어 있습니다. 입력값을 확인해 주세요.",
+      field: err.meta?.field_name ?? null,
+    },
+    { status: 400 }
+  );
+}
+
+/**
+ * Parse an optional nullable BigInt FK body field. Strings must be
+ * digits-only so `BigInt(...)` can't throw a SyntaxError (e.g. on
+ * `"abc"` or `"1.5"`). Empty string / null / undefined all coerce to
+ * null — the admin form submits `""` for "no selection."
+ *
+ * The numeric branch only accepts values inside `Number.isSafeInteger`
+ * range. Anything past 2^53 - 1 has already lost precision by the time
+ * it reaches JSON.parse on the request body — the bytes that arrived
+ * over the wire can't be recovered. Rather than silently casting a
+ * lossy value to a 64-bit BigInt (and pointing at a row the operator
+ * never meant to touch), reject and force the caller to use the string
+ * form. Strings carry full 64-bit precision through the JSON layer.
+ *
+ * Shared by validateEventSeriesId, validateArtistId, and any future
+ * nullable-FK fields on Event so the accepted shapes + error wording
+ * stay in lockstep across the POST and PUT routes.
+ */
+function validateNullableBigIntFk(
+  value: unknown,
+  field: string
 ):
   | { ok: true; value: bigint | null }
   | { ok: false; response: NextResponse } {
   if (value === undefined || value === null || value === "") {
     return { ok: true, value: null };
   }
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return { ok: true, value: BigInt(value) };
   }
   if (typeof value === "string" && /^\d+$/.test(value)) {
@@ -99,10 +147,27 @@ export function validateEventSeriesId(
   return {
     ok: false,
     response: NextResponse.json(
-      { error: "eventSeriesId must be a non-negative integer or digit string" },
+      // Admin-route convention: error bodies surfaced to the operator
+      // are Korean. Colon-separator phrasing sidesteps the dynamic
+      // field-name josa pitfall — `${field}` is an English token like
+      // `artistId` or `eventSeriesId`, so a "는/은" suffix would read
+      // awkwardly. The form's submit handler renders `body?.error`
+      // verbatim in an `alert(...)`, so this string is what the
+      // operator sees.
+      {
+        error: `${field}: 0 이상의 정수 또는 숫자 문자열이어야 합니다.`,
+      },
       { status: 400 }
     ),
   };
+}
+
+export function validateEventSeriesId(value: unknown) {
+  return validateNullableBigIntFk(value, "eventSeriesId");
+}
+
+export function validateArtistId(value: unknown) {
+  return validateNullableBigIntFk(value, "artistId");
 }
 
 /**

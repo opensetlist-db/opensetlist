@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
@@ -12,8 +13,10 @@ import {
 } from "@/lib/admin-input";
 import {
   ensureStageIdentitiesExist,
+  fkViolationResponse,
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
+  validateArtistId,
   validateDateInput,
   validateEventOriginals,
   validateEventSeriesId,
@@ -114,6 +117,13 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!seriesCheck.ok) return seriesCheck.response;
   const eventSeriesId = seriesCheck.value;
 
+  const artistCheck = validateArtistId(body.artistId);
+  if (!artistCheck.ok) return artistCheck.response;
+  const artistId = artistCheck.value;
+
+  const organizerName = nullableString(body.organizerName, "organizerName");
+  if (!organizerName.ok) return badRequest(organizerName.message);
+
   const translationsCheck = validateEventTranslations(body.translations);
   if (!translationsCheck.ok) return translationsCheck.response;
   const translations = translationsCheck.value;
@@ -150,6 +160,8 @@ export async function PUT(request: NextRequest, { params }: Props) {
           // would be silently reset to "scheduled" on any unrelated edit.
           ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
           eventSeriesId,
+          artistId,
+          organizerName: organizerName.value,
           date,
           startTime,
           country: country.value,
@@ -186,6 +198,17 @@ export async function PUT(request: NextRequest, { params }: Props) {
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {
       return stageIdentityNotFoundResponse(err);
+    }
+    // P2003: an FK column (artistId, eventSeriesId, or stageIdentityId
+    // on the replaced eventPerformer rows) points at a non-existent
+    // row. Without this guard, an FK violation surfaces as a generic
+    // 500 and the operator has no idea which field is stale. See
+    // fkViolationResponse for the field-neutral 400 mapping.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2003"
+    ) {
+      return fkViolationResponse(err);
     }
     throw err;
   }
