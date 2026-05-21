@@ -5,8 +5,17 @@ import type { AvailableSong } from "@/lib/types/predict";
 function makeSong(
   songId: number,
   unitOver: Partial<AvailableSong["unit"]>,
-  songOver: Partial<Pick<AvailableSong, "isMultiArtist">> = {},
+  songOver: Partial<Pick<AvailableSong, "isMultiArtist" | "creditedArtistIds">> = {},
 ): AvailableSong {
+  const unit = {
+    artistId: 1,
+    slug: "hasunosora",
+    label: "Hasunosora",
+    color: "#0277BD",
+    isSubUnit: false,
+    isMainUnit: false,
+    ...unitOver,
+  };
   return {
     songId,
     originalTitle: `t${songId}`,
@@ -14,16 +23,14 @@ function makeSong(
     variantLabel: null,
     baseVersionId: null,
     translations: [],
-    unit: {
-      artistId: 1,
-      slug: "hasunosora",
-      label: "Hasunosora",
-      color: "#0277BD",
-      isSubUnit: false,
-      isMainUnit: false,
-      ...unitOver,
-    },
+    unit,
     isMultiArtist: false,
+    // Default to the canonical unit's artistId for single-credit
+    // songs. `deriveUnitFilters` doesn't consult `creditedArtistIds`
+    // (chip emission stays based on canonical `unit.artistId`), so
+    // most cases don't need to override this — only routing-layer
+    // tests in song-picker-content do.
+    creditedArtistIds: [unit.artistId],
     ...songOver,
   };
 }

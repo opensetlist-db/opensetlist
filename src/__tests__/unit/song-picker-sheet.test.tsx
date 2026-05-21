@@ -52,6 +52,7 @@ const SONGS: AvailableSong[] = [
       isMainUnit: false,
     },
     isMultiArtist: false,
+    creditedArtistIds: [1],
   },
 ];
 

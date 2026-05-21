@@ -59,6 +59,24 @@ export interface AvailableSong {
    *  routing predicates in `<SongPickerContent>` consult this
    *  flag before `unit.artistId`. */
   isMultiArtist: boolean;
+  /** ALL credited unit artistIds (group + sub-units + solos), not
+   *  just the canonical `unit.artistId`. Used by the `group` /
+   *  `individual` filter predicates so a multi-unit collab song
+   *  (e.g. credited to Cerise + DOLLCHESTRA + Mira-Cra Park!)
+   *  appears under EVERY credited unit's chip, not just the first
+   *  one that won the canonical-unit routing.
+   *
+   *  Set contract: includes the primary group's artistId when the
+   *  song has a group-direct credit; otherwise includes one entry
+   *  per credited sub-unit / solo. Dedup'd via Set on the server.
+   *  Excludes credits whose artist isn't a sub-unit of the primary
+   *  group (cover artists, guests, etc. — same filter the canonical
+   *  `unit` selection applies).
+   *
+   *  `isMultiArtist` short-circuits still take precedence — multi-
+   *  solo collabs (no main unit winner) route to `others` only
+   *  regardless of `creditedArtistIds`. */
+  creditedArtistIds: number[];
 }
 
 export interface AvailableSongUnit {

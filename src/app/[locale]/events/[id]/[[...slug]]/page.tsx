@@ -383,6 +383,29 @@ async function getAvailableSongs(
     if (!unitArtist) continue;
     const unitArtistId = safeBigIntToNumber(unitArtist.id);
     if (unitArtistId === null) continue;
+
+    // Collect ALL credited unit artistIds (group + sub-units), not
+    // just the canonical `unit.artistId`. Lets the picker show a
+    // multi-unit collab song (e.g. Cerise + DOLLCHESTRA + Mira-Cra
+    // Park!) under EVERY credited unit's chip rather than only the
+    // canonical one. The filter is identical to the canonical-unit
+    // selection above: keep the primary group itself + any artist
+    // whose `parentArtistId === primaryAsBigInt` (sub-unit / solo of
+    // the group). Cover artists, guests, and unrelated featured
+    // artists are excluded — same scope the canonical `unit` uses.
+    // Dedup via Set since a single song row could have duplicate
+    // SongArtist entries in malformed data.
+    const creditedSet = new Set<number>();
+    for (const a of aliveArtists) {
+      const isGroupCredit = a.id === primaryAsBigInt;
+      const isSubUnitCredit = a.parentArtistId === primaryAsBigInt;
+      if (!isGroupCredit && !isSubUnitCredit) continue;
+      const aid = safeBigIntToNumber(a.id);
+      if (aid === null) continue;
+      creditedSet.add(aid);
+    }
+    const creditedArtistIds = [...creditedSet];
+
     out.push({
       songId,
       originalTitle: row.originalTitle,
@@ -404,6 +427,7 @@ async function getAvailableSongs(
         isMainUnit: unitArtist.isMainUnit,
       },
       isMultiArtist,
+      creditedArtistIds,
     });
   }
   return out;
