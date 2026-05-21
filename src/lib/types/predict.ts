@@ -59,6 +59,24 @@ export interface AvailableSong {
    *  routing predicates in `<SongPickerContent>` consult this
    *  flag before `unit.artistId`. */
   isMultiArtist: boolean;
+  /** ALL credited unit artistIds (group + sub-units + solos), not
+   *  just the canonical `unit.artistId`. Used by the `group` /
+   *  `individual` filter predicates so a multi-unit collab song
+   *  (e.g. credited to Cerise + DOLLCHESTRA + Mira-Cra Park!)
+   *  appears under EVERY credited unit's chip, not just the first
+   *  one that won the canonical-unit routing.
+   *
+   *  Set contract: includes the primary group's artistId when the
+   *  song has a group-direct credit; otherwise includes one entry
+   *  per credited sub-unit / solo. Dedup'd via Set on the server.
+   *  Excludes credits whose artist isn't a sub-unit of the primary
+   *  group (cover artists, guests, etc. — same filter the canonical
+   *  `unit` selection applies).
+   *
+   *  `isMultiArtist` short-circuits still take precedence — multi-
+   *  solo collabs (no main unit winner) route to `others` only
+   *  regardless of `creditedArtistIds`. */
+  creditedArtistIds: number[];
 }
 
 export interface AvailableSongUnit {
@@ -86,11 +104,18 @@ export interface AvailableSongUnit {
  * Filter chip kind. Drives the routing predicate in
  * `<SongPickerContent>`:
  *   - `all`         → no filter
- *   - `group`       → `song.unit.artistId === filter.artistId`
- *   - `individual`  → `song.unit.artistId === filter.artistId`
- *   - `others`      → `song.unit.artistId` is not covered by any
- *                     `group` or `individual` chip in the same
+ *   - `group`       → `song.creditedArtistIds.includes(filter.artistId)`
+ *   - `individual`  → `song.creditedArtistIds.includes(filter.artistId)`
+ *   - `others`      → none of `song.creditedArtistIds` is covered by
+ *                     any `group` or `individual` chip in the same
  *                     `UnitFilter[]` (composite catch-all)
+ *
+ * `creditedArtistIds` carries every credited group / sub-unit / solo
+ * artistId from the server, so a multi-main-unit collab routes under
+ * every credited unit's chip — not just the canonical one. PR #425
+ * widened this from the earlier `song.unit.artistId === filter.artistId`
+ * contract; `unit` still exists on the row for display fallback +
+ * group-routing preference but is no longer the routing predicate.
  *
  * `group` + `individual` use the same predicate but the kind is kept
  * distinct because their `label` source differs (`group` uses the

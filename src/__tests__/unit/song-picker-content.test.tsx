@@ -45,6 +45,7 @@ function song(
   translations: AvailableSong["translations"] = [],
   variantLabel: string | null = null,
   isMultiArtist: boolean = false,
+  creditedArtistIds?: number[],
 ): AvailableSong {
   return {
     songId,
@@ -55,6 +56,10 @@ function song(
     translations,
     unit,
     isMultiArtist,
+    // Default to the canonical unit's artistId for single-credit
+    // songs. Tests that need multi-credit routing pass an explicit
+    // array (e.g. [2, 3, 4] for a Cerise + DOLL + MCP collab).
+    creditedArtistIds: creditedArtistIds ?? [unit.artistId],
   };
 }
 
@@ -189,6 +194,7 @@ describe("<SongPickerContent>", () => {
         isMainUnit: false,
       },
       isMultiArtist: false,
+      creditedArtistIds: [99],
     };
     render(
       <SongPickerContent
@@ -427,6 +433,111 @@ describe("<SongPickerContent>", () => {
     fireEvent.click(screen.getByText("Others"));
     expect(screen.getByText("Multi-Solo Collab")).toBeTruthy();
     expect(screen.getByText("Orphan")).toBeTruthy();
+  });
+
+  it("multi-main-unit collab song appears under EVERY credited main unit's individual chip", () => {
+    // A song credited to 3 main units (Cerise + DOLLCHESTRA + a
+    // hypothetical third main unit at artistId 4) — operator
+    // reported that pre-fix the song only showed under whichever
+    // main unit won the canonical-routing race. With the fix, the
+    // server emits `creditedArtistIds: [2, 3, 4]` and the picker
+    // should surface the row under each of the three individual
+    // chips when filtered.
+    const THIRD_MAIN = {
+      artistId: 4,
+      slug: "mira-cra-park",
+      label: "Mira-Cra Park!",
+      color: "#fbc02d",
+      isSubUnit: true,
+      isMainUnit: true,
+    };
+    const filtersWith3rd = [
+      ...FILTERS,
+      {
+        key: THIRD_MAIN.slug,
+        label: THIRD_MAIN.label,
+        color: THIRD_MAIN.color,
+        kind: "individual" as const,
+        artistId: THIRD_MAIN.artistId,
+      },
+    ];
+    // Canonical `unit` points at Cerise (won the routing race).
+    const multiMain = song(
+      600,
+      "Three-Unit Collab",
+      CERISE,
+      [],
+      null,
+      false, // NOT isMultiArtist (main unit credits exist)
+      [CERISE.artistId, DOLLCHESTRA.artistId, THIRD_MAIN.artistId],
+    );
+
+    // Filter by Cerise (canonical) → song visible.
+    const { rerender } = render(
+      <SongPickerContent
+        songs={[...SONGS, multiMain]}
+        selectedIds={[]}
+        unitFilters={filtersWith3rd}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getAllByText("Cerise Bouquet")[0]);
+    expect(screen.getByText("Three-Unit Collab")).toBeTruthy();
+
+    // Filter by DOLLCHESTRA (non-canonical credited) → still visible.
+    rerender(
+      <SongPickerContent
+        songs={[...SONGS, multiMain]}
+        selectedIds={[]}
+        unitFilters={filtersWith3rd}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getAllByText("DOLLCHESTRA")[0]);
+    expect(screen.getByText("Three-Unit Collab")).toBeTruthy();
+
+    // Filter by Mira-Cra Park! (non-canonical credited) → still visible.
+    rerender(
+      <SongPickerContent
+        songs={[...SONGS, multiMain]}
+        selectedIds={[]}
+        unitFilters={filtersWith3rd}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getAllByText("Mira-Cra Park!")[0]);
+    expect(screen.getByText("Three-Unit Collab")).toBeTruthy();
+  });
+
+  it("`others` filter excludes a multi-main-unit collab whose credited units are all covered by chips", () => {
+    // Two main units credited (Cerise + DOLLCHESTRA), no group, no
+    // solo. Both have individual chips in FILTERS → none of the
+    // credited IDs is uncovered → song must NOT appear under `others`.
+    // Tests the new `coveredArtistIds.some` predicate that checks
+    // the full credited set, not just the canonical unit.
+    const multiMain = song(
+      601,
+      "Cerise + DOLL Collab",
+      CERISE,
+      [],
+      null,
+      false,
+      [2, 3], // Cerise + DOLLCHESTRA, both have chips
+    );
+    render(
+      <SongPickerContent
+        songs={[...SONGS, multiMain]}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+    fireEvent.click(screen.getByText("Others"));
+    expect(screen.queryByText("Cerise + DOLL Collab")).toBeNull();
   });
 
   it("under `others` filter, multi-artist songs still respect the search query (no short-circuit bypass)", () => {

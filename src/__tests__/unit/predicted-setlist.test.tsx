@@ -66,6 +66,7 @@ const SAMPLE_AVAILABLE: AvailableSong[] = [
       isMainUnit: false,
     },
     isMultiArtist: false,
+    creditedArtistIds: [1],
   },
 ];
 const SAMPLE_FILTERS: UnitFilter[] = [
