@@ -147,7 +147,16 @@ function validateNullableBigIntFk(
   return {
     ok: false,
     response: NextResponse.json(
-      { error: `${field} must be a non-negative integer or digit string` },
+      // Admin-route convention: error bodies surfaced to the operator
+      // are Korean. Colon-separator phrasing sidesteps the dynamic
+      // field-name josa pitfall — `${field}` is an English token like
+      // `artistId` or `eventSeriesId`, so a "는/은" suffix would read
+      // awkwardly. The form's submit handler renders `body?.error`
+      // verbatim in an `alert(...)`, so this string is what the
+      // operator sees.
+      {
+        error: `${field}: 0 이상의 정수 또는 숫자 문자열이어야 합니다.`,
+      },
       { status: 400 }
     ),
   };
