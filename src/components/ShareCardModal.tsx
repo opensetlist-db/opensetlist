@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import {
   ShareCardPreview,
   CARD_CAPTURE_WIDTH_PX,
+  OFF_SCREEN_LEFT_PX,
   type ShareCardMode,
 } from "@/components/ShareCardPreview";
 import {
@@ -764,7 +765,7 @@ export function ShareCardModal({
           aria-hidden="true"
           style={{
             position: "fixed",
-            left: -10000,
+            left: OFF_SCREEN_LEFT_PX,
             top: 0,
             // Must match the card element's own `width`
             // (`CARD_CAPTURE_WIDTH_PX` in ShareCardPreview.tsx) so the

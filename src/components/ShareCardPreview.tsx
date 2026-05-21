@@ -158,6 +158,25 @@ const INDICATOR_SIZE_PX = 14;
 export const CARD_CAPTURE_WIDTH_PX = 600;
 
 /**
+ * Horizontal `left` offset (in px) used by `<ShareCardModal>` to push
+ * its off-screen capture clone safely outside any plausible viewport.
+ * Negative — the value is applied as `style.left`, so it shifts the
+ * wrapper that many pixels to the left of the viewport origin.
+ *
+ * Lives alongside `CARD_CAPTURE_WIDTH_PX` because both numbers
+ * cooperate to define the off-screen capture surface: the wrapper is
+ * `CARD_CAPTURE_WIDTH_PX` wide and sits `OFF_SCREEN_LEFT_PX` to the
+ * left of `x: 0`. Keeping them together makes the capture-clone
+ * geometry one place to read and change.
+ *
+ * 10000 is a comfortable safety margin past any realistic monitor
+ * width (8K = 7680px, ultrawide multi-display rigs ~10000–12000px
+ * for the rightmost edge from `x: 0`). Bumping to a larger absolute
+ * value is fine if a wider display ever creeps in.
+ */
+export const OFF_SCREEN_LEFT_PX = -10000;
+
+/**
  * Total-song-count threshold at and above which the row list splits
  * into two side-by-side columns. Below this, the rows stack in a
  * single column the way they always have.
