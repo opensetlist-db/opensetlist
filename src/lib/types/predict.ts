@@ -104,11 +104,18 @@ export interface AvailableSongUnit {
  * Filter chip kind. Drives the routing predicate in
  * `<SongPickerContent>`:
  *   - `all`         → no filter
- *   - `group`       → `song.unit.artistId === filter.artistId`
- *   - `individual`  → `song.unit.artistId === filter.artistId`
- *   - `others`      → `song.unit.artistId` is not covered by any
- *                     `group` or `individual` chip in the same
+ *   - `group`       → `song.creditedArtistIds.includes(filter.artistId)`
+ *   - `individual`  → `song.creditedArtistIds.includes(filter.artistId)`
+ *   - `others`      → none of `song.creditedArtistIds` is covered by
+ *                     any `group` or `individual` chip in the same
  *                     `UnitFilter[]` (composite catch-all)
+ *
+ * `creditedArtistIds` carries every credited group / sub-unit / solo
+ * artistId from the server, so a multi-main-unit collab routes under
+ * every credited unit's chip — not just the canonical one. PR #425
+ * widened this from the earlier `song.unit.artistId === filter.artistId`
+ * contract; `unit` still exists on the row for display fallback +
+ * group-routing preference but is no longer the routing predicate.
  *
  * `group` + `individual` use the same predicate but the kind is kept
  * distinct because their `label` source differs (`group` uses the
