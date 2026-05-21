@@ -65,7 +65,18 @@ export async function GET(req: NextRequest) {
         // startTime regardless of client clock skew (the original
         // motivation for surfacing status here at all; see v0.10.0
         // smoke note below).
-        event: { select: { status: true, startTime: true } },
+        //
+        // `isDeleted` is included alongside status/startTime so the
+        // read site can preserve the original
+        // `findFirst({ isDeleted: false })` semantics — a soft-
+        // deleted parent (rare: admin removed an event mid-poll)
+        // must resolve to `status: null` regardless of whether its
+        // non-deleted children are still around. Without this guard
+        // the polled status would flip from null → a stale value the
+        // instant we stopped issuing the standalone findFirst.
+        event: {
+          select: { status: true, startTime: true, isDeleted: true },
+        },
         songs: {
           include: {
             song: {
@@ -145,19 +156,32 @@ export async function GET(req: NextRequest) {
   // client watching for the first item to appear, or an event whose
   // items have all been soft-deleted. Sequential not parallel so it
   // doesn't reintroduce the pool contention this fold removes.
-  // `items.length > 0` branch over `items[0]?.event ?? findFirst()` —
+  // `items.length > 0` over `items[0]?.event ?? findFirst()` —
   // the project's tsconfig doesn't enable `noUncheckedIndexedAccess`,
   // so TS types `items[0]` as non-undefined and would either reject
-  // the `??` fallback's nullable result or collapse the union back to
-  // non-null. The explicit length check matches both the runtime
+  // the `??` fallback's nullable result or collapse the union back
+  // to non-null. The explicit length check matches both the runtime
   // intent and the type system without an annotation crutch.
+  //
+  // The `!isDeleted` clause preserves the original
+  // `findFirst({ isDeleted: false })` semantics for the rare case
+  // where the event was soft-deleted but its non-deleted children
+  // are still around (admin removed an event mid-poll). In that
+  // case `liveEvent` is null and we fall through to the standalone
+  // findFirst, which also filters `isDeleted: false` and returns
+  // null — `status` becomes null and the client keeps its SSR-
+  // initial value. Costs one wasted DB round-trip per soft-deleted-
+  // event poll, acceptable trade for the safety: the alternative is
+  // a stale `status` slipping past the guard and potentially
+  // unlocking editors on a deleted event.
+  const liveEvent =
+    items.length > 0 && !items[0].event.isDeleted ? items[0].event : null;
   const event =
-    items.length > 0
-      ? items[0].event
-      : await prisma.event.findFirst({
-          where: { id: eventId, isDeleted: false },
-          select: { status: true, startTime: true },
-        });
+    liveEvent ??
+    (await prisma.event.findFirst({
+      where: { id: eventId, isDeleted: false },
+      select: { status: true, startTime: true },
+    }));
   // Resolve status server-side via the same `getEventStatus`
   // helper the page uses at SSR. `null` when the event was missing
   // or soft-deleted — clients treat null as "no fresh status; keep
