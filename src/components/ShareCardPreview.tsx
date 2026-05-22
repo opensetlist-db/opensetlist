@@ -9,6 +9,7 @@ import {
   CAPTURE_SHIFT_ATTR,
   type CaptureShiftKey,
 } from "@/lib/shareCard";
+import { CARD_CAPTURE_WIDTH_PX } from "@/lib/shareCardConstants";
 
 /**
  * JSX prop spread that tags an element so html2canvas's onclone in
@@ -139,6 +140,56 @@ const CAPTURE_ROW_LINE_HEIGHT = 2.2;
  */
 const INDICATOR_SIZE_PX = 14;
 
+/**
+ * Total-song-count threshold at and above which the row list splits
+ * into two side-by-side columns. Below this, the rows stack in a
+ * single column the way they always have.
+ *
+ * Geometry rationale at the card's fixed 600px width: outer padding
+ * (`26px 32px 22px`) reserves 64px horizontally → 536px of inner
+ * width for rows; two columns with `COLUMN_GAP_PX` (16px) gap →
+ * `(536 − 16) / 2 = 260px` per column. Subtract the indicator (14px)
+ * + indicator-to-rank gap (10px) + rank column (18px) + rank-to-title
+ * gap (10px) = 52px of fixed-width prefix, leaving ~208px for the
+ * title slot. At the 13px CJK font that's ~16–17 glyphs of title,
+ * enough for most setlist titles to render without aggressive
+ * truncation.
+ *
+ * 21 picked so typical concert mainlines (15–18 songs incl. encore)
+ * stay single-column — the dead right-column space at those lengths
+ * reads more like generous breathing room than wasted real estate.
+ * Long predictions (32-song festival sets, multi-day tour
+ * predictions) and festival final setlists are the ones that
+ * actually need two-column compression to stay attention-span-sized.
+ *
+ * Threshold is by total song count, not by entry count, so the
+ * encore divider's presence doesn't shift the boundary between
+ * single- and two-column rendering. Once two-column kicks in, the
+ * split itself IS done by entry count for visual balance — see
+ * `splitAtMid` use sites in `ActualResultBody`.
+ */
+const TWO_COLUMN_MIN_SONG_COUNT = 21;
+
+/**
+ * Horizontal gap between the two row columns when the threshold is
+ * crossed. 16px reads cleanly as two distinct columns at the
+ * card's 600px width without eating much title slot width. See the
+ * geometry math in `TWO_COLUMN_MIN_SONG_COUNT` for the column-width
+ * derivation.
+ */
+const COLUMN_GAP_PX = 16;
+
+/**
+ * Split an array at the midpoint, biased so the LEFT column gets the
+ * extra item on odd counts. `Math.ceil(items.length / 2)` matches the
+ * setlist.fm reading convention where a 21-item list reads 1..11 in
+ * the left column and 12..21 in the right.
+ */
+function splitAtMid<T>(items: T[]): [T[], T[]] {
+  const mid = Math.ceil(items.length / 2);
+  return [items.slice(0, mid), items.slice(mid)];
+}
+
 interface Props {
   theme: ShareCardTheme;
   mode: ShareCardMode;
@@ -212,7 +263,7 @@ export const ShareCardPreview = forwardRef<HTMLDivElement, Props>(
       <div
         ref={ref}
         style={{
-          width: 600,
+          width: CARD_CAPTURE_WIDTH_PX,
           background: T.cardBg,
           borderRadius: 20,
           overflow: "hidden",
@@ -456,17 +507,86 @@ function PredictionList({
         <span style={{ fontSize: 12, color: T.scorePred }}>{countLabel}</span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
-        {predictions.map((entry, i) => (
-          <PredictionRow
-            key={entry.songId}
-            entry={entry}
-            rank={i + 1}
-            T={T}
-            locale={locale}
-          />
-        ))}
-      </div>
+      {predictions.length >= TWO_COLUMN_MIN_SONG_COUNT ? (
+        // Two-column layout for long predictions (32-song festival
+        // sets, multi-day tour predictions). Left column gets the
+        // first ceil(N/2) entries — see `splitAtMid` for the bias
+        // rationale. The rank passed to each row is the entry's
+        // ABSOLUTE position in the predictions list, not the row's
+        // position within its column — so the rank numbers read 1..N
+        // top-to-bottom-then-right across the two columns, matching
+        // setlist.fm's ordered-list convention.
+        (() => {
+          const [leftEntries, rightEntries] = splitAtMid(predictions);
+          return (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                gap: COLUMN_GAP_PX,
+                marginBottom: 4,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                  flex: 1,
+                  // `minWidth: 0` so flex children can shrink below
+                  // their intrinsic content width — critical for the
+                  // title span's `text-overflow: ellipsis` to engage
+                  // on long song titles. Without it, the column
+                  // refuses to shrink and the title overflows past
+                  // the column's right edge.
+                  minWidth: 0,
+                }}
+              >
+                {leftEntries.map((entry, i) => (
+                  <PredictionRow
+                    key={entry.songId}
+                    entry={entry}
+                    rank={i + 1}
+                    T={T}
+                    locale={locale}
+                  />
+                ))}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1,
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {rightEntries.map((entry, i) => (
+                  <PredictionRow
+                    key={entry.songId}
+                    entry={entry}
+                    rank={leftEntries.length + i + 1}
+                    T={T}
+                    locale={locale}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
+          {predictions.map((entry, i) => (
+            <PredictionRow
+              key={entry.songId}
+              entry={entry}
+              rank={i + 1}
+              T={T}
+              locale={locale}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -577,43 +697,181 @@ function ActualResultBody({
         </div>
       </div>
 
-      {/* Setlist rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
-        {mainSongs.map((item, i) => (
-          <ShareCardRow
-            key={item.id}
-            item={item}
-            rank={i + 1}
-            hit={isHit(item, predictions)}
-            T={T}
-            locale={locale}
-          />
-        ))}
-      </div>
-
-      {encoreSongs.length > 0 && (
-        <>
-          <EncoreDivider label={labels.encore} T={T} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {encoreSongs.map((item, i) => (
-              <ShareCardRow
-                key={item.id}
-                item={item}
-                // Continue numbering past the main set rather than
-                // restart at 1 — the share card is a single setlist
-                // surface, so an event with 15 main + 3 encore reads
-                // as 1..18, not 1..15 followed by 1..3 (the latter
-                // would visually suggest two unrelated lists).
-                rank={mainSongs.length + i + 1}
-                hit={isHit(item, predictions)}
-                T={T}
-                locale={locale}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <SetlistRows
+        mainSongs={mainSongs}
+        encoreSongs={encoreSongs}
+        predictions={predictions}
+        T={T}
+        locale={locale}
+        encoreLabel={labels.encore}
+      />
     </>
+  );
+}
+
+/**
+ * Renders the song rows of an actual setlist (live / final modes),
+ * choosing between the legacy single-column layout (≤ 20 songs) and
+ * a two-column layout (≥ 21 songs).
+ *
+ * The two-column path builds a unified entry sequence — songs +
+ * encore divider — and splits at the entry-count midpoint for visual
+ * balance, NOT at the song-count midpoint. Splitting by entry count
+ * means a single divider entry shifts the seam by at most one row,
+ * so the two columns stay within ±1 entry of each other regardless
+ * of where the main/encore boundary lands. Splitting by song count
+ * would let the right column inherit a divider on top of N/2 songs,
+ * visibly imbalancing the columns.
+ *
+ * The encore divider is rendered inline within whichever column it
+ * lands in (left or right). It is NOT a full-width element spanning
+ * both columns — that would force the right column to start lower
+ * than the left and break the top-aligned reading order.
+ */
+function SetlistRows({
+  mainSongs,
+  encoreSongs,
+  predictions,
+  T,
+  locale,
+  encoreLabel,
+}: {
+  mainSongs: LiveSetlistItem[];
+  encoreSongs: LiveSetlistItem[];
+  predictions: PredictionEntry[];
+  T: typeof shareCardColors.dark;
+  locale: string;
+  encoreLabel: string;
+}) {
+  const totalSongs = mainSongs.length + encoreSongs.length;
+
+  // Single-column path — preserves the exact pre-v0.13.18 layout for
+  // typical 15–20-song concert sets. No structural change, just a
+  // direct port of the previous JSX so a future blame still shows
+  // PR #305 / v0.11.x history cleanly.
+  if (totalSongs < TWO_COLUMN_MIN_SONG_COUNT) {
+    return (
+      <>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: 4 }}>
+          {mainSongs.map((item, i) => (
+            <ShareCardRow
+              key={item.id}
+              item={item}
+              rank={i + 1}
+              hit={isHit(item, predictions)}
+              T={T}
+              locale={locale}
+            />
+          ))}
+        </div>
+
+        {encoreSongs.length > 0 && (
+          <>
+            <EncoreDivider label={encoreLabel} T={T} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {encoreSongs.map((item, i) => (
+                <ShareCardRow
+                  key={item.id}
+                  item={item}
+                  // Continue numbering past the main set rather than
+                  // restart at 1 — the share card is a single setlist
+                  // surface, so an event with 15 main + 3 encore reads
+                  // as 1..18, not 1..15 followed by 1..3 (the latter
+                  // would visually suggest two unrelated lists).
+                  rank={mainSongs.length + i + 1}
+                  hit={isHit(item, predictions)}
+                  T={T}
+                  locale={locale}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </>
+    );
+  }
+
+  // Two-column path. Build the unified entry sequence first so the
+  // column split logic only deals with `RowEntry[]` — keeps the
+  // rendering side identical for both columns and lets `splitAtMid`
+  // do its job without special-casing the encore divider.
+  type RowEntry =
+    | { kind: "song"; item: LiveSetlistItem; rank: number }
+    | { kind: "encore-divider" };
+
+  const entries: RowEntry[] = [
+    ...mainSongs.map<RowEntry>((item, i) => ({
+      kind: "song",
+      item,
+      rank: i + 1,
+    })),
+    ...(encoreSongs.length > 0
+      ? ([{ kind: "encore-divider" }] as RowEntry[])
+      : []),
+    ...encoreSongs.map<RowEntry>((item, i) => ({
+      kind: "song",
+      item,
+      rank: mainSongs.length + i + 1,
+    })),
+  ];
+
+  const [leftEntries, rightEntries] = splitAtMid(entries);
+
+  const renderEntries = (slice: RowEntry[], keyPrefix: string) =>
+    slice.map((entry, i) => {
+      if (entry.kind === "encore-divider") {
+        return (
+          <EncoreDivider key={`${keyPrefix}-encore-${i}`} label={encoreLabel} T={T} />
+        );
+      }
+      return (
+        <ShareCardRow
+          key={entry.item.id}
+          item={entry.item}
+          rank={entry.rank}
+          hit={isHit(entry.item, predictions)}
+          T={T}
+          locale={locale}
+        />
+      );
+    });
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "row",
+        gap: COLUMN_GAP_PX,
+        marginBottom: 4,
+      }}
+    >
+      {/* `minWidth: 0` on each column lets the title span's
+          `text-overflow: ellipsis` kick in at the 260px column
+          width — see the matching prop in `PredictionList`'s
+          two-column branch for the rationale. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        {renderEntries(leftEntries, "left")}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        {renderEntries(rightEntries, "right")}
+      </div>
+    </div>
   );
 }
 
