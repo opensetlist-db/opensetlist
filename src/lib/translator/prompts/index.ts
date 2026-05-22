@@ -1,4 +1,5 @@
 import { HASUNOSORA_GLOSSARY_PROMPT } from "./hasunosora";
+import { NIJI_GLOSSARY_PROMPT } from "./niji";
 import { GENERIC_FALLBACK_PROMPT } from "./generic";
 import { REGISTERED_IP_KEYS } from "./keys";
 
@@ -9,11 +10,18 @@ export { REGISTERED_IP_KEYS } from "./keys";
 
 // Per-IP system-prompt registry.
 //
-// Key = Group.slug for Groups where type=franchise (see prisma/schema.prisma
-// Group / GroupType). One slug → one prompt module. Resolved at request time
-// from impression → event → performers → artists → franchise Group →
-// distinct-slug-set (see promptResolver.ts for the full walk and the
-// selection rules around single / multi / unmapped franchises).
+// Key = Group.slug for Groups where type=franchise OR type=series (see
+// prisma/schema.prisma Group / GroupType). One slug → one prompt module.
+// Resolved at request time from impression → event → performers → artists →
+// franchise/series Group → distinct-slug-set (see promptResolver.ts for the
+// full walk and the selection rules around single / multi / unmapped IPs).
+//
+// Most prompts are keyed at the series level (`hasunosora-club`,
+// `nijigasaki-club`, `aqours-club`, …) rather than the franchise level
+// (`lovelive`) because per-series character rosters and song catalogs
+// don't overlap meaningfully. The resolver's registered-first selection
+// rule picks the matched series and ignores the always-present `lovelive`
+// franchise slug when present alongside it.
 //
 // IMPLICIT-CACHE INVARIANT: every prompt here MUST measure ≥1024 tokens on
 // Gemini's tokenizer (see hasunosora.ts:5 for the existing pattern and
@@ -37,9 +45,10 @@ export { REGISTERED_IP_KEYS } from "./keys";
 // surfacing that. A plain Record types the index access as `string`
 // (never undefined), which silently hides the guard.
 export const IP_PROMPTS: Partial<Record<string, string>> = {
-  hasunosora: HASUNOSORA_GLOSSARY_PROMPT,
-  // nijigasaki: NIJIGASAKI_GLOSSARY_PROMPT, // pending operator authoring
-  // umamusume:  UMAMUSUME_GLOSSARY_PROMPT,  // pending operator authoring
+  "hasunosora-club": HASUNOSORA_GLOSSARY_PROMPT,
+  "nijigasaki-club": NIJI_GLOSSARY_PROMPT,
+  // "aqours-club":    AQOURS_GLOSSARY_PROMPT,    // pending operator authoring
+  // "umamusume":      UMAMUSUME_GLOSSARY_PROMPT, // pending operator authoring
 };
 
 // Used by the resolver when:

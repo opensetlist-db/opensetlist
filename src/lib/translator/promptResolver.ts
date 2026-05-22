@@ -116,11 +116,19 @@ export async function resolvePromptForImpression(
     },
   });
 
+  // Collect both franchise-level (e.g. "lovelive") and series-level (e.g.
+  // "hasunosora-club", "nijigasaki-club") group slugs. Per-IP prompts in
+  // the registry are typically keyed at the series level because each Love
+  // Live series has its own character roster — the registered-first
+  // selection below handles the case where a Hasunosora event surfaces
+  // both ["lovelive", "hasunosora-club"] (lovelive isn't registered, so
+  // it's ignored and the series slug wins).
   const franchiseSlugs = new Set<string>();
   for (const performer of performers) {
     for (const artistLink of performer.stageIdentity.artistLinks) {
       for (const groupLink of artistLink.artist.groupLinks) {
-        if (groupLink.group.type === "franchise") {
+        const t = groupLink.group.type;
+        if (t === "franchise" || t === "series") {
           franchiseSlugs.add(groupLink.group.slug);
         }
       }
@@ -128,31 +136,44 @@ export async function resolvePromptForImpression(
   }
 
   const slugList = Array.from(franchiseSlugs);
+  // Registered-first selection: filter the candidate slugs to those that
+  // have an entry in IP_PROMPTS. This lets a Hasunosora event's
+  // ["lovelive", "hasunosora-club"] resolve cleanly to hasunosora-club
+  // (the only registered slug), and a Niji × Hasunosora joint live's
+  // ["lovelive", "hasunosora-club", "nijigasaki-club"] resolve to
+  // multiIp=true on 2 registered slugs (lovelive ignored as unregistered).
+  const registeredSlugs = slugList.filter((s) => IP_PROMPTS[s] !== undefined);
   let resolved: ResolvedPrompt;
 
-  if (slugList.length === 1) {
-    const slug = slugList[0];
-    const registered = IP_PROMPTS[slug];
-    if (registered) {
-      resolved = {
-        prompt: registered,
-        ipKey: slug,
-        multiIp: false,
-        unregisteredSlug: null,
-        franchiseSlugs: slugList,
-      };
-    } else {
-      resolved = {
-        prompt: FALLBACK_PROMPT,
-        ipKey: GENERIC_IP_KEY,
-        multiIp: false,
-        unregisteredSlug: slug,
-        franchiseSlugs: slugList,
-      };
-    }
+  if (registeredSlugs.length === 1) {
+    const slug = registeredSlugs[0];
+    resolved = {
+      prompt: IP_PROMPTS[slug]!,
+      ipKey: slug,
+      multiIp: false,
+      unregisteredSlug: null,
+      franchiseSlugs: slugList,
+    };
+  } else if (registeredSlugs.length >= 2) {
+    // Joint live across ≥2 registered IPs. The per-event composite
+    // override (Event.translationPromptKey) is deferred — fall back to
+    // generic and surface the multiIp flag for observability.
+    resolved = makeGeneric(slugList);
+    resolved.multiIp = true;
+  } else if (slugList.length === 1) {
+    // Exactly one franchise/series slug came back from the walk and it
+    // isn't in IP_PROMPTS — signal which one so the operator can decide
+    // whether to onboard a prompt for it.
+    resolved = {
+      prompt: FALLBACK_PROMPT,
+      ipKey: GENERIC_IP_KEY,
+      multiIp: false,
+      unregisteredSlug: slugList[0],
+      franchiseSlugs: slugList,
+    };
   } else {
-    // 0 or ≥2 franchise slugs → generic. makeGeneric sets multiIp based
-    // on count, so both cases collapse into one branch.
+    // 0 slugs OR ≥2 slugs but none registered — generic. makeGeneric sets
+    // multiIp based on count.
     resolved = makeGeneric(slugList);
   }
 
