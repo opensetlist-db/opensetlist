@@ -133,6 +133,26 @@ describe("resolvePromptForImpression", () => {
     expect(result.ipSlugs).toEqual(["aqours"]);
   });
 
+  it("falls back to generic + multiIp=true on partially-registered joint live (one registered + one not)", async () => {
+    // Hasunosora × Aqours joint live where aqours has no authored prompt
+    // yet. The resolver MUST NOT silently pick the registered prompt —
+    // doing so would apply the Hasunosora glossary to impressions about
+    // the Aqours co-headliner. Honest answer is generic + multiIp.
+    (
+      prisma.eventPerformer.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValue([
+      performer([topLevelGroup("hasunosora")]),
+      performer([topLevelGroup("aqours")]),
+    ]);
+
+    const result = await resolvePromptForImpression("imp-1");
+
+    expect(result.ipKey).toBe("generic");
+    expect(result.prompt).toBe(FALLBACK_PROMPT);
+    expect(result.multiIp).toBe(true);
+    expect(result.ipSlugs.slice().sort()).toEqual(["aqours", "hasunosora"]);
+  });
+
   it("falls back to generic + multiIp=true when two registered IPs appear (joint live)", async () => {
     // Hasunosora × Nijigasaki joint live — both top-level group Artists
     // registered. Composite override not implemented; resolver falls back

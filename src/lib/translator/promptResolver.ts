@@ -138,43 +138,41 @@ export async function resolvePromptForImpression(
   }
 
   const slugList = Array.from(ipSlugSet);
-  // Registered-first selection: filter the candidate slugs to those that
-  // have an entry in IP_PROMPTS. In practice each event's performers
-  // resolve to exactly one top-level group Artist (the IP itself), so the
-  // registered/unregistered split here mostly distinguishes
-  // "we authored a prompt for this IP" from "we haven't yet".
-  const registeredSlugs = slugList.filter((s) => IP_PROMPTS[s] !== undefined);
   let resolved: ResolvedPrompt;
 
-  if (registeredSlugs.length === 1) {
-    const slug = registeredSlugs[0];
-    resolved = {
-      prompt: IP_PROMPTS[slug]!,
-      ipKey: slug,
-      multiIp: false,
-      unregisteredSlug: null,
-      ipSlugs: slugList,
-    };
-  } else if (registeredSlugs.length >= 2) {
-    // Joint live across ≥2 registered IPs. The per-event composite
-    // override (Event.translationPromptKey) is deferred — fall back to
-    // generic and surface the multiIp flag for observability.
-    resolved = makeGeneric(slugList);
-    resolved.multiIp = true;
-  } else if (slugList.length === 1) {
-    // Exactly one IP slug came back from the walk and it isn't in
-    // IP_PROMPTS — signal which one so the operator can decide whether
-    // to onboard a prompt for it.
-    resolved = {
-      prompt: FALLBACK_PROMPT,
-      ipKey: GENERIC_IP_KEY,
-      multiIp: false,
-      unregisteredSlug: slugList[0],
-      ipSlugs: slugList,
-    };
+  if (slugList.length === 1) {
+    // Single-IP event — the common case. Use the registered prompt if we
+    // have one; surface the slug as unregistered otherwise.
+    const slug = slugList[0];
+    const registered = IP_PROMPTS[slug];
+    if (registered) {
+      resolved = {
+        prompt: registered,
+        ipKey: slug,
+        multiIp: false,
+        unregisteredSlug: null,
+        ipSlugs: slugList,
+      };
+    } else {
+      resolved = {
+        prompt: FALLBACK_PROMPT,
+        ipKey: GENERIC_IP_KEY,
+        multiIp: false,
+        unregisteredSlug: slug,
+        ipSlugs: slugList,
+      };
+    }
   } else {
-    // 0 slugs OR ≥2 slugs but none registered — generic. makeGeneric sets
-    // multiIp based on count.
+    // 0 IPs (genre-neutral / data gap) OR ≥2 IPs (joint live) → generic.
+    // Note this fires even when one of the ≥2 IPs is registered — picking
+    // the registered prompt over the others would silently apply the
+    // wrong glossary to impressions about the unregistered co-headliner,
+    // and there's no good way for the LLM to know which performer the
+    // impression text is referring to. The per-event composite override
+    // for joint lives is deferred (PR #361 follow-up); until then,
+    // generic is the honest answer. makeGeneric sets multiIp based on
+    // count, so the route's Sentry tags surface joint-live failures
+    // distinctly from zero-IP ones.
     resolved = makeGeneric(slugList);
   }
 
