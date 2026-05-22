@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       ipKey: GENERIC_IP_KEY,
       multiIp: false,
       unregisteredSlug: null,
-      franchiseSlugs: [] as string[],
+      ipSlugs: [] as string[],
     };
   }
 
@@ -149,14 +149,14 @@ export async function POST(req: NextRequest) {
     Sentry.captureMessage("translator.translate_failed", {
       level: "error",
       // ipKey is a low-cardinality tag (≤ a handful of registered IPs +
-      // "generic") so Sentry can group failures by IP. franchiseSlugs is
+      // "generic") so Sentry can group failures by IP. ipSlugs is
       // high-cardinality — keep it in extras only.
       tags: { provider, sourceLocale, targetLocale, errorName, ipKey: resolved.ipKey },
       extra: {
         textLength,
         multiIp: resolved.multiIp,
         unregisteredSlug: resolved.unregisteredSlug,
-        franchiseSlugs: resolved.franchiseSlugs,
+        ipSlugs: resolved.ipSlugs,
         resolverErrored,
       },
     });

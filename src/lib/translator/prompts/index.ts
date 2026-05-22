@@ -1,5 +1,5 @@
 import { HASUNOSORA_GLOSSARY_PROMPT } from "./hasunosora";
-import { NIJI_GLOSSARY_PROMPT } from "./niji";
+import { NIJIGASAKI_GLOSSARY_PROMPT } from "./nijigasaki";
 import { GENERIC_FALLBACK_PROMPT } from "./generic";
 import { REGISTERED_IP_KEYS } from "./keys";
 
@@ -10,18 +10,17 @@ export { REGISTERED_IP_KEYS } from "./keys";
 
 // Per-IP system-prompt registry.
 //
-// Key = Group.slug for Groups where type=franchise OR type=series (see
-// prisma/schema.prisma Group / GroupType). One slug → one prompt module.
-// Resolved at request time from impression → event → performers → artists →
-// franchise/series Group → distinct-slug-set (see promptResolver.ts for the
-// full walk and the selection rules around single / multi / unmapped IPs).
+// Key = top-level group Artist.slug (Artist.type=group AND parentArtistId
+// IS NULL — Hasunosora, Nijigasaki, μ's, Liella, Aqours, …; NOT their
+// sub-units or solo character Artists). One slug → one prompt module.
+// Resolved at request time from impression → event → performers → artists
+// (see promptResolver.ts for the full walk and the selection rules).
 //
-// Most prompts are keyed at the series level (`hasunosora-club`,
-// `nijigasaki-club`, `aqours-club`, …) rather than the franchise level
-// (`lovelive`) because per-series character rosters and song catalogs
-// don't overlap meaningfully. The resolver's registered-first selection
-// rule picks the matched series and ignores the always-present `lovelive`
-// franchise slug when present alongside it.
+// Top-level Artist is the natural IP identity in this catalog — each one
+// owns a distinct character roster and song corpus. Group entries
+// (franchise=`lovelive`, series=`hasunosora-club`) are administrative
+// groupings with naming-convention artifacts that don't belong in
+// IP_PROMPTS keys.
 //
 // IMPLICIT-CACHE INVARIANT: every prompt here MUST measure ≥1024 tokens on
 // Gemini's tokenizer (see hasunosora.ts:5 for the existing pattern and
@@ -45,10 +44,10 @@ export { REGISTERED_IP_KEYS } from "./keys";
 // surfacing that. A plain Record types the index access as `string`
 // (never undefined), which silently hides the guard.
 export const IP_PROMPTS: Partial<Record<string, string>> = {
-  "hasunosora-club": HASUNOSORA_GLOSSARY_PROMPT,
-  "nijigasaki-club": NIJI_GLOSSARY_PROMPT,
-  // "aqours-club":    AQOURS_GLOSSARY_PROMPT,    // pending operator authoring
-  // "umamusume":      UMAMUSUME_GLOSSARY_PROMPT, // pending operator authoring
+  hasunosora: HASUNOSORA_GLOSSARY_PROMPT,
+  nijigasaki: NIJIGASAKI_GLOSSARY_PROMPT,
+  // aqours:    AQOURS_GLOSSARY_PROMPT,    // pending operator authoring
+  // umamusume: UMAMUSUME_GLOSSARY_PROMPT, // pending operator authoring
 };
 
 // Used by the resolver when:

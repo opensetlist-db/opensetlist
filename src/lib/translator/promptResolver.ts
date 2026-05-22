@@ -10,7 +10,7 @@ export type ResolvedPrompt = {
   // resolver landed where it did, not the resolution input itself.
   multiIp: boolean;
   unregisteredSlug: string | null;
-  franchiseSlugs: string[]; // distinct franchise-Group slugs found on the walk
+  ipSlugs: string[]; // distinct top-level-group Artist slugs found on the walk
 };
 
 // Resolve which system prompt the translator should send for a given
@@ -18,20 +18,27 @@ export type ResolvedPrompt = {
 //   EventImpression.eventId
 //     → EventPerformer (eventId, stageIdentityId, isGuest)
 //       → StageIdentity.artistLinks → Artist
-//         → Artist.groupLinks (ArtistGroup) → Group(slug, type)
-// Then filters the distinct slug set to type=franchise Groups in JS, and
-// applies these rules (see task-multi-ip-translation-context.md §"The
-// selection contract"):
+// Then filters Artist rows down to top-level group Artists (type=group AND
+// parentArtistId IS NULL — i.e. Hasunosora itself, not its Cerise Bouquet
+// sub-unit, and not the solo Artists representing individual characters).
+// Each such top-level slug is a candidate IP key. Selection rules:
 //   - 1 distinct slug + registered → IP_PROMPTS[slug], ipKey=slug
 //   - 1 distinct slug + unregistered → FALLBACK_PROMPT, ipKey="generic",
 //       unregisteredSlug=<the slug> (signal for operator: this IP shipped
 //       events without an onboarded prompt)
 //   - ≥2 distinct slugs → FALLBACK_PROMPT, ipKey="generic", multiIp=true,
-//       franchiseSlugs=<all> (signal for future per-event composite override)
+//       ipSlugs=<all> (signal for future per-event composite override)
 //   - 0 distinct slugs → FALLBACK_PROMPT, ipKey="generic" (genre-neutral)
 //
+// Why Artist slug rather than Group slug: in this catalog, the top-level
+// Artist (Hasunosora, Nijigasaki, μ's, …) IS the IP — its slug is the
+// natural identifier operators reason about when authoring a prompt. The
+// Group entities (franchise=`lovelive`, series=`hasunosora-club`) are
+// administrative/canon groupings whose slugs leak naming-convention
+// artifacts (the `-club` suffix) that don't belong in IP_PROMPTS keys.
+//
 // `isGuest` is NOT filtered — guest VAs from foreign rosters count toward
-// the franchise set, matching how the glossary substrate handles them in
+// the IP slug set, matching how the glossary substrate handles them in
 // src/lib/glossary.ts:226.
 //
 // Cache: bounded module-scope Map<impressionId, …> with 1h TTL.
@@ -92,7 +99,7 @@ export async function resolvePromptForImpression(
   }
 
   // One query fans the joins out. Select shape kept narrow — we only need
-  // the franchise slugs, not entity translations or any other field.
+  // the top-level Artist slug, type, and parentArtistId for filtering.
   const performers = await prisma.eventPerformer.findMany({
     where: { eventId: impression.eventId },
     select: {
@@ -102,11 +109,9 @@ export async function resolvePromptForImpression(
             select: {
               artist: {
                 select: {
-                  groupLinks: {
-                    select: {
-                      group: { select: { slug: true, type: true } },
-                    },
-                  },
+                  slug: true,
+                  type: true,
+                  parentArtistId: true,
                 },
               },
             },
@@ -116,32 +121,28 @@ export async function resolvePromptForImpression(
     },
   });
 
-  // Collect both franchise-level (e.g. "lovelive") and series-level (e.g.
-  // "hasunosora-club", "nijigasaki-club") group slugs. Per-IP prompts in
-  // the registry are typically keyed at the series level because each Love
-  // Live series has its own character roster — the registered-first
-  // selection below handles the case where a Hasunosora event surfaces
-  // both ["lovelive", "hasunosora-club"] (lovelive isn't registered, so
-  // it's ignored and the series slug wins).
-  const franchiseSlugs = new Set<string>();
+  // Collect top-level group Artists (type=group AND no parent) — these are
+  // the IP identities (Hasunosora, Nijigasaki, μ's, …). Sub-units like
+  // Cerise Bouquet (type=unit, parent=hasunosora) and solo artists
+  // (type=solo) are skipped — they appear on the same event's performers
+  // but don't introduce a new IP. Multiple character performers from the
+  // same IP collapse to one slug via the Set.
+  const ipSlugSet = new Set<string>();
   for (const performer of performers) {
     for (const artistLink of performer.stageIdentity.artistLinks) {
-      for (const groupLink of artistLink.artist.groupLinks) {
-        const t = groupLink.group.type;
-        if (t === "franchise" || t === "series") {
-          franchiseSlugs.add(groupLink.group.slug);
-        }
+      const a = artistLink.artist;
+      if (a.type === "group" && a.parentArtistId === null) {
+        ipSlugSet.add(a.slug);
       }
     }
   }
 
-  const slugList = Array.from(franchiseSlugs);
+  const slugList = Array.from(ipSlugSet);
   // Registered-first selection: filter the candidate slugs to those that
-  // have an entry in IP_PROMPTS. This lets a Hasunosora event's
-  // ["lovelive", "hasunosora-club"] resolve cleanly to hasunosora-club
-  // (the only registered slug), and a Niji × Hasunosora joint live's
-  // ["lovelive", "hasunosora-club", "nijigasaki-club"] resolve to
-  // multiIp=true on 2 registered slugs (lovelive ignored as unregistered).
+  // have an entry in IP_PROMPTS. In practice each event's performers
+  // resolve to exactly one top-level group Artist (the IP itself), so the
+  // registered/unregistered split here mostly distinguishes
+  // "we authored a prompt for this IP" from "we haven't yet".
   const registeredSlugs = slugList.filter((s) => IP_PROMPTS[s] !== undefined);
   let resolved: ResolvedPrompt;
 
@@ -152,7 +153,7 @@ export async function resolvePromptForImpression(
       ipKey: slug,
       multiIp: false,
       unregisteredSlug: null,
-      franchiseSlugs: slugList,
+      ipSlugs: slugList,
     };
   } else if (registeredSlugs.length >= 2) {
     // Joint live across ≥2 registered IPs. The per-event composite
@@ -161,15 +162,15 @@ export async function resolvePromptForImpression(
     resolved = makeGeneric(slugList);
     resolved.multiIp = true;
   } else if (slugList.length === 1) {
-    // Exactly one franchise/series slug came back from the walk and it
-    // isn't in IP_PROMPTS — signal which one so the operator can decide
-    // whether to onboard a prompt for it.
+    // Exactly one IP slug came back from the walk and it isn't in
+    // IP_PROMPTS — signal which one so the operator can decide whether
+    // to onboard a prompt for it.
     resolved = {
       prompt: FALLBACK_PROMPT,
       ipKey: GENERIC_IP_KEY,
       multiIp: false,
       unregisteredSlug: slugList[0],
-      franchiseSlugs: slugList,
+      ipSlugs: slugList,
     };
   } else {
     // 0 slugs OR ≥2 slugs but none registered — generic. makeGeneric sets
@@ -187,7 +188,7 @@ function makeGeneric(slugs: string[]): ResolvedPrompt {
     ipKey: GENERIC_IP_KEY,
     multiIp: slugs.length > 1,
     unregisteredSlug: null,
-    franchiseSlugs: slugs,
+    ipSlugs: slugs,
   };
 }
 

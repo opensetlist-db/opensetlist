@@ -12,21 +12,22 @@
 // MUST stay in lock-step with the IP_PROMPTS keys in ./index.ts. If a
 // new IP prompt is added there, add its slug here too. The server-side
 // validation in /api/admin/translation-debug uses this same list.
-// Keys are the franchise-or-series Group.slug values that promptResolver
-// surfaces from the impression → event → performer → artist → group walk.
-// Each Love Live series (hasunosora-club / nijigasaki-club / aqours-club / …)
-// is its own Group at the schema level (type=series, parent franchise =
-// lovelive), and per-IP prompts are authored at the series granularity since
-// each series has its own character roster and song catalog.
+// Keys are the top-level group Artist.slug values that promptResolver
+// surfaces from the impression → event → performer → artist walk
+// (Artist.type=group AND parentArtistId IS NULL). Each IP — Hasunosora,
+// Nijigasaki, μ's, Liella, Aqours — is its own top-level Artist with
+// sub-unit and solo character Artists chained to it via parentArtist;
+// per-IP prompts are authored at this top level since each IP has its
+// own character roster and song catalog.
 export const REGISTERED_IP_KEYS: readonly string[] = [
-  "hasunosora-club",
-  "nijigasaki-club",
+  "hasunosora",
+  "nijigasaki",
 ];
 
 export const GENERIC_IP_KEY = "generic";
 
 // Default ipKey for the admin debug surface (UI initial state +
 // server-side default when the field is omitted). Single source of truth
-// shared between page.tsx and the route. Picked as "hasunosora-club" for
+// shared between page.tsx and the route. Picked as "hasunosora" for
 // parity with the pre-multi-IP behavior — the admin can switch on demand.
-export const DEFAULT_IP_KEY = "hasunosora-club";
+export const DEFAULT_IP_KEY = "hasunosora";

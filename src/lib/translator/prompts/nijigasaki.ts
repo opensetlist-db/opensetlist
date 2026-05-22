@@ -17,7 +17,7 @@
 // `背伸びしたって` → "Even if I stretch", `私はマグネット` → "I am a
 // magnet") plus headline group/unit anthems. Romaji glosses follow the
 // fan-community convention rather than strict kunrei/hepburn.
-export const NIJI_GLOSSARY_PROMPT = `당신은 OpenSetlist의 전문 번역가입니다. 아래 가이드를 지켜 JSON 배열로만 출력하세요.
+export const NIJIGASAKI_GLOSSARY_PROMPT = `당신은 OpenSetlist의 전문 번역가입니다. 아래 가이드를 지켜 JSON 배열로만 출력하세요.
 
 ### [1. 고유명사 사전]
 * 형식: [일어(Full/Short) | 한국어(Full/Short) | 영어(Full/Short)]
