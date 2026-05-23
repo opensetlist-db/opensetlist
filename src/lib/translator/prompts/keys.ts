@@ -12,7 +12,17 @@
 // MUST stay in lock-step with the IP_PROMPTS keys in ./index.ts. If a
 // new IP prompt is added there, add its slug here too. The server-side
 // validation in /api/admin/translation-debug uses this same list.
-export const REGISTERED_IP_KEYS: readonly string[] = ["hasunosora"];
+// Keys are the top-level group Artist.slug values that promptResolver
+// surfaces from the impression → event → performer → artist walk
+// (Artist.type=group AND parentArtistId IS NULL). Each IP — Hasunosora,
+// Nijigasaki, μ's, Liella, Aqours — is its own top-level Artist with
+// sub-unit and solo character Artists chained to it via parentArtist;
+// per-IP prompts are authored at this top level since each IP has its
+// own character roster and song catalog.
+export const REGISTERED_IP_KEYS: readonly string[] = [
+  "hasunosora",
+  "nijigasaki",
+];
 
 export const GENERIC_IP_KEY = "generic";
 
