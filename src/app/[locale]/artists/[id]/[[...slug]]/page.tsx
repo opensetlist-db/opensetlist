@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import {
   displayOriginalName,
   resolveLocalizedField,
 } from "@/lib/display";
-import { deriveOgPaletteFromArtist } from "@/lib/ogPalette";
+import { deriveOgPaletteFromCachedArtist } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
@@ -54,12 +55,36 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "overview";
 }
 
-async function getArtist(id: bigint) {
+// Wrapped in `react.cache()` so the duplicate call across
+// `generateMetadata` and `ArtistPage` collapses to one DB fetch per
+// request. Matches the pattern PR #260 / song & event detail pages
+// set up. Without this wrapper, the nested-include mega-query fired
+// twice on every full ArtistPage render — and on sub-unit routes
+// (e.g. /en/artists/3/dollchestra) the OG palette derivation in
+// generateMetadata ran additional parent-chain `findUnique` queries
+// on top, tripping Sentry's N+1 detector (issue 7501503230).
+const getArtist = cache(async (id: bigint) => {
   const artist = await prisma.artist.findFirst({
     where: { id, isDeleted: false },
     include: {
       translations: true,
-      parentArtist: { include: { translations: true } },
+      parentArtist: {
+        include: {
+          translations: true,
+          // Used solely by `deriveOgPaletteFromCachedArtist` to seed
+          // the frequency map when this artist's own `stageLinks`
+          // are empty (typical sub-unit whose members are linked
+          // only to the parent group). Not surfaced anywhere in the
+          // page body — the parent's `stageLinks` shape is
+          // intentionally narrowed to just `stageIdentity.color`
+          // here to keep the payload small.
+          stageLinks: {
+            select: {
+              stageIdentity: { select: { color: true } },
+            },
+          },
+        },
+      },
       // Sub-units render as cards on the overview tab. `stageLinks`
       // on each sub-unit is what powers the per-unit member grouping
       // (members are linked to their unit via StageIdentityArtist).
@@ -103,7 +128,7 @@ async function getArtist(id: bigint) {
   });
   if (!artist) return null;
   return serializeBigInt(artist);
-}
+});
 
 /**
  * Events attributable to this artist via either of two paths:
@@ -198,11 +223,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const metaT = await getTranslations({ locale, namespace: "Meta" });
   if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
   const artistId = BigInt(id);
-  const [artist, palette] = await Promise.all([
-    getArtist(artistId),
-    deriveOgPaletteFromArtist(artistId),
-  ]);
+  // `getArtist` is `react.cache`-wrapped, so this call shares its
+  // result with the one inside `ArtistPage` below (one DB roundtrip
+  // total per request). The palette is then derived in-process from
+  // that already-loaded row — replacing what used to be 2-4 extra
+  // `Artist.findUnique` parent-chain walks plus a
+  // `StageIdentityArtist.findMany` in `deriveOgPaletteFromArtist`.
+  const artist = await getArtist(artistId);
   if (!artist) return { title: metaT("notFound") };
+  const palette = await deriveOgPaletteFromCachedArtist(artist);
   const fullName = displayNameWithFallback(
     artist,
     artist.translations,
