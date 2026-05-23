@@ -61,14 +61,15 @@ describe("POST /api/impressions/translate", () => {
       ja: "今日のライブ最高でした",
       en: "Today's live was amazing",
     });
-    // Default resolver: pretend the impression's event maps to Hasunosora.
+    // Default resolver: pretend the impression's event maps to Hasunosora
+    // (top-level group Artist slug — see prompts/keys.ts REGISTERED_IP_KEYS).
     // Individual tests can override by re-mocking resolvePromptMock.
     resolvePromptMock.mockResolvedValue({
       prompt: "MOCK_PROMPT",
       ipKey: "hasunosora",
       multiIp: false,
       unregisteredSlug: null,
-      franchiseSlugs: ["hasunosora"],
+      ipSlugs: ["hasunosora"],
     });
   });
 
