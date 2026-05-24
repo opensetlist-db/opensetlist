@@ -711,3 +711,96 @@ export async function deriveOgPaletteFromArtist(
     return fallbackPalette();
   }
 }
+
+// Cached-artist variant of `deriveOgPaletteFromArtist`. The artist
+// detail page's `getArtist` (wrapped in react.cache) already pulls
+// every column this derivation needs:
+//
+//   - artist.color, artist.parentArtist.color   → the anchor chain
+//   - artist.stageLinks[].stageIdentity.color   → primary frequency map
+//   - artist.parentArtist.stageLinks[].stageIdentity.color
+//                                               → fallback frequency
+//                                                 for sub-units whose
+//                                                 own stageLinks are
+//                                                 empty (members
+//                                                 linked only to the
+//                                                 parent group)
+//
+// The DB-loading `deriveOgPaletteFromArtist(artistId)` walks
+// `Artist.parentArtistId` via `findUnique` in a while loop — twice
+// when the roster falls through to the parent (once in
+// `getArtistAnchorColor`, again in `findRootArtistId`). On a sub-unit
+// route like /en/artists/3/dollchestra those repeated identical
+// `SELECT color, parentArtistId FROM "Artist" WHERE id = $1` queries
+// tripped Sentry's N+1 detector (issue 7501503230). Folding the
+// derivation into the page's existing nested-include query
+// (`relationJoins` makes it one round-trip) collapses all of it to
+// zero extra DB queries on the common path.
+//
+// /api/og/artist/[id] keeps using `deriveOgPaletteFromArtist(artistId)`
+// — that route does its own intentionally minimal Artist fetch and
+// doesn't carry these columns.
+//
+// Schema-assumption note: today's parent chain is at most one level
+// deep (sub-unit → parent group → null). If a future feature adds
+// nested sub-units, both this helper AND `getArtist`'s
+// `parentArtist` include would need to follow the chain further.
+export type CachedArtistForOgPalette = {
+  color: string | null;
+  parentArtist: {
+    color: string | null;
+    stageLinks: ReadonlyArray<{
+      stageIdentity: { color: string | null };
+    }>;
+  } | null;
+  stageLinks: ReadonlyArray<{
+    stageIdentity: { color: string | null };
+  }>;
+};
+
+export async function deriveOgPaletteFromCachedArtist(
+  artist: CachedArtistForOgPalette,
+): Promise<OgPalette> {
+  try {
+    // Anchor: artist.color → parentArtist.color → null. Matches
+    // `getArtistAnchorColor`'s first-valid-hex semantics on a
+    // one-level parent chain.
+    let anchor: string | null = null;
+    if (isValidHex(artist.color)) {
+      anchor = artist.color;
+    } else if (artist.parentArtist && isValidHex(artist.parentArtist.color)) {
+      anchor = artist.parentArtist.color;
+    }
+
+    // Frequency: own stageLinks first; if empty, fall back to the
+    // parent group's roster. Mirrors the
+    // `findRootArtistId → collectRosterColorsByArtistId(rootId)`
+    // empty-roster fallback in `deriveOgPaletteFromArtist`.
+    let frequency = collectStageLinkColors(artist.stageLinks);
+    if (frequency.size === 0 && artist.parentArtist) {
+      frequency = collectStageLinkColors(artist.parentArtist.stageLinks);
+    }
+
+    return paletteFromAnchorAndFrequency(anchor, frequency);
+  } catch (err) {
+    console.error(
+      "[ogPalette] cached artist derivation failed, using fallback",
+      err,
+    );
+    return fallbackPalette();
+  }
+}
+
+function collectStageLinkColors(
+  links: ReadonlyArray<{ stageIdentity: { color: string | null } }>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const link of links) {
+    const color = link.stageIdentity.color;
+    if (isValidHex(color)) {
+      const key = color.toLowerCase();
+      out.set(key, (out.get(key) ?? 0) + 1);
+    }
+  }
+  return out;
+}

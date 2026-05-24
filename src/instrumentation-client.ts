@@ -16,6 +16,19 @@ Sentry.init({
     "ResizeObserver loop limit exceeded",
     "ResizeObserver loop completed with undelivered notifications",
     "Non-Error promise rejection captured",
+    // Twitter (X) in-app browser injects helper scripts
+    // (updateGapFiller, updateFooterPositions) that reference a
+    // `CONFIG` global not always present in our scope. Sentry
+    // attributes the error to our page URL because the script runs
+    // inside our page context, but neither identifier exists in our
+    // bundle — verified by grep. First surfaced as Sentry issue
+    // 7501704113 on /ja/events/3 from Twitter 11.92 / iOS 17.1.1.
+    // Two messages because WebKit ("Can't find variable: X") and
+    // V8 ("X is not defined") report ReferenceErrors differently;
+    // covering both means future Android-Twitter-webview reports of
+    // the same root cause are also filtered.
+    "Can't find variable: CONFIG",
+    "CONFIG is not defined",
   ],
 });
 
