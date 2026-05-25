@@ -68,9 +68,34 @@ const getArtist = cache(async (id: bigint) => {
     where: { id, isDeleted: false },
     include: {
       translations: true,
+      // Explicit `select` (not `include`) so each scalar this
+      // sub-tree depends on is listed by name. `include` would
+      // auto-fetch every Artist scalar and the code would still
+      // work today, but `color` is load-bearing for
+      // `deriveOgPaletteFromCachedArtist` (anchor chain when this
+      // artist's own color is unset) and a future include →
+      // select refactor that narrowed the projection elsewhere
+      // could silently drop it. Listing fields explicitly makes
+      // the dependency self-documenting and refactor-safe;
+      // also drops unused parent scalars (parentArtistId, type,
+      // hasBoard, imageUrl, category, isMainUnit, originalBio,
+      // isDeleted, deletedAt, createdAt) and `translations.bio`
+      // from the wire payload. Fields are grouped by consumer:
+      // breadcrumb crumb (id, slug + the `original*` chain feeding
+      // `displayNameWithFallback`), translations narrowed to the
+      // exact `{locale, name, shortName}` shape that helper reads,
+      // and the palette inputs below.
       parentArtist: {
-        include: {
-          translations: true,
+        select: {
+          id: true,
+          slug: true,
+          color: true,
+          originalName: true,
+          originalShortName: true,
+          originalLanguage: true,
+          translations: {
+            select: { locale: true, name: true, shortName: true },
+          },
           // Used solely by `deriveOgPaletteFromCachedArtist` to seed
           // the frequency map when this artist's own `stageLinks`
           // are empty (typical sub-unit whose members are linked
