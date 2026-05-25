@@ -27,3 +27,25 @@
 // stay synced to whatever the production delay is.
 export const RECOVERY_DELAY_MS = 30_000;
 export const MAX_RECOVERY_ATTEMPTS = 3;
+
+// SSR-safe "is the tab currently hidden" check. Used by both Realtime
+// hooks for: (a) lazy-initializing the `paused` state on mount so a
+// page that opens in an already-backgrounded tab doesn't open a
+// channel just to immediately throttle it, (b) resetting `paused`
+// on eventId change to match the actual current visibility (not a
+// hardcoded `false`), and (c) early-returning at the top of the
+// CHANNEL_ERROR/TIMED_OUT handler so a stale subscribe callback
+// firing AFTER a visibility-driven channel teardown can't sneak a
+// captureMessage out of a tab the user can't see — the
+// "visibility-driven teardown is silent" contract must hold across
+// every reachable path, not just the one the hide handler walks
+// synchronously. SSR-safe via the `typeof document` check (this
+// module is imported by `"use client"` hooks but the bundle is also
+// parsed server-side during Next.js build).
+//
+// CodeRabbit feedback on PR #452 (release PR for v0.13.23) caught
+// all three sites; centralizing the check here keeps them in
+// lock-step.
+export function isDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.hidden;
+}

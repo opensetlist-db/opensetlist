@@ -6,6 +6,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import {
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
+  isDocumentHidden,
 } from "@/lib/realtimeRecovery";
 // Import from `src/lib/types/` (cross-layer type module) instead of
 // `@/components/EventImpressions` to avoid the hook ↔ component
@@ -184,7 +185,12 @@ export function useRealtimeImpressions({
   // hook doesn't do snapshot-refetch on reconnect (see the existing
   // R3 comment block below the subscription wiring) so visibility
   // resume just re-subscribes without a fetchSnapshot follow-up.
-  const [paused, setPaused] = useState(false);
+  //
+  // Lazy initializer reads `document.hidden` on mount so a page that
+  // opens in an already-backgrounded tab doesn't subscribe just to
+  // immediately get throttled. See the matching block in
+  // useRealtimeEventChannel.ts for the full rationale.
+  const [paused, setPaused] = useState(() => isDocumentHidden());
 
   // R3.5: latest-value ref for the visibility listener (mounted once
   // with [] deps) so its closure reads current `pollFallback` without
@@ -238,14 +244,14 @@ export function useRealtimeImpressions({
     setPrevEventId(eventId);
     setPollFallback(false);
     setLastUpdated(null);
-    // R3.5: also reset paused on event change. Ref cleanup for the
-    // same boundary lives in the `[eventId]` useEffect below (refs
-    // may not be mutated during render per `react-hooks/refs` —
-    // state setters in the render-phase block are fine, refs are
-    // not). A fresh event session is a fresh page session
-    // conceptually; the recovery budget belongs to the channel
-    // lifetime.
-    setPaused(false);
+    // R3.5: also reset paused on event change. Reset to actual
+    // visibility (not hardcoded `false`) so a programmatic eventId
+    // change while the tab is hidden doesn't open a channel just to
+    // immediately get throttled. Ref cleanup for the same boundary
+    // lives in the `[eventId]` useEffect below (refs may not be
+    // mutated during render per `react-hooks/refs` — state setters
+    // in the render-phase block are fine, refs are not).
+    setPaused(isDocumentHidden());
   }
 
   // R3.5: per-event ref cleanup. State setters above are allowed in
@@ -423,6 +429,13 @@ export function useRealtimeImpressions({
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
+          // R3.5: if the tab is hidden, ignore the error entirely.
+          // The "visibility-driven teardown is silent" contract must
+          // hold across every reachable path — see the matching block
+          // in useRealtimeEventChannel.ts for the full rationale.
+          // CodeRabbit feedback on PR #452.
+          if (isDocumentHidden()) return;
+
           if (!hasReportedFallbackRef.current) {
             hasReportedFallbackRef.current = true;
             Sentry.captureMessage(
@@ -441,16 +454,15 @@ export function useRealtimeImpressions({
           // effect early-returns.
           setPollFallback(true);
 
-          // R3.5: bounded auto-recovery. Only schedule while the tab
-          // is visible AND no timer is already pending. The latter
-          // guard prevents duplicate timers from a rapid CHANNEL_ERROR
-          // burst (CodeRabbit feedback on PR #450). See the setlist
-          // channel's matching block for the full rationale.
+          // R3.5: bounded auto-recovery. Pending-timer guard prevents
+          // duplicate timers from a rapid CHANNEL_ERROR burst
+          // (CodeRabbit feedback on PR #450). No `!document.hidden`
+          // re-check — the early-return above already filtered
+          // hidden-tab errors out of this entire branch. See the
+          // setlist channel's matching block for the full rationale.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
-            pendingRecoveryTimeoutRef.current === null &&
-            typeof document !== "undefined" &&
-            !document.hidden
+            pendingRecoveryTimeoutRef.current === null
           ) {
             recoveryAttemptsRef.current += 1;
             const attempt = recoveryAttemptsRef.current;

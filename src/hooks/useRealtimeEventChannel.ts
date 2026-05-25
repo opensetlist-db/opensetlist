@@ -12,6 +12,7 @@ import {
 import {
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
+  isDocumentHidden,
 } from "@/lib/realtimeRecovery";
 
 export type { ReactionCountsMap };
@@ -245,7 +246,16 @@ export function useRealtimeEventChannel<T>({
   // LiveEventLayout — none of which know about visibility either; the
   // browser throttles their setInterval the same way it throttles the
   // socket, so they harmlessly drift until the tab is visible again).
-  const [paused, setPaused] = useState(false);
+  //
+  // Lazy initializer reads `document.hidden` on mount so a page that
+  // opens in an already-backgrounded tab (Cmd+Click → opens in
+  // background; session restore with hidden tabs) doesn't subscribe
+  // a channel just to immediately get its heartbeats throttled. The
+  // `useState(() => ...)` form evaluates only on the first render,
+  // not on every render — required so we don't re-read
+  // `document.hidden` after the visibility listener has already
+  // updated the state. CodeRabbit feedback on PR #452.
+  const [paused, setPaused] = useState(() => isDocumentHidden());
 
   // R3.5: latest-value refs so the visibility listener (mounted once
   // in a separate effect with `[]` deps) can read current state
@@ -345,11 +355,14 @@ export function useRealtimeEventChannel<T>({
     setPollFallback(false);
     // Also reset paused — visibility state happens to apply to the
     // page, but the per-event recovery budget belongs to the
-    // event session. Navigating to a new event is conceptually a
-    // fresh page session. Ref cleanup for the same boundary lives
-    // in the `[eventId]` useEffect below (refs may not be mutated
-    // during render per `react-hooks/refs`).
-    setPaused(false);
+    // event session. Reset to actual visibility (not hardcoded
+    // `false`) so a programmatic eventId change while the tab is
+    // hidden doesn't open a new channel for the new event just to
+    // immediately have its heartbeats throttled. CodeRabbit feedback
+    // on PR #452. Ref cleanup for the same boundary lives in the
+    // `[eventId]` useEffect below (refs may not be mutated during
+    // render per `react-hooks/refs`).
+    setPaused(isDocumentHidden());
   }
 
   // R3.5: per-event ref cleanup. State setters in the render-phase
@@ -791,6 +804,23 @@ export function useRealtimeEventChannel<T>({
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
+          // R3.5: if the tab is hidden, ignore the error entirely.
+          // The "visibility-driven teardown is silent" contract must
+          // hold across every reachable path — a stale subscribe
+          // callback firing after the visibility hide handler has
+          // already torn the channel down (rare but possible if
+          // supabase-js queued the status transition before the
+          // `removeChannel` took effect) would otherwise (a) emit a
+          // captureMessage from a tab the user can't see (noise),
+          // (b) flip `pollFallback` to true and engage
+          // `useSetlistPolling` against a backgrounded tab (wasted
+          // 5s polling cycles the user won't see), and (c) consume
+          // a recovery budget attempt against what's really a
+          // background-throttle artifact. The visibility resume path
+          // handles re-subscribe with a fresh budget regardless.
+          // CodeRabbit feedback on PR #452.
+          if (isDocumentHidden()) return;
+
           // First fallback per session: tell Sentry. Subsequent
           // status churn (post-recovery re-failures, retry storms)
           // stays in the breadcrumb stream only — the operator only
@@ -810,11 +840,7 @@ export function useRealtimeEventChannel<T>({
           // aborted) and the next render's useEffect early-returns.
           setPollFallback(true);
 
-          // R3.5: bounded auto-recovery. Only schedule when the tab
-          // is visible — a hidden-tab failure means the visibility
-          // resume path will handle re-subscribe with a fresh budget
-          // (failures during background throttling aren't real
-          // network/server problems). Each attempt counts against
+          // R3.5: bounded auto-recovery. Each attempt counts against
           // MAX_RECOVERY_ATTEMPTS. The setTimeout fires
           // setPollFallback(false), which triggers the effect to
           // re-run and re-subscribe; if that fails again, the new
@@ -828,11 +854,13 @@ export function useRealtimeEventChannel<T>({
           // a stale closure from a prior effect lifecycle), we don't
           // want two concurrent setTimeouts racing to flip the same
           // flag. CodeRabbit feedback on PR #450.
+          //
+          // No `!document.hidden` re-check here — the early-return
+          // above already filtered hidden-tab errors out of this
+          // entire branch.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
-            pendingRecoveryTimeoutRef.current === null &&
-            typeof document !== "undefined" &&
-            !document.hidden
+            pendingRecoveryTimeoutRef.current === null
           ) {
             recoveryAttemptsRef.current += 1;
             const attempt = recoveryAttemptsRef.current;

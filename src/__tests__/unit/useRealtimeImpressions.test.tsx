@@ -336,6 +336,51 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     expect(captureMessageMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not subscribe a channel on mount when document is already hidden (CR — lazy paused init)", async () => {
+    // Page opened in a backgrounded tab (Cmd+Click → opens behind,
+    // or restoring a session with hidden tabs). Without the lazy
+    // initializer, the channel would subscribe on mount and then
+    // get its heartbeats throttled by the browser, exhausting the
+    // supabase-js retry budget against a tab the user can't see.
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    });
+
+    renderHook(() =>
+      useRealtimeImpressions({ eventId: "1", enabled: true }),
+    );
+
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(capturedSubscribeCallback).toBeNull();
+  });
+
+  it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {
+    const { result } = renderHook(() =>
+      useRealtimeImpressions({ eventId: "1", enabled: true }),
+    );
+
+    expect(capturedSubscribeCallback).not.toBeNull();
+    const subscribeCallback = capturedSubscribeCallback!;
+
+    // Tab goes hidden — pause flips, channel removed.
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+
+    // A stale CHANNEL_ERROR fires from the prior channel's subscribe
+    // callback after the visibility-driven teardown. Without the
+    // early-return guard, this would (a) emit a captureMessage from
+    // a hidden tab and (b) flip pollFallback to true, engaging
+    // useImpressionPolling against a tab the user can't see.
+    await act(async () => {
+      subscribeCallback("CHANNEL_ERROR");
+    });
+
+    expect(captureMessageMock).not.toHaveBeenCalled();
+    expect(result.current.pollFallback).toBe(false);
+  });
+
   it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
     renderHook(() =>
       useRealtimeImpressions({ eventId: "1", enabled: true }),

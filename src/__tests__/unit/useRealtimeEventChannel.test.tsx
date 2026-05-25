@@ -710,6 +710,65 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
   });
 
+  it("does not subscribe a channel on mount when document is already hidden (CR — lazy paused init)", async () => {
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    });
+
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(capturedSubscribeCallback).toBeNull();
+  });
+
+  it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(capturedSubscribeCallback).not.toBeNull();
+    const subscribeCallback = capturedSubscribeCallback!;
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+
+    // Stale CHANNEL_ERROR from the prior channel's subscribe callback
+    // arriving after the visibility-driven teardown — early-return
+    // guard suppresses captureMessage and pollFallback flip.
+    await act(async () => {
+      subscribeCallback("CHANNEL_ERROR");
+    });
+
+    expect(captureMessageMock).not.toHaveBeenCalled();
+    // pollFallback never flipped, so the polling fallback never
+    // started — useSetlistPolling's mount-time fetch is the only
+    // fetch we'd see, and only the initial seed fetch ran.
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
     renderHook(() =>
       useRealtimeEventChannel({
