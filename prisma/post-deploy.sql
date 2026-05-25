@@ -539,3 +539,24 @@ WHERE e.id = sub."eventId"
   AND e."artistId" IS NULL
   AND e."eventSeriesId" IS NULL
   AND e."isDeleted" = false;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- AlbumStoreListing — supplemental uniqueness for the NULL-edition case.
+--
+-- The schema declares
+--   @@unique([albumId, originalStoreName, originalEditionLabel])
+-- which Prisma compiles to a standard B-tree unique index. PostgreSQL
+-- B-tree treats every NULL as distinct from every other NULL, so the
+-- combined-unique only constrains rows where originalEditionLabel is
+-- NON-NULL. Two "通常盤"-style entries (originalEditionLabel IS NULL)
+-- on the same (albumId, originalStoreName) would BOTH be accepted —
+-- meaning an operator could accidentally add the same store's standard
+-- edition twice and the DB would not prevent it.
+--
+-- The partial unique below closes that gap: WHERE originalEditionLabel
+-- IS NULL means the index applies only to NULL-edition rows, and the
+-- (albumId, originalStoreName) tuple becomes uniquely constrained for
+-- that slice. Named editions remain governed by the @@unique above.
+CREATE UNIQUE INDEX IF NOT EXISTS "AlbumStoreListing_album_store_null_edition_key"
+  ON "AlbumStoreListing" ("albumId", "originalStoreName")
+  WHERE "originalEditionLabel" IS NULL;

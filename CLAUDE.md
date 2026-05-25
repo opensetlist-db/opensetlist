@@ -51,13 +51,15 @@ Full schema: `prisma/schema.prisma`
 ### ID Strategy
 ```
 BigInt @default(autoincrement()) — tables that appear in public URLs:
-  Artist, Song, Event, EventSeries, SetlistItem
-  → URLs: /artists/42, /songs/789, /events/123
+  Artist, Song, Event, EventSeries, SetlistItem, Album
+  → URLs: /artists/42, /songs/789, /events/123, /albums/42
 
 String @default(uuid()) — all other tables:
-  Group, StageIdentity, RealPerson, Album
+  Group, StageIdentity, RealPerson
   User (sequential IDs must never be guessable)
   All junction tables, translation tables, community tables
+  AlbumStoreListing, AlbumStoreBonus (not in public URLs;
+    referenced indirectly via the Album page)
 ```
 
 ### Soft Delete Strategy

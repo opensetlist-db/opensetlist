@@ -9,7 +9,7 @@
 //
 // ID strategy:
 //   BigInt @default(autoincrement()) — public-facing tables (appear in URLs)
-//     Artist, Song, Event, EventSeries, SetlistItem
+//     Artist, Song, Event, EventSeries, SetlistItem, Album
 //   String @default(uuid())         — all other tables (junction, translation, community)
 //
 // Soft delete:
@@ -58,8 +58,8 @@ enum ArtistType {
 }
 
 enum StageIdentityType {
-  character  // fictional anime/game character voiced by a VA
-  persona    // real person performing as themselves (K-POP, J-POP)
+  character // fictional anime/game character voiced by a VA
+  persona // real person performing as themselves (K-POP, J-POP)
 }
 
 enum EventSeriesType {
@@ -92,22 +92,22 @@ enum SetlistItemStageType {
 }
 
 enum SetlistItemStatus {
-  rumoured   // fan prediction before event
-  live       // currently being performed (real-time)
-  confirmed  // verified after performance
+  rumoured // fan prediction before event
+  live // currently being performed (real-time)
+  confirmed // verified after performance
 }
 
 enum SetlistItemPerformanceType {
-  live_performance  // VA physically performs on stage
-  virtual_live      // 3DCG character performs (Fes×LIVE)
-  video_playback    // pre-recorded video played on screen
+  live_performance // VA physically performs on stage
+  virtual_live // 3DCG character performs (Fes×LIVE)
+  video_playback // pre-recorded video played on screen
 }
 
 enum SetlistItemType {
-  song      // normal song performance
-  mc        // talk/MC segment
-  video     // video playback (opening VTR etc.)
-  interval  // intermission, costume change
+  song // normal song performance
+  mc // talk/MC segment
+  video // video playback (opening VTR etc.)
+  interval // intermission, costume change
 }
 
 // ── CONTEST REPORT ────────────────────────────────────
@@ -116,16 +116,16 @@ enum SetlistItemType {
 // concern. See `src/lib/contestReportPayload.ts` for the per-type
 // payload schema. Operator triages via /admin/contest-reports.
 enum ContestReportType {
-  wrong_song          // user proposes a different song at this position
-  missing_performer   // user marks performer(s) absent from the row's roster
-  wrong_variant       // user proposes the row should be a specific variant
-  other               // catch-all; payload empty, comment carries the report
+  wrong_song // user proposes a different song at this position
+  missing_performer // user marks performer(s) absent from the row's roster
+  wrong_variant // user proposes the row should be a specific variant
+  other // catch-all; payload empty, comment carries the report
 }
 
 enum ContestReportStatus {
-  pending     // newly filed, awaiting operator review
-  resolved    // operator applied a fix (manually via admin row-edit at 1C)
-  dismissed   // operator rejected the report
+  pending // newly filed, awaiting operator review
+  resolved // operator applied a fix (manually via admin row-edit at 1C)
+  dismissed // operator rejected the report
 }
 
 enum SongArtistRole {
@@ -142,6 +142,13 @@ enum AlbumType {
   soundtrack
 }
 
+enum AlbumStoreListingStatus {
+  active // 현재 구매 가능
+  sold_out // 매진 확인됨
+  ended // 판매기간 종료 (toggle 뒤로 숨김)
+  unknown // operator 미확인
+}
+
 enum ReactionType {
   waiting
   best
@@ -150,40 +157,40 @@ enum ReactionType {
 }
 
 enum CommentType {
-  post     // BBS-style post — has title, written on Artist/Group/EventSeries board
-  comment  // Inline reaction — no title, written on Song/Event/SetlistItem page
+  post // BBS-style post — has title, written on Artist/Group/EventSeries board
+  comment // Inline reaction — no title, written on Song/Event/SetlistItem page
 }
 
 enum ReportTarget {
-  comment      // Comment (type=comment or type=post)
+  comment // Comment (type=comment or type=post)
 }
 
 enum ReportReason {
-  hate_speech     // 혐오 발언 (nationality, language, race discrimination)
-  harassment      // 특정 유저 괴롭힘
-  spam            // 스팸/광고
-  misinformation  // 오정보 (잘못된 세트리스트 데이터 포함)
-  copyright       // 저작권 침해
+  hate_speech // 혐오 발언 (nationality, language, race discrimination)
+  harassment // 특정 유저 괴롭힘
+  spam // 스팸/광고
+  misinformation // 오정보 (잘못된 세트리스트 데이터 포함)
+  copyright // 저작권 침해
   other
 }
 
 enum ReportStatus {
-  pending    // 검토 대기
-  reviewed   // 검토 완료, 조치 없음
-  actioned   // 조치 완료 (content hidden / dict entry revoked)
-  dismissed  // 기각 (허위 신고)
+  pending // 검토 대기
+  reviewed // 검토 완료, 조치 없음
+  actioned // 조치 완료 (content hidden / dict entry revoked)
+  dismissed // 기각 (허위 신고)
 }
 
 enum RoleType {
-  superadmin  // site owner — all permissions
-  admin       // global admin — can handle all reports, ban users
-  board_mod   // local moderator — specific Artist or Group board only
-  trusted     // trusted contributor — can approve dictionary entries
+  superadmin // site owner — all permissions
+  admin // global admin — can handle all reports, ban users
+  board_mod // local moderator — specific Artist or Group board only
+  trusted // trusted contributor — can approve dictionary entries
 }
 
 enum ScopeType {
-  artist  // scoped to a specific Artist (and its sub-units)
-  group   // scoped to a specific Group (and all its Artists)
+  artist // scoped to a specific Artist (and its sub-units)
+  group // scoped to a specific Group (and all its Artists)
 }
 
 // ── GROUP ─────────────────────────────────────────────
@@ -193,35 +200,36 @@ enum ScopeType {
 // rollupGroupIds on Comment only includes groups where hasBoard = true.
 // UUID: groups don't appear directly in public URLs.
 model Group {
-  id                  String             @id @default(uuid())
+  id                  String         @id @default(uuid())
   // slug: required upsert key for CSV import. Aligns with the
   // Artist/Song/Event/EventSeries.slug @unique pattern even though
   // Group's id stays UUID (groups don't appear in public URLs, so the
   // slug is for import keying only).
-  slug                String             @unique
+  slug                String         @unique
   type                GroupType?
   category            GroupCategory?
-  hasBoard            Boolean            @default(false)
+  hasBoard            Boolean        @default(false)
   imageUrl            String?
   originalName        String
   originalShortName   String?
   originalDescription String?
-  originalLanguage    String             @default("ja")
-  createdAt           DateTime           @default(now())
+  originalLanguage    String         @default("ja")
+  createdAt           DateTime       @default(now())
 
-  translations        GroupTranslation[]
-  artistLinks         ArtistGroup[]
+  translations GroupTranslation[]
+  artistLinks  ArtistGroup[]
 }
 
 model GroupTranslation {
   id          String  @id @default(uuid())
   groupId     String
-  locale      String  // "ko" | "ja" | "en" | "zh-CN"
+  locale      String // "ko" | "ja" | "en" | "zh-CN"
   name        String
   shortName   String?
   description String?
 
-  group       Group   @relation(fields: [groupId], references: [id])
+  group Group @relation(fields: [groupId], references: [id])
+
   @@unique([groupId, locale])
   @@index([groupId])
 }
@@ -232,13 +240,13 @@ model GroupTranslation {
 // hasBoard: most artists get a board by default.
 // BigInt: appears in public URLs e.g. /artists/42
 model Artist {
-  id                BigInt              @id @default(autoincrement())
-  slug              String              @unique
+  id                BigInt         @id @default(autoincrement())
+  slug              String         @unique
   parentArtistId    BigInt?
   type              ArtistType
-  hasBoard          Boolean             @default(true)
+  hasBoard          Boolean        @default(true)
   imageUrl          String?
-  color             String?                    // unit badge color e.g. "#e91e8c" — nullable, falls back to zinc tokens
+  color             String? // unit badge color e.g. "#e91e8c" — nullable, falls back to zinc tokens
   // category: only meaningful for top-level artists (parentArtistId IS NULL)
   // that are NOT linked to any hasBoard=true Group. Drives the filter
   // chip + section badge for the synthetic "ungrouped" bucket on the
@@ -258,39 +266,40 @@ model Artist {
   // operator opts canonical units in rather than opting many out.
   // No-op for type=solo|group (the chip filter only runs over
   // sub-artists, which by construction are units).
-  isMainUnit        Boolean             @default(false)
+  isMainUnit        Boolean        @default(false)
   originalName      String
   originalShortName String?
   originalBio       String?
-  originalLanguage  String              @default("ja")
-  isDeleted         Boolean             @default(false)
+  originalLanguage  String         @default("ja")
+  isDeleted         Boolean        @default(false)
   deletedAt         DateTime?
-  createdAt         DateTime            @default(now())
+  createdAt         DateTime       @default(now())
 
-  parentArtist   Artist?             @relation("ArtistChildren", fields: [parentArtistId], references: [id])
-  subArtists     Artist[]            @relation("ArtistChildren")
-  translations   ArtistTranslation[]
-  groupLinks     ArtistGroup[]
-  stageLinks     StageIdentityArtist[]
-  songCredits    SongArtist[]
-  eventSeries    EventSeries[]
-  events         Event[]
-  albums         AlbumArtist[]
-  setlistItems   SetlistItemArtist[]
+  parentArtist Artist?               @relation("ArtistChildren", fields: [parentArtistId], references: [id])
+  subArtists   Artist[]              @relation("ArtistChildren")
+  translations ArtistTranslation[]
+  groupLinks   ArtistGroup[]
+  stageLinks   StageIdentityArtist[]
+  songCredits  SongArtist[]
+  eventSeries  EventSeries[]
+  events       Event[]
+  albums       AlbumArtist[]
+  setlistItems SetlistItemArtist[]
 
   @@index([parentArtistId])
   @@index([isDeleted])
 }
 
 model ArtistTranslation {
-  id       String  @id @default(uuid())
-  artistId BigInt
-  locale   String
-  name     String
+  id        String  @id @default(uuid())
+  artistId  BigInt
+  locale    String
+  name      String
   shortName String?
-  bio      String?
+  bio       String?
 
-  artist   Artist  @relation(fields: [artistId], references: [id])
+  artist Artist @relation(fields: [artistId], references: [id])
+
   @@unique([artistId, locale])
   @@index([artistId])
 }
@@ -301,8 +310,9 @@ model ArtistGroup {
   artistId BigInt
   groupId  String
 
-  artist   Artist @relation(fields: [artistId], references: [id])
-  group    Group  @relation(fields: [groupId], references: [id])
+  artist Artist @relation(fields: [artistId], references: [id])
+  group  Group  @relation(fields: [groupId], references: [id])
+
   @@unique([artistId, groupId])
   @@index([artistId])
   @@index([groupId])
@@ -314,15 +324,15 @@ model ArtistGroup {
 // A StageIdentity belongs to one or more Artists via StageIdentityArtist.
 // UUID: not a primary search entity, referenced via Artist pages.
 model StageIdentity {
-  id                String                     @id @default(uuid())
-  slug              String                     @unique
+  id                String            @id @default(uuid())
+  slug              String            @unique
   type              StageIdentityType
   imageUrl          String?
-  color             String?                    // personal color e.g. "#FF69B4" — nullable for K-POP
+  color             String? // personal color e.g. "#FF69B4" — nullable for K-POP
   originalName      String
   originalShortName String?
-  originalLanguage  String                     @default("ja")
-  createdAt         DateTime                   @default(now())
+  originalLanguage  String            @default("ja")
+  createdAt         DateTime          @default(now())
 
   translations    StageIdentityTranslation[]
   artistLinks     StageIdentityArtist[]
@@ -332,13 +342,14 @@ model StageIdentity {
 }
 
 model StageIdentityTranslation {
-  id              String        @id @default(uuid())
+  id              String  @id @default(uuid())
   stageIdentityId String
   locale          String
   name            String
   shortName       String?
 
-  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
+  stageIdentity StageIdentity @relation(fields: [stageIdentityId], references: [id])
+
   @@unique([stageIdentityId, locale])
   @@index([stageIdentityId])
 }
@@ -346,16 +357,17 @@ model StageIdentityTranslation {
 // N:N between StageIdentity and Artist
 // Megumi belongs to: 蓮ノ空, Mira-Cra Park!, KahoMegu♡Gelato
 model StageIdentityArtist {
-  id              String        @id @default(uuid())
+  id              String @id @default(uuid())
   stageIdentityId String
   artistId        BigInt
 
-  startDate       DateTime?     @db.Date
-  endDate         DateTime?     @db.Date
-  note            String?
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+  note      String?
 
-  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
-  artist          Artist        @relation(fields: [artistId], references: [id])
+  stageIdentity StageIdentity @relation(fields: [stageIdentityId], references: [id])
+  artist        Artist        @relation(fields: [artistId], references: [id])
+
   @@unique([stageIdentityId, artistId])
   @@index([stageIdentityId])
   @@index([artistId])
@@ -367,14 +379,14 @@ model StageIdentityArtist {
 // For anime: linked to the character they voice via RealPersonStageIdentity.
 // UUID: referenced via StageIdentity, not a primary URL entity.
 model RealPerson {
-  id                String                    @id @default(uuid())
-  slug              String                    @unique
+  id                String   @id @default(uuid())
+  slug              String   @unique
   imageUrl          String?
   originalName      String
   originalShortName String?
   originalStageName String?
-  originalLanguage  String                    @default("ja")
-  createdAt         DateTime                  @default(now())
+  originalLanguage  String   @default("ja")
+  createdAt         DateTime @default(now())
 
   translations    RealPersonTranslation[]
   stageIdentities RealPersonStageIdentity[]
@@ -382,14 +394,15 @@ model RealPerson {
 }
 
 model RealPersonTranslation {
-  id           String     @id @default(uuid())
+  id           String  @id @default(uuid())
   realPersonId String
   locale       String
   name         String
-  shortName    String?    // short form fans use; separate dataset from `name`
-  stageName    String?    // stage name if different from real name
+  shortName    String? // short form fans use; separate dataset from `name`
+  stageName    String? // stage name if different from real name
 
-  realPerson   RealPerson @relation(fields: [realPersonId], references: [id])
+  realPerson RealPerson @relation(fields: [realPersonId], references: [id])
+
   @@unique([realPersonId, locale])
   @@index([realPersonId])
 }
@@ -397,15 +410,16 @@ model RealPersonTranslation {
 // Time-aware N:N between RealPerson and StageIdentity.
 // Handles VA changes (startDate/endDate) and temporary covers (note).
 model RealPersonStageIdentity {
-  id              String        @id @default(uuid())
+  id              String    @id @default(uuid())
   realPersonId    String
   stageIdentityId String
-  startDate       DateTime?     @db.Date
-  endDate         DateTime?     @db.Date  // null = currently active
-  note            String?       // "original VA" | "recast" | "one-day cover"
+  startDate       DateTime? @db.Date
+  endDate         DateTime? @db.Date // null = currently active
+  note            String? // "original VA" | "recast" | "one-day cover"
 
-  realPerson      RealPerson    @relation(fields: [realPersonId], references: [id])
-  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
+  realPerson    RealPerson    @relation(fields: [realPersonId], references: [id])
+  stageIdentity StageIdentity @relation(fields: [stageIdentityId], references: [id])
+
   @@index([realPersonId])
   @@index([stageIdentityId])
 }
@@ -417,27 +431,27 @@ model RealPersonStageIdentity {
 // hasBoard: admin-controlled board visibility.
 // BigInt: appears in public URLs e.g. /series/7
 model EventSeries {
-  id                  BigInt                   @id @default(autoincrement())
-  slug                String                   @unique
+  id                  BigInt          @id @default(autoincrement())
+  slug                String          @unique
   artistId            BigInt?
   parentSeriesId      BigInt?
   type                EventSeriesType
   organizerName       String?
-  hasBoard            Boolean                  @default(false)
+  hasBoard            Boolean         @default(false)
   imageUrl            String?
   originalName        String
   originalShortName   String?
   originalDescription String?
-  originalLanguage    String                   @default("ja")
-  isDeleted           Boolean                  @default(false)
+  originalLanguage    String          @default("ja")
+  isDeleted           Boolean         @default(false)
   deletedAt           DateTime?
-  createdAt           DateTime                 @default(now())
+  createdAt           DateTime        @default(now())
 
-  artist         Artist?                  @relation(fields: [artistId], references: [id])
-  parentSeries   EventSeries?             @relation("SeriesChildren", fields: [parentSeriesId], references: [id])
-  childSeries    EventSeries[]            @relation("SeriesChildren")
-  translations   EventSeriesTranslation[]
-  events         Event[]
+  artist       Artist?                  @relation(fields: [artistId], references: [id])
+  parentSeries EventSeries?             @relation("SeriesChildren", fields: [parentSeriesId], references: [id])
+  childSeries  EventSeries[]            @relation("SeriesChildren")
+  translations EventSeriesTranslation[]
+  events       Event[]
 
   @@index([artistId])
   @@index([parentSeriesId])
@@ -445,14 +459,15 @@ model EventSeries {
 }
 
 model EventSeriesTranslation {
-  id            String      @id @default(uuid())
+  id            String  @id @default(uuid())
   eventSeriesId BigInt
   locale        String
   name          String
   shortName     String?
   description   String?
 
-  eventSeries   EventSeries @relation(fields: [eventSeriesId], references: [id])
+  eventSeries EventSeries @relation(fields: [eventSeriesId], references: [id])
+
   @@unique([eventSeriesId, locale])
   @@index([eventSeriesId])
 }
@@ -464,8 +479,8 @@ model EventSeriesTranslation {
 // status: drives UI mode.
 // BigInt: appears in public URLs e.g. /events/123
 model Event {
-  id                BigInt             @id @default(autoincrement())
-  slug              String             @unique
+  id                BigInt      @id @default(autoincrement())
+  slug              String      @unique
   eventSeriesId     BigInt?
   // Primary artist for this event. Mirrors EventSeries.artistId.
   //
@@ -487,43 +502,51 @@ model Event {
   // multi-artist events with organizerName set get their own group
   // on the events list page rather than landing in the catchall.
   organizerName     String?
+  // Optional link to the live BD Album that releases footage of this
+  // event. Many-to-one — multi-day shows commonly share one Memorial
+  // BOX (Saitama Day 1 + Day 2 → same album). Drives the EventBdSection
+  // surface (b07) that shows store listings / bonuses for the BD on
+  // the event detail page once the BD is announced.
+  bdAlbumId         BigInt?
   type              EventType
-  status            EventStatus        @default(scheduled)
-  date              DateTime?          @db.Date
-  startTime         DateTime           // UTC; used as lock time for wishlist
-  country           String?            // ISO 3166 e.g. "KR" "JP" "US"
+  status            EventStatus @default(scheduled)
+  date              DateTime?   @db.Date
+  startTime         DateTime // UTC; used as lock time for wishlist
+  country           String? // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl         String?
   originalName      String
   originalShortName String?
   originalCity      String?
   originalVenue     String?
-  originalLanguage  String             @default("ja")
-  isDeleted         Boolean            @default(false)
+  originalLanguage  String      @default("ja")
+  isDeleted         Boolean     @default(false)
   deletedAt         DateTime?
-  createdAt         DateTime           @default(now())
+  createdAt         DateTime    @default(now())
 
-  eventSeries   EventSeries?       @relation(fields: [eventSeriesId], references: [id])
-  artist        Artist?            @relation(fields: [artistId], references: [id])
-  translations  EventTranslation[]
-  setlistItems  SetlistItem[]
-  performers    EventPerformer[]
-  impressions   EventImpression[]
-  wishes        SongWish[]
+  eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
+  artist       Artist?               @relation(fields: [artistId], references: [id])
+  bdAlbum      Album?                @relation("EventBdAlbum", fields: [bdAlbumId], references: [id])
+  translations EventTranslation[]
+  setlistItems SetlistItem[]
+  performers   EventPerformer[]
+  impressions  EventImpression[]
+  wishes       SongWish[]
   // Realtime R2: SetlistItemReaction carries a denormalized eventId
   // so Supabase Realtime postgres_changes can filter pushes by event
   // (the channel filter only supports columns on the changed table,
   // not joins). Backfilled in prisma/post-deploy.sql; populated on
   // INSERT in src/app/api/reactions/route.ts.
-  reactions     SetlistItemReaction[]
+  reactions    SetlistItemReaction[]
 
   @@index([eventSeriesId])
   @@index([artistId])
+  @@index([bdAlbumId])
   @@index([date, status])
   @@index([isDeleted])
 }
 
 model EventTranslation {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   eventId   BigInt
   locale    String
   name      String
@@ -531,7 +554,8 @@ model EventTranslation {
   city      String?
   venue     String?
 
-  event     Event  @relation(fields: [eventId], references: [id])
+  event Event @relation(fields: [eventId], references: [id])
+
   @@unique([eventId, locale])
   @@index([eventId])
 }
@@ -541,14 +565,14 @@ model EventTranslation {
 // isGuest=false → included in full group fallback
 // isGuest=true  → excluded from fallback, explicit only
 model EventPerformer {
-  id              String        @id @default(uuid())
+  id              String @id @default(uuid())
   eventId         BigInt
   stageIdentityId String
 
-  isGuest         Boolean       @default(false)
+  isGuest Boolean @default(false)
 
-  event           Event         @relation(fields: [eventId], references: [id])
-  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
+  event         Event         @relation(fields: [eventId], references: [id])
+  stageIdentity StageIdentity @relation(fields: [stageIdentityId], references: [id])
 
   @@unique([eventId, stageIdentityId])
   @@index([eventId])
@@ -561,26 +585,26 @@ model EventPerformer {
 // Performers linked via SetlistItemMember.
 // BigInt: appears in public URLs e.g. /events/123#item-456
 model SetlistItem {
-  id          BigInt               @id @default(autoincrement())
-  eventId     BigInt
-  position    Int
-  isEncore    Boolean              @default(false)
-  stageType   SetlistItemStageType @default(full_group)
-  unitName    String?
-  note        String?
-  status          SetlistItemStatus           @default(confirmed)
-  performanceType SetlistItemPerformanceType  @default(live_performance)
-  type            SetlistItemType             @default(song)
-  isDeleted       Boolean                     @default(false)
-  deletedAt   DateTime?
-  createdAt   DateTime             @default(now())
+  id              BigInt                     @id @default(autoincrement())
+  eventId         BigInt
+  position        Int
+  isEncore        Boolean                    @default(false)
+  stageType       SetlistItemStageType       @default(full_group)
+  unitName        String?
+  note            String?
+  status          SetlistItemStatus          @default(confirmed)
+  performanceType SetlistItemPerformanceType @default(live_performance)
+  type            SetlistItemType            @default(song)
+  isDeleted       Boolean                    @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime                   @default(now())
 
-  event       Event                @relation(fields: [eventId], references: [id])
-  artists     SetlistItemArtist[]
-  songs       SetlistItemSong[]
-  performers  SetlistItemMember[]
-  reactions   SetlistItemReaction[]
-  confirms    SetlistItemConfirm[]
+  event          Event                 @relation(fields: [eventId], references: [id])
+  artists        SetlistItemArtist[]
+  songs          SetlistItemSong[]
+  performers     SetlistItemMember[]
+  reactions      SetlistItemReaction[]
+  confirms       SetlistItemConfirm[]
   contestReports ContestReport[]
 
   // Partial unique on (eventId, position) WHERE isDeleted = false lives in
@@ -590,7 +614,7 @@ model SetlistItem {
 }
 
 model SetlistItemReaction {
-  id            String   @id @default(uuid())
+  id            String       @id @default(uuid())
   setlistItemId BigInt
   // Realtime R2 denormalization. Supabase Realtime's postgres_changes
   // filter only supports column-level filters on the changed table —
@@ -618,7 +642,7 @@ model SetlistItemReaction {
   // revert.
   eventId       BigInt
   reactionType  ReactionType
-  createdAt     DateTime @default(now())
+  createdAt     DateTime     @default(now())
   // localStorage opensetlist_anon_id — nullable for legacy rows + clients
   // with localStorage disabled. Per-(setlistItemId, reactionType, anonId)
   // partial unique lives in prisma/post-deploy.sql since Prisma can't
@@ -626,12 +650,12 @@ model SetlistItemReaction {
   // ANON_ID_MAX_LEN in the API routes — DB-level defense in depth.
   anonId        String?      @db.VarChar(64)
 
-  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
+  setlistItem SetlistItem @relation(fields: [setlistItemId], references: [id], onDelete: Cascade)
   // No onDelete: Cascade on the event side — SetlistItem already
   // cascades from Event, and SetlistItemReaction cascades from
   // SetlistItem, so the chain takes care of cleanup. Adding a second
   // cascade path would risk Postgres "multiple cascade paths" errors.
-  event         Event       @relation(fields: [eventId], references: [id])
+  event       Event       @relation(fields: [eventId], references: [id])
 
   @@index([setlistItemId, reactionType])
   // Realtime R2: GIN-style lookup for the channel-filter query path
@@ -668,8 +692,8 @@ model EventImpression {
   // per chain per anon. VarChar(64) mirrors ANON_ID_MAX_LEN in the API.
   anonId           String?   @db.VarChar(64)
 
-  event            Event     @relation(fields: [eventId], references: [id])
-  translations     ImpressionTranslation[]
+  event        Event                   @relation(fields: [eventId], references: [id])
+  translations ImpressionTranslation[]
 
   @@index([eventId, createdAt])
   @@index([rootImpressionId])
@@ -688,7 +712,7 @@ model ImpressionTranslation {
   translatedText String   @db.Text
   createdAt      DateTime @default(now())
 
-  impression     EventImpression @relation(fields: [impressionId], references: [id], onDelete: Cascade)
+  impression EventImpression @relation(fields: [impressionId], references: [id], onDelete: Cascade)
 
   @@unique([impressionId, sourceLocale, targetLocale])
   @@index([impressionId])
@@ -696,12 +720,12 @@ model ImpressionTranslation {
 
 // N:N between SetlistItem and Artist — direct performing unit link
 model SetlistItemArtist {
-  id            String      @id @default(uuid())
+  id            String @id @default(uuid())
   setlistItemId BigInt
   artistId      BigInt
 
-  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
-  artist        Artist      @relation(fields: [artistId], references: [id])
+  setlistItem SetlistItem @relation(fields: [setlistItemId], references: [id])
+  artist      Artist      @relation(fields: [artistId], references: [id])
 
   @@unique([setlistItemId, artistId])
   @@index([setlistItemId])
@@ -710,13 +734,14 @@ model SetlistItemArtist {
 
 // N:N between SetlistItem and Song — supports medleys
 model SetlistItemSong {
-  id            String      @id @default(uuid())
+  id            String @id @default(uuid())
   setlistItemId BigInt
   songId        BigInt
   order         Int?
 
-  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
-  song          Song        @relation(fields: [songId], references: [id])
+  setlistItem SetlistItem @relation(fields: [setlistItemId], references: [id])
+  song        Song        @relation(fields: [songId], references: [id])
+
   @@unique([setlistItemId, songId])
   @@index([songId])
 }
@@ -725,14 +750,15 @@ model SetlistItemSong {
 // stageIdentityId: always set — the character/persona fans identify.
 // realPersonId: explicit performer — null only if genuinely unknown.
 model SetlistItemMember {
-  id              String        @id @default(uuid())
+  id              String  @id @default(uuid())
   setlistItemId   BigInt
   stageIdentityId String
   realPersonId    String?
 
-  setlistItem     SetlistItem   @relation(fields: [setlistItemId], references: [id])
-  stageIdentity   StageIdentity @relation(fields: [stageIdentityId], references: [id])
-  realPerson      RealPerson?   @relation(fields: [realPersonId], references: [id])
+  setlistItem   SetlistItem   @relation(fields: [setlistItemId], references: [id])
+  stageIdentity StageIdentity @relation(fields: [stageIdentityId], references: [id])
+  realPerson    RealPerson?   @relation(fields: [realPersonId], references: [id])
+
   @@unique([setlistItemId, stageIdentityId])
   @@index([realPersonId])
 }
@@ -744,25 +770,25 @@ model SetlistItemMember {
 // sourceNote: free text for edge cases. Null for 99%.
 // BigInt: appears in public URLs e.g. /songs/789
 model Song {
-  id            BigInt            @id @default(autoincrement())
-  slug          String            @unique
-  baseVersionId BigInt?
+  id               BigInt    @id @default(autoincrement())
+  slug             String    @unique
+  baseVersionId    BigInt?
   originalTitle    String
-  originalLanguage String            @default("ja")
+  originalLanguage String    @default("ja")
   variantLabel     String?
-  releaseDate   DateTime?         @db.Date
-  sourceNote    String?
-  isDeleted     Boolean           @default(false)
-  deletedAt     DateTime?
-  createdAt     DateTime          @default(now())
+  releaseDate      DateTime? @db.Date
+  sourceNote       String?
+  isDeleted        Boolean   @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
 
-  baseVersion   Song?             @relation("SongVariants", fields: [baseVersionId], references: [id])
-  variants      Song[]            @relation("SongVariants")
-  artists       SongArtist[]
-  translations  SongTranslation[]
-  setlistItems  SetlistItemSong[]
-  albumTracks   AlbumTrack[]
-  wishes        SongWish[]
+  baseVersion  Song?             @relation("SongVariants", fields: [baseVersionId], references: [id])
+  variants     Song[]            @relation("SongVariants")
+  artists      SongArtist[]
+  translations SongTranslation[]
+  setlistItems SetlistItemSong[]
+  albumTracks  AlbumTrack[]
+  wishes       SongWish[]
 
   @@index([baseVersionId])
   @@index([isDeleted])
@@ -775,8 +801,9 @@ model SongArtist {
   artistId BigInt
   role     SongArtistRole @default(primary)
 
-  song     Song           @relation(fields: [songId], references: [id])
-  artist   Artist         @relation(fields: [artistId], references: [id])
+  song   Song   @relation(fields: [songId], references: [id])
+  artist Artist @relation(fields: [artistId], references: [id])
+
   @@unique([songId, artistId])
   @@index([artistId])
 }
@@ -788,35 +815,41 @@ model SongTranslation {
   title        String
   variantLabel String?
 
-  song         Song    @relation(fields: [songId], references: [id])
+  song Song @relation(fields: [songId], references: [id])
+
   @@unique([songId, locale])
   @@index([songId])
 }
 
 // ── ALBUM ─────────────────────────────────────────────
-// UUID: album pages are secondary — accessed via song or artist pages.
+// BigInt: aligns with the rest of the public-URL catalog (Artist/Song/Event/
+// EventSeries/SetlistItem). The original UUID choice predated the Album
+// detail page; once the /albums/[id]/... route lands in Sprint B1 this
+// table joins the same canonical-id URL strategy as those neighbors.
 model Album {
-  id               String             @id @default(uuid())
-  slug             String             @unique
+  id               BigInt    @id @default(autoincrement())
+  slug             String    @unique
   type             AlbumType
   originalTitle    String
-  originalLanguage String             @default("ja")
-  releaseDate      DateTime?          @db.Date
+  originalLanguage String    @default("ja")
+  releaseDate      DateTime? @db.Date
   labelName        String?
   imageUrl         String?
-  createdAt        DateTime           @default(now())
+  createdAt        DateTime  @default(now())
 
   translations AlbumTranslation[]
   tracks       AlbumTrack[]
   artists      AlbumArtist[]
+  listings     AlbumStoreListing[]
+  bdEvents     Event[]             @relation("EventBdAlbum")
 }
 
 model AlbumArtist {
-  albumId  String
+  albumId  BigInt
   artistId BigInt
 
-  album    Album  @relation(fields: [albumId], references: [id])
-  artist   Artist @relation(fields: [artistId], references: [id])
+  album  Album  @relation(fields: [albumId], references: [id])
+  artist Artist @relation(fields: [artistId], references: [id])
 
   @@unique([albumId, artistId])
   @@index([albumId])
@@ -825,11 +858,12 @@ model AlbumArtist {
 
 model AlbumTranslation {
   id      String @id @default(uuid())
-  albumId String
+  albumId BigInt
   locale  String
   title   String
 
-  album   Album  @relation(fields: [albumId], references: [id])
+  album Album @relation(fields: [albumId], references: [id])
+
   @@unique([albumId, locale])
   @@index([albumId])
 }
@@ -837,37 +871,155 @@ model AlbumTranslation {
 // One song can appear on multiple albums (single, OST, best-of, live album)
 model AlbumTrack {
   id          String @id @default(uuid())
-  albumId     String
+  albumId     BigInt
   songId      BigInt
   discNumber  Int    @default(1)
   trackNumber Int
 
-  album       Album  @relation(fields: [albumId], references: [id])
-  song        Song   @relation(fields: [songId], references: [id])
+  album Album @relation(fields: [albumId], references: [id])
+  song  Song  @relation(fields: [songId], references: [id])
+
   @@unique([albumId, discNumber, trackNumber])
   @@index([songId])
+}
+
+// ── ALBUM STORE LISTING ───────────────────────────────
+// One row = one (album × store × edition) purchase entry. Holds the
+// product URL and lifecycle (status + start/end + lastVerifiedAt) for
+// that specific store offering. A 通常盤 album with no bonus is just
+// a listing whose `bonuses` array is empty.
+//
+// storeName is intentionally a free-text String — the operator may
+// type "amazon_jp", "Amazon Japan", "アニメイト", or anything else.
+// No DB-level validation and no catalog table; the admin form's
+// datalist autocomplete (b05) suggests previously-used names to
+// keep typos rare without enforcing a closed set. Same goes for
+// editionLabel — free-form "通常盤" / "初回限定盤A" / "Memorial BOX".
+//
+// productUrl is the complete purchase URL including any affiliate
+// parameters the operator already embedded (Amazon JP tag etc.).
+// No render-time tag injection happens — what's stored is what's
+// rendered as the anchor href.
+//
+// @@unique enforces one row per (album, originalStoreName,
+// originalEditionLabel) when originalEditionLabel is non-NULL. The
+// NULL-edition slice (operator's "通常盤" entries) is handled by a
+// partial unique index in prisma/post-deploy.sql, which Prisma's
+// schema language can't express directly.
+model AlbumStoreListing {
+  id                   String                  @id @default(uuid())
+  albumId              BigInt
+  originalStoreName    String // free-text, no validation
+  originalEditionLabel String? // null = single edition (通常盤 fallthrough)
+  originalLanguage     String                  @default("ja")
+  productUrl           String? // complete URL incl. affiliate params; rendered verbatim
+  status               AlbumStoreListingStatus @default(unknown)
+  startsAt             DateTime? // pre-order open / sale start
+  endsAt               DateTime? // pre-order close / sale end
+  lastVerifiedAt       DateTime? // operator's last 'I checked' timestamp — UI shows stale warning after 30d
+  sourceUrl            String? // 公式 news URL where the offer was announced
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  album        Album                          @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  bonuses      AlbumStoreBonus[]
+  translations AlbumStoreListingTranslation[]
+
+  @@unique([albumId, originalStoreName, originalEditionLabel])
+  @@index([albumId, status])
+  @@index([albumId, originalStoreName])
+}
+
+// Per-locale overrides for AlbumStoreListing's display strings.
+// Both storeName and editionLabel are nullable — only the fields a
+// translator actually needs to override are populated. Display
+// resolution (b03) walks: translation row for this locale → original*
+// fallthrough → original* even if the locale row exists but the
+// specific column is null.
+model AlbumStoreListingTranslation {
+  id           String  @id @default(uuid())
+  listingId    String
+  locale       String // "ko" | "ja" | "en" | "zh-CN"
+  storeName    String? // null → use listing.originalStoreName
+  editionLabel String? // null → use listing.originalEditionLabel
+
+  listing AlbumStoreListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, locale])
+  @@index([listingId])
+}
+
+// ── ALBUM STORE BONUS ─────────────────────────────────
+// One row = one bonus variant tied to a listing. Multiple rows on the
+// same listing express character/design variants of the "same" bonus
+// (e.g. the three 蓮ノ空 unit-themed タペストリー sold under one
+// Amazon JP edition). No category enum — the free-text bonusType
+// label captures both the form ("B2 タペストリー") and the variant
+// ("(Mira)" / "(Cerise)" / "(DOLLCHESTRA)").
+//
+// startsAt/endsAt are nullable overrides; when null the bonus inherits
+// the parent listing's lifecycle. Set them only when a bonus has a
+// shorter window than the listing itself (e.g. an 早期予約特典 that
+// closes before general sale ends).
+//
+// Bonus has no status of its own — listing.status is the source of
+// truth. When the listing ends, all its bonus variants end with it.
+model AlbumStoreBonus {
+  id                       String    @id @default(uuid())
+  listingId                String
+  originalBonusType        String // free-text incl. variant marker, e.g. "B2 タペストリー (Mira)"
+  originalBonusDescription String?
+  originalLanguage         String    @default("ja")
+  bonusImageUrl            String? // R2 or Amazon CDN URL — see album-image-source-policy
+  startsAt                 DateTime? // null → inherit listing.startsAt
+  endsAt                   DateTime? // null → inherit listing.endsAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  listing      AlbumStoreListing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  translations AlbumStoreBonusTranslation[]
+  // No unique — character/design variants on the same listing are intentional
+
+  @@index([listingId])
+}
+
+// Per-locale overrides for the bonus's display strings. Both fields are
+// nullable so a translator can override just bonusDescription (when the
+// product name reads identically across locales) or just bonusType — same
+// "override only what you need" pattern as AlbumStoreListingTranslation.
+model AlbumStoreBonusTranslation {
+  id               String  @id @default(uuid())
+  bonusId          String
+  locale           String
+  bonusType        String?
+  bonusDescription String?
+
+  bonus AlbumStoreBonus @relation(fields: [bonusId], references: [id], onDelete: Cascade)
+
+  @@unique([bonusId, locale])
+  @@index([bonusId])
 }
 
 // ── USER ──────────────────────────────────────────────
 // UUID: user IDs should not be guessable or sequential.
 model User {
-  id                String        @id @default(uuid())
-  email             String        @unique
+  id                String    @id @default(uuid())
+  email             String    @unique
   name              String
   avatarUrl         String?
-  preferredLocale   String        @default("ko")
-  knownLocales      String[]      @default(["ko"])
-  autoTranslate     Boolean       @default(false)
-  contributionCount Int           @default(0)
-  isDeleted         Boolean       @default(false)
+  preferredLocale   String    @default("ko")
+  knownLocales      String[]  @default(["ko"])
+  autoTranslate     Boolean   @default(false)
+  contributionCount Int       @default(0)
+  isDeleted         Boolean   @default(false)
   deletedAt         DateTime?
-  createdAt         DateTime      @default(now())
+  createdAt         DateTime  @default(now())
 
-  comments          Comment[]
-  commentLikes      CommentLike[]
-  commentEdits      CommentEdit[]
-  roles             UserRole[]
-  reports           Report[]
+  comments     Comment[]
+  commentLikes CommentLike[]
+  commentEdits CommentEdit[]
+  roles        UserRole[]
+  reports      Report[]
 }
 
 // ── COMMENT ───────────────────────────────────────────
@@ -892,12 +1044,12 @@ model User {
 //   - content editable by owner only (logged in CommentEdit)
 //   - isDeleted = true replaces hard delete (content set to "[deleted]")
 model Comment {
-  id            String               @id @default(uuid())
-  userId        String
-  parentId      String?
+  id       String  @id @default(uuid())
+  userId   String
+  parentId String?
 
-  type          CommentType          @default(comment)
-  title         String?              // type=post only
+  type  CommentType @default(comment)
+  title String? // type=post only
 
   // posted at (exactly one set) — stored as strings for BigInt FK compatibility
   setlistItemId String?
@@ -915,26 +1067,26 @@ model Comment {
   mentionedSongId String?
 
   // roll-up ancestry — server-computed, immutable after creation
-  rollupSongIds         String[]
-  rollupEventIds        String[]
-  rollupEventSeriesIds  String[]
-  rollupArtistIds       String[]
-  rollupGroupIds        String[]
-  rollupCategories      String[]
+  rollupSongIds        String[]
+  rollupEventIds       String[]
+  rollupEventSeriesIds String[]
+  rollupArtistIds      String[]
+  rollupGroupIds       String[]
+  rollupCategories     String[]
 
-  content        String              @db.Text
-  detectedLocale String              @default("ko")
-  likeCount      Int                 @default(0)
-  isDeleted      Boolean             @default(false)
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  content        String   @db.Text
+  detectedLocale String   @default("ko")
+  likeCount      Int      @default(0)
+  isDeleted      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  user           User                @relation(fields: [userId], references: [id])
-  parent         Comment?            @relation("CommentReplies", fields: [parentId], references: [id])
-  replies        Comment[]           @relation("CommentReplies")
-  translations   CommentTranslation[]
-  likes          CommentLike[]
-  edits          CommentEdit[]
+  user         User                 @relation(fields: [userId], references: [id])
+  parent       Comment?             @relation("CommentReplies", fields: [parentId], references: [id])
+  replies      Comment[]            @relation("CommentReplies")
+  translations CommentTranslation[]
+  likes        CommentLike[]
+  edits        CommentEdit[]
 
   @@index([userId, createdAt])
   @@index([createdAt, isDeleted])
@@ -953,7 +1105,8 @@ model CommentTranslation {
   translatedText String   @db.Text
   createdAt      DateTime @default(now())
 
-  comment        Comment  @relation(fields: [commentId], references: [id])
+  comment Comment @relation(fields: [commentId], references: [id])
+
   @@unique([commentId, targetLocale])
   @@index([commentId])
 }
@@ -964,8 +1117,9 @@ model CommentLike {
   userId    String
   createdAt DateTime @default(now())
 
-  comment   Comment  @relation(fields: [commentId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  comment Comment @relation(fields: [commentId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
   @@unique([commentId, userId])
 }
 
@@ -978,8 +1132,9 @@ model CommentEdit {
   newContent String   @db.Text
   editedAt   DateTime @default(now())
 
-  comment    Comment  @relation(fields: [commentId], references: [id])
-  user       User     @relation(fields: [userId], references: [id])
+  comment Comment @relation(fields: [commentId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
   @@index([commentId])
 }
 
@@ -988,23 +1143,23 @@ model CommentEdit {
 // scopeType = artist, scopeId = "42" → board_mod for that Artist only
 // scopeType = group, scopeId = "uuid" → board_mod for all that Group's boards
 model UserRole {
-  id          String     @id @default(uuid())
-  userId      String
+  id     String @id @default(uuid())
+  userId String
 
-  role        RoleType
+  role RoleType
 
-  scopeType   ScopeType?
-  scopeId     String?
+  scopeType ScopeType?
+  scopeId   String?
   // Artist.id stored as String (BigInt serialized)
   // Group.id stored as String (UUID)
   // null for global roles (superadmin, admin)
 
-  grantedBy   String     // userId of admin who granted this role
-  grantedAt   DateTime   @default(now())
-  expiresAt   DateTime?  // null = permanent
-  note        String?    // e.g. "蓮ノ空 volunteer moderator"
+  grantedBy String // userId of admin who granted this role
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime? // null = permanent
+  note      String? // e.g. "蓮ノ空 volunteer moderator"
 
-  user        User       @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([userId, role, scopeType, scopeId])
   @@index([userId])
@@ -1014,25 +1169,25 @@ model UserRole {
 
 // ── REPORT ────────────────────────────────────────────
 model Report {
-  id          String       @id @default(uuid())
-  reporterId  String
+  id         String @id @default(uuid())
+  reporterId String
 
-  targetType  ReportTarget
-  targetId    String
+  targetType ReportTarget
+  targetId   String
 
-  reason      ReportReason
-  detail      String?      @db.Text
+  reason ReportReason
+  detail String?      @db.Text
 
-  status      ReportStatus @default(pending)
+  status ReportStatus @default(pending)
 
-  assignedScope      String?    // scopeId of assigned board_mod
-  assignedScopeType  ScopeType?
+  assignedScope     String? // scopeId of assigned board_mod
+  assignedScopeType ScopeType?
 
-  resolvedBy  String?      // userId of admin/mod who handled it
-  resolvedAt  DateTime?
-  createdAt   DateTime     @default(now())
+  resolvedBy String? // userId of admin/mod who handled it
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
 
-  reporter    User         @relation(fields: [reporterId], references: [id])
+  reporter User @relation(fields: [reporterId], references: [id])
 
   @@index([status, createdAt])
   @@index([targetType, targetId])
@@ -1052,8 +1207,8 @@ model SongWish {
   songId    BigInt
   createdAt DateTime @default(now())
 
-  event     Event    @relation(fields: [eventId], references: [id])
-  song      Song     @relation(fields: [songId], references: [id])
+  event Event @relation(fields: [eventId], references: [id])
+  song  Song  @relation(fields: [songId], references: [id])
 
   @@index([eventId, songId])
 }
@@ -1073,7 +1228,7 @@ model SetlistItemConfirm {
   setlistItemId BigInt
   createdAt     DateTime @default(now())
 
-  setlistItem   SetlistItem @relation(fields: [setlistItemId], references: [id])
+  setlistItem SetlistItem @relation(fields: [setlistItemId], references: [id])
 
   @@index([setlistItemId])
 }
@@ -1116,7 +1271,7 @@ model ContestReport {
   createdAt     DateTime            @default(now())
   resolvedAt    DateTime?
 
-  setlistItem   SetlistItem         @relation(fields: [setlistItemId], references: [id])
+  setlistItem SetlistItem @relation(fields: [setlistItemId], references: [id])
 
   @@index([setlistItemId])
   @@index([status, createdAt])
