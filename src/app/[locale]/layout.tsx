@@ -10,6 +10,22 @@ import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
 import FirstVisitTracker from "@/components/FirstVisitTracker";
 import "@fontsource-variable/noto-sans-kr";
+// Noto Sans JP — explicitly loaded so html2canvas captures of the
+// share card render Japanese glyphs with a real webfont instead of
+// falling through to the OS Japanese fallback (Yu Gothic on Windows,
+// Hiragino on macOS). The share-card fontFamily lists 'Noto Sans JP'
+// but with no @font-face declaration the browser silently dropped it
+// and used the OS fallback — html2canvas then measured glyph widths
+// with one font and rasterized with another, producing visible gaps
+// between certain CJK character pairs in the captured PNG (operator
+// reported "シアター 生き 様", "バイ タル サイン" instead of the tight
+// originals). Loading the actual webfont gives html2canvas consistent
+// measurement + rasterization metrics. 400 + 700 cover the share-
+// card's used weights (body title + bold headers); 500/600 synthesize
+// from the loaded weights, matching how other rare weights behave on
+// the Latin font stack here.
+import "@fontsource/noto-sans-jp/400.css";
+import "@fontsource/noto-sans-jp/700.css";
 import "@fontsource/josefin-sans/400.css";
 import "@fontsource/dm-sans/400.css";
 import "@fontsource/dm-sans/500.css";
