@@ -540,6 +540,7 @@ model Event {
 
   @@index([eventSeriesId])
   @@index([artistId])
+  @@index([bdAlbumId])
   @@index([date, status])
   @@index([isDeleted])
 }
@@ -981,12 +982,15 @@ model AlbumStoreBonus {
   @@index([listingId])
 }
 
-// Per-locale overrides for the bonus's display strings.
+// Per-locale overrides for the bonus's display strings. Both fields are
+// nullable so a translator can override just bonusDescription (when the
+// product name reads identically across locales) or just bonusType — same
+// "override only what you need" pattern as AlbumStoreListingTranslation.
 model AlbumStoreBonusTranslation {
   id               String  @id @default(uuid())
   bonusId          BigInt
   locale           String
-  bonusType        String
+  bonusType        String?
   bonusDescription String?
 
   bonus AlbumStoreBonus @relation(fields: [bonusId], references: [id], onDelete: Cascade)
