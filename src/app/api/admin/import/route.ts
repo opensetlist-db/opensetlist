@@ -698,6 +698,34 @@ async function importSongs(rows: Record<string, string>[]) {
   const results: string[] = [];
   const seenSlugs = new Set<string>();
 
+  // Pre-resolve every distinct baseVersion_slug referenced by the CSV
+  // in a single round-trip, then look up per-row from this Map. Without
+  // this batch we'd issue one prisma.song.findUnique per variant row on
+  // top of the existing per-row upsert — the classic N+1 in a hot
+  // CSV-import loop. Rows whose base hasn't been imported yet at the
+  // time of the batch (the base lives later in the same CSV) won't be
+  // resolved here; the per-row first-pass logic below defers their
+  // variantLabel to NULL so the second pass can finalize both fields
+  // safely. A literal "-" in baseVersion_slug is a hand-edit placeholder
+  // some CSVs carry and is treated as no-base.
+  const distinctBaseSlugs = Array.from(
+    new Set(
+      rows
+        .map((r) => (r.baseVersion_slug ?? "").trim())
+        .filter((s) => s !== "" && s !== "-"),
+    ),
+  );
+  const preExistingBases = distinctBaseSlugs.length === 0
+    ? new Map<string, bigint>()
+    : new Map(
+        (
+          await prisma.song.findMany({
+            where: { slug: { in: distinctBaseSlugs } },
+            select: { slug: true, id: true },
+          })
+        ).map((s) => [s.slug, s.id] as [string, bigint]),
+      );
+
   // First pass: upsert songs, translations, artists, album tracks
   for (const row of rows) {
     const slug = row.slug;
@@ -708,18 +736,12 @@ async function importSongs(rows: Record<string, string>[]) {
     // Resolve baseVersionId eagerly so the song_variant_must_have_base
     // CHECK constraint (post-deploy.sql) is satisfied at INSERT time —
     // it requires NOT (variantLabel IS NOT NULL AND baseVersionId IS NULL)
-    // for live rows. When the variant row gets INSERTed before its base
-    // exists in the DB (common when the CSV orders a variant row earlier
-    // than its base), we defer variantLabel to NULL for the first pass
-    // and let the second pass restore both fields together once the base
-    // is in place. A literal "-" in baseVersion_slug is a no-op marker
-    // some hand-edited CSVs carry and is treated as no base.
+    // for live rows. The map lookup catches bases that pre-existed the
+    // import; bases that arrive later in this same CSV stay undefined
+    // here and get picked up by the second pass.
     const baseSlug = (row.baseVersion_slug ?? "").trim();
-    let resolvedBaseVersionId: bigint | undefined;
-    if (baseSlug && baseSlug !== "-") {
-      const base = await prisma.song.findUnique({ where: { slug: baseSlug } });
-      if (base) resolvedBaseVersionId = base.id;
-    }
+    const resolvedBaseVersionId: bigint | undefined =
+      baseSlug && baseSlug !== "-" ? preExistingBases.get(baseSlug) : undefined;
     const wantsVariant = (row.variantLabel ?? "").trim() !== "";
     const deferVariantToPass2 = wantsVariant && resolvedBaseVersionId === undefined;
     const variantLabelForPass1 = deferVariantToPass2 ? null : (row.variantLabel || null);
