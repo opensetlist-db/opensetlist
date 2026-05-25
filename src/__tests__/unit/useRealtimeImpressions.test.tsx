@@ -336,6 +336,31 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     expect(captureMessageMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
+    renderHook(() =>
+      useRealtimeImpressions({ eventId: "1", enabled: true }),
+    );
+
+    // Two CHANNEL_ERRORs in rapid succession — without the
+    // `pendingRecoveryTimeoutRef.current === null` guard the second
+    // would have scheduled a second timer, consuming an extra budget
+    // attempt for nothing.
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+
+    // Advance to fire whatever timer was scheduled.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+    });
+
+    // Channel re-subscribed exactly once (the original + the one
+    // recovery attempt). If a duplicate timer had been scheduled,
+    // we'd see 3+ channelMock calls.
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
   it("visibility resume from pollFallback=true resets budget and re-attempts realtime", async () => {
     const { result } = renderHook(() =>
       useRealtimeImpressions({ eventId: "1", enabled: true }),

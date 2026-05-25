@@ -710,6 +710,39 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
   });
 
+  it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    // Two CHANNEL_ERRORs in rapid succession — without the
+    // `pendingRecoveryTimeoutRef.current === null` guard the second
+    // would have scheduled a second timer (CodeRabbit feedback on
+    // PR #450).
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+    });
+    await flushMicrotasks();
+
+    // Channel re-subscribed exactly once (initial + one recovery
+    // attempt). A duplicate timer would have produced 3+ calls.
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
   it("visibility resume from pollFallback=true resets the budget and re-attempts realtime", async () => {
     renderHook(() =>
       useRealtimeEventChannel({

@@ -346,8 +346,25 @@ export function useRealtimeEventChannel<T>({
     // Also reset paused — visibility state happens to apply to the
     // page, but the per-event recovery budget belongs to the
     // event session. Navigating to a new event is conceptually a
-    // fresh page session.
+    // fresh page session. Ref cleanup for the same boundary lives
+    // in the `[eventId]` useEffect below (refs may not be mutated
+    // during render per `react-hooks/refs`).
     setPaused(false);
+  }
+
+  // R3.5: per-event ref cleanup. State setters in the render-phase
+  // block above are allowed (React's "setState during render"
+  // pattern triggers a synchronous re-render), but refs may not be
+  // mutated during render (`react-hooks/refs` lint rule, enforced
+  // by React Compiler / React 19). This effect runs after commit
+  // when `eventId` changes — close enough to the state reset that
+  // a race against the channel-setup effect (which also depends on
+  // eventId) is theoretical only; supabase-js's subscribe callback
+  // is always asynchronous, so it can't fire between commit and the
+  // first effect tick of the same render. Declared BEFORE the
+  // channel-setup effect so cleanup runs first in declaration order
+  // and the channel-setup effect sees refs at their reset values.
+  useEffect(() => {
     wasPausedRef.current = false;
     recoveryAttemptsRef.current = 0;
     if (pendingRecoveryTimeoutRef.current !== null) {
@@ -360,7 +377,7 @@ export function useRealtimeEventChannel<T>({
     // resetting per-attempt would defeat the captureMessage's
     // "one per session" invariant. Per-event is the right boundary.
     hasReportedFallbackRef.current = false;
-  }
+  }, [eventId]);
 
   // R3.5: visibility listener. Mounted once per hook instance — adding
   // [eventId, ...] to its deps would re-attach the listener on every
@@ -803,8 +820,17 @@ export function useRealtimeEventChannel<T>({
           // re-run and re-subscribe; if that fails again, the new
           // CHANNEL_ERROR runs this same logic with the incremented
           // counter until budget exhausts.
+          //
+          // `pendingRecoveryTimeoutRef.current === null` guard prevents
+          // duplicate timers: if CHANNEL_ERROR somehow fires twice
+          // before the first timer's setPollFallback(false) has
+          // re-subscribed (rapid burst in the subscribe callback, or
+          // a stale closure from a prior effect lifecycle), we don't
+          // want two concurrent setTimeouts racing to flip the same
+          // flag. CodeRabbit feedback on PR #450.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
+            pendingRecoveryTimeoutRef.current === null &&
             typeof document !== "undefined" &&
             !document.hidden
           ) {

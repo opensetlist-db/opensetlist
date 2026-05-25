@@ -238,20 +238,34 @@ export function useRealtimeImpressions({
     setPrevEventId(eventId);
     setPollFallback(false);
     setLastUpdated(null);
-    // R3.5: also reset paused + recovery state on event change. A
-    // fresh event session is a fresh page session conceptually; the
-    // recovery budget belongs to the channel lifetime.
+    // R3.5: also reset paused on event change. Ref cleanup for the
+    // same boundary lives in the `[eventId]` useEffect below (refs
+    // may not be mutated during render per `react-hooks/refs` —
+    // state setters in the render-phase block are fine, refs are
+    // not). A fresh event session is a fresh page session
+    // conceptually; the recovery budget belongs to the channel
+    // lifetime.
     setPaused(false);
+  }
+
+  // R3.5: per-event ref cleanup. State setters above are allowed in
+  // render (React's "setState during render" pattern), but refs
+  // must be mutated outside render. Declared before the channel-
+  // setup effect so the cleanup runs first in declaration order —
+  // see the matching comment block in useRealtimeEventChannel.ts
+  // for the full rationale.
+  useEffect(() => {
     recoveryAttemptsRef.current = 0;
     if (pendingRecoveryTimeoutRef.current !== null) {
       clearTimeout(pendingRecoveryTimeoutRef.current);
       pendingRecoveryTimeoutRef.current = null;
     }
     // R3.5: latch reset moved here from the channel-setup effect-top.
-    // Per-eventId is the right boundary — see the matching comment
-    // there.
+    // Per-eventId is the right boundary — auto-recovery re-runs the
+    // channel-setup effect, and resetting per-attempt would defeat
+    // the captureMessage's "one per session" invariant.
     hasReportedFallbackRef.current = false;
-  }
+  }, [eventId]);
 
   // R3.5: visibility listener. Mounted once per hook instance. Mirrors
   // the setlist channel's pattern — see `useRealtimeEventChannel.ts`
@@ -428,11 +442,13 @@ export function useRealtimeImpressions({
           setPollFallback(true);
 
           // R3.5: bounded auto-recovery. Only schedule while the tab
-          // is visible — hidden-tab failures are handled by the
-          // visibility resume path with a fresh budget. See the
-          // setlist channel's matching block for the full rationale.
+          // is visible AND no timer is already pending. The latter
+          // guard prevents duplicate timers from a rapid CHANNEL_ERROR
+          // burst (CodeRabbit feedback on PR #450). See the setlist
+          // channel's matching block for the full rationale.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
+            pendingRecoveryTimeoutRef.current === null &&
             typeof document !== "undefined" &&
             !document.hidden
           ) {
