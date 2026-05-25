@@ -12,6 +12,27 @@ import {
 
 export type { ReactionCountsMap };
 
+// R3.5 — bounded time-based auto-recovery (see hook JSDoc).
+//
+// 30s delay: long enough that we're not flapping against a server that
+// just rejected a subscription (give the underlying socket / cluster
+// breathing room), short enough that a user who experienced one drop
+// gets realtime back inside a typical wish-song burst window during a
+// live show.
+//
+// 3 attempts: covers the realistic transient-cause distribution (one
+// network blip, one WiFi handoff, one server hiccup) without letting
+// a pathologically flapping network pin us in an indefinite retry
+// loop. After the budget exhausts we stay on polling for the rest of
+// the page lifetime.
+//
+// Module-scope constants (not hook-scope) so the test file can import
+// them rather than hardcoding 30_000 / 3 in both the implementation
+// and assertions — a future tweak surfaces as a single source-of-truth
+// change with the test suite re-running unchanged.
+export const RECOVERY_DELAY_MS = 30_000;
+export const MAX_RECOVERY_ATTEMPTS = 3;
+
 interface UseRealtimeEventChannelOptions<T> {
   eventId: string;
   initialItems: T[];
@@ -136,13 +157,6 @@ interface ReactionRowPayload {
  *     fallback path is wired and ready — flipping the flag hands
  *     the load over to the proven 5s polling path within one render.
  *
- *   - No auto-recovery: once we drop to fallback, we stay there for
- *     the page's lifetime. Climbing back up to realtime would need
- *     careful coordination (drop polling, retry channel, hope it
- *     doesn't error again immediately) and is too easy to get wrong
- *     during a live show. The user can refresh the page to retry
- *     realtime cleanly.
- *
  *   - Reconnect refetch: if the channel briefly drops and reconnects
  *     before the retry budget is exhausted (supabase-js handles
  *     this internally), `SUBSCRIBED` fires again. The first
@@ -163,6 +177,51 @@ interface ReactionRowPayload {
  *     copy, separate from the in-fallback copy here) drives the
  *     page. The flag is the global override; this hook's
  *     pollFallback is the per-session per-channel automatic.
+ *
+ * R3.5 — visibility handling + bounded auto-recovery (PR for Sentry
+ * issue 7485048757, ~19 fallbacks/day baseline as of 2026-05-24):
+ *
+ *   - `document.visibilitychange` integration. When the tab is
+ *     hidden we proactively pause the channel: Chrome / Safari
+ *     aggressively throttle background WebSocket heartbeats, and
+ *     after enough missed pings supabase-js's retry budget
+ *     exhausts and we'd fall back to polling permanently on a
+ *     channel we never actually wanted to lose. Pausing tears the
+ *     channel down cleanly so no CHANNEL_ERROR is emitted; on
+ *     visibility return we re-subscribe and fetchSnapshot to
+ *     gap-fill any pushes that landed during the away window.
+ *     This was the dominant root cause traced from the Sentry
+ *     breadcrumb stream — 11 minutes of silent breadcrumbs
+ *     between last user activity and CHANNEL_ERROR, classic
+ *     macOS Chrome background-throttle signature.
+ *
+ *   - Bounded time-based auto-recovery for failures that happen
+ *     while the tab IS visible (network blip, momentary server
+ *     reject). After `pollFallback` flips, schedule a single
+ *     `setPollFallback(false)` retry after RECOVERY_DELAY_MS.
+ *     `recoveryAttemptsRef` enforces MAX_RECOVERY_ATTEMPTS per
+ *     session so a pathologically flapping network can't pin us
+ *     in a retry loop. If the retry's resubscribe also fails, the
+ *     CHANNEL_ERROR handler runs the same logic again until budget
+ *     exhausts, then we stay on polling for the rest of the page
+ *     lifetime (matching the original "no auto-recovery" semantics
+ *     once the budget is gone).
+ *
+ *   - Visibility resume from `pollFallback === true` ALSO triggers
+ *     a recovery attempt with the budget RESET. Logic: failures
+ *     during background throttling don't reflect real network /
+ *     server issues — they reflect Chrome's throttle policy. When
+ *     the user actively returns, the prior background-throttle
+ *     failure shouldn't count against the visible-tab retry budget.
+ *
+ *   - Captures still emit once per session via `hasReportedFallbackRef`.
+ *     Successful recoveries do NOT clear the flag — the operator
+ *     gets one signal per session that "this user dropped at least
+ *     once," and subsequent flips (retry storms, repeated drops)
+ *     stay in the breadcrumb stream. Sentry "Users affected" is
+ *     pinned at 0 anyway (no setUser, sendDefaultPii false), so
+ *     "Events" count IS the signal — 168/9d ≈ 19/day as the
+ *     pre-R3.5 baseline; expect this to drop sharply.
  */
 export function useRealtimeEventChannel<T>({
   eventId,
@@ -181,12 +240,62 @@ export function useRealtimeEventChannel<T>({
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // R3: fallback gate. Flips to true on CHANNEL_ERROR / TIMED_OUT;
-  // stays true for the page lifetime (no auto-recovery — see hook
-  // JSDoc). Adding it to the realtime effect's deps means the effect
-  // re-runs (cleanup → realtime channel torn down) the moment we
-  // flip, which is what we want.
+  // R3: fallback gate. Flips to true on CHANNEL_ERROR / TIMED_OUT.
+  // Adding it to the realtime effect's deps means the effect re-runs
+  // (cleanup → realtime channel torn down) the moment we flip, which
+  // is what we want. R3.5 (PR for Sentry issue 7485048757) allows
+  // controlled flips back to false via either (a) the bounded
+  // setTimeout-based auto-recovery scheduled from the CHANNEL_ERROR
+  // handler, or (b) the visibility-resume path when the prior fallback
+  // happened in a backgrounded tab.
   const [pollFallback, setPollFallback] = useState(false);
+
+  // R3.5: visibility-driven pause gate. Mirrors `pollFallback` in the
+  // realtime effect's deps array so the channel cleans up the instant
+  // the tab is hidden. Separate from `pollFallback` because the
+  // semantics differ — `pollFallback` says "realtime is dead, polling
+  // takes over"; `paused` says "the user can't see this tab anyway,
+  // don't bother holding a heartbeat-throttled channel that's about
+  // to be killed by the browser". Polling stays in its current
+  // enabled/disabled state across the pause (mirrors the rest of the
+  // page — `useImpressionPolling`, `useSetlistPolling` in the
+  // LiveEventLayout — none of which know about visibility either; the
+  // browser throttles their setInterval the same way it throttles the
+  // socket, so they harmlessly drift until the tab is visible again).
+  const [paused, setPaused] = useState(false);
+
+  // R3.5: latest-value refs so the visibility listener (mounted once
+  // in a separate effect with `[]` deps) can read current state
+  // without re-subscribing on every render. Same "latest ref" pattern
+  // as `useRealtimeImpressions`'s callback refs.
+  const pollFallbackRef = useRef(pollFallback);
+  useEffect(() => {
+    pollFallbackRef.current = pollFallback;
+  }, [pollFallback]);
+
+  // R3.5: tracks whether the channel was torn down via the visibility
+  // hide path (vs eventId/locale/enabled change or pollFallback flip).
+  // Read inside the SUBSCRIBED handler — when the first SUBSCRIBED
+  // after a pause fires, we treat it as a reconnect and refetch the
+  // snapshot to gap-fill any pushes the user missed while away. The
+  // existing `hasSubscribedBeforeRef` is reset at the top of the
+  // channel-setup effect (intentional, per its own comment), so it
+  // would misread the post-resume SUBSCRIBED as an initial join.
+  // `wasPausedRef` survives the effect cleanup because it lives at
+  // hook scope and is only mutated from the visibility handler + the
+  // SUBSCRIBED handler that clears it.
+  const wasPausedRef = useRef(false);
+
+  // R3.5: bounded auto-recovery state. `recoveryAttemptsRef` counts
+  // attempts across the whole hook lifetime (or eventId change,
+  // whichever comes first); `pendingRecoveryTimeoutRef` holds the
+  // currently-scheduled setTimeout id so cleanup (unmount, eventId
+  // change, visibility hide) can cancel a pending retry before it
+  // fires.
+  const recoveryAttemptsRef = useRef(0);
+  const pendingRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Always-call useSetlistPolling so it's ready when fallback flips.
   // While realtime is healthy, `enabled: false` keeps the hook idle
@@ -249,9 +358,98 @@ export function useRealtimeEventChannel<T>({
     // matches "user refresh = fresh retry" semantics. Matching ref
     // resets live INSIDE the channel-setup effect below: refs are
     // bound to the channel's lifetime, and the channel restarts on
-    // any of [eventId, locale, enabled, pollFallback] changing.
+    // any of [eventId, locale, enabled, pollFallback, paused] changing.
     setPollFallback(false);
+    // Also reset paused — visibility state happens to apply to the
+    // page, but the per-event recovery budget belongs to the
+    // event session. Navigating to a new event is conceptually a
+    // fresh page session.
+    setPaused(false);
+    wasPausedRef.current = false;
+    recoveryAttemptsRef.current = 0;
+    if (pendingRecoveryTimeoutRef.current !== null) {
+      clearTimeout(pendingRecoveryTimeoutRef.current);
+      pendingRecoveryTimeoutRef.current = null;
+    }
+    // R3.5: latch reset is eventId-scoped (was previously per-
+    // channel-setup at the top of the effect). With auto-recovery
+    // the channel-setup effect re-runs on every retry attempt;
+    // resetting per-attempt would defeat the captureMessage's
+    // "one per session" invariant. Per-event is the right boundary.
+    hasReportedFallbackRef.current = false;
   }
+
+  // R3.5: visibility listener. Mounted once per hook instance — adding
+  // [eventId, ...] to its deps would re-attach the listener on every
+  // navigation, which doesn't help (a single global listener handles
+  // page-level visibility) and would briefly leave the page with no
+  // listener during the React commit gap. Listener uses refs so its
+  // closure doesn't capture stale state — `pollFallbackRef` for the
+  // resume-while-fallback path, no other state read.
+  //
+  // SSR guard: `document` is undefined in the Next.js server bundle.
+  // This hook is "use client", so the effect only runs in the browser,
+  // but the bundle still gets parsed server-side during build — and a
+  // top-level `document.addEventListener` would crash. The `typeof`
+  // check is the standard pattern (matches every other client-only
+  // hook in this codebase that touches DOM globals).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (document.hidden) {
+        // Tab is going away. Mark the pause so the eventual SUBSCRIBED
+        // on resume triggers a snapshot refetch (gap-fill for missed
+        // pushes during the away window), flip `paused` so the channel
+        // effect cleans up the open channel right now (don't wait for
+        // the browser to start throttling our heartbeats), and cancel
+        // any pending auto-recovery timer (no point spinning up a
+        // channel we're about to tear down).
+        wasPausedRef.current = true;
+        setPaused(true);
+        if (pendingRecoveryTimeoutRef.current !== null) {
+          clearTimeout(pendingRecoveryTimeoutRef.current);
+          pendingRecoveryTimeoutRef.current = null;
+        }
+      } else {
+        // User is back. Release `paused` so the channel effect
+        // re-subscribes. If we'd already fallen back to polling
+        // (likely cause: a CHANNEL_ERROR while the tab was hidden,
+        // because supabase-js's heartbeat retries exhausted while the
+        // browser was throttling them — though this entire path is
+        // designed to AVOID that by pausing first, this branch covers
+        // the race where the failure beats the visibilitychange
+        // listener), give realtime a fresh shot. Resetting the
+        // recovery budget here is intentional: the prior failure was
+        // background-throttle-flavored, not a real "this network /
+        // server is broken" signal, so it shouldn't count against
+        // visible-tab attempts.
+        setPaused(false);
+        if (pollFallbackRef.current) {
+          recoveryAttemptsRef.current = 0;
+          setPollFallback(false);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // R3.5: cleanup pending recovery timer on unmount. The channel-
+  // setup effect's cleanup runs on every dep change (pollFallback,
+  // paused, eventId, locale, enabled, startTime); putting the timer
+  // clear there would prematurely cancel an auto-recovery retry that
+  // was scheduled by the very dep change that triggered the cleanup.
+  // Empty-deps unmount-only cleanup is the right shape.
+  useEffect(() => {
+    return () => {
+      if (pendingRecoveryTimeoutRef.current !== null) {
+        clearTimeout(pendingRecoveryTimeoutRef.current);
+        pendingRecoveryTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -259,18 +457,26 @@ export function useRealtimeEventChannel<T>({
     // (the dep change triggered it) and we skip channel setup so
     // useSetlistPolling owns the page.
     if (pollFallback) return;
+    // R3.5: paused gate. Mirror pollFallback for visibility-driven
+    // pauses — same shape, same early return, same cleanup chain.
+    if (paused) return;
 
-    // Reset the channel-bound refs at the top of every channel
-    // setup. They track state of the CURRENT channel — whether
-    // it's seen its first SUBSCRIBED, whether we've reported a
-    // fallback for it — so resetting only on eventId change (in
-    // a sibling useEffect) would leak old-channel state into the
-    // new channel when locale changes (the channel-setup effect
-    // re-runs but the sibling does not, so the new channel's
-    // first SUBSCRIBED would be misread as a reconnect and
-    // trigger a redundant /api/setlist refetch).
+    // Reset the channel-bound SUBSCRIBED tracker at the top of every
+    // channel setup. It tracks state of the CURRENT channel —
+    // initial-vs-reconnect for THIS channel's transitions — so
+    // resetting only on eventId change (in a sibling useEffect)
+    // would leak old-channel state into the new channel when locale
+    // changes (the channel-setup effect re-runs but the sibling does
+    // not, so the new channel's first SUBSCRIBED would be misread as
+    // a reconnect and trigger a redundant /api/setlist refetch).
+    //
+    // `hasReportedFallbackRef` is NOT reset here, in contrast — it's
+    // a per-session latch (eventId-scoped, see the eventId-change
+    // block above). With R3.5 auto-recovery the effect re-runs on
+    // every retry attempt; resetting the latch here would re-fire
+    // the captureMessage on every recovery cycle's failure, defeating
+    // the "one capture per session" invariant the operator relies on.
     hasSubscribedBeforeRef.current = false;
-    hasReportedFallbackRef.current = false;
 
     // ──── Snapshot fetch ────
     // Used both for the initial mount seed AND as the Path B refetch
@@ -547,6 +753,28 @@ export function useRealtimeEventChannel<T>({
         });
 
         if (channelStatus === "SUBSCRIBED") {
+          // R3.5: visibility-resume gap-fill. `wasPausedRef` is set by
+          // the visibility handler when the tab goes hidden; the FIRST
+          // SUBSCRIBED after a resume is functionally a reconnect (we
+          // may have missed pushes during the away window) and
+          // deserves a refetch. The `hasSubscribedBeforeRef` reset at
+          // the top of this effect would otherwise misclassify it as
+          // an initial join. Clear `wasPausedRef` after consuming so
+          // subsequent reconnects-within-this-channel-lifecycle fall
+          // through to the normal `hasSubscribedBeforeRef` path.
+          if (wasPausedRef.current) {
+            // Resume from a visibility pause. The mount-seed
+            // `void fetchSnapshot()` at the top of this effect re-run
+            // already fired the gap-fill (the effect re-runs when
+            // `paused` flips back to false, going through the same
+            // code path as an initial mount). Just clear the latch
+            // and seed `hasSubscribedBeforeRef` so any subsequent
+            // SUBSCRIBEDs within this channel lifetime (supabase-js
+            // mid-session reconnects) are still treated as reconnects.
+            wasPausedRef.current = false;
+            hasSubscribedBeforeRef.current = true;
+            return;
+          }
           if (hasSubscribedBeforeRef.current) {
             // Reconnect after a transient drop — supabase-js
             // re-subscribed inside its retry budget. We may have
@@ -564,8 +792,9 @@ export function useRealtimeEventChannel<T>({
           channelStatus === "TIMED_OUT"
         ) {
           // First fallback per session: tell Sentry. Subsequent
-          // status churn (which shouldn't happen since we don't
-          // auto-recover) stays in the breadcrumb stream only.
+          // status churn (post-recovery re-failures, retry storms)
+          // stays in the breadcrumb stream only — the operator only
+          // needs the first signal that this user dropped at all.
           if (!hasReportedFallbackRef.current) {
             hasReportedFallbackRef.current = true;
             Sentry.captureMessage("Realtime fallback to polling", {
@@ -580,6 +809,41 @@ export function useRealtimeEventChannel<T>({
           // triggers the cleanup below (channel removed, fetch
           // aborted) and the next render's useEffect early-returns.
           setPollFallback(true);
+
+          // R3.5: bounded auto-recovery. Only schedule when the tab
+          // is visible — a hidden-tab failure means the visibility
+          // resume path will handle re-subscribe with a fresh budget
+          // (failures during background throttling aren't real
+          // network/server problems). Each attempt counts against
+          // MAX_RECOVERY_ATTEMPTS. The setTimeout fires
+          // setPollFallback(false), which triggers the effect to
+          // re-run and re-subscribe; if that fails again, the new
+          // CHANNEL_ERROR runs this same logic with the incremented
+          // counter until budget exhausts.
+          if (
+            recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
+            typeof document !== "undefined" &&
+            !document.hidden
+          ) {
+            recoveryAttemptsRef.current += 1;
+            const attempt = recoveryAttemptsRef.current;
+            Sentry.addBreadcrumb({
+              category: "realtime",
+              message: `event:${eventId} scheduling auto-recovery attempt ${attempt}/${MAX_RECOVERY_ATTEMPTS} in ${RECOVERY_DELAY_MS}ms`,
+              level: "info",
+              data: { eventId, attempt, delayMs: RECOVERY_DELAY_MS },
+            });
+            pendingRecoveryTimeoutRef.current = setTimeout(() => {
+              pendingRecoveryTimeoutRef.current = null;
+              Sentry.addBreadcrumb({
+                category: "realtime",
+                message: `event:${eventId} auto-recovery attempt ${attempt} firing`,
+                level: "info",
+                data: { eventId, attempt },
+              });
+              setPollFallback(false);
+            }, RECOVERY_DELAY_MS);
+          }
           return;
         }
 
@@ -604,7 +868,7 @@ export function useRealtimeEventChannel<T>({
       // reuse the dead channel.
       void supabase.removeChannel(channel);
     };
-  }, [eventId, locale, enabled, pollFallback, startTime]);
+  }, [eventId, locale, enabled, pollFallback, paused, startTime]);
 
   // R3: fallback return shape. When polling has taken over, prefer
   // its state — but during the warmup window (first poll hasn't

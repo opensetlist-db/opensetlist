@@ -3,6 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+
+// R3.5 — bounded time-based auto-recovery (see useRealtimeEventChannel.ts
+// for the full rationale; intentionally duplicated here rather than
+// imported from the sibling hook to keep these two hooks independently
+// readable — they share zero other surface and the constants are
+// genuinely the same per-hook decision, not a shared concept worth
+// centralizing). Same values, same units.
+export const RECOVERY_DELAY_MS = 30_000;
+export const MAX_RECOVERY_ATTEMPTS = 3;
 // Import from `src/lib/types/` (cross-layer type module) instead of
 // `@/components/EventImpressions` to avoid the hook ↔ component
 // circular dependency — EventImpressions imports this hook.
@@ -131,13 +140,38 @@ function rowToImpression(row: ImpressionRowPayload): Impression {
  *     alongside this hook) so the impressions feed keeps updating
  *     via the proven 5/30s polling path.
  *
- *   - No auto-recovery: once flipped, stays true for the page
- *     lifetime. Matches `useRealtimeEventChannel`.
- *
  *   - Sentry: breadcrumb on every transition (separate category
  *     `realtime-impressions` so it doesn't blur with the setlist
  *     channel's stream); a single `captureMessage` on first
  *     fallback per session.
+ *
+ * R3.5 — visibility handling + bounded auto-recovery (PR for Sentry
+ * issue 7501479492, paired with the setlist channel's identical R3.5
+ * patch since the two channels share one WebSocket and fall together).
+ *
+ *   - `document.visibilitychange` integration. Tab hidden → tear down
+ *     the channel proactively (Chrome / Safari background-tab
+ *     throttling kills WebSocket heartbeats; better to release the
+ *     channel cleanly than let supabase-js exhaust its retry budget
+ *     against a throttled socket and emit a CHANNEL_ERROR we then
+ *     have to recover from). Tab visible → re-subscribe. No snapshot
+ *     refetch on resume — the impressions feed is purely append-
+ *     driven, and the consumer's load-more click already surfaces
+ *     anything that landed during the away window (same rationale as
+ *     the original reconnect-no-refetch decision in this hook's R3
+ *     comment block below).
+ *
+ *   - Bounded time-based auto-recovery for failures while the tab IS
+ *     visible (network blip, momentary server reject). After
+ *     `pollFallback` flips, schedule a single
+ *     `setPollFallback(false)` retry after RECOVERY_DELAY_MS, up to
+ *     MAX_RECOVERY_ATTEMPTS per session. Visibility resume from
+ *     `pollFallback === true` also triggers an immediate retry with
+ *     the budget RESET (background failures don't count).
+ *
+ *   - `captureMessage` still emits once per session even after
+ *     successful recovery — operator gets one signal per session
+ *     that "this user dropped at least once," not flap reports.
  */
 export function useRealtimeImpressions({
   eventId,
@@ -147,6 +181,34 @@ export function useRealtimeImpressions({
 }: UseRealtimeImpressionsOptions): UseRealtimeImpressionsResult {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [pollFallback, setPollFallback] = useState(false);
+
+  // R3.5: visibility-driven pause gate. Mirrors `pollFallback` in the
+  // realtime effect's deps so the channel cleans up the instant the
+  // tab is hidden — semantics + rationale documented in detail on the
+  // setlist channel (`useRealtimeEventChannel.ts`). The impressions
+  // hook doesn't do snapshot-refetch on reconnect (see the existing
+  // R3 comment block below the subscription wiring) so visibility
+  // resume just re-subscribes without a fetchSnapshot follow-up.
+  const [paused, setPaused] = useState(false);
+
+  // R3.5: latest-value ref for the visibility listener (mounted once
+  // with [] deps) so its closure reads current `pollFallback` without
+  // re-attaching on every render. Same "latest ref" pattern as the
+  // existing `onUpsertRef` / `onRemoveRef` below.
+  const pollFallbackRef = useRef(pollFallback);
+  useEffect(() => {
+    pollFallbackRef.current = pollFallback;
+  }, [pollFallback]);
+
+  // R3.5: bounded auto-recovery state. `recoveryAttemptsRef` counts
+  // attempts across the hook lifetime (or eventId change, whichever
+  // comes first); `pendingRecoveryTimeoutRef` holds the currently-
+  // scheduled setTimeout id so cleanup (unmount, eventId change,
+  // visibility hide) can cancel a pending retry before it fires.
+  const recoveryAttemptsRef = useRef(0);
+  const pendingRecoveryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Hold callbacks in refs so a fresh callback identity per render
   // doesn't tear down + rebuild the channel subscription. Same
@@ -181,24 +243,81 @@ export function useRealtimeImpressions({
     setPrevEventId(eventId);
     setPollFallback(false);
     setLastUpdated(null);
+    // R3.5: also reset paused + recovery state on event change. A
+    // fresh event session is a fresh page session conceptually; the
+    // recovery budget belongs to the channel lifetime.
+    setPaused(false);
+    recoveryAttemptsRef.current = 0;
+    if (pendingRecoveryTimeoutRef.current !== null) {
+      clearTimeout(pendingRecoveryTimeoutRef.current);
+      pendingRecoveryTimeoutRef.current = null;
+    }
+    // R3.5: latch reset moved here from the channel-setup effect-top.
+    // Per-eventId is the right boundary — see the matching comment
+    // there.
+    hasReportedFallbackRef.current = false;
   }
+
+  // R3.5: visibility listener. Mounted once per hook instance. Mirrors
+  // the setlist channel's pattern — see `useRealtimeEventChannel.ts`
+  // for the full rationale. Difference: this hook does no
+  // fetchSnapshot-on-resume because impressions are append-driven and
+  // the consumer's load-more click already surfaces anything missed.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onVisibility = () => {
+      if (document.hidden) {
+        setPaused(true);
+        if (pendingRecoveryTimeoutRef.current !== null) {
+          clearTimeout(pendingRecoveryTimeoutRef.current);
+          pendingRecoveryTimeoutRef.current = null;
+        }
+      } else {
+        setPaused(false);
+        if (pollFallbackRef.current) {
+          recoveryAttemptsRef.current = 0;
+          setPollFallback(false);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // R3.5: cleanup pending recovery timer on unmount only. The
+  // channel-setup effect's cleanup runs on every dep change and would
+  // prematurely cancel the very retry it just scheduled — empty-deps
+  // unmount-only cleanup is the right shape.
+  useEffect(() => {
+    return () => {
+      if (pendingRecoveryTimeoutRef.current !== null) {
+        clearTimeout(pendingRecoveryTimeoutRef.current);
+        pendingRecoveryTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
     // Once polling has taken over, this effect has cleaned up the
     // dead channel and we skip re-subscribing.
     if (pollFallback) return;
+    // R3.5: paused gate. Same shape as the pollFallback early-return
+    // — visibility hide tears the channel down without emitting a
+    // CHANNEL_ERROR; visibility resume flips paused back to false
+    // and this effect re-runs to re-subscribe.
+    if (paused) return;
 
-    // Reset the channel-bound captureMessage latch at the top of
-    // every channel setup. The ref tracks state of the CURRENT
-    // channel, so resetting it inside the effect (rather than in a
-    // sibling useEffect keyed on eventId only) keeps the latch
-    // bound to the channel's actual lifetime — this effect re-runs
-    // on `[eventId, enabled, pollFallback]`, so any of those
-    // changing creates a fresh channel that deserves a fresh
-    // fallback latch. (No `locale` here — this hook doesn't take
-    // one; that's `useRealtimeEventChannel`.)
-    hasReportedFallbackRef.current = false;
+    // R3.5: the latch reset moved OUT of this effect-top to the
+    // eventId-change block above. Before R3.5 it was reset here on
+    // every channel-setup re-run, since "each channel" was the
+    // natural session boundary. With auto-recovery the channel
+    // re-subscribes on every retry attempt; resetting per-attempt
+    // would re-fire the captureMessage on every recovery cycle's
+    // failure and defeat the "one capture per session" invariant.
+    // Per-eventId is the right boundary for this latch.
 
     const supabase = getSupabaseBrowserClient();
     // Pre-computed scope key for each handler's eventId check. The
@@ -312,6 +431,35 @@ export function useRealtimeImpressions({
           // The dep change triggers cleanup below; the next render's
           // effect early-returns.
           setPollFallback(true);
+
+          // R3.5: bounded auto-recovery. Only schedule while the tab
+          // is visible — hidden-tab failures are handled by the
+          // visibility resume path with a fresh budget. See the
+          // setlist channel's matching block for the full rationale.
+          if (
+            recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
+            typeof document !== "undefined" &&
+            !document.hidden
+          ) {
+            recoveryAttemptsRef.current += 1;
+            const attempt = recoveryAttemptsRef.current;
+            Sentry.addBreadcrumb({
+              category: "realtime-impressions",
+              message: `event:${eventId}:impressions scheduling auto-recovery attempt ${attempt}/${MAX_RECOVERY_ATTEMPTS} in ${RECOVERY_DELAY_MS}ms`,
+              level: "info",
+              data: { eventId, attempt, delayMs: RECOVERY_DELAY_MS },
+            });
+            pendingRecoveryTimeoutRef.current = setTimeout(() => {
+              pendingRecoveryTimeoutRef.current = null;
+              Sentry.addBreadcrumb({
+                category: "realtime-impressions",
+                message: `event:${eventId}:impressions auto-recovery attempt ${attempt} firing`,
+                level: "info",
+                data: { eventId, attempt },
+              });
+              setPollFallback(false);
+            }, RECOVERY_DELAY_MS);
+          }
         }
         // Reconnect-SUBSCRIBED gap-fill is NOT done here. The
         // impressions feed is purely append-driven (chains either
@@ -334,7 +482,7 @@ export function useRealtimeImpressions({
     // callback identity, which would be a regression. `pollFallback`
     // IS in the deps so the effect re-runs (cleanup + early return)
     // when we hand off to polling.
-  }, [eventId, enabled, pollFallback]);
+  }, [eventId, enabled, pollFallback, paused]);
 
   return { lastUpdated, pollFallback };
 }
