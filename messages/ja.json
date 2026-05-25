@@ -139,6 +139,15 @@
       "cover": "カバー"
     }
   },
+  "AlbumTrack": {
+    "variantSuffix": {
+      "off-vocal": "オフボーカル",
+      "instrumental": "インストゥルメンタル",
+      "drama": "ドラマ",
+      "bgm": "BGM",
+      "karaoke": "カラオケ"
+    }
+  },
   "Member": {
     "affiliations": "所属",
     "units": "所属ユニット",

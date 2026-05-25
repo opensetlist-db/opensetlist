@@ -726,7 +726,19 @@ async function importSongs(rows: Record<string, string>[]) {
       return bs !== "" && bs !== "-" && !!r.slug;
     })
     .map((r) => r.slug);
-  const slugsToPrefetch = Array.from(new Set([...distinctBaseSlugs, ...variantRowSlugs]));
+  // Pattern 2 (off-vocal w/ vocal parent) parent slugs — same slug→id
+  // Map serves them since they reference Song rows. Their resolution
+  // feeds AlbumTrack.parentSongId during the AlbumTrack pass below.
+  const distinctParentSlugs = Array.from(
+    new Set(
+      rows
+        .map((r) => (r.parent_song_slug ?? "").trim())
+        .filter((s) => s !== ""),
+    ),
+  );
+  const slugsToPrefetch = Array.from(
+    new Set([...distinctBaseSlugs, ...variantRowSlugs, ...distinctParentSlugs]),
+  );
   // The Map starts populated with whatever Songs already exist in the
   // DB for the relevant slugs, then the first pass appends each row it
   // upserts. By the time the second pass runs, the Map covers every
@@ -740,6 +752,48 @@ async function importSongs(rows: Record<string, string>[]) {
             select: { slug: true, id: true },
           })
         ).map((s) => [s.slug, s.id] as [string, bigint]),
+      );
+
+  // Pre-fetch all Albums referenced by this CSV in a single findMany,
+  // and every AlbumTrack already living on those albums. The AlbumTrack
+  // pass below decides "create new row" vs "skip — preserve operator's
+  // admin-UX edits" off these two maps, so no per-row findUnique is
+  // needed during the AlbumTrack loop. Concretely:
+  //   - Pattern 1 row whose (album, disc, track) tuple is new → create
+  //   - any pattern whose tuple already exists → skip the create
+  //     (Pattern 3 still upserts AlbumTrackTranslation rows below with
+  //     update:{} so first-time-translated rows fill in but existing
+  //     operator-translated rows aren't stomped).
+  const distinctAlbumSlugs = Array.from(
+    new Set(
+      rows.map((r) => (r.album_slug ?? "").trim()).filter((s) => s !== ""),
+    ),
+  );
+  const albumsBySlug: Map<string, bigint> = distinctAlbumSlugs.length === 0
+    ? new Map<string, bigint>()
+    : new Map(
+        (
+          await prisma.album.findMany({
+            where: { slug: { in: distinctAlbumSlugs } },
+            select: { slug: true, id: true },
+          })
+        ).map((a) => [a.slug, a.id] as [string, bigint]),
+      );
+  const distinctAlbumIds = Array.from(albumsBySlug.values());
+  const trackKey = (albumId: bigint, disc: number, track: number): string =>
+    `${albumId.toString()}-${disc}-${track}`;
+  const existingTrackIdByKey: Map<string, string> = distinctAlbumIds.length === 0
+    ? new Map<string, string>()
+    : new Map(
+        (
+          await prisma.albumTrack.findMany({
+            where: { albumId: { in: distinctAlbumIds } },
+            select: { id: true, albumId: true, discNumber: true, trackNumber: true },
+          })
+        ).map(
+          (t) =>
+            [trackKey(t.albumId, t.discNumber, t.trackNumber), t.id] as [string, string],
+        ),
       );
 
   // First pass: upsert songs, translations, artists, album tracks
@@ -827,23 +881,137 @@ async function importSongs(rows: Record<string, string>[]) {
         });
       }
     }
+    // AlbumTrack creation is now its own pass below — Pattern 2 (off-vocal
+    // w/ vocal parent) and Pattern 3 (drama/bgm direct title) rows have
+    // empty slug + originalTitle so they were never going to reach this
+    // point anyway, but lifting AlbumTrack out of the Song-side loop
+    // keeps the three patterns in one place and lets us dispatch by
+    // pattern instead of always writing songId.
+  }
 
-    // Upsert AlbumTrack — each row can link song to a different album
-    if (row.album_slug && row.track_number) {
-      const album = await prisma.album.findUnique({ where: { slug: row.album_slug } });
-      if (!album) {
-        results.push(`WARN: album not found: ${row.album_slug}`);
-      } else {
-        const discNumber = row.disc_number ? parseInt(row.disc_number) : 1;
-        const trackNumber = parseInt(row.track_number);
-        if (!isNaN(trackNumber) && !isNaN(discNumber)) {
-          await prisma.albumTrack.upsert({
-            where: { albumId_discNumber_trackNumber: { albumId: album.id, discNumber, trackNumber } },
-            create: { albumId: album.id, songId: song.id, discNumber, trackNumber },
-            update: { songId: song.id },
-          });
-        }
+  // AlbumTrack pass — every row with a non-empty (album_slug, track_number)
+  // gets an AlbumTrack row, dispatched by pattern off the discriminator
+  // columns. Pattern 1 = vocal (slug filled, track_type empty) →
+  // songId from the prefetched Map; Pattern 2 = off-vocal w/ parent
+  // (slug empty, track_type ∈ off-vocal|instrumental|karaoke, parent_song_slug
+  // filled) → parentSongId, no songId; Pattern 3 = direct title
+  // (slug empty, track_type ∈ drama|bgm, parent_song_slug empty) →
+  // title + titleLanguage + AlbumTrackTranslation rows.
+  //
+  // Idempotency: a tuple (albumId, discNumber, trackNumber) that already
+  // exists in the DB is left untouched — preserves any admin-UX edits the
+  // operator made between imports. For Pattern 3 we still upsert the
+  // translation rows with update:{}, which fills in missing locales on
+  // a partial-data re-import without overwriting locales the operator
+  // hand-translated. New tuples (most common case on a first-time IP
+  // onboarding or a brand-new release) take the create path with the
+  // dispatched data.
+  const upsertPattern3Translations = async (
+    albumTrackId: string,
+    row: Record<string, string>,
+  ) => {
+    const localePairs: ReadonlyArray<{ locale: string; title: string | undefined }> = [
+      { locale: "ja", title: row.ja_title },
+      { locale: "ko", title: row.ko_title },
+      { locale: "en", title: row.en_title },
+    ];
+    for (const { locale, title } of localePairs) {
+      const trimmed = (title ?? "").trim();
+      if (!trimmed) continue;
+      await prisma.albumTrackTranslation.upsert({
+        where: { albumTrackId_locale: { albumTrackId, locale } },
+        create: { albumTrackId, locale, title: trimmed },
+        // Empty update preserves the operator's admin-UX edits on
+        // existing locale rows; only missing locales get filled in.
+        update: {},
+      });
+    }
+  };
+
+  for (const row of rows) {
+    const albumSlug = (row.album_slug ?? "").trim();
+    if (!albumSlug || !row.track_number) continue;
+    const albumId = albumsBySlug.get(albumSlug);
+    if (!albumId) {
+      results.push(`WARN: album not found: ${albumSlug}`);
+      continue;
+    }
+    const discNumber = row.disc_number ? parseInt(row.disc_number) : 1;
+    const trackNumber = parseInt(row.track_number);
+    if (isNaN(discNumber) || isNaN(trackNumber)) continue;
+
+    const trackType = (row.track_type ?? "").trim() || null;
+    const parentSlug = (row.parent_song_slug ?? "").trim() || null;
+    const key = trackKey(albumId, discNumber, trackNumber);
+    const existingTrackId = existingTrackIdByKey.get(key);
+
+    if (existingTrackId) {
+      // Tuple already exists — skip create. Pattern 3 still upserts
+      // translations with update:{} so locales added in a later CSV
+      // pass fill in cleanly without overwriting operator edits.
+      if (trackType && !parentSlug) {
+        await upsertPattern3Translations(existingTrackId, row);
       }
+      continue;
+    }
+
+    let createData;
+    if (!trackType) {
+      // Pattern 1 — vocal
+      const rowSlug = (row.slug ?? "").trim();
+      const songId = rowSlug ? songIdBySlug.get(rowSlug) : undefined;
+      if (!songId) {
+        results.push(
+          `WARN: Pattern 1 row references unknown song slug: ${rowSlug || "(empty)"} on album ${albumSlug} disc=${discNumber} track=${trackNumber}`,
+        );
+        continue;
+      }
+      createData = { albumId, discNumber, trackNumber, songId };
+    } else if (parentSlug) {
+      // Pattern 2 — off-vocal w/ vocal parent. parentSongId resolves
+      // from the same slug→id Map that the Song-side loop populated;
+      // a missing parent yields a WARN and the row lands with
+      // parentSongId NULL (falls through to the Pattern 3 display
+      // path with no title — degraded but visible).
+      const parentSongId = songIdBySlug.get(parentSlug);
+      if (!parentSongId) {
+        results.push(
+          `WARN: Pattern 2 row references unknown parent slug: ${parentSlug} on album ${albumSlug} disc=${discNumber} track=${trackNumber}`,
+        );
+      }
+      createData = {
+        albumId,
+        discNumber,
+        trackNumber,
+        variant: trackType,
+        parentSongId: parentSongId ?? null,
+      };
+    } else {
+      // Pattern 3 — direct title (drama/bgm/promo audio). Title +
+      // titleLanguage come from the CSV's originalTitle / originalLanguage
+      // columns (Pattern 3 reuses the same columns Pattern 1 fills for
+      // vocal rows; Pattern 3 rows have empty `slug` so they never
+      // create a Song row).
+      createData = {
+        albumId,
+        discNumber,
+        trackNumber,
+        variant: trackType,
+        title: row.originalTitle || null,
+        titleLanguage: row.originalLanguage
+          ? resolveOriginalLanguage(row.originalLanguage)
+          : null,
+      };
+    }
+
+    const created = await prisma.albumTrack.create({ data: createData });
+    existingTrackIdByKey.set(key, created.id);
+    results.push(
+      `TRACK CREATED: ${albumSlug} disc=${discNumber} track=${trackNumber} (${trackType ?? "vocal"})`,
+    );
+
+    if (trackType && !parentSlug) {
+      await upsertPattern3Translations(created.id, row);
     }
   }
 
