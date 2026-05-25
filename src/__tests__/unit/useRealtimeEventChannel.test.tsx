@@ -710,7 +710,11 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
   });
 
-  it("does not subscribe a channel on mount when document is already hidden (CR — lazy paused init)", async () => {
+  it("does not subscribe a channel on mount when document is already hidden (CR — useSyncExternalStore)", async () => {
+    // `useSyncExternalStore` reads `document.hidden` during the first
+    // render (via getSnapshot), so `paused` is `true` from the very
+    // first render — the channel-setup effect early-returns without
+    // ever subscribing.
     Object.defineProperty(document, "hidden", {
       value: true,
       configurable: true,
@@ -730,7 +734,7 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     await flushMicrotasks();
 
     expect(channelMock).not.toHaveBeenCalled();
-    expect(capturedSubscribeCallback).toBeNull();
+    expect(removeChannelMock).not.toHaveBeenCalled();
   });
 
   it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {

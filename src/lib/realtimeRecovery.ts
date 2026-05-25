@@ -49,3 +49,37 @@ export const MAX_RECOVERY_ATTEMPTS = 3;
 export function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.hidden;
 }
+
+// `useSyncExternalStore` triple for subscribing to `document.hidden`.
+// React's blessed pattern for tying component state to external
+// (non-React) reactive sources — replaces the original useState +
+// visibility-listener useEffect pair, which the push-review hook
+// flagged as a hydration hazard (lazy `useState` initializer reading
+// `document` server-side returns false; client may differ) and a
+// set-state-in-effect violation (mount-time sync via setState inside
+// a useEffect body trips `react-hooks/set-state-in-effect`).
+//
+// `subscribeToDocumentHidden` attaches/detaches the listener; React's
+// store implementation calls it on mount/unmount automatically.
+// `getDocumentHiddenSnapshot` is called during render to read the
+// current value. `getDocumentHiddenServerSnapshot` is the SSR-safe
+// constant `false` — guarantees identical initial state across
+// server and client to avoid hydration mismatches even though the
+// client-side `document.hidden` reading may differ post-hydration
+// (React then updates the state via the store on the next tick).
+//
+// Returned by `useSyncExternalStore` as a boolean usable directly
+// as the `paused` derivation in both Realtime hooks.
+export function subscribeToDocumentHidden(callback: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener("visibilitychange", callback);
+  return () => document.removeEventListener("visibilitychange", callback);
+}
+
+export function getDocumentHiddenSnapshot(): boolean {
+  return typeof document !== "undefined" && document.hidden;
+}
+
+export function getDocumentHiddenServerSnapshot(): boolean {
+  return false;
+}

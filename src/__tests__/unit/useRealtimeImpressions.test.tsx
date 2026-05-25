@@ -336,12 +336,13 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     expect(captureMessageMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not subscribe a channel on mount when document is already hidden (CR — lazy paused init)", async () => {
-    // Page opened in a backgrounded tab (Cmd+Click → opens behind,
-    // or restoring a session with hidden tabs). Without the lazy
-    // initializer, the channel would subscribe on mount and then
-    // get its heartbeats throttled by the browser, exhausting the
-    // supabase-js retry budget against a tab the user can't see.
+  it("does not subscribe a channel on mount when document is already hidden (CR — useSyncExternalStore)", async () => {
+    // Page opened in a backgrounded tab. `useSyncExternalStore` reads
+    // `document.hidden` during the first render (via getSnapshot),
+    // so `paused` is `true` from the very first render — the channel-
+    // setup effect early-returns without ever subscribing. Cleaner
+    // than the prior useState-based attempt which would have done a
+    // brief subscribe + immediate teardown.
     Object.defineProperty(document, "hidden", {
       value: true,
       configurable: true,
@@ -352,7 +353,7 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     );
 
     expect(channelMock).not.toHaveBeenCalled();
-    expect(capturedSubscribeCallback).toBeNull();
+    expect(removeChannelMock).not.toHaveBeenCalled();
   });
 
   it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {
