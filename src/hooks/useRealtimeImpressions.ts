@@ -3,15 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
-
-// R3.5 — bounded time-based auto-recovery (see useRealtimeEventChannel.ts
-// for the full rationale; intentionally duplicated here rather than
-// imported from the sibling hook to keep these two hooks independently
-// readable — they share zero other surface and the constants are
-// genuinely the same per-hook decision, not a shared concept worth
-// centralizing). Same values, same units.
-export const RECOVERY_DELAY_MS = 30_000;
-export const MAX_RECOVERY_ATTEMPTS = 3;
+import {
+  RECOVERY_DELAY_MS,
+  MAX_RECOVERY_ATTEMPTS,
+} from "@/lib/realtimeRecovery";
 // Import from `src/lib/types/` (cross-layer type module) instead of
 // `@/components/EventImpressions` to avoid the hook ↔ component
 // circular dependency — EventImpressions imports this hook.

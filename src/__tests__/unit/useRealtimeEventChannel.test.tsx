@@ -56,25 +56,14 @@ vi.mock("@/lib/supabaseClient", () => ({
 
 // Imports come AFTER the mocks above so the hook resolves the mocked
 // modules at load time.
+import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
 import {
-  useRealtimeEventChannel,
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
-} from "@/hooks/useRealtimeEventChannel";
+} from "@/lib/realtimeRecovery";
 import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import type { FanTop3Entry } from "@/lib/types/setlist";
-
-// Drives `document.visibilitychange` deterministically from tests. JSDOM
-// exposes `document.hidden` as a getter, so we override the descriptor
-// per-test and dispatch the event manually. `configurable: true` is
-// required so afterEach can restore the JSDOM default.
-function setDocumentHidden(hidden: boolean) {
-  Object.defineProperty(document, "hidden", {
-    value: hidden,
-    configurable: true,
-  });
-  document.dispatchEvent(new Event("visibilitychange"));
-}
+import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
 const initialItems: unknown[] = [];
 const initialReactionCounts = {};

@@ -1,17 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-
-// Drives `document.visibilitychange` deterministically from tests. JSDOM
-// exposes `document.hidden` as a getter, so we override the descriptor
-// per-test and dispatch the event manually. `configurable: true` is
-// required so afterEach can restore the JSDOM default.
-function setDocumentHidden(hidden: boolean) {
-  Object.defineProperty(document, "hidden", {
-    value: hidden,
-    configurable: true,
-  });
-  document.dispatchEvent(new Event("visibilitychange"));
-}
+import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
 const { addBreadcrumbMock, captureMessageMock } = vi.hoisted(() => ({
   addBreadcrumbMock: vi.fn(),
@@ -45,11 +34,11 @@ vi.mock("@/lib/supabaseClient", () => ({
   }),
 }));
 
+import { useRealtimeImpressions } from "@/hooks/useRealtimeImpressions";
 import {
-  useRealtimeImpressions,
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
-} from "@/hooks/useRealtimeImpressions";
+} from "@/lib/realtimeRecovery";
 
 describe("useRealtimeImpressions — R3 fallback", () => {
   beforeEach(() => {

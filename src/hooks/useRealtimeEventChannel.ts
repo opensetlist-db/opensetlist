@@ -9,29 +9,12 @@ import {
   nextEventStatusBoundaryDelay,
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
+import {
+  RECOVERY_DELAY_MS,
+  MAX_RECOVERY_ATTEMPTS,
+} from "@/lib/realtimeRecovery";
 
 export type { ReactionCountsMap };
-
-// R3.5 — bounded time-based auto-recovery (see hook JSDoc).
-//
-// 30s delay: long enough that we're not flapping against a server that
-// just rejected a subscription (give the underlying socket / cluster
-// breathing room), short enough that a user who experienced one drop
-// gets realtime back inside a typical wish-song burst window during a
-// live show.
-//
-// 3 attempts: covers the realistic transient-cause distribution (one
-// network blip, one WiFi handoff, one server hiccup) without letting
-// a pathologically flapping network pin us in an indefinite retry
-// loop. After the budget exhausts we stay on polling for the rest of
-// the page lifetime.
-//
-// Module-scope constants (not hook-scope) so the test file can import
-// them rather than hardcoding 30_000 / 3 in both the implementation
-// and assertions — a future tweak surfaces as a single source-of-truth
-// change with the test suite re-running unchanged.
-export const RECOVERY_DELAY_MS = 30_000;
-export const MAX_RECOVERY_ATTEMPTS = 3;
 
 interface UseRealtimeEventChannelOptions<T> {
   eventId: string;
