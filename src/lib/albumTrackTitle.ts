@@ -31,7 +31,7 @@ export type EnrichedAlbumTrack = AlbumTrackModel & {
 export function getAlbumTrackTitle(
   track: EnrichedAlbumTrack,
   locale: string,
-  t: (key: string) => string,
+  t: (key: string, values?: Record<string, string | number>) => string,
 ): string {
   // Pattern 1 — vocal Song-backed
   if (track.song) {
@@ -54,7 +54,7 @@ export function getAlbumTrackTitle(
   const translated = track.translations?.find((tr) => tr.locale === locale);
   if (translated) return translated.title;
   if (track.title) return track.title;
-  return `Track ${track.trackNumber}`;
+  return t("AlbumTrack.fallbackTrack", { number: track.trackNumber });
 }
 
 function getSongTitle(song: EnrichedSong, locale: string): string {

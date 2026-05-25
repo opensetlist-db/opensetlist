@@ -146,7 +146,8 @@
       "drama": "드라마",
       "bgm": "BGM",
       "karaoke": "가라오케"
-    }
+    },
+    "fallbackTrack": "트랙 {number}"
   },
   "Member": {
     "affiliations": "소속",

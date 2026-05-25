@@ -146,7 +146,8 @@
       "drama": "ドラマ",
       "bgm": "BGM",
       "karaoke": "カラオケ"
-    }
+    },
+    "fallbackTrack": "トラック {number}"
   },
   "Member": {
     "affiliations": "所属",

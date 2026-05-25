@@ -915,17 +915,28 @@ async function importSongs(rows: Record<string, string>[]) {
       { locale: "ko", title: row.ko_title },
       { locale: "en", title: row.en_title },
     ];
-    for (const { locale, title } of localePairs) {
-      const trimmed = (title ?? "").trim();
-      if (!trimmed) continue;
-      await prisma.albumTrackTranslation.upsert({
-        where: { albumTrackId_locale: { albumTrackId, locale } },
-        create: { albumTrackId, locale, title: trimmed },
-        // Empty update preserves the operator's admin-UX edits on
-        // existing locale rows; only missing locales get filled in.
-        update: {},
-      });
-    }
+    // Parallelize the up-to-3 locale upserts per track. Each one is an
+    // independent (albumTrackId, locale) write so they can race safely;
+    // the sequential `for await` we had first reviewed three rows for
+    // every Pattern 3 track when the trimmed-title filter is N/A —
+    // pure latency tax for no ordering benefit.
+    await Promise.all(
+      localePairs
+        .filter(({ title }) => (title ?? "").trim() !== "")
+        .map(({ locale, title }) =>
+          prisma.albumTrackTranslation.upsert({
+            where: { albumTrackId_locale: { albumTrackId, locale } },
+            create: {
+              albumTrackId,
+              locale,
+              title: (title ?? "").trim(),
+            },
+            // Empty update preserves the operator's admin-UX edits on
+            // existing locale rows; only missing locales get filled in.
+            update: {},
+          }),
+        ),
+    );
   };
 
   for (const row of rows) {

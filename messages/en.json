@@ -146,7 +146,8 @@
       "drama": "Drama",
       "bgm": "BGM",
       "karaoke": "Karaoke"
-    }
+    },
+    "fallbackTrack": "Track {number}"
   },
   "Member": {
     "affiliations": "Affiliations",
