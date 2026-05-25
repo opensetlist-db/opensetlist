@@ -901,10 +901,11 @@ model AlbumTrack {
 // No render-time tag injection happens — what's stored is what's
 // rendered as the anchor href.
 //
-// @@unique enforces one row per (album, originalStoreName, editionLabel).
-// Postgres B-tree treats NULL editionLabel as distinct, which is the
-// intended behavior — a 通常盤 (NULL edition) coexists with named
-// editions on the same store.
+// @@unique enforces one row per (album, originalStoreName,
+// originalEditionLabel) when originalEditionLabel is non-NULL. The
+// NULL-edition slice (operator's "通常盤" entries) is handled by a
+// partial unique index in prisma/post-deploy.sql, which Prisma's
+// schema language can't express directly.
 model AlbumStoreListing {
   id                   BigInt                  @id @default(autoincrement())
   albumId              BigInt
