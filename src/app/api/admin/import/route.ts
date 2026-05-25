@@ -705,6 +705,25 @@ async function importSongs(rows: Record<string, string>[]) {
 
     const { translations: allTranslations, removedLocales } = resolveSongTranslations(row);
 
+    // Resolve baseVersionId eagerly so the song_variant_must_have_base
+    // CHECK constraint (post-deploy.sql) is satisfied at INSERT time —
+    // it requires NOT (variantLabel IS NOT NULL AND baseVersionId IS NULL)
+    // for live rows. When the variant row gets INSERTed before its base
+    // exists in the DB (common when the CSV orders a variant row earlier
+    // than its base), we defer variantLabel to NULL for the first pass
+    // and let the second pass restore both fields together once the base
+    // is in place. A literal "-" in baseVersion_slug is a no-op marker
+    // some hand-edited CSVs carry and is treated as no base.
+    const baseSlug = (row.baseVersion_slug ?? "").trim();
+    let resolvedBaseVersionId: bigint | undefined;
+    if (baseSlug && baseSlug !== "-") {
+      const base = await prisma.song.findUnique({ where: { slug: baseSlug } });
+      if (base) resolvedBaseVersionId = base.id;
+    }
+    const wantsVariant = (row.variantLabel ?? "").trim() !== "";
+    const deferVariantToPass2 = wantsVariant && resolvedBaseVersionId === undefined;
+    const variantLabelForPass1 = deferVariantToPass2 ? null : (row.variantLabel || null);
+
     // Upsert Song
     const song = await prisma.song.upsert({
       where: { slug },
@@ -712,14 +731,18 @@ async function importSongs(rows: Record<string, string>[]) {
         slug,
         originalTitle: row.originalTitle,
         originalLanguage: resolveOriginalLanguage(row.originalLanguage),
-        variantLabel: row.variantLabel || null,
+        variantLabel: variantLabelForPass1,
+        baseVersionId: resolvedBaseVersionId,
         releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
         sourceNote: row.sourceNote || null,
       },
       update: {
         originalTitle: row.originalTitle,
         originalLanguage: row.originalLanguage ? resolveOriginalLanguage(row.originalLanguage) : undefined,
-        variantLabel: row.variantLabel || null,
+        variantLabel: variantLabelForPass1,
+        // Only set baseVersionId when resolved here — otherwise leave any
+        // existing value alone for the second pass to finalize.
+        ...(resolvedBaseVersionId !== undefined ? { baseVersionId: resolvedBaseVersionId } : {}),
         releaseDate: row.releaseDate ? new Date(row.releaseDate) : null,
         sourceNote: row.sourceNote || null,
       },
@@ -781,22 +804,29 @@ async function importSongs(rows: Record<string, string>[]) {
     }
   }
 
-  // Second pass: set baseVersionId by slug (needs all songs created first)
+  // Second pass: finalize baseVersionId AND restore variantLabel for any
+  // rows the first pass had to defer (base hadn't landed yet, so we
+  // wrote variantLabel as NULL to satisfy song_variant_must_have_base).
+  // Writing both fields together here keeps the row internally consistent
+  // even on a one-shot import where the variant row precedes its base.
   for (const row of rows) {
     if (!row.baseVersion_slug || !row.slug) continue;
+    const baseSlug = row.baseVersion_slug.trim();
+    if (!baseSlug || baseSlug === "-") continue;
     const song = await prisma.song.findUnique({ where: { slug: row.slug } });
-    const base = await prisma.song.findUnique({ where: { slug: row.baseVersion_slug } });
+    const base = await prisma.song.findUnique({ where: { slug: baseSlug } });
     if (!song) {
       results.push(`WARN: song not found: ${row.slug}`);
       continue;
     }
     if (!base) {
-      results.push(`WARN: baseVersion not found: ${row.baseVersion_slug} (for ${row.slug})`);
+      results.push(`WARN: baseVersion not found: ${baseSlug} (for ${row.slug})`);
       continue;
     }
+    const finalVariantLabel = (row.variantLabel ?? "").trim() || null;
     await prisma.song.update({
       where: { id: song.id },
-      data: { baseVersionId: base.id },
+      data: { baseVersionId: base.id, variantLabel: finalVariantLabel },
     });
   }
 
