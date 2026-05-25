@@ -9,7 +9,7 @@
 //
 // ID strategy:
 //   BigInt @default(autoincrement()) — public-facing tables (appear in URLs)
-//     Artist, Song, Event, EventSeries, SetlistItem
+//     Artist, Song, Event, EventSeries, SetlistItem, Album
 //   String @default(uuid())         — all other tables (junction, translation, community)
 //
 // Soft delete:
@@ -907,7 +907,7 @@ model AlbumTrack {
 // partial unique index in prisma/post-deploy.sql, which Prisma's
 // schema language can't express directly.
 model AlbumStoreListing {
-  id                   BigInt                  @id @default(autoincrement())
+  id                   String                  @id @default(uuid())
   albumId              BigInt
   originalStoreName    String // free-text, no validation
   originalEditionLabel String? // null = single edition (通常盤 fallthrough)
@@ -938,7 +938,7 @@ model AlbumStoreListing {
 // specific column is null.
 model AlbumStoreListingTranslation {
   id           String  @id @default(uuid())
-  listingId    BigInt
+  listingId    String
   locale       String // "ko" | "ja" | "en" | "zh-CN"
   storeName    String? // null → use listing.originalStoreName
   editionLabel String? // null → use listing.originalEditionLabel
@@ -965,8 +965,8 @@ model AlbumStoreListingTranslation {
 // Bonus has no status of its own — listing.status is the source of
 // truth. When the listing ends, all its bonus variants end with it.
 model AlbumStoreBonus {
-  id                       BigInt    @id @default(autoincrement())
-  listingId                BigInt
+  id                       String    @id @default(uuid())
+  listingId                String
   originalBonusType        String // free-text incl. variant marker, e.g. "B2 タペストリー (Mira)"
   originalBonusDescription String?
   originalLanguage         String    @default("ja")
@@ -989,7 +989,7 @@ model AlbumStoreBonus {
 // "override only what you need" pattern as AlbumStoreListingTranslation.
 model AlbumStoreBonusTranslation {
   id               String  @id @default(uuid())
-  bonusId          BigInt
+  bonusId          String
   locale           String
   bonusType        String?
   bonusDescription String?
