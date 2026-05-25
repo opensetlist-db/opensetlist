@@ -77,7 +77,13 @@ export function subscribeToDocumentHidden(callback: () => void): () => void {
 }
 
 export function getDocumentHiddenSnapshot(): boolean {
-  return typeof document !== "undefined" && document.hidden;
+  // Delegates to `isDocumentHidden` so the implementation lives in
+  // exactly one place — push-review CR caught the byte-for-byte
+  // duplicate body that would have let the two predicates drift
+  // independently. `useSyncExternalStore` calls this on every render
+  // to read the current value; the wrapper is virtually free vs the
+  // safety win.
+  return isDocumentHidden();
 }
 
 export function getDocumentHiddenServerSnapshot(): boolean {

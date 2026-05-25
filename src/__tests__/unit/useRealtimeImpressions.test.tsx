@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
+// Flush mount-time microtasks so assertions made immediately after
+// `renderHook` don't pass vacuously while effects are still queued.
+// Same shape as the helper in `useRealtimeEventChannel.test.tsx` —
+// kept inline rather than shared because the file's afterEach uses a
+// different vi.useFakeTimers cadence and the two-Promise resolve is
+// a safe minimum that works in both modes.
+async function flushMicrotasks(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 const { addBreadcrumbMock, captureMessageMock } = vi.hoisted(() => ({
   addBreadcrumbMock: vi.fn(),
   captureMessageMock: vi.fn(),
@@ -351,6 +364,7 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     renderHook(() =>
       useRealtimeImpressions({ eventId: "1", enabled: true }),
     );
+    await flushMicrotasks();
 
     expect(channelMock).not.toHaveBeenCalled();
     expect(removeChannelMock).not.toHaveBeenCalled();
