@@ -19,6 +19,7 @@ import type {
   SongModel,
   SongTranslationModel,
 } from "@/generated/prisma/models";
+import { isKnownAlbumTrackVariant } from "@/lib/albumTrackVariants";
 
 type EnrichedSong = SongModel & { translations?: SongTranslationModel[] };
 
@@ -41,9 +42,15 @@ export function getAlbumTrackTitle(
   // Pattern 2 — off-vocal w/ vocal parent
   // `variant` is the discriminator for the suffix; without it the row
   // shouldn't have a parentSong, but be defensive in case of stale data.
+  // The allowlist guard prevents `t()` from emitting a raw key string
+  // (e.g. "AlbumTrack.variantSuffix.live") if a stale or misspelled
+  // variant ever lands in the DB — we fall back to the raw variant
+  // string in that case so the row stays human-readable.
   if (track.parentSong && track.variant) {
     const base = getSongTitle(track.parentSong, locale);
-    const suffix = t(`AlbumTrack.variantSuffix.${track.variant}`);
+    const suffix = isKnownAlbumTrackVariant(track.variant)
+      ? t(`AlbumTrack.variantSuffix.${track.variant}`)
+      : track.variant;
     return `${base} (${suffix})`;
   }
 

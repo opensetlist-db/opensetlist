@@ -11,6 +11,10 @@ import {
   resolveSongTranslations,
 } from "@/lib/csv-parse";
 import { GroupCategory, GroupType } from "@/generated/prisma/enums";
+import {
+  KNOWN_ALBUM_TRACK_VARIANTS,
+  isKnownAlbumTrackVariant,
+} from "@/lib/albumTrackVariants";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -953,6 +957,17 @@ async function importSongs(rows: Record<string, string>[]) {
 
     const trackType = (row.track_type ?? "").trim() || null;
     const parentSlug = (row.parent_song_slug ?? "").trim() || null;
+    // Reject CSV typos in the variant column up front — a row whose
+    // `track_type` isn't in the canonical allowlist would otherwise
+    // persist a garbage discriminator that `getAlbumTrackTitle` can't
+    // dispatch on, leaving a raw i18n key on every render. Pattern 1
+    // (trackType === null) bypasses this guard by construction.
+    if (trackType !== null && !isKnownAlbumTrackVariant(trackType)) {
+      results.push(
+        `WARN: row references unknown track_type: ${trackType} on album ${albumSlug} disc=${discNumber} track=${trackNumber} (allowed: ${KNOWN_ALBUM_TRACK_VARIANTS.join(", ")})`,
+      );
+      continue;
+    }
     const key = trackKey(albumId, discNumber, trackNumber);
     const existingTrackId = existingTrackIdByKey.get(key);
 
