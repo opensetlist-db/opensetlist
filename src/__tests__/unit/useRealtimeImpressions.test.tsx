@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
+import { flushMicrotasks } from "@/__tests__/helpers/flushMicrotasks";
 
 const { addBreadcrumbMock, captureMessageMock } = vi.hoisted(() => ({
   addBreadcrumbMock: vi.fn(),
@@ -334,6 +335,54 @@ describe("useRealtimeImpressions — R3.5 visibility + auto-recovery", () => {
     });
 
     expect(captureMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not subscribe a channel on mount when document is already hidden (CR — useSyncExternalStore)", async () => {
+    // Page opened in a backgrounded tab. `useSyncExternalStore` reads
+    // `document.hidden` during the first render (via getSnapshot),
+    // so `paused` is `true` from the very first render — the channel-
+    // setup effect early-returns without ever subscribing. Cleaner
+    // than the prior useState-based attempt which would have done a
+    // brief subscribe + immediate teardown.
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    });
+
+    renderHook(() =>
+      useRealtimeImpressions({ eventId: "1", enabled: true }),
+    );
+    await flushMicrotasks();
+
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(removeChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {
+    const { result } = renderHook(() =>
+      useRealtimeImpressions({ eventId: "1", enabled: true }),
+    );
+    await flushMicrotasks();
+
+    expect(capturedSubscribeCallback).not.toBeNull();
+    const subscribeCallback = capturedSubscribeCallback!;
+
+    // Tab goes hidden — pause flips, channel removed.
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+
+    // A stale CHANNEL_ERROR fires from the prior channel's subscribe
+    // callback after the visibility-driven teardown. Without the
+    // early-return guard, this would (a) emit a captureMessage from
+    // a hidden tab and (b) flip pollFallback to true, engaging
+    // useImpressionPolling against a tab the user can't see.
+    await act(async () => {
+      subscribeCallback("CHANNEL_ERROR");
+    });
+
+    expect(captureMessageMock).not.toHaveBeenCalled();
+    expect(result.current.pollFallback).toBe(false);
   });
 
   it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {

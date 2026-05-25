@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import {
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
+  isDocumentHidden,
+  subscribeToDocumentHidden,
+  getDocumentHiddenSnapshot,
+  getDocumentHiddenServerSnapshot,
 } from "@/lib/realtimeRecovery";
 // Import from `src/lib/types/` (cross-layer type module) instead of
 // `@/components/EventImpressions` to avoid the hook ↔ component
@@ -177,14 +181,18 @@ export function useRealtimeImpressions({
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [pollFallback, setPollFallback] = useState(false);
 
-  // R3.5: visibility-driven pause gate. Mirrors `pollFallback` in the
-  // realtime effect's deps so the channel cleans up the instant the
-  // tab is hidden — semantics + rationale documented in detail on the
-  // setlist channel (`useRealtimeEventChannel.ts`). The impressions
-  // hook doesn't do snapshot-refetch on reconnect (see the existing
-  // R3 comment block below the subscription wiring) so visibility
-  // resume just re-subscribes without a fetchSnapshot follow-up.
-  const [paused, setPaused] = useState(false);
+  // R3.5: visibility-driven pause gate. Tied directly to
+  // `document.hidden` via `useSyncExternalStore` — see the matching
+  // declaration in `useRealtimeEventChannel.ts` for the full
+  // rationale. Difference from the setlist channel: this hook does
+  // no fetchSnapshot-on-resume because impressions are append-driven
+  // and the consumer's load-more click already surfaces anything
+  // missed during the away window.
+  const paused = useSyncExternalStore(
+    subscribeToDocumentHidden,
+    getDocumentHiddenSnapshot,
+    getDocumentHiddenServerSnapshot,
+  );
 
   // R3.5: latest-value ref for the visibility listener (mounted once
   // with [] deps) so its closure reads current `pollFallback` without
@@ -238,22 +246,16 @@ export function useRealtimeImpressions({
     setPrevEventId(eventId);
     setPollFallback(false);
     setLastUpdated(null);
-    // R3.5: also reset paused on event change. Ref cleanup for the
-    // same boundary lives in the `[eventId]` useEffect below (refs
-    // may not be mutated during render per `react-hooks/refs` —
-    // state setters in the render-phase block are fine, refs are
-    // not). A fresh event session is a fresh page session
-    // conceptually; the recovery budget belongs to the channel
-    // lifetime.
-    setPaused(false);
+    // No `setPaused(...)` here — `paused` is derived from
+    // `useSyncExternalStore` (see declaration above) and stays in
+    // sync with `document.hidden` automatically across event
+    // changes.
   }
 
   // R3.5: per-event ref cleanup. State setters above are allowed in
   // render (React's "setState during render" pattern), but refs
   // must be mutated outside render. Declared before the channel-
-  // setup effect so the cleanup runs first in declaration order —
-  // see the matching comment block in useRealtimeEventChannel.ts
-  // for the full rationale.
+  // setup effect so the cleanup runs first in declaration order.
   useEffect(() => {
     recoveryAttemptsRef.current = 0;
     if (pendingRecoveryTimeoutRef.current !== null) {
@@ -267,33 +269,29 @@ export function useRealtimeImpressions({
     hasReportedFallbackRef.current = false;
   }, [eventId]);
 
-  // R3.5: visibility listener. Mounted once per hook instance. Mirrors
-  // the setlist channel's pattern — see `useRealtimeEventChannel.ts`
-  // for the full rationale. Difference: this hook does no
-  // fetchSnapshot-on-resume because impressions are append-driven and
-  // the consumer's load-more click already surfaces anything missed.
+  // R3.5: visibility-transition side effects. `paused` itself is
+  // driven by `useSyncExternalStore` above; this effect runs only
+  // for the bookkeeping that transitions trigger — see the matching
+  // block in `useRealtimeEventChannel.ts` for the full rationale.
+  // The impressions hook has no `wasPausedRef` analog because it
+  // doesn't do fetchSnapshot-on-resume; only the recovery-timer
+  // cleanup on hide and the post-resume budget reset on show.
+  const prevPausedRef = useRef(paused);
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onVisibility = () => {
-      if (document.hidden) {
-        setPaused(true);
-        if (pendingRecoveryTimeoutRef.current !== null) {
-          clearTimeout(pendingRecoveryTimeoutRef.current);
-          pendingRecoveryTimeoutRef.current = null;
-        }
-      } else {
-        setPaused(false);
-        if (pollFallbackRef.current) {
-          recoveryAttemptsRef.current = 0;
-          setPollFallback(false);
-        }
+    const wasPrev = prevPausedRef.current;
+    prevPausedRef.current = paused;
+    if (!wasPrev && paused) {
+      if (pendingRecoveryTimeoutRef.current !== null) {
+        clearTimeout(pendingRecoveryTimeoutRef.current);
+        pendingRecoveryTimeoutRef.current = null;
       }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
+    } else if (wasPrev && !paused) {
+      if (pollFallbackRef.current) {
+        recoveryAttemptsRef.current = 0;
+        setPollFallback(false);
+      }
+    }
+  }, [paused]);
 
   // R3.5: cleanup pending recovery timer on unmount only. The
   // channel-setup effect's cleanup runs on every dep change and would
@@ -423,6 +421,13 @@ export function useRealtimeImpressions({
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
+          // R3.5: if the tab is hidden, ignore the error entirely.
+          // The "visibility-driven teardown is silent" contract must
+          // hold across every reachable path — see the matching block
+          // in useRealtimeEventChannel.ts for the full rationale.
+          // CodeRabbit feedback on PR #452.
+          if (isDocumentHidden()) return;
+
           if (!hasReportedFallbackRef.current) {
             hasReportedFallbackRef.current = true;
             Sentry.captureMessage(
@@ -441,16 +446,15 @@ export function useRealtimeImpressions({
           // effect early-returns.
           setPollFallback(true);
 
-          // R3.5: bounded auto-recovery. Only schedule while the tab
-          // is visible AND no timer is already pending. The latter
-          // guard prevents duplicate timers from a rapid CHANNEL_ERROR
-          // burst (CodeRabbit feedback on PR #450). See the setlist
-          // channel's matching block for the full rationale.
+          // R3.5: bounded auto-recovery. Pending-timer guard prevents
+          // duplicate timers from a rapid CHANNEL_ERROR burst
+          // (CodeRabbit feedback on PR #450). No `!document.hidden`
+          // re-check — the early-return above already filtered
+          // hidden-tab errors out of this entire branch. See the
+          // setlist channel's matching block for the full rationale.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
-            pendingRecoveryTimeoutRef.current === null &&
-            typeof document !== "undefined" &&
-            !document.hidden
+            pendingRecoveryTimeoutRef.current === null
           ) {
             recoveryAttemptsRef.current += 1;
             const attempt = recoveryAttemptsRef.current;

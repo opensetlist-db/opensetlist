@@ -1,16 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-
-// Flush a microtask so an awaited Promise inside `useEffect` (the
-// snapshot fetch) settles before the next assertion. We can't use
-// `waitFor` from RTL — it polls with real setTimeout, which is faked
-// in this suite — so this is the manual equivalent.
-async function flushMicrotasks(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
+import { flushMicrotasks } from "@/__tests__/helpers/flushMicrotasks";
 
 // ── Sentry mock ────────────────────────────────────────────────────
 // vi.mock factories are hoisted above the imports — so they execute
@@ -708,6 +698,69 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
       await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS * 2);
     });
     expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
+  });
+
+  it("does not subscribe a channel on mount when document is already hidden (CR — useSyncExternalStore)", async () => {
+    // `useSyncExternalStore` reads `document.hidden` during the first
+    // render (via getSnapshot), so `paused` is `true` from the very
+    // first render — the channel-setup effect early-returns without
+    // ever subscribing.
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    });
+
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(channelMock).not.toHaveBeenCalled();
+    expect(removeChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores CHANNEL_ERROR while the tab is hidden — no captureMessage, no pollFallback flip (CR)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(capturedSubscribeCallback).not.toBeNull();
+    const subscribeCallback = capturedSubscribeCallback!;
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+
+    // Stale CHANNEL_ERROR from the prior channel's subscribe callback
+    // arriving after the visibility-driven teardown — early-return
+    // guard suppresses captureMessage and pollFallback flip.
+    await act(async () => {
+      subscribeCallback("CHANNEL_ERROR");
+    });
+
+    expect(captureMessageMock).not.toHaveBeenCalled();
+    // pollFallback never flipped, so the polling fallback never
+    // started — useSetlistPolling's mount-time fetch is the only
+    // fetch we'd see, and only the initial seed fetch ran.
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {

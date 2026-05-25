@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
 import { useSetlistPolling } from "@/hooks/useSetlistPolling";
@@ -12,6 +18,10 @@ import {
 import {
   RECOVERY_DELAY_MS,
   MAX_RECOVERY_ATTEMPTS,
+  isDocumentHidden,
+  subscribeToDocumentHidden,
+  getDocumentHiddenSnapshot,
+  getDocumentHiddenServerSnapshot,
 } from "@/lib/realtimeRecovery";
 
 export type { ReactionCountsMap };
@@ -233,19 +243,33 @@ export function useRealtimeEventChannel<T>({
   // happened in a backgrounded tab.
   const [pollFallback, setPollFallback] = useState(false);
 
-  // R3.5: visibility-driven pause gate. Mirrors `pollFallback` in the
-  // realtime effect's deps array so the channel cleans up the instant
-  // the tab is hidden. Separate from `pollFallback` because the
-  // semantics differ — `pollFallback` says "realtime is dead, polling
-  // takes over"; `paused` says "the user can't see this tab anyway,
-  // don't bother holding a heartbeat-throttled channel that's about
-  // to be killed by the browser". Polling stays in its current
-  // enabled/disabled state across the pause (mirrors the rest of the
-  // page — `useImpressionPolling`, `useSetlistPolling` in the
-  // LiveEventLayout — none of which know about visibility either; the
-  // browser throttles their setInterval the same way it throttles the
-  // socket, so they harmlessly drift until the tab is visible again).
-  const [paused, setPaused] = useState(false);
+  // R3.5: visibility-driven pause gate. Tied directly to
+  // `document.hidden` via `useSyncExternalStore` — React's blessed
+  // pattern for subscribing component state to an external reactive
+  // source. Replaces the earlier useState + visibility-listener
+  // useEffect pair, which the push-review hook on PR #452 flagged
+  // (lazy initializer = hydration hazard; mount-time `setState` in
+  // an effect body = `react-hooks/set-state-in-effect` violation).
+  //
+  // The store's three callbacks: subscribe attaches/detaches the
+  // listener (React calls them automatically on mount/unmount);
+  // getSnapshot reads the current value during render; the SSR
+  // snapshot returns a constant `false` so server-rendered HTML is
+  // identical to client first-render HTML (React reconciles the
+  // post-hydration `document.hidden` read into state on the next
+  // tick if they differ — no manual sync needed).
+  //
+  // Semantics unchanged vs the prior `paused` state: `pollFallback`
+  // means "realtime is dead, polling takes over"; `paused` means
+  // "user can't see this tab, don't hold a heartbeat-throttled
+  // channel". Polling stays in its current enabled/disabled state
+  // across the pause — the browser throttles `setInterval` the same
+  // way it throttles the socket.
+  const paused = useSyncExternalStore(
+    subscribeToDocumentHidden,
+    getDocumentHiddenSnapshot,
+    getDocumentHiddenServerSnapshot,
+  );
 
   // R3.5: latest-value refs so the visibility listener (mounted once
   // in a separate effect with `[]` deps) can read current state
@@ -343,13 +367,11 @@ export function useRealtimeEventChannel<T>({
     // bound to the channel's lifetime, and the channel restarts on
     // any of [eventId, locale, enabled, pollFallback, paused] changing.
     setPollFallback(false);
-    // Also reset paused — visibility state happens to apply to the
-    // page, but the per-event recovery budget belongs to the
-    // event session. Navigating to a new event is conceptually a
-    // fresh page session. Ref cleanup for the same boundary lives
-    // in the `[eventId]` useEffect below (refs may not be mutated
-    // during render per `react-hooks/refs`).
-    setPaused(false);
+    // No `setPaused(...)` here: `paused` is now derived from
+    // `useSyncExternalStore` (see the declaration above), so visibility
+    // state stays in sync without any manual reset — covers both
+    // mount-in-background-tab and programmatic-navigation-while-hidden
+    // cases for free.
   }
 
   // R3.5: per-event ref cleanup. State setters in the render-phase
@@ -379,62 +401,47 @@ export function useRealtimeEventChannel<T>({
     hasReportedFallbackRef.current = false;
   }, [eventId]);
 
-  // R3.5: visibility listener. Mounted once per hook instance — adding
-  // [eventId, ...] to its deps would re-attach the listener on every
-  // navigation, which doesn't help (a single global listener handles
-  // page-level visibility) and would briefly leave the page with no
-  // listener during the React commit gap. Listener uses refs so its
-  // closure doesn't capture stale state — `pollFallbackRef` for the
-  // resume-while-fallback path, no other state read.
+  // R3.5: visibility-transition side effects. `paused` itself is
+  // driven by `useSyncExternalStore` above (channel cleanup on hide
+  // / re-subscribe on resume happens via the channel-setup effect's
+  // dep on `paused`); this effect runs ONLY for the cross-cutting
+  // bookkeeping that those transitions trigger:
   //
-  // SSR guard: `document` is undefined in the Next.js server bundle.
-  // This hook is "use client", so the effect only runs in the browser,
-  // but the bundle still gets parsed server-side during build — and a
-  // top-level `document.addEventListener` would crash. The `typeof`
-  // check is the standard pattern (matches every other client-only
-  // hook in this codebase that touches DOM globals).
+  //   - On hide (paused: false → true): mark `wasPausedRef` so the
+  //     eventual SUBSCRIBED-after-resume is treated as a reconnect
+  //     (gap-fill refetch), and cancel any pending recovery timer
+  //     (no point spinning up a channel we're about to tear down).
+  //
+  //   - On resume (paused: true → false): if we'd already fallen
+  //     back to polling while hidden, give realtime a fresh shot.
+  //     Reset the recovery budget — background-throttle failures
+  //     aren't real network/server problems and shouldn't count
+  //     against visible-tab attempts.
+  //
+  // `prevPausedRef` discriminates direction so we don't re-fire the
+  // hide side effects on every re-render that happens to commit
+  // while paused. The `eslint-disable-next-line` comments below
+  // suppress `react-hooks/set-state-in-effect` — the setState here
+  // IS the intentional sync from external (DOM) visibility state to
+  // React, which is the precise use case React.dev calls out as
+  // legitimate. The cascading render is the design.
+  const prevPausedRef = useRef(paused);
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const onVisibility = () => {
-      if (document.hidden) {
-        // Tab is going away. Mark the pause so the eventual SUBSCRIBED
-        // on resume triggers a snapshot refetch (gap-fill for missed
-        // pushes during the away window), flip `paused` so the channel
-        // effect cleans up the open channel right now (don't wait for
-        // the browser to start throttling our heartbeats), and cancel
-        // any pending auto-recovery timer (no point spinning up a
-        // channel we're about to tear down).
-        wasPausedRef.current = true;
-        setPaused(true);
-        if (pendingRecoveryTimeoutRef.current !== null) {
-          clearTimeout(pendingRecoveryTimeoutRef.current);
-          pendingRecoveryTimeoutRef.current = null;
-        }
-      } else {
-        // User is back. Release `paused` so the channel effect
-        // re-subscribes. If we'd already fallen back to polling
-        // (likely cause: a CHANNEL_ERROR while the tab was hidden,
-        // because supabase-js's heartbeat retries exhausted while the
-        // browser was throttling them — though this entire path is
-        // designed to AVOID that by pausing first, this branch covers
-        // the race where the failure beats the visibilitychange
-        // listener), give realtime a fresh shot. Resetting the
-        // recovery budget here is intentional: the prior failure was
-        // background-throttle-flavored, not a real "this network /
-        // server is broken" signal, so it shouldn't count against
-        // visible-tab attempts.
-        setPaused(false);
-        if (pollFallbackRef.current) {
-          recoveryAttemptsRef.current = 0;
-          setPollFallback(false);
-        }
+    const wasPrev = prevPausedRef.current;
+    prevPausedRef.current = paused;
+    if (!wasPrev && paused) {
+      wasPausedRef.current = true;
+      if (pendingRecoveryTimeoutRef.current !== null) {
+        clearTimeout(pendingRecoveryTimeoutRef.current);
+        pendingRecoveryTimeoutRef.current = null;
       }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
+    } else if (wasPrev && !paused) {
+      if (pollFallbackRef.current) {
+        recoveryAttemptsRef.current = 0;
+        setPollFallback(false);
+      }
+    }
+  }, [paused]);
 
   // R3.5: cleanup pending recovery timer on unmount. The channel-
   // setup effect's cleanup runs on every dep change (pollFallback,
@@ -791,6 +798,23 @@ export function useRealtimeEventChannel<T>({
           channelStatus === "CHANNEL_ERROR" ||
           channelStatus === "TIMED_OUT"
         ) {
+          // R3.5: if the tab is hidden, ignore the error entirely.
+          // The "visibility-driven teardown is silent" contract must
+          // hold across every reachable path — a stale subscribe
+          // callback firing after the visibility hide handler has
+          // already torn the channel down (rare but possible if
+          // supabase-js queued the status transition before the
+          // `removeChannel` took effect) would otherwise (a) emit a
+          // captureMessage from a tab the user can't see (noise),
+          // (b) flip `pollFallback` to true and engage
+          // `useSetlistPolling` against a backgrounded tab (wasted
+          // 5s polling cycles the user won't see), and (c) consume
+          // a recovery budget attempt against what's really a
+          // background-throttle artifact. The visibility resume path
+          // handles re-subscribe with a fresh budget regardless.
+          // CodeRabbit feedback on PR #452.
+          if (isDocumentHidden()) return;
+
           // First fallback per session: tell Sentry. Subsequent
           // status churn (post-recovery re-failures, retry storms)
           // stays in the breadcrumb stream only — the operator only
@@ -810,11 +834,7 @@ export function useRealtimeEventChannel<T>({
           // aborted) and the next render's useEffect early-returns.
           setPollFallback(true);
 
-          // R3.5: bounded auto-recovery. Only schedule when the tab
-          // is visible — a hidden-tab failure means the visibility
-          // resume path will handle re-subscribe with a fresh budget
-          // (failures during background throttling aren't real
-          // network/server problems). Each attempt counts against
+          // R3.5: bounded auto-recovery. Each attempt counts against
           // MAX_RECOVERY_ATTEMPTS. The setTimeout fires
           // setPollFallback(false), which triggers the effect to
           // re-run and re-subscribe; if that fails again, the new
@@ -828,11 +848,13 @@ export function useRealtimeEventChannel<T>({
           // a stale closure from a prior effect lifecycle), we don't
           // want two concurrent setTimeouts racing to flip the same
           // flag. CodeRabbit feedback on PR #450.
+          //
+          // No `!document.hidden` re-check here — the early-return
+          // above already filtered hidden-tab errors out of this
+          // entire branch.
           if (
             recoveryAttemptsRef.current < MAX_RECOVERY_ATTEMPTS &&
-            pendingRecoveryTimeoutRef.current === null &&
-            typeof document !== "undefined" &&
-            !document.hidden
+            pendingRecoveryTimeoutRef.current === null
           ) {
             recoveryAttemptsRef.current += 1;
             const attempt = recoveryAttemptsRef.current;
