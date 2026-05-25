@@ -635,7 +635,7 @@ async function importAlbums(rows: Record<string, string>[]) {
 
     const existing = await prisma.album.findUnique({ where: { slug } });
 
-    let albumId: string;
+    let albumId: bigint;
     if (existing) {
       await prisma.album.update({
         where: { slug },
