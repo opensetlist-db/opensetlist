@@ -38,8 +38,11 @@ import { serializeBigInt } from "@/lib/utils";
 // independent of both flags above. It filters results server-side to
 // songs by artists tied to a given event / series / explicit artist
 // list. Default (param omitted) is `all`, which preserves v1 catalog-
-// wide behavior — admin SetlistBuilder relies on that default because
-// the operator legitimately records guest-IP songs.
+// wide behavior. Admin SetlistBuilder used to rely on that default for
+// guest-IP song entry, but post-Nijigasaki (2026-05) it sends
+// `scope=event` by default and exposes an explicit "전체 카탈로그
+// 검색" toggle that flips back to `scope=all` only when the operator
+// is intentionally recording a guest / cross-IP collaboration song.
 //
 // Resolution rules (per task-week3-songsearch-v2-scope-filter.md):
 //   scope=event   → event.eventSeries.artistId ∪
