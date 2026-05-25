@@ -57,8 +57,13 @@ vi.mock("@/lib/supabaseClient", () => ({
 // Imports come AFTER the mocks above so the hook resolves the mocked
 // modules at load time.
 import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
+import {
+  RECOVERY_DELAY_MS,
+  MAX_RECOVERY_ATTEMPTS,
+} from "@/lib/realtimeRecovery";
 import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
 import type { FanTop3Entry } from "@/lib/types/setlist";
+import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
 const initialItems: unknown[] = [];
 const initialReactionCounts = {};
@@ -91,12 +96,22 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
     );
+    // Default to visible. R3.5 paused-gate would early-return the
+    // channel-setup effect if hidden, breaking every pre-R3.5 test.
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
   });
 
   it("flips to polling fallback on CHANNEL_ERROR", async () => {
@@ -461,5 +476,313 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     });
     await flushMicrotasks();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// R3.5 — visibility handling + bounded auto-recovery
+//
+// Sentry issue 7485048757: ~19 fallbacks/day baseline. Dominant cause
+// per breadcrumb analysis: macOS Chrome background-tab throttling (11
+// minutes of silent breadcrumbs preceding the CHANNEL_ERROR pair on
+// both channels). Visibility hide proactively tears the channel down
+// (no CHANNEL_ERROR emitted); visibility resume re-subscribes AND
+// triggers fetchSnapshot to gap-fill missed pushes. Bounded
+// time-based auto-recovery handles failures that occur while the tab
+// is visible (network blip, momentary server reject).
+// ────────────────────────────────────────────────────────────────────
+
+describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    capturedSubscribeCallback = null;
+    addBreadcrumbMock.mockClear();
+    captureMessageMock.mockClear();
+    channelMock.mockClear();
+    removeChannelMock.mockClear();
+    fakeChannel.on.mockClear();
+    fakeChannel.subscribe.mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
+    );
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  it("tears down channel when document becomes hidden, re-subscribes on visible", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    expect(removeChannelMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("triggers a snapshot refetch after visibility resume (gap-fill missed pushes)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    // Mount-time seed fetch.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // First SUBSCRIBED — initial join. No refetch.
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Hide + show — fresh channel set up.
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+
+    // Post-resume SUBSCRIBED — `wasPausedRef` was set on hide, so the
+    // SUBSCRIBED handler treats this as a reconnect and calls
+    // fetchSnapshot.
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT emit captureMessage when channel tear-down is visibility-driven", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+
+    expect(captureMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("schedules auto-recovery after CHANNEL_ERROR while tab is visible", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+
+    // After RECOVERY_DELAY_MS, setPollFallback(false) fires → effect
+    // re-runs → channel re-subscribes.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+    });
+    await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT schedule auto-recovery when CHANNEL_ERROR fires while tab is hidden", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+
+    const channelCallsBefore = channelMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS * 2);
+    });
+    expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
+  });
+
+  it("exhausts the recovery budget after MAX_RECOVERY_ATTEMPTS", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+      await act(async () => {
+        capturedSubscribeCallback!("CHANNEL_ERROR");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+      });
+      await flushMicrotasks();
+    }
+
+    // One more CHANNEL_ERROR — budget gone, no further re-subscribe.
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    const channelCallsBefore = channelMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS * 2);
+    });
+    expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
+  });
+
+  it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    // Two CHANNEL_ERRORs in rapid succession — without the
+    // `pendingRecoveryTimeoutRef.current === null` guard the second
+    // would have scheduled a second timer (CodeRabbit feedback on
+    // PR #450).
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+    });
+    await flushMicrotasks();
+
+    // Channel re-subscribed exactly once (initial + one recovery
+    // attempt). A duplicate timer would have produced 3+ calls.
+    expect(channelMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("visibility resume from pollFallback=true resets the budget and re-attempts realtime", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    // Burn the full budget while visible.
+    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+      await act(async () => {
+        capturedSubscribeCallback!("CHANNEL_ERROR");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+      });
+      await flushMicrotasks();
+    }
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    const channelCallsAfterBudgetGone = channelMock.mock.calls.length;
+
+    // Hide + show — budget reset, fallback cleared, channel re-subscribes.
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+    await flushMicrotasks();
+
+    expect(channelMock.mock.calls.length).toBeGreaterThan(
+      channelCallsAfterBudgetGone,
+    );
   });
 });
