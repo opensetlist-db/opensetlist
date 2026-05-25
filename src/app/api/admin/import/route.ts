@@ -715,12 +715,28 @@ async function importSongs(rows: Record<string, string>[]) {
         .filter((s) => s !== "" && s !== "-"),
     ),
   );
-  const preExistingBases = distinctBaseSlugs.length === 0
+  // Variant rows' own slugs — needed by the second pass to look up the
+  // freshly upserted row whose baseVersionId it has to finalize. We
+  // collect both sets up front and combine into one findMany so neither
+  // the first nor the second pass needs per-row DB calls just to
+  // resolve a slug → id.
+  const variantRowSlugs = rows
+    .filter((r) => {
+      const bs = (r.baseVersion_slug ?? "").trim();
+      return bs !== "" && bs !== "-" && !!r.slug;
+    })
+    .map((r) => r.slug);
+  const slugsToPrefetch = Array.from(new Set([...distinctBaseSlugs, ...variantRowSlugs]));
+  // The Map starts populated with whatever Songs already exist in the
+  // DB for the relevant slugs, then the first pass appends each row it
+  // upserts. By the time the second pass runs, the Map covers every
+  // base and every variant row in the CSV.
+  const songIdBySlug: Map<string, bigint> = slugsToPrefetch.length === 0
     ? new Map<string, bigint>()
     : new Map(
         (
           await prisma.song.findMany({
-            where: { slug: { in: distinctBaseSlugs } },
+            where: { slug: { in: slugsToPrefetch } },
             select: { slug: true, id: true },
           })
         ).map((s) => [s.slug, s.id] as [string, bigint]),
@@ -741,7 +757,7 @@ async function importSongs(rows: Record<string, string>[]) {
     // here and get picked up by the second pass.
     const baseSlug = (row.baseVersion_slug ?? "").trim();
     const resolvedBaseVersionId: bigint | undefined =
-      baseSlug && baseSlug !== "-" ? preExistingBases.get(baseSlug) : undefined;
+      baseSlug && baseSlug !== "-" ? songIdBySlug.get(baseSlug) : undefined;
     const wantsVariant = (row.variantLabel ?? "").trim() !== "";
     const deferVariantToPass2 = wantsVariant && resolvedBaseVersionId === undefined;
     const variantLabelForPass1 = deferVariantToPass2 ? null : (row.variantLabel || null);
@@ -769,6 +785,11 @@ async function importSongs(rows: Record<string, string>[]) {
         sourceNote: row.sourceNote || null,
       },
     });
+
+    // Keep the slug→id map fresh for the second pass — newly upserted
+    // rows (whose slug wasn't in the prefetch result because the row is
+    // brand new) need to be findable without a per-row findUnique.
+    songIdBySlug.set(slug, song.id);
 
     if (!seenSlugs.has(slug)) {
       seenSlugs.add(slug);
@@ -835,20 +856,24 @@ async function importSongs(rows: Record<string, string>[]) {
     if (!row.baseVersion_slug || !row.slug) continue;
     const baseSlug = row.baseVersion_slug.trim();
     if (!baseSlug || baseSlug === "-") continue;
-    const song = await prisma.song.findUnique({ where: { slug: row.slug } });
-    const base = await prisma.song.findUnique({ where: { slug: baseSlug } });
-    if (!song) {
+    // Both lookups served by the songIdBySlug map populated above —
+    // pre-existing rows came from the prefetch, freshly upserted rows
+    // were added during the first pass. No per-row DB roundtrips here
+    // beyond the update itself.
+    const songId = songIdBySlug.get(row.slug);
+    const baseId = songIdBySlug.get(baseSlug);
+    if (!songId) {
       results.push(`WARN: song not found: ${row.slug}`);
       continue;
     }
-    if (!base) {
+    if (!baseId) {
       results.push(`WARN: baseVersion not found: ${baseSlug} (for ${row.slug})`);
       continue;
     }
     const finalVariantLabel = (row.variantLabel ?? "").trim() || null;
     await prisma.song.update({
-      where: { id: song.id },
-      data: { baseVersionId: base.id, variantLabel: finalVariantLabel },
+      where: { id: songId },
+      data: { baseVersionId: baseId, variantLabel: finalVariantLabel },
     });
   }
 
