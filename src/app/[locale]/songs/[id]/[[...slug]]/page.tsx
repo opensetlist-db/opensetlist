@@ -68,6 +68,33 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // every full SongPage render fired the nested-include mega-query
 // twice (~220ms each in Sentry trace
 // feb38ab569e7432b8960b6a42f6cffaf).
+//
+// `albumTracks` + `_count.setlistItems` folded inline (Sentry issue
+// 7504931765, traced on /en/songs/12/kibouteki-prism): the previous
+// standalone `prisma.albumTrack.findFirst` (`getFirstAlbumTrack`,
+// 190.7ms) and `prisma.setlistItemSong.count` (`getPerformanceCount`,
+// 182.7ms) were both parallel siblings under the page render parent,
+// sharing Sentry's prisma db_query group hash with `Song.findFirst`
+// and `SetlistItemSong.findMany take:50` — five sibling spans hashing
+// to one group trips the ≥4 N+1 detector. Folding the album +
+// performance-count reads into this query's LATERAL tree drops the
+// page's prisma fan-out from 5 → 3 (Song + Performances + variant
+// groupBy), comfortably below the detector threshold while keeping
+// the variant `groupBy` isolated (cross-variant aggregation,
+// SQL-efficient as a single set operation — see `page.tsx:512`).
+//
+// `albumTracks: { take: 1 }` picks the earliest-released album as
+// the canonical "first" (matches the prior `getFirstAlbumTrack`
+// semantics: `album.releaseDate ASC, discNumber ASC, trackNumber
+// ASC` is deterministic regardless of insertion order and matches
+// the user's mental model — "the album where this song first
+// appeared"; disc/track as secondary so re-issues + special editions
+// don't overrule the original release).
+//
+// `_count: { select: { setlistItems: { where: ... } } }` mirrors the
+// prior `getPerformanceCount` filter exactly (`SetlistItem.isDeleted
+// = false AND Event.isDeleted = false`) so the sidebar's "total
+// performances" number is identical pre/post-fold.
 const getSong = cache(async (id: bigint) => {
   const song = await prisma.song.findFirst({
     where: { id, isDeleted: false },
@@ -91,31 +118,39 @@ const getSong = cache(async (id: bigint) => {
           },
         },
       },
+      // First album by release date (multi-album: earliest wins).
+      // Replaces the standalone `getFirstAlbumTrack` helper — see
+      // the comment block above for the Sentry-issue context.
+      albumTracks: {
+        take: 1,
+        orderBy: [
+          { album: { releaseDate: "asc" } },
+          { discNumber: "asc" },
+          { trackNumber: "asc" },
+        ],
+        include: {
+          album: { include: { translations: true } },
+        },
+      },
+      // Total active performance count. Filter mirrors the prior
+      // `getPerformanceCount` exactly — see the comment block above.
+      _count: {
+        select: {
+          setlistItems: {
+            where: {
+              setlistItem: {
+                isDeleted: false,
+                event: { isDeleted: false },
+              },
+            },
+          },
+        },
+      },
     },
   });
   if (!song) return null;
   return serializeBigInt(song);
 });
-
-async function getFirstAlbumTrack(songId: bigint) {
-  // Multi-album case: pick the earliest-released album as the
-  // canonical "first" — deterministic regardless of insertion order
-  // and matches the user's mental model ("the album where this song
-  // first appeared"). Disc/track is the secondary key so re-issues
-  // and special editions don't overrule the original release.
-  const track = await prisma.albumTrack.findFirst({
-    where: { songId },
-    include: {
-      album: { include: { translations: true } },
-    },
-    orderBy: [
-      { album: { releaseDate: "asc" } },
-      { discNumber: "asc" },
-      { trackNumber: "asc" },
-    ],
-  });
-  return track ? serializeBigInt(track) : null;
-}
 
 // Wrapped in `react.cache()` for the same reason as `getSong` above:
 // `generateMetadata` now consumes the performance list to derive the
@@ -179,15 +214,6 @@ const getSongPerformances = cache(async (songId: bigint) => {
   });
   return serializeBigInt(performances);
 });
-
-async function getPerformanceCount(songId: bigint) {
-  return prisma.setlistItemSong.count({
-    where: {
-      songId,
-      setlistItem: { isDeleted: false, event: { isDeleted: false } },
-    },
-  });
-}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
@@ -274,14 +300,20 @@ export default async function SongPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  const [song, albumTrack, performances, performanceCount] = await Promise.all([
+  // `getSong` now carries the first AlbumTrack + the total performance
+  // count inline via its `albumTracks: { take: 1 }` + `_count.setlistItems`
+  // includes — see the comment block on `getSong` above for the
+  // Sentry-issue context (issue 7504931765). Page render fans out to
+  // 2 prisma queries now (Song + Performances) instead of the prior 4.
+  const [song, performances] = await Promise.all([
     getSong(songId),
-    getFirstAlbumTrack(songId),
     getSongPerformances(songId),
-    getPerformanceCount(songId),
   ]);
 
   if (!song) notFound();
+
+  const albumTrack = song.albumTracks[0] ?? null;
+  const performanceCount = song._count.setlistItems;
 
   const [t, ct, et, at] = await Promise.all([
     getTranslations("Song"),
