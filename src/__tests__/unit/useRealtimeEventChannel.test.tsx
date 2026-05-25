@@ -1,16 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-
-// Flush a microtask so an awaited Promise inside `useEffect` (the
-// snapshot fetch) settles before the next assertion. We can't use
-// `waitFor` from RTL — it polls with real setTimeout, which is faked
-// in this suite — so this is the manual equivalent.
-async function flushMicrotasks(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
+import { flushMicrotasks } from "@/__tests__/helpers/flushMicrotasks";
 
 // ── Sentry mock ────────────────────────────────────────────────────
 // vi.mock factories are hoisted above the imports — so they execute
