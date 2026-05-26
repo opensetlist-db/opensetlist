@@ -40,7 +40,19 @@ export function classifyImageSource(url: string): ImageSource {
   if (host.endsWith(".media-amazon.com") || AMAZON_HOSTS.has(host)) {
     return { label: "Amazon", color: "bg-amber-100 text-amber-700", warn: false };
   }
-  const r2Host = process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
+  // Read order: server-only `R2_PUBLIC_HOST` first, then the public
+  // `NEXT_PUBLIC_R2_PUBLIC_HOST` as the build-inlined fallback. The
+  // public var is what the client bundle sees (Next.js inlines it
+  // at build time); the server-only var is what server components +
+  // route handlers should read so the host isn't unnecessarily
+  // baked into the client bundle when SSR is the only caller. Both
+  // share a single source of truth — keep them set to the same R2
+  // hostname in Vercel env config. Push-review hook flagged the
+  // single-var read because the server path was relying on a
+  // NEXT_PUBLIC_* leak, which works but advertises the host into
+  // the client bundle even on pages that never call this helper.
+  const r2Host =
+    process.env.R2_PUBLIC_HOST ?? process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
   if (r2Host && host === r2Host.toLowerCase()) {
     return { label: "R2", color: "bg-emerald-100 text-emerald-700", warn: false };
   }
