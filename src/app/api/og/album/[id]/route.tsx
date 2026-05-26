@@ -1,4 +1,5 @@
 import { ImageResponse } from "@vercel/og";
+import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
@@ -98,6 +99,21 @@ export async function GET(req: Request, { params }: Props) {
       ? (getArtistColor(primaryArtist) ?? BRAND_GRADIENT)
       : BRAND_GRADIENT;
 
+    // Localize the type badge so the OG unfurl shows "라이브 BD" /
+    // "ライブBD" / "Live BD" instead of the raw `AlbumType` enum
+    // value (`live_album` / `single` / ...). Falls back to the raw
+    // value if the locale/key combo somehow misses — the messages
+    // file ships every AlbumType key per locale so this should only
+    // ever happen on a malformed manual cache invalidation.
+    const albumT = await getTranslations({ locale: lang, namespace: "Album" });
+    const typeLabel = (() => {
+      try {
+        return albumT(`type.${album.type}`);
+      } catch {
+        return album.type;
+      }
+    })();
+
     const fonts = await loadFontsSafe();
 
     return new ImageResponse(
@@ -130,7 +146,7 @@ export async function GET(req: Request, { params }: Props) {
               marginBottom: 28,
             }}
           >
-            {album.type}
+            {typeLabel}
           </div>
           <div
             style={{
