@@ -199,9 +199,17 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2025"
     ) {
+      // P2025 here covers two cases: (a) the track itself was
+      // deleted in a race between findUnique and update; (b) a
+      // connect target (song / parentSong) doesn't resolve. The
+      // first dominates the user-visible diagnostic — return 404
+      // with the track-not-found message and stay consistent with
+      // album-listings/[id]'s PATCH. The bad-FK case (b) on POST
+      // is still 400 because there the track itself doesn't exist
+      // yet.
       return NextResponse.json(
-        { error: "연결 대상(곡/원곡)을 찾을 수 없습니다." },
-        { status: 400 },
+        { error: "트랙을 찾을 수 없습니다." },
+        { status: 404 },
       );
     }
     throw e;
