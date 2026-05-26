@@ -63,9 +63,27 @@ export const getAlbumRelatedEvents = cache(
       },
     };
 
+    // Both query paths filter out soft-deleted EventSeries via the
+    // outer where (Prisma doesn't support `where` on a to-one
+    // `include`, and Event.eventSeries is to-one). The OR clause
+    // keeps standalone events (eventSeriesId IS NULL) while
+    // excluding events whose series has been soft-deleted by the
+    // operator — without this, a deleted series would still surface
+    // its translated label in the bucket header.
+    const eventSeriesFilter = {
+      OR: [
+        { eventSeriesId: null },
+        { eventSeries: { isDeleted: false } },
+      ],
+    };
+
     if (albumType === AlbumType.live_album) {
       const rows = await prisma.event.findMany({
-        where: { bdAlbumId: albumId, isDeleted: false },
+        where: {
+          bdAlbumId: albumId,
+          isDeleted: false,
+          ...eventSeriesFilter,
+        },
         include,
         orderBy: { startTime: "desc" },
         take: 50,
@@ -95,6 +113,7 @@ export const getAlbumRelatedEvents = cache(
     const rows = await prisma.event.findMany({
       where: {
         isDeleted: false,
+        ...eventSeriesFilter,
         setlistItems: {
           some: {
             isDeleted: false,
