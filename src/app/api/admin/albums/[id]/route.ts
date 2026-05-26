@@ -202,19 +202,29 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     }
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
-    if (
-      e instanceof Prisma.PrismaClientKnownRequestError &&
-      e.code === "P2002"
-    ) {
-      // Unique constraint — `slug` is the only @unique on Album that
-      // PATCH can collide on; if somehow another constraint surfaces
-      // (e.g. NULL-edition listing carve-out via post-deploy partial
-      // index) the message still points the operator at the slug field
-      // for triage, which is the most common cause.
-      return NextResponse.json(
-        { error: "이미 사용 중인 슬러그입니다." },
-        { status: 409 },
-      );
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2002") {
+        // Unique constraint — `slug` is the only @unique on Album
+        // that PATCH can collide on; if somehow another constraint
+        // surfaces (e.g. NULL-edition listing carve-out via post-
+        // deploy partial index) the message still points the operator
+        // at the slug field for triage.
+        return NextResponse.json(
+          { error: "이미 사용 중인 슬러그입니다." },
+          { status: 409 },
+        );
+      }
+      if (e.code === "P2003") {
+        // FK violation — one of the artistIds in the body doesn't
+        // resolve to an Artist row. The album itself is fine; the
+        // operator picked a stale option. 400 is the right shape
+        // (client-fixable bad input) rather than 404 (the album
+        // would-be-target case in create routes).
+        return NextResponse.json(
+          { error: "잘못된 아티스트 ID입니다." },
+          { status: 400 },
+        );
+      }
     }
     throw e;
   }
