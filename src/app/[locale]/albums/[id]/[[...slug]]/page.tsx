@@ -7,7 +7,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { TabBar } from "@/components/TabBar";
-import { colors } from "@/styles/tokens";
+import { colors, radius } from "@/styles/tokens";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 
@@ -135,20 +135,25 @@ export async function generateMetadata({
   const description = t("meta.descriptionTemplate", { title });
 
   const ogImage = `/api/og/album/${id}?lang=${normalizeOgLocale(locale)}`;
-  const pageUrl = `/${locale}/albums/${id}/${album.slug}`;
+  // Numeric ID is the canonical URL per CLAUDE.md's URL strategy
+  // ("Numeric ID is canonical — slug is decorative only, for SEO and
+  // readability."). The slug-bearing path is a display variant that
+  // crawlers should be told to consolidate onto the numeric URL.
+  const canonicalUrl = `/${locale}/albums/${id}`;
+  const displayUrl = `/${locale}/albums/${id}/${album.slug}`;
 
   return {
     title: fullTitle,
     description,
-    // Canonical pin to the slug-bearing URL even though the page-side
-    // permanentRedirect (below) catches any non-canonical incoming
-    // path on its own. Belt and suspenders for crawlers that arrive
-    // via a redirect-following mode that still emits the original URL.
-    alternates: { canonical: pageUrl },
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: fullTitle,
       description,
-      url: pageUrl,
+      // og:url uses the display URL — that's the link people share
+      // and the URL the unfurl preview should label. The
+      // alternates.canonical above tells the search index where to
+      // consolidate the signal.
+      url: displayUrl,
       siteName: "OpenSetlist",
       images: [{ url: ogImage, width: 1200, height: 630, alt: fullTitle }],
       locale,
@@ -189,16 +194,20 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const album = await getAlbum(BigInt(id), locale);
   if (!album) notFound();
 
-  // Canonical-slug redirect: any non-canonical path (`/albums/42`,
-  // `/albums/42/wrong-slug`, `/albums/42/foo/bar` for whatever reason)
-  // 308s into the canonical `/albums/42/<album.slug>` so the SEO
-  // signal points at one URL per album. Preserves the `?tab=` and
-  // any future query params via the URL search-params on the
-  // outgoing request (Next.js permanentRedirect carries those
-  // through automatically when only the path is rewritten).
+  // Wrong-slug redirect per CLAUDE.md URL strategy: numeric ID is
+  // canonical; the slug segment is a display-only decoration. An
+  // incoming path with a slug that doesn't match the album's
+  // canonical slug (`/albums/42/wrong-slug`, `/albums/42/foo/bar`,
+  // a copy-pasted URL from a since-renamed album) 308s back to the
+  // canonical numeric-ID URL `/albums/42`. The bare numeric URL
+  // (`/albums/42`, no slug at all) and the matched-slug URL
+  // (`/albums/42/<album.slug>`) both render directly — they're both
+  // valid surfaces, and crawlers are told via the alternates.canonical
+  // metadata that the numeric URL is the one to consolidate signal
+  // onto.
   const incomingSlug = (slug ?? []).join("/");
-  if (album.slug && incomingSlug !== album.slug) {
-    permanentRedirect(`/${locale}/albums/${id}/${album.slug}`);
+  if (incomingSlug !== "" && incomingSlug !== album.slug) {
+    permanentRedirect(`/${locale}/albums/${id}`);
   }
 
   const t = await getTranslations({ locale, namespace: "Album" });
@@ -243,7 +252,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
         <div
           style={{
             background: colors.bgCard,
-            borderRadius: 12,
+            borderRadius: radius.card,
             padding: "32px 20px",
             textAlign: "center",
             color: colors.textMuted,
