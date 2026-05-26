@@ -14,6 +14,8 @@ import { GroupCategory, GroupType } from "@/generated/prisma/enums";
 import {
   KNOWN_ALBUM_TRACK_VARIANTS,
   isKnownAlbumTrackVariant,
+  isPattern2AlbumTrackVariant,
+  isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
 
 // Derive the valid sets from the generated enum objects so a future
@@ -993,14 +995,25 @@ async function importSongs(rows: Record<string, string>[]) {
         continue;
       }
       createData = { albumId, discNumber, trackNumber, songId };
-    } else if (parentSlug) {
-      // Pattern 2 — off-vocal w/ vocal parent. parentSongId resolves
-      // from the same slug→id Map that the Song-side loop populated;
-      // a missing parent yields a WARN and the row lands with
-      // parentSongId NULL (falls through to the Pattern 3 display
-      // path with no title — degraded but visible).
+    } else if (isPattern2AlbumTrackVariant(trackType)) {
+      // Pattern 2 — off-vocal w/ vocal parent. The variant value alone
+      // says "this is a Pattern 2 row" (off-vocal/instrumental/karaoke);
+      // the CSV must also supply parent_song_slug. A row whose variant
+      // says Pattern 2 but is missing the parent column is a CSV error,
+      // not an exotic edge case — WARN + skip so the operator notices
+      // rather than silently routing into Pattern 3's display path.
+      if (!parentSlug) {
+        results.push(
+          `WARN: Pattern 2 variant "${trackType}" requires parent_song_slug on album ${albumSlug} disc=${discNumber} track=${trackNumber}`,
+        );
+        continue;
+      }
       const parentSongId = songIdBySlug.get(parentSlug);
       if (!parentSongId) {
+        // Parent slug provided but not resolvable. Land the row with
+        // parentSongId NULL — display helper falls back to the raw
+        // variant suffix without a base title, which renders visibly
+        // broken so the operator notices and fixes the parent slug.
         results.push(
           `WARN: Pattern 2 row references unknown parent slug: ${parentSlug} on album ${albumSlug} disc=${discNumber} track=${trackNumber}`,
         );
@@ -1012,12 +1025,18 @@ async function importSongs(rows: Record<string, string>[]) {
         variant: trackType,
         parentSongId: parentSongId ?? null,
       };
-    } else {
-      // Pattern 3 — direct title (drama/bgm/promo audio). Title +
-      // titleLanguage come from the CSV's originalTitle / originalLanguage
-      // columns (Pattern 3 reuses the same columns Pattern 1 fills for
-      // vocal rows; Pattern 3 rows have empty `slug` so they never
-      // create a Song row).
+    } else if (isPattern3AlbumTrackVariant(trackType)) {
+      // Pattern 3 — direct title (drama/bgm). The variant value pins
+      // this as a Pattern 3 row; parent_song_slug must be EMPTY for
+      // these (drama/bgm have no vocal counterpart by definition).
+      // A row with parent_song_slug set on a drama/bgm variant is a
+      // CSV error — WARN + skip.
+      if (parentSlug) {
+        results.push(
+          `WARN: Pattern 3 variant "${trackType}" must not set parent_song_slug on album ${albumSlug} disc=${discNumber} track=${trackNumber}`,
+        );
+        continue;
+      }
       createData = {
         albumId,
         discNumber,
@@ -1028,6 +1047,13 @@ async function importSongs(rows: Record<string, string>[]) {
           ? resolveOriginalLanguage(row.originalLanguage)
           : null,
       };
+    } else {
+      // Unreachable — the allowlist guard above already rejected
+      // anything that's neither Pattern 2 nor Pattern 3 — but the
+      // explicit branch keeps `createData` provably assigned and
+      // future-proofs the dispatch against a new variant getting added
+      // to KNOWN_ALBUM_TRACK_VARIANTS without being routed here.
+      continue;
     }
 
     const created = await prisma.albumTrack.create({ data: createData });
