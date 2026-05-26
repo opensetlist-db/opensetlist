@@ -7,7 +7,11 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
-import { parseBigInt, parsePositiveInt } from "@/lib/adminParsers";
+import {
+  parseBigInt,
+  parsePositiveInt,
+  parsePattern3TrackTranslations,
+} from "@/lib/adminParsers";
 
 type CreateBody = {
   albumId?: unknown;
@@ -127,19 +131,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    const translations = Array.isArray(body.translations)
-      ? (body.translations as Array<{ locale: unknown; title: unknown }>)
-          .filter(
-            (t) =>
-              typeof t.locale === "string" &&
-              typeof t.title === "string" &&
-              (t.title as string).trim(),
-          )
-          .map((t) => ({
-            locale: t.locale as string,
-            title: (t.title as string).trim(),
-          }))
-      : [];
+    const translations = parsePattern3TrackTranslations(body.translations);
     data = {
       album: { connect: { id: albumId } },
       discNumber,

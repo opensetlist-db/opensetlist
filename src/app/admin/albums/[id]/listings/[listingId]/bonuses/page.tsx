@@ -26,24 +26,31 @@ export default async function AlbumBonusesPage({ params }: Props) {
     orderBy: { createdAt: "asc" },
   });
 
-  const rows: BonusRow[] = serializeBigInt(bonuses).map(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (b: any) => ({
-      id: b.id,
-      originalBonusType: b.originalBonusType,
-      originalLanguage: b.originalLanguage,
-      // Strip out the per-locale `bonusDescription` column — the admin
-      // form intentionally surfaces only `bonusType` per the b03-b05
-      // simplification handoff. Existing description values stay in
-      // the DB but the UI doesn't render or edit them.
-      translations: b.translations.map(
-        (tr: { locale: string; bonusType: string | null }) => ({
-          locale: tr.locale,
-          bonusType: tr.bonusType,
-        }),
-      ),
-    }),
-  );
+  type SerializedBonus = {
+    id: string;
+    originalBonusType: string;
+    originalLanguage: string;
+    // Schema also has bonusDescription per locale; admin form drops
+    // it per the simplification handoff, so we narrow at the type
+    // boundary and ignore the extra column on the way through.
+    translations: {
+      locale: string;
+      bonusType: string | null;
+      bonusDescription: string | null;
+    }[];
+  };
+
+  const rows: BonusRow[] = (
+    serializeBigInt(bonuses) as SerializedBonus[]
+  ).map((b) => ({
+    id: b.id,
+    originalBonusType: b.originalBonusType,
+    originalLanguage: b.originalLanguage,
+    translations: b.translations.map((tr) => ({
+      locale: tr.locale,
+      bonusType: tr.bonusType,
+    })),
+  }));
 
   const label = listing.originalEditionLabel
     ? `${listing.originalStoreName} · ${listing.originalEditionLabel}`

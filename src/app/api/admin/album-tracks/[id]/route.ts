@@ -7,7 +7,11 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
-import { parseBigInt, parsePositiveInt } from "@/lib/adminParsers";
+import {
+  parseBigInt,
+  parsePositiveInt,
+  parsePattern3TrackTranslations,
+} from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -22,22 +26,6 @@ type PatchBody = {
   titleLanguage?: unknown;
   translations?: unknown;
 };
-
-function parsePattern3Translations(input: unknown) {
-  return Array.isArray(input)
-    ? (input as Array<{ locale: unknown; title: unknown }>)
-        .filter(
-          (t) =>
-            typeof t.locale === "string" &&
-            typeof t.title === "string" &&
-            (t.title as string).trim(),
-        )
-        .map((t) => ({
-          locale: t.locale as string,
-          title: (t.title as string).trim(),
-        }))
-    : [];
-}
 
 /**
  * PATCH /api/admin/album-tracks/[id]
@@ -145,7 +133,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 400 },
       );
     }
-    pattern3Translations = parsePattern3Translations(body.translations);
+    pattern3Translations = parsePattern3TrackTranslations(body.translations);
     scalarUpdate = {
       discNumber,
       trackNumber,

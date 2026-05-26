@@ -37,19 +37,32 @@ export default async function AlbumListingsPage({ params }: Props) {
   });
   const storeNameSuggestions = distinctStores.map((d) => d.originalStoreName);
 
-  const rows: ListingRow[] = serializeBigInt(listings).map(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (l: any) => ({
-      id: l.id,
-      originalStoreName: l.originalStoreName,
-      originalEditionLabel: l.originalEditionLabel,
-      originalLanguage: l.originalLanguage,
-      productUrl: l.productUrl,
-      status: l.status,
-      translations: l.translations,
-      bonusCount: l._count.bonuses,
-    }),
-  );
+  // After serializeBigInt the runtime shape mirrors `listings` but
+  // bigint fields are coerced to number. Spell the post-coercion
+  // shape inline so the .map() below stays type-narrowed.
+  type SerializedListing = {
+    id: string;
+    originalStoreName: string;
+    originalEditionLabel: string | null;
+    originalLanguage: string;
+    productUrl: string | null;
+    status: ListingRow["status"];
+    translations: ListingRow["translations"];
+    _count: { bonuses: number };
+  };
+
+  const rows: ListingRow[] = (
+    serializeBigInt(listings) as SerializedListing[]
+  ).map((l) => ({
+    id: l.id,
+    originalStoreName: l.originalStoreName,
+    originalEditionLabel: l.originalEditionLabel,
+    originalLanguage: l.originalLanguage,
+    productUrl: l.productUrl,
+    status: l.status,
+    translations: l.translations,
+    bonusCount: l._count.bonuses,
+  }));
 
   const tr = pickLocaleTranslation(album.translations, "ko");
   const albumTitle = tr?.title ?? album.originalTitle;

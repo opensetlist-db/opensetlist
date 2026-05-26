@@ -66,3 +66,64 @@ export function parseBonusTranslations(
         }))
     : [];
 }
+
+/**
+ * Parses the `translations` array in AlbumStoreListing create / update
+ * bodies. Both override columns (storeName, editionLabel) are
+ * nullable — the operator fills only what they need to localize, the
+ * rest fall through to the listing's original* fields at render time.
+ */
+export function parseListingTranslations(
+  input: unknown,
+): {
+  locale: string;
+  storeName: string | null;
+  editionLabel: string | null;
+}[] {
+  return Array.isArray(input)
+    ? (
+        input as Array<{
+          locale: unknown;
+          storeName?: unknown;
+          editionLabel?: unknown;
+        }>
+      )
+        .filter((t) => typeof t.locale === "string")
+        .map((t) => ({
+          locale: t.locale as string,
+          storeName:
+            typeof t.storeName === "string" && t.storeName.trim()
+              ? t.storeName.trim()
+              : null,
+          editionLabel:
+            typeof t.editionLabel === "string" && t.editionLabel.trim()
+              ? t.editionLabel.trim()
+              : null,
+        }))
+    : [];
+}
+
+/**
+ * Parses the `translations` array on Pattern-3 AlbumTrack create /
+ * update bodies (drama/bgm titles with no Song parent). Rows with an
+ * empty title are dropped so a "delete this locale" UI gesture
+ * round-trips correctly through the delete-then-create rebuild on
+ * PATCH.
+ */
+export function parsePattern3TrackTranslations(
+  input: unknown,
+): { locale: string; title: string }[] {
+  return Array.isArray(input)
+    ? (input as Array<{ locale: unknown; title: unknown }>)
+        .filter(
+          (t) =>
+            typeof t.locale === "string" &&
+            typeof t.title === "string" &&
+            (t.title as string).trim(),
+        )
+        .map((t) => ({
+          locale: t.locale as string,
+          title: (t.title as string).trim(),
+        }))
+    : [];
+}

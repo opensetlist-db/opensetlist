@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
-import { ADMIN_WRITABLE_LISTING_STATUSES } from "@/lib/adminParsers";
+import {
+  ADMIN_WRITABLE_LISTING_STATUSES,
+  parseListingTranslations,
+} from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -70,27 +73,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const translations = Array.isArray(body.translations)
-    ? (
-        body.translations as Array<{
-          locale: unknown;
-          storeName?: unknown;
-          editionLabel?: unknown;
-        }>
-      )
-        .filter((t) => typeof t.locale === "string")
-        .map((t) => ({
-          locale: t.locale as string,
-          storeName:
-            typeof t.storeName === "string" && t.storeName.trim()
-              ? t.storeName.trim()
-              : null,
-          editionLabel:
-            typeof t.editionLabel === "string" && t.editionLabel.trim()
-              ? t.editionLabel.trim()
-              : null,
-        }))
-    : [];
+  const translations = parseListingTranslations(body.translations);
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
