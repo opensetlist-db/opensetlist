@@ -27,13 +27,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 const verifyMock = verifyAdminAPI as ReturnType<typeof vi.fn>;
 
-function jsonRequest(url: string, body: unknown, method = "POST") {
-  return new Request(url, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
+import { jsonRequest } from "../helpers/requestFactory";
 
 describe("POST /api/admin/album-tracks — pattern dispatch", () => {
   beforeEach(() => {

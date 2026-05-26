@@ -71,25 +71,31 @@ export default async function AlbumTracksPage({ params }: Props) {
     notFound();
   }
 
-  const album = await prisma.album.findUnique({
-    where: { id: albumId },
-    select: {
-      id: true,
-      originalTitle: true,
-      translations: { select: { locale: true, title: true } },
-    },
-  });
+  // Both queries key off the same `albumId` known up front — fan
+  // them out. The notFound() guard runs after destructuring; the
+  // tracks result is discarded if the album turns out missing,
+  // which is the cheaper trade for the latency-saving in the happy
+  // path. Matches Promise.all in listings/page.tsx and bonuses/page.tsx.
+  const [album, tracks] = await Promise.all([
+    prisma.album.findUnique({
+      where: { id: albumId },
+      select: {
+        id: true,
+        originalTitle: true,
+        translations: { select: { locale: true, title: true } },
+      },
+    }),
+    prisma.albumTrack.findMany({
+      where: { albumId },
+      include: {
+        song: { include: { translations: true } },
+        parentSong: { include: { translations: true } },
+        translations: true,
+      },
+      orderBy: [{ discNumber: "asc" }, { trackNumber: "asc" }],
+    }),
+  ]);
   if (!album) notFound();
-
-  const tracks = await prisma.albumTrack.findMany({
-    where: { albumId },
-    include: {
-      song: { include: { translations: true } },
-      parentSong: { include: { translations: true } },
-      translations: true,
-    },
-    orderBy: [{ discNumber: "asc" }, { trackNumber: "asc" }],
-  });
 
   const rows: TrackRow[] = tracks.map((t) => {
     const pattern = classifyPattern(t);

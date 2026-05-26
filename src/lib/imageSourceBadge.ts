@@ -1,19 +1,20 @@
-"use client";
-
 // Image source-state classifier for admin URL inputs. Implements
 // album-image-source-policy (Option D, adopted 2026-05-16): R2 is
 // canonical, Amazon CDN is allowed for ASIN'd Album / Live BD rows,
 // anything else surfaces a warning so the operator documents the
 // temporary placeholder in `wiki/log.md`.
 //
-// `"use client"` is deliberate: the function reads
-// NEXT_PUBLIC_R2_PUBLIC_HOST, which is statically inlined into the
-// client bundle at build time but lives in the server runtime env
-// only if the deployment actually forwards it there. Pinning this
-// module to the client side keeps the R2-host check on the inlined
-// build-constant path, so an R2 URL classifies as "R2" reliably
-// regardless of server-side env propagation. The current sole
-// caller (AlbumForm) is itself "use client".
+// Plain (non-"use client") module per the project's RSC-boundary
+// rule (memory: feedback_rsc_boundary_constants). NEXT_PUBLIC_*
+// env vars are available on both sides — Next.js inlines them into
+// the client bundle at build time AND propagates them through
+// process.env at server runtime — so the same `process.env` read
+// works identically in either context. An earlier iteration of
+// this module carried "use client" to "pin" the build-constant
+// path, but doing so would break a future server component that
+// wants to call classifyImageSource (the import would resolve to
+// undefined at SSR). Pure function, no React, no side effects —
+// stays import-anywhere safe.
 
 export type ImageSource = {
   label: string;

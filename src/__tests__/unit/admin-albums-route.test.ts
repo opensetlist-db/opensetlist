@@ -27,13 +27,13 @@ import { verifyAdminAPI } from "@/lib/admin-auth";
 const verifyMock = verifyAdminAPI as ReturnType<typeof vi.fn>;
 const params = Promise.resolve({ id: "42" });
 
-function jsonRequest(url: string, body: unknown) {
-  return new Request(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
+import { jsonRequest as baseJsonRequest } from "../helpers/requestFactory";
+
+// Albums admin currently exposes only PATCH from this route file
+// (no POST — albums come from CSV import). Local wrapper sets the
+// method default while still routing through the shared factory.
+const jsonRequest = (url: string, body: unknown) =>
+  baseJsonRequest(url, body, "PATCH");
 
 const baseBody = {
   slug: "test-album",

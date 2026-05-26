@@ -30,13 +30,7 @@ import { Prisma } from "@/generated/prisma/client";
 
 const verifyMock = verifyAdminAPI as ReturnType<typeof vi.fn>;
 
-function jsonRequest(url: string, body: unknown, method = "POST") {
-  return new Request(url, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
+import { jsonRequest } from "../helpers/requestFactory";
 
 // 2-state admin status per b03-b05-album-bonus-simplification-handoff:
 // only `active` / `ended` are writable from the admin form.
