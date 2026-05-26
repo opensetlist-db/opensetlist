@@ -54,8 +54,20 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   // Same contract as the sibling listings/tracks PATCHes: missing
   // `translations` field = preserve existing rows; explicit empty
-  // array = full-replace wipe.
-  const translationsProvided = body.translations !== undefined;
+  // array = full-replace wipe. Anything else (null / object /
+  // string) hits 400 — without that guard the parser falls through
+  // to `[]` and the operator's locale rows would be silently wiped
+  // by the deleteMany on a malformed request.
+  if (
+    body.translations !== undefined &&
+    !Array.isArray(body.translations)
+  ) {
+    return NextResponse.json(
+      { error: "translations 필드는 배열이어야 합니다." },
+      { status: 400 },
+    );
+  }
+  const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
     ? parseBonusTranslations(body.translations)
     : [];

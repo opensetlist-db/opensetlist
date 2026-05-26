@@ -132,8 +132,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   // Translations field is optional. "Missing" = preserve existing
   // rows (a thin client editing only the slug shouldn't wipe locale
-  // titles); explicit empty array = full-replace.
-  const translationsProvided = body.translations !== undefined;
+  // titles); explicit empty array = full-replace. Any non-array
+  // shape would have thrown on `.filter` before — surface as 400
+  // explicitly so the operator gets a useful diagnostic.
+  if (
+    body.translations !== undefined &&
+    !Array.isArray(body.translations)
+  ) {
+    return NextResponse.json(
+      { error: "translations 필드는 배열이어야 합니다." },
+      { status: 400 },
+    );
+  }
+  const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
     ? (body.translations as Array<{ locale: unknown; title: unknown }>)
         .filter(

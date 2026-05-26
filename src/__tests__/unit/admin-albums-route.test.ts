@@ -102,6 +102,19 @@ describe("PATCH /api/admin/albums/[id]", () => {
     expect(updateCall.data.artists).toBeUndefined();
   });
 
+  it("rejects 400 when translations is non-array (CR follow-up)", async () => {
+    const res = await PATCH(
+      jsonRequest("http://x/api/admin/albums/42", {
+        ...baseBody,
+        translations: { ko: "wrong shape" },
+      }) as never,
+      { params },
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.albumTranslation.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.album.update).not.toHaveBeenCalled();
+  });
+
   it("full-replaces translations when body sends an empty array", async () => {
     const res = await PATCH(
       jsonRequest("http://x/api/admin/albums/42", {

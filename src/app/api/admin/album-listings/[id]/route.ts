@@ -75,10 +75,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   // Translations field is optional on PATCH. "Missing" = preserve
   // existing rows ("I'm only editing the URL"); "empty array" =
-  // explicit full-replace wipe. Distinguishing the two avoids the
-  // foot-gun where a thin client that doesn't echo translations
-  // silently destroys the operator's per-locale edits.
-  const translationsProvided = body.translations !== undefined;
+  // explicit full-replace wipe. Any non-array shape hits 400 — the
+  // parser would otherwise return [] for malformed input and the
+  // deleteMany below would silently wipe the operator's locale rows.
+  if (
+    body.translations !== undefined &&
+    !Array.isArray(body.translations)
+  ) {
+    return NextResponse.json(
+      { error: "translations 필드는 배열이어야 합니다." },
+      { status: 400 },
+    );
+  }
+  const translationsProvided = Array.isArray(body.translations);
   const translations = translationsProvided
     ? parseListingTranslations(body.translations)
     : [];

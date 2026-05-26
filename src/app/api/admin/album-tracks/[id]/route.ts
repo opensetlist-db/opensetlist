@@ -143,7 +143,16 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 400 },
       );
     }
-    pattern3TranslationsProvided = body.translations !== undefined;
+    if (
+      body.translations !== undefined &&
+      !Array.isArray(body.translations)
+    ) {
+      return NextResponse.json(
+        { error: "translations 필드는 배열이어야 합니다." },
+        { status: 400 },
+      );
+    }
+    pattern3TranslationsProvided = Array.isArray(body.translations);
     pattern3Translations = pattern3TranslationsProvided
       ? parsePattern3TrackTranslations(body.translations)
       : [];

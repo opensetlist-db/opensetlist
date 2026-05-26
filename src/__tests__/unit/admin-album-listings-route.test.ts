@@ -284,6 +284,27 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     expect(updateCall.data.translations).toBeUndefined();
   });
 
+  it("rejects 400 when translations is a non-array (CR follow-up)", async () => {
+    // Without this guard, the parser falls through to [] and the
+    // deleteMany silently wipes existing rows.
+    (
+      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ id: "list-uuid" });
+    const res = await PATCH_LISTING(
+      jsonRequest(
+        "http://x/api/admin/album-listings/list-uuid",
+        { ...baseValid, translations: "not-an-array" },
+        "PATCH",
+      ) as never,
+      { params },
+    );
+    expect(res.status).toBe(400);
+    expect(
+      prisma.albumStoreListingTranslation.deleteMany,
+    ).not.toHaveBeenCalled();
+    expect(prisma.albumStoreListing.update).not.toHaveBeenCalled();
+  });
+
   it("wipes translations on explicit empty array (full-replace)", async () => {
     // Distinguish "field missing" (preserve) from "[] supplied"
     // (full-replace clear).

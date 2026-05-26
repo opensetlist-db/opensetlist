@@ -252,6 +252,27 @@ describe("PATCH /api/admin/album-tracks/[id] — pattern transitions", () => {
     expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
   });
 
+  it("rejects 400 when Pattern 3 translations is non-array (CR follow-up)", async () => {
+    const res = await PATCH(
+      jsonRequest(
+        "http://x/api/admin/album-tracks/track-uuid",
+        {
+          pattern: "direct",
+          discNumber: 1,
+          trackNumber: 1,
+          variant: "drama",
+          title: "Drama Update",
+          translations: { ko: "wrong shape" },
+        },
+        "PATCH",
+      ) as never,
+      { params },
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.albumTrack.update).not.toHaveBeenCalled();
+  });
+
   it("wipes Pattern 3 translations when caller supplies an empty array", async () => {
     const res = await PATCH(
       jsonRequest(
