@@ -7,8 +7,13 @@ import { serializeBigInt } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { AlbumBonusTab } from "@/components/AlbumBonusTab";
+import { AlbumTracksTab } from "@/components/AlbumTracksTab";
+import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
 import { TabBar } from "@/components/TabBar";
-import { colors, radius } from "@/styles/tokens";
+import {
+  getAlbumRelatedEvents,
+  type RelatedEvent,
+} from "@/lib/albumRelatedEvents";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 
@@ -228,6 +233,28 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     label: t(`tab.${key}`),
   }));
 
+  // Events tab uses its own cached helper rather than the main getAlbum
+  // tree because the query is type-aware (different WHERE clause on
+  // live_album vs everything else) and lives off a different relation
+  // graph. Only fetch when the user actually landed on the events tab —
+  // saves a roundtrip on the bonus / tracks views. react.cache wrap
+  // inside getAlbumRelatedEvents collapses re-calls if anything else
+  // in this request asks the same question.
+  //
+  // The helper pulls Pattern 1 song ids directly from Prisma so the
+  // BigInt precision never round-trips through JSON — that's why this
+  // call site no longer derives them from album.tracks (the cached
+  // album object's BigInts are already number-narrowed via
+  // serializeBigInt, which would truncate >2^53 ids).
+  let relatedEvents: RelatedEvent[] = [];
+  if (activeTab === "events") {
+    relatedEvents = await getAlbumRelatedEvents(
+      BigInt(id),
+      album.type as AlbumType,
+      locale,
+    );
+  }
+
   return (
     <main
       style={{
@@ -245,26 +272,20 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       </aside>
       <section>
         <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
-        {/* Bonus tab now renders the real AlbumBonusTab from b03;
-            tracks + events stay on the i18n-keyed placeholder until
-            b04 lands their data panels. The conditional keeps the
-            placeholder/real swap explicit per tab so b04 can flip its
-            two slots without touching the bonus branch. */}
+        {/* All three tabs now render real data panels (b03 / b04).
+            Explicit per-activeTab branches stay verbose rather than
+            collapsing into a map so a future revisit of any single
+            tab's component swap doesn't ripple through the others. */}
         {activeTab === "bonus" ? (
           <AlbumBonusTab album={album} locale={locale} />
+        ) : activeTab === "tracks" ? (
+          <AlbumTracksTab tracks={album.tracks} locale={locale} />
         ) : (
-          <div
-            style={{
-              background: colors.bgCard,
-              borderRadius: radius.card,
-              padding: "32px 20px",
-              textAlign: "center",
-              color: colors.textMuted,
-              fontSize: 14,
-            }}
-          >
-            {t(`tabBody.${activeTab}`)}
-          </div>
+          <AlbumRelatedEventsTab
+            events={relatedEvents}
+            albumType={album.type as AlbumType}
+            locale={locale}
+          />
         )}
       </section>
     </main>

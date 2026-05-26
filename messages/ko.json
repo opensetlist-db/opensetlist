@@ -178,6 +178,19 @@
       "buy": "구매하기",
       "showEnded": "{count, plural, other {종료된 매장 보기 (#)}}",
       "empty": "등록된 매장 정보가 없습니다."
+    },
+    "tracks": {
+      "discN": "Disc {disc}",
+      "trackPrefix": "{track, number, ::000}",
+      "empty": "수록곡 정보가 등록되지 않았습니다."
+    },
+    "events": {
+      "subtitle": {
+        "bd": "이 BD와 연결된 공연",
+        "songsAppeared": "수록곡이 등장한 공연"
+      },
+      "eventCountLabel": "{count, plural, other {#공연}}",
+      "empty": "관련 공연 정보가 없습니다."
     }
   },
   "AlbumTrack": {

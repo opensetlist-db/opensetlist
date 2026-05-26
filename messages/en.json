@@ -178,6 +178,19 @@
       "buy": "Buy",
       "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
       "empty": "No store info registered yet."
+    },
+    "tracks": {
+      "discN": "Disc {disc}",
+      "trackPrefix": "{track, number, ::000}",
+      "empty": "No tracklist registered yet."
+    },
+    "events": {
+      "subtitle": {
+        "bd": "Events linked to this BD",
+        "songsAppeared": "Events where these tracks were performed"
+      },
+      "eventCountLabel": "{count, plural, one {# event} other {# events}}",
+      "empty": "No related events to show."
     }
   },
   "AlbumTrack": {
