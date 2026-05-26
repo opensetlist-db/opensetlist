@@ -38,6 +38,13 @@ import type { Prisma } from "@/generated/prisma/client";
  * through to here independently.
  */
 
+// Cap on the per-album related-events list. Matches the Phase 1
+// catalog profile (a song appearing in 50+ events is exceptionally
+// rare at this scale). Both query branches share the same ceiling
+// so a future bump lands in one place; if a future album crosses
+// the cap, b04 can add a "더 보기" page-2 surface.
+const MAX_RELATED_EVENTS = 50;
+
 export type RelatedEvent = Prisma.EventGetPayload<{
   include: {
     translations: true;
@@ -85,8 +92,12 @@ export const getAlbumRelatedEvents = cache(
           ...eventSeriesFilter,
         },
         include,
+        // Event.startTime is NOT NULL in prisma/schema.prisma, so a
+        // single-column desc sort is safe — no NULLS-LAST drift
+        // to worry about. Event.date IS nullable and intentionally
+        // not part of the sort key.
         orderBy: { startTime: "desc" },
-        take: 50,
+        take: MAX_RELATED_EVENTS,
       });
       return serializeBigInt(rows);
     }
@@ -134,8 +145,10 @@ export const getAlbumRelatedEvents = cache(
       // above already short-circuits at "any match," so distinct is
       // belt-and-suspenders without changing semantics.
       distinct: ["id"],
+      // Event.startTime is NOT NULL per schema (see live_album branch
+      // above for the same rationale).
       orderBy: { startTime: "desc" },
-      take: 50,
+      take: MAX_RELATED_EVENTS,
     });
     return serializeBigInt(rows);
   },
