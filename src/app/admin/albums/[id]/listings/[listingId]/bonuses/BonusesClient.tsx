@@ -24,11 +24,15 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
 
   async function handleDelete(id: string) {
     if (!confirm("정말 삭제하시겠습니까?")) return;
-    const res = await fetch(`/api/admin/album-bonuses/${id}`, {
-      method: "DELETE",
-    });
-    if (res.ok) router.refresh();
-    else alert("삭제에 실패했습니다.");
+    try {
+      const res = await fetch(`/api/admin/album-bonuses/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) router.refresh();
+      else alert("삭제에 실패했습니다.");
+    } catch {
+      alert("삭제에 실패했습니다. 네트워크를 확인해 주세요.");
+    }
   }
 
   return (
