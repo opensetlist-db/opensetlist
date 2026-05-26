@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
   }
 
   const albumId = parseBigInt(body.albumId);
-  if (!albumId) {
+  if (albumId === null) {
     return NextResponse.json(
       { error: "앨범 ID가 필요합니다." },
       { status: 400 },
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   }
   const discNumber = parsePositiveInt(body.discNumber);
   const trackNumber = parsePositiveInt(body.trackNumber);
-  if (!discNumber || !trackNumber) {
+  if (discNumber === null || trackNumber === null) {
     return NextResponse.json(
       { error: "디스크/트랙 번호가 잘못되었습니다." },
       { status: 400 },
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   let data: Prisma.AlbumTrackCreateInput;
   if (body.pattern === "vocal") {
     const songId = parseBigInt(body.songId);
-    if (!songId) {
+    if (songId === null) {
       return NextResponse.json(
         { error: "보컬 곡을 선택해 주세요." },
         { status: 400 },
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const parentSongId = parseBigInt(body.parentSongId);
-    if (!parentSongId) {
+    if (parentSongId === null) {
       return NextResponse.json(
         { error: "원곡 (보컬 부모)을 선택해 주세요." },
         { status: 400 },

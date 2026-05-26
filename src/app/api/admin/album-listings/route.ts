@@ -123,9 +123,13 @@ export async function POST(request: NextRequest) {
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2003"
     ) {
+      // FK target (albumId) not found — the referenced album doesn't
+      // exist. Standardize on 404 across admin create routes (the
+      // same shape as album-bonuses POST and the conventional
+      // semantic for "referenced resource missing").
       return NextResponse.json(
         { error: "앨범을 찾을 수 없습니다." },
-        { status: 400 },
+        { status: 404 },
       );
     }
     throw e;
