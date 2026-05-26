@@ -127,6 +127,15 @@ export default function SetlistBuilder({
   const [formSongIds, setFormSongIds] = useState<number[]>([]);
   const [formPerformerIds, setFormPerformerIds] = useState<string[]>([]);
   const [formArtistIds, setFormArtistIds] = useState<number[]>([]);
+  // Default OFF: 곡 검색은 이벤트 IP(시리즈의 primary artist + sub-units
+  // + 등장하는 모든 stage identity의 artist links)에 속한 곡만 후보로
+  // 노출. 위키 `ip-expansion-june-2026.md` §"2. Multi-IP site support"
+  // 의 마지막 미해결 single-IP 가정 — 운영자가 하스노소라 이벤트를
+  // 편집할 때 니지가사키 곡까지 후보로 떴던 누수를 닫는 토글이다.
+  // ON: 게스트 공연 / 콜라보 곡 등 다른 IP 곡을 의도적으로 추가해야
+  // 할 때 잠시 켠다 — 상태는 row 닫혔다 열려도 유지(체크해두면
+  // 같은 세션에서 여러 게스트 곡을 연속으로 추가하기 편함).
+  const [includeAllIps, setIncludeAllIps] = useState(false);
 
   // Search-based selectors
   // Song search is owned by <SongSearch> — SetlistBuilder only keeps
@@ -751,7 +760,19 @@ export default function SetlistBuilder({
             {/* Shared search component. includeVariants=true preserves
                 the admin's pre-refactor ability to record a variant row
                 (e.g. "Dream Believers (SAKURA Ver.)") directly. Fan
-                pickers omit the prop and get base-only. */}
+                pickers omit the prop and get base-only.
+                scope: default `event` (이벤트 IP만) — 토글로 `all`
+                전환해서 게스트/콜라보 곡 후보 노출. 토글 설명은
+                위 `includeAllIps` 주석 참조. */}
+            <label className="mb-1 inline-flex items-center gap-1.5 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                checked={includeAllIps}
+                onChange={(e) => setIncludeAllIps(e.target.checked)}
+                className="cursor-pointer"
+              />
+              전체 카탈로그 검색 (게스트/콜라보 곡)
+            </label>
             <SongSearch
               onSelect={selectSong}
               locale="ko"
@@ -762,6 +783,11 @@ export default function SetlistBuilder({
               }}
               excludeSongIds={formSongIds}
               includeVariants
+              scope={
+                includeAllIps
+                  ? { kind: "all" }
+                  : { kind: "event", eventId }
+              }
             />
             <a
               href="/admin/songs/new"
