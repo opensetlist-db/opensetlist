@@ -6,7 +6,6 @@ import Link from "next/link";
 import AlbumListingFormModal, {
   type ListingInitial,
 } from "@/components/admin/AlbumListingFormModal";
-import { formatUtcDate } from "@/lib/adminDateUtils";
 
 export type ListingRow = {
   id: string;
@@ -15,10 +14,6 @@ export type ListingRow = {
   originalLanguage: string;
   productUrl: string | null;
   status: "active" | "sold_out" | "ended" | "unknown";
-  startsAt: string | null;
-  endsAt: string | null;
-  lastVerifiedAt: string | null;
-  sourceUrl: string | null;
   translations: {
     locale: string;
     storeName: string | null;
@@ -33,33 +28,21 @@ type Props = {
   storeNameSuggestions: string[];
 };
 
+// 2-state display — matches the form. Schema enum still has four
+// values; sold_out + unknown render alongside active as "판매중" per
+// the b03 read path (handoff doc).
 const STATUS_LABELS: Record<ListingRow["status"], string> = {
-  active: "구매 가능",
-  sold_out: "매진",
-  ended: "판매 종료",
-  unknown: "미확인",
+  active: "판매중",
+  sold_out: "판매중",
+  unknown: "판매중",
+  ended: "종료",
 };
 const STATUS_COLORS: Record<ListingRow["status"], string> = {
   active: "bg-emerald-100 text-emerald-700",
-  sold_out: "bg-amber-100 text-amber-700",
+  sold_out: "bg-emerald-100 text-emerald-700",
+  unknown: "bg-emerald-100 text-emerald-700",
   ended: "bg-zinc-100 text-zinc-500",
-  unknown: "bg-zinc-100 text-zinc-700",
 };
-
-// 30 days in milliseconds — the schema-doc "stale" threshold for
-// AlbumStoreListing.lastVerifiedAt. After this many ms since the
-// operator last clicked "지금 확인", the row picks up a "확인 필요"
-// badge so periodic sweeps surface it.
-const STALE_MS = 30 * 24 * 60 * 60 * 1000;
-
-function isStale(lastVerifiedAt: string | null): boolean {
-  if (!lastVerifiedAt) return true;
-  const d = new Date(lastVerifiedAt);
-  if (Number.isNaN(d.getTime())) return true;
-  // Both sides are absolute instants — Date.now() is fine to compare
-  // against a stored UTC timestamp (per CLAUDE.md's UTC rule).
-  return Date.now() - d.getTime() > STALE_MS;
-}
 
 export default function ListingsClient({
   albumId,
@@ -78,14 +61,6 @@ export default function ListingsClient({
     });
     if (res.ok) router.refresh();
     else alert("삭제에 실패했습니다.");
-  }
-
-  async function handleTouch(id: string) {
-    const res = await fetch(`/api/admin/album-listings/${id}/touch`, {
-      method: "POST",
-    });
-    if (res.ok) router.refresh();
-    else alert("업데이트에 실패했습니다.");
   }
 
   return (
@@ -109,96 +84,70 @@ export default function ListingsClient({
             <th className="pb-2">상태</th>
             <th className="pb-2">구매 URL</th>
             <th className="pb-2 text-right">특전</th>
-            <th className="pb-2">마지막 확인</th>
             <th className="pb-2"></th>
           </tr>
         </thead>
         <tbody>
-          {listings.map((l) => {
-            const stale = isStale(l.lastVerifiedAt);
-            return (
-              <tr key={l.id} className="border-b border-zinc-100 align-top">
-                <td className="py-2 font-medium">{l.originalStoreName}</td>
-                <td className="py-2 text-zinc-500">
-                  {l.originalEditionLabel ?? "—"}
-                </td>
-                <td className="py-2">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[l.status]}`}
-                  >
-                    {STATUS_LABELS[l.status]}
-                  </span>
-                </td>
-                <td className="max-w-xs truncate py-2 font-mono text-xs">
-                  {l.productUrl ? (
-                    <a
-                      href={l.productUrl}
-                      target="_blank"
-                      rel="noopener noreferrer nofollow"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {l.productUrl}
-                    </a>
-                  ) : (
-                    <span className="text-zinc-400">없음</span>
-                  )}
-                </td>
-                <td className="py-2 text-right">
-                  <Link
-                    href={`/admin/albums/${albumId}/listings/${l.id}/bonuses`}
+          {listings.map((l) => (
+            <tr key={l.id} className="border-b border-zinc-100 align-top">
+              <td className="py-2 font-medium">{l.originalStoreName}</td>
+              <td className="py-2 text-zinc-500">
+                {l.originalEditionLabel ?? "—"}
+              </td>
+              <td className="py-2">
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[l.status]}`}
+                >
+                  {STATUS_LABELS[l.status]}
+                </span>
+              </td>
+              <td className="max-w-xs truncate py-2 font-mono text-xs">
+                {l.productUrl ? (
+                  <a
+                    href={l.productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
                     className="text-blue-600 hover:underline"
                   >
-                    {l.bonusCount}
-                  </Link>
-                </td>
-                <td className="py-2">
-                  <span className="text-zinc-500">
-                    {formatUtcDate(l.lastVerifiedAt)}
-                  </span>
-                  {stale && (
-                    <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
-                      확인 필요
-                    </span>
-                  )}
-                </td>
-                <td className="space-x-2 py-2 whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Strip the read-only bonusCount before
-                      // handing the row to the modal — the form
-                      // payload doesn't carry it and TS would
-                      // otherwise complain about the excess key.
-                      const { bonusCount: _ignored, ...listing } = l;
-                      void _ignored;
-                      setModal({ ...listing, albumId });
-                    }}
-                    className="text-blue-600 hover:underline"
-                  >
-                    편집
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleTouch(l.id)}
-                    className="text-zinc-600 hover:underline"
-                    title="lastVerifiedAt 을 지금으로 갱신"
-                  >
-                    지금 확인
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(l.id)}
-                    className="text-red-500 hover:underline"
-                  >
-                    삭제
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
+                    {l.productUrl}
+                  </a>
+                ) : (
+                  <span className="text-zinc-400">없음</span>
+                )}
+              </td>
+              <td className="py-2 text-right">
+                <Link
+                  href={`/admin/albums/${albumId}/listings/${l.id}/bonuses`}
+                  className="text-blue-600 hover:underline"
+                >
+                  {l.bonusCount}
+                </Link>
+              </td>
+              <td className="space-x-2 py-2 whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { bonusCount: _ignored, ...listing } = l;
+                    void _ignored;
+                    setModal({ ...listing, albumId });
+                  }}
+                  className="text-blue-600 hover:underline"
+                >
+                  편집
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(l.id)}
+                  className="text-red-500 hover:underline"
+                >
+                  삭제
+                </button>
+              </td>
+            </tr>
+          ))}
           {listings.length === 0 && (
             <tr>
-              <td colSpan={7} className="py-4 text-center text-zinc-400">
+              <td colSpan={6} className="py-4 text-center text-zinc-400">
                 등록된 구매처가 없습니다. &ldquo;+ 추가&rdquo; 로 시작하세요.
               </td>
             </tr>
@@ -209,11 +158,7 @@ export default function ListingsClient({
       {modal !== null && (
         <AlbumListingFormModal
           albumId={albumId}
-          initialData={
-            modal === "new"
-              ? undefined
-              : modal
-          }
+          initialData={modal === "new" ? undefined : modal}
           storeNameSuggestions={storeNameSuggestions}
           onClose={() => setModal(null)}
         />

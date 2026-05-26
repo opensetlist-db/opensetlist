@@ -3,43 +3,15 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
-import { parseDate } from "@/lib/adminParsers";
+import { parseBonusTranslations } from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
 type PatchBody = {
   originalBonusType?: unknown;
-  originalBonusDescription?: unknown;
   originalLanguage?: unknown;
-  bonusImageUrl?: unknown;
-  startsAt?: unknown;
-  endsAt?: unknown;
   translations?: unknown;
 };
-
-function parseTranslations(input: unknown) {
-  return Array.isArray(input)
-    ? (
-        input as Array<{
-          locale: unknown;
-          bonusType?: unknown;
-          bonusDescription?: unknown;
-        }>
-      )
-        .filter((t) => typeof t.locale === "string")
-        .map((t) => ({
-          locale: t.locale as string,
-          bonusType:
-            typeof t.bonusType === "string" && t.bonusType.trim()
-              ? t.bonusType.trim()
-              : null,
-          bonusDescription:
-            typeof t.bonusDescription === "string" && t.bonusDescription.trim()
-              ? t.bonusDescription.trim()
-              : null,
-        }))
-    : [];
-}
 
 /**
  * PATCH /api/admin/album-bonuses/[id]
@@ -48,6 +20,11 @@ function parseTranslations(input: unknown) {
  *   go through delete-then-create so the audit trail (when a05 ships)
  *   stays sane. Translations replaced delete-then-create inside a
  *   $transaction.
+ *
+ *   Bonus-level lifecycle columns (`startsAt`, `endsAt`,
+ *   `bonusImageUrl`, `originalBonusDescription`) intentionally NOT
+ *   touched — pre-existing non-null values from CSV import or an
+ *   earlier UI iteration stay intact.
  */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
@@ -75,16 +52,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const startsAt = parseDate(body.startsAt);
-  const endsAt = parseDate(body.endsAt);
-  if (startsAt === "invalid" || endsAt === "invalid") {
-    return NextResponse.json(
-      { error: "날짜 형식이 잘못되었습니다." },
-      { status: 400 },
-    );
-  }
-
-  const translations = parseTranslations(body.translations);
+  const translations = parseBonusTranslations(body.translations);
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -102,21 +70,10 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         where: { id },
         data: {
           originalBonusType: (body.originalBonusType as string).trim(),
-          originalBonusDescription:
-            typeof body.originalBonusDescription === "string" &&
-            body.originalBonusDescription.trim()
-              ? body.originalBonusDescription.trim()
-              : null,
           originalLanguage:
             typeof body.originalLanguage === "string" && body.originalLanguage
               ? body.originalLanguage
               : "ja",
-          bonusImageUrl:
-            typeof body.bonusImageUrl === "string" && body.bonusImageUrl.trim()
-              ? body.bonusImageUrl.trim()
-              : null,
-          startsAt,
-          endsAt,
           translations: translations.length
             ? { create: translations }
             : undefined,
@@ -133,10 +90,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     }
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
-    // Race window: the existence check inside the transaction passed,
-    // but a concurrent DELETE removed the row before update() landed.
-    // Prisma surfaces this as P2025; map to 404 instead of bubbling
-    // a 500 the way an unwrapped throw would.
+    // Race window: in-tx findUnique passed but a concurrent DELETE
+    // removed the row before update landed.
     if (
       e instanceof Prisma.PrismaClientKnownRequestError &&
       e.code === "P2025"

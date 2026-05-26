@@ -1,24 +1,8 @@
 // Shared input-validation helpers for admin API routes. Each route
 // previously inlined verbatim copies; extracting them here keeps a
-// single source of truth for the contracts (e.g. what "invalid date"
-// means is now decided in one place, not four).
+// single source of truth for the contracts.
 
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
-
-/**
- * `null` when the input is genuinely absent (null / undefined / empty
- * string). `"invalid"` when the input is something that looks like a
- * value but doesn't parse. A `Date` instance otherwise.
- *
- * Callers should branch on `=== "invalid"` first and surface a 400
- * before treating `null` as "operator left this field blank".
- */
-export function parseDate(value: unknown): Date | null | "invalid" {
-  if (value == null || value === "") return null;
-  if (typeof value !== "string") return "invalid";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
-}
 
 /**
  * Accepts a JSON-shaped string or number and coerces to `bigint`.
@@ -49,10 +33,36 @@ export function parsePositiveInt(v: unknown): number | null {
 }
 
 /**
- * Allowed runtime values of the `AlbumStoreListingStatus` Prisma
- * enum. Kept in sync by being typed against the generated enum type —
- * adding a new variant to schema.prisma surfaces a TS error here
- * until this Set is updated.
+ * Admin-writable subset of `AlbumStoreListingStatus`. The schema enum
+ * has four values (active/sold_out/ended/unknown) but the admin form
+ * is a 2-state toggle per
+ * `b03-b05-album-bonus-simplification-handoff.md` — read paths still
+ * accept the full set, but no admin write should produce sold_out or
+ * unknown. If Phase 2 follow-up adds a 매진 toggle, this Set widens
+ * and the matching select option appears in the modal.
  */
-export const VALID_LISTING_STATUSES: ReadonlySet<AlbumStoreListingStatus> =
-  new Set<AlbumStoreListingStatus>(["active", "sold_out", "ended", "unknown"]);
+export const ADMIN_WRITABLE_LISTING_STATUSES: ReadonlySet<AlbumStoreListingStatus> =
+  new Set<AlbumStoreListingStatus>(["active", "ended"]);
+
+/**
+ * Parses the `translations` array in AlbumStoreBonus create / update
+ * bodies down to the schema-side shape. The admin form per the
+ * simplification handoff only writes `bonusType`; the schema's
+ * `bonusDescription` column stays nullable but never receives a write
+ * from this surface.
+ */
+export function parseBonusTranslations(
+  input: unknown,
+): { locale: string; bonusType: string | null }[] {
+  return Array.isArray(input)
+    ? (input as Array<{ locale: unknown; bonusType?: unknown }>)
+        .filter((t) => typeof t.locale === "string")
+        .map((t) => ({
+          locale: t.locale as string,
+          bonusType:
+            typeof t.bonusType === "string" && t.bonusType.trim()
+              ? t.bonusType.trim()
+              : null,
+        }))
+    : [];
+}

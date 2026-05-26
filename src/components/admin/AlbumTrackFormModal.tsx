@@ -37,12 +37,16 @@ type Props = {
   onClose: () => void;
 };
 
-const LOCALES = ["ko", "ja", "en"];
+// Deliberately a 3-locale subset (no zh-CN): Pattern 3 AlbumTrack
+// translations come from the b01b CSV importer which only ships
+// ja/ko/en columns. ADMIN_LOCALES in @/lib/adminLocales widens to
+// zh-CN for surfaces that DO need it (Album / Listing / Bonus).
+const LOCALES = ["ko", "ja", "en"] as const;
 const LANGUAGES = [
   { value: "ja", label: "일본어 (ja)" },
   { value: "en", label: "영어 (en)" },
   { value: "ko", label: "한국어 (ko)" },
-];
+] as const;
 
 // Korean labels for the live preview + variant select come from
 // `ALBUM_TRACK_VARIANT_SUFFIX_KO` in `@/lib/albumTrackVariants` so

@@ -31,12 +31,17 @@ export default async function AlbumBonusesPage({ params }: Props) {
     (b: any) => ({
       id: b.id,
       originalBonusType: b.originalBonusType,
-      originalBonusDescription: b.originalBonusDescription,
       originalLanguage: b.originalLanguage,
-      bonusImageUrl: b.bonusImageUrl,
-      startsAt: b.startsAt,
-      endsAt: b.endsAt,
-      translations: b.translations,
+      // Strip out the per-locale `bonusDescription` column — the admin
+      // form intentionally surfaces only `bonusType` per the b03-b05
+      // simplification handoff. Existing description values stay in
+      // the DB but the UI doesn't render or edit them.
+      translations: b.translations.map(
+        (tr: { locale: string; bonusType: string | null }) => ({
+          locale: tr.locale,
+          bonusType: tr.bonusType,
+        }),
+      ),
     }),
   );
 

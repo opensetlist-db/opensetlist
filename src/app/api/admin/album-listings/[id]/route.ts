@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
-import { VALID_LISTING_STATUSES, parseDate } from "@/lib/adminParsers";
+import { ADMIN_WRITABLE_LISTING_STATUSES } from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -14,23 +14,24 @@ type PatchBody = {
   originalLanguage?: unknown;
   productUrl?: unknown;
   status?: unknown;
-  startsAt?: unknown;
-  endsAt?: unknown;
-  lastVerifiedAt?: unknown;
-  sourceUrl?: unknown;
   translations?: unknown;
 };
 
 /**
  * PATCH /api/admin/album-listings/[id]
  *
- *   Updates a listing. albumId is NOT mutable (would invalidate the
- *   per-album CRUD URL the operator is editing through). Translations
- *   replaced delete-then-create inside a $transaction so a mid-PATCH
- *   crash can't leave the row's translations half-rebuilt.
+ *   Updates the fields the admin form surfaces. Lifecycle columns
+ *   (startsAt/endsAt/lastVerifiedAt/sourceUrl) intentionally NOT
+ *   touched — if a row carries non-null values from CSV import or
+ *   an earlier UI iteration, the operator's edits don't clobber
+ *   them. To clear those, hit the DB directly or wait for a future
+ *   admin surface.
+ *
  *   → 200 { ...listing }
- *   → 400 invalid input · 401 unauthorized · 404 not found
- *   → 409 (albumId, originalStoreName, originalEditionLabel) collision
+ *   → 400 invalid input
+ *   → 401 unauthorized
+ *   → 404 not found (incl. P2025 race window)
+ *   → 409 unique conflict
  */
 export async function PATCH(request: NextRequest, { params }: RouteProps) {
   const unauthorized = await verifyAdminAPI();
@@ -59,24 +60,12 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   }
   if (
     typeof body.status !== "string" ||
-    !VALID_LISTING_STATUSES.has(body.status as AlbumStoreListingStatus)
+    !ADMIN_WRITABLE_LISTING_STATUSES.has(
+      body.status as AlbumStoreListingStatus,
+    )
   ) {
     return NextResponse.json(
       { error: "잘못된 상태입니다." },
-      { status: 400 },
-    );
-  }
-
-  const startsAt = parseDate(body.startsAt);
-  const endsAt = parseDate(body.endsAt);
-  const lastVerifiedAt = parseDate(body.lastVerifiedAt);
-  if (
-    startsAt === "invalid" ||
-    endsAt === "invalid" ||
-    lastVerifiedAt === "invalid"
-  ) {
-    return NextResponse.json(
-      { error: "날짜 형식이 잘못되었습니다." },
       { status: 400 },
     );
   }
@@ -133,13 +122,6 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
               ? body.productUrl.trim()
               : null,
           status: body.status as AlbumStoreListingStatus,
-          startsAt,
-          endsAt,
-          lastVerifiedAt,
-          sourceUrl:
-            typeof body.sourceUrl === "string" && body.sourceUrl.trim()
-              ? body.sourceUrl.trim()
-              : null,
           translations: translations.length
             ? { create: translations }
             : undefined,
@@ -163,9 +145,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           { status: 409 },
         );
       }
-      // Race window: the in-tx findUnique passed but a concurrent
-      // DELETE removed the row before the update landed. Mirrors the
-      // P2025 handling in album-bonuses PATCH.
+      // Race window: in-tx findUnique passed but a concurrent DELETE
+      // removed the row before update landed.
       if (e.code === "P2025") {
         return NextResponse.json(
           { error: "구매처를 찾을 수 없습니다." },

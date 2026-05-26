@@ -24,7 +24,6 @@ import {
   PATCH as PATCH_LISTING,
   DELETE as DELETE_LISTING,
 } from "@/app/api/admin/album-listings/[id]/route";
-import { POST as POST_TOUCH } from "@/app/api/admin/album-listings/[id]/touch/route";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { Prisma } from "@/generated/prisma/client";
@@ -39,6 +38,8 @@ function jsonRequest(url: string, body: unknown, method = "POST") {
   });
 }
 
+// 2-state admin status per b03-b05-album-bonus-simplification-handoff:
+// only `active` / `ended` are writable from the admin form.
 const baseValid = {
   albumId: "1",
   originalStoreName: "amazon_jp",
@@ -92,11 +93,24 @@ describe("POST /api/admin/album-listings", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 on malformed date", async () => {
+  it("returns 400 when status is sold_out (admin form is 2-state)", async () => {
+    // Schema enum still has sold_out, but the admin write path
+    // intentionally only allows active/ended. A client that POSTs
+    // sold_out hits the 400 path rather than silently succeeding.
     const res = await POST(
       jsonRequest("http://x/api/admin/album-listings", {
         ...baseValid,
-        startsAt: "not-a-date",
+        status: "sold_out",
+      }) as never,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when status is unknown (admin form is 2-state)", async () => {
+    const res = await POST(
+      jsonRequest("http://x/api/admin/album-listings", {
+        ...baseValid,
+        status: "unknown",
       }) as never,
     );
     expect(res.status).toBe(400);
@@ -131,6 +145,25 @@ describe("POST /api/admin/album-listings", () => {
     const call = (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>)
       .mock.calls[0][0];
     expect(call.data.productUrl).toBeNull();
+  });
+
+  it("does NOT set the dropped lifecycle columns on create", async () => {
+    // The handoff drops sourceUrl/startsAt/endsAt/lastVerifiedAt from
+    // the admin form. A POST that omits them shouldn't end up writing
+    // any of those keys — Prisma's default-null handles the schema
+    // side, and we want to confirm the route isn't sneaking them in.
+    (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { id: "uuid-1", albumId: BigInt(1), originalStoreName: "amazon_jp" },
+    );
+    await POST(
+      jsonRequest("http://x/api/admin/album-listings", baseValid) as never,
+    );
+    const call = (prisma.albumStoreListing.create as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0];
+    expect("sourceUrl" in call.data).toBe(false);
+    expect("startsAt" in call.data).toBe(false);
+    expect("endsAt" in call.data).toBe(false);
+    expect("lastVerifiedAt" in call.data).toBe(false);
   });
 });
 
@@ -200,6 +233,47 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
       { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
     ]);
   });
+
+  it("does NOT touch the dropped lifecycle columns on update", async () => {
+    // Per the handoff, PATCH must preserve pre-existing values in
+    // sourceUrl/startsAt/endsAt/lastVerifiedAt that may have been
+    // set by CSV import or an earlier UI iteration.
+    (
+      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ id: "list-uuid" });
+    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "list-uuid",
+      translations: [],
+    });
+    await PATCH_LISTING(
+      jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
+      { params },
+    );
+    const updateCall = (
+      prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect("sourceUrl" in updateCall.data).toBe(false);
+    expect("startsAt" in updateCall.data).toBe(false);
+    expect("endsAt" in updateCall.data).toBe(false);
+    expect("lastVerifiedAt" in updateCall.data).toBe(false);
+  });
+
+  it("maps P2025 → 404 (concurrent DELETE race)", async () => {
+    (
+      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ id: "list-uuid" });
+    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("vanished", {
+        code: "P2025",
+        clientVersion: "test",
+      }),
+    );
+    const res = await PATCH_LISTING(
+      jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
+      { params },
+    );
+    expect(res.status).toBe(404);
+  });
 });
 
 describe("DELETE /api/admin/album-listings/[id]", () => {
@@ -222,33 +296,5 @@ describe("DELETE /api/admin/album-listings/[id]", () => {
       { params },
     );
     expect(res.status).toBe(404);
-  });
-});
-
-describe("POST /api/admin/album-listings/[id]/touch", () => {
-  const params = Promise.resolve({ id: "list-uuid" });
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    verifyMock.mockResolvedValue(null);
-  });
-
-  it("sets lastVerifiedAt close to the current instant", async () => {
-    const before = Date.now();
-    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockImplementation(
-      async (args: { data: { lastVerifiedAt: Date } }) => ({
-        id: "list-uuid",
-        lastVerifiedAt: args.data.lastVerifiedAt,
-      }),
-    );
-    const res = await POST_TOUCH(
-      jsonRequest("http://x/api/admin/album-listings/list-uuid/touch", null, "POST") as never,
-      { params },
-    );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    const updatedAt = new Date(body.lastVerifiedAt).getTime();
-    expect(updatedAt).toBeGreaterThanOrEqual(before);
-    expect(updatedAt).toBeLessThanOrEqual(Date.now() + 50);
   });
 });

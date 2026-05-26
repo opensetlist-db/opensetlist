@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { validateCanonicalSlug } from "@/lib/slug";
+import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
+import type { AlbumType } from "@/generated/prisma/enums";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -18,14 +20,6 @@ type PatchBody = {
   translations?: unknown;
   artistIds?: unknown;
 };
-
-const ALBUM_TYPES = new Set([
-  "single",
-  "album",
-  "ep",
-  "live_album",
-  "soundtrack",
-]);
 
 /**
  * PATCH /api/admin/albums/[id]
@@ -92,7 +86,10 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  if (typeof body.type !== "string" || !ALBUM_TYPES.has(body.type)) {
+  if (
+    typeof body.type !== "string" ||
+    !ALBUM_TYPE_SET.has(body.type as AlbumType)
+  ) {
     return NextResponse.json(
       { error: "잘못된 앨범 타입입니다." },
       { status: 400 },
@@ -175,12 +172,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         where: { id: albumId },
         data: {
           slug,
-          type: body.type as
-            | "single"
-            | "album"
-            | "ep"
-            | "live_album"
-            | "soundtrack",
+          type: body.type as AlbumType,
           originalTitle: (body.originalTitle as string).trim(),
           originalLanguage: body.originalLanguage as string,
           releaseDate,

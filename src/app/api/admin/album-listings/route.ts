@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
-import { VALID_LISTING_STATUSES, parseDate } from "@/lib/adminParsers";
+import { ADMIN_WRITABLE_LISTING_STATUSES } from "@/lib/adminParsers";
 
 type CreateBody = {
   albumId?: unknown;
@@ -13,21 +13,22 @@ type CreateBody = {
   originalLanguage?: unknown;
   productUrl?: unknown;
   status?: unknown;
-  startsAt?: unknown;
-  endsAt?: unknown;
-  lastVerifiedAt?: unknown;
-  sourceUrl?: unknown;
   translations?: unknown;
 };
 
 /**
  * POST /api/admin/album-listings
  *
- *   Body: see CreateBody above
+ *   Body: see CreateBody
  *   → 201 { ...listing }
  *   → 400 invalid input
  *   → 401 unauthorized
  *   → 409 unique conflict (album × originalStoreName × originalEditionLabel)
+ *
+ * Lifecycle columns (startsAt/endsAt/lastVerifiedAt/sourceUrl) stay
+ * on the schema but the admin form doesn't surface them — they end
+ * up as NULL on rows created here. A future iteration can re-add
+ * the inputs without a schema change.
  */
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
@@ -67,24 +68,12 @@ export async function POST(request: NextRequest) {
   }
   if (
     typeof body.status !== "string" ||
-    !VALID_LISTING_STATUSES.has(body.status as AlbumStoreListingStatus)
+    !ADMIN_WRITABLE_LISTING_STATUSES.has(
+      body.status as AlbumStoreListingStatus,
+    )
   ) {
     return NextResponse.json(
       { error: "잘못된 상태입니다." },
-      { status: 400 },
-    );
-  }
-
-  const startsAt = parseDate(body.startsAt);
-  const endsAt = parseDate(body.endsAt);
-  const lastVerifiedAt = parseDate(body.lastVerifiedAt);
-  if (
-    startsAt === "invalid" ||
-    endsAt === "invalid" ||
-    lastVerifiedAt === "invalid"
-  ) {
-    return NextResponse.json(
-      { error: "날짜 형식이 잘못되었습니다." },
       { status: 400 },
     );
   }
@@ -130,13 +119,6 @@ export async function POST(request: NextRequest) {
             ? body.productUrl.trim()
             : null,
         status: body.status as AlbumStoreListingStatus,
-        startsAt,
-        endsAt,
-        lastVerifiedAt,
-        sourceUrl:
-          typeof body.sourceUrl === "string" && body.sourceUrl.trim()
-            ? body.sourceUrl.trim()
-            : null,
         translations: translations.length
           ? { create: translations }
           : undefined,

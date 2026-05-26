@@ -2,11 +2,7 @@
 
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  utcIsoToInputValue,
-  inputValueToUtcIso,
-  nowAsInputValue,
-} from "@/lib/adminDateUtils";
+import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 
 export type ListingFormPayload = {
   albumId: string;
@@ -14,15 +10,25 @@ export type ListingFormPayload = {
   originalEditionLabel: string | null;
   originalLanguage: string;
   productUrl: string | null;
-  status: "active" | "sold_out" | "ended" | "unknown";
-  startsAt: string | null; // ISO
-  endsAt: string | null;
-  lastVerifiedAt: string | null;
-  sourceUrl: string | null;
-  translations: { locale: string; storeName: string | null; editionLabel: string | null }[];
+  // The schema enum has four values (active/sold_out/ended/unknown)
+  // but the admin form intentionally surfaces only two — matches the
+  // b03 read path that lumps sold_out + unknown into "판매중". See
+  // b03-b05-album-bonus-simplification-handoff.md.
+  status: "active" | "ended";
+  translations: {
+    locale: string;
+    storeName: string | null;
+    editionLabel: string | null;
+  }[];
 };
 
-export type ListingInitial = ListingFormPayload & { id?: string };
+// Edit-side initial data carries the full enum so an existing
+// sold_out / unknown row can be rendered with the right form badge
+// before mapping to the 2-state toggle on save.
+export type ListingInitial = Omit<ListingFormPayload, "status"> & {
+  id?: string;
+  status: "active" | "sold_out" | "ended" | "unknown";
+};
 
 type Props = {
   albumId: string;
@@ -31,19 +37,20 @@ type Props = {
   onClose: () => void;
 };
 
-const LOCALES = ["ko", "ja", "en", "zh-CN"];
-const LANGUAGES = [
-  { value: "ja", label: "일본어 (ja)" },
-  { value: "en", label: "영어 (en)" },
-  { value: "ko", label: "한국어 (ko)" },
-  { value: "zh-CN", label: "중국어 (zh-CN)" },
-];
+// 2-state toggle. sold_out / unknown rows from CSV import or earlier
+// schema state load as `active` ("판매중") on first open; saving
+// silently demotes them — accepted per the handoff (an explicit
+// 매진 marker is a Phase 2 follow-up if needed).
 const STATUSES: { value: ListingFormPayload["status"]; label: string }[] = [
-  { value: "active", label: "active — 구매 가능" },
-  { value: "sold_out", label: "sold_out — 매진" },
-  { value: "ended", label: "ended — 판매 종료" },
-  { value: "unknown", label: "unknown — 미확인" },
+  { value: "active", label: "판매중" },
+  { value: "ended", label: "종료" },
 ];
+
+function initialStatus(
+  status: ListingInitial["status"] | undefined,
+): ListingFormPayload["status"] {
+  return status === "ended" ? "ended" : "active";
+}
 
 export default function AlbumListingFormModal({
   albumId,
@@ -66,29 +73,15 @@ export default function AlbumListingFormModal({
   );
   const [productUrl, setProductUrl] = useState(initialData?.productUrl ?? "");
   const [status, setStatus] = useState<ListingFormPayload["status"]>(
-    initialData?.status ?? "unknown",
+    initialStatus(initialData?.status),
   );
-  const [startsAt, setStartsAt] = useState(
-    utcIsoToInputValue(initialData?.startsAt ?? null),
-  );
-  const [endsAt, setEndsAt] = useState(
-    utcIsoToInputValue(initialData?.endsAt ?? null),
-  );
-  const [lastVerifiedAt, setLastVerifiedAt] = useState(
-    utcIsoToInputValue(initialData?.lastVerifiedAt ?? null),
-  );
-  const [sourceUrl, setSourceUrl] = useState(initialData?.sourceUrl ?? "");
   const [translations, setTranslations] = useState(
     initialData?.translations ?? [],
   );
 
-  function setNow() {
-    setLastVerifiedAt(nowAsInputValue());
-  }
-
   function addTranslation() {
     const used = new Set(translations.map((t) => t.locale));
-    const next = LOCALES.find((l) => !used.has(l));
+    const next = ADMIN_LOCALES.find((l) => !used.has(l));
     if (next)
       setTranslations((prev) => [
         ...prev,
@@ -106,10 +99,6 @@ export default function AlbumListingFormModal({
       originalLanguage,
       productUrl: productUrl.trim() || null,
       status,
-      startsAt: inputValueToUtcIso(startsAt),
-      endsAt: inputValueToUtcIso(endsAt),
-      lastVerifiedAt: inputValueToUtcIso(lastVerifiedAt),
-      sourceUrl: sourceUrl.trim() || null,
       translations: translations
         .filter((t) => t.locale)
         .map((t) => ({
@@ -192,7 +181,7 @@ export default function AlbumListingFormModal({
               onChange={(e) => setOriginalLanguage(e.target.value)}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             >
-              {LANGUAGES.map((l) => (
+              {ADMIN_LANGUAGES.map((l) => (
                 <option key={l.value} value={l.value}>
                   {l.label}
                 </option>
@@ -227,67 +216,10 @@ export default function AlbumListingFormModal({
           />
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-600">
-              판매 시작 (UTC)
-            </label>
-            <input
-              type="datetime-local"
-              value={startsAt}
-              onChange={(e) => setStartsAt(e.target.value)}
-              className="w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-600">
-              판매 종료 (UTC)
-            </label>
-            <input
-              type="datetime-local"
-              value={endsAt}
-              onChange={(e) => setEndsAt(e.target.value)}
-              className="w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
-            />
-          </div>
-          <div>
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <label className="font-medium text-zinc-600">
-                마지막 확인 (UTC)
-              </label>
-              <button
-                type="button"
-                onClick={setNow}
-                className="text-blue-600 hover:underline"
-              >
-                지금
-              </button>
-            </div>
-            <input
-              type="datetime-local"
-              value={lastVerifiedAt}
-              onChange={(e) => setLastVerifiedAt(e.target.value)}
-              className="w-full rounded border border-zinc-300 px-2 py-1.5 text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <label className="mb-1 block text-sm font-medium">
-            공식 출처 URL (선택)
-          </label>
-          <input
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs"
-            placeholder="공식 뉴스 / 사이트 URL"
-          />
-        </div>
-
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <label className="text-sm font-medium">로케일 별 라벨 (선택)</label>
-            {translations.length < LOCALES.length && (
+            {translations.length < ADMIN_LOCALES.length && (
               <button
                 type="button"
                 onClick={addTranslation}
@@ -319,7 +251,7 @@ export default function AlbumListingFormModal({
                   }
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
-                  {LOCALES.map((l) => (
+                  {ADMIN_LOCALES.map((l) => (
                     <option key={l} value={l}>
                       {l}
                     </option>

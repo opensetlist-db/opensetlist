@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { classifyImageSource } from "@/lib/imageSourceBadge";
+import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
+import { ALBUM_TYPES } from "@/lib/albumConstants";
 
 type Translation = { locale: string; title: string };
 
@@ -21,14 +23,6 @@ type AlbumFormProps = {
   };
 };
 
-const LOCALES = ["ko", "ja", "en", "zh-CN"];
-const LANGUAGES = [
-  { value: "ja", label: "일본어 (ja)" },
-  { value: "en", label: "영어 (en)" },
-  { value: "ko", label: "한국어 (ko)" },
-  { value: "zh-CN", label: "중국어 (zh-CN)" },
-];
-const ALBUM_TYPES = ["single", "album", "ep", "live_album", "soundtrack"];
 
 type ArtistOption = {
   id: number;
@@ -73,7 +67,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
   }
   function addTranslation() {
     const used = translations.map((t) => t.locale);
-    const next = LOCALES.find((l) => !used.includes(l));
+    const next = ADMIN_LOCALES.find((l) => !used.includes(l));
     if (next) setTranslations((prev) => [...prev, { locale: next, title: "" }]);
   }
 
@@ -141,7 +135,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
             onChange={(e) => setOriginalLanguage(e.target.value)}
             className="rounded border border-zinc-300 px-3 py-2"
           >
-            {LANGUAGES.map((l) => (
+            {ADMIN_LANGUAGES.map((l) => (
               <option key={l.value} value={l.value}>
                 {l.label}
               </option>
@@ -232,7 +226,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-sm font-medium">번역</label>
-          {translations.length < LOCALES.length && (
+          {translations.length < ADMIN_LOCALES.length && (
             <button
               type="button"
               onClick={addTranslation}
@@ -253,7 +247,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
                 onChange={(e) => updateTranslation(i, "locale", e.target.value)}
                 className="rounded border border-zinc-300 px-2 py-1 text-sm"
               >
-                {LOCALES.map((l) => (
+                {ADMIN_LOCALES.map((l) => (
                   <option key={l} value={l}>
                     {l}
                   </option>

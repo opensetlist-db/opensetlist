@@ -5,21 +5,12 @@ import { useRouter } from "next/navigation";
 import AlbumBonusFormModal, {
   type BonusInitial,
 } from "@/components/admin/AlbumBonusFormModal";
-import { formatUtcDate } from "@/lib/adminDateUtils";
 
 export type BonusRow = {
   id: string;
   originalBonusType: string;
-  originalBonusDescription: string | null;
   originalLanguage: string;
-  bonusImageUrl: string | null;
-  startsAt: string | null;
-  endsAt: string | null;
-  translations: {
-    locale: string;
-    bonusType: string | null;
-    bonusDescription: string | null;
-  }[];
+  translations: { locale: string; bonusType: string | null }[];
 };
 
 type Props = {
@@ -56,70 +47,54 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
       <table className="w-full text-left text-sm">
         <thead className="border-b border-zinc-200 text-zinc-500">
           <tr>
-            <th className="pb-2">종류</th>
-            <th className="pb-2">설명</th>
-            <th className="pb-2">이미지</th>
-            <th className="pb-2">시작</th>
-            <th className="pb-2">종료</th>
+            <th className="pb-2">종류 (원어)</th>
+            <th className="pb-2">로케일 라벨</th>
             <th className="pb-2"></th>
           </tr>
         </thead>
         <tbody>
-          {bonuses.map((b) => (
-            <tr key={b.id} className="border-b border-zinc-100 align-top">
-              <td className="py-2 font-medium">{b.originalBonusType}</td>
-              <td className="max-w-xs py-2 text-zinc-500">
-                {b.originalBonusDescription ?? "—"}
-              </td>
-              <td className="py-2">
-                {b.bonusImageUrl ? (
-                  <a
-                    href={b.bonusImageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
+          {bonuses.map((b) => {
+            // Compact translation summary so the operator can see
+            // at a glance which locales are filled without opening
+            // the edit modal.
+            const tlSummary = b.translations
+              .filter((tr) => tr.bonusType)
+              .map((tr) => `${tr.locale}: ${tr.bonusType}`)
+              .join(" · ");
+            return (
+              <tr key={b.id} className="border-b border-zinc-100 align-top">
+                <td className="py-2 font-medium">{b.originalBonusType}</td>
+                <td className="py-2 text-zinc-500">{tlSummary || "—"}</td>
+                <td className="space-x-2 py-2 whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setModal({
+                        listingId,
+                        originalBonusType: b.originalBonusType,
+                        originalLanguage: b.originalLanguage,
+                        translations: b.translations,
+                        id: b.id,
+                      })
+                    }
                     className="text-blue-600 hover:underline"
                   >
-                    링크
-                  </a>
-                ) : (
-                  <span className="text-zinc-400">없음</span>
-                )}
-              </td>
-              <td className="py-2 text-zinc-500">{formatUtcDate(b.startsAt)}</td>
-              <td className="py-2 text-zinc-500">{formatUtcDate(b.endsAt)}</td>
-              <td className="space-x-2 py-2 whitespace-nowrap">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModal({
-                      listingId,
-                      originalBonusType: b.originalBonusType,
-                      originalBonusDescription: b.originalBonusDescription,
-                      originalLanguage: b.originalLanguage,
-                      bonusImageUrl: b.bonusImageUrl,
-                      startsAt: b.startsAt,
-                      endsAt: b.endsAt,
-                      translations: b.translations,
-                      id: b.id,
-                    })
-                  }
-                  className="text-blue-600 hover:underline"
-                >
-                  편집
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(b.id)}
-                  className="text-red-500 hover:underline"
-                >
-                  삭제
-                </button>
-              </td>
-            </tr>
-          ))}
+                    편집
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(b.id)}
+                    className="text-red-500 hover:underline"
+                  >
+                    삭제
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
           {bonuses.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-4 text-center text-zinc-400">
+              <td colSpan={3} className="py-4 text-center text-zinc-400">
                 등록된 특전이 없습니다. &ldquo;+ 추가&rdquo; 로 시작하세요.
               </td>
             </tr>
