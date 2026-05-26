@@ -1,0 +1,197 @@
+import { getTranslations } from "next-intl/server";
+import { colors, radius } from "@/styles/tokens";
+import {
+  PerformanceGroup,
+  type PerformanceEvent,
+  type PerformanceSeries,
+} from "@/components/PerformanceGroup";
+import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
+import { formatDate } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
+import { AlbumType } from "@/generated/prisma/enums";
+import type { RelatedEvent } from "@/lib/albumRelatedEvents";
+
+/*
+ * Related-events tab content for the Album page (b04). Consumes the
+ * already-fetched RelatedEvent[] from getAlbumRelatedEvents and
+ * renders a series-grouped collapsible list of events via the shared
+ * <PerformanceGroup> primitive (the same one Artist / Song / Member /
+ * Series pages use for their history tabs — keeps the visual rhythm
+ * consistent across detail pages).
+ *
+ * Type-aware subtitle string:
+ *   live_album → "Events linked to this BD"
+ *   else       → "Events where these tracks were performed"
+ *
+ * Grouping shape mirrors the song-page history tab exactly:
+ *   - Per-series bucket sorted desc-by-date inside the bucket
+ *   - Series bucket sortKey = MAX_SAFE_INTEGER when any event is
+ *     ongoing (ongoing-pinned), else most-recent-event timestamp
+ *   - Events with no eventSeries land in a synthetic "Other" bucket
+ *     pinned to the end (sortKey 0) so standalone events stay
+ *     discoverable instead of disappearing from the list
+ */
+
+interface Props {
+  events: RelatedEvent[];
+  albumType: AlbumType | string;
+  locale: string;
+}
+
+export async function AlbumRelatedEventsTab({
+  events,
+  albumType,
+  locale,
+}: Props) {
+  const tNs = await getTranslations({ locale, namespace: "Album.events" });
+  const et = await getTranslations({ locale, namespace: "Event" });
+
+  if (events.length === 0) {
+    return (
+      <div
+        style={{
+          background: colors.bgCard,
+          borderRadius: radius.card,
+          padding: "32px 20px",
+          textAlign: "center",
+          color: colors.textMuted,
+          fontSize: 14,
+        }}
+      >
+        {tNs("empty")}
+      </div>
+    );
+  }
+
+  const referenceNow = new Date();
+
+  // PerformanceGroup is locale-agnostic by design — it accepts a
+  // pre-resolved statusLabels map so the component stays out of
+  // next-intl. Mirror the song page's mapping (ongoing → "LIVE"
+  // instead of "진행중" to match the row-shaped status pill UX).
+  const statusLabels: Record<ResolvedEventStatus, string> = {
+    ongoing: et("live"),
+    upcoming: et("status.upcoming"),
+    completed: et("status.completed"),
+    cancelled: et("status.cancelled"),
+  };
+
+  // Flat per-event view-model, with the series id/name extracted so the
+  // grouping pass below doesn't have to traverse the nested relation
+  // again. rawDateMs is the sort key inside + across buckets.
+  type EventView = PerformanceEvent & {
+    seriesId: number | null;
+    seriesName: string | null;
+    rawDateMs: number;
+  };
+
+  const views: EventView[] = events.map((event) => {
+    const status = getEventStatus(
+      { status: event.status, startTime: event.startTime },
+      referenceNow,
+    );
+    const seriesId = event.eventSeries ? Number(event.eventSeries.id) : null;
+    const seriesName = event.eventSeries
+      ? displayNameWithFallback(
+          event.eventSeries,
+          event.eventSeries.translations,
+          locale,
+        ) || null
+      : null;
+    const eventName =
+      displayNameWithFallback(event, event.translations, locale) ||
+      et("unknownEvent");
+    return {
+      id: String(event.id),
+      seriesId,
+      seriesName,
+      status,
+      formattedDate: formatDate(event.date, locale),
+      name: eventName,
+      href: `/${locale}/events/${event.id}/${event.slug}`,
+      rawDateMs: new Date(String(event.date)).getTime(),
+    };
+  });
+
+  // Group by series id; events with seriesId === null bucket into the
+  // synthetic "Other" group pinned at the end.
+  const seriesBuckets = new Map<string, EventView[]>();
+  const ungrouped: EventView[] = [];
+  for (const view of views) {
+    if (view.seriesId === null) {
+      ungrouped.push(view);
+      continue;
+    }
+    const key = String(view.seriesId);
+    const bucket = seriesBuckets.get(key);
+    if (bucket) bucket.push(view);
+    else seriesBuckets.set(key, [view]);
+  }
+
+  type AlbumSeriesView = PerformanceSeries & { sortKey: number };
+  const seriesViews: AlbumSeriesView[] = [];
+  for (const bucket of seriesBuckets.values()) {
+    bucket.sort((a, b) => b.rawDateMs - a.rawDateMs);
+    const hasOngoing = bucket.some((v) => v.status === "ongoing");
+    const mostRecentMs = bucket.reduce(
+      (m, v) => (v.rawDateMs > m ? v.rawDateMs : m),
+      0,
+    );
+    seriesViews.push({
+      seriesId: String(bucket[0].seriesId),
+      seriesShort: bucket[0].seriesName ?? et("unknownEvent"),
+      hasOngoing,
+      events: bucket,
+      sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,
+    });
+  }
+  seriesViews.sort((a, b) => b.sortKey - a.sortKey);
+
+  if (ungrouped.length > 0) {
+    ungrouped.sort((a, b) => b.rawDateMs - a.rawDateMs);
+    seriesViews.push({
+      seriesId: "ungrouped",
+      seriesShort: et("ungrouped"),
+      hasOngoing: ungrouped.some((v) => v.status === "ongoing"),
+      events: ungrouped,
+      sortKey: 0,
+    });
+  }
+
+  const subtitle =
+    albumType === AlbumType.live_album
+      ? tNs("subtitle.bd")
+      : tNs("subtitle.songsAppeared");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p
+        style={{
+          margin: "0 0 4px",
+          fontSize: 13,
+          color: colors.textSubtle,
+        }}
+      >
+        {subtitle}
+      </p>
+      <div
+        style={{
+          background: colors.bgCard,
+          borderRadius: radius.card,
+          overflow: "hidden",
+        }}
+      >
+        {seriesViews.map((series) => (
+          <PerformanceGroup
+            key={series.seriesId}
+            series={series}
+            statusLabels={statusLabels}
+            eventCountLabel={tNs("eventCountLabel", {
+              count: series.events.length,
+            })}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
