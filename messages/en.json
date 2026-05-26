@@ -164,7 +164,12 @@
       "titleTemplate": "{title} - {artist} store bonuses | OpenSetlist",
       "descriptionTemplate": "{title} store bonuses list"
     },
-    "tabsAriaLabel": "Album page tabs"
+    "tabsAriaLabel": "Album page tabs",
+    "tabBody": {
+      "bonus": "Store bonus details are coming soon.",
+      "tracks": "Track listing is coming soon.",
+      "events": "Related event listing is coming soon."
+    }
   },
   "AlbumTrack": {
     "variantSuffix": {

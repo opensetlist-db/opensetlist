@@ -1,8 +1,23 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
+import { TabBar } from "@/components/TabBar";
+import { colors } from "@/styles/tokens";
+
+/*
+ * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
+ * (the BD doesn't carry a recorded-song tracklist in the same sense
+ * an audio album does) and default to the Related Events tab so the
+ * first thing a viewer lands on is the show(s) the BD captures.
+ * Every other album type defaults to the Bonus tab — the primary
+ * purchase surface and the win-win monetization landing per the
+ * monetization-economics 매장特典 framing.
+ */
+type AlbumTabKey = "bonus" | "tracks" | "events";
 
 /*
  * Album detail page — `/[locale]/albums/[id]/[[...slug]]/`.
@@ -80,10 +95,27 @@ const getAlbum = cache(async (id: bigint, locale: string) => {
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
+  searchParams: Promise<{ tab?: string }>;
 };
 
-export default async function AlbumDetailPage({ params }: Props) {
+function resolveActiveTab(
+  rawTab: string | undefined,
+  visibleTabs: ReadonlyArray<AlbumTabKey>,
+  defaultTab: AlbumTabKey,
+): AlbumTabKey {
+  // Sanitise the URL param: a stale or hand-typed value (?tab=foo, or
+  // ?tab=tracks on a live_bd album where the tracks tab is hidden)
+  // falls back to the type-aware default so the page never renders a
+  // tab body that doesn't match the bar above it.
+  if (rawTab && (visibleTabs as ReadonlyArray<string>).includes(rawTab)) {
+    return rawTab as AlbumTabKey;
+  }
+  return defaultTab;
+}
+
+export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const { locale, id } = await params;
+  const { tab: rawTab } = await searchParams;
   // Numeric-id guard mirrors the event/song detail pages — a non-numeric
   // path segment isn't an album we can render, so route past metadata
   // straight to 404 rather than throwing on BigInt(...) coercion.
@@ -91,12 +123,23 @@ export default async function AlbumDetailPage({ params }: Props) {
   const album = await getAlbum(BigInt(id), locale);
   if (!album) notFound();
 
-  // Two-column desktop layout with the AlbumInfoCard sidebar on the
-  // left (280px fixed) and the tab content area on the right (fluid).
-  // Mobile collapses to a single column with the sidebar stacked on
-  // top of the tab area. The TabBar + tab content panels land in
-  // Step 3; the right column is intentionally empty for this commit
-  // so the sidebar render lands isolated for review.
+  const t = await getTranslations({ locale, namespace: "Album" });
+
+  // Type-aware tab visibility: live_bd albums hide the Tracks tab
+  // (BDs don't carry an audio-track listing). Bonus + Events tabs
+  // always show.
+  const showTracks = album.type !== AlbumType.live_album;
+  const visibleTabs: AlbumTabKey[] = ["bonus"];
+  if (showTracks) visibleTabs.push("tracks");
+  visibleTabs.push("events");
+  const defaultTab: AlbumTabKey = album.type === AlbumType.live_album ? "events" : "bonus";
+  const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
+
+  const tabs = visibleTabs.map((key) => ({
+    key,
+    label: t(`tab.${key}`),
+  }));
+
   return (
     <main
       style={{
@@ -112,7 +155,26 @@ export default async function AlbumDetailPage({ params }: Props) {
       <aside>
         <AlbumInfoCard album={album} locale={locale} />
       </aside>
-      <section />
+      <section>
+        <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
+        {/* Tab body slots are placeholders for the b03 (bonus grid)
+            and b04 (tracks + related events) follow-on tasks. The
+            i18n key strings explain the empty state in the viewer's
+            locale so the placeholder period never reads as a broken
+            page. */}
+        <div
+          style={{
+            background: colors.bgCard,
+            borderRadius: 12,
+            padding: "32px 20px",
+            textAlign: "center",
+            color: colors.textMuted,
+            fontSize: 14,
+          }}
+        >
+          {t(`tabBody.${activeTab}`)}
+        </div>
+      </section>
     </main>
   );
 }

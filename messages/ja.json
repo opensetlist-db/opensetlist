@@ -164,7 +164,12 @@
       "titleTemplate": "{title} - {artist} 店舗特典 | OpenSetlist",
       "descriptionTemplate": "{title} 店舗特典一覧"
     },
-    "tabsAriaLabel": "アルバムページタブ"
+    "tabsAriaLabel": "アルバムページタブ",
+    "tabBody": {
+      "bonus": "店舗特典の情報は準備中です。",
+      "tracks": "収録曲リストは準備中です。",
+      "events": "関連公演の情報は準備中です。"
+    }
   },
   "AlbumTrack": {
     "variantSuffix": {
