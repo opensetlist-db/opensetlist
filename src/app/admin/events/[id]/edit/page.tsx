@@ -117,11 +117,18 @@ export default async function EditEventPage({ params }: Props) {
         <SetlistBuilder
           eventId={Number(data.id)}
           initialItems={data.setlistItems as any}
-          // Non-guest event performers seed the new-item form's
-          // performer field — most setlist items are full-group, so
-          // defaulting to "everyone" turns add into deselect (faster
-          // than picking 5+ from empty for every song). Guests stay
-          // explicit-only per the EventPerformer schema comment.
+          // Non-guest event performers — drives the new-item form's
+          // default-performer derivation in SetlistBuilder. The rule
+          // (deriveDefaultPerformerIds) collapses Hasunosora's three
+          // repeating patterns to a deterministic auto-fill from
+          // (type, stageType, formArtistIds):
+          //   • mc/video/interval                → []
+          //   • song + full_group                → this whole prop
+          //   • song + unit/solo/special + unit  → this prop filtered
+          //     to stage identities whose artistLinks include the
+          //     picked Artist id
+          // Guests stay explicit-only per the EventPerformer schema
+          // comment; they never seed any derived row.
           eventPerformers={(data.performers ?? [])
             .filter((p: { isGuest: boolean }) => !p.isGuest)
             .map(
@@ -131,11 +138,27 @@ export default async function EditEventPage({ params }: Props) {
                   translations: { locale: string; name: string }[];
                   artistLinks: {
                     artist: {
+                      // Prisma's static type is `bigint`; the value
+                      // here has already been JSON-coerced to a JS
+                      // number by `serializeBigInt(event)` upstream,
+                      // but the type chain still says bigint. We
+                      // re-coerce on output so SetlistBuilder's
+                      // `number` Set lookups work.
+                      id: bigint;
                       translations: { locale: string; name: string }[];
                     };
                   }[];
                 };
-              }) => p.stageIdentity,
+              }) => ({
+                id: p.stageIdentity.id,
+                translations: p.stageIdentity.translations,
+                artistLinks: p.stageIdentity.artistLinks.map((l) => ({
+                  artist: {
+                    id: Number(l.artist.id),
+                    translations: l.artist.translations,
+                  },
+                })),
+              }),
             )}
         />
         {/* eslint-enable @typescript-eslint/no-explicit-any */}
