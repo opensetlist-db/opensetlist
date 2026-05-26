@@ -15,21 +15,28 @@ export default async function AlbumBonusesPage({ params }: Props) {
     notFound();
   }
 
-  const listing = await prisma.albumStoreListing.findFirst({
-    where: { id: listingId, albumId },
-    select: {
-      id: true,
-      originalStoreName: true,
-      originalEditionLabel: true,
-    },
-  });
+  // Both queries key off the URL params (listingId for bonuses,
+  // listingId+albumId for the listing lookup) — independent reads,
+  // so fan them out. The notFound() guard runs after destructuring;
+  // the bonuses query result is discarded in the not-found path,
+  // which is the cheaper trade for the latency-saving in the happy
+  // path. Matches the Promise.all pattern in listings/page.tsx.
+  const [listing, bonuses] = await Promise.all([
+    prisma.albumStoreListing.findFirst({
+      where: { id: listingId, albumId },
+      select: {
+        id: true,
+        originalStoreName: true,
+        originalEditionLabel: true,
+      },
+    }),
+    prisma.albumStoreBonus.findMany({
+      where: { listingId },
+      include: { translations: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
   if (!listing) notFound();
-
-  const bonuses = await prisma.albumStoreBonus.findMany({
-    where: { listingId },
-    include: { translations: true },
-    orderBy: { createdAt: "asc" },
-  });
 
   type SerializedBonus = {
     id: string;
