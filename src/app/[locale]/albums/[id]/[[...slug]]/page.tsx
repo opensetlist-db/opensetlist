@@ -1,12 +1,15 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { TabBar } from "@/components/TabBar";
 import { colors } from "@/styles/tokens";
+import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import { normalizeOgLocale } from "@/lib/ogLabels";
 
 /*
  * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
@@ -97,6 +100,64 @@ type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
   searchParams: Promise<{ tab?: string }>;
 };
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+}): Promise<Metadata> {
+  const { locale, id } = await params;
+  const metaT = await getTranslations({ locale, namespace: "Meta" });
+  if (!/^\d+$/.test(id)) return { title: metaT("notFound") };
+
+  // Same cached fetch as the page body — react.cache collapses both
+  // calls into one DB roundtrip per request.
+  const album = await getAlbum(BigInt(id), locale);
+  if (!album) return { title: metaT("notFound") };
+
+  const t = await getTranslations({ locale, namespace: "Album" });
+
+  const title =
+    resolveLocalizedField(
+      album,
+      album.translations,
+      locale,
+      "title",
+      "originalTitle",
+    ) ?? t("unknown");
+
+  const primaryArtist = album.artists[0]?.artist ?? null;
+  const artistName = primaryArtist
+    ? displayNameWithFallback(primaryArtist, primaryArtist.translations, locale)
+    : "";
+
+  const fullTitle = t("meta.titleTemplate", { title, artist: artistName });
+  const description = t("meta.descriptionTemplate", { title });
+
+  const ogImage = `/api/og/album/${id}?lang=${normalizeOgLocale(locale)}`;
+  const pageUrl = `/${locale}/albums/${id}/${album.slug}`;
+
+  return {
+    title: fullTitle,
+    description,
+    openGraph: {
+      title: fullTitle,
+      description,
+      url: pageUrl,
+      siteName: "OpenSetlist",
+      images: [{ url: ogImage, width: 1200, height: 630, alt: fullTitle }],
+      locale,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: fullTitle,
+      description,
+      images: [ogImage],
+      site: "@opensetlistdb",
+    },
+  };
+}
 
 function resolveActiveTab(
   rawTab: string | undefined,
