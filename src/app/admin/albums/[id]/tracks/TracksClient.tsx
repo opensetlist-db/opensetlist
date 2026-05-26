@@ -71,7 +71,7 @@ export default function TracksClient({ albumId, tracks }: Props) {
 
       {discs.length === 0 && (
         <p className="py-4 text-center text-zinc-400">
-          등록된 트랙이 없습니다. CSV 가져오기 또는 "+ 추가"로 시작하세요.
+          등록된 트랙이 없습니다. CSV 가져오기 또는 &ldquo;+ 추가&rdquo;로 시작하세요.
         </p>
       )}
 

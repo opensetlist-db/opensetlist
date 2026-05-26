@@ -127,7 +127,7 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
           {bonuses.length === 0 && (
             <tr>
               <td colSpan={6} className="py-4 text-center text-zinc-400">
-                등록된 특전이 없습니다. "+ 추가" 로 시작하세요.
+                등록된 특전이 없습니다. &ldquo;+ 추가&rdquo; 로 시작하세요.
               </td>
             </tr>
           )}

@@ -209,7 +209,7 @@ export default function ListingsClient({
           {listings.length === 0 && (
             <tr>
               <td colSpan={7} className="py-4 text-center text-zinc-400">
-                등록된 구매처가 없습니다. "+ 추가" 로 시작하세요.
+                등록된 구매처가 없습니다. &ldquo;+ 추가&rdquo; 로 시작하세요.
               </td>
             </tr>
           )}
