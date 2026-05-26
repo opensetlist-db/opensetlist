@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
+import { AlbumBonusTab } from "@/components/AlbumBonusTab";
 import { TabBar } from "@/components/TabBar";
 import { colors, radius } from "@/styles/tokens";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
@@ -244,23 +245,27 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       </aside>
       <section>
         <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
-        {/* Tab body slots are placeholders for the b03 (bonus grid)
-            and b04 (tracks + related events) follow-on tasks. The
-            i18n key strings explain the empty state in the viewer's
-            locale so the placeholder period never reads as a broken
-            page. */}
-        <div
-          style={{
-            background: colors.bgCard,
-            borderRadius: radius.card,
-            padding: "32px 20px",
-            textAlign: "center",
-            color: colors.textMuted,
-            fontSize: 14,
-          }}
-        >
-          {t(`tabBody.${activeTab}`)}
-        </div>
+        {/* Bonus tab now renders the real AlbumBonusTab from b03;
+            tracks + events stay on the i18n-keyed placeholder until
+            b04 lands their data panels. The conditional keeps the
+            placeholder/real swap explicit per tab so b04 can flip its
+            two slots without touching the bonus branch. */}
+        {activeTab === "bonus" ? (
+          <AlbumBonusTab album={album} locale={locale} />
+        ) : (
+          <div
+            style={{
+              background: colors.bgCard,
+              borderRadius: radius.card,
+              padding: "32px 20px",
+              textAlign: "center",
+              color: colors.textMuted,
+              fontSize: 14,
+            }}
+          >
+            {t(`tabBody.${activeTab}`)}
+          </div>
+        )}
       </section>
     </main>
   );

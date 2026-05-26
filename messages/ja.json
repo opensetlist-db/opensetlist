@@ -169,6 +169,15 @@
       "bonus": "店舗特典の情報は準備中です。",
       "tracks": "収録曲リストは準備中です。",
       "events": "関連公演の情報は準備中です。"
+    },
+    "bonus": {
+      "status": {
+        "active": "販売中",
+        "ended": "終了"
+      },
+      "buy": "購入する",
+      "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
+      "empty": "登録された店舗情報がありません。"
     }
   },
   "AlbumTrack": {

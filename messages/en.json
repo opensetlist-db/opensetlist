@@ -169,6 +169,15 @@
       "bonus": "Store bonus details are coming soon.",
       "tracks": "Track listing is coming soon.",
       "events": "Related event listing is coming soon."
+    },
+    "bonus": {
+      "status": {
+        "active": "Available",
+        "ended": "Ended"
+      },
+      "buy": "Buy",
+      "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
+      "empty": "No store info registered yet."
     }
   },
   "AlbumTrack": {
