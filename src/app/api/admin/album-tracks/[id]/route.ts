@@ -7,6 +7,7 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
+import { parseBigInt, parsePositiveInt } from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -21,24 +22,6 @@ type PatchBody = {
   titleLanguage?: unknown;
   translations?: unknown;
 };
-
-function parseBigInt(v: unknown): bigint | null {
-  if (typeof v !== "string" && typeof v !== "number") return null;
-  try {
-    return BigInt(v as string | number);
-  } catch {
-    return null;
-  }
-}
-
-function parsePositiveInt(v: unknown): number | null {
-  if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
-  if (typeof v === "string" && /^\d+$/.test(v)) {
-    const n = Number(v);
-    return n > 0 ? n : null;
-  }
-  return null;
-}
 
 function parsePattern3Translations(input: unknown) {
   return Array.isArray(input)

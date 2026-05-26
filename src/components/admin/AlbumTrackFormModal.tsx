@@ -6,6 +6,7 @@ import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
 import {
   PATTERN2_ALBUM_TRACK_VARIANTS,
   PATTERN3_ALBUM_TRACK_VARIANTS,
+  ALBUM_TRACK_VARIANT_SUFFIX_KO,
 } from "@/lib/albumTrackVariants";
 
 export type TrackPattern = "vocal" | "off_vocal_w_parent" | "direct";
@@ -43,17 +44,11 @@ const LANGUAGES = [
   { value: "ko", label: "한국어 (ko)" },
 ];
 
-// Korean labels for the live preview block — admin scope is
-// Korean-only per CLAUDE.md. Mirrors the messages/ko.json keys but
-// inlined so this form doesn't require NextIntlClientProvider
-// (admin layout omits it intentionally).
-const VARIANT_SUFFIX_KO: Record<string, string> = {
-  "off-vocal": "오프 보컬",
-  instrumental: "인스트루멘탈",
-  karaoke: "가라오케",
-  drama: "드라마",
-  bgm: "BGM",
-};
+// Korean labels for the live preview + variant select come from
+// `ALBUM_TRACK_VARIANT_SUFFIX_KO` in `@/lib/albumTrackVariants` so
+// the admin surface and the import-side allowlist stay in lockstep.
+// Indexed lookups fall back to the raw variant string if a future
+// schema change adds a value before this map catches up.
 
 export default function AlbumTrackFormModal({
   albumId,
@@ -224,7 +219,7 @@ export default function AlbumTrackFormModal({
   // variant suffix map (mirrors getAlbumTrackTitle's Pattern 2 path).
   const previewKo =
     pattern === "off_vocal_w_parent" && parentLabel && variant
-      ? `${parentLabel} (${VARIANT_SUFFIX_KO[variant] ?? variant})`
+      ? `${parentLabel} (${ALBUM_TRACK_VARIANT_SUFFIX_KO[variant as keyof typeof ALBUM_TRACK_VARIANT_SUFFIX_KO] ?? variant})`
       : null;
 
   return (
@@ -385,7 +380,7 @@ export default function AlbumTrackFormModal({
               >
                 {PATTERN2_ALBUM_TRACK_VARIANTS.map((v) => (
                   <option key={v} value={v}>
-                    {VARIANT_SUFFIX_KO[v] ?? v}
+                    {ALBUM_TRACK_VARIANT_SUFFIX_KO[v] ?? v}
                   </option>
                 ))}
               </select>
@@ -410,7 +405,7 @@ export default function AlbumTrackFormModal({
               >
                 {PATTERN3_ALBUM_TRACK_VARIANTS.map((v) => (
                   <option key={v} value={v}>
-                    {VARIANT_SUFFIX_KO[v] ?? v}
+                    {ALBUM_TRACK_VARIANT_SUFFIX_KO[v] ?? v}
                   </option>
                 ))}
               </select>

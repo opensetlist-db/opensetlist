@@ -2,6 +2,11 @@
 
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  utcIsoToInputValue,
+  inputValueToUtcIso,
+  nowAsInputValue,
+} from "@/lib/adminDateUtils";
 
 export type ListingFormPayload = {
   albumId: string;
@@ -39,29 +44,6 @@ const STATUSES: { value: ListingFormPayload["status"]; label: string }[] = [
   { value: "ended", label: "ended — 판매 종료" },
   { value: "unknown", label: "unknown — 미확인" },
 ];
-
-// `<input type="datetime-local">` wants the value formatted as
-// `YYYY-MM-DDTHH:mm` in **local time**, but everything we store and
-// reason about server-side is in UTC (per CLAUDE.md "Date & Time —
-// UTC is the only correct default"). Convert in both directions at
-// the boundary: stored UTC → input string uses getUTC* getters so a
-// 2025-12-01 UTC stays 2025-12-01 in the input regardless of where
-// the operator's laptop happens to be; input string → stored UTC
-// re-attaches the Z so `new Date()` parses it as UTC, not local.
-function utcIsoToInputValue(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return (
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
-    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-  );
-}
-function inputValueToUtcIso(value: string): string | null {
-  if (!value) return null;
-  return `${value}:00.000Z`;
-}
 
 export default function AlbumListingFormModal({
   albumId,
@@ -101,12 +83,7 @@ export default function AlbumListingFormModal({
   );
 
   function setNow() {
-    const now = new Date();
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    const v =
-      `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
-      `T${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
-    setLastVerifiedAt(v);
+    setLastVerifiedAt(nowAsInputValue());
   }
 
   function addTranslation() {

@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { parseDate } from "@/lib/adminParsers";
 
 type CreateBody = {
   listingId?: unknown;
@@ -14,13 +15,6 @@ type CreateBody = {
   endsAt?: unknown;
   translations?: unknown;
 };
-
-function parseDate(value: unknown): Date | null | "invalid" {
-  if (value == null || value === "") return null;
-  if (typeof value !== "string") return "invalid";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
-}
 
 function parseTranslations(input: unknown) {
   return Array.isArray(input)

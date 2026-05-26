@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { classifyImageSource } from "@/lib/imageSourceBadge";
 
 type Translation = { locale: string; title: string };
 
@@ -33,35 +34,6 @@ type ArtistOption = {
   id: number;
   translations: { locale: string; name: string }[];
 };
-
-// Source-state badge for `imageUrl` — implements album-image-source-policy
-// Option D (adopted 2026-05-16). Amazon CDN URLs are allowed when the
-// listing carries an ASIN. R2 is the canonical home. Anything else is
-// "External" and the operator should log it in wiki/log.md as a
-// temporary placeholder.
-function imageSource(
-  url: string,
-): { label: string; color: string; warn: boolean } {
-  if (!url) return { label: "비어있음", color: "bg-zinc-100 text-zinc-500", warn: false };
-  let host: string;
-  try {
-    host = new URL(url).host.toLowerCase();
-  } catch {
-    return { label: "잘못된 URL", color: "bg-red-100 text-red-700", warn: true };
-  }
-  if (
-    host.endsWith(".media-amazon.com") ||
-    host === "images-na.ssl-images-amazon.com" ||
-    host === "m.media-amazon.com"
-  ) {
-    return { label: "Amazon", color: "bg-amber-100 text-amber-700", warn: false };
-  }
-  const r2Host = process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
-  if (r2Host && host === r2Host.toLowerCase()) {
-    return { label: "R2", color: "bg-emerald-100 text-emerald-700", warn: false };
-  }
-  return { label: "External", color: "bg-red-100 text-red-700", warn: true };
-}
 
 export default function AlbumForm({ initialData }: AlbumFormProps) {
   const router = useRouter();
@@ -148,7 +120,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
     }
   }
 
-  const imgSrc = imageSource(imageUrl);
+  const imgSrc = classifyImageSource(imageUrl);
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">

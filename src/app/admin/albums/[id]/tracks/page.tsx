@@ -9,30 +9,30 @@ import {
 import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
+  ALBUM_TRACK_VARIANT_SUFFIX_KO,
 } from "@/lib/albumTrackVariants";
 import TracksClient, { type TrackRow } from "./TracksClient";
 import type { TrackPattern as ClientTrackPattern } from "@/components/admin/AlbumTrackFormModal";
 
 type Props = { params: Promise<{ id: string }> };
 
-// Korean labels for the row badges + getAlbumTrackTitle `t` callback.
-// Inlined so this page doesn't need NextIntlClientProvider (admin
-// layout intentionally omits it per CLAUDE.md). Mirrors the message
-// keys under "AlbumTrack.variantSuffix.*" + "AlbumTrack.fallbackTrack"
-// in messages/ko.json; if those change the literal here should
-// follow.
-const VARIANT_SUFFIX_KO: Record<string, string> = {
-  "off-vocal": "오프 보컬",
-  instrumental: "인스트루멘탈",
-  karaoke: "가라오케",
-  drama: "드라마",
-  bgm: "BGM",
-};
-
-function adminT(key: string, values?: Record<string, string | number>): string {
+// `adminT` is the `t` callback that getAlbumTrackTitle expects, but
+// resolved against an inline Korean map instead of next-intl —
+// admin layout omits NextIntlClientProvider on purpose (CLAUDE.md
+// admin-i18n exemption). The variant labels live with the allowlist
+// in @/lib/albumTrackVariants so import + admin + display stay in
+// lockstep; the fallbackTrack literal mirrors messages/ko.json.
+function adminT(
+  key: string,
+  values?: Record<string, string | number>,
+): string {
   if (key.startsWith("AlbumTrack.variantSuffix.")) {
     const v = key.slice("AlbumTrack.variantSuffix.".length);
-    return VARIANT_SUFFIX_KO[v] ?? v;
+    return (
+      ALBUM_TRACK_VARIANT_SUFFIX_KO[
+        v as keyof typeof ALBUM_TRACK_VARIANT_SUFFIX_KO
+      ] ?? v
+    );
   }
   if (key === "AlbumTrack.fallbackTrack") {
     return `트랙 ${values?.number ?? "?"}`;

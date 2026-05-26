@@ -6,6 +6,7 @@ import Link from "next/link";
 import AlbumListingFormModal, {
   type ListingInitial,
 } from "@/components/admin/AlbumListingFormModal";
+import { formatUtcDate } from "@/lib/adminDateUtils";
 
 export type ListingRow = {
   id: string;
@@ -58,17 +59,6 @@ function isStale(lastVerifiedAt: string | null): boolean {
   // Both sides are absolute instants — Date.now() is fine to compare
   // against a stored UTC timestamp (per CLAUDE.md's UTC rule).
   return Date.now() - d.getTime() > STALE_MS;
-}
-
-function formatUtc(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  // Inspect via getUTC* getters so the rendered slice doesn't drift
-  // by the operator's TZ. The operator works in absolute terms; the
-  // admin scope intentionally bypasses the public formatDate helper.
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 export default function ListingsClient({
@@ -163,7 +153,7 @@ export default function ListingsClient({
                 </td>
                 <td className="py-2">
                   <span className="text-zinc-500">
-                    {formatUtc(l.lastVerifiedAt)}
+                    {formatUtcDate(l.lastVerifiedAt)}
                   </span>
                   {stale && (
                     <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">

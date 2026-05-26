@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AlbumBonusFormModal, {
   type BonusInitial,
 } from "@/components/admin/AlbumBonusFormModal";
+import { formatUtcDate } from "@/lib/adminDateUtils";
 
 export type BonusRow = {
   id: string;
@@ -25,14 +26,6 @@ type Props = {
   listingId: string;
   bonuses: BonusRow[];
 };
-
-function formatUtc(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-}
 
 export default function BonusesClient({ listingId, bonuses }: Props) {
   const router = useRouter();
@@ -92,8 +85,8 @@ export default function BonusesClient({ listingId, bonuses }: Props) {
                   <span className="text-zinc-400">없음</span>
                 )}
               </td>
-              <td className="py-2 text-zinc-500">{formatUtc(b.startsAt)}</td>
-              <td className="py-2 text-zinc-500">{formatUtc(b.endsAt)}</td>
+              <td className="py-2 text-zinc-500">{formatUtcDate(b.startsAt)}</td>
+              <td className="py-2 text-zinc-500">{formatUtcDate(b.endsAt)}</td>
               <td className="space-x-2 py-2 whitespace-nowrap">
                 <button
                   type="button"

@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { parseDate } from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -15,13 +16,6 @@ type PatchBody = {
   endsAt?: unknown;
   translations?: unknown;
 };
-
-function parseDate(value: unknown): Date | null | "invalid" {
-  if (value == null || value === "") return null;
-  if (typeof value !== "string") return "invalid";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
-}
 
 function parseTranslations(input: unknown) {
   return Array.isArray(input)
@@ -92,49 +86,68 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
 
   const translations = parseTranslations(body.translations);
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const existing = await tx.albumStoreBonus.findUnique({
-      where: { id },
-      select: { id: true },
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.albumStoreBonus.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!existing) return null;
+
+      await tx.albumStoreBonusTranslation.deleteMany({
+        where: { bonusId: id },
+      });
+
+      return tx.albumStoreBonus.update({
+        where: { id },
+        data: {
+          originalBonusType: (body.originalBonusType as string).trim(),
+          originalBonusDescription:
+            typeof body.originalBonusDescription === "string" &&
+            body.originalBonusDescription.trim()
+              ? body.originalBonusDescription.trim()
+              : null,
+          originalLanguage:
+            typeof body.originalLanguage === "string" && body.originalLanguage
+              ? body.originalLanguage
+              : "ja",
+          bonusImageUrl:
+            typeof body.bonusImageUrl === "string" && body.bonusImageUrl.trim()
+              ? body.bonusImageUrl.trim()
+              : null,
+          startsAt,
+          endsAt,
+          translations: translations.length
+            ? { create: translations }
+            : undefined,
+        },
+        include: { translations: true },
+      });
     });
-    if (!existing) return null;
 
-    await tx.albumStoreBonusTranslation.deleteMany({ where: { bonusId: id } });
-
-    return tx.albumStoreBonus.update({
-      where: { id },
-      data: {
-        originalBonusType: (body.originalBonusType as string).trim(),
-        originalBonusDescription:
-          typeof body.originalBonusDescription === "string" &&
-          body.originalBonusDescription.trim()
-            ? body.originalBonusDescription.trim()
-            : null,
-        originalLanguage:
-          typeof body.originalLanguage === "string" && body.originalLanguage
-            ? body.originalLanguage
-            : "ja",
-        bonusImageUrl:
-          typeof body.bonusImageUrl === "string" && body.bonusImageUrl.trim()
-            ? body.bonusImageUrl.trim()
-            : null,
-        startsAt,
-        endsAt,
-        translations: translations.length
-          ? { create: translations }
-          : undefined,
-      },
-      include: { translations: true },
-    });
-  });
-
-  if (!updated) {
-    return NextResponse.json(
-      { error: "특전을 찾을 수 없습니다." },
-      { status: 404 },
-    );
+    if (!updated) {
+      return NextResponse.json(
+        { error: "특전을 찾을 수 없습니다." },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json(serializeBigInt(updated));
+  } catch (e) {
+    // Race window: the existence check inside the transaction passed,
+    // but a concurrent DELETE removed the row before update() landed.
+    // Prisma surfaces this as P2025; map to 404 instead of bubbling
+    // a 500 the way an unwrapped throw would.
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2025"
+    ) {
+      return NextResponse.json(
+        { error: "특전을 찾을 수 없습니다." },
+        { status: 404 },
+      );
+    }
+    throw e;
   }
-  return NextResponse.json(serializeBigInt(updated));
 }
 
 /**

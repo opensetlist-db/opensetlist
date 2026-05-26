@@ -4,13 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
-
-const VALID_STATUSES = new Set<AlbumStoreListingStatus>([
-  "active",
-  "sold_out",
-  "ended",
-  "unknown",
-]);
+import { VALID_LISTING_STATUSES, parseDate } from "@/lib/adminParsers";
 
 type CreateBody = {
   albumId?: unknown;
@@ -25,13 +19,6 @@ type CreateBody = {
   sourceUrl?: unknown;
   translations?: unknown;
 };
-
-function parseDate(value: unknown): Date | null | "invalid" {
-  if (value == null || value === "") return null;
-  if (typeof value !== "string") return "invalid";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
-}
 
 /**
  * POST /api/admin/album-listings
@@ -80,7 +67,7 @@ export async function POST(request: NextRequest) {
   }
   if (
     typeof body.status !== "string" ||
-    !VALID_STATUSES.has(body.status as AlbumStoreListingStatus)
+    !VALID_LISTING_STATUSES.has(body.status as AlbumStoreListingStatus)
   ) {
     return NextResponse.json(
       { error: "잘못된 상태입니다." },

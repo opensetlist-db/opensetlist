@@ -4,15 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
+import { VALID_LISTING_STATUSES, parseDate } from "@/lib/adminParsers";
 
 type RouteProps = { params: Promise<{ id: string }> };
-
-const VALID_STATUSES = new Set<AlbumStoreListingStatus>([
-  "active",
-  "sold_out",
-  "ended",
-  "unknown",
-]);
 
 type PatchBody = {
   originalStoreName?: unknown;
@@ -26,13 +20,6 @@ type PatchBody = {
   sourceUrl?: unknown;
   translations?: unknown;
 };
-
-function parseDate(value: unknown): Date | null | "invalid" {
-  if (value == null || value === "") return null;
-  if (typeof value !== "string") return "invalid";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "invalid" : d;
-}
 
 /**
  * PATCH /api/admin/album-listings/[id]
@@ -72,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   }
   if (
     typeof body.status !== "string" ||
-    !VALID_STATUSES.has(body.status as AlbumStoreListingStatus)
+    !VALID_LISTING_STATUSES.has(body.status as AlbumStoreListingStatus)
   ) {
     return NextResponse.json(
       { error: "잘못된 상태입니다." },
@@ -169,14 +156,22 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     }
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
-    if (
-      e instanceof Prisma.PrismaClientKnownRequestError &&
-      e.code === "P2002"
-    ) {
-      return NextResponse.json(
-        { error: "이미 같은 매장의 동일 에디션 항목이 있습니다." },
-        { status: 409 },
-      );
+    if (e instanceof Prisma.PrismaClientKnownRequestError) {
+      if (e.code === "P2002") {
+        return NextResponse.json(
+          { error: "이미 같은 매장의 동일 에디션 항목이 있습니다." },
+          { status: 409 },
+        );
+      }
+      // Race window: the in-tx findUnique passed but a concurrent
+      // DELETE removed the row before the update landed. Mirrors the
+      // P2025 handling in album-bonuses PATCH.
+      if (e.code === "P2025") {
+        return NextResponse.json(
+          { error: "구매처를 찾을 수 없습니다." },
+          { status: 404 },
+        );
+      }
     }
     throw e;
   }
