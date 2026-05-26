@@ -45,11 +45,12 @@ export async function AlbumRelatedEventsTab({
 }: Props) {
   const tNs = await getTranslations({ locale, namespace: "Album.events" });
   const et = await getTranslations({ locale, namespace: "Event" });
-  // Series-namespace translator covers the synthetic-series labels —
-  // series header fallback when the row has no translated name, and
-  // the "Other" bucket header. The Event namespace's unknownEvent /
-  // ungrouped strings read as event labels and would confuse the
-  // series-context header.
+  // Series-namespace translator covers the per-bucket series-header
+  // fallback when the row carries no translated name — Event.unknownEvent
+  // reads as an event label and would confuse the series-context
+  // header. The synthetic "Other" bucket still uses Event.ungrouped
+  // below: that label is event-context ("events with no series"), and
+  // EventSeries doesn't ship an equivalent key.
   const st = await getTranslations({ locale, namespace: "EventSeries" });
 
   if (events.length === 0) {
