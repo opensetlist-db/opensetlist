@@ -139,6 +139,16 @@
       "cover": "커버"
     }
   },
+  "AlbumTrack": {
+    "variantSuffix": {
+      "off-vocal": "오프 보컬",
+      "instrumental": "인스트루멘탈",
+      "drama": "드라마",
+      "bgm": "BGM",
+      "karaoke": "가라오케"
+    },
+    "fallbackTrack": "트랙 {number}"
+  },
   "Member": {
     "affiliations": "소속",
     "units": "소속 유닛",

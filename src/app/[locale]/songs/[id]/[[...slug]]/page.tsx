@@ -83,13 +83,19 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // the variant `groupBy` isolated (cross-variant aggregation,
 // SQL-efficient as a single set operation — see `page.tsx:512`).
 //
-// `albumTracks: { take: 1 }` picks the earliest-released album as
+// `vocalTracks: { take: 1 }` picks the earliest-released album as
 // the canonical "first" (matches the prior `getFirstAlbumTrack`
 // semantics: `album.releaseDate ASC, discNumber ASC, trackNumber
 // ASC` is deterministic regardless of insertion order and matches
 // the user's mental model — "the album where this song first
 // appeared"; disc/track as secondary so re-issues + special editions
 // don't overrule the original release).
+//
+// b01b note: `albumTracks` was split into `vocalTracks` (this song
+// is the vocal — Pattern 1) and `offVocalTracks` (this song is the
+// vocal *parent* of an off-vocal AlbumTrack on the same album —
+// Pattern 2). The sidebar "first album" only makes sense for the
+// vocal side, so we only walk `vocalTracks` here.
 //
 // `_count: { select: { setlistItems: { where: ... } } }` mirrors the
 // prior `getPerformanceCount` filter exactly (`SetlistItem.isDeleted
@@ -121,7 +127,7 @@ const getSong = cache(async (id: bigint) => {
       // First album by release date (multi-album: earliest wins).
       // Replaces the standalone `getFirstAlbumTrack` helper — see
       // the comment block above for the Sentry-issue context.
-      albumTracks: {
+      vocalTracks: {
         take: 1,
         orderBy: [
           { album: { releaseDate: "asc" } },
@@ -301,7 +307,7 @@ export default async function SongPage({ params, searchParams }: Props) {
   }
 
   // `getSong` now carries the first AlbumTrack + the total performance
-  // count inline via its `albumTracks: { take: 1 }` + `_count.setlistItems`
+  // count inline via its `vocalTracks: { take: 1 }` + `_count.setlistItems`
   // includes — see the comment block on `getSong` above for the
   // Sentry-issue context (issue 7504931765). Page render fans out to
   // 2 prisma queries now (Song + Performances) instead of the prior 4.
@@ -312,7 +318,7 @@ export default async function SongPage({ params, searchParams }: Props) {
 
   if (!song) notFound();
 
-  const albumTrack = song.albumTracks[0] ?? null;
+  const albumTrack = song.vocalTracks[0] ?? null;
   const performanceCount = song._count.setlistItems;
 
   const [t, ct, et, at] = await Promise.all([
