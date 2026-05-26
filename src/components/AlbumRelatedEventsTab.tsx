@@ -122,7 +122,11 @@ export async function AlbumRelatedEventsTab({
       formattedDate: formatDate(event.date, locale),
       name: eventName,
       href: `/${locale}/events/${event.id}/${event.slug}`,
-      rawDateMs: new Date(String(event.date)).getTime(),
+      // sort key uses event.startTime (NOT NULL per schema) rather
+      // than event.date (nullable — `new Date("null").getTime()` is
+      // NaN, which would break the in-bucket sort + the mostRecentMs
+      // reduce below).
+      rawDateMs: new Date(String(event.startTime)).getTime(),
     };
   });
 
