@@ -119,7 +119,12 @@ export async function AlbumRelatedEventsTab({
       seriesId,
       seriesName,
       status,
-      formattedDate: formatDate(event.date, locale),
+      // event.date is nullable per schema; formatDate is null-safe
+      // (returns "" on null) but an empty cell looks like missing data
+      // to a viewer. Fall back to event.startTime (NOT NULL) so the
+      // row always carries the display timestamp the event actually
+      // happened at — same source the sort key uses below.
+      formattedDate: formatDate(event.date ?? event.startTime, locale),
       name: eventName,
       href: `/${locale}/events/${event.id}/${event.slug}`,
       // sort key uses event.startTime (NOT NULL per schema) rather
