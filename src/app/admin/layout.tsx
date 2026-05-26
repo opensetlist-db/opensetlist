@@ -7,6 +7,7 @@ const navItems = [
   { href: "/admin/groups", label: "그룹" },
   { href: "/admin/artists", label: "아티스트" },
   { href: "/admin/songs", label: "곡" },
+  { href: "/admin/albums", label: "앨범" },
   { href: "/admin/event-series", label: "시리즈" },
   { href: "/admin/events", label: "이벤트" },
   { href: "/admin/impressions", label: "한줄감상" },
