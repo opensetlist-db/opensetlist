@@ -45,6 +45,12 @@ export async function AlbumRelatedEventsTab({
 }: Props) {
   const tNs = await getTranslations({ locale, namespace: "Album.events" });
   const et = await getTranslations({ locale, namespace: "Event" });
+  // Series-namespace translator covers the synthetic-series labels —
+  // series header fallback when the row has no translated name, and
+  // the "Other" bucket header. The Event namespace's unknownEvent /
+  // ungrouped strings read as event labels and would confuse the
+  // series-context header.
+  const st = await getTranslations({ locale, namespace: "EventSeries" });
 
   if (events.length === 0) {
     return (
@@ -147,7 +153,12 @@ export async function AlbumRelatedEventsTab({
     // null, so the non-null assertion documents that invariant.
     seriesViews.push({
       seriesId: bucket[0].seriesId!,
-      seriesShort: bucket[0].seriesName ?? et("unknownEvent"),
+      // Series header fallback — use the EventSeries namespace's
+      // unknownSeries label rather than Event.unknownEvent so the
+      // unnamed-series header doesn't accidentally read as "Unknown
+      // Event" (CR-driven fix; the header is a series-context label,
+      // not an event one).
+      seriesShort: bucket[0].seriesName ?? st("unknownSeries"),
       hasOngoing,
       events: bucket,
       sortKey: hasOngoing ? Number.MAX_SAFE_INTEGER : mostRecentMs,

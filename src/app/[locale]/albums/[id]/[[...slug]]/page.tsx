@@ -242,25 +242,16 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // inside getAlbumRelatedEvents collapses re-calls if anything else
   // in this request asks the same question.
   //
-  // album.tracks comes back from serializeBigInt with `songId` already
-  // narrowed to number | null (BigInt → Number JSON round-trip), so
-  // we BigInt() the filtered survivors back here for the helper's
-  // bigint[] signature.
+  // The helper pulls Pattern 1 song ids directly from Prisma so the
+  // BigInt precision never round-trips through JSON — that's why this
+  // call site no longer derives them from album.tracks (the cached
+  // album object's BigInts are already number-narrowed via
+  // serializeBigInt, which would truncate >2^53 ids).
   let relatedEvents: RelatedEvent[] = [];
   if (activeTab === "events") {
-    // `track` instead of `t` so the parameter doesn't shadow the
-    // outer `t = getTranslations(...)` namespace translator a few
-    // statements up — a future read site adding a `t("...")` call
-    // inside this chain would otherwise silently receive the
-    // AlbumTrack row instead of a localized string.
-    const pattern1SongIds = album.tracks
-      .map((track) => track.songId)
-      .filter((sid): sid is NonNullable<typeof sid> => sid !== null && sid !== undefined)
-      .map((sid) => BigInt(String(sid)));
     relatedEvents = await getAlbumRelatedEvents(
       BigInt(id),
       album.type as AlbumType,
-      pattern1SongIds,
       locale,
     );
   }

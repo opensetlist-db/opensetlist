@@ -51,7 +51,6 @@ export const getAlbumRelatedEvents = cache(
   async (
     albumId: bigint,
     albumType: AlbumType,
-    pattern1SongIds: bigint[],
     locale: string,
   ): Promise<RelatedEvent[]> => {
     const localeFilter = { locale: { in: [locale, "ja"] } };
@@ -74,10 +73,23 @@ export const getAlbumRelatedEvents = cache(
       return serializeBigInt(rows);
     }
 
-    // Non-live_album path needs at least one vocal songId to walk
-    // through SetlistItemSong; an album with zero Pattern 1 tracks
-    // (all-drama/bgm releases, or an empty album row pre-import)
-    // resolves to no related events without a DB hit.
+    // Non-live_album path needs the album's Pattern 1 vocal song ids
+    // to walk SetlistItemSong. We pull those directly from Prisma here
+    // rather than accepting them from the page (where the page's
+    // album.tracks comes from serializeBigInt — BigInt → number JSON
+    // round-trip — which silently truncates any songId beyond 2^53).
+    // A separate query keeps the bigint round-trip-free end-to-end.
+    const trackRows = await prisma.albumTrack.findMany({
+      where: { albumId, songId: { not: null } },
+      select: { songId: true },
+    });
+    const pattern1SongIds = trackRows
+      .map((t) => t.songId)
+      .filter((sid): sid is bigint => sid !== null);
+
+    // Empty Pattern 1 set short-circuits to no related events
+    // without a DB hit (all-drama/bgm release, or an empty album
+    // row pre-import).
     if (pattern1SongIds.length === 0) return [];
 
     const rows = await prisma.event.findMany({
@@ -96,7 +108,6 @@ export const getAlbumRelatedEvents = cache(
         },
       },
       include,
-      orderBy: { startTime: "desc" },
       // `distinct` on the relation-walked findMany guards against a
       // single Event surfacing once per match (would happen if an
       // event's setlist plays multiple tracks from this album — common
@@ -104,6 +115,7 @@ export const getAlbumRelatedEvents = cache(
       // above already short-circuits at "any match," so distinct is
       // belt-and-suspenders without changing semantics.
       distinct: ["id"],
+      orderBy: { startTime: "desc" },
       take: 50,
     });
     return serializeBigInt(rows);
