@@ -1,11 +1,19 @@
+"use client";
+
 // Image source-state classifier for admin URL inputs. Implements
 // album-image-source-policy (Option D, adopted 2026-05-16): R2 is
 // canonical, Amazon CDN is allowed for ASIN'd Album / Live BD rows,
 // anything else surfaces a warning so the operator documents the
 // temporary placeholder in `wiki/log.md`.
 //
-// Pure / locale-agnostic / no React — usable from both "use client"
-// form modules and any future server-side validation.
+// `"use client"` is deliberate: the function reads
+// NEXT_PUBLIC_R2_PUBLIC_HOST, which is statically inlined into the
+// client bundle at build time but lives in the server runtime env
+// only if the deployment actually forwards it there. Pinning this
+// module to the client side keeps the R2-host check on the inlined
+// build-constant path, so an R2 URL classifies as "R2" reliably
+// regardless of server-side env propagation. The current sole
+// caller (AlbumForm) is itself "use client".
 
 export type ImageSource = {
   label: string;
