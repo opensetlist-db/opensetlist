@@ -8,7 +8,12 @@ type Props = { params: Promise<{ id: string; listingId: string }> };
 
 export default async function AlbumBonusesPage({ params }: Props) {
   const { id, listingId } = await params;
-  const albumId = BigInt(id);
+  let albumId: bigint;
+  try {
+    albumId = BigInt(id);
+  } catch {
+    notFound();
+  }
 
   const listing = await prisma.albumStoreListing.findFirst({
     where: { id: listingId, albumId },

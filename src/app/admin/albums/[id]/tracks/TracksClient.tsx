@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import AlbumTrackFormModal, {
-  type TrackInitial,
-  type TrackPattern,
-} from "@/components/admin/AlbumTrackFormModal";
+import AlbumTrackFormModal from "@/components/admin/AlbumTrackFormModal";
+import type { TrackInitial, TrackPattern } from "@/lib/albumTrackTypes";
 
 export type TrackRow = {
   id: string;

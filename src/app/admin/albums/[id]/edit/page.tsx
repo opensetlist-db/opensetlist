@@ -8,8 +8,17 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function EditAlbumPage({ params }: Props) {
   const { id } = await params;
+  // A non-numeric URL segment (e.g. /admin/albums/abc/edit) would
+  // throw inside BigInt(); render the standard 404 instead of letting
+  // the server crash with a SyntaxError.
+  let albumId: bigint;
+  try {
+    albumId = BigInt(id);
+  } catch {
+    notFound();
+  }
   const album = await prisma.album.findUnique({
-    where: { id: BigInt(id) },
+    where: { id: albumId },
     include: {
       translations: true,
       artists: { select: { artistId: true } },

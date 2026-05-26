@@ -8,8 +8,14 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AlbumListingsPage({ params }: Props) {
   const { id } = await params;
+  let albumId: bigint;
+  try {
+    albumId = BigInt(id);
+  } catch {
+    notFound();
+  }
   const album = await prisma.album.findUnique({
-    where: { id: BigInt(id) },
+    where: { id: albumId },
     select: {
       id: true,
       originalTitle: true,
@@ -19,7 +25,7 @@ export default async function AlbumListingsPage({ params }: Props) {
   if (!album) notFound();
 
   const listings = await prisma.albumStoreListing.findMany({
-    where: { albumId: BigInt(id) },
+    where: { albumId },
     include: {
       translations: true,
       _count: { select: { bonuses: true } },

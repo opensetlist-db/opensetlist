@@ -12,7 +12,7 @@ import {
   ALBUM_TRACK_VARIANT_SUFFIX_KO,
 } from "@/lib/albumTrackVariants";
 import TracksClient, { type TrackRow } from "./TracksClient";
-import type { TrackPattern as ClientTrackPattern } from "@/components/admin/AlbumTrackFormModal";
+import type { TrackPattern as ClientTrackPattern } from "@/lib/albumTrackTypes";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -64,7 +64,12 @@ const PATTERN_BADGES: Record<ClientTrackPattern, string> = {
 
 export default async function AlbumTracksPage({ params }: Props) {
   const { id } = await params;
-  const albumId = BigInt(id);
+  let albumId: bigint;
+  try {
+    albumId = BigInt(id);
+  } catch {
+    notFound();
+  }
 
   const album = await prisma.album.findUnique({
     where: { id: albumId },

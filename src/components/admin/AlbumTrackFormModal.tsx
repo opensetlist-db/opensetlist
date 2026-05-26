@@ -8,28 +8,12 @@ import {
   PATTERN3_ALBUM_TRACK_VARIANTS,
   ALBUM_TRACK_VARIANT_SUFFIX_KO,
 } from "@/lib/albumTrackVariants";
+import type { TrackPattern, TrackInitial } from "@/lib/albumTrackTypes";
 
-export type TrackPattern = "vocal" | "off_vocal_w_parent" | "direct";
-
-export type TrackInitial = {
-  id?: string;
-  albumId: string;
-  pattern: TrackPattern;
-  discNumber: number;
-  trackNumber: number;
-  // Pattern 1: songId set
-  // Pattern 2: parentSongId + variant
-  // Pattern 3: variant + title + titleLanguage + translations
-  songId: number | null;
-  parentSongId: number | null;
-  variant: string | null;
-  title: string | null;
-  titleLanguage: string | null;
-  translations: { locale: string; title: string }[];
-  // Display-only label for the currently-selected vocal/parent song.
-  // Populated by the parent (edit path); empty string when adding new.
-  selectedSongLabel: string;
-};
+// Re-export so existing AlbumTrackFormModal callers don't break on
+// the type-only move. New callers should import directly from
+// `@/lib/albumTrackTypes`.
+export type { TrackPattern, TrackInitial };
 
 type Props = {
   albumId: string;
