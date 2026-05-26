@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
@@ -140,6 +140,11 @@ export async function generateMetadata({
   return {
     title: fullTitle,
     description,
+    // Canonical pin to the slug-bearing URL even though the page-side
+    // permanentRedirect (below) catches any non-canonical incoming
+    // path on its own. Belt and suspenders for crawlers that arrive
+    // via a redirect-following mode that still emits the original URL.
+    alternates: { canonical: pageUrl },
     openGraph: {
       title: fullTitle,
       description,
@@ -175,7 +180,7 @@ function resolveActiveTab(
 }
 
 export default async function AlbumDetailPage({ params, searchParams }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
   const { tab: rawTab } = await searchParams;
   // Numeric-id guard mirrors the event/song detail pages — a non-numeric
   // path segment isn't an album we can render, so route past metadata
@@ -183,6 +188,18 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   if (!/^\d+$/.test(id)) notFound();
   const album = await getAlbum(BigInt(id), locale);
   if (!album) notFound();
+
+  // Canonical-slug redirect: any non-canonical path (`/albums/42`,
+  // `/albums/42/wrong-slug`, `/albums/42/foo/bar` for whatever reason)
+  // 308s into the canonical `/albums/42/<album.slug>` so the SEO
+  // signal points at one URL per album. Preserves the `?tab=` and
+  // any future query params via the URL search-params on the
+  // outgoing request (Next.js permanentRedirect carries those
+  // through automatically when only the path is rewritten).
+  const incomingSlug = (slug ?? []).join("/");
+  if (album.slug && incomingSlug !== album.slug) {
+    permanentRedirect(`/${locale}/albums/${id}/${album.slug}`);
+  }
 
   const t = await getTranslations({ locale, namespace: "Album" });
 
