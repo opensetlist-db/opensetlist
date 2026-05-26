@@ -5,6 +5,12 @@ import { displayNameWithFallback } from "@/lib/display";
 
 type SortKey = "triage" | "recent" | "title";
 
+// Number of binary signals counted by completenessScore — kept in
+// one place so the score and the badge max stay tied. Adding a
+// sixth signal means bumping both this constant and the body of
+// completenessScore in lockstep.
+const COMPLETENESS_MAX = 5;
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "triage", label: "정보 부족순 (기본)" },
   { value: "recent", label: "최근 등록순" },
@@ -201,7 +207,6 @@ function CompletenessBadge({ score }: { score: number }) {
   // 0..5 scale — 5 is fully filled, 0 is brand-new empty stub. Color
   // bands match the operator's mental model: red = needs attention,
   // amber = partial, green = done.
-  const max = 5;
   let color: string;
   if (score <= 1) color = "bg-red-100 text-red-700";
   else if (score <= 3) color = "bg-amber-100 text-amber-700";
@@ -210,7 +215,7 @@ function CompletenessBadge({ score }: { score: number }) {
     <span
       className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${color}`}
     >
-      {score}/{max}
+      {score}/{COMPLETENESS_MAX}
     </span>
   );
 }

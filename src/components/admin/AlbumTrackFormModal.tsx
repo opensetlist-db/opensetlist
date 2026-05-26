@@ -9,6 +9,7 @@ import {
   ALBUM_TRACK_VARIANT_SUFFIX_KO,
 } from "@/lib/albumTrackVariants";
 import type { TrackPattern, TrackInitial } from "@/lib/albumTrackTypes";
+import { ADMIN_LANGUAGES } from "@/lib/adminLocales";
 
 // Re-export so existing AlbumTrackFormModal callers don't break on
 // the type-only move. New callers should import directly from
@@ -25,12 +26,13 @@ type Props = {
 // translations come from the b01b CSV importer which only ships
 // ja/ko/en columns. ADMIN_LOCALES in @/lib/adminLocales widens to
 // zh-CN for surfaces that DO need it (Album / Listing / Bonus).
+// LANGUAGES derives from ADMIN_LANGUAGES so the labels stay in
+// lockstep — a relabeling in adminLocales propagates here for
+// free.
 const LOCALES = ["ko", "ja", "en"] as const;
-const LANGUAGES = [
-  { value: "ja", label: "일본어 (ja)" },
-  { value: "en", label: "영어 (en)" },
-  { value: "ko", label: "한국어 (ko)" },
-] as const;
+const LANGUAGES = ADMIN_LANGUAGES.filter((l) =>
+  (LOCALES as readonly string[]).includes(l.value),
+);
 
 // Korean labels for the live preview + variant select come from
 // `ALBUM_TRACK_VARIANT_SUFFIX_KO` in `@/lib/albumTrackVariants` so

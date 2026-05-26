@@ -24,23 +24,24 @@ export default async function AlbumListingsPage({ params }: Props) {
   });
   if (!album) notFound();
 
-  const listings = await prisma.albumStoreListing.findMany({
-    where: { albumId },
-    include: {
-      translations: true,
-      _count: { select: { bonuses: true } },
-    },
-    orderBy: [{ originalStoreName: "asc" }, { createdAt: "asc" }],
-  });
-
-  // Datalist suggestions — distinct store names already used anywhere
-  // in the DB. Saves the operator from re-typing "amazon_jp" on every
-  // new album while still allowing free-text for brand-new stores.
-  const distinctStores = await prisma.albumStoreListing.findMany({
-    distinct: ["originalStoreName"],
-    select: { originalStoreName: true },
-    orderBy: { originalStoreName: "asc" },
-  });
+  // Two independent reads — kick both off in parallel rather than
+  // pay the round-trip latency twice in series. `listings` is the
+  // table body; `distinctStores` feeds the datalist autocomplete.
+  const [listings, distinctStores] = await Promise.all([
+    prisma.albumStoreListing.findMany({
+      where: { albumId },
+      include: {
+        translations: true,
+        _count: { select: { bonuses: true } },
+      },
+      orderBy: [{ originalStoreName: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.albumStoreListing.findMany({
+      distinct: ["originalStoreName"],
+      select: { originalStoreName: true },
+      orderBy: { originalStoreName: "asc" },
+    }),
+  ]);
   const storeNameSuggestions = distinctStores.map((d) => d.originalStoreName);
 
   // After serializeBigInt the runtime shape mirrors `listings` but
