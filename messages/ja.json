@@ -178,6 +178,19 @@
       "buy": "購入する",
       "showEnded": "{count, plural, other {終了済みの店舗を見る (#)}}",
       "empty": "登録された店舗情報がありません。"
+    },
+    "tracks": {
+      "discN": "Disc {disc}",
+      "trackPrefix": "{track, number, ::000}",
+      "empty": "収録曲情報が登録されていません。"
+    },
+    "events": {
+      "subtitle": {
+        "bd": "このBDに関連する公演",
+        "songsAppeared": "収録曲が演奏された公演"
+      },
+      "eventCountLabel": "{count, plural, other {#公演}}",
+      "empty": "関連公演の情報がありません。"
     }
   },
   "AlbumTrack": {
