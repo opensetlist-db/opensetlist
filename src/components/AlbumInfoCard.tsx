@@ -4,6 +4,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { InfoCard } from "@/components/InfoCard";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import { isEndedListing } from "@/lib/albumBonusDisplay";
 
 /*
  * Sidebar card for the Album detail page (`/[locale]/albums/[id]/...`).
@@ -96,10 +97,10 @@ export async function AlbumInfoCard({ album, locale }: Props) {
   const trackCount = album.tracks.length;
   const listingCount = album.listings.length;
   const bonusCount = album.listings
-    .filter((l) => l.status !== "ended")
+    .filter((l) => !isEndedListing(l))
     .reduce((sum, l) => sum + l.bonuses.length, 0);
   const endedBonusCount = album.listings
-    .filter((l) => l.status === "ended")
+    .filter(isEndedListing)
     .reduce((sum, l) => sum + l.bonuses.length, 0);
 
   return (
