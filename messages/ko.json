@@ -139,6 +139,38 @@
       "cover": "커버"
     }
   },
+  "Album": {
+    "title": "앨범",
+    "unknown": "이름 없는 앨범",
+    "type": {
+      "single": "싱글",
+      "album": "앨범",
+      "ep": "EP",
+      "live_album": "라이브 BD",
+      "soundtrack": "OST"
+    },
+    "tab": {
+      "bonus": "매장특전",
+      "tracks": "수록곡",
+      "events": "관련 공연"
+    },
+    "stats": {
+      "trackCount": "{count, plural, other {수록곡 #}}",
+      "bonusCount": "{count, plural, other {특전 #}}",
+      "endedBonusCount": "{count, plural, other {종료 #}}",
+      "listingCount": "{count, plural, other {매장 #}}"
+    },
+    "meta": {
+      "titleTemplate": "{title} - {artist} 매장특전 | OpenSetlist",
+      "descriptionTemplate": "{title} 매장특전 일람"
+    },
+    "tabsAriaLabel": "앨범 페이지 탭",
+    "tabBody": {
+      "bonus": "매장특전 정보 준비 중입니다.",
+      "tracks": "수록곡 목록 준비 중입니다.",
+      "events": "관련 공연 정보 준비 중입니다."
+    }
+  },
   "AlbumTrack": {
     "variantSuffix": {
       "off-vocal": "오프 보컬",

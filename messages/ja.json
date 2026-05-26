@@ -139,6 +139,38 @@
       "cover": "カバー"
     }
   },
+  "Album": {
+    "title": "アルバム",
+    "unknown": "名称未定のアルバム",
+    "type": {
+      "single": "シングル",
+      "album": "アルバム",
+      "ep": "EP",
+      "live_album": "ライブBD",
+      "soundtrack": "サントラ"
+    },
+    "tab": {
+      "bonus": "店舗特典",
+      "tracks": "収録曲",
+      "events": "関連公演"
+    },
+    "stats": {
+      "trackCount": "{count, plural, other {収録曲 #}}",
+      "bonusCount": "{count, plural, other {特典 #}}",
+      "endedBonusCount": "{count, plural, other {終了 #}}",
+      "listingCount": "{count, plural, other {店舗 #}}"
+    },
+    "meta": {
+      "titleTemplate": "{title} - {artist} 店舗特典 | OpenSetlist",
+      "descriptionTemplate": "{title} 店舗特典一覧"
+    },
+    "tabsAriaLabel": "アルバムページタブ",
+    "tabBody": {
+      "bonus": "店舗特典の情報は準備中です。",
+      "tracks": "収録曲リストは準備中です。",
+      "events": "関連公演の情報は準備中です。"
+    }
+  },
   "AlbumTrack": {
     "variantSuffix": {
       "off-vocal": "オフボーカル",
