@@ -248,8 +248,13 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // bigint[] signature.
   let relatedEvents: RelatedEvent[] = [];
   if (activeTab === "events") {
+    // `track` instead of `t` so the parameter doesn't shadow the
+    // outer `t = getTranslations(...)` namespace translator a few
+    // statements up — a future read site adding a `t("...")` call
+    // inside this chain would otherwise silently receive the
+    // AlbumTrack row instead of a localized string.
     const pattern1SongIds = album.tracks
-      .map((t) => t.songId)
+      .map((track) => track.songId)
       .filter((sid): sid is NonNullable<typeof sid> => sid !== null && sid !== undefined)
       .map((sid) => BigInt(String(sid)));
     relatedEvents = await getAlbumRelatedEvents(

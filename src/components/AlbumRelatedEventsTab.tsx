@@ -79,8 +79,14 @@ export async function AlbumRelatedEventsTab({
   // Flat per-event view-model, with the series id/name extracted so the
   // grouping pass below doesn't have to traverse the nested relation
   // again. rawDateMs is the sort key inside + across buckets.
+  //
+  // seriesId is stored as a string straight through — every consumer
+  // below already coerces it back via String(...) for Map keys and
+  // PerformanceSeries.seriesId, and the source value is a
+  // serializeBigInt result that's lossy at >2^53. Keeping it as a
+  // string preserves precision without the pointless Number round-trip.
   type EventView = PerformanceEvent & {
-    seriesId: number | null;
+    seriesId: string | null;
     seriesName: string | null;
     rawDateMs: number;
   };
@@ -90,7 +96,7 @@ export async function AlbumRelatedEventsTab({
       { status: event.status, startTime: event.startTime },
       referenceNow,
     );
-    const seriesId = event.eventSeries ? Number(event.eventSeries.id) : null;
+    const seriesId = event.eventSeries ? String(event.eventSeries.id) : null;
     const seriesName = event.eventSeries
       ? displayNameWithFallback(
           event.eventSeries,
@@ -122,10 +128,9 @@ export async function AlbumRelatedEventsTab({
       ungrouped.push(view);
       continue;
     }
-    const key = String(view.seriesId);
-    const bucket = seriesBuckets.get(key);
+    const bucket = seriesBuckets.get(view.seriesId);
     if (bucket) bucket.push(view);
-    else seriesBuckets.set(key, [view]);
+    else seriesBuckets.set(view.seriesId, [view]);
   }
 
   type AlbumSeriesView = PerformanceSeries & { sortKey: number };
@@ -137,8 +142,11 @@ export async function AlbumRelatedEventsTab({
       (m, v) => (v.rawDateMs > m ? v.rawDateMs : m),
       0,
     );
+    // bucket[0].seriesId is non-null here by construction — the loop
+    // above only inserts into seriesBuckets when view.seriesId !==
+    // null, so the non-null assertion documents that invariant.
     seriesViews.push({
-      seriesId: String(bucket[0].seriesId),
+      seriesId: bucket[0].seriesId!,
       seriesShort: bucket[0].seriesName ?? et("unknownEvent"),
       hasOngoing,
       events: bucket,
