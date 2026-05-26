@@ -169,6 +169,15 @@
       "bonus": "매장특전 정보 준비 중입니다.",
       "tracks": "수록곡 목록 준비 중입니다.",
       "events": "관련 공연 정보 준비 중입니다."
+    },
+    "bonus": {
+      "status": {
+        "active": "판매중",
+        "ended": "종료"
+      },
+      "buy": "구매하기",
+      "showEnded": "{count, plural, other {종료된 매장 보기 (#)}}",
+      "empty": "등록된 매장 정보가 없습니다."
     }
   },
   "AlbumTrack": {
