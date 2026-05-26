@@ -52,7 +52,13 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const translations = parseBonusTranslations(body.translations);
+  // Same contract as the sibling listings/tracks PATCHes: missing
+  // `translations` field = preserve existing rows; explicit empty
+  // array = full-replace wipe.
+  const translationsProvided = body.translations !== undefined;
+  const translations = translationsProvided
+    ? parseBonusTranslations(body.translations)
+    : [];
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -62,21 +68,30 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       });
       if (!existing) return null;
 
-      await tx.albumStoreBonusTranslation.deleteMany({
-        where: { bonusId: id },
-      });
+      if (translationsProvided) {
+        await tx.albumStoreBonusTranslation.deleteMany({
+          where: { bonusId: id },
+        });
+      }
+
+      // Same whitespace-tolerant normalize as POST so a body of
+      // `originalLanguage: "   "` falls back to the "ja" default
+      // rather than persisting a blank.
+      const originalLanguage =
+        typeof body.originalLanguage === "string" &&
+        body.originalLanguage.trim()
+          ? body.originalLanguage.trim()
+          : "ja";
 
       return tx.albumStoreBonus.update({
         where: { id },
         data: {
           originalBonusType: (body.originalBonusType as string).trim(),
-          originalLanguage:
-            typeof body.originalLanguage === "string" && body.originalLanguage
-              ? body.originalLanguage
-              : "ja",
-          translations: translations.length
-            ? { create: translations }
-            : undefined,
+          originalLanguage,
+          translations:
+            translationsProvided && translations.length
+              ? { create: translations }
+              : undefined,
         },
         include: { translations: true },
       });

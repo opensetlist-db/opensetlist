@@ -230,6 +230,50 @@ describe("PATCH /api/admin/album-tracks/[id] — pattern transitions", () => {
     expect(updateCall.data.variant).toBe("off-vocal");
   });
 
+  it("preserves AlbumTrackTranslation rows when Pattern 3 PATCH omits translations", async () => {
+    // CR finding: a thin curl that just adjusts the title of a
+    // drama/bgm track shouldn't wipe the operator's ko/ja overrides.
+    const res = await PATCH(
+      jsonRequest(
+        "http://x/api/admin/album-tracks/track-uuid",
+        {
+          pattern: "direct",
+          discNumber: 1,
+          trackNumber: 1,
+          variant: "drama",
+          title: "Drama Update",
+          // translations intentionally omitted
+        },
+        "PATCH",
+      ) as never,
+      { params },
+    );
+    expect(res.status).toBe(200);
+    expect(prisma.albumTrackTranslation.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("wipes Pattern 3 translations when caller supplies an empty array", async () => {
+    const res = await PATCH(
+      jsonRequest(
+        "http://x/api/admin/album-tracks/track-uuid",
+        {
+          pattern: "direct",
+          discNumber: 1,
+          trackNumber: 1,
+          variant: "drama",
+          title: "Drama Update",
+          translations: [],
+        },
+        "PATCH",
+      ) as never,
+      { params },
+    );
+    expect(res.status).toBe(200);
+    expect(prisma.albumTrackTranslation.deleteMany).toHaveBeenCalledWith({
+      where: { albumTrackId: "track-uuid" },
+    });
+  });
+
   it("returns 404 when target track is missing", async () => {
     (
       prisma.albumTrack.findUnique as ReturnType<typeof vi.fn>

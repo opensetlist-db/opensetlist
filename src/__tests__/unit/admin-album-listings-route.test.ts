@@ -258,6 +258,55 @@ describe("PATCH /api/admin/album-listings/[id]", () => {
     expect("lastVerifiedAt" in updateCall.data).toBe(false);
   });
 
+  it("preserves existing translations when body omits the field", async () => {
+    // CR finding: a thin client that PATCHes only the URL shouldn't
+    // wipe per-locale labels.
+    (
+      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ id: "list-uuid" });
+    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { id: "list-uuid", translations: [] },
+    );
+    // baseValid does NOT include translations
+    const res = await PATCH_LISTING(
+      jsonRequest("http://x/api/admin/album-listings/list-uuid", baseValid, "PATCH") as never,
+      { params },
+    );
+    expect(res.status).toBe(200);
+    // The deleteMany of translations is the destructive step — must
+    // be skipped when the field is missing.
+    expect(
+      prisma.albumStoreListingTranslation.deleteMany,
+    ).not.toHaveBeenCalled();
+    const updateCall = (
+      prisma.albumStoreListing.update as ReturnType<typeof vi.fn>
+    ).mock.calls[0][0];
+    expect(updateCall.data.translations).toBeUndefined();
+  });
+
+  it("wipes translations on explicit empty array (full-replace)", async () => {
+    // Distinguish "field missing" (preserve) from "[] supplied"
+    // (full-replace clear).
+    (
+      prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ id: "list-uuid" });
+    (prisma.albumStoreListing.update as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { id: "list-uuid", translations: [] },
+    );
+    const res = await PATCH_LISTING(
+      jsonRequest(
+        "http://x/api/admin/album-listings/list-uuid",
+        { ...baseValid, translations: [] },
+        "PATCH",
+      ) as never,
+      { params },
+    );
+    expect(res.status).toBe(200);
+    expect(
+      prisma.albumStoreListingTranslation.deleteMany,
+    ).toHaveBeenCalledWith({ where: { listingId: "list-uuid" } });
+  });
+
   it("maps P2025 → 404 (concurrent DELETE race)", async () => {
     (
       prisma.albumStoreListing.findUnique as ReturnType<typeof vi.fn>

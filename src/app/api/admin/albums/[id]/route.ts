@@ -130,7 +130,11 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       ? body.imageUrl.trim()
       : null;
 
-  const translations = Array.isArray(body.translations)
+  // Translations field is optional. "Missing" = preserve existing
+  // rows (a thin client editing only the slug shouldn't wipe locale
+  // titles); explicit empty array = full-replace.
+  const translationsProvided = body.translations !== undefined;
+  const translations = translationsProvided
     ? (body.translations as Array<{ locale: unknown; title: unknown }>)
         .filter(
           (t) =>
@@ -144,18 +148,37 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         }))
     : [];
 
-  const artistIds = Array.isArray(body.artistIds)
-    ? body.artistIds
-        .filter((aid) => typeof aid === "number" || typeof aid === "string")
-        .map((aid) => {
-          try {
-            return BigInt(aid as number | string);
-          } catch {
-            return null;
-          }
-        })
-        .filter((b): b is bigint => b !== null)
-    : [];
+  // artistIds: same preserve-on-missing rule, but additionally
+  // reject the whole request if any provided element fails to parse
+  // as BigInt. Silently dropping the bad entries (the previous
+  // behavior) would leave AlbumArtist rows partly-rebuilt — operator
+  // sees "saved" but the connections they wanted are missing.
+  const artistIdsProvided = body.artistIds !== undefined;
+  const artistIds: bigint[] = [];
+  if (artistIdsProvided) {
+    if (!Array.isArray(body.artistIds)) {
+      return NextResponse.json(
+        { error: "아티스트 ID 목록 형식이 잘못되었습니다." },
+        { status: 400 },
+      );
+    }
+    for (const aid of body.artistIds) {
+      if (typeof aid !== "number" && typeof aid !== "string") {
+        return NextResponse.json(
+          { error: "잘못된 아티스트 ID입니다." },
+          { status: 400 },
+        );
+      }
+      try {
+        artistIds.push(BigInt(aid));
+      } catch {
+        return NextResponse.json(
+          { error: "잘못된 아티스트 ID입니다." },
+          { status: 400 },
+        );
+      }
+    }
+  }
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -165,8 +188,12 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       });
       if (!exists) return null;
 
-      await tx.albumTranslation.deleteMany({ where: { albumId } });
-      await tx.albumArtist.deleteMany({ where: { albumId } });
+      if (translationsProvided) {
+        await tx.albumTranslation.deleteMany({ where: { albumId } });
+      }
+      if (artistIdsProvided) {
+        await tx.albumArtist.deleteMany({ where: { albumId } });
+      }
 
       return tx.album.update({
         where: { id: albumId },
@@ -178,19 +205,26 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           releaseDate,
           labelName,
           imageUrl,
-          translations: {
-            create: translations.map((t) => ({
-              locale: t.locale,
-              title: t.title,
-            })),
-          },
-          artists: artistIds.length
-            ? {
-                create: artistIds.map((artistId) => ({ artistId })),
-              }
-            : undefined,
+          translations:
+            translationsProvided && translations.length
+              ? {
+                  create: translations.map((t) => ({
+                    locale: t.locale,
+                    title: t.title,
+                  })),
+                }
+              : undefined,
+          artists:
+            artistIdsProvided && artistIds.length
+              ? { create: artistIds.map((artistId) => ({ artistId })) }
+              : undefined,
         },
-        include: { translations: true, artists: true },
+        // Form callers ignore the response body (they `router.refresh`
+        // on success), so the include stays narrow — translations is
+        // kept for debugging, artists dropped because the AlbumArtist
+        // join row carries two BigInt fields that would only add
+        // noise once serializeBigInt-coerced.
+        include: { translations: true },
       });
     });
 

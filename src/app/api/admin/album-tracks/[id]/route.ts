@@ -74,6 +74,16 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
   let scalarUpdate: Prisma.AlbumTrackUpdateInput;
   let pattern3Translations: { locale: string; title: string }[] = [];
 
+  // Pattern 1/2 transitions always wipe AlbumTrackTranslation rows —
+  // those rows are Pattern 3-only and would be stale after the move.
+  // Pattern 3 stays-in-pattern is the nuanced case: if the operator's
+  // PATCH body omits `translations` entirely (e.g. a thin curl that
+  // only adjusts the title), the existing per-locale rows should be
+  // preserved; an explicit `translations: []` is the only way to
+  // clear them. Distinguishing "missing field" from "empty array"
+  // lives here at the parse boundary.
+  let pattern3TranslationsProvided = false;
+
   if (body.pattern === "vocal") {
     const songId = parseBigInt(body.songId);
     if (songId === null) {
@@ -133,7 +143,10 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 400 },
       );
     }
-    pattern3Translations = parsePattern3TrackTranslations(body.translations);
+    pattern3TranslationsProvided = body.translations !== undefined;
+    pattern3Translations = pattern3TranslationsProvided
+      ? parsePattern3TrackTranslations(body.translations)
+      : [];
     scalarUpdate = {
       discNumber,
       trackNumber,
@@ -161,10 +174,20 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       });
       if (!existing) return null;
 
-      // Always wipe the row's translations before re-applying. Pattern
-      // 1/2 rows shouldn't carry any (their display comes from the
-      // linked Song's translations); Pattern 3 rebuilds from the body.
-      await tx.albumTrackTranslation.deleteMany({ where: { albumTrackId: id } });
+      // Wipe AlbumTrackTranslation when:
+      //   - moving to Pattern 1/2 (translations are Pattern-3-only)
+      //   - moving Pattern 3 → Pattern 3 with translations explicitly
+      //     provided (full-replace semantic).
+      // Skip wipe when Pattern 3 PATCH omits `translations` — that's
+      // the "I'm just editing the title, leave my locale rows alone"
+      // path.
+      const shouldWipeTranslations =
+        body.pattern !== "direct" || pattern3TranslationsProvided;
+      if (shouldWipeTranslations) {
+        await tx.albumTrackTranslation.deleteMany({
+          where: { albumTrackId: id },
+        });
+      }
 
       return tx.albumTrack.update({
         where: { id },

@@ -22,12 +22,25 @@ export function parseBigInt(v: unknown): bigint | null {
  * Strict positive integer parser used for disc/track numbers. Accepts
  * a JSON number that's an integer > 0, or a digit-only string that
  * coerces to one. Anything else returns `null`.
+ *
+ * `Number.isSafeInteger` rejects values outside the (2^53 − 1) safe
+ * range; without it, a 17-digit operator typo could pass `Number(v)
+ * > 0` while silently rounding to a neighboring integer. Disc/track
+ * numbers are always small (<1000), but the guard matters at the
+ * type boundary because BigInt IDs share this parser shape.
  */
 export function parsePositiveInt(v: unknown): number | null {
-  if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
+  if (
+    typeof v === "number" &&
+    Number.isInteger(v) &&
+    Number.isSafeInteger(v) &&
+    v > 0
+  ) {
+    return v;
+  }
   if (typeof v === "string" && /^\d+$/.test(v)) {
     const n = Number(v);
-    return n > 0 ? n : null;
+    return Number.isSafeInteger(n) && n > 0 ? n : null;
   }
   return null;
 }

@@ -73,7 +73,15 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const translations = parseListingTranslations(body.translations);
+  // Translations field is optional on PATCH. "Missing" = preserve
+  // existing rows ("I'm only editing the URL"); "empty array" =
+  // explicit full-replace wipe. Distinguishing the two avoids the
+  // foot-gun where a thin client that doesn't echo translations
+  // silently destroys the operator's per-locale edits.
+  const translationsProvided = body.translations !== undefined;
+  const translations = translationsProvided
+    ? parseListingTranslations(body.translations)
+    : [];
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
@@ -83,9 +91,11 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       });
       if (!existing) return null;
 
-      await tx.albumStoreListingTranslation.deleteMany({
-        where: { listingId: id },
-      });
+      if (translationsProvided) {
+        await tx.albumStoreListingTranslation.deleteMany({
+          where: { listingId: id },
+        });
+      }
 
       return tx.albumStoreListing.update({
         where: { id },
@@ -97,17 +107,19 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
               ? body.originalEditionLabel.trim()
               : null,
           originalLanguage:
-            typeof body.originalLanguage === "string" && body.originalLanguage
-              ? body.originalLanguage
+            typeof body.originalLanguage === "string" &&
+            body.originalLanguage.trim()
+              ? body.originalLanguage.trim()
               : "ja",
           productUrl:
             typeof body.productUrl === "string" && body.productUrl.trim()
               ? body.productUrl.trim()
               : null,
           status: body.status as AlbumStoreListingStatus,
-          translations: translations.length
-            ? { create: translations }
-            : undefined,
+          translations:
+            translationsProvided && translations.length
+              ? { create: translations }
+              : undefined,
         },
         include: { translations: true },
       });
