@@ -139,6 +139,16 @@
       "cover": "Cover"
     }
   },
+  "AlbumTrack": {
+    "variantSuffix": {
+      "off-vocal": "Off Vocal",
+      "instrumental": "Instrumental",
+      "drama": "Drama",
+      "bgm": "BGM",
+      "karaoke": "Karaoke"
+    },
+    "fallbackTrack": "Track {number}"
+  },
   "Member": {
     "affiliations": "Affiliations",
     "units": "Units",

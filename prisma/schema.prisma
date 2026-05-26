@@ -782,13 +782,24 @@ model Song {
   deletedAt        DateTime?
   createdAt        DateTime  @default(now())
 
-  baseVersion  Song?             @relation("SongVariants", fields: [baseVersionId], references: [id])
-  variants     Song[]            @relation("SongVariants")
-  artists      SongArtist[]
-  translations SongTranslation[]
-  setlistItems SetlistItemSong[]
-  albumTracks  AlbumTrack[]
-  wishes       SongWish[]
+  baseVersion    Song?             @relation("SongVariants", fields: [baseVersionId], references: [id])
+  variants       Song[]            @relation("SongVariants")
+  artists        SongArtist[]
+  translations   SongTranslation[]
+  setlistItems   SetlistItemSong[]
+  // Vocal AlbumTrack rows that name this Song as the recorded track
+  // (Pattern 1 — `AlbumTrack.songId = song.id`). Replaces the previous
+  // single `albumTracks` relation; explicit naming distinguishes it from
+  // the off-vocal back-reference below where a row points at this Song
+  // as its vocal *parent* without itself BEING this Song.
+  vocalTracks    AlbumTrack[]      @relation("VocalTrack")
+  // Off-vocal / instrumental / karaoke AlbumTrack rows whose vocal
+  // counterpart on the same album IS this Song (Pattern 2 —
+  // `AlbumTrack.parentSongId = song.id`, `songId = NULL`,
+  // `variant = 'off-vocal'|'instrumental'|'karaoke'`). Display layer
+  // composes the title as `{this song's title} ({i18n variantSuffix})`.
+  offVocalTracks AlbumTrack[]      @relation("OffVocalParent")
+  wishes         SongWish[]
 
   @@index([baseVersionId])
   @@index([isDeleted])
@@ -868,19 +879,78 @@ model AlbumTranslation {
   @@index([albumId])
 }
 
-// One song can appear on multiple albums (single, OST, best-of, live album)
+// One song can appear on multiple albums (single, OST, best-of, live album).
+//
+// Three row patterns coexist on this table — `songId` + `variant` +
+// `parentSongId` + `title` form a discriminator:
+//
+//   1. Vocal (the historical default): `songId` set, `variant` NULL,
+//      `parentSongId` NULL, `title` NULL. Display falls through to the
+//      linked `Song.translations` (Pattern 1).
+//   2. Off-vocal w/ vocal parent: `songId` NULL, `variant` ∈
+//      {'off-vocal','instrumental','karaoke'}, `parentSongId` set to the
+//      vocal sibling Song on the same album, `title` NULL. Display
+//      composes `{parent.title} ({i18n variantSuffix})` — no per-row
+//      translation row needed (Pattern 2).
+//   3. Direct title (drama/bgm/promo with no vocal counterpart):
+//      `songId` NULL, `variant` ∈ {'drama','bgm'}, `parentSongId` NULL,
+//      `title` carries the original-language string. Per-locale overrides
+//      live in `AlbumTrackTranslation` (Pattern 3).
+//
+// The Song table itself stays vocal-only (intentional — SongSearch /
+// setlist-editor surfaces would otherwise need filtering everywhere off-
+// vocal and drama rows are not setlist-eligible). The discriminator stays
+// on AlbumTrack where the "this is a CD track, not a performable song"
+// distinction belongs.
+//
+// `songId` is intentionally nullable for Pattern 2/3; the
+// `song_variant_must_have_base`-style CHECK on Song is not mirrored here
+// because the discriminator combinations above are valid by construction
+// and the import path can reject obvious shape errors before INSERT.
 model AlbumTrack {
-  id          String @id @default(uuid())
-  albumId     BigInt
-  songId      BigInt
-  discNumber  Int    @default(1)
-  trackNumber Int
+  id            String  @id @default(uuid())
+  albumId       BigInt
+  songId        BigInt?
+  discNumber    Int     @default(1)
+  trackNumber   Int
+  // Pattern 2/3 marker. NULL = Pattern 1 (vocal); see model docstring
+  // for the allowed values per pattern.
+  variant       String?
+  // Pattern 3 only — original-language title for drama/bgm rows whose
+  // CD label carries a string but no Song row backs them.
+  title         String?
+  // Pattern 3 only — ISO language tag for `title` (mirrors the
+  // `originalLanguage` columns elsewhere). NULL when `title` is NULL.
+  titleLanguage String?
+  // Pattern 2 only — vocal sibling Song on the same album whose
+  // translations feed the display layer.
+  parentSongId  BigInt?
 
-  album Album @relation(fields: [albumId], references: [id])
-  song  Song  @relation(fields: [songId], references: [id])
+  album        Album                   @relation(fields: [albumId], references: [id])
+  song         Song?                   @relation("VocalTrack", fields: [songId], references: [id])
+  parentSong   Song?                   @relation("OffVocalParent", fields: [parentSongId], references: [id])
+  translations AlbumTrackTranslation[]
 
   @@unique([albumId, discNumber, trackNumber])
   @@index([songId])
+  @@index([parentSongId])
+}
+
+// Per-locale title for Pattern 3 AlbumTrack rows (drama/bgm/etc whose
+// display string isn't backed by a Song row). Pattern 1 uses
+// Song.translations and Pattern 2 derives display from the parent
+// Song's translations + the i18n variantSuffix message — neither
+// touches this table.
+model AlbumTrackTranslation {
+  id           String @id @default(uuid())
+  albumTrackId String
+  locale       String
+  title        String
+
+  albumTrack AlbumTrack @relation(fields: [albumTrackId], references: [id], onDelete: Cascade)
+
+  @@unique([albumTrackId, locale])
+  @@index([albumTrackId])
 }
 
 // ── ALBUM STORE LISTING ───────────────────────────────
