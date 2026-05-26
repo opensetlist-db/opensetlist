@@ -2,6 +2,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 
 /*
  * Album detail page — `/[locale]/albums/[id]/[[...slug]]/`.
@@ -90,16 +91,28 @@ export default async function AlbumDetailPage({ params }: Props) {
   const album = await getAlbum(BigInt(id), locale);
   if (!album) notFound();
 
-  // Body composition lands across the next b02 step commits in this
-  // PR: Step 2 adds the AlbumInfoCard sidebar; Step 3 adds the TabBar
-  // and the bonus/tracks/events tab content slots. This commit emits
-  // only the page chrome + the original-language album title so the
-  // route returns a non-empty response between steps. The title is a
-  // DB value (Album.originalTitle) — not a hardcoded UI string — so
-  // it doesn't trip the i18n hard rule.
+  // Two-column desktop layout with the AlbumInfoCard sidebar on the
+  // left (280px fixed) and the tab content area on the right (fluid).
+  // Mobile collapses to a single column with the sidebar stacked on
+  // top of the tab area. The TabBar + tab content panels land in
+  // Step 3; the right column is intentionally empty for this commit
+  // so the sidebar render lands isolated for review.
   return (
-    <main style={{ maxWidth: 1080, margin: "0 auto", padding: "24px 16px" }}>
-      <h1>{album.originalTitle}</h1>
+    <main
+      style={{
+        maxWidth: 1080,
+        margin: "0 auto",
+        padding: "24px 16px",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)",
+        gap: 24,
+        alignItems: "start",
+      }}
+    >
+      <aside>
+        <AlbumInfoCard album={album} locale={locale} />
+      </aside>
+      <section />
     </main>
   );
 }
