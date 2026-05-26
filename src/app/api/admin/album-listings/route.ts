@@ -94,8 +94,9 @@ export async function POST(request: NextRequest) {
             ? body.originalEditionLabel.trim()
             : null,
         originalLanguage:
-          typeof body.originalLanguage === "string" && body.originalLanguage
-            ? body.originalLanguage
+          typeof body.originalLanguage === "string" &&
+          body.originalLanguage.trim()
+            ? body.originalLanguage.trim()
             : "ja",
         productUrl:
           typeof body.productUrl === "string" && body.productUrl.trim()

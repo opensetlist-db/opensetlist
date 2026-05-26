@@ -460,11 +460,21 @@ export default function AlbumTrackFormModal({
                       }
                       className="rounded border border-zinc-300 px-2 py-1 text-sm"
                     >
-                      {LOCALES.map((l) => (
-                        <option key={l} value={l}>
-                          {l}
-                        </option>
-                      ))}
+                      {LOCALES.map((l) => {
+                        // Same dup-locale guard as the other modals —
+                        // AlbumTrackTranslation @@unique([albumTrackId,
+                        // locale]) backs this on the server side.
+                        const usedElsewhere =
+                          l !== tr.locale &&
+                          translations.some(
+                            (other, j) => j !== i && other.locale === l,
+                          );
+                        return (
+                          <option key={l} value={l} disabled={usedElsewhere}>
+                            {l}
+                          </option>
+                        );
+                      })}
                     </select>
                     <input
                       placeholder="제목"

@@ -57,9 +57,9 @@ function classifyPattern(t: {
 }
 
 const PATTERN_BADGES: Record<ClientTrackPattern, string> = {
-  vocal: "Vocal",
-  off_vocal_w_parent: "Off-Vocal",
-  direct: "Drama/BGM",
+  vocal: "보컬",
+  off_vocal_w_parent: "오프 보컬",
+  direct: "드라마/BGM",
 };
 
 export default async function AlbumTracksPage({ params }: Props) {

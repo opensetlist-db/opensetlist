@@ -251,11 +251,21 @@ export default function AlbumListingFormModal({
                   }
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
-                  {ADMIN_LOCALES.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
+                  {ADMIN_LOCALES.map((l) => {
+                    // Disable locales used by other rows — the
+                    // AlbumStoreListingTranslation @@unique([listingId,
+                    // locale]) would reject duplicates on save.
+                    const usedElsewhere =
+                      l !== tr.locale &&
+                      translations.some(
+                        (other, j) => j !== i && other.locale === l,
+                      );
+                    return (
+                      <option key={l} value={l} disabled={usedElsewhere}>
+                        {l}
+                      </option>
+                    );
+                  })}
                 </select>
                 <input
                   placeholder="매장 이름"

@@ -194,7 +194,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
           <input
             value={labelName}
             onChange={(e) => setLabelName(e.target.value)}
-            placeholder="Lantis / BNML / etc."
+            placeholder="레이블 (예: 란티스 / BNML / 에이벡스)"
             className="w-full rounded border border-zinc-300 px-3 py-2"
           />
         </div>
@@ -247,11 +247,21 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
                 onChange={(e) => updateTranslation(i, "locale", e.target.value)}
                 className="rounded border border-zinc-300 px-2 py-1 text-sm"
               >
-                {ADMIN_LOCALES.map((l) => (
-                  <option key={l} value={l}>
-                    {l}
-                  </option>
-                ))}
+                {ADMIN_LOCALES.map((l) => {
+                  // Disable locales already used by other rows so the
+                  // operator can't produce two `ko` translations that
+                  // the server's @@unique([albumId, locale]) would
+                  // reject anyway. The current row's own value stays
+                  // enabled so the select renders its selection.
+                  const usedElsewhere =
+                    l !== tr.locale &&
+                    translations.some((t, j) => j !== i && t.locale === l);
+                  return (
+                    <option key={l} value={l} disabled={usedElsewhere}>
+                      {l}
+                    </option>
+                  );
+                })}
               </select>
               <input
                 placeholder="제목"
@@ -302,9 +312,15 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
                   const name =
                     a.translations.find((t) => t.locale === "ko")?.name ??
                     a.translations[0]?.name ??
-                    `ID: ${a.id}`;
+                    `아티스트 ID: ${a.id}`;
+                  // Same guard as the locale select — disable artists
+                  // already linked by another row so AlbumArtist's
+                  // @@unique([albumId, artistId]) won't reject the save.
+                  const usedElsewhere =
+                    a.id !== aid &&
+                    artistIds.some((other, j) => j !== i && other === a.id);
                   return (
-                    <option key={a.id} value={a.id}>
+                    <option key={a.id} value={a.id} disabled={usedElsewhere}>
                       {name}
                     </option>
                   );

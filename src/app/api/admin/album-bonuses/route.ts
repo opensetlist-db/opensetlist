@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "잘못된 JSON입니다." }, { status: 400 });
   }
 
-  if (typeof body.listingId !== "string" || !body.listingId) {
+  const listingId =
+    typeof body.listingId === "string" ? body.listingId.trim() : "";
+  if (!listingId) {
     return NextResponse.json(
       { error: "구매처 ID가 필요합니다." },
       { status: 400 },
@@ -52,16 +54,17 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const originalLanguage =
+    typeof body.originalLanguage === "string" && body.originalLanguage.trim()
+      ? body.originalLanguage.trim()
+      : "ja";
 
   try {
     const created = await prisma.albumStoreBonus.create({
       data: {
-        listingId: body.listingId,
+        listingId,
         originalBonusType: (body.originalBonusType as string).trim(),
-        originalLanguage:
-          typeof body.originalLanguage === "string" && body.originalLanguage
-            ? body.originalLanguage
-            : "ja",
+        originalLanguage,
         translations: {
           create: parseBonusTranslations(body.translations),
         },

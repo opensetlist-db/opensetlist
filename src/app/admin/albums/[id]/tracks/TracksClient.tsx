@@ -80,7 +80,7 @@ export default function TracksClient({ albumId, tracks }: Props) {
       {discs.map(([disc, rows]) => (
         <section key={disc} className="mb-6">
           <h2 className="mb-2 text-sm font-semibold tracking-wider text-zinc-500 uppercase">
-            Disc {disc}
+            디스크 {disc}
           </h2>
           <table className="w-full text-left text-sm">
             <thead className="border-b border-zinc-200 text-zinc-500">
