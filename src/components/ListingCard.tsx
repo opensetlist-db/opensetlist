@@ -9,6 +9,25 @@ import {
   type EnrichedBonus,
 } from "@/lib/albumBonusDisplay";
 
+// Limits the buy-button anchor to genuine external URLs. Operator
+// types productUrl as free-text in admin (per the b03↔b05
+// simplification handoff — no closed allowlist of stores), so a
+// hostile or accidental value like `javascript:alert(1)` /
+// `data:text/html,...` would otherwise reach the rendered href.
+// The URL constructor throws on malformed input + lets us read the
+// resolved protocol cleanly; anything that isn't http/https is
+// treated as "no usable link" and the buy button drops out of the
+// render.
+function isSafeExternalUrl(url: string | null | undefined): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 /*
  * Card render for a single AlbumStoreListing — one row per
  * (album × store × edition) in b03's bonus tab grid.
@@ -96,7 +115,7 @@ export async function ListingCard({ listing, locale, muted = false }: Props) {
         <StatusBadge label={t(`status.${uiStatus}`)} variant={uiStatus} />
       </header>
 
-      {!muted && listing.productUrl ? (
+      {!muted && isSafeExternalUrl(listing.productUrl) ? (
         <a
           href={listing.productUrl}
           target="_blank"
@@ -126,12 +145,16 @@ export async function ListingCard({ listing, locale, muted = false }: Props) {
             display: "flex",
             flexDirection: "column",
             gap: 6,
+            // Divider only when the buy button actually rendered above —
+            // share the same guard used for the button itself so a
+            // rejected (unsafe) productUrl doesn't leave a phantom
+            // divider line floating without anything above it.
             borderTop:
-              !muted && listing.productUrl
+              !muted && isSafeExternalUrl(listing.productUrl)
                 ? `1px solid ${colors.borderLight}`
                 : "none",
             paddingTop:
-              !muted && listing.productUrl ? 12 : 0,
+              !muted && isSafeExternalUrl(listing.productUrl) ? 12 : 0,
           }}
         >
           {listing.bonuses.map((bonus) => (
