@@ -34,7 +34,11 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3000",
+    // TEST_BASE_URL override lets CI or a remote-server runbook point
+    // the suite at a non-local origin (Vercel preview, staging) without
+    // a config edit. Default keeps the local `npm run dev` flow
+    // ergonomic — no env var needed for the common case.
+    baseURL: process.env.TEST_BASE_URL ?? "http://localhost:3000",
     locale: "ko-KR",
     timezoneId: "Asia/Seoul",
     trace: "retain-on-failure",

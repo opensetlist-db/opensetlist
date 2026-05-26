@@ -70,7 +70,7 @@ test.describe("Album detail page — type-aware render", () => {
   }) => {
     requireSample(albumId, "E2E_ALBUM_ID");
     const resp = await page.goto(`/ko/albums/${albumId}`);
-    expect(resp?.ok()).toBeTruthy();
+    expect(resp?.ok(), "GET should resolve with a 2xx status").toBeTruthy();
 
     await expect(page.locator("main h1")).toHaveText(/\S/);
     await expect(tabButtons(page)).toHaveCount(3);
@@ -82,7 +82,7 @@ test.describe("Album detail page — type-aware render", () => {
   }) => {
     requireSample(singleId, "E2E_SINGLE_ID");
     const resp = await page.goto(`/ko/albums/${singleId}`);
-    expect(resp?.ok()).toBeTruthy();
+    expect(resp?.ok(), "GET should resolve with a 2xx status").toBeTruthy();
 
     await expect(tabButtons(page)).toHaveCount(3);
     await expect(activeTab(page)).toHaveText(TAB_LABELS.bonus);
