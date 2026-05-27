@@ -8,14 +8,29 @@ import type { AlbumStoreListingStatus } from "@/generated/prisma/enums";
  * Accepts a JSON-shaped string or number and coerces to `bigint`.
  * Returns `null` when the input is the wrong shape or BigInt itself
  * refuses to parse (e.g. "abc"). Callers map `null` to a 400.
+ *
+ * Number inputs MUST be safe integers — JSON numbers above
+ * `Number.MAX_SAFE_INTEGER` (2^53 − 1) are already rounded by the
+ * time they reach this function, so feeding them straight into
+ * `BigInt(v)` would lock in the rounded value and silently anchor a
+ * lookup or write onto the wrong row. The safe-integer guard rejects
+ * such inputs with `null` so the caller surfaces a 400 instead of
+ * shipping rounded IDs into Prisma. Operator clients that genuinely
+ * need >2^53 ids should send them as JSON strings — those bypass
+ * the lossy number representation entirely.
  */
 export function parseBigInt(v: unknown): bigint | null {
-  if (typeof v !== "string" && typeof v !== "number") return null;
-  try {
-    return BigInt(v as string | number);
-  } catch {
-    return null;
+  if (typeof v === "number") {
+    return Number.isSafeInteger(v) ? BigInt(v) : null;
   }
+  if (typeof v === "string" && /^-?\d+$/.test(v.trim())) {
+    try {
+      return BigInt(v.trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /**

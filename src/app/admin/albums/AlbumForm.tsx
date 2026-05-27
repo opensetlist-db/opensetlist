@@ -19,13 +19,17 @@ type AlbumFormProps = {
     labelName: string | null;
     imageUrl: string | null;
     translations: Translation[];
-    artistIds: number[];
+    // String[] to keep Artist.id (BigInt server-side) safe through
+    // JSON serialization. Earlier version used number[]; that path
+    // silently truncated >2^53 ids. The PATCH route accepts string
+    // ids via parseBigInt's string branch.
+    artistIds: string[];
   };
 };
 
 
 type ArtistOption = {
-  id: number;
+  id: string;
   translations: { locale: string; name: string }[];
 };
 
@@ -47,16 +51,23 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
       ? initialData.translations
       : [{ locale: "ko", title: "" }],
   );
-  const [artistIds, setArtistIds] = useState<number[]>(initialData.artistIds);
+  const [artistIds, setArtistIds] = useState<string[]>(initialData.artistIds);
 
   const [artistOptions, setArtistOptions] = useState<ArtistOption[]>([]);
   useEffect(() => {
     // Soft-fail on network error: the operator can still save the
     // album (artistIds preserves the existing links). Surfacing a hard
     // crash here would block the save button for an unrelated reason.
+    // The /api/admin/artists endpoint serializes BigInt ids to JSON
+    // numbers (via serializeBigInt in its route); normalize each one
+    // to a string right at the receive boundary so the rest of the
+    // form holds them in the same string shape as initialData.
     fetch("/api/admin/artists")
       .then((r) => (r.ok ? r.json() : []))
-      .then(setArtistOptions)
+      .then(
+        (data: { id: number | string; translations: ArtistOption["translations"] }[]) =>
+          setArtistOptions(data.map((a) => ({ ...a, id: String(a.id) }))),
+      )
       .catch(() => setArtistOptions([]));
   }, []);
 
@@ -157,6 +168,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
             <a
               href="/admin/slug-generator"
               target="_blank"
+              rel="noopener noreferrer"
               className="rounded border border-zinc-300 px-2 py-2 text-xs text-zinc-600 hover:bg-zinc-50"
             >
               생성기
@@ -303,7 +315,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
                 value={aid}
                 onChange={(e) =>
                   setArtistIds((prev) =>
-                    prev.map((id, j) => (j === i ? Number(e.target.value) : id)),
+                    prev.map((id, j) => (j === i ? e.target.value : id)),
                   )
                 }
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"

@@ -12,8 +12,10 @@ export type TrackRow = {
   pattern: TrackPattern;
   patternBadge: string;
   displayTitle: string; // resolved KO display
-  songId: number | null;
-  parentSongId: number | null;
+  // String to preserve BigInt precision end-to-end (see TrackInitial
+  // in @/lib/albumTrackTypes for the full rationale).
+  songId: string | null;
+  parentSongId: string | null;
   variant: string | null;
   title: string | null;
   titleLanguage: string | null;

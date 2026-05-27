@@ -6,6 +6,7 @@ import Link from "next/link";
 import AlbumListingFormModal, {
   type ListingInitial,
 } from "@/components/admin/AlbumListingFormModal";
+import { isSafeExternalUrl } from "@/lib/utils";
 
 export type ListingRow = {
   id: string;
@@ -106,7 +107,14 @@ export default function ListingsClient({
                 </span>
               </td>
               <td className="max-w-xs truncate py-2 font-mono text-xs">
-                {l.productUrl ? (
+                {/* Same scheme allowlist as the public buy button —
+                    operator-entered productUrl can be `javascript:` or
+                    other malicious schemes; render as plain text rather
+                    than a click-through anchor when the URL isn't a
+                    real http(s) target. The check is shared with
+                    ListingCard via lib/utils so both surfaces enforce
+                    the identical rule. */}
+                {isSafeExternalUrl(l.productUrl) ? (
                   <a
                     href={l.productUrl}
                     target="_blank"
@@ -115,6 +123,10 @@ export default function ListingsClient({
                   >
                     {l.productUrl}
                   </a>
+                ) : l.productUrl ? (
+                  <span className="text-amber-700" title="잘못된 URL 형식">
+                    {l.productUrl}
+                  </span>
                 ) : (
                   <span className="text-zinc-400">없음</span>
                 )}
