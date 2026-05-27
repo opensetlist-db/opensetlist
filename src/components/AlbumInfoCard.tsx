@@ -5,6 +5,7 @@ import { InfoCard } from "@/components/InfoCard";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
 import { isEndedListing } from "@/lib/albumBonusDisplay";
+import type { BigIntStringified } from "@/lib/utils";
 
 /*
  * Sidebar card for the Album detail page (`/[locale]/albums/[id]/...`).
@@ -54,18 +55,25 @@ import { isEndedListing } from "@/lib/albumBonusDisplay";
 // GetPayload utility composes the include into a typed shape that
 // satisfies `resolveLocalizedField`'s `Record<string, unknown>`
 // constraint, so we don't need a type assertion at the call sites.
-export type AlbumForInfoCard = Prisma.AlbumGetPayload<{
-  include: {
-    translations: true;
-    artists: {
-      include: {
-        artist: { include: { translations: true } };
+// Wire-shape after page.tsx's getAlbum runs serializeBigIntAsString —
+// every `bigint` becomes `string`, every `Date` becomes `string`. The
+// component reads `album.id` / `artists[].artist.id` / etc as strings
+// (template-literal hrefs work identically) so the BigIntStringified
+// wrapper is the right contract to declare.
+export type AlbumForInfoCard = BigIntStringified<
+  Prisma.AlbumGetPayload<{
+    include: {
+      translations: true;
+      artists: {
+        include: {
+          artist: { include: { translations: true } };
+        };
       };
+      tracks: true;
+      listings: { include: { bonuses: true } };
     };
-    tracks: true;
-    listings: { include: { bonuses: true } };
-  };
-}>;
+  }>
+>;
 
 interface Props {
   album: AlbumForInfoCard;

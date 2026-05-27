@@ -20,14 +20,25 @@ import type {
   SongTranslationModel,
 } from "@/generated/prisma/models";
 import { isKnownAlbumTrackVariant } from "@/lib/albumTrackVariants";
+import type { BigIntStringified } from "@/lib/utils";
 
-type EnrichedSong = SongModel & { translations?: SongTranslationModel[] };
+// BigIntStringified-wrapped — `AlbumTracksTab` receives tracks via
+// page.tsx's `serializeBigIntAsString(album)` JSON boundary, so the
+// `id` / `albumId` / `songId` / `parentSongId` fields arrive as
+// strings and `Date` columns as ISO strings. The Prisma-generated
+// `Model` types still declare the raw shapes; wrapping keeps the
+// dispatch helper signature honest about what survives the wire.
+type EnrichedSong = BigIntStringified<
+  SongModel & { translations?: SongTranslationModel[] }
+>;
 
-export type EnrichedAlbumTrack = AlbumTrackModel & {
-  song?: EnrichedSong | null;
-  parentSong?: EnrichedSong | null;
-  translations?: AlbumTrackTranslationModel[];
-};
+export type EnrichedAlbumTrack = BigIntStringified<
+  AlbumTrackModel & {
+    song?: SongModel & { translations?: SongTranslationModel[] } | null;
+    parentSong?: SongModel & { translations?: SongTranslationModel[] } | null;
+    translations?: AlbumTrackTranslationModel[];
+  }
+>;
 
 export function getAlbumTrackTitle(
   track: EnrichedAlbumTrack,

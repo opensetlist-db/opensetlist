@@ -22,14 +22,26 @@ import type {
   AlbumStoreBonusModel,
   AlbumStoreBonusTranslationModel,
 } from "@/generated/prisma/models";
+import type { BigIntStringified } from "@/lib/utils";
 
-export type EnrichedListing = AlbumStoreListingModel & {
-  translations?: AlbumStoreListingTranslationModel[];
-};
+// BigIntStringified-wrapped because every caller in the b03 chain
+// (`AlbumBonusTab` → `ListingCard` / `EndedListingToggle`) receives
+// listings via page.tsx's `serializeBigIntAsString(album)` JSON
+// boundary — `id` / `albumId` arrive as `string`, lifecycle date
+// columns arrive as ISO strings. The Prisma-generated `Model` types
+// still declare `bigint` / `Date`; wrapping with `BigIntStringified`
+// keeps the helper signatures honest about what survives the wire.
+export type EnrichedListing = BigIntStringified<
+  AlbumStoreListingModel & {
+    translations?: AlbumStoreListingTranslationModel[];
+  }
+>;
 
-export type EnrichedBonus = AlbumStoreBonusModel & {
-  translations?: AlbumStoreBonusTranslationModel[];
-};
+export type EnrichedBonus = BigIntStringified<
+  AlbumStoreBonusModel & {
+    translations?: AlbumStoreBonusTranslationModel[];
+  }
+>;
 
 // originalStoreName is NOT NULL on the schema, so resolution is
 // "translation row → original" with no synthetic floor — the column

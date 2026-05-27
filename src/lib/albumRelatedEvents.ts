@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { serializeBigIntAsString } from "@/lib/utils";
+import { serializeBigIntAsString, type BigIntStringified } from "@/lib/utils";
 import { AlbumType, SetlistItemStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -45,14 +45,24 @@ import type { Prisma } from "@/generated/prisma/client";
 // the cap, b04 can add a "더 보기" page-2 surface.
 const MAX_RELATED_EVENTS = 50;
 
-export type RelatedEvent = Prisma.EventGetPayload<{
-  include: {
-    translations: true;
-    eventSeries: {
-      include: { translations: true };
+// Wire-shape of one row after the JSON boundary
+// (`serializeBigIntAsString` runs in the cached helper below).
+// BigIntStringified rewrites every `bigint` → `string` and every
+// `Date` → `string`, matching what JSON.stringify actually produces.
+// Consumers (`<AlbumRelatedEventsTab>`) read ids as strings + dates
+// as ISO strings; this alias keeps the type system in sync with the
+// runtime instead of advertising raw Prisma `bigint`/`Date` shapes
+// the wire payload no longer carries.
+export type RelatedEvent = BigIntStringified<
+  Prisma.EventGetPayload<{
+    include: {
+      translations: true;
+      eventSeries: {
+        include: { translations: true };
+      };
     };
-  };
-}>;
+  }>
+>;
 
 export const getAlbumRelatedEvents = cache(
   async (

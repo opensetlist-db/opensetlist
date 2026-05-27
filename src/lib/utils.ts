@@ -39,6 +39,30 @@ export function serializeBigInt<T>(obj: T): T {
 }
 
 /**
+ * Type-level companion to `serializeBigIntAsString`'s runtime
+ * behaviour. Walks the shape recursively and rewrites:
+ *
+ *   - `bigint` → `string` (the actual transform `serializeBigIntAsString`
+ *     applies via `value.toString()` in its JSON replacer)
+ *   - `Date`   → `string` (JSON.stringify serialises Date instances
+ *     to ISO strings; the value comes out as `string` on the other
+ *     side, not `Date`)
+ *   - Arrays / nested objects → recurse element-wise
+ *
+ * Use this when declaring the consumer-side type of a payload that
+ * passed through `serializeBigIntAsString` (e.g. `RelatedEvent`,
+ * the page-level `getAlbum` return shape, `<AlbumInfoCard>` props).
+ * Mirrors the wire shape so the type system stops claiming the
+ * payload still carries `bigint`/`Date` after the serializer ran.
+ */
+export type BigIntStringified<T> =
+  T extends bigint ? string :
+  T extends Date ? string :
+  T extends (infer U)[] ? BigIntStringified<U>[] :
+  T extends object ? { [K in keyof T]: BigIntStringified<T[K]> } :
+  T;
+
+/**
  * Same shape as `serializeBigInt` but converts BigInt to a string
  * representation rather than a JS number. Use this when the payload
  * carries id-bearing BigInt fields whose precision must survive
@@ -52,18 +76,18 @@ export function serializeBigInt<T>(obj: T): T {
  * lands on the wrong row. Strings dodge the rounding entirely;
  * BigInt(stringId) at the DB boundary reverses cleanly.
  *
- * The generic returns the input type as-is; the runtime swap from
- * bigint to string is intentional but not reflected in the static
- * type. Callers that need a typed string id at the type level
- * should either narrow with `as unknown as <ShapeWithStringIds>` or
- * pick the id field via `.toString()` directly before passing it on.
+ * The return type is `BigIntStringified<T>` so the static type stays
+ * honest about what survived the serialiser: bigint and Date both
+ * arrive on the other side as strings. Consumers that compare,
+ * format, or feed these values back into Prisma queries get the
+ * right typing without an `as unknown as` cast.
  */
-export function serializeBigIntAsString<T>(obj: T): T {
+export function serializeBigIntAsString<T>(obj: T): BigIntStringified<T> {
   return JSON.parse(
     JSON.stringify(obj, (_key, value) =>
       typeof value === "bigint" ? value.toString() : value
     )
-  );
+  ) as BigIntStringified<T>;
 }
 
 /**
