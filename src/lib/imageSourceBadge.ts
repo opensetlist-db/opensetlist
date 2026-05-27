@@ -62,7 +62,13 @@ export function classifyImageSource(url: string): ImageSource {
     try {
       return new URL(r2HostRaw).host.toLowerCase();
     } catch {
-      return r2HostRaw.toLowerCase();
+      // URL constructor refused the input — most likely a bare host
+      // ("cdn.opensetlist.com") instead of a full URL. Match the
+      // shape `new URL().host` produces: trim padding whitespace and
+      // strip any trailing `/` the operator left in by accident so
+      // the host equality check below doesn't fail on a normalize-
+      // only difference.
+      return r2HostRaw.trim().replace(/\/+$/, "").toLowerCase();
     }
   })();
   if (r2Host && host === r2Host) {
