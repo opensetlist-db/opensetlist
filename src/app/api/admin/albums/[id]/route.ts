@@ -203,6 +203,14 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 400 },
       );
     }
+    // Reject duplicate artistIds at the parse step rather than letting
+    // them reach the DB. AlbumArtist's @@unique([albumId, artistId])
+    // would otherwise raise P2002 inside the transaction below — the
+    // 409 catch maps it to a slug-conflict error message (the
+    // transaction's slug-collision case shares the same Prisma code),
+    // which would mislead the operator. A 400 with the actual
+    // duplicate diagnosis is honest.
+    const seenArtistIds = new Set<bigint>();
     for (const aid of body.artistIds) {
       // parseBigInt enforces the safe-integer guard for JSON numbers
       // and the digit-shape guard for strings — both branches return
@@ -215,6 +223,13 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
           { status: 400 },
         );
       }
+      if (seenArtistIds.has(parsed)) {
+        return NextResponse.json(
+          { error: "중복된 아티스트 ID입니다." },
+          { status: 400 },
+        );
+      }
+      seenArtistIds.add(parsed);
       artistIds.push(parsed);
     }
   }

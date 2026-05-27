@@ -99,8 +99,14 @@ export default async function AlbumTracksPage({ params }: Props) {
 
   const rows: TrackRow[] = tracks.map((t) => {
     const pattern = classifyPattern(t);
+    // EnrichedAlbumTrack is BigIntStringified-wrapped for the public
+    // page's serialized payload (b04). This call site hands `t`
+    // directly from Prisma (raw bigint / Date) — getAlbumTrackTitle
+    // only reads string fields + nullable bigints in `if` checks, so
+    // both shapes are runtime-compatible. The cast bridges the type
+    // contracts without serialising the row again.
     const displayTitle = getAlbumTrackTitle(
-      t as EnrichedAlbumTrack,
+      t as unknown as EnrichedAlbumTrack,
       "ko",
       adminT,
     );

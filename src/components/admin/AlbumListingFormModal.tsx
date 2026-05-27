@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
+import { isSafeExternalUrl } from "@/lib/utils";
 
 export type ListingFormPayload = {
   albumId: string;
@@ -214,6 +215,20 @@ export default function AlbumListingFormModal({
             className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-xs"
             placeholder="https://www.amazon.co.jp/dp/... (제휴 파라미터 그대로 붙여넣기)"
           />
+          {/* Early-warn before submit when the input parses to something
+              other than an http(s) URL — the public ListingCard /
+              ListingsClient table both gate the anchor render on
+              isSafeExternalUrl, so an unsafe URL saves cleanly but
+              never becomes a clickable link. Showing the warning at
+              input time prevents the operator from saving + only
+              realizing later why the row looks plain-text on the
+              public surface. The check skips empty input (the field
+              is optional). */}
+          {productUrl.trim() && !isSafeExternalUrl(productUrl.trim()) && (
+            <p className="mt-1 text-xs text-amber-600">
+              http:// 또는 https://로 시작하는 URL만 링크로 표시됩니다.
+            </p>
+          )}
         </div>
 
         <div className="mt-4">

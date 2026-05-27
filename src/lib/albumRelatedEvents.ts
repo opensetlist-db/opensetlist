@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigIntAsString, type BigIntStringified } from "@/lib/utils";
 import { AlbumType, SetlistItemStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -45,14 +45,24 @@ import type { Prisma } from "@/generated/prisma/client";
 // the cap, b04 can add a "더 보기" page-2 surface.
 const MAX_RELATED_EVENTS = 50;
 
-export type RelatedEvent = Prisma.EventGetPayload<{
-  include: {
-    translations: true;
-    eventSeries: {
-      include: { translations: true };
+// Wire-shape of one row after the JSON boundary
+// (`serializeBigIntAsString` runs in the cached helper below).
+// BigIntStringified rewrites every `bigint` → `string` and every
+// `Date` → `string`, matching what JSON.stringify actually produces.
+// Consumers (`<AlbumRelatedEventsTab>`) read ids as strings + dates
+// as ISO strings; this alias keeps the type system in sync with the
+// runtime instead of advertising raw Prisma `bigint`/`Date` shapes
+// the wire payload no longer carries.
+export type RelatedEvent = BigIntStringified<
+  Prisma.EventGetPayload<{
+    include: {
+      translations: true;
+      eventSeries: {
+        include: { translations: true };
+      };
     };
-  };
-}>;
+  }>
+>;
 
 export const getAlbumRelatedEvents = cache(
   async (
@@ -99,15 +109,22 @@ export const getAlbumRelatedEvents = cache(
         orderBy: { startTime: "desc" },
         take: MAX_RELATED_EVENTS,
       });
-      return serializeBigInt(rows);
+      // String-coerce ids over the JSON boundary — the consumer
+      // composes event hrefs and series-bucket keys off these values,
+      // and ids past 2^53 - 1 would silently round through the
+      // Number-targeted serializer.
+      return serializeBigIntAsString(rows);
     }
 
     // Non-live_album path needs the album's Pattern 1 vocal song ids
     // to walk SetlistItemSong. We pull those directly from Prisma here
-    // rather than accepting them from the page (where the page's
-    // album.tracks comes from serializeBigInt — BigInt → number JSON
-    // round-trip — which silently truncates any songId beyond 2^53).
-    // A separate query keeps the bigint round-trip-free end-to-end.
+    // rather than accepting them from the page — the page's album
+    // payload goes through a JSON serializer (originally the lossy
+    // number-targeted one; now the string-coercing variant after the
+    // v0.14.3 CR sweep), and either way the call site needs raw
+    // `bigint` values to feed back into a Prisma `where: { songId: { in: ... } }`
+    // clause. A separate query keeps the bigint pipeline-pure
+    // end-to-end without parsing the string ids back.
     const trackRows = await prisma.albumTrack.findMany({
       where: { albumId, songId: { not: null } },
       select: { songId: true },
@@ -150,6 +167,6 @@ export const getAlbumRelatedEvents = cache(
       orderBy: { startTime: "desc" },
       take: MAX_RELATED_EVENTS,
     });
-    return serializeBigInt(rows);
+    return serializeBigIntAsString(rows);
   },
 );

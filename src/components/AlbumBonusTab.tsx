@@ -4,6 +4,7 @@ import { ListingCard } from "@/components/ListingCard";
 import { EndedListingToggle } from "@/components/EndedListingToggle";
 import { isEndedListing } from "@/lib/albumBonusDisplay";
 import { colors, radius } from "@/styles/tokens";
+import type { BigIntStringified } from "@/lib/utils";
 
 /*
  * Top-level surface for b03 — fills the Album page's "매장特典" tab
@@ -28,16 +29,23 @@ import { colors, radius } from "@/styles/tokens";
  * consumers without a type-side coupling between them.
  */
 
-export type AlbumForBonusTab = Prisma.AlbumGetPayload<{
-  include: {
-    listings: {
-      include: {
-        bonuses: { include: { translations: true } };
-        translations: true;
+// BigIntStringified-wrapped — page.tsx's getAlbum runs
+// serializeBigIntAsString so every `bigint` id and every `Date`
+// column arrives as a string. isEndedListing + ListingCard +
+// EndedListingToggle consume the listing rows; their types share
+// this same wrapper so the chain stays type-honest end-to-end.
+export type AlbumForBonusTab = BigIntStringified<
+  Prisma.AlbumGetPayload<{
+    include: {
+      listings: {
+        include: {
+          bonuses: { include: { translations: true } };
+          translations: true;
+        };
       };
     };
-  };
-}>;
+  }>
+>;
 
 interface Props {
   album: AlbumForBonusTab;
