@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Playwright artifacts (b06) — `test-results` + `playwright-report`
+    // both ship pre-bundled vendor JS that trips style + this-alias
+    // rules. They're disposable build output, not source. .gitignore
+    // already excludes them; eslint needs its own ignore.
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

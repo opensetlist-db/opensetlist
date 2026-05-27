@@ -52,3 +52,22 @@ export function isPattern3AlbumTrackVariant(
 export function isKnownAlbumTrackVariant(v: string): v is AlbumTrackVariant {
   return (KNOWN_ALBUM_TRACK_VARIANTS as readonly string[]).includes(v);
 }
+
+// Korean labels for the AlbumTrack variant suffixes. Admin surfaces
+// (b05 tracks page + AlbumTrackFormModal) inline these instead of
+// pulling them through `useTranslations` / `getTranslations` because
+// the admin layout intentionally omits NextIntlClientProvider (per
+// CLAUDE.md's admin-i18n exemption). Mirrors the
+// `AlbumTrack.variantSuffix.<v>` keys in `messages/ko.json` — if a
+// new variant lands in PATTERN2/PATTERN3, both this map and the
+// public-facing messages file need a new entry, and TS will surface
+// the gap on the next admin render (the lookup falls through to the
+// raw variant string instead of crashing).
+export const ALBUM_TRACK_VARIANT_SUFFIX_KO: Record<AlbumTrackVariant, string> =
+  {
+    "off-vocal": "오프 보컬",
+    instrumental: "인스트루멘탈",
+    karaoke: "가라오케",
+    drama: "드라마",
+    bgm: "BGM",
+  };

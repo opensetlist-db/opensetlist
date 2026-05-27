@@ -139,6 +139,60 @@
       "cover": "Cover"
     }
   },
+  "Album": {
+    "title": "Album",
+    "unknown": "Unknown album",
+    "type": {
+      "single": "Single",
+      "album": "Album",
+      "ep": "EP",
+      "live_album": "Live BD",
+      "soundtrack": "Soundtrack"
+    },
+    "tab": {
+      "bonus": "Store bonuses",
+      "tracks": "Tracks",
+      "events": "Related events"
+    },
+    "stats": {
+      "trackCount": "{count, plural, one {# track} other {# tracks}}",
+      "bonusCount": "{count, plural, one {# bonus} other {# bonuses}}",
+      "endedBonusCount": "{count, plural, one {# ended} other {# ended}}",
+      "listingCount": "{count, plural, one {# store} other {# stores}}"
+    },
+    "meta": {
+      "titleTemplate": "{title} - {artist} store bonuses | OpenSetlist",
+      "descriptionTemplate": "{title} store bonuses list"
+    },
+    "tabsAriaLabel": "Album page tabs",
+    "tabBody": {
+      "bonus": "Store bonus details are coming soon.",
+      "tracks": "Track listing is coming soon.",
+      "events": "Related event listing is coming soon."
+    },
+    "bonus": {
+      "status": {
+        "active": "Available",
+        "ended": "Ended"
+      },
+      "buy": "Buy",
+      "showEnded": "{count, plural, one {Show # ended store} other {Show # ended stores}}",
+      "empty": "No store info registered yet."
+    },
+    "tracks": {
+      "discN": "Disc {disc}",
+      "trackPrefix": "{track, number, ::000}",
+      "empty": "No tracklist registered yet."
+    },
+    "events": {
+      "subtitle": {
+        "bd": "Events linked to this BD",
+        "songsAppeared": "Events where these tracks were performed"
+      },
+      "eventCountLabel": "{count, plural, one {# event} other {# events}}",
+      "empty": "No related events to show."
+    }
+  },
   "AlbumTrack": {
     "variantSuffix": {
       "off-vocal": "Off Vocal",

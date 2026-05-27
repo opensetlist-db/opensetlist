@@ -101,6 +101,30 @@ export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
   day: "numeric",
   timeZone: "UTC",
 };
+/**
+ * URL scheme guard for operator-entered external links — productUrl
+ * inputs on AlbumStoreListing and similar admin surfaces. Returns
+ * `true` only when the value parses as a real URL with an http/https
+ * scheme; rejects `javascript:`, `data:`, `vbscript:`, malformed
+ * strings, and nullish inputs. Asserts the input as a non-nullable
+ * string for the truthy branch so callers can use it as a type guard.
+ *
+ * Originally lived inline in ListingCard; lifted here so admin
+ * surfaces (ListingsClient) can apply the same scheme allowlist
+ * instead of rendering operator-typed `href` verbatim.
+ */
+export function isSafeExternalUrl(
+  url: string | null | undefined,
+): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export function formatDate(
   date: Date | string | null | undefined,
   locale: string,
