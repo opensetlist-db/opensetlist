@@ -3,7 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { AlbumBonusTab } from "@/components/AlbumBonusTab";
@@ -99,7 +99,14 @@ const getAlbum = cache(async (id: bigint, locale: string) => {
     },
   });
   if (!album) return null;
-  return serializeBigInt(album);
+  // Use the string-coercing serializer rather than the number one so
+  // album.id / artists[].artist.id / tracks[].song.id /
+  // tracks[].parentSong.id / listings[].id / listings[].bonuses[].id
+  // all round-trip without precision loss. Downstream components
+  // compose hrefs via template literals (string concatenation works
+  // identically for string / number / bigint) so the runtime swap
+  // from number-ids to string-ids is transparent to the consumer.
+  return serializeBigIntAsString(album);
 });
 
 type Props = {

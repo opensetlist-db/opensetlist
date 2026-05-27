@@ -23,11 +23,45 @@ export function slugify(text: string): string {
  * Serialize BigInt values to numbers for JSON compatibility.
  * Prisma returns BigInt for @id @default(autoincrement()) fields.
  * At runtime, bigint fields become numbers after JSON round-trip.
+ *
+ * ⚠️ Number-targeted serialization is lossy at >2^53 − 1. Use
+ * `serializeBigIntAsString` when the payload carries id fields whose
+ * precision must survive the JSON boundary (e.g., Album.id +
+ * artists/tracks/song ids on the album detail page, where downstream
+ * components compose hrefs and Prisma queries off these values).
  */
 export function serializeBigInt<T>(obj: T): T {
   return JSON.parse(
     JSON.stringify(obj, (_key, value) =>
       typeof value === "bigint" ? Number(value) : value
+    )
+  );
+}
+
+/**
+ * Same shape as `serializeBigInt` but converts BigInt to a string
+ * representation rather than a JS number. Use this when the payload
+ * carries id-bearing BigInt fields whose precision must survive
+ * round-tripping to a client component or fetch response.
+ *
+ * Why string and not just number: ids above `Number.MAX_SAFE_INTEGER`
+ * (2^53 − 1) silently round when coerced to number. At Phase 1
+ * catalog scale (100s of ids) this never bites in practice, but the
+ * conversion is one-way — once an id is rounded, any downstream code
+ * that re-feeds it into a Prisma `where: { id: BigInt(n) }` query
+ * lands on the wrong row. Strings dodge the rounding entirely;
+ * BigInt(stringId) at the DB boundary reverses cleanly.
+ *
+ * The generic returns the input type as-is; the runtime swap from
+ * bigint to string is intentional but not reflected in the static
+ * type. Callers that need a typed string id at the type level
+ * should either narrow with `as unknown as <ShapeWithStringIds>` or
+ * pick the id field via `.toString()` directly before passing it on.
+ */
+export function serializeBigIntAsString<T>(obj: T): T {
+  return JSON.parse(
+    JSON.stringify(obj, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value
     )
   );
 }

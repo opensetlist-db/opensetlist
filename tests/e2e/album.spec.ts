@@ -100,8 +100,13 @@ test.describe("Album detail page — URL sanitisers", () => {
     );
     expect(resp?.ok()).toBeTruthy();
     // After redirect we land on the bare numeric URL per page.tsx
-    // (`permanentRedirect('/${locale}/albums/${id}')`).
-    expect(page.url()).toMatch(new RegExp(`/ko/albums/${albumId}(?:$|[?#])`));
+    // (`permanentRedirect('/${locale}/albums/${id}')`). Compare the
+    // pathname as a plain string rather than building a RegExp from
+    // an id whose digits never collide with regex metacharacters
+    // today — but the parsed-URL comparison documents intent more
+    // clearly and dodges the lint warning about implicit
+    // RegExp interpolation.
+    expect(new URL(page.url()).pathname).toBe(`/ko/albums/${albumId}`);
   });
 
   test("?tab=<unknown> falls back to the default tab", async ({ page }) => {
@@ -146,6 +151,15 @@ test.describe("Album detail page — metadata", () => {
     const canonical = await page
       .locator('link[rel="canonical"]')
       .getAttribute("href");
-    expect(canonical).toMatch(new RegExp(`/ko/albums/${albumId}$`));
+    // canonical may be either an absolute URL (https://opensetlist.com/...)
+    // or a path-only string depending on Next.js metadata config, so
+    // compare the pathname extracted from either form. Anchoring on
+    // pathname avoids the RegExp-from-string interpolation pattern
+    // CR flagged elsewhere in this spec.
+    expect(canonical).not.toBeNull();
+    const canonicalPath = canonical!.startsWith("/")
+      ? canonical!
+      : new URL(canonical!).pathname;
+    expect(canonicalPath).toBe(`/ko/albums/${albumId}`);
   });
 });
