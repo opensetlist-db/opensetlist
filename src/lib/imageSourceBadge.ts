@@ -47,13 +47,31 @@ export function classifyImageSource(url: string): ImageSource {
   // route handlers should read so the host isn't unnecessarily
   // baked into the client bundle when SSR is the only caller. Both
   // share a single source of truth — keep them set to the same R2
-  // hostname in Vercel env config. Push-review hook flagged the
-  // single-var read because the server path was relying on a
-  // NEXT_PUBLIC_* leak, which works but advertises the host into
-  // the client bundle even on pages that never call this helper.
-  const r2Host =
+  // hostname in Vercel env config.
+  //
+  // Env values may arrive as either a bare host
+  // (`cdn.opensetlist.com`) or a full URL (`https://cdn.opensetlist.com/`)
+  // depending on how the operator set them in Vercel. Normalize
+  // through the URL parser when possible so the host comparison
+  // doesn't fail on a scheme prefix and accidentally re-classify a
+  // legitimate R2 image as External.
+  const r2HostRaw =
     process.env.R2_PUBLIC_HOST ?? process.env.NEXT_PUBLIC_R2_PUBLIC_HOST;
-  if (r2Host && host === r2Host.toLowerCase()) {
+  const r2Host = (() => {
+    if (!r2HostRaw) return null;
+    try {
+      return new URL(r2HostRaw).host.toLowerCase();
+    } catch {
+      // URL constructor refused the input — most likely a bare host
+      // ("cdn.opensetlist.com") instead of a full URL. Match the
+      // shape `new URL().host` produces: trim padding whitespace and
+      // strip any trailing `/` the operator left in by accident so
+      // the host equality check below doesn't fail on a normalize-
+      // only difference.
+      return r2HostRaw.trim().replace(/\/+$/, "").toLowerCase();
+    }
+  })();
+  if (r2Host && host === r2Host) {
     return { label: "R2", color: "bg-emerald-100 text-emerald-700", warn: false };
   }
   return { label: "External", color: "bg-red-100 text-red-700", warn: true };

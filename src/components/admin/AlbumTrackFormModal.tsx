@@ -59,13 +59,20 @@ export default function AlbumTrackFormModal({
   // Pattern 1 / 2 — selected song. We hold a {id, label} pair because
   // SongSearch's onSelect fires with the full SongSearchResult; we
   // shrink it to id+label for display.
-  const [songId, setSongId] = useState<number | null>(
+  //
+  // ids ride as strings end-to-end (see TrackInitial in
+  // @/lib/albumTrackTypes for the BigInt-precision rationale).
+  // SongSearch surfaces SongSearchResult.id as a number from the
+  // serialized-BigInt API payload — coerce on receipt via
+  // String(s.id) so the rest of this form holds the value as a
+  // string, ready for the PATCH/POST payload.
+  const [songId, setSongId] = useState<string | null>(
     initialData?.songId ?? null,
   );
   const [songLabel, setSongLabel] = useState<string>(
     initialData?.selectedSongLabel ?? "",
   );
-  const [parentSongId, setParentSongId] = useState<number | null>(
+  const [parentSongId, setParentSongId] = useState<string | null>(
     initialData?.parentSongId ?? null,
   );
   const [parentLabel, setParentLabel] = useState<string>(
@@ -316,7 +323,7 @@ export default function AlbumTrackFormModal({
                   noResults: "결과 없음",
                 }}
                 onSelect={(s) => {
-                  setSongId(s.id);
+                  setSongId(String(s.id));
                   setSongLabel(labelForSong(s));
                 }}
               />
@@ -355,7 +362,7 @@ export default function AlbumTrackFormModal({
                     noResults: "결과 없음",
                   }}
                   onSelect={(s) => {
-                    setParentSongId(s.id);
+                    setParentSongId(String(s.id));
                     setParentLabel(labelForSong(s));
                   }}
                 />

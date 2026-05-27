@@ -116,8 +116,12 @@ export default async function AlbumTracksPage({ params }: Props) {
       pattern,
       patternBadge: PATTERN_BADGES[pattern],
       displayTitle,
-      songId: t.songId !== null ? Number(t.songId) : null,
-      parentSongId: t.parentSongId !== null ? Number(t.parentSongId) : null,
+      // Stringify BigInt ids directly (no Number() round-trip) so
+      // the precision survives JSON serialization. The server-side
+      // parseBigInt accepts string ids on the way back in.
+      songId: t.songId !== null ? t.songId.toString() : null,
+      parentSongId:
+        t.parentSongId !== null ? t.parentSongId.toString() : null,
       variant: t.variant,
       title: t.title,
       titleLanguage: t.titleLanguage,

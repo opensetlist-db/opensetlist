@@ -26,10 +26,23 @@ export interface AlbumSampleIds {
   singleId: string | null;
 }
 
+/*
+ * Normalize empty / whitespace-only env values to `null` so the
+ * spec's `requireSample(id, ...)` skip guard fires the same way
+ * whether the operator left the var off entirely or set it to "".
+ * A literal empty-string id would otherwise slip through the
+ * `id === null` check and the spec would compose `/ko/albums/`
+ * (no id), 404, and fail noisily on what was intended to be a skip.
+ */
+function normalize(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function readSampleIds(): AlbumSampleIds {
   return {
-    liveAlbumId: process.env.E2E_LIVE_ALBUM_ID ?? null,
-    albumId: process.env.E2E_ALBUM_ID ?? null,
-    singleId: process.env.E2E_SINGLE_ID ?? null,
+    liveAlbumId: normalize(process.env.E2E_LIVE_ALBUM_ID),
+    albumId: normalize(process.env.E2E_ALBUM_ID),
+    singleId: normalize(process.env.E2E_SINGLE_ID),
   };
 }

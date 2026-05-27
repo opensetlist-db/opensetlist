@@ -32,8 +32,15 @@ export type TrackInitial = {
   pattern: TrackPattern;
   discNumber: number;
   trackNumber: number;
-  songId: number | null;
-  parentSongId: number | null;
+  // Song ids ride as strings (not numbers) end-to-end. Prisma stores
+  // Song.id as BigInt; an earlier iteration coerced through Number()
+  // at the server-page boundary, which silently truncates anything
+  // beyond 2^53 - 1. Keeping the id as a string lets the form
+  // serialize it verbatim and the PATCH/POST routes accept it via
+  // parseBigInt (string branch) without ever passing through the
+  // lossy JS-number representation.
+  songId: string | null;
+  parentSongId: string | null;
   variant: string | null;
   title: string | null;
   titleLanguage: string | null;

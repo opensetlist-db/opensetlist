@@ -164,8 +164,8 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       parentSong: { disconnect: true },
       title: body.title.trim(),
       titleLanguage:
-        typeof body.titleLanguage === "string" && body.titleLanguage
-          ? body.titleLanguage
+        typeof body.titleLanguage === "string" && body.titleLanguage.trim()
+          ? body.titleLanguage.trim()
           : "ja",
     };
   } else {

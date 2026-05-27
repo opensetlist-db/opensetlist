@@ -50,12 +50,23 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
-    reuseExistingServer: true,
-    timeout: 180_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  // Only auto-start the local `next dev` server when the suite is
+  // targeting the default localhost baseURL. When TEST_BASE_URL is set
+  // (CI pointing at a Vercel preview, a staging origin, etc.) the
+  // remote target is already up — starting a parallel local server
+  // would burn a port + a build cycle for no reason, and on shared
+  // CI runners might even race a colocated `next dev` from another
+  // job. The undefined branch tells Playwright to skip its webServer
+  // boot entirely.
+  webServer:
+    process.env.TEST_BASE_URL == null
+      ? {
+          command: "npm run dev",
+          url: "http://localhost:3000",
+          reuseExistingServer: true,
+          timeout: 180_000,
+          stdout: "pipe",
+          stderr: "pipe",
+        }
+      : undefined,
 });

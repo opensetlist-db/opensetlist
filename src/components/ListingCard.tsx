@@ -8,25 +8,16 @@ import {
   type EnrichedListing,
   type EnrichedBonus,
 } from "@/lib/albumBonusDisplay";
-
 // Limits the buy-button anchor to genuine external URLs. Operator
 // types productUrl as free-text in admin (per the b03↔b05
 // simplification handoff — no closed allowlist of stores), so a
 // hostile or accidental value like `javascript:alert(1)` /
 // `data:text/html,...` would otherwise reach the rendered href.
-// The URL constructor throws on malformed input + lets us read the
-// resolved protocol cleanly; anything that isn't http/https is
-// treated as "no usable link" and the buy button drops out of the
-// render.
-function isSafeExternalUrl(url: string | null | undefined): url is string {
-  if (!url) return false;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
+// Lifted to lib/utils.ts so the admin surface (ListingsClient) can
+// apply the same scheme allowlist instead of rendering operator-typed
+// hrefs verbatim — single source of truth for the http/https-only
+// check.
+import { isSafeExternalUrl } from "@/lib/utils";
 
 /*
  * Card render for a single AlbumStoreListing — one row per

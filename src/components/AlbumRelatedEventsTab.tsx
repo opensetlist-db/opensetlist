@@ -130,8 +130,23 @@ export async function AlbumRelatedEventsTab({
       // sort key uses event.startTime (NOT NULL per schema) rather
       // than event.date (nullable — `new Date("null").getTime()` is
       // NaN, which would break the in-bucket sort + the mostRecentMs
-      // reduce below).
-      rawDateMs: new Date(String(event.startTime)).getTime(),
+      // reduce below). Type-branch the conversion: post-serializeBigInt
+      // payloads carry Date as an ISO string, but a future caller that
+      // hands raw Prisma results in would have a Date object — handle
+      // both cleanly rather than going through `String(...)`'s
+      // implementation-defined toString. Invalid input falls back to 0
+      // so the sort stays deterministic and pins it last instead of
+      // erroring on NaN comparisons.
+      rawDateMs: (() => {
+        const startTime: unknown = event.startTime;
+        const ms =
+          startTime instanceof Date
+            ? startTime.getTime()
+            : typeof startTime === "string"
+              ? new Date(startTime).getTime()
+              : NaN;
+        return Number.isNaN(ms) ? 0 : ms;
+      })(),
     };
   });
 

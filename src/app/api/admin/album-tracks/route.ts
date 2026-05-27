@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
       variant: body.variant,
       title: body.title.trim(),
       titleLanguage:
-        typeof body.titleLanguage === "string" && body.titleLanguage
-          ? body.titleLanguage
+        typeof body.titleLanguage === "string" && body.titleLanguage.trim()
+          ? body.titleLanguage.trim()
           : "ja",
       translations: translations.length ? { create: translations } : undefined,
     };

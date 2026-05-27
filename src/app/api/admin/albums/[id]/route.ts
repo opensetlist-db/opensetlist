@@ -5,6 +5,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { validateCanonicalSlug } from "@/lib/slug";
 import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
+import { parseBigInt } from "@/lib/adminParsers";
 import type { AlbumType } from "@/generated/prisma/enums";
 
 type RouteProps = { params: Promise<{ id: string }> };
@@ -108,17 +109,46 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  const releaseDate =
-    body.releaseDate == null || body.releaseDate === ""
-      ? null
-      : typeof body.releaseDate === "string"
-        ? new Date(body.releaseDate)
-        : null;
-  if (releaseDate && Number.isNaN(releaseDate.getTime())) {
-    return NextResponse.json(
-      { error: "발매일 형식이 잘못되었습니다." },
-      { status: 400 },
-    );
+  // releaseDate is a calendar date (Album.releaseDate is `@db.Date`),
+  // not a timestamp — the operator's form sends a YYYY-MM-DD string.
+  // Strict-validate the shape so a typo like "2025/05/26" or
+  // "2025-13-40" 400s with a useful message instead of either silently
+  // succeeding through `new Date(...)` lenient parsing or landing
+  // an "Invalid Date" sentinel into Prisma. UTC round-trip catches
+  // out-of-range day/month values (2025-02-30 → reparses as 2025-03-02
+  // under lenient parsing); requiring the parsed parts to equal the
+  // input rejects them.
+  let releaseDate: Date | null = null;
+  if (body.releaseDate != null && body.releaseDate !== "") {
+    if (typeof body.releaseDate !== "string") {
+      return NextResponse.json(
+        { error: "발매일 형식이 잘못되었습니다." },
+        { status: 400 },
+      );
+    }
+    const m = body.releaseDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
+      return NextResponse.json(
+        { error: "발매일 형식이 잘못되었습니다." },
+        { status: 400 },
+      );
+    }
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    const day = Number(m[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() + 1 !== month ||
+      parsed.getUTCDate() !== day
+    ) {
+      return NextResponse.json(
+        { error: "발매일 형식이 잘못되었습니다." },
+        { status: 400 },
+      );
+    }
+    releaseDate = parsed;
   }
 
   const labelName =
@@ -174,20 +204,18 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       );
     }
     for (const aid of body.artistIds) {
-      if (typeof aid !== "number" && typeof aid !== "string") {
+      // parseBigInt enforces the safe-integer guard for JSON numbers
+      // and the digit-shape guard for strings — both branches return
+      // null on anything unparseable, which surfaces as a 400 here
+      // rather than silently anchoring onto a rounded Artist.id.
+      const parsed = parseBigInt(aid);
+      if (parsed === null) {
         return NextResponse.json(
           { error: "잘못된 아티스트 ID입니다." },
           { status: 400 },
         );
       }
-      try {
-        artistIds.push(BigInt(aid));
-      } catch {
-        return NextResponse.json(
-          { error: "잘못된 아티스트 ID입니다." },
-          { status: 400 },
-        );
-      }
+      artistIds.push(parsed);
     }
   }
 

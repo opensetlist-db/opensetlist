@@ -26,7 +26,16 @@ export default async function EditAlbumPage({ params }: Props) {
   });
   if (!album) notFound();
 
+  // ID-bearing fields (album.id, album.artists[*].artistId) go to the
+  // form as strings — read directly from the raw bigint via
+  // `.toString()` so the precision survives. serializeBigInt is still
+  // useful for the non-id payload (translations array, the date and
+  // string columns) where its JSON.parse round-trip just smooths
+  // Prisma's Date / Decimal / etc. into plain shapes. The id fields
+  // bypass it.
   const data = serializeBigInt(album);
+  const albumIdStr = album.id.toString();
+  const artistIdStrs = album.artists.map((aa) => aa.artistId.toString());
 
   return (
     <div>
@@ -34,13 +43,13 @@ export default async function EditAlbumPage({ params }: Props) {
         <h1 className="text-2xl font-bold">앨범 편집</h1>
         <div className="space-x-3 text-sm">
           <Link
-            href={`/admin/albums/${data.id}/listings`}
+            href={`/admin/albums/${albumIdStr}/listings`}
             className="text-blue-600 hover:underline"
           >
             매장별 구매처 관리 →
           </Link>
           <Link
-            href={`/admin/albums/${data.id}/tracks`}
+            href={`/admin/albums/${albumIdStr}/tracks`}
             className="text-blue-600 hover:underline"
           >
             수록곡 관리 →
@@ -49,7 +58,7 @@ export default async function EditAlbumPage({ params }: Props) {
       </div>
       <AlbumForm
         initialData={{
-          id: String(data.id),
+          id: albumIdStr,
           slug: data.slug,
           type: data.type,
           originalTitle: data.originalTitle,
@@ -63,13 +72,7 @@ export default async function EditAlbumPage({ params }: Props) {
             locale: t.locale,
             title: t.title,
           })),
-          // serializeBigInt JSON-roundtrips bigints to numbers, but the
-          // generated Prisma model type still describes the original
-          // `artistId: bigint` shape — cast through here so TS sees the
-          // runtime number that survives JSON.parse.
-          artistIds: data.artists.map(
-            (aa: { artistId: number | bigint }) => Number(aa.artistId),
-          ),
+          artistIds: artistIdStrs,
         }}
       />
     </div>
