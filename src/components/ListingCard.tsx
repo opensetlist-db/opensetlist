@@ -50,9 +50,31 @@ interface Props {
   listing: EnrichedListing & { bonuses: EnrichedBonus[] };
   locale: string;
   muted?: boolean;
+  /**
+   * Render mode when the card sits inside an outer single big-box
+   * wrapper (the AlbumBonusTab pattern that mirrors the events tab's
+   * PerformanceGroup shell). Drops the card's own background /
+   * borderRadius / boxShadow / border so the outer wrapper paints
+   * them once for the whole stack — same visual rhythm as
+   * PerformanceGroup's inline event rows.
+   */
+  embedded?: boolean;
+  /**
+   * Hairline rule above the card body — used only by `embedded`
+   * mode to separate inline rows inside the outer wrapper. Has no
+   * effect when `embedded` is false (each card already carries its
+   * own borderRadius / box edge in the standalone shape).
+   */
+  dividerAbove?: boolean;
 }
 
-export async function ListingCard({ listing, locale, muted = false }: Props) {
+export async function ListingCard({
+  listing,
+  locale,
+  muted = false,
+  embedded = false,
+  dividerAbove = false,
+}: Props) {
   const t = await getTranslations({ locale, namespace: "Album.bonus" });
   const storeName = resolveStoreName(listing, locale);
   const editionLabel = resolveEditionLabel(listing, locale);
@@ -61,17 +83,37 @@ export async function ListingCard({ listing, locale, muted = false }: Props) {
   return (
     <article
       style={{
-        background: muted ? colors.bgSubtle : colors.bgCard,
-        borderRadius: radius.card,
-        boxShadow: muted ? "none" : shadows.card,
-        border: muted ? `1px solid ${colors.borderSubtle}` : "none",
+        // In `embedded` mode the outer wrapper paints the bgCard +
+        // borderRadius + boxShadow once for the whole stack, so each
+        // card stays transparent + sharp-edged. Standalone shape
+        // (muted variant, or any future caller using ListingCard on
+        // its own) keeps the per-card box.
+        background: embedded
+          ? "transparent"
+          : muted
+            ? colors.bgSubtle
+            : colors.bgCard,
+        borderRadius: embedded ? 0 : radius.card,
+        boxShadow: embedded || muted ? "none" : shadows.card,
+        border:
+          embedded
+            ? "none"
+            : muted
+              ? `1px solid ${colors.borderSubtle}`
+              : "none",
+        // Hairline rule above the card body in embedded mode (skip
+        // for the first card in the stack via the `dividerAbove`
+        // prop). Matches PerformanceGroup's inter-row separator.
+        borderTop: embedded && dividerAbove
+          ? `1px solid ${colors.borderLight}`
+          : undefined,
         // Horizontal padding aligned with the events tab's
         // PerformanceGroup row padding (16px) so the inner content
         // edge sits at the same offset from the card box edge
         // across all three tabs.
         padding: "16px",
         opacity: muted ? 0.78 : 1,
-        // Width 100% explicit so the card stretches to the tab
+        // Width 100% explicit so the card stretches to the wrapper
         // column edge — the flex parent's default `align-items:
         // stretch` should already do this, but pinning here is a
         // defense against future style edits and matches the

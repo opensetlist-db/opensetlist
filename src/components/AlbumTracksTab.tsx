@@ -88,44 +88,42 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
   const showDiscHeaders = sortedDiscs.length > 1;
 
   return (
+    // Single outer big box, mirroring the events tab's
+    // <PerformanceGroup> wrapper shape (one bgCard + overflow:hidden
+    // shell wrapping all child rows). Earlier shape was an outer
+    // flex column with each disc section carrying its own bgCard /
+    // borderRadius / padding — operator caught that this read as
+    // a narrower content area than the events tab's single-box
+    // shell, even though section widths matched. Re-using the same
+    // single-shell pattern unifies the visual edge.
     <div
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        // Width 100% explicit so every disc section stretches to the
-        // tab column edge — matches the events tab's outer wrapper
-        // shape, keeps the three tabs visually the same width as
-        // the user switches between them.
+        background: colors.bgCard,
+        borderRadius: radius.card,
+        overflow: "hidden",
         width: "100%",
       }}
     >
-      {sortedDiscs.map(([discNumber, discTracks]) => (
-        <section
+      {sortedDiscs.map(([discNumber, discTracks], discIdx) => (
+        <div
           key={discNumber}
           style={{
-            background: colors.bgCard,
-            borderRadius: radius.card,
-            // Horizontal padding aligned with the events tab's
-            // PerformanceGroup row padding (16px) so the inner
-            // content edge sits at the same offset from the section
-            // box edge across all three tabs — operator caught the
-            // 2-4 px inset difference visually.
-            padding: "14px 16px 18px",
-            // Per-section width 100% too — the parent flex column's
-            // align-items default is `stretch`, but pinning here is
-            // a defense against future style edits that drop the
-            // implicit stretch (e.g. adding `align-items: start`).
-            width: "100%",
-            // box-sizing inherits border-box from the project root
-            // (set on Tailwind preflight); the padding above already
-            // fits inside the column width without extra config.
+            // Top border separator between discs (multi-disc case
+            // only). The first disc sits flush against the box
+            // top; subsequent discs get a hairline rule above the
+            // header, matching the visual rhythm of
+            // PerformanceGroup's inter-section separator.
+            borderTop:
+              discIdx > 0
+                ? `1px solid ${colors.borderLight}`
+                : undefined,
           }}
         >
           {showDiscHeaders ? (
             <h3
               style={{
-                margin: "0 0 10px",
+                margin: 0,
+                padding: "12px 16px 8px",
                 fontSize: 11,
                 fontWeight: 800,
                 letterSpacing: "0.08em",
@@ -189,7 +187,7 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
               );
             })}
           </ol>
-        </section>
+        </div>
       ))}
     </div>
   );
@@ -289,7 +287,12 @@ function TrackRow({
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "8px 0",
+            // Horizontal padding 16px lives on the row now that the
+            // disc section no longer carries its own. Matches the
+            // events tab's PerformanceGroup row padding so all three
+            // tabs' rows hit the same content inset from the outer
+            // big-box edge.
+            padding: "8px 16px",
             borderBottom: `1px solid ${colors.borderLight}`,
             color: "inherit",
             textDecoration: "none",
@@ -317,7 +320,8 @@ function TrackRow({
         display: "flex",
         alignItems: "center",
         gap: 10,
-        padding: "8px 0",
+        // Same horizontal padding as the linkable variant above.
+        padding: "8px 16px",
         borderBottom: `1px solid ${colors.borderLight}`,
       }}
     >

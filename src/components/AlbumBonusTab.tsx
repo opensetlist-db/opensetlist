@@ -91,16 +91,35 @@ export async function AlbumBonusTab({ album, locale }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 12,
-        // Same width-pinning rationale as the events-tab outer wrapper —
-        // forces every tab's content to stretch to the section column
-        // edge on mobile so the three tabs look identically wide as
-        // the user switches between them.
         width: "100%",
       }}
     >
-      {activeListings.map((listing) => (
-        <ListingCard key={listing.id} listing={listing} locale={locale} />
-      ))}
+      {/* Outer single big box — same shell pattern the events tab
+          uses. Each ListingCard renders `embedded` so it drops its
+          own background / shadow / border-radius; the outer wrapper
+          carries them once for the whole stack. Listings render as
+          inline rows separated by a hairline rule, identical visual
+          rhythm to PerformanceGroup's event rows. */}
+      {activeListings.length > 0 ? (
+        <div
+          style={{
+            background: colors.bgCard,
+            borderRadius: radius.card,
+            overflow: "hidden",
+            width: "100%",
+          }}
+        >
+          {activeListings.map((listing, idx) => (
+            <ListingCard
+              key={listing.id}
+              listing={listing}
+              locale={locale}
+              embedded
+              dividerAbove={idx > 0}
+            />
+          ))}
+        </div>
+      ) : null}
       <EndedListingToggle listings={endedListings} locale={locale} />
     </div>
   );
