@@ -416,7 +416,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             PerformanceGroup's own grid container) lets the inner
             grid honour its own `minmax(0, 1fr)` track + clip with
             `overflow: hidden` instead of overflowing outward. */}
-        <section style={{ minWidth: 0 }}>
+        <section style={{ minWidth: 0, width: "100%" }}>
           <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
           {/* All three tabs now render real data panels (b03 / b04).
               Explicit per-activeTab branches stay verbose rather than

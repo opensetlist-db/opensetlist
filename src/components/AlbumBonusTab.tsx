@@ -65,6 +65,11 @@ export async function AlbumBonusTab({ album, locale }: Props) {
           textAlign: "center",
           color: colors.textMuted,
           fontSize: 14,
+          // Width 100% explicit so the placeholder box stretches to
+          // the same edge as the events-tab inner box and the
+          // tracks-tab disc sections — mobile flex/grid contexts
+          // sometimes don't stretch children unless told to.
+          width: "100%",
         }}
       >
         {t("empty")}
@@ -76,7 +81,18 @@ export async function AlbumBonusTab({ album, locale }: Props) {
   const endedListings = album.listings.filter((l) => isEndedListing(l));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        // Same width-pinning rationale as the events-tab outer wrapper —
+        // forces every tab's content to stretch to the section column
+        // edge on mobile so the three tabs look identically wide as
+        // the user switches between them.
+        width: "100%",
+      }}
+    >
       {activeListings.map((listing) => (
         <ListingCard key={listing.id} listing={listing} locale={locale} />
       ))}

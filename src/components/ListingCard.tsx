@@ -67,6 +67,13 @@ export async function ListingCard({ listing, locale, muted = false }: Props) {
         border: muted ? `1px solid ${colors.borderSubtle}` : "none",
         padding: "16px 18px",
         opacity: muted ? 0.78 : 1,
+        // Width 100% explicit so the card stretches to the tab
+        // column edge — the flex parent's default `align-items:
+        // stretch` should already do this, but pinning here is a
+        // defense against future style edits and matches the
+        // width-pinning the album-bonus / album-tracks tab outer
+        // wrappers carry for the same reason.
+        width: "100%",
       }}
     >
       <header

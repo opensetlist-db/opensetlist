@@ -56,6 +56,8 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
           textAlign: "center",
           color: colors.textMuted,
           fontSize: 14,
+          // Width 100% — same edge as the other tabs' placeholders.
+          width: "100%",
         }}
       >
         {tNs("empty")}
@@ -86,7 +88,18 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
   const showDiscHeaders = sortedDiscs.length > 1;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        // Width 100% explicit so every disc section stretches to the
+        // tab column edge — matches the events tab's outer wrapper
+        // shape, keeps the three tabs visually the same width as
+        // the user switches between them.
+        width: "100%",
+      }}
+    >
       {sortedDiscs.map(([discNumber, discTracks]) => (
         <section
           key={discNumber}
@@ -94,6 +107,14 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
             background: colors.bgCard,
             borderRadius: radius.card,
             padding: "14px 18px 18px",
+            // Per-section width 100% too — the parent flex column's
+            // align-items default is `stretch`, but pinning here is
+            // a defense against future style edits that drop the
+            // implicit stretch (e.g. adding `align-items: start`).
+            width: "100%",
+            // box-sizing inherits border-box from the project root
+            // (set on Tailwind preflight); the padding above already
+            // fits inside the column width without extra config.
           }}
         >
           {showDiscHeaders ? (
