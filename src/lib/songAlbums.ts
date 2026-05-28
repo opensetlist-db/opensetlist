@@ -96,17 +96,44 @@ export function getSongAlbums(
       t.album !== null,
   );
 
-  // 2. Dedupe by album.id — a song can sit on the same album at more
+  // 2. Sort first, then dedupe. Order: Album.releaseDate ASC →
+  //    Album.id ASC → discNumber ASC → trackNumber ASC. Sorting
+  //    BEFORE dedupe means the "first wins" pass below is
+  //    self-sufficient — it picks the lowest-disc-then-track row per
+  //    album as the canonical context regardless of caller input
+  //    order. Earlier shape (dedupe first, sort second) only re-sorted
+  //    *between* albums; *within* an album the wrong disc/track could
+  //    have leaked through if the caller didn't pre-sort.
+  //
+  //    Album.id tiebreak uses `localeCompare(..., numeric: true)` so
+  //    it works correctly across every shape the `id` union admits —
+  //    numeric BigInt-derived strings ("10" sorts after "2", not
+  //    before) AND the UUID strings the LiveSetlistItem-precedent
+  //    type still permits in theory. `BigInt(ia)` would throw
+  //    RangeError on a UUID; Album.id is always numeric in practice
+  //    today (b01 schema migration), but the type-safe comparator
+  //    costs nothing extra.
+  const sorted = [...live].sort((a, b) => {
+    const ra = getReleaseDateMs(a.album.releaseDate);
+    const rb = getReleaseDateMs(b.album.releaseDate);
+    if (ra !== rb) return ra - rb;
+    const idCmp = albumIdAsString(a.album.id).localeCompare(
+      albumIdAsString(b.album.id),
+      undefined,
+      { numeric: true },
+    );
+    if (idCmp !== 0) return idCmp;
+    if (a.discNumber !== b.discNumber) return a.discNumber - b.discNumber;
+    return a.trackNumber - b.trackNumber;
+  });
+
+  // 3. Dedupe by album.id — a song can sit on the same album at more
   //    than one disc/track position (medley reprises, intro+full
   //    pairings). The section answers "which albums is this song
-  //    on?" with one entry per album; the surviving row carries the
-  //    lowest-disc-then-track position as the canonical context. The
-  //    input is expected to already be sorted by (releaseDate ASC,
-  //    album.id ASC, disc ASC, track ASC) per the page's Prisma
-  //    orderBy chain, so a simple "first wins" pass over a Map
-  //    preserves the lowest-position pick without a second sort.
+  //    on?" with one entry per album; the surviving row is the
+  //    lowest-disc-then-track position guaranteed by the sort above.
   const dedupedByAlbum = new Map<string, SongAlbumsVocalTrack & { album: SongAlbumsAlbum }>();
-  for (const t of live) {
+  for (const t of sorted) {
     const key = albumIdAsString(t.album.id);
     if (!dedupedByAlbum.has(key)) {
       dedupedByAlbum.set(key, t);
@@ -114,31 +141,7 @@ export function getSongAlbums(
   }
   const deduped = [...dedupedByAlbum.values()];
 
-  // 3. Sort by Album.releaseDate ASC, with Album.id ASC tiebreak.
-  //    Re-sort defensively in case the caller hands us an unsorted
-  //    array — the dedupe step's first-wins behaviour is only
-  //    canonical-correct if the upstream sort is intact. Cheap on
-  //    Phase 1/2 scale (<10 albums per song).
-  //
-  //    Tiebreak uses `localeCompare(..., numeric: true)` so it works
-  //    correctly across every shape the `id` union admits — numeric
-  //    BigInt-derived strings ("10" sorts after "2", not before) AND
-  //    the UUID strings the LiveSetlistItem-precedent type still
-  //    permits in theory. `BigInt(ia)` would throw RangeError on a
-  //    UUID; Album.id is always numeric in practice today (b01 schema
-  //    migration), but the type-safe comparator costs nothing extra.
-  const sorted = deduped.sort((a, b) => {
-    const ra = getReleaseDateMs(a.album.releaseDate);
-    const rb = getReleaseDateMs(b.album.releaseDate);
-    if (ra !== rb) return ra - rb;
-    return albumIdAsString(a.album.id).localeCompare(
-      albumIdAsString(b.album.id),
-      undefined,
-      { numeric: true },
-    );
-  });
-
-  return sorted.map((track, i) => ({
+  return deduped.map((track, i) => ({
     album: track.album,
     discNumber: track.discNumber,
     trackNumber: track.trackNumber,

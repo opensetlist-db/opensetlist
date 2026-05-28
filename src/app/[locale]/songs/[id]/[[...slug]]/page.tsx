@@ -85,13 +85,18 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // the variant `groupBy` isolated (cross-variant aggregation,
 // SQL-efficient as a single set operation — see `page.tsx:512`).
 //
-// `vocalTracks: { take: 1 }` picks the earliest-released album as
-// the canonical "first" (matches the prior `getFirstAlbumTrack`
-// semantics: `album.releaseDate ASC, discNumber ASC, trackNumber
-// ASC` is deterministic regardless of insertion order and matches
-// the user's mental model — "the album where this song first
-// appeared"; disc/track as secondary so re-issues + special editions
-// don't overrule the original release).
+// `vocalTracks` is fetched unbounded — b08 dropped the prior
+// `take: 1` cap so the sidebar's 수록 앨범 section can render one
+// card per album the song appears on. The orderBy chain
+// (`album.releaseDate ASC, album.id ASC, discNumber ASC,
+// trackNumber ASC`) is deterministic regardless of insertion order
+// and matches the user's mental model — "the album where this song
+// first appeared." `vocalTracks[0]` post-sort is still the
+// earliest-released album, so the existing sidebar `albumInfo`
+// stat row that consumes index 0 (replacing the prior
+// `getFirstAlbumTrack` standalone helper) reads byte-identically
+// to the take:1 era. The full array drives `getSongAlbums` for the
+// new section.
 //
 // b01b note: `albumTracks` was split into `vocalTracks` (this song
 // is the vocal — Pattern 1) and `offVocalTracks` (this song is the
@@ -337,11 +342,14 @@ export default async function SongPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  // `getSong` now carries the first AlbumTrack + the total performance
-  // count inline via its `vocalTracks: { take: 1 }` + `_count.setlistItems`
-  // includes — see the comment block on `getSong` above for the
-  // Sentry-issue context (issue 7504931765). Page render fans out to
-  // 2 prisma queries now (Song + Performances) instead of the prior 4.
+  // `getSong` now carries the full `vocalTracks` array + the total
+  // performance count inline via its `vocalTracks` (b08: unbounded)
+  // + `_count.setlistItems` includes — see the comment block on
+  // `getSong` above for the Sentry-issue context (issue 7504931765)
+  // and the b08 orderBy/include extension. `vocalTracks[0]` post-ASC
+  // sort is still the canonical earliest-released album the original
+  // `take: 1` cap fetched. Page render fans out to 2 prisma queries
+  // (Song + Performances) instead of the prior 4.
   const [song, performances] = await Promise.all([
     getSong(songId),
     getSongPerformances(songId),

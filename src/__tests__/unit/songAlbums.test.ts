@@ -169,6 +169,27 @@ describe("getSongAlbums", () => {
     expect(result[0].trackNumber).toBe(3);
   });
 
+  it("picks the lowest-position row even when callers pass unsorted input", () => {
+    // Caller order intentionally reversed (disc 2 track 7 BEFORE
+    // disc 1 track 3) — the helper sorts before deduping so the
+    // canonical context is still disc 1 / track 3 regardless of
+    // input order. This guards the helper's "pure transformer"
+    // contract for future variants (b09 / b10b) that may construct
+    // their input differently.
+    const sameAlbum = album({
+      id: "10",
+      slug: "anniversary-box",
+      releaseDate: "2024-01-01",
+    });
+    const result = getSongAlbums([
+      { discNumber: 2, trackNumber: 7, album: sameAlbum },
+      { discNumber: 1, trackNumber: 3, album: sameAlbum },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].discNumber).toBe(1);
+    expect(result[0].trackNumber).toBe(3);
+  });
+
   it("dedupe pairs with multi-album sort — count reflects unique albums", () => {
     // Same song on two distinct albums; one of them at two positions.
     // After dedupe we get exactly 2 cards.
