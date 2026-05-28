@@ -7,7 +7,7 @@ import {
 } from "@/components/PerformanceGroup";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { formatDate } from "@/lib/utils";
-import { displayNameWithFallback } from "@/lib/display";
+import { displayOriginalName } from "@/lib/display";
 import { AlbumType } from "@/generated/prisma/enums";
 import type { RelatedEvent } from "@/lib/albumRelatedEvents";
 
@@ -104,15 +104,19 @@ export async function AlbumRelatedEventsTab({
       referenceNow,
     );
     const seriesId = event.eventSeries ? String(event.eventSeries.id) : null;
+    // Identity-name rule (locale main, original-language sub).
+    // PerformanceGroup renders one line per series/event so we only
+    // forward `.main` here; the full main/sub treatment is reserved
+    // for the surfaces with room for a subtitle row.
     const seriesName = event.eventSeries
-      ? displayNameWithFallback(
+      ? displayOriginalName(
           event.eventSeries,
           event.eventSeries.translations,
           locale,
-        ) || null
+        ).main || null
       : null;
     const eventName =
-      displayNameWithFallback(event, event.translations, locale) ||
+      displayOriginalName(event, event.translations, locale).main ||
       et("unknownEvent");
     return {
       id: String(event.id),

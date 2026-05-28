@@ -5,6 +5,7 @@ import {
   getAlbumTrackTitle,
   type EnrichedAlbumTrack,
 } from "@/lib/albumTrackTitle";
+import { displayOriginalTitle } from "@/lib/display";
 
 /*
  * Tracks tab content for the Album detail page (b04). Renders the
@@ -118,15 +119,39 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
               flexDirection: "column",
             }}
           >
-            {discTracks.map((track) => (
-              <TrackRow
-                key={track.id}
-                track={track}
-                locale={locale}
-                title={getAlbumTrackTitle(track, locale, tRoot)}
-                trackNumberLabel={tNs("trackPrefix", { track: track.trackNumber })}
-              />
-            ))}
+            {discTracks.map((track) => {
+              // Track titles follow the original/locale rule per
+              // pattern:
+              //   Pattern 1 (vocal) — displayOriginalTitle on the
+              //     vocal Song. Original-language main + locale
+              //     sub line, exactly like the song-page H1
+              //     sidebar.
+              //   Pattern 2 / 3 — fall back to getAlbumTrackTitle's
+              //     dispatch (off-vocal/drama/bgm rows already
+              //     carry their own composed form; no separate
+              //     translation sub line is appropriate).
+              const titleMain = getAlbumTrackTitle(track, locale, tRoot);
+              const titleSub =
+                track.song
+                  ? displayOriginalTitle(
+                      track.song,
+                      track.song.translations ?? [],
+                      locale,
+                    ).sub
+                  : null;
+              return (
+                <TrackRow
+                  key={track.id}
+                  track={track}
+                  locale={locale}
+                  title={titleMain}
+                  titleSub={titleSub}
+                  trackNumberLabel={tNs("trackPrefix", {
+                    track: track.trackNumber,
+                  })}
+                />
+              );
+            })}
           </ol>
         </section>
       ))}
@@ -138,11 +163,13 @@ function TrackRow({
   track,
   locale,
   title,
+  titleSub,
   trackNumberLabel,
 }: {
   track: EnrichedAlbumTrack;
   locale: string;
   title: string;
+  titleSub: string | null;
   trackNumberLabel: string;
 }) {
   // Pattern 1: vocal Song-backed — entire row anchors to the
@@ -163,6 +190,10 @@ function TrackRow({
         fontSize: 13,
         color: colors.textMuted,
         fontWeight: 600,
+        // Pin to the top of a wrapped title cell so the number aligns
+        // with the original-title line, not the locale-sub line.
+        alignSelf: "flex-start",
+        paddingTop: 1,
       }}
     >
       {trackNumberLabel}
@@ -174,17 +205,42 @@ function TrackRow({
   // (drama/bgm direct title) stay in the standard textPrimary —
   // they're informational and have no link target. Operator
   // feedback during mockup-gap audit.
+  //
+  // `titleSub` carries the locale translation when the Pattern 1
+  // song has one that differs from the original (the song-page H1
+  // sub line uses the same `displayOriginalTitle` rule). Pattern
+  // 2/3 rows never carry a sub line — `getAlbumTrackTitle` already
+  // composes the variant suffix into the main title there.
   const titleCell = (
     <span
       style={{
         flex: 1,
         minWidth: 0,
-        fontSize: 14,
-        color: linkHref ? colors.primary : colors.textPrimary,
-        wordBreak: "break-word",
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
       }}
     >
-      {title}
+      <span
+        style={{
+          fontSize: 14,
+          color: linkHref ? colors.primary : colors.textPrimary,
+          wordBreak: "break-word",
+        }}
+      >
+        {title}
+      </span>
+      {titleSub ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: colors.textMuted,
+            wordBreak: "break-word",
+          }}
+        >
+          {titleSub}
+        </span>
+      ) : null}
     </span>
   );
 
