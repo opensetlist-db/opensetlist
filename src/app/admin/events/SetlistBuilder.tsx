@@ -23,7 +23,16 @@ type StageIdentityOption = {
   id: string;
   translations: { locale: string; name: string }[];
   artistLinks: {
-    artist: { translations: { locale: string; name: string }[] };
+    // `artist.id` is required for the per-row default-performer
+    // derivation (deriveDefaultPerformerIds) — it filters event
+    // performers down to those linked to the picked unit/solo/special
+    // Artist. The runtime data already carries it (see
+    // `/api/admin/stage-identities` and the page-level event include);
+    // this is purely a type-shape widening so the filter compiles.
+    artist: {
+      id: number;
+      translations: { locale: string; name: string }[];
+    };
   }[];
 };
 
@@ -67,6 +76,54 @@ const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
 const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"];
 const ITEM_TYPES = ["song", "mc", "video", "interval"];
+
+/**
+ * Compute the default performer roster for a setlist item from the
+ * three structural choices the operator makes per row: `type`,
+ * `stageType`, and the credited `Artist` ids. Hasunosora's catalog
+ * is overwhelmingly three repeating patterns; encoding them as a
+ * deterministic derivation removes the 5–9 unnecessary clicks per
+ * row that the prior "always seed with the full non-guest roster"
+ * default forced on the operator for unit/solo/mc rows.
+ *
+ * Rules:
+ *   1. type ∈ {mc, video, interval}            → []  (no performer)
+ *   2. type=song + stageType=full_group        → every non-guest
+ *                                                 event performer
+ *   3. type=song + stageType ∈ {unit, solo,    → members of the
+ *                                special}        picked Artist(s)
+ *                                                 ∩ event performers
+ *
+ * `selectedUnitArtistIds.length === 0` under rule (3) returns [] —
+ * the operator hasn't picked a unit yet, so we can't infer members.
+ * The next selectArtist call re-fires derivation and fills the chips.
+ *
+ * Manual edits via selectPerformer / removePerformer are the escape
+ * hatch for any future exception (one-off guest swap, etc.); those
+ * paths do NOT call this helper. Operators applying manual tweaks
+ * should do so after the structural choices, because any subsequent
+ * type/stageType/artist change re-derives and replaces the roster.
+ *
+ * Pure function (no React, no DB). Co-located with the other top-level
+ * helpers in this file for unit-testability and so the rule lives next
+ * to its only caller's data shapes.
+ */
+function deriveDefaultPerformerIds(
+  type: string,
+  stageType: string,
+  selectedUnitArtistIds: readonly number[],
+  eventPerformers: readonly StageIdentityOption[],
+): string[] {
+  if (type !== "song") return [];
+  if (stageType === "full_group") {
+    return eventPerformers.map((p) => p.id);
+  }
+  if (selectedUnitArtistIds.length === 0) return [];
+  const unitSet = new Set(selectedUnitArtistIds);
+  return eventPerformers
+    .filter((p) => p.artistLinks.some((l) => unitSet.has(l.artist.id)))
+    .map((p) => p.id);
+}
 
 function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
   const title =
@@ -243,18 +300,75 @@ export default function SetlistBuilder({
     searchArtists(value);
   }
 
+  // Push the (type, stageType, artistIds)-derived default roster into
+  // BOTH state buckets that drive the performer UI: `formPerformerIds`
+  // (the source of truth for save) and `selectedPerformers` (chip
+  // rendering, needs the full StageIdentityOption shape for names +
+  // artistLinks). The derived id set is always a subset of
+  // `eventPerformers` by construction, so we can rebuild the chip
+  // list by filtering that prop without a second lookup. Centralized
+  // here so every trigger (type change, stageType change, artist
+  // add/remove, resetForm) goes through one code path and the two
+  // states can't drift.
+  function applyDerivedPerformers(
+    type: string,
+    stageType: string,
+    artistIds: number[],
+  ) {
+    const ids = deriveDefaultPerformerIds(
+      type,
+      stageType,
+      artistIds,
+      eventPerformers,
+    );
+    setFormPerformerIds(ids);
+    setSelectedPerformers(eventPerformers.filter((p) => ids.includes(p.id)));
+  }
+
+  // Type-change trigger. Switching to mc/video/interval clears the
+  // performer chips (rule 1); switching back to song re-fills based
+  // on the current stageType + artistIds. We compute the next state
+  // from the new value, NOT from the React state we just set — state
+  // updates are batched/async, so applyDerivedPerformers must see the
+  // post-change values explicitly.
+  function handleTypeChange(newType: string) {
+    setFormType(newType);
+    applyDerivedPerformers(newType, formStageType, formArtistIds);
+  }
+
+  // Stage-type trigger. full_group → all event performers; the
+  // unit/solo/special branch falls through to artistIds — empty
+  // artistIds in those branches yields [] so the operator's next
+  // selectArtist call seeds the roster.
+  function handleStageTypeChange(newStageType: string) {
+    setFormStageType(newStageType);
+    applyDerivedPerformers(formType, newStageType, formArtistIds);
+  }
+
   function selectArtist(artist: ArtistOption) {
-    if (!formArtistIds.includes(artist.id)) {
-      setFormArtistIds((prev) => [...prev, artist.id]);
-      setSelectedArtists((prev) => [...prev, artist]);
+    if (formArtistIds.includes(artist.id)) {
+      setArtistSearch("");
+      setArtistSearchResults([]);
+      return;
     }
+    const nextArtistIds = [...formArtistIds, artist.id];
+    setFormArtistIds(nextArtistIds);
+    setSelectedArtists((prev) => [...prev, artist]);
     setArtistSearch("");
     setArtistSearchResults([]);
+    // Always re-derive on artist add; the helper internally ignores
+    // artistIds when stageType=full_group or type≠song, so this is a
+    // no-op for those branches and a member-narrow for unit/solo/
+    // special. Pass the post-change list explicitly (see comment on
+    // handleTypeChange for the batched-state rationale).
+    applyDerivedPerformers(formType, formStageType, nextArtistIds);
   }
 
   function removeArtist(artistId: number) {
-    setFormArtistIds((prev) => prev.filter((id) => id !== artistId));
+    const nextArtistIds = formArtistIds.filter((id) => id !== artistId);
+    setFormArtistIds(nextArtistIds);
     setSelectedArtists((prev) => prev.filter((a) => a.id !== artistId));
+    applyDerivedPerformers(formType, formStageType, nextArtistIds);
   }
 
   function resetForm() {
@@ -268,18 +382,20 @@ export default function SetlistBuilder({
     setFormPerformanceType("live_performance");
     setFormType("song");
     setFormSongIds([]);
-    // Default new items to the full non-guest event roster — see the
-    // SetlistBuilder prop comment. startEdit() intentionally bypasses
-    // this path so editing an existing item doesn't silently re-seed
-    // a deliberately-empty performer list.
-    setFormPerformerIds(eventPerformers.map((p) => p.id));
     setSelectedSongs([]);
     setPerformerSearch("");
-    setSelectedPerformers(eventPerformers);
     setFormArtistIds([]);
     setArtistSearch("");
     setArtistSearchResults([]);
     setSelectedArtists([]);
+    // Seed performers via the same derivation the trigger handlers
+    // use — for the default (type=song, stageType=full_group,
+    // artistIds=[]) this collapses to "every non-guest event
+    // performer", matching the pre-derive behavior of this function.
+    // startEdit() intentionally bypasses this path so opening an
+    // existing item doesn't clobber the saved performer set; only
+    // subsequent stageType/type/artist edits re-derive.
+    applyDerivedPerformers("song", "full_group", []);
   }
 
   async function reloadItems() {
@@ -580,7 +696,7 @@ export default function SetlistBuilder({
               </label>
               <select
                 value={formStageType}
-                onChange={(e) => setFormStageType(e.target.value)}
+                onChange={(e) => handleStageTypeChange(e.target.value)}
                 className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
               >
                 {STAGE_TYPES.map((t) => (
@@ -621,7 +737,7 @@ export default function SetlistBuilder({
               <label className="mb-1 block text-xs font-medium">항목 유형</label>
               <select
                 value={formType}
-                onChange={(e) => setFormType(e.target.value)}
+                onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
               >
                 {ITEM_TYPES.map((t) => (
