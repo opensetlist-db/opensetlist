@@ -16,7 +16,7 @@ import {
   getAlbumRelatedEventsCount,
   type RelatedEvent,
 } from "@/lib/albumRelatedEvents";
-import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { colors } from "@/styles/tokens";
 
@@ -152,8 +152,11 @@ export async function generateMetadata({
     ) ?? t("unknown");
 
   const primaryArtist = album.artists[0]?.artist ?? null;
+  // Same helper as the breadcrumb segment + InfoCard sidebar so the
+  // OG/meta artist name reads identically to what the page header
+  // shows.
   const artistName = primaryArtist
-    ? displayNameWithFallback(primaryArtist, primaryArtist.translations, locale)
+    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
     : "";
 
   const fullTitle = t("meta.titleTemplate", { title, artist: artistName });
@@ -306,8 +309,13 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // deterministically — matches AlbumInfoCard's own selection so the
   // two surfaces never disagree on which artist is "primary."
   const primaryArtist = album.artists[0]?.artist ?? null;
+  // Same display helper as AlbumInfoCard's sidebar artist row —
+  // `.main` reads as the breadcrumb segment, which keeps the
+  // crumb text consistent with the InfoCard label for the same
+  // artist. A bare `displayNameWithFallback` would silently drift
+  // off into a different locale fallback chain.
   const primaryArtistName = primaryArtist
-    ? displayNameWithFallback(primaryArtist, primaryArtist.translations, locale)
+    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
     : null;
 
   return (
