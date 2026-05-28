@@ -30,6 +30,28 @@
 }
 
 
+/*
+ * Pin html/body to the viewport width and clip any horizontal
+ * overflow at the root. Some intrinsic-content cases (Album page's
+ * events tab carries a PerformanceGroup row whose 5-column grid
+ * includes two `auto` tracks; on a narrow mobile viewport their
+ * combined max-content can leak past the viewport even with the
+ * row's own `overflow:hidden` + `min-width:0`) expanded the body
+ * past the viewport, which propagated through the page-level grid
+ * column and visibly resized the sidebar across tab switches.
+ * `overflow-x: clip` cuts the leak without disturbing the `sticky`
+ * positioning the sidebar relies on (clip preserves sticky's
+ * containing block — `hidden` would not). `max-width: 100vw` is the
+ * defensive belt over the suspenders so the box can never grow
+ * past the viewport, even on browsers that don't honour
+ * `overflow-x: clip` (older Safari builds).
+ */
+html,
+body {
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -137,6 +137,23 @@ export const colors = {
   // Song-variant / encore divider accent
   variant: "#7B1FA2",
   variantBg: "#F3E5F5",
+
+  // Bonus-stat chip palette on the Album page InfoCard sidebar (b02
+  // mockup-gap pass). Traffic-light semantic mapping picked literal
+  // from raw/mockups/album-page-mockup.jsx (line 686-714):
+  //   total  → primary blue (matches `primary` family but lifted out
+  //            as its own token so a future album-stat palette tweak
+  //            doesn't paint the rest of the brand)
+  //   active → emerald green (positive availability cue, distinct
+  //            from the wishlistMatch greens used elsewhere)
+  //   ended  → slate gray (neutral past-state, matches the
+  //            EndedListingToggle muted styling on the bonus tab)
+  bonusTotalText: "#0277BD",
+  bonusTotalBg: "#e8f4fd",
+  bonusActiveText: "#16a34a",
+  bonusActiveBg: "#f0fdf4",
+  bonusEndedText: "#64748b",
+  bonusEndedBg: "#f1f5f9",
 } as const;
 
 /*

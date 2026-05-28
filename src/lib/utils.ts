@@ -23,6 +23,12 @@ export function slugify(text: string): string {
  * Serialize BigInt values to numbers for JSON compatibility.
  * Prisma returns BigInt for @id @default(autoincrement()) fields.
  * At runtime, bigint fields become numbers after JSON round-trip.
+ *
+ * ⚠️ Number-targeted serialization is lossy at >2^53 − 1. Use
+ * `serializeBigIntAsString` when the payload carries id fields whose
+ * precision must survive the JSON boundary (e.g., Album.id +
+ * artists/tracks/song ids on the album detail page, where downstream
+ * components compose hrefs and Prisma queries off these values).
  */
 export function serializeBigInt<T>(obj: T): T {
   return JSON.parse(
@@ -30,6 +36,58 @@ export function serializeBigInt<T>(obj: T): T {
       typeof value === "bigint" ? Number(value) : value
     )
   );
+}
+
+/**
+ * Type-level companion to `serializeBigIntAsString`'s runtime
+ * behaviour. Walks the shape recursively and rewrites:
+ *
+ *   - `bigint` → `string` (the actual transform `serializeBigIntAsString`
+ *     applies via `value.toString()` in its JSON replacer)
+ *   - `Date`   → `string` (JSON.stringify serialises Date instances
+ *     to ISO strings; the value comes out as `string` on the other
+ *     side, not `Date`)
+ *   - Arrays / nested objects → recurse element-wise
+ *
+ * Use this when declaring the consumer-side type of a payload that
+ * passed through `serializeBigIntAsString` (e.g. `RelatedEvent`,
+ * the page-level `getAlbum` return shape, `<AlbumInfoCard>` props).
+ * Mirrors the wire shape so the type system stops claiming the
+ * payload still carries `bigint`/`Date` after the serializer ran.
+ */
+export type BigIntStringified<T> =
+  T extends bigint ? string :
+  T extends Date ? string :
+  T extends (infer U)[] ? BigIntStringified<U>[] :
+  T extends object ? { [K in keyof T]: BigIntStringified<T[K]> } :
+  T;
+
+/**
+ * Same shape as `serializeBigInt` but converts BigInt to a string
+ * representation rather than a JS number. Use this when the payload
+ * carries id-bearing BigInt fields whose precision must survive
+ * round-tripping to a client component or fetch response.
+ *
+ * Why string and not just number: ids above `Number.MAX_SAFE_INTEGER`
+ * (2^53 − 1) silently round when coerced to number. At Phase 1
+ * catalog scale (100s of ids) this never bites in practice, but the
+ * conversion is one-way — once an id is rounded, any downstream code
+ * that re-feeds it into a Prisma `where: { id: BigInt(n) }` query
+ * lands on the wrong row. Strings dodge the rounding entirely;
+ * BigInt(stringId) at the DB boundary reverses cleanly.
+ *
+ * The return type is `BigIntStringified<T>` so the static type stays
+ * honest about what survived the serialiser: bigint and Date both
+ * arrive on the other side as strings. Consumers that compare,
+ * format, or feed these values back into Prisma queries get the
+ * right typing without an `as unknown as` cast.
+ */
+export function serializeBigIntAsString<T>(obj: T): BigIntStringified<T> {
+  return JSON.parse(
+    JSON.stringify(obj, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value
+    )
+  ) as BigIntStringified<T>;
 }
 
 /**
@@ -101,6 +159,30 @@ export const HISTORY_ROW_DATE_FORMAT: Intl.DateTimeFormatOptions = {
   day: "numeric",
   timeZone: "UTC",
 };
+/**
+ * URL scheme guard for operator-entered external links — productUrl
+ * inputs on AlbumStoreListing and similar admin surfaces. Returns
+ * `true` only when the value parses as a real URL with an http/https
+ * scheme; rejects `javascript:`, `data:`, `vbscript:`, malformed
+ * strings, and nullish inputs. Asserts the input as a non-nullable
+ * string for the truthy branch so callers can use it as a type guard.
+ *
+ * Originally lived inline in ListingCard; lifted here so admin
+ * surfaces (ListingsClient) can apply the same scheme allowlist
+ * instead of rendering operator-typed `href` verbatim.
+ */
+export function isSafeExternalUrl(
+  url: string | null | undefined,
+): url is string {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 export function formatDate(
   date: Date | string | null | undefined,
   locale: string,
