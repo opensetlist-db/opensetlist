@@ -354,16 +354,24 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
         </span>
       </nav>
       {/* Mobile: block stack (sidebar on top, tab body below). Desktop
-          (lg, ≥1024px): two-column grid `260px 1fr` with `gap-7` /
-          `items-start`. mockup line 598-602 dictates the breakpoint
-          switch (`display: isDesktop ? "grid" : "block"`); inline
-          `display: "grid"` always-on was squeezing the sidebar
-          column to a single character wide on mobile. The grid
-          template + gap live on the className so they're scoped to
-          the lg breakpoint; the maxWidth / margin / padding stay
-          inline since they apply at every breakpoint. */}
+          (lg, ≥1024px): two-column grid `260px minmax(0,1fr)` with
+          `gap-7` / `items-start`. mockup line 598-602 dictates the
+          breakpoint switch (`display: isDesktop ? "grid" : "block"`);
+          inline `display: "grid"` always-on was squeezing the sidebar
+          column to a single character wide on mobile.
+          `minmax(0, 1fr)` on the main column is the defensive piece:
+          a bare `1fr` defaults to a min-width of `auto`, so a wide
+          child (long event title, ungrouped image) would push the
+          column past 1fr and visually grow the whole grid on tab
+          switch. Clamping the minimum to 0 lets the column hold its
+          1fr fraction even when its content's intrinsic width is
+          larger — overflow wraps or scrolls inside the column,
+          rather than pushing the layout. The grid template + gap
+          live on the className so they're scoped to the lg
+          breakpoint; the maxWidth / margin / padding stay inline
+          since they apply at every breakpoint. */}
       <main
-        className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-7 lg:items-start"
+        className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7 lg:items-start"
         style={{
           maxWidth: ALBUM_PAGE_MAX_WIDTH,
           margin: "0 auto",
