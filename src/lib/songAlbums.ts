@@ -21,7 +21,7 @@
 // arrays. Sharing the exact same shape across both surfaces avoids
 // the "tab badge says 5, sidebar says 4" divergence that earlier
 // Album-page work hit.
-import { isEndedListing } from "@/lib/albumBonusDisplay";
+import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 
 // Structural input shape. Stays narrow (only fields the transformer
 // reads) so the page can hand the Prisma payload directly without
@@ -74,14 +74,6 @@ function getReleaseDateMs(date: string | Date | null): number {
 
 function albumIdAsString(id: string | number | bigint): string {
   return typeof id === "string" ? id : String(id);
-}
-
-function countActiveBonuses(
-  listings: SongAlbumsAlbum["listings"],
-): number {
-  return listings
-    .filter((l) => !isEndedListing(l))
-    .reduce((sum, l) => sum + l.bonuses.length, 0);
 }
 
 export function getSongAlbums(

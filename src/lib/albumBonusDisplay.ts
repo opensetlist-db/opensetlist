@@ -98,3 +98,27 @@ export function mapStatusToUiKey(status: string): "active" | "ended" {
 export function isEndedListing(listing: { status: string }): boolean {
   return listing.status === "ended";
 }
+
+// Count of "active" bonuses across an album's store listings — the
+// number rendered in the green 特典 N badge on AlbumCard and the
+// "현재 특전" stat chip on AlbumInfoCard. A bonus counts as active
+// when its listing is not `ended` (sold_out + unknown collapse into
+// active per isEndedListing's 2-state mapping — they're still buyable,
+// just unconfirmed). Extracted here, next to isEndedListing, so the
+// Song page sidebar (songAlbums), the Album detail sidebar
+// (AlbumInfoCard), and the b09 Artist/Series/Related album surfaces
+// all read the same number — the "tab badge says 5, sidebar says 4"
+// divergence earlier Album work hit came from this formula being
+// copy-pasted into each call site.
+//
+// Structural input only: each listing needs a `status` string and a
+// `bonuses` array whose length is the per-listing contribution. The
+// elements themselves are never inspected, so `unknown[]` keeps the
+// helper agnostic to whichever bonus include shape the caller fetched.
+export function countActiveBonuses(
+  listings: ReadonlyArray<{ status: string; bonuses: ReadonlyArray<unknown> }>,
+): number {
+  return listings
+    .filter((l) => !isEndedListing(l))
+    .reduce((sum, l) => sum + l.bonuses.length, 0);
+}
