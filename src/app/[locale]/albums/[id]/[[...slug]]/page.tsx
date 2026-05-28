@@ -353,23 +353,32 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
           {t("breadcrumb.albums")}
         </span>
       </nav>
+      {/* Mobile: block stack (sidebar on top, tab body below). Desktop
+          (lg, ≥1024px): two-column grid `260px 1fr` with `gap-7` /
+          `items-start`. mockup line 598-602 dictates the breakpoint
+          switch (`display: isDesktop ? "grid" : "block"`); inline
+          `display: "grid"` always-on was squeezing the sidebar
+          column to a single character wide on mobile. The grid
+          template + gap live on the className so they're scoped to
+          the lg breakpoint; the maxWidth / margin / padding stay
+          inline since they apply at every breakpoint. */}
       <main
+        className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-7 lg:items-start"
         style={{
           maxWidth: ALBUM_PAGE_MAX_WIDTH,
           margin: "0 auto",
           padding: "0 16px 60px",
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 260px) minmax(0, 1fr)",
-          gap: 28,
-          alignItems: "start",
         }}
       >
         {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
             pattern (song page.tsx ~line 644) so the InfoCard pins under
             the global nav on desktop while scrolling the tab body. The
             Tailwind class evaluates at the lg breakpoint (≥1024px),
-            matching mockup's `isDesktop` cutoff. */}
-        <aside className="lg:sticky lg:top-[72px]">
+            matching mockup's `isDesktop` cutoff. On mobile the sidebar
+            stacks naturally above the tab section with a 12px gap
+            before the TabBar (mockup line 605: `marginBottom: 12` on
+            the mobile branch). */}
+        <aside className="mb-3 lg:mb-0 lg:sticky lg:top-[72px]">
           <AlbumInfoCard
             album={album}
             locale={locale}
