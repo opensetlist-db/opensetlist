@@ -120,32 +120,42 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
             }}
           >
             {discTracks.map((track) => {
-              // Track titles follow the original/locale rule per
-              // pattern:
-              //   Pattern 1 (vocal) — displayOriginalTitle on the
-              //     vocal Song. Original-language main + locale
-              //     sub line, exactly like the song-page H1
-              //     sidebar.
-              //   Pattern 2 / 3 — fall back to getAlbumTrackTitle's
-              //     dispatch (off-vocal/drama/bgm rows already
-              //     carry their own composed form; no separate
-              //     translation sub line is appropriate).
-              const titleMain = getAlbumTrackTitle(track, locale, tRoot);
-              const titleSub =
-                track.song
-                  ? displayOriginalTitle(
-                      track.song,
-                      track.song.translations ?? [],
-                      locale,
-                    ).sub
-                  : null;
+              // Pattern 1 (vocal Song-backed) defers entirely to
+              // displayOriginalTitle — same shared utility the song
+              // detail page uses for its H1 + subtitle, so the
+              // main/sub split is consistent across surfaces:
+              //   main = song.originalTitle (original-language)
+              //   sub  = locale translation (only when it exists
+              //          and differs from the original)
+              // The previous shape derived main via getAlbumTrackTitle
+              // (which already returns the locale translation) and
+              // sub via displayOriginalTitle.sub (also the locale
+              // translation) — both fields ended up holding the same
+              // translated string. Routing Pattern 1 through the
+              // shared utility removes the duplication.
+              //
+              // Pattern 2/3 (off-vocal w/ vocal parent, drama/bgm
+              // direct title) have no vocal Song to anchor on, so
+              // getAlbumTrackTitle's composed form (variant suffix
+              // appended / direct title resolved) is the single-line
+              // value; no sub treatment is appropriate.
+              const titleParts = track.song
+                ? displayOriginalTitle(
+                    track.song,
+                    track.song.translations ?? [],
+                    locale,
+                  )
+                : {
+                    main: getAlbumTrackTitle(track, locale, tRoot),
+                    sub: null,
+                  };
               return (
                 <TrackRow
                   key={track.id}
                   track={track}
                   locale={locale}
-                  title={titleMain}
-                  titleSub={titleSub}
+                  title={titleParts.main}
+                  titleSub={titleParts.sub}
                   trackNumberLabel={tNs("trackPrefix", {
                     track: track.trackNumber,
                   })}

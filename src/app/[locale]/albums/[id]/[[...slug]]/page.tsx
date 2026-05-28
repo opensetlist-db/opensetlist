@@ -361,40 +361,45 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
           {t("breadcrumb.albums")}
         </span>
       </nav>
-      {/* Mobile: block stack (sidebar on top, tab body below). Desktop
-          (lg, ≥1024px): two-column grid `260px minmax(0,1fr)` with
-          `gap-7` / `items-start`. mockup line 598-602 dictates the
-          breakpoint switch (`display: isDesktop ? "grid" : "block"`);
-          inline `display: "grid"` always-on was squeezing the sidebar
-          column to a single character wide on mobile.
-          `minmax(0, 1fr)` on the main column is the defensive piece:
-          a bare `1fr` defaults to a min-width of `auto`, so a wide
-          child (long event title, ungrouped image) would push the
-          column past 1fr and visually grow the whole grid on tab
-          switch. Clamping the minimum to 0 lets the column hold its
-          1fr fraction even when its content's intrinsic width is
-          larger — overflow wraps or scrolls inside the column,
-          rather than pushing the layout. The grid template + gap
-          live on the className so they're scoped to the lg
-          breakpoint; the maxWidth / margin / padding stay inline
-          since they apply at every breakpoint. */}
+      {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
+          pattern the artist page uses (page.tsx ~line 707) — `grid`
+          at every breakpoint, not just lg. Mobile uses `grid-cols-1`
+          which Tailwind compiles to `grid-template-columns: minmax(0,
+          1fr)`; that single-track form clamps the column to the
+          viewport width and lets the inner content's
+          `overflow: hidden` / ellipsis actually engage.
+          A bare `block` (the previous shape here) defaulted children
+          to `min-width: auto` = intrinsic content size, so a wide
+          descendant — long event title, PerformanceGroup row's grid
+          track — pushed the section box past the viewport and
+          dragged the page into horizontal scroll. Operator caught
+          this on the 관련 공연 tab on iPhone.
+          Desktop track `minmax(0, 1fr)` on the main column is the
+          same defensive clamp — a bare `1fr` would let a wide
+          intrinsic child grow the column past the maxWidth.
+          alignItems sits on inline style so the same value applies
+          at every breakpoint. */}
       <main
-        className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7 lg:items-start"
+        className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
         style={{
           maxWidth: ALBUM_PAGE_MAX_WIDTH,
           margin: "0 auto",
           padding: "0 16px 60px",
+          alignItems: "start",
         }}
       >
         {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
             pattern (song page.tsx ~line 644) so the InfoCard pins under
             the global nav on desktop while scrolling the tab body. The
-            Tailwind class evaluates at the lg breakpoint (≥1024px),
-            matching mockup's `isDesktop` cutoff. On mobile the sidebar
-            stacks naturally above the tab section with a 12px gap
-            before the TabBar (mockup line 605: `marginBottom: 12` on
-            the mobile branch). */}
-        <aside className="mb-3 lg:mb-0 lg:sticky lg:top-[72px]">
+            Tailwind class evaluates at the lg breakpoint (≥1024px).
+            On mobile the sidebar stacks above the tab section
+            (single-track grid) with a 12px gap before the TabBar
+            (matches artist page's `marginBottom: 12` on its sidebar
+            div). */}
+        <aside
+          className="lg:sticky lg:top-[72px]"
+          style={{ marginBottom: 12 }}
+        >
           <AlbumInfoCard
             album={album}
             locale={locale}
