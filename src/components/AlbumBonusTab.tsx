@@ -61,7 +61,12 @@ export async function AlbumBonusTab({ album, locale }: Props) {
         style={{
           background: colors.bgCard,
           borderRadius: radius.card,
-          padding: "32px 20px",
+          // Horizontal padding aligned with the events tab's
+          // PerformanceGroup row padding (16px) so the placeholder
+          // text sits at the same horizontal offset as the inner
+          // content on the other tabs — operator caught the
+          // visual difference at the 20px → 16px gap.
+          padding: "32px 16px",
           textAlign: "center",
           color: colors.textMuted,
           fontSize: 14,

@@ -65,7 +65,11 @@ export async function ListingCard({ listing, locale, muted = false }: Props) {
         borderRadius: radius.card,
         boxShadow: muted ? "none" : shadows.card,
         border: muted ? `1px solid ${colors.borderSubtle}` : "none",
-        padding: "16px 18px",
+        // Horizontal padding aligned with the events tab's
+        // PerformanceGroup row padding (16px) so the inner content
+        // edge sits at the same offset from the card box edge
+        // across all three tabs.
+        padding: "16px",
         opacity: muted ? 0.78 : 1,
         // Width 100% explicit so the card stretches to the tab
         // column edge — the flex parent's default `align-items:

@@ -106,7 +106,12 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
           style={{
             background: colors.bgCard,
             borderRadius: radius.card,
-            padding: "14px 18px 18px",
+            // Horizontal padding aligned with the events tab's
+            // PerformanceGroup row padding (16px) so the inner
+            // content edge sits at the same offset from the section
+            // box edge across all three tabs — operator caught the
+            // 2-4 px inset difference visually.
+            padding: "14px 16px 18px",
             // Per-section width 100% too — the parent flex column's
             // align-items default is `stretch`, but pinning here is
             // a defense against future style edits that drop the
