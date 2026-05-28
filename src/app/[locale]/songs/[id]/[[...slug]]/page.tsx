@@ -909,8 +909,16 @@ export default async function SongPage({ params, searchParams }: Props) {
                     }}
                   >
                     {songAlbums.map((row) => (
+                      // Composite key — `getSongAlbums` returns one
+                      // row per vocalTrack, not one per album, so the
+                      // same album can repeat across rows when a song
+                      // sits on more than one disc/track (medley
+                      // reprises, intro+full-version pairs). Bare
+                      // album.id collides as a duplicate React key in
+                      // that case; the (album, disc, track) tuple is
+                      // unique by AlbumTrack's @@unique constraint.
                       <AlbumCard
-                        key={String(row.album.id)}
+                        key={`${row.album.id}-${row.discNumber}-${row.trackNumber}`}
                         variant="mini"
                         album={row.album}
                         locale={locale}
