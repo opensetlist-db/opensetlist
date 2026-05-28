@@ -152,7 +152,8 @@
     "tab": {
       "bonus": "Store bonuses",
       "tracks": "Tracks",
-      "events": "Related events"
+      "events": "Related events",
+      "withCount": "{label} ({count})"
     },
     "stats": {
       "trackCount": "{count, plural, one {# track} other {# tracks}}",

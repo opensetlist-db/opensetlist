@@ -45,6 +45,21 @@ import type { Prisma } from "@/generated/prisma/client";
 // the cap, b04 can add a "더 보기" page-2 surface.
 const MAX_RELATED_EVENTS = 50;
 
+/*
+ * Shared WHERE-fragment for both the count helper and the full
+ * fetch — keeps a standalone event (`eventSeriesId IS NULL`) in the
+ * result while excluding events whose series has been soft-deleted.
+ * Extracted to module scope so a future change to the soft-delete
+ * semantics propagates to both helpers in one edit instead of two
+ * identical literals that must be kept in sync.
+ */
+const EVENT_SERIES_FILTER: Prisma.EventWhereInput = {
+  OR: [
+    { eventSeriesId: null },
+    { eventSeries: { isDeleted: false } },
+  ],
+};
+
 // Wire-shape of one row after the JSON boundary
 // (`serializeBigIntAsString` runs in the cached helper below).
 // BigIntStringified rewrites every `bigint` → `string` and every
@@ -73,27 +88,21 @@ export type RelatedEvent = BigIntStringified<
  * type, so the count is consistent with the eventual list render.
  *
  * react.cache wrap is independent of `getAlbumRelatedEvents` — they
- * each cache their own (albumId, type, locale) tuple, no cross-talk.
- * Locale arg is unused inside the count query itself; included in the
- * signature for symmetry + so a future filter that does depend on
- * locale stays cache-key-correct.
+ * each cache their own (albumId, type) tuple, no cross-talk. No
+ * locale argument here because the count is locale-invariant; the
+ * full fetch needs it for the translations filter inside the include.
  */
 export const getAlbumRelatedEventsCount = cache(
   async (
     albumId: bigint,
     albumType: AlbumType,
-    _locale: string,
   ): Promise<number> => {
-    const eventSeriesFilter = {
-      OR: [{ eventSeriesId: null }, { eventSeries: { isDeleted: false } }],
-    };
-
     if (albumType === AlbumType.live_album) {
       return prisma.event.count({
         where: {
           bdAlbumId: albumId,
           isDeleted: false,
-          ...eventSeriesFilter,
+          ...EVENT_SERIES_FILTER,
         },
       });
     }
@@ -110,7 +119,7 @@ export const getAlbumRelatedEventsCount = cache(
     return prisma.event.count({
       where: {
         isDeleted: false,
-        ...eventSeriesFilter,
+        ...EVENT_SERIES_FILTER,
         setlistItems: {
           some: {
             isDeleted: false,
@@ -147,20 +156,16 @@ export const getAlbumRelatedEvents = cache(
     // keeps standalone events (eventSeriesId IS NULL) while
     // excluding events whose series has been soft-deleted by the
     // operator — without this, a deleted series would still surface
-    // its translated label in the bucket header.
-    const eventSeriesFilter = {
-      OR: [
-        { eventSeriesId: null },
-        { eventSeries: { isDeleted: false } },
-      ],
-    };
+    // its translated label in the bucket header. Lifted to a
+    // module-level `EVENT_SERIES_FILTER` const so the count helper
+    // above + this full-fetch helper stay in lockstep.
 
     if (albumType === AlbumType.live_album) {
       const rows = await prisma.event.findMany({
         where: {
           bdAlbumId: albumId,
           isDeleted: false,
-          ...eventSeriesFilter,
+          ...EVENT_SERIES_FILTER,
         },
         include,
         // Event.startTime is NOT NULL in prisma/schema.prisma, so a
@@ -202,7 +207,7 @@ export const getAlbumRelatedEvents = cache(
     const rows = await prisma.event.findMany({
       where: {
         isDeleted: false,
-        ...eventSeriesFilter,
+        ...EVENT_SERIES_FILTER,
         setlistItems: {
           some: {
             isDeleted: false,

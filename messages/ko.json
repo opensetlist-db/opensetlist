@@ -152,7 +152,8 @@
     "tab": {
       "bonus": "매장특전",
       "tracks": "수록곡",
-      "events": "관련 공연"
+      "events": "관련 공연",
+      "withCount": "{label} ({count})"
     },
     "stats": {
       "trackCount": "{count, plural, other {#곡}}",

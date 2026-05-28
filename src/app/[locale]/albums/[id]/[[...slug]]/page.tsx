@@ -257,7 +257,6 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const eventsCount = await getAlbumRelatedEventsCount(
     BigInt(id),
     album.type as AlbumType,
-    locale,
   );
 
   // Tab counts surfaced inline in the tab labels per mockup
@@ -276,9 +275,16 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     tracks: album.tracks.length,
     events: eventsCount,
   };
+  // `tab.withCount` is the locale-localized "{label} ({count})"
+  // pattern — the parens + spacing are an i18n concern (some locales
+  // would prefer full-width parens or no space), not hard-coded
+  // formatting, so route the composition through next-intl.
   const tabs = visibleTabs.map((key) => ({
     key,
-    label: `${t(`tab.${key}`)} (${tabCounts[key]})`,
+    label: t("tab.withCount", {
+      label: t(`tab.${key}`),
+      count: tabCounts[key],
+    }),
   }));
 
   // Full events fetch is lazy — only the events tab body needs the
