@@ -170,6 +170,12 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       }
     }
 
+    // Collect all approved-insert bonus rows into one array, then
+    // emit a single createMany. Sequential .create() inside the
+    // loop would issue one round-trip per bonus (N+1) — for a
+    // 10-store BD release with one bonus each, that's 10 extra
+    // queries inside a transaction holding row locks. Batch it.
+    const bonusInserts: Array<Prisma.AlbumStoreBonusCreateManyInput> = [];
     for (const bc of classifications.bonuses) {
       const decision = decisions.bonuses[`${bc.listingIdx}:${bc.bonusIdx}`];
       const approved = decision?.approved === true;
@@ -185,20 +191,17 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       if (!listingId) continue;
 
       const bonus = candidates.listings[bc.listingIdx].bonuses[bc.bonusIdx];
-      await tx.albumStoreBonus.create({
-        data: {
-          listingId,
-          originalBonusType: bonus.originalBonusType,
-          originalBonusDescription: bonus.originalBonusDescription,
-          originalLanguage: "ja",
-          bonusImageUrl: bonus.bonusImageUrl,
-        },
+      bonusInserts.push({
+        listingId,
+        originalBonusType: bonus.originalBonusType,
+        originalBonusDescription: bonus.originalBonusDescription,
+        originalLanguage: "ja",
+        bonusImageUrl: bonus.bonusImageUrl,
       });
-      bonusesInserted++;
     }
 
-    // Global early-booking fan-out. Each attached listing gets one
-    // new bonus row per global item.
+    // Global early-booking fan-out — flatten the (attachTo × items)
+    // cartesian product into the same insert batch for one round-trip.
     if (
       decisions.globalEarlyBooking?.approved &&
       candidates.globalEarlyBooking?.bonuses?.length
@@ -208,18 +211,20 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
         const targetListingId = listingIdByIdx.get(targetIdx);
         if (!targetListingId) continue;
         for (const item of candidates.globalEarlyBooking.bonuses) {
-          await tx.albumStoreBonus.create({
-            data: {
-              listingId: targetListingId,
-              originalBonusType: item.originalBonusType,
-              originalBonusDescription: item.originalBonusDescription,
-              originalLanguage: "ja",
-              bonusImageUrl: item.bonusImageUrl,
-            },
+          bonusInserts.push({
+            listingId: targetListingId,
+            originalBonusType: item.originalBonusType,
+            originalBonusDescription: item.originalBonusDescription,
+            originalLanguage: "ja",
+            bonusImageUrl: item.bonusImageUrl,
           });
-          bonusesInserted++;
         }
       }
+    }
+
+    if (bonusInserts.length > 0) {
+      await tx.albumStoreBonus.createMany({ data: bonusInserts });
+      bonusesInserted = bonusInserts.length;
     }
 
     await tx.albumBonusImportJob.update({

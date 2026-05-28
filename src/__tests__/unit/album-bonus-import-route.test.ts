@@ -20,6 +20,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     albumStoreBonus: {
       create: vi.fn(),
+      createMany: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -390,7 +391,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     const createdListing = { id: "L-NEW" };
     const createListing = vi.fn().mockResolvedValue(createdListing);
     const updateListing = vi.fn();
-    const createBonus = vi.fn();
+    const createManyBonus = vi.fn().mockResolvedValue({ count: 1 });
     const updateJob = vi.fn().mockResolvedValue({});
 
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
@@ -401,7 +402,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             create: createListing,
             update: updateListing,
           },
-          albumStoreBonus: { create: createBonus },
+          albumStoreBonus: { createMany: createManyBonus },
           albumBonusImportJob: { update: updateJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -426,15 +427,15 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
         }),
       }),
     );
-    // Bonus inserted under the freshly-created listing.
-    expect(createBonus).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
+    // Bonus inserted in one batch under the freshly-created listing.
+    expect(createManyBonus).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
           listingId: "L-NEW",
           originalBonusType: "スリーブケース",
         }),
-      }),
-    );
+      ],
+    });
     // Status flipped to applied.
     expect(updateJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -459,7 +460,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     });
 
     const createListing = vi.fn();
-    const createBonus = vi.fn();
+    const createManyBonus = vi.fn();
     const updateJob = vi.fn().mockResolvedValue({});
 
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
@@ -470,7 +471,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             create: createListing,
             update: vi.fn(),
           },
-          albumStoreBonus: { create: createBonus },
+          albumStoreBonus: { createMany: createManyBonus },
           albumBonusImportJob: { update: updateJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -485,10 +486,11 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     const body = await res.json();
     expect(body.applied.listingsInserted).toBe(0);
     // Bonus had no listingId to attach to (parent listing was an
-    // unapproved insert) — skipped, not erroring.
+    // unapproved insert) — skipped, not erroring. createMany is never
+    // called when bonusInserts collection stays empty.
     expect(body.applied.bonusesInserted).toBe(0);
     expect(createListing).not.toHaveBeenCalled();
-    expect(createBonus).not.toHaveBeenCalled();
+    expect(createManyBonus).not.toHaveBeenCalled();
   });
 });
 
