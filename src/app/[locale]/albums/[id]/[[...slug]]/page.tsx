@@ -354,14 +354,24 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   return (
     // Outer wrapper mirrors the artist page (page.tsx ~line 670-673)
     // so the breadcrumb sits left-aligned at the same column edge as
-    // the main content — operator caught the prior inline-nav shape
-    // centering the breadcrumb on desktop while every other detail
-    // page kept it left-aligned. mx-auto + maxWidth centers the
-    // wrapper itself; the Breadcrumb component sits at its top-left,
-    // matching the convention.
+    // the main content. mx-auto + maxWidth centers the wrapper.
+    //
+    // `overflowX: clip` is the events-tab width-leak guard. The
+    // events-tab PerformanceGroup row uses a 5-track grid with two
+    // `auto` columns (chip + chevron), whose intrinsic min sizes
+    // sum to ~216 px. On mobile this can push the main grid column
+    // wider than the viewport — which manifested as the sidebar
+    // visibly shrinking on the bonus / tracks tabs (no wide
+    // intrinsic content there) vs the events tab (wide intrinsic
+    // content expands the column). Clipping at the wrapper kills
+    // the horizontal-bleed surface so the column width stays a
+    // function of the viewport, not the active tab's content.
     <div
       className="mx-auto px-4"
-      style={{ maxWidth: ALBUM_PAGE_MAX_WIDTH }}
+      style={{
+        maxWidth: ALBUM_PAGE_MAX_WIDTH,
+        overflowX: "clip",
+      }}
     >
       <div style={{ paddingTop: 14 }}>
         <Breadcrumb
