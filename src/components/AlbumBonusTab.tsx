@@ -61,10 +61,20 @@ export async function AlbumBonusTab({ album, locale }: Props) {
         style={{
           background: colors.bgCard,
           borderRadius: radius.card,
-          padding: "32px 20px",
+          // Horizontal padding aligned with the events tab's
+          // PerformanceGroup row padding (16px) so the placeholder
+          // text sits at the same horizontal offset as the inner
+          // content on the other tabs — operator caught the
+          // visual difference at the 20px → 16px gap.
+          padding: "32px 16px",
           textAlign: "center",
           color: colors.textMuted,
           fontSize: 14,
+          // Width 100% explicit so the placeholder box stretches to
+          // the same edge as the events-tab inner box and the
+          // tracks-tab disc sections — mobile flex/grid contexts
+          // sometimes don't stretch children unless told to.
+          width: "100%",
         }}
       >
         {t("empty")}
@@ -76,10 +86,40 @@ export async function AlbumBonusTab({ album, locale }: Props) {
   const endedListings = album.listings.filter((l) => isEndedListing(l));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {activeListings.map((listing) => (
-        <ListingCard key={listing.id} listing={listing} locale={locale} />
-      ))}
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        width: "100%",
+      }}
+    >
+      {/* Outer single big box — same shell pattern the events tab
+          uses. Each ListingCard renders `embedded` so it drops its
+          own background / shadow / border-radius; the outer wrapper
+          carries them once for the whole stack. Listings render as
+          inline rows separated by a hairline rule, identical visual
+          rhythm to PerformanceGroup's event rows. */}
+      {activeListings.length > 0 ? (
+        <div
+          style={{
+            background: colors.bgCard,
+            borderRadius: radius.card,
+            overflow: "hidden",
+            width: "100%",
+          }}
+        >
+          {activeListings.map((listing, idx) => (
+            <ListingCard
+              key={listing.id}
+              listing={listing}
+              locale={locale}
+              embedded
+              dividerAbove={idx > 0}
+            />
+          ))}
+        </div>
+      ) : null}
       <EndedListingToggle listings={endedListings} locale={locale} />
     </div>
   );

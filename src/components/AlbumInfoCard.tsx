@@ -3,8 +3,12 @@ import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { InfoCard } from "@/components/InfoCard";
 import { colors, radius, shadows } from "@/styles/tokens";
-import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import {
+  displayOriginalTitle,
+  displayOriginalName,
+} from "@/lib/display";
 import { isEndedListing } from "@/lib/albumBonusDisplay";
+import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
 
 /*
@@ -78,38 +82,134 @@ export type AlbumForInfoCard = BigIntStringified<
 interface Props {
   album: AlbumForInfoCard;
   locale: string;
+  /**
+   * Total bonus count (active + ended) computed once by the page
+   * server component so the sidebar's `총 N개` chip can never
+   * silently diverge from the tab-bar's `매장특전 (N)` badge. Both
+   * read from the same `album.listings.reduce(...)` value — passing
+   * it as a prop here makes the single source of truth explicit.
+   */
+  totalBonusCount: number;
 }
 
-export async function AlbumInfoCard({ album, locale }: Props) {
+export async function AlbumInfoCard({
+  album,
+  locale,
+  totalBonusCount,
+}: Props) {
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  const title =
-    resolveLocalizedField(
-      album,
-      album.translations,
-      locale,
-      "title",
-      "originalTitle",
-    ) ?? t("unknown");
+  // Albums are artwork — original-language title leads, locale
+  // translation reads as the subtitle. Matches the song page's
+  // sidebar pattern (`displayOriginalTitle` for any
+  // artwork-identity surface). `main` is the original-language
+  // title; `sub` is the locale translation when it exists and
+  // differs from the original (returns null when same-locale or
+  // missing, so we never paint a duplicate line).
+  const titleParts = displayOriginalTitle(
+    album,
+    album.translations,
+    locale,
+  );
 
   const primaryArtistRow = album.artists[0] ?? null;
   const primaryArtist = primaryArtistRow?.artist ?? null;
-  const primaryArtistName = primaryArtist
-    ? displayNameWithFallback(
+  // Artists are identity — locale name leads, original-language
+  // name reads as the subtitle. Flipped from albums by design
+  // (`displayOriginalName` documents the rationale): a Korean
+  // viewer sees the Korean rendering on top of a Japanese tour.
+  const primaryArtistNameParts = primaryArtist
+    ? displayOriginalName(
         primaryArtist,
         primaryArtist.translations,
         locale,
       )
     : null;
+  const primaryArtistName = primaryArtistNameParts?.main ?? null;
 
-  const trackCount = album.tracks.length;
-  const listingCount = album.listings.length;
-  const bonusCount = album.listings
+  // Secondary artists (any artist past the first credited row). Render
+  // as muted chips inline beneath the primary-artist link so a
+  // multi-artist single / OST still surfaces every contributing
+  // artist on the sidebar. mockup intent: the album page is a
+  // collaboration surface; the primary anchor + secondary chips
+  // mirror how the song page exposes the same relationship.
+  const secondaryArtists = album.artists.slice(1);
+
+  // `totalBonusCount` arrives as a prop (single source of truth with
+  // the tab-bar badge). `activeBonusCount` + `endedBonusCount` are
+  // derived locally — they partition the same listings tree, so their
+  // sum is invariant to `totalBonusCount` by construction and no
+  // cross-component divergence is possible.
+  const activeBonusCount = album.listings
     .filter((l) => !isEndedListing(l))
     .reduce((sum, l) => sum + l.bonuses.length, 0);
   const endedBonusCount = album.listings
     .filter(isEndedListing)
     .reduce((sum, l) => sum + l.bonuses.length, 0);
+
+  // Sidebar meta block — pared down from the mockup's full 4-row set
+  // (line 656-676) to the two rows that carry irreplaceable info:
+  //   - 아티스트 (links to the primary artist page)
+  //   - 발매일 (the only place this surfaces on the page)
+  //
+  // The two rows the mockup also had — 레이블 + 수록곡 — were
+  // dropped on operator feedback during the mockup-gap pass:
+  //   - 레이블: low-value label info that doesn't drive user action
+  //   - 수록곡: track count already shows in the TabBar badge
+  //            ("수록곡 (10)") right next to the sidebar, so a second
+  //            "수록곡: 10곡" row is redundant.
+  //
+  // Each row still only renders when its value is non-empty so a row
+  // with missing data doesn't draw an "—" stub.
+  const metaRows: Array<{
+    key: "artist" | "releaseDate";
+    label: string;
+    value: React.ReactNode;
+  }> = [];
+  if (primaryArtist && primaryArtistName) {
+    // Artist name follows the identity-name rule (locale primary,
+    // original-language sub). The sub line only renders when the
+    // helper returns a non-null `sub` — same-locale entries collapse
+    // to single-line cleanly.
+    metaRows.push({
+      key: "artist",
+      label: t("meta.label.artist"),
+      value: (
+        <Link
+          href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+          style={{
+            color: colors.primary,
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            display: "inline-flex",
+            flexDirection: "column",
+            gap: 1,
+          }}
+        >
+          <span>{primaryArtistName}</span>
+          {primaryArtistNameParts?.sub ? (
+            <span
+              style={{
+                fontSize: 11,
+                color: colors.textMuted,
+                fontWeight: 400,
+              }}
+            >
+              {primaryArtistNameParts.sub}
+            </span>
+          ) : null}
+        </Link>
+      ),
+    });
+  }
+  if (album.releaseDate) {
+    metaRows.push({
+      key: "releaseDate",
+      label: t("meta.label.releaseDate"),
+      value: formatDate(album.releaseDate, locale),
+    });
+  }
 
   return (
     <InfoCard artist={primaryArtist}>
@@ -117,7 +217,7 @@ export async function AlbumInfoCard({ album, locale }: Props) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={album.imageUrl}
-          alt={title}
+          alt={titleParts.main}
           referrerPolicy="no-referrer"
           style={{
             width: "100%",
@@ -163,67 +263,206 @@ export async function AlbumInfoCard({ album, locale }: Props) {
         style={{
           fontSize: 22,
           fontWeight: 800,
-          margin: "0 0 8px",
+          margin: titleParts.sub ? "0 0 4px" : "0 0 16px",
           color: colors.textPrimary,
           lineHeight: 1.3,
         }}
       >
-        {title}
+        {titleParts.main}
       </h1>
-
-      {primaryArtist && primaryArtistName ? (
-        <Link
-          href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+      {/* Locale-translation subtitle line — present only when the
+          translation exists and differs from the original
+          (displayOriginalTitle returns null on same-locale / no
+          translation, so the line collapses cleanly). Matches the
+          song page H1+subtitle shape. */}
+      {titleParts.sub ? (
+        <p
           style={{
+            margin: "0 0 16px",
+            fontSize: 13,
             color: colors.textSubtle,
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: "none",
-            borderBottom: `1px solid ${colors.borderSubtle}`,
-            paddingBottom: 1,
+            lineHeight: 1.4,
+            fontWeight: 500,
           }}
         >
-          {primaryArtistName}
-        </Link>
+          {titleParts.sub}
+        </p>
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          marginTop: 16,
-        }}
-      >
-        {trackCount > 0 ? <Chip>{t("stats.trackCount", { count: trackCount })}</Chip> : null}
-        {listingCount > 0 ? <Chip>{t("stats.listingCount", { count: listingCount })}</Chip> : null}
-        {bonusCount > 0 ? <Chip>{t("stats.bonusCount", { count: bonusCount })}</Chip> : null}
-        {endedBonusCount > 0 ? (
-          <Chip variant="muted">{t("stats.endedBonusCount", { count: endedBonusCount })}</Chip>
-        ) : null}
-      </div>
+      {/* Meta rows — mockup line 656-676. Label gutter pinned at 48px
+          so the 발매일 / 레이블 / 수록곡 / 아티스트 row starts align
+          even when the value spans multiple lines. */}
+      {metaRows.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginBottom: secondaryArtists.length > 0 ? 12 : 16,
+          }}
+        >
+          {metaRows.map((row) => (
+            <div
+              key={row.key}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: colors.textMuted,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  width: 48,
+                  flexShrink: 0,
+                  paddingTop: 1,
+                }}
+              >
+                {row.label}
+              </span>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: colors.textPrimary,
+                  fontWeight: 400,
+                  wordBreak: "break-word",
+                }}
+              >
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Secondary artist credit chips — render only when the album
+          credits more than one artist. Each chip links to its artist
+          page so a multi-artist collab page surfaces every credited
+          artist as a navigable hop. */}
+      {secondaryArtists.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 16,
+          }}
+        >
+          {secondaryArtists.map((aa) => {
+            const a = aa.artist;
+            // Identity rule: locale name primary. Chips are single-
+            // line (no room for an original-language sub on a chip),
+            // so we read just the `main` from displayOriginalName.
+            const name = displayOriginalName(a, a.translations, locale).main;
+            if (!name) return null;
+            return (
+              <Link
+                key={a.id}
+                href={`/${locale}/artists/${a.id}/${a.slug}`}
+                style={{
+                  display: "inline-block",
+                  padding: "3px 9px",
+                  background: colors.bgSubtle,
+                  color: colors.textSubtle,
+                  borderRadius: radius.tag,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* Bonus stats section — mockup line 678-716: borderTop separator
+          + section label + chip row. 3-chip layout per the b03-b05
+          simplification handoff (active/ended only — sold_out and
+          unknown collapse into "active" upstream in isEndedListing).
+          Each chip color-coded:
+            총 N개   — primary blue (matches mockup #0277BD / #e8f4fd)
+            활성 X    — emerald green (#16a34a / #f0fdf4)
+            종료 Z    — slate gray   (#64748b / #f1f5f9)
+          Renders nothing when the album has zero listings — the empty
+          state is the bonus tab's placeholder, not a stub-zero chip. */}
+      {totalBonusCount > 0 ? (
+        <div
+          style={{
+            borderTop: `1px solid ${colors.borderSubtle}`,
+            paddingTop: 14,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: colors.textMuted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            {t("stats.bonusSectionLabel")}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <BonusChip variant="total">
+              {t("stats.totalBonusCount", { count: totalBonusCount })}
+            </BonusChip>
+            {activeBonusCount > 0 ? (
+              <BonusChip variant="active">
+                {t("stats.activeBonusCount", { count: activeBonusCount })}
+              </BonusChip>
+            ) : null}
+            {endedBonusCount > 0 ? (
+              <BonusChip variant="ended">
+                {t("stats.endedBonusCount", { count: endedBonusCount })}
+              </BonusChip>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </InfoCard>
   );
 }
 
-function Chip({
+// Bonus-stat chip palette — wired through the design-token system
+// (colors.bonusTotal* / bonusActive* / bonusEnded*). Traffic-light
+// semantic mapping (blue=count, green=available, gray=ended) — see
+// the tokens.ts inline comment for the per-shade rationale.
+const BONUS_CHIP_PALETTE: Record<
+  "total" | "active" | "ended",
+  { color: string; bg: string }
+> = {
+  total: { color: colors.bonusTotalText, bg: colors.bonusTotalBg },
+  active: { color: colors.bonusActiveText, bg: colors.bonusActiveBg },
+  ended: { color: colors.bonusEndedText, bg: colors.bonusEndedBg },
+};
+
+function BonusChip({
   children,
-  variant = "default",
+  variant,
 }: {
   children: React.ReactNode;
-  variant?: "default" | "muted";
+  variant: "total" | "active" | "ended";
 }) {
+  const palette = BONUS_CHIP_PALETTE[variant];
   return (
     <span
       style={{
         display: "inline-block",
-        padding: "4px 10px",
-        background: variant === "muted" ? "transparent" : colors.bgSubtle,
-        color: variant === "muted" ? colors.textMuted : colors.textSubtle,
-        border: variant === "muted" ? `1px dashed ${colors.borderSubtle}` : "none",
+        padding: "3px 9px",
+        background: palette.bg,
+        color: palette.color,
         borderRadius: radius.tag,
-        fontSize: 12,
-        fontWeight: 600,
+        fontSize: 11,
+        fontWeight: 700,
         whiteSpace: "nowrap",
       }}
     >

@@ -10,11 +10,13 @@ import { AlbumBonusTab } from "@/components/AlbumBonusTab";
 import { AlbumTracksTab } from "@/components/AlbumTracksTab";
 import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
 import { TabBar } from "@/components/TabBar";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import {
   getAlbumRelatedEvents,
+  getAlbumRelatedEventsCount,
   type RelatedEvent,
 } from "@/lib/albumRelatedEvents";
-import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 
 /*
@@ -27,6 +29,15 @@ import { normalizeOgLocale } from "@/lib/ogLabels";
  * monetization-economics 매장特典 framing.
  */
 type AlbumTabKey = "bonus" | "tracks" | "events";
+
+/*
+ * Shared max-width for the breadcrumb + content column. Both the
+ * `<nav>` (breadcrumb) and the `<main>` (sidebar + tab body grid)
+ * read from this constant so a future tweak ripples through both
+ * surfaces and they never silently misalign at the column edge.
+ * Picked literal from raw/mockups/album-page-mockup.jsx line 595.
+ */
+const ALBUM_PAGE_MAX_WIDTH = 1280;
 
 /*
  * Album detail page — `/[locale]/albums/[id]/[[...slug]]/`.
@@ -140,8 +151,11 @@ export async function generateMetadata({
     ) ?? t("unknown");
 
   const primaryArtist = album.artists[0]?.artist ?? null;
+  // Same helper as the breadcrumb segment + InfoCard sidebar so the
+  // OG/meta artist name reads identically to what the page header
+  // shows.
   const artistName = primaryArtist
-    ? displayNameWithFallback(primaryArtist, primaryArtist.translations, locale)
+    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
     : "";
 
   const fullTitle = t("meta.titleTemplate", { title, artist: artistName });
@@ -235,66 +249,204 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const defaultTab: AlbumTabKey = album.type === AlbumType.live_album ? "events" : "bonus";
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
+  // Derive Pattern 1 song ids once from the already-loaded album.tracks
+  // (getAlbum's include carries them). Both the count helper and the
+  // full-fetch helper take this array — the two `react.cache` wraps
+  // are independent identities, so without forwarding the ids the
+  // events-tab view ran `albumTrack.findMany` twice (once per helper).
+  // Caller-side derive + pass = single derive, zero duplicate DB hits.
+  //
+  // album.tracks come through serializeBigIntAsString — `songId` is
+  // either a numeric-string or null. `BigInt(stringId)` reverses the
+  // string back to a bigint without rounding (the precision survives
+  // because we never went through Number()).
+  const pattern1SongIds: bigint[] = album.tracks
+    .map((t) => t.songId)
+    .filter((sid): sid is string => sid !== null)
+    .map((sid) => BigInt(sid));
+
+  // Events tab needs its count for the tab-label string regardless of
+  // which tab is active (per mockup tab format "관련 공연 (N)"). Use
+  // the dedicated COUNT-only helper instead of the full fetch — the
+  // tab body's `getAlbumRelatedEvents(...)` below only fires when the
+  // user actually lands on the events tab, so the COUNT query is the
+  // cheap always-on companion. The two helpers share WHERE shape so
+  // the badge stays consistent with the rendered list.
+  const eventsCount = await getAlbumRelatedEventsCount(
+    BigInt(id),
+    album.type as AlbumType,
+    pattern1SongIds,
+  );
+
+  // Tab counts surfaced inline in the tab labels per mockup
+  // (`매장特典 (8) / 수록곡 (17) / 관련 공연 (2)` form). Same
+  // discipline as the mockup's `tokutenData.length` / `tracks.length`
+  // / `performances.reduce(...)` computations. `bonusTotal` is the
+  // single source of truth — passed through to AlbumInfoCard so the
+  // sidebar's bonus-stat chip section can't silently diverge from the
+  // tab badge.
+  const bonusTotal = album.listings.reduce(
+    (sum, l) => sum + l.bonuses.length,
+    0,
+  );
+  const tabCounts: Record<AlbumTabKey, number> = {
+    bonus: bonusTotal,
+    tracks: album.tracks.length,
+    events: eventsCount,
+  };
+  // `tab.withCount` is the locale-localized "{label} ({count})"
+  // pattern — the parens + spacing are an i18n concern (some locales
+  // would prefer full-width parens or no space), not hard-coded
+  // formatting, so route the composition through next-intl.
   const tabs = visibleTabs.map((key) => ({
     key,
-    label: t(`tab.${key}`),
+    label: t("tab.withCount", {
+      label: t(`tab.${key}`),
+      count: tabCounts[key],
+    }),
   }));
 
-  // Events tab uses its own cached helper rather than the main getAlbum
-  // tree because the query is type-aware (different WHERE clause on
-  // live_album vs everything else) and lives off a different relation
-  // graph. Only fetch when the user actually landed on the events tab —
-  // saves a roundtrip on the bonus / tracks views. react.cache wrap
-  // inside getAlbumRelatedEvents collapses re-calls if anything else
-  // in this request asks the same question.
-  //
-  // The helper pulls Pattern 1 song ids directly from Prisma so the
-  // BigInt precision never round-trips through JSON — that's why this
-  // call site no longer derives them from album.tracks (the cached
-  // album object's BigInts are already number-narrowed via
-  // serializeBigInt, which would truncate >2^53 ids).
+  // Full events fetch is lazy — only the events tab body needs the
+  // include tree + sort + take:50. react.cache inside the helper means
+  // generateMetadata-style double calls still collapse to one DB
+  // roundtrip if a future caller asks twice.
   let relatedEvents: RelatedEvent[] = [];
   if (activeTab === "events") {
     relatedEvents = await getAlbumRelatedEvents(
       BigInt(id),
       album.type as AlbumType,
       locale,
+      pattern1SongIds,
     );
   }
 
+  // Primary artist drives the breadcrumb middle segment + the artist
+  // anchor inside InfoCard. AlbumArtist has no `role` column (unlike
+  // SongArtist's primary/featured/cover) so we pick the first row
+  // deterministically — matches AlbumInfoCard's own selection so the
+  // two surfaces never disagree on which artist is "primary."
+  const primaryArtist = album.artists[0]?.artist ?? null;
+  // Same display helper as AlbumInfoCard's sidebar artist row —
+  // `.main` reads as the breadcrumb segment, which keeps the
+  // crumb text consistent with the InfoCard label for the same
+  // artist. A bare `displayNameWithFallback` would silently drift
+  // off into a different locale fallback chain.
+  const primaryArtistName = primaryArtist
+    ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
+    : null;
+
+  // Breadcrumb items — same shape the artist + member + song pages
+  // pass to the shared <Breadcrumb> component (left-aligned `Home ›
+  // <artist> › Albums`). Mid-segment Drops cleanly when the album
+  // has no resolved primary artist; the Albums leaf is the current
+  // page (no href).
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: t("breadcrumb.home"), href: `/${locale}` },
+  ];
+  if (primaryArtist && primaryArtistName) {
+    breadcrumbItems.push({
+      label: primaryArtistName,
+      href: `/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`,
+    });
+  }
+  breadcrumbItems.push({ label: t("breadcrumb.albums") });
+
   return (
-    <main
+    // Outer wrapper mirrors the artist page (page.tsx ~line 670-673)
+    // so the breadcrumb sits left-aligned at the same column edge as
+    // the main content. mx-auto + maxWidth centers the wrapper.
+    //
+    // `overflowX: clip` is the events-tab width-leak guard. The
+    // events-tab PerformanceGroup row uses a 5-track grid with two
+    // `auto` columns (chip + chevron), whose intrinsic min sizes
+    // sum to ~216 px. On mobile this can push the main grid column
+    // wider than the viewport — which manifested as the sidebar
+    // visibly shrinking on the bonus / tracks tabs (no wide
+    // intrinsic content there) vs the events tab (wide intrinsic
+    // content expands the column). Clipping at the wrapper kills
+    // the horizontal-bleed surface so the column width stays a
+    // function of the viewport, not the active tab's content.
+    <div
+      className="mx-auto px-4"
       style={{
-        maxWidth: 1080,
-        margin: "0 auto",
-        padding: "24px 16px",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)",
-        gap: 24,
-        alignItems: "start",
+        maxWidth: ALBUM_PAGE_MAX_WIDTH,
+        overflowX: "clip",
       }}
     >
-      <aside>
-        <AlbumInfoCard album={album} locale={locale} />
-      </aside>
-      <section>
-        <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
-        {/* All three tabs now render real data panels (b03 / b04).
-            Explicit per-activeTab branches stay verbose rather than
-            collapsing into a map so a future revisit of any single
-            tab's component swap doesn't ripple through the others. */}
-        {activeTab === "bonus" ? (
-          <AlbumBonusTab album={album} locale={locale} />
-        ) : activeTab === "tracks" ? (
-          <AlbumTracksTab tracks={album.tracks} locale={locale} />
-        ) : (
-          <AlbumRelatedEventsTab
-            events={relatedEvents}
-            albumType={album.type as AlbumType}
+      <div style={{ paddingTop: 14 }}>
+        <Breadcrumb
+          ariaLabel={t("breadcrumb.aria")}
+          items={breadcrumbItems}
+        />
+      </div>
+      {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
+          pattern the artist page uses — `grid` at every breakpoint,
+          not just lg. Mobile uses `grid-cols-1` which Tailwind
+          compiles to `grid-template-columns: minmax(0, 1fr)`; that
+          single-track form clamps the column to the viewport width
+          and lets the inner content's `overflow: hidden` / ellipsis
+          actually engage. A bare `block` would default children to
+          `min-width: auto` = intrinsic content size, dragging the
+          page into horizontal scroll on mobile.
+          Desktop track `minmax(0, 1fr)` on the main column is the
+          same defensive clamp — a bare `1fr` would let a wide
+          intrinsic child grow the column past the maxWidth.
+          alignItems sits on inline style so the same value applies
+          at every breakpoint. */}
+      <main
+        className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
+        style={{
+          paddingBottom: 60,
+          alignItems: "start",
+        }}
+      >
+        {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
+            pattern (song page.tsx ~line 644) so the InfoCard pins under
+            the global nav on desktop while scrolling the tab body. The
+            Tailwind class evaluates at the lg breakpoint (≥1024px).
+            On mobile the sidebar stacks above the tab section
+            (single-track grid) with a 12px gap before the TabBar
+            (matches artist page's `marginBottom: 12` on its sidebar
+            div). */}
+        <aside
+          className="lg:sticky lg:top-[72px]"
+          style={{ marginBottom: 12 }}
+        >
+          <AlbumInfoCard
+            album={album}
             locale={locale}
+            totalBonusCount={bonusTotal}
           />
-        )}
-      </section>
-    </main>
+        </aside>
+        {/* `minWidth: 0` is the mobile-overflow guard: block layout
+            on phones defaults child block elements to a min-width of
+            their intrinsic content, so a PerformanceGroup row with
+            wide grid columns inside (the events tab) was making the
+            entire section box wider than the viewport and dragging
+            a horizontal scroll bar onto the page. Pinning the
+            section to `min-width: 0` (matching the same fix on
+            PerformanceGroup's own grid container) lets the inner
+            grid honour its own `minmax(0, 1fr)` track + clip with
+            `overflow: hidden` instead of overflowing outward. */}
+        <section style={{ minWidth: 0, width: "100%" }}>
+          <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
+          {/* All three tabs now render real data panels (b03 / b04).
+              Explicit per-activeTab branches stay verbose rather than
+              collapsing into a map so a future revisit of any single
+              tab's component swap doesn't ripple through the others. */}
+          {activeTab === "bonus" ? (
+            <AlbumBonusTab album={album} locale={locale} />
+          ) : activeTab === "tracks" ? (
+            <AlbumTracksTab tracks={album.tracks} locale={locale} />
+          ) : (
+            <AlbumRelatedEventsTab
+              events={relatedEvents}
+              albumType={album.type as AlbumType}
+              locale={locale}
+            />
+          )}
+        </section>
+      </main>
+    </div>
   );
 }

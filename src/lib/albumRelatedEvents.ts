@@ -45,6 +45,21 @@ import type { Prisma } from "@/generated/prisma/client";
 // the cap, b04 can add a "더 보기" page-2 surface.
 const MAX_RELATED_EVENTS = 50;
 
+/*
+ * Shared WHERE-fragment for both the count helper and the full
+ * fetch — keeps a standalone event (`eventSeriesId IS NULL`) in the
+ * result while excluding events whose series has been soft-deleted.
+ * Extracted to module scope so a future change to the soft-delete
+ * semantics propagates to both helpers in one edit instead of two
+ * identical literals that must be kept in sync.
+ */
+const EVENT_SERIES_FILTER: Prisma.EventWhereInput = {
+  OR: [
+    { eventSeriesId: null },
+    { eventSeries: { isDeleted: false } },
+  ],
+};
+
 // Wire-shape of one row after the JSON boundary
 // (`serializeBigIntAsString` runs in the cached helper below).
 // BigIntStringified rewrites every `bigint` → `string` and every
@@ -64,11 +79,71 @@ export type RelatedEvent = BigIntStringified<
   }>
 >;
 
+/*
+ * Cheap COUNT-only companion to `getAlbumRelatedEvents`. The tab label
+ * on the album page needs the related-events total regardless of which
+ * tab the user landed on; the full fetch (with its include tree + sort
+ * + `take: 50` cap) is wasteful when the user isn't actually viewing
+ * the events tab. Both helpers share the same WHERE shape per album
+ * type, so the count is consistent with the eventual list render.
+ *
+ * `pattern1SongIds` is taken as a caller-provided argument rather than
+ * derived internally via an `albumTrack.findMany`. The caller already
+ * has `album.tracks` loaded (it comes through getAlbum's include tree
+ * on every album page render), so deriving the ids in-page + passing
+ * them to both helpers avoids an extra DB roundtrip per events-tab
+ * view — `react.cache` doesn't dedupe across the two helpers because
+ * each wrap has its own cache identity. Unused on the live_album
+ * branch (which reverse-looks-up via bdAlbumId, no song-side join);
+ * still part of the signature so both helpers share one shape and a
+ * future filter that does need it can be added in one place.
+ *
+ * react.cache wrap is independent of `getAlbumRelatedEvents`. No
+ * locale argument here because the count is locale-invariant; the
+ * full fetch needs it for the translations filter inside the include.
+ */
+export const getAlbumRelatedEventsCount = cache(
+  async (
+    albumId: bigint,
+    albumType: AlbumType,
+    pattern1SongIds: bigint[],
+  ): Promise<number> => {
+    if (albumType === AlbumType.live_album) {
+      return prisma.event.count({
+        where: {
+          bdAlbumId: albumId,
+          isDeleted: false,
+          ...EVENT_SERIES_FILTER,
+        },
+      });
+    }
+
+    if (pattern1SongIds.length === 0) return 0;
+
+    return prisma.event.count({
+      where: {
+        isDeleted: false,
+        ...EVENT_SERIES_FILTER,
+        setlistItems: {
+          some: {
+            isDeleted: false,
+            status: {
+              in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
+            },
+            songs: { some: { songId: { in: pattern1SongIds } } },
+          },
+        },
+      },
+    });
+  },
+);
+
 export const getAlbumRelatedEvents = cache(
   async (
     albumId: bigint,
     albumType: AlbumType,
     locale: string,
+    pattern1SongIds: bigint[],
   ): Promise<RelatedEvent[]> => {
     const localeFilter = { locale: { in: [locale, "ja"] } };
     const include = {
@@ -86,20 +161,16 @@ export const getAlbumRelatedEvents = cache(
     // keeps standalone events (eventSeriesId IS NULL) while
     // excluding events whose series has been soft-deleted by the
     // operator — without this, a deleted series would still surface
-    // its translated label in the bucket header.
-    const eventSeriesFilter = {
-      OR: [
-        { eventSeriesId: null },
-        { eventSeries: { isDeleted: false } },
-      ],
-    };
+    // its translated label in the bucket header. Lifted to a
+    // module-level `EVENT_SERIES_FILTER` const so the count helper
+    // above + this full-fetch helper stay in lockstep.
 
     if (albumType === AlbumType.live_album) {
       const rows = await prisma.event.findMany({
         where: {
           bdAlbumId: albumId,
           isDeleted: false,
-          ...eventSeriesFilter,
+          ...EVENT_SERIES_FILTER,
         },
         include,
         // Event.startTime is NOT NULL in prisma/schema.prisma, so a
@@ -117,31 +188,20 @@ export const getAlbumRelatedEvents = cache(
     }
 
     // Non-live_album path needs the album's Pattern 1 vocal song ids
-    // to walk SetlistItemSong. We pull those directly from Prisma here
-    // rather than accepting them from the page — the page's album
-    // payload goes through a JSON serializer (originally the lossy
-    // number-targeted one; now the string-coercing variant after the
-    // v0.14.3 CR sweep), and either way the call site needs raw
-    // `bigint` values to feed back into a Prisma `where: { songId: { in: ... } }`
-    // clause. A separate query keeps the bigint pipeline-pure
-    // end-to-end without parsing the string ids back.
-    const trackRows = await prisma.albumTrack.findMany({
-      where: { albumId, songId: { not: null } },
-      select: { songId: true },
-    });
-    const pattern1SongIds = trackRows
-      .map((t) => t.songId)
-      .filter((sid): sid is bigint => sid !== null);
-
-    // Empty Pattern 1 set short-circuits to no related events
-    // without a DB hit (all-drama/bgm release, or an empty album
-    // row pre-import).
+    // to walk SetlistItemSong. Caller-provided to dedupe across the
+    // count + full-fetch helpers — both `getAlbumRelatedEventsCount`
+    // and this helper take the same argument so the page derives the
+    // ids once (from the already-loaded album.tracks) and forwards
+    // them, avoiding a duplicate `prisma.albumTrack.findMany` per
+    // events-tab render. Empty Pattern 1 set short-circuits to no
+    // related events without a DB hit (all-drama/bgm release, or an
+    // empty album row pre-import).
     if (pattern1SongIds.length === 0) return [];
 
     const rows = await prisma.event.findMany({
       where: {
         isDeleted: false,
-        ...eventSeriesFilter,
+        ...EVENT_SERIES_FILTER,
         setlistItems: {
           some: {
             isDeleted: false,

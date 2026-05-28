@@ -152,17 +152,32 @@
     "tab": {
       "bonus": "店舗特典",
       "tracks": "収録曲",
-      "events": "関連公演"
+      "events": "関連公演",
+      "withCount": "{label} ({count})"
     },
     "stats": {
-      "trackCount": "{count, plural, other {収録曲 #}}",
+      "trackCount": "{count, plural, other {#曲}}",
       "bonusCount": "{count, plural, other {特典 #}}",
       "endedBonusCount": "{count, plural, other {終了 #}}",
-      "listingCount": "{count, plural, other {店舗 #}}"
+      "listingCount": "{count, plural, other {店舗 #}}",
+      "totalBonusCount": "{count, plural, other {計 #件}}",
+      "activeBonusCount": "{count, plural, other {受付中 #}}",
+      "bonusSectionLabel": "店舗特典"
+    },
+    "breadcrumb": {
+      "aria": "ナビゲーションパス",
+      "home": "ホーム",
+      "albums": "アルバム"
     },
     "meta": {
       "titleTemplate": "{title} - {artist} 店舗特典 | OpenSetlist",
-      "descriptionTemplate": "{title} 店舗特典一覧"
+      "descriptionTemplate": "{title} 店舗特典一覧",
+      "label": {
+        "artist": "アーティスト",
+        "releaseDate": "発売日",
+        "label": "レーベル",
+        "trackCount": "収録曲"
+      }
     },
     "tabsAriaLabel": "アルバムページタブ",
     "tabBody": {
