@@ -18,6 +18,7 @@ import {
 } from "@/lib/albumRelatedEvents";
 import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
+import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
  * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
@@ -55,10 +56,14 @@ const ALBUM_PAGE_MAX_WIDTH = 1280;
  *      until b03 / b04 fill them in.
  *
  * Locale filter on every nested `translations` block mirrors the
- * Event detail page's pattern (`{ locale: { in: [locale, "ja"] } }`):
+ * Event detail page's pattern (`{ locale: { in: [locale, FALLBACK_LOCALE] } }`):
  * fetch the requested locale plus the canonical ja-original fallback,
  * not the whole locale Cartesian product. The display helpers cascade
  * through the parent row's `original*` columns when neither match.
+ * `FALLBACK_LOCALE` lives in `src/i18n/routing.ts` so this site and
+ * every other consumer (event-page SSR, /api/setlist polling, OG
+ * routes, top3 wishes loader, album-related-events helper) move in
+ * sync when non-JP IPs eventually require broadening the fallback set.
  *
  * v0.14.x reshape — corrections vs the original task spec which
  * predated b01 / b01b:
@@ -73,7 +78,7 @@ const ALBUM_PAGE_MAX_WIDTH = 1280;
  *     reaching for `song.translations`.
  */
 const getAlbum = cache(async (id: bigint, locale: string) => {
-  const localeFilter = { locale: { in: [locale, "ja"] } };
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const album = await prisma.album.findUnique({
     where: { id },
     include: {

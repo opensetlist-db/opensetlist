@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString, type BigIntStringified } from "@/lib/utils";
 import { AlbumType, SetlistItemStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
  * Type-aware "related events" fetch for the Album page's events tab
@@ -145,7 +146,7 @@ export const getAlbumRelatedEvents = cache(
     locale: string,
     pattern1SongIds: bigint[],
   ): Promise<RelatedEvent[]> => {
-    const localeFilter = { locale: { in: [locale, "ja"] } };
+    const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
     const include = {
       translations: { where: localeFilter },
       eventSeries: {

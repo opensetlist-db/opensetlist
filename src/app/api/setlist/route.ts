@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus } from "@/lib/eventStatus";
+import {
+  locales,
+  defaultLocale,
+  FALLBACK_LOCALE,
+  type Locale,
+} from "@/i18n/routing";
 
 export async function GET(req: NextRequest) {
   // `new URL(req.url)` over `req.nextUrl` so unit tests can invoke
@@ -12,12 +18,25 @@ export async function GET(req: NextRequest) {
   if (!eventIdParam) {
     return NextResponse.json({ error: "eventId required" }, { status: 400 });
   }
-  // Locale is optional — when absent, the wishlist top-3 song
-  // payload returns every translation. Existing callers that don't
-  // pass `?locale=` keep working byte-identically; the polling hook
-  // (useSetlistPolling) threads the active locale through so the
-  // payload stays as small as the per-page event query.
-  const locale = url.searchParams.get("locale");
+  // Locale is normalized to one of the supported values from
+  // `src/i18n/routing.ts` (single source of truth for the locale set
+  // + default). The polling hook and realtime fetchSnapshot both
+  // always pass `?locale=`; the default-on-miss is defensive coverage
+  // for unauthenticated tooling / direct curls.
+  //
+  // The normalized locale drives:
+  //   1. `fetchEventWishlistTop3` — already locale-aware.
+  //   2. The `{ in: [locale, FALLBACK_LOCALE] }` filter on every
+  //      nested `translations` include below. See the JSDoc on
+  //      `FALLBACK_LOCALE` for why the fallback row is load-bearing
+  //      and why it's a shared constant rather than an inlined literal
+  //      (this route + SSR `page.tsx:getEvent` must move in sync if
+  //      the fallback locale ever changes).
+  const localeParam = url.searchParams.get("locale");
+  const locale: Locale = locales.includes(localeParam as Locale)
+    ? (localeParam as Locale)
+    : defaultLocale;
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
 
   let eventId: bigint;
   try {
@@ -27,16 +46,30 @@ export async function GET(req: NextRequest) {
   }
 
   const [items, reactionGroups, top3Wishes] = await Promise.all([
+    // Explicit `select` (not `include`) to control egress on the
+    // Postgres → Vercel pooler wire. Supabase meters this hop
+    // uncompressed; the wholesale include shape was 207 KB / call
+    // (eventId=1, 39 SetlistItems), dominated by 3-locale translation
+    // floods + junction-table primary keys + admin-only scalars. F24
+    // narrows to ~30-38 KB / call by listing exactly the fields the
+    // event-page reads. Every field below is grep-verified against
+    // event-page render code; see plan file for the audit table.
     prisma.setlistItem.findMany({
       where: { eventId, isDeleted: false },
       orderBy: { position: "asc" },
-      omit: { note: true },
-      include: {
+      select: {
+        id: true,
+        position: true,
+        isEncore: true,
+        stageType: true,
+        unitName: true,
+        status: true,
+        performanceType: true,
+        type: true,
+        createdAt: true,
         // Per-item Confirm count. Drives:
         //   1. The visual count rendered next to the ✓ button on
-        //      rumoured rows (existing PR #283 UX, currently
-        //      derives the count from a separate path on the
-        //      client; this surface unifies it).
+        //      rumoured rows.
         //   2. The conflict-handling sort order — sibling rumoured
         //      rows at the same position render top-down by
         //      confirmCount DESC, createdAt ASC. See
@@ -78,41 +111,118 @@ export async function GET(req: NextRequest) {
           select: { status: true, startTime: true, isDeleted: true },
         },
         songs: {
-          include: {
+          orderBy: { order: "asc" },
+          select: {
+            order: true,
             song: {
-              include: {
-                translations: true,
+              select: {
+                id: true,
+                slug: true,
+                originalTitle: true,
+                originalLanguage: true,
+                variantLabel: true,
+                baseVersionId: true,
+                translations: {
+                  where: localeFilter,
+                  select: {
+                    locale: true,
+                    title: true,
+                    variantLabel: true,
+                  },
+                },
                 artists: {
-                  include: {
-                    artist: { include: { translations: true } },
+                  select: {
+                    artist: {
+                      select: {
+                        id: true,
+                        slug: true,
+                        type: true,
+                        color: true,
+                        originalName: true,
+                        originalShortName: true,
+                        originalLanguage: true,
+                        translations: {
+                          where: localeFilter,
+                          select: {
+                            locale: true,
+                            name: true,
+                            shortName: true,
+                          },
+                        },
+                      },
+                    },
                   },
                 },
               },
             },
           },
-          orderBy: { order: "asc" },
         },
         performers: {
-          include: {
+          select: {
             stageIdentity: {
-              include: {
-                translations: true,
+              select: {
+                id: true,
+                slug: true,
+                originalName: true,
+                originalShortName: true,
+                originalLanguage: true,
+                translations: {
+                  where: localeFilter,
+                  select: {
+                    locale: true,
+                    name: true,
+                    shortName: true,
+                  },
+                },
                 // Required by the sidebar's per-unit member sublist
-                // re-derivation in `LiveEventLayout`. Without this,
+                // re-derivation in `LiveEventLayout` /
+                // `src/lib/sidebarDerivations.ts:133`. Without this,
                 // a polled setlist that introduces a new performer
                 // would render with no unit affiliation in the
                 // `<UnitsCard>` member list. Mirrors the include
                 // shape on the page-level event query
-                // (`page.tsx:88-98`).
+                // (`page.tsx:121-125`).
                 artistLinks: { select: { artistId: true } },
               },
             },
-            realPerson: { include: { translations: true } },
+            realPerson: {
+              select: {
+                id: true,
+                slug: true,
+                originalName: true,
+                originalLanguage: true,
+                translations: {
+                  where: localeFilter,
+                  select: {
+                    locale: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
         artists: {
-          include: {
-            artist: { include: { translations: true } },
+          select: {
+            artist: {
+              select: {
+                id: true,
+                slug: true,
+                type: true,
+                color: true,
+                originalName: true,
+                originalShortName: true,
+                originalLanguage: true,
+                translations: {
+                  where: localeFilter,
+                  select: {
+                    locale: true,
+                    name: true,
+                    shortName: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
