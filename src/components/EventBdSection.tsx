@@ -41,16 +41,15 @@ import { colors, radius, shadows } from "@/styles/tokens";
  * not seconds, so there's no client-side ticker.
  */
 
-// Tight wire-shape contract. The Event page's `getEvent()` runs
-// `serializeBigInt` over the result, so every `bigint` is `number` at
-// runtime / `string` at the type level via BigIntStringified. The
-// component reads ids as `string` (Link template-literals work
-// identically); Dates arrive as ISO strings.
-//
-// `Prisma.AlbumGetPayload` composes the include shape into the typed
-// Album with translations + artists.artist.translations + listings.
-// {translations, bonuses.translations}. Matches the include block that
-// the Event detail page's getEvent fetch adds for `bdAlbum`.
+// Wire-shape contract. The page's `getEvent()` returns a payload that
+// for this component's bdAlbum slice has been re-run through
+// `serializeBigIntAsString` (the String variant — see the page's
+// EventBdSection mount comment for why), so every `bigint` arrives as
+// `string` and every `Date` arrives as ISO `string`. The
+// `BigIntStringified<T>` type companion mirrors that exact runtime
+// shape — used identically by AlbumInfoCard / ListingCard /
+// AlbumBonusTab so the bonus-display helpers
+// (resolveStoreName / resolveBonusType) type-check cleanly here.
 export type EventBdAlbumInput = BigIntStringified<
   Prisma.AlbumGetPayload<{
     include: {
@@ -72,13 +71,16 @@ export type EventBdAlbumInput = BigIntStringified<
 
 // Event slice consumed by the section. Stays narrower than the page's
 // full event shape — only the four columns the resolver + render path
-// actually read. Lets the page hand the BigIntStringified event
-// directly without further narrowing.
+// actually read. The bdAlbum subtree is pre-converted with
+// `serializeBigIntAsString` (String-id variant) at the page boundary;
+// the surrounding event fields stay at their `serializeBigInt`
+// (Number-id) wire shape, but the resolver only reads `bdAlbumId` for
+// presence / nullness — coercion-tolerant either way.
 export type EventBdEventInput = {
-  id: string;
+  id: string | number | bigint;
   startTime: string | Date | null;
   status: Prisma.EventGetPayload<object>["status"];
-  bdAlbumId: string | null;
+  bdAlbumId: string | number | bigint | null;
   bdAlbum: EventBdAlbumInput | null;
 };
 
@@ -315,7 +317,11 @@ async function FullVariant({
             display: "flex",
             alignItems: "center",
             gap: 12,
-            marginBottom: showsBonuses && topBonuses.length > 0 ? 14 : 14,
+            marginBottom: 14,
+            // When a bonus preview block follows, this Link draws a
+            // hairline divider between the album info row and the
+            // bonus list. Without bonuses the row sits flush against
+            // the CTA below it (no divider, no extra bottom padding).
             paddingBottom: showsBonuses && topBonuses.length > 0 ? 14 : 0,
             borderBottom:
               showsBonuses && topBonuses.length > 0

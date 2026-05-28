@@ -2,7 +2,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigInt, serializeBigIntAsString } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
@@ -982,17 +982,29 @@ export default async function EventPage({ params }: Props) {
         bdSection={
           <EventBdSection
             event={{
-              id: String(event.id),
+              id: event.id,
               startTime: event.startTime,
               status: event.status,
-              bdAlbumId: event.bdAlbumId !== null && event.bdAlbumId !== undefined
-                ? String(event.bdAlbumId)
-                : null,
+              bdAlbumId: event.bdAlbumId ?? null,
+              // Run the bdAlbum subtree through serializeBigIntAsString
+              // so the **type system** narrows to BigIntStringified
+              // (string ids + ISO-string Dates) — the same contract the
+              // bonus-display helpers (resolveStoreName /
+              // resolveBonusType) expect, sourced from AlbumInfoCard /
+              // ListingCard / AlbumBonusTab. At runtime this is
+              // effectively a deep clone: getEvent already ran
+              // serializeBigInt over the whole tree, so the bigints are
+              // already Numbers (not bigints) by the time we get here —
+              // serializeBigIntAsString's replacer only matches
+              // `typeof === "bigint"`, leaves Numbers alone. The
+              // section's read sites (template literals,
+              // React keys, bonus-helper translation lookups) are all
+              // coercion-tolerant between Number and string, so the
+              // residual type/runtime mismatch on id columns is the
+              // same shape every other Prisma-payload consumer in this
+              // file accepts (see LiveSetlistItem cast at line 881).
               bdAlbum: event.bdAlbum
-                ? // serializeBigInt has already converted bigint ids to
-                  // numbers on the wire; the component type expects strings
-                  // (BigIntStringified). Cast via unknown to bridge.
-                  (event.bdAlbum as unknown as Parameters<typeof EventBdSection>[0]["event"]["bdAlbum"])
+                ? serializeBigIntAsString(event.bdAlbum)
                 : null,
             }}
             locale={locale}
