@@ -32,6 +32,7 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
+import { FALLBACK_LOCALE } from "@/i18n/routing";
 import type { Metadata } from "next";
 
 type Props = {
@@ -57,7 +58,7 @@ type Props = {
 // `originalName` / `originalShortName` columns when neither row
 // matches, so a missing translation never renders blank.
 const getEvent = cache(async (id: bigint, locale: string) => {
-  const localeFilter = { locale: { in: [locale, "ja"] } };
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -284,7 +285,7 @@ async function getAvailableSongs(
   locale: string,
 ): Promise<AvailableSong[]> {
   const primaryAsBigInt = BigInt(primaryArtistId);
-  const localeFilter = { locale: { in: [locale, "ja"] } };
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const rows = await prisma.song.findMany({
     where: {
       isDeleted: false,
@@ -555,7 +556,9 @@ async function getTrendingSongs(
           include: {
             song: {
               include: {
-                translations: { where: { locale: { in: [locale, "ja"] } } },
+                translations: {
+                  where: { locale: { in: [locale, FALLBACK_LOCALE] } },
+                },
               },
             },
           },

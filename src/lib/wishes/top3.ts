@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import type { FanTop3Entry } from "@/lib/types/setlist";
+import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /**
  * Per-event "fan TOP-3 wished songs" loader. Single source of truth
@@ -41,7 +42,9 @@ export async function fetchEventWishlistTop3(
   if (groups.length === 0) return [];
 
   const songIds = groups.map((g) => g.songId);
-  const localeFilter = locale ? { locale: { in: [locale, "ja"] } } : undefined;
+  const localeFilter = locale
+    ? { locale: { in: [locale, FALLBACK_LOCALE] } }
+    : undefined;
   const songs = await prisma.song.findMany({
     where: { id: { in: songIds }, isDeleted: false },
     select: {
