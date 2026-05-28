@@ -13,6 +13,7 @@ import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
 import { TabBar } from "@/components/TabBar";
 import {
   getAlbumRelatedEvents,
+  getAlbumRelatedEventsCount,
   type RelatedEvent,
 } from "@/lib/albumRelatedEvents";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
@@ -238,15 +239,13 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
   // Events tab needs its count for the tab-label string regardless of
-  // which tab is active (per mockup tab format "관련 공연 (N)"). Fetch
-  // unconditionally here; getAlbumRelatedEvents is react.cache-wrapped
-  // so the events-tab body render below collapses to the same DB
-  // roundtrip with this lookup.
-  //
-  // Pattern 1 song-id collection inside the helper stays a separate
-  // Prisma query (bigint round-trip kept out of serializeBigIntAsString's
-  // JSON path — see helper's docstring).
-  const relatedEvents: RelatedEvent[] = await getAlbumRelatedEvents(
+  // which tab is active (per mockup tab format "관련 공연 (N)"). Use
+  // the dedicated COUNT-only helper instead of the full fetch — the
+  // tab body's `getAlbumRelatedEvents(...)` below only fires when the
+  // user actually lands on the events tab, so the COUNT query is the
+  // cheap always-on companion. The two helpers share WHERE shape so
+  // the badge stays consistent with the rendered list.
+  const eventsCount = await getAlbumRelatedEventsCount(
     BigInt(id),
     album.type as AlbumType,
     locale,
@@ -255,7 +254,10 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // Tab counts surfaced inline in the tab labels per mockup
   // (`매장特典 (8) / 수록곡 (17) / 관련 공연 (2)` form). Same
   // discipline as the mockup's `tokutenData.length` / `tracks.length`
-  // / `performances.reduce(...)` computations.
+  // / `performances.reduce(...)` computations. `bonusTotal` is the
+  // single source of truth — passed through to AlbumInfoCard so the
+  // sidebar's bonus-stat chip section can't silently diverge from the
+  // tab badge.
   const bonusTotal = album.listings.reduce(
     (sum, l) => sum + l.bonuses.length,
     0,
@@ -263,12 +265,25 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const tabCounts: Record<AlbumTabKey, number> = {
     bonus: bonusTotal,
     tracks: album.tracks.length,
-    events: relatedEvents.length,
+    events: eventsCount,
   };
   const tabs = visibleTabs.map((key) => ({
     key,
     label: `${t(`tab.${key}`)} (${tabCounts[key]})`,
   }));
+
+  // Full events fetch is lazy — only the events tab body needs the
+  // include tree + sort + take:50. react.cache inside the helper means
+  // generateMetadata-style double calls still collapse to one DB
+  // roundtrip if a future caller asks twice.
+  let relatedEvents: RelatedEvent[] = [];
+  if (activeTab === "events") {
+    relatedEvents = await getAlbumRelatedEvents(
+      BigInt(id),
+      album.type as AlbumType,
+      locale,
+    );
+  }
 
   // Primary artist drives the breadcrumb middle segment + the artist
   // anchor inside InfoCard. AlbumArtist has no `role` column (unlike
@@ -340,7 +355,11 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             Tailwind class evaluates at the lg breakpoint (≥1024px),
             matching mockup's `isDesktop` cutoff. */}
         <aside className="lg:sticky lg:top-[72px]">
-          <AlbumInfoCard album={album} locale={locale} />
+          <AlbumInfoCard
+            album={album}
+            locale={locale}
+            totalBonusCount={bonusTotal}
+          />
         </aside>
         <section>
           <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />

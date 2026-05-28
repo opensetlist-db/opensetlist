@@ -64,6 +64,67 @@ export type RelatedEvent = BigIntStringified<
   }>
 >;
 
+/*
+ * Cheap COUNT-only companion to `getAlbumRelatedEvents`. The tab label
+ * on the album page needs the related-events total regardless of which
+ * tab the user landed on; the full fetch (with its include tree + sort
+ * + `take: 50` cap) is wasteful when the user isn't actually viewing
+ * the events tab. Both helpers share the same WHERE shape per album
+ * type, so the count is consistent with the eventual list render.
+ *
+ * react.cache wrap is independent of `getAlbumRelatedEvents` — they
+ * each cache their own (albumId, type, locale) tuple, no cross-talk.
+ * Locale arg is unused inside the count query itself; included in the
+ * signature for symmetry + so a future filter that does depend on
+ * locale stays cache-key-correct.
+ */
+export const getAlbumRelatedEventsCount = cache(
+  async (
+    albumId: bigint,
+    albumType: AlbumType,
+    _locale: string,
+  ): Promise<number> => {
+    const eventSeriesFilter = {
+      OR: [{ eventSeriesId: null }, { eventSeries: { isDeleted: false } }],
+    };
+
+    if (albumType === AlbumType.live_album) {
+      return prisma.event.count({
+        where: {
+          bdAlbumId: albumId,
+          isDeleted: false,
+          ...eventSeriesFilter,
+        },
+      });
+    }
+
+    const trackRows = await prisma.albumTrack.findMany({
+      where: { albumId, songId: { not: null } },
+      select: { songId: true },
+    });
+    const pattern1SongIds = trackRows
+      .map((t) => t.songId)
+      .filter((sid): sid is bigint => sid !== null);
+    if (pattern1SongIds.length === 0) return 0;
+
+    return prisma.event.count({
+      where: {
+        isDeleted: false,
+        ...eventSeriesFilter,
+        setlistItems: {
+          some: {
+            isDeleted: false,
+            status: {
+              in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
+            },
+            songs: { some: { songId: { in: pattern1SongIds } } },
+          },
+        },
+      },
+    });
+  },
+);
+
 export const getAlbumRelatedEvents = cache(
   async (
     albumId: bigint,

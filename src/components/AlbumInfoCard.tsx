@@ -79,9 +79,21 @@ export type AlbumForInfoCard = BigIntStringified<
 interface Props {
   album: AlbumForInfoCard;
   locale: string;
+  /**
+   * Total bonus count (active + ended) computed once by the page
+   * server component so the sidebar's `총 N개` chip can never
+   * silently diverge from the tab-bar's `매장특전 (N)` badge. Both
+   * read from the same `album.listings.reduce(...)` value — passing
+   * it as a prop here makes the single source of truth explicit.
+   */
+  totalBonusCount: number;
 }
 
-export async function AlbumInfoCard({ album, locale }: Props) {
+export async function AlbumInfoCard({
+  album,
+  locale,
+  totalBonusCount,
+}: Props) {
   const t = await getTranslations({ locale, namespace: "Album" });
 
   const title =
@@ -112,10 +124,11 @@ export async function AlbumInfoCard({ album, locale }: Props) {
   const secondaryArtists = album.artists.slice(1);
 
   const trackCount = album.tracks.length;
-  const totalBonusCount = album.listings.reduce(
-    (sum, l) => sum + l.bonuses.length,
-    0,
-  );
+  // `totalBonusCount` arrives as a prop (single source of truth with
+  // the tab-bar badge). `activeBonusCount` + `endedBonusCount` are
+  // derived locally — they partition the same listings tree, so their
+  // sum is invariant to `totalBonusCount` by construction and no
+  // cross-component divergence is possible.
   const activeBonusCount = album.listings
     .filter((l) => !isEndedListing(l))
     .reduce((sum, l) => sum + l.bonuses.length, 0);
@@ -374,19 +387,17 @@ export async function AlbumInfoCard({ album, locale }: Props) {
   );
 }
 
-// Bonus-stat chip palette. Colors picked literal from the mockup
-// rather than wired through the design-token system because the
-// mockup uses a specific traffic-light semantic mapping (blue=count,
-// green=available, gray=ended) that isn't represented as named
-// tokens in `@/styles/tokens` today. If a future surface needs the
-// same palette, lifting these to tokens is the right move.
+// Bonus-stat chip palette — wired through the design-token system
+// (colors.bonusTotal* / bonusActive* / bonusEnded*). Traffic-light
+// semantic mapping (blue=count, green=available, gray=ended) — see
+// the tokens.ts inline comment for the per-shade rationale.
 const BONUS_CHIP_PALETTE: Record<
   "total" | "active" | "ended",
   { color: string; bg: string }
 > = {
-  total: { color: "#0277BD", bg: "#e8f4fd" },
-  active: { color: "#16a34a", bg: "#f0fdf4" },
-  ended: { color: "#64748b", bg: "#f1f5f9" },
+  total: { color: colors.bonusTotalText, bg: colors.bonusTotalBg },
+  active: { color: colors.bonusActiveText, bg: colors.bonusActiveBg },
+  ended: { color: colors.bonusEndedText, bg: colors.bonusEndedBg },
 };
 
 function BonusChip({
