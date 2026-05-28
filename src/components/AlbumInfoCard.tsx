@@ -5,6 +5,7 @@ import { InfoCard } from "@/components/InfoCard";
 import { colors, radius, shadows } from "@/styles/tokens";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
 import { isEndedListing } from "@/lib/albumBonusDisplay";
+import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
 
 /*
@@ -102,14 +103,76 @@ export async function AlbumInfoCard({ album, locale }: Props) {
       )
     : null;
 
+  // Secondary artists (any artist past the first credited row). Render
+  // as muted chips inline beneath the primary-artist link so a
+  // multi-artist single / OST still surfaces every contributing
+  // artist on the sidebar. mockup intent: the album page is a
+  // collaboration surface; the primary anchor + secondary chips
+  // mirror how the song page exposes the same relationship.
+  const secondaryArtists = album.artists.slice(1);
+
   const trackCount = album.tracks.length;
-  const listingCount = album.listings.length;
-  const bonusCount = album.listings
+  const totalBonusCount = album.listings.reduce(
+    (sum, l) => sum + l.bonuses.length,
+    0,
+  );
+  const activeBonusCount = album.listings
     .filter((l) => !isEndedListing(l))
     .reduce((sum, l) => sum + l.bonuses.length, 0);
   const endedBonusCount = album.listings
     .filter(isEndedListing)
     .reduce((sum, l) => sum + l.bonuses.length, 0);
+
+  // Mockup's sidebar meta block (line 656-676): 4 label/value rows
+  // with a fixed 48-px label gutter. Each row only renders when its
+  // value is non-empty so a Phase 1 row missing label / release date
+  // doesn't draw an "—" stub. The artist row links to the primary
+  // artist page; the rest are static text.
+  const metaRows: Array<{
+    key: "artist" | "releaseDate" | "label" | "trackCount";
+    label: string;
+    value: React.ReactNode;
+  }> = [];
+  if (primaryArtist && primaryArtistName) {
+    metaRows.push({
+      key: "artist",
+      label: t("meta.label.artist"),
+      value: (
+        <Link
+          href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+          style={{
+            color: colors.primary,
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
+        >
+          {primaryArtistName}
+        </Link>
+      ),
+    });
+  }
+  if (album.releaseDate) {
+    metaRows.push({
+      key: "releaseDate",
+      label: t("meta.label.releaseDate"),
+      value: formatDate(album.releaseDate, locale),
+    });
+  }
+  if (album.labelName) {
+    metaRows.push({
+      key: "label",
+      label: t("meta.label.label"),
+      value: album.labelName,
+    });
+  }
+  if (trackCount > 0) {
+    metaRows.push({
+      key: "trackCount",
+      label: t("meta.label.trackCount"),
+      value: t("stats.trackCount", { count: trackCount }),
+    });
+  }
 
   return (
     <InfoCard artist={primaryArtist}>
@@ -163,7 +226,7 @@ export async function AlbumInfoCard({ album, locale }: Props) {
         style={{
           fontSize: 22,
           fontWeight: 800,
-          margin: "0 0 8px",
+          margin: "0 0 16px",
           color: colors.textPrimary,
           lineHeight: 1.3,
         }}
@@ -171,59 +234,179 @@ export async function AlbumInfoCard({ album, locale }: Props) {
         {title}
       </h1>
 
-      {primaryArtist && primaryArtistName ? (
-        <Link
-          href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+      {/* Meta rows — mockup line 656-676. Label gutter pinned at 48px
+          so the 발매일 / 레이블 / 수록곡 / 아티스트 row starts align
+          even when the value spans multiple lines. */}
+      {metaRows.length > 0 ? (
+        <div
           style={{
-            color: colors.textSubtle,
-            fontSize: 14,
-            fontWeight: 600,
-            textDecoration: "none",
-            borderBottom: `1px solid ${colors.borderSubtle}`,
-            paddingBottom: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            marginBottom: secondaryArtists.length > 0 ? 12 : 16,
           }}
         >
-          {primaryArtistName}
-        </Link>
+          {metaRows.map((row) => (
+            <div
+              key={row.key}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: colors.textMuted,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  width: 48,
+                  flexShrink: 0,
+                  paddingTop: 1,
+                }}
+              >
+                {row.label}
+              </span>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: colors.textPrimary,
+                  fontWeight: 400,
+                  wordBreak: "break-word",
+                }}
+              >
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          marginTop: 16,
-        }}
-      >
-        {trackCount > 0 ? <Chip>{t("stats.trackCount", { count: trackCount })}</Chip> : null}
-        {listingCount > 0 ? <Chip>{t("stats.listingCount", { count: listingCount })}</Chip> : null}
-        {bonusCount > 0 ? <Chip>{t("stats.bonusCount", { count: bonusCount })}</Chip> : null}
-        {endedBonusCount > 0 ? (
-          <Chip variant="muted">{t("stats.endedBonusCount", { count: endedBonusCount })}</Chip>
-        ) : null}
-      </div>
+      {/* Secondary artist credit chips — render only when the album
+          credits more than one artist. Each chip links to its artist
+          page so a multi-artist collab page surfaces every credited
+          artist as a navigable hop. */}
+      {secondaryArtists.length > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            marginBottom: 16,
+          }}
+        >
+          {secondaryArtists.map((aa) => {
+            const a = aa.artist;
+            const name = displayNameWithFallback(a, a.translations, locale);
+            if (!name) return null;
+            return (
+              <Link
+                key={a.id}
+                href={`/${locale}/artists/${a.id}/${a.slug}`}
+                style={{
+                  display: "inline-block",
+                  padding: "3px 9px",
+                  background: colors.bgSubtle,
+                  color: colors.textSubtle,
+                  borderRadius: radius.tag,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* Bonus stats section — mockup line 678-716: borderTop separator
+          + section label + chip row. 3-chip layout per the b03-b05
+          simplification handoff (active/ended only — sold_out and
+          unknown collapse into "active" upstream in isEndedListing).
+          Each chip color-coded:
+            총 N개   — primary blue (matches mockup #0277BD / #e8f4fd)
+            활성 X    — emerald green (#16a34a / #f0fdf4)
+            종료 Z    — slate gray   (#64748b / #f1f5f9)
+          Renders nothing when the album has zero listings — the empty
+          state is the bonus tab's placeholder, not a stub-zero chip. */}
+      {totalBonusCount > 0 ? (
+        <div
+          style={{
+            borderTop: `1px solid ${colors.borderSubtle}`,
+            paddingTop: 14,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: colors.textMuted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            {t("stats.bonusSectionLabel")}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <BonusChip variant="total">
+              {t("stats.totalBonusCount", { count: totalBonusCount })}
+            </BonusChip>
+            {activeBonusCount > 0 ? (
+              <BonusChip variant="active">
+                {t("stats.activeBonusCount", { count: activeBonusCount })}
+              </BonusChip>
+            ) : null}
+            {endedBonusCount > 0 ? (
+              <BonusChip variant="ended">
+                {t("stats.endedBonusCount", { count: endedBonusCount })}
+              </BonusChip>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </InfoCard>
   );
 }
 
-function Chip({
+// Bonus-stat chip palette. Colors picked literal from the mockup
+// rather than wired through the design-token system because the
+// mockup uses a specific traffic-light semantic mapping (blue=count,
+// green=available, gray=ended) that isn't represented as named
+// tokens in `@/styles/tokens` today. If a future surface needs the
+// same palette, lifting these to tokens is the right move.
+const BONUS_CHIP_PALETTE: Record<
+  "total" | "active" | "ended",
+  { color: string; bg: string }
+> = {
+  total: { color: "#0277BD", bg: "#e8f4fd" },
+  active: { color: "#16a34a", bg: "#f0fdf4" },
+  ended: { color: "#64748b", bg: "#f1f5f9" },
+};
+
+function BonusChip({
   children,
-  variant = "default",
+  variant,
 }: {
   children: React.ReactNode;
-  variant?: "default" | "muted";
+  variant: "total" | "active" | "ended";
 }) {
+  const palette = BONUS_CHIP_PALETTE[variant];
   return (
     <span
       style={{
         display: "inline-block",
-        padding: "4px 10px",
-        background: variant === "muted" ? "transparent" : colors.bgSubtle,
-        color: variant === "muted" ? colors.textMuted : colors.textSubtle,
-        border: variant === "muted" ? `1px dashed ${colors.borderSubtle}` : "none",
+        padding: "3px 9px",
+        background: palette.bg,
+        color: palette.color,
         borderRadius: radius.tag,
-        fontSize: 12,
-        fontWeight: 600,
+        fontSize: 11,
+        fontWeight: 700,
         whiteSpace: "nowrap",
       }}
     >

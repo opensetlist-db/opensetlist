@@ -158,11 +158,25 @@
       "trackCount": "{count, plural, one {# track} other {# tracks}}",
       "bonusCount": "{count, plural, one {# bonus} other {# bonuses}}",
       "endedBonusCount": "{count, plural, one {# ended} other {# ended}}",
-      "listingCount": "{count, plural, one {# store} other {# stores}}"
+      "listingCount": "{count, plural, one {# store} other {# stores}}",
+      "totalBonusCount": "{count, plural, one {1 total} other {# total}}",
+      "activeBonusCount": "{count, plural, one {1 active} other {# active}}",
+      "bonusSectionLabel": "Store Bonuses"
+    },
+    "breadcrumb": {
+      "aria": "Breadcrumb",
+      "home": "Home",
+      "albums": "Albums"
     },
     "meta": {
       "titleTemplate": "{title} - {artist} store bonuses | OpenSetlist",
-      "descriptionTemplate": "{title} store bonuses list"
+      "descriptionTemplate": "{title} store bonuses list",
+      "label": {
+        "artist": "Artist",
+        "releaseDate": "Released",
+        "label": "Label",
+        "trackCount": "Tracks"
+      }
     },
     "tabsAriaLabel": "Album page tabs",
     "tabBody": {

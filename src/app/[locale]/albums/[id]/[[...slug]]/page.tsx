@@ -1,4 +1,5 @@
 import { cache } from "react";
+import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
@@ -16,6 +17,7 @@ import {
 } from "@/lib/albumRelatedEvents";
 import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
+import { colors } from "@/styles/tokens";
 
 /*
  * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
@@ -235,66 +237,130 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const defaultTab: AlbumTabKey = album.type === AlbumType.live_album ? "events" : "bonus";
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
+  // Events tab needs its count for the tab-label string regardless of
+  // which tab is active (per mockup tab format "관련 공연 (N)"). Fetch
+  // unconditionally here; getAlbumRelatedEvents is react.cache-wrapped
+  // so the events-tab body render below collapses to the same DB
+  // roundtrip with this lookup.
+  //
+  // Pattern 1 song-id collection inside the helper stays a separate
+  // Prisma query (bigint round-trip kept out of serializeBigIntAsString's
+  // JSON path — see helper's docstring).
+  const relatedEvents: RelatedEvent[] = await getAlbumRelatedEvents(
+    BigInt(id),
+    album.type as AlbumType,
+    locale,
+  );
+
+  // Tab counts surfaced inline in the tab labels per mockup
+  // (`매장特典 (8) / 수록곡 (17) / 관련 공연 (2)` form). Same
+  // discipline as the mockup's `tokutenData.length` / `tracks.length`
+  // / `performances.reduce(...)` computations.
+  const bonusTotal = album.listings.reduce(
+    (sum, l) => sum + l.bonuses.length,
+    0,
+  );
+  const tabCounts: Record<AlbumTabKey, number> = {
+    bonus: bonusTotal,
+    tracks: album.tracks.length,
+    events: relatedEvents.length,
+  };
   const tabs = visibleTabs.map((key) => ({
     key,
-    label: t(`tab.${key}`),
+    label: `${t(`tab.${key}`)} (${tabCounts[key]})`,
   }));
 
-  // Events tab uses its own cached helper rather than the main getAlbum
-  // tree because the query is type-aware (different WHERE clause on
-  // live_album vs everything else) and lives off a different relation
-  // graph. Only fetch when the user actually landed on the events tab —
-  // saves a roundtrip on the bonus / tracks views. react.cache wrap
-  // inside getAlbumRelatedEvents collapses re-calls if anything else
-  // in this request asks the same question.
-  //
-  // The helper pulls Pattern 1 song ids directly from Prisma so the
-  // BigInt precision never round-trips through JSON — that's why this
-  // call site no longer derives them from album.tracks (the cached
-  // album object's BigInts are already number-narrowed via
-  // serializeBigInt, which would truncate >2^53 ids).
-  let relatedEvents: RelatedEvent[] = [];
-  if (activeTab === "events") {
-    relatedEvents = await getAlbumRelatedEvents(
-      BigInt(id),
-      album.type as AlbumType,
-      locale,
-    );
-  }
+  // Primary artist drives the breadcrumb middle segment + the artist
+  // anchor inside InfoCard. AlbumArtist has no `role` column (unlike
+  // SongArtist's primary/featured/cover) so we pick the first row
+  // deterministically — matches AlbumInfoCard's own selection so the
+  // two surfaces never disagree on which artist is "primary."
+  const primaryArtist = album.artists[0]?.artist ?? null;
+  const primaryArtistName = primaryArtist
+    ? displayNameWithFallback(primaryArtist, primaryArtist.translations, locale)
+    : null;
 
   return (
-    <main
-      style={{
-        maxWidth: 1080,
-        margin: "0 auto",
-        padding: "24px 16px",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)",
-        gap: 24,
-        alignItems: "start",
-      }}
-    >
-      <aside>
-        <AlbumInfoCard album={album} locale={locale} />
-      </aside>
-      <section>
-        <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
-        {/* All three tabs now render real data panels (b03 / b04).
-            Explicit per-activeTab branches stay verbose rather than
-            collapsing into a map so a future revisit of any single
-            tab's component swap doesn't ripple through the others. */}
-        {activeTab === "bonus" ? (
-          <AlbumBonusTab album={album} locale={locale} />
-        ) : activeTab === "tracks" ? (
-          <AlbumTracksTab tracks={album.tracks} locale={locale} />
-        ) : (
-          <AlbumRelatedEventsTab
-            events={relatedEvents}
-            albumType={album.type as AlbumType}
-            locale={locale}
-          />
-        )}
-      </section>
-    </main>
+    <>
+      {/* Breadcrumb — mockup line 580-591. Mid-segment links to the
+          primary artist page (mockup's intent: artist is the
+          navigational parent of an album; Albums itself is not a
+          standalone list page in Sprint B1 scope). When the album
+          has no resolved primary artist, the middle segment is
+          dropped rather than rendering an empty link. */}
+      <nav
+        aria-label={t("breadcrumb.aria")}
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "14px 16px",
+          fontSize: 12,
+          color: colors.textMuted,
+        }}
+      >
+        <Link
+          href={`/${locale}`}
+          style={{ color: "inherit", textDecoration: "none" }}
+        >
+          {t("breadcrumb.home")}
+        </Link>
+        {primaryArtist && primaryArtistName ? (
+          <>
+            <span style={{ margin: "0 6px" }}>›</span>
+            <Link
+              href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
+              style={{
+                color: colors.primary,
+                textDecoration: "none",
+              }}
+            >
+              {primaryArtistName}
+            </Link>
+          </>
+        ) : null}
+        <span style={{ margin: "0 6px" }}>›</span>
+        <span style={{ color: colors.textPrimary }}>
+          {t("breadcrumb.albums")}
+        </span>
+      </nav>
+      <main
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: "0 16px 60px",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 260px) minmax(0, 1fr)",
+          gap: 28,
+          alignItems: "start",
+        }}
+      >
+        {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
+            pattern (song page.tsx ~line 644) so the InfoCard pins under
+            the global nav on desktop while scrolling the tab body. The
+            Tailwind class evaluates at the lg breakpoint (≥1024px),
+            matching mockup's `isDesktop` cutoff. */}
+        <aside className="lg:sticky lg:top-[72px]">
+          <AlbumInfoCard album={album} locale={locale} />
+        </aside>
+        <section>
+          <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
+          {/* All three tabs now render real data panels (b03 / b04).
+              Explicit per-activeTab branches stay verbose rather than
+              collapsing into a map so a future revisit of any single
+              tab's component swap doesn't ripple through the others. */}
+          {activeTab === "bonus" ? (
+            <AlbumBonusTab album={album} locale={locale} />
+          ) : activeTab === "tracks" ? (
+            <AlbumTracksTab tracks={album.tracks} locale={locale} />
+          ) : (
+            <AlbumRelatedEventsTab
+              events={relatedEvents}
+              albumType={album.type as AlbumType}
+              locale={locale}
+            />
+          )}
+        </section>
+      </main>
+    </>
   );
 }

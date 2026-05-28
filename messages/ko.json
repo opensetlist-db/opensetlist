@@ -155,14 +155,28 @@
       "events": "관련 공연"
     },
     "stats": {
-      "trackCount": "{count, plural, other {수록곡 #}}",
+      "trackCount": "{count, plural, other {#곡}}",
       "bonusCount": "{count, plural, other {특전 #}}",
       "endedBonusCount": "{count, plural, other {종료 #}}",
-      "listingCount": "{count, plural, other {매장 #}}"
+      "listingCount": "{count, plural, other {매장 #}}",
+      "totalBonusCount": "{count, plural, other {총 #개}}",
+      "activeBonusCount": "{count, plural, other {활성 #}}",
+      "bonusSectionLabel": "매장특전"
+    },
+    "breadcrumb": {
+      "aria": "탐색 경로",
+      "home": "홈",
+      "albums": "앨범"
     },
     "meta": {
       "titleTemplate": "{title} - {artist} 매장특전 | OpenSetlist",
-      "descriptionTemplate": "{title} 매장특전 일람"
+      "descriptionTemplate": "{title} 매장특전 일람",
+      "label": {
+        "artist": "아티스트",
+        "releaseDate": "발매일",
+        "label": "레이블",
+        "trackCount": "수록곡"
+      }
     },
     "tabsAriaLabel": "앨범 페이지 탭",
     "tabBody": {
