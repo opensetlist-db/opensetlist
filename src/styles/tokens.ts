@@ -100,8 +100,12 @@ export const colors = {
 
   // Soft-warning feedback (e.g. edit-cooldown countdown). Distinct from
   // `error` (hard fail) and from trending-UI tokens (semantically
-  // unrelated despite the same amber family).
+  // unrelated despite the same amber family). Foreground + background
+  // pair kept adjacent in the file, matching the pairing convention
+  // every other status family (upcoming / completed / live / etc.)
+  // already follows.
   warning: "#d97706",
+  warningBg: "#fff3e0",
   upcoming: "#16a34a",
   upcomingBg: "#f0fdf4",
   upcomingBorder: "#bbf7d0",

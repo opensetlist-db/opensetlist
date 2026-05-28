@@ -47,7 +47,7 @@ const TYPE_PILL_STYLE: Record<
   album: { color: colors.primary, bg: colors.primaryBg },
   ep: { color: colors.primary, bg: colors.primaryBg },
   live_album: { color: colors.variant, bg: colors.variantBg },
-  soundtrack: { color: colors.warning, bg: "#fff3e0" },
+  soundtrack: { color: colors.warning, bg: colors.warningBg },
 };
 
 const DEFAULT_TYPE_PILL = {
