@@ -393,7 +393,17 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             totalBonusCount={bonusTotal}
           />
         </aside>
-        <section>
+        {/* `minWidth: 0` is the mobile-overflow guard: block layout
+            on phones defaults child block elements to a min-width of
+            their intrinsic content, so a PerformanceGroup row with
+            wide grid columns inside (the events tab) was making the
+            entire section box wider than the viewport and dragging
+            a horizontal scroll bar onto the page. Pinning the
+            section to `min-width: 0` (matching the same fix on
+            PerformanceGroup's own grid container) lets the inner
+            grid honour its own `minmax(0, 1fr)` track + clip with
+            `overflow: hidden` instead of overflowing outward. */}
+        <section style={{ minWidth: 0 }}>
           <TabBar tabs={tabs} active={activeTab} ariaLabel={t("tabsAriaLabel")} />
           {/* All three tabs now render real data panels (b03 / b04).
               Explicit per-activeTab branches stay verbose rather than

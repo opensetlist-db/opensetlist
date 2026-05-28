@@ -3,7 +3,10 @@ import { getTranslations } from "next-intl/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { InfoCard } from "@/components/InfoCard";
 import { colors, radius, shadows } from "@/styles/tokens";
-import { resolveLocalizedField, displayNameWithFallback } from "@/lib/display";
+import {
+  displayOriginalTitle,
+  displayOriginalName,
+} from "@/lib/display";
 import { isEndedListing } from "@/lib/albumBonusDisplay";
 import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
@@ -96,24 +99,33 @@ export async function AlbumInfoCard({
 }: Props) {
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  const title =
-    resolveLocalizedField(
-      album,
-      album.translations,
-      locale,
-      "title",
-      "originalTitle",
-    ) ?? t("unknown");
+  // Albums are artwork — original-language title leads, locale
+  // translation reads as the subtitle. Matches the song page's
+  // sidebar pattern (`displayOriginalTitle` for any
+  // artwork-identity surface). `main` is the original-language
+  // title; `sub` is the locale translation when it exists and
+  // differs from the original (returns null when same-locale or
+  // missing, so we never paint a duplicate line).
+  const titleParts = displayOriginalTitle(
+    album,
+    album.translations,
+    locale,
+  );
 
   const primaryArtistRow = album.artists[0] ?? null;
   const primaryArtist = primaryArtistRow?.artist ?? null;
-  const primaryArtistName = primaryArtist
-    ? displayNameWithFallback(
+  // Artists are identity — locale name leads, original-language
+  // name reads as the subtitle. Flipped from albums by design
+  // (`displayOriginalName` documents the rationale): a Korean
+  // viewer sees the Korean rendering on top of a Japanese tour.
+  const primaryArtistNameParts = primaryArtist
+    ? displayOriginalName(
         primaryArtist,
         primaryArtist.translations,
         locale,
       )
     : null;
+  const primaryArtistName = primaryArtistNameParts?.main ?? null;
 
   // Secondary artists (any artist past the first credited row). Render
   // as muted chips inline beneath the primary-artist link so a
@@ -155,6 +167,10 @@ export async function AlbumInfoCard({
     value: React.ReactNode;
   }> = [];
   if (primaryArtist && primaryArtistName) {
+    // Artist name follows the identity-name rule (locale primary,
+    // original-language sub). The sub line only renders when the
+    // helper returns a non-null `sub` — same-locale entries collapse
+    // to single-line cleanly.
     metaRows.push({
       key: "artist",
       label: t("meta.label.artist"),
@@ -166,9 +182,23 @@ export async function AlbumInfoCard({
             fontSize: 13,
             fontWeight: 600,
             textDecoration: "none",
+            display: "inline-flex",
+            flexDirection: "column",
+            gap: 1,
           }}
         >
-          {primaryArtistName}
+          <span>{primaryArtistName}</span>
+          {primaryArtistNameParts?.sub ? (
+            <span
+              style={{
+                fontSize: 11,
+                color: colors.textMuted,
+                fontWeight: 400,
+              }}
+            >
+              {primaryArtistNameParts.sub}
+            </span>
+          ) : null}
         </Link>
       ),
     });
@@ -187,7 +217,7 @@ export async function AlbumInfoCard({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={album.imageUrl}
-          alt={title}
+          alt={titleParts.main}
           referrerPolicy="no-referrer"
           style={{
             width: "100%",
@@ -233,13 +263,31 @@ export async function AlbumInfoCard({
         style={{
           fontSize: 22,
           fontWeight: 800,
-          margin: "0 0 16px",
+          margin: titleParts.sub ? "0 0 4px" : "0 0 16px",
           color: colors.textPrimary,
           lineHeight: 1.3,
         }}
       >
-        {title}
+        {titleParts.main}
       </h1>
+      {/* Locale-translation subtitle line — present only when the
+          translation exists and differs from the original
+          (displayOriginalTitle returns null on same-locale / no
+          translation, so the line collapses cleanly). Matches the
+          song page H1+subtitle shape. */}
+      {titleParts.sub ? (
+        <p
+          style={{
+            margin: "0 0 16px",
+            fontSize: 13,
+            color: colors.textSubtle,
+            lineHeight: 1.4,
+            fontWeight: 500,
+          }}
+        >
+          {titleParts.sub}
+        </p>
+      ) : null}
 
       {/* Meta rows — mockup line 656-676. Label gutter pinned at 48px
           so the 발매일 / 레이블 / 수록곡 / 아티스트 row starts align
@@ -306,7 +354,10 @@ export async function AlbumInfoCard({
         >
           {secondaryArtists.map((aa) => {
             const a = aa.artist;
-            const name = displayNameWithFallback(a, a.translations, locale);
+            // Identity rule: locale name primary. Chips are single-
+            // line (no room for an original-language sub on a chip),
+            // so we read just the `main` from displayOriginalName.
+            const name = displayOriginalName(a, a.translations, locale).main;
             if (!name) return null;
             return (
               <Link
