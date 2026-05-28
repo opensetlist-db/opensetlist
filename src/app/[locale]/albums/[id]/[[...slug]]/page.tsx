@@ -361,6 +361,27 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     // so the breadcrumb sits left-aligned at the same column edge as
     // the main content. mx-auto + maxWidth centers the wrapper.
     //
+    // `width: 100%` is load-bearing here, not cosmetic. The root
+    // `<body>` in src/app/[locale]/layout.tsx is
+    // `flex flex-col` — this wrapper sits as a direct flex item.
+    // In a flex column, `mx-auto` (= auto left+right margins) on a
+    // child WITHOUT an explicit cross-axis size overrides the
+    // default `align-items: stretch` and the item shrinks to its
+    // content-fit (max-content) width instead of filling the
+    // container. That made the page width visibly track the
+    // active tab's intrinsic content: the events tab's
+    // PerformanceGroup carries a 5-column grid with wide
+    // min-content, so the wrapper widened on `?tab=events`; the
+    // bonus / tracks tabs have narrower intrinsic content so the
+    // same wrapper collapsed to ~half the viewport. Pinning
+    // `width: 100%` makes the wrapper fill the container first,
+    // then `maxWidth` caps it, then `mx-auto` centers it — the
+    // standard mx-auto + max-width sizing that works because the
+    // other detail pages (artist, song, member) wrap their
+    // mx-auto div inside a block-level `<main>` that breaks the
+    // flex chain. This page nests `<main>` further in, so the
+    // explicit width is the defense.
+    //
     // `overflowX: clip` is the events-tab width-leak guard. The
     // events-tab PerformanceGroup row uses a 5-track grid with two
     // `auto` columns (chip + chevron), whose intrinsic min sizes
@@ -374,6 +395,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     <div
       className="mx-auto px-4"
       style={{
+        width: "100%",
         maxWidth: ALBUM_PAGE_MAX_WIDTH,
         overflowX: "clip",
       }}
