@@ -15,9 +15,14 @@ import { serializeBigInt } from "@/lib/utils";
  * detail (tracks, listings, bonuses) stays on the existing
  * `/api/admin/albums/[id]` endpoint for the per-album edit page.
  *
- * Ordering: `releaseDate desc, createdAt desc` — operator's mental
- * model when picking a BD is "latest album first." Same direction the
- * public album list page sorts.
+ * Ordering: `releaseDate desc nulls last, createdAt desc` — operator's
+ * mental model when picking a BD is "latest album first." The explicit
+ * `nulls: "last"` matters because `Album.releaseDate` is nullable
+ * (`DateTime?`) and Postgres' default NULL-ordering with `DESC` places
+ * NULLs FIRST — without the override, albums missing a release date
+ * would float to the top of the picker, ahead of the actual recent
+ * releases the operator is looking for. Same direction the public
+ * album list page sorts.
  *
  * Auth: admin GET endpoints on this project don't run an explicit
  * `verifyAdminAPI` check (see e.g. `/api/admin/event-series`); the
@@ -40,7 +45,10 @@ export async function GET() {
         select: { locale: true, title: true },
       },
     },
-    orderBy: [{ releaseDate: "desc" }, { createdAt: "desc" }],
+    orderBy: [
+      { releaseDate: { sort: "desc", nulls: "last" } },
+      { createdAt: "desc" },
+    ],
   });
   return NextResponse.json(serializeBigInt(albums));
 }

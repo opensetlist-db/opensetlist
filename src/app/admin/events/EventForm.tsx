@@ -4,6 +4,23 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
+import { formatDate } from "@/lib/utils";
+
+// Korean labels for the BD Album picker's type tag. Admin surface is
+// Korean-only per CLAUDE.md, so we don't route through next-intl here
+// — the picker is a single short list and threading i18n keys would
+// add overhead without payoff. `AlbumType` enum is closed at the
+// schema level (single | album | ep | live_album | soundtrack — see
+// prisma/schema.prisma:137) so a missing entry is a deploy-time
+// failure caught by lint, not a runtime risk. `Record<string,string>`
+// + fallback keeps a future enum extension from crashing the picker.
+const ALBUM_TYPE_LABEL_KO: Record<string, string> = {
+  single: "싱글",
+  album: "앨범",
+  ep: "EP",
+  live_album: "라이브 BD",
+  soundtrack: "OST",
+};
 
 type Translation = {
   locale: string;
@@ -522,12 +539,19 @@ export default function EventForm({ initialData }: EventFormProps) {
           {albumList.map((a) => {
             const koTitle = a.translations.find((t) => t.locale === "ko")?.title;
             const title = koTitle ?? a.originalTitle ?? `ID: ${a.id}`;
+            // Admin Korean-only surface (CLAUDE.md exemption) — but
+            // formatDate(date, "ko") is still the canonical UTC→display
+            // pathway for any operator-visible date. Hardcoding the
+            // locale here is intentional since the picker only ever
+            // renders to the operator and the picker label is
+            // operator-only text.
             const releaseTag = a.releaseDate
-              ? ` · ${a.releaseDate.slice(0, 10)}`
+              ? ` · ${formatDate(a.releaseDate, "ko")}`
               : "";
+            const typeLabel = ALBUM_TYPE_LABEL_KO[a.type] ?? a.type;
             return (
               <option key={a.id} value={a.id}>
-                [{a.type}] {title}{releaseTag}
+                [{typeLabel}] {title}{releaseTag}
               </option>
             );
           })}
