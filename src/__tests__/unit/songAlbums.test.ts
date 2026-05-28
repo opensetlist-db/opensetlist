@@ -150,6 +150,51 @@ describe("getSongAlbums", () => {
     expect(result[0].trackNumber).toBe(7);
   });
 
+  it("dedupes by album.id — same album at multiple positions appears once", () => {
+    // A song that sits on disc 1 track 3 AND disc 2 track 7 of the
+    // same album (medley reprise + full version) — the section
+    // should render one card for that album, not two. Lowest-
+    // disc-then-track position wins as the canonical context.
+    const sameAlbum = album({
+      id: "10",
+      slug: "anniversary-box",
+      releaseDate: "2024-01-01",
+    });
+    const result = getSongAlbums([
+      { discNumber: 1, trackNumber: 3, album: sameAlbum },
+      { discNumber: 2, trackNumber: 7, album: sameAlbum },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].discNumber).toBe(1);
+    expect(result[0].trackNumber).toBe(3);
+  });
+
+  it("dedupe pairs with multi-album sort — count reflects unique albums", () => {
+    // Same song on two distinct albums; one of them at two positions.
+    // After dedupe we get exactly 2 cards.
+    const albumA = album({
+      id: "1",
+      slug: "single",
+      releaseDate: "2023-04-01",
+    });
+    const albumB = album({
+      id: "5",
+      slug: "best-album",
+      releaseDate: "2025-04-01",
+    });
+    const result = getSongAlbums([
+      { discNumber: 1, trackNumber: 1, album: albumA },
+      { discNumber: 1, trackNumber: 3, album: albumB },
+      { discNumber: 2, trackNumber: 7, album: albumB },
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.album.slug)).toEqual([
+      "single",
+      "best-album",
+    ]);
+    expect(result[0].isCanonical).toBe(true);
+  });
+
   it("treats invalid date strings the same as null (sort to end)", () => {
     const result = getSongAlbums([
       track({

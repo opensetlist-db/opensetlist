@@ -96,18 +96,35 @@ export function getSongAlbums(
       t.album !== null,
   );
 
-  // 2. Sort by Album.releaseDate ASC, with Album.id ASC tiebreak.
-  //    String compare on stringified ids is correct because the
-  //    autoincrementing BigInt ids are monotonic + same-width when
-  //    they land in the same batch.
-  const sorted = [...live].sort((a, b) => {
+  // 2. Dedupe by album.id — a song can sit on the same album at more
+  //    than one disc/track position (medley reprises, intro+full
+  //    pairings). The section answers "which albums is this song
+  //    on?" with one entry per album; the surviving row carries the
+  //    lowest-disc-then-track position as the canonical context. The
+  //    input is expected to already be sorted by (releaseDate ASC,
+  //    album.id ASC, disc ASC, track ASC) per the page's Prisma
+  //    orderBy chain, so a simple "first wins" pass over a Map
+  //    preserves the lowest-position pick without a second sort.
+  const dedupedByAlbum = new Map<string, SongAlbumsVocalTrack & { album: SongAlbumsAlbum }>();
+  for (const t of live) {
+    const key = albumIdAsString(t.album.id);
+    if (!dedupedByAlbum.has(key)) {
+      dedupedByAlbum.set(key, t);
+    }
+  }
+  const deduped = [...dedupedByAlbum.values()];
+
+  // 3. Sort by Album.releaseDate ASC, with Album.id ASC tiebreak.
+  //    Re-sort defensively in case the caller hands us an unsorted
+  //    array — the dedupe step's first-wins behaviour is only
+  //    canonical-correct if the upstream sort is intact. Cheap on
+  //    Phase 1/2 scale (<10 albums per song).
+  const sorted = deduped.sort((a, b) => {
     const ra = getReleaseDateMs(a.album.releaseDate);
     const rb = getReleaseDateMs(b.album.releaseDate);
     if (ra !== rb) return ra - rb;
     const ia = albumIdAsString(a.album.id);
     const ib = albumIdAsString(b.album.id);
-    // Numeric-aware compare so "10" sorts after "2", not before.
-    // Prisma's autoincrement BigInt ids are guaranteed integers.
     const na = BigInt(ia);
     const nb = BigInt(ib);
     return na < nb ? -1 : na > nb ? 1 : 0;
