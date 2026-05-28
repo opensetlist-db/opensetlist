@@ -171,7 +171,7 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     }
 
     for (const bc of classifications.bonuses) {
-      const decision = decisions.bonuses[`${bc.listingIdx}:${bc.bonusIdx}` as const];
+      const decision = decisions.bonuses[`${bc.listingIdx}:${bc.bonusIdx}`];
       const approved = decision?.approved === true;
       if (!approved) continue;
       if (bc.kind !== "insert") continue;

@@ -53,23 +53,24 @@ export type ParsedCandidates = {
 
 // ── Decisions (persisted on the job row)
 
-export type ListingDecisionKey = number; // listing index in candidates.listings
-export type BonusDecisionKey = `${number}:${number}`; // `${listingIdx}:${bonusIdx}`
-
+// Keys serialize through JSON so they're strings on the wire. Using
+// plain `string` (rather than template-literal-narrowed types) keeps
+// indexed access ergonomic on the client side, where `${idx}:${bonusIdx}`
+// would otherwise be inferred as `string` and not match a narrower key
+// type.
 export type Decisions = {
-  // Operator approval per-listing. true = include this listing+its
-  // approved bonuses on apply; false = skip the whole listing.
-  // Missing key = pending (treated as not-yet-decided in UI; apply
-  // refuses to run while any required decision is missing).
-  listings: Record<ListingDecisionKey, { approved: boolean }>;
-  bonuses: Record<BonusDecisionKey, { approved: boolean }>;
+  // Operator approval per-listing index. true = include this listing
+  // + its approved bonuses on apply; false = skip the whole listing.
+  // Missing key = pending (treated as not-yet-decided in UI).
+  listings: Record<string, { approved: boolean }>;
+  // Key is `${listingIdx}:${bonusIdx}`.
+  bonuses: Record<string, { approved: boolean }>;
   // Global early-booking block (when present) gets a single shared
   // decision; the operator can either reject or attach it to one or
-  // more listings via `attachToListings`. MVP supports attach-to-one
-  // only; multi-listing attachment can come later.
+  // more listings via `attachToListings`.
   globalEarlyBooking: {
     approved: boolean;
-    attachToListings: ListingDecisionKey[]; // indices to fan out under
+    attachToListings: number[]; // listing indices to fan out under
   } | null;
 };
 
