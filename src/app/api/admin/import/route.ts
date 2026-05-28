@@ -1171,6 +1171,27 @@ async function importEvents(rows: Record<string, string>[]) {
     }
   }
 
+  // Pre-fetch every Album slug referenced by `bdAlbum_slug` so the event
+  // loop resolves Event.bdAlbumId via in-memory Map lookup instead of
+  // one prisma.album.findUnique per row. Empty / undefined `bdAlbum_slug`
+  // skips lookup entirely (column may be absent on legacy CSVs predating
+  // the live-bd pipeline). Unresolved slugs WARN once below and leave
+  // `bdAlbumId` unchanged — preserves any admin-UI-set value across
+  // re-imports.
+  const bdAlbumSlugs = new Set(rows.map((r) => (r.bdAlbum_slug ?? "").trim()).filter(Boolean));
+  const bdAlbumIdBySlug = new Map<string, bigint>();
+  if (bdAlbumSlugs.size > 0) {
+    const found = await prisma.album.findMany({
+      where: { slug: { in: [...bdAlbumSlugs] } },
+      select: { id: true, slug: true },
+    });
+    for (const a of found) bdAlbumIdBySlug.set(a.slug, a.id);
+    const missing = [...bdAlbumSlugs].filter((s) => !bdAlbumIdBySlug.has(s));
+    for (const s of missing) {
+      results.push(`WARN: bdAlbum_slug not found: ${s} — event rows referencing it will keep existing bdAlbumId`);
+    }
+  }
+
   // Upsert events
   for (const row of rows) {
     const slug = row.event_slug;
@@ -1184,6 +1205,15 @@ async function importEvents(rows: Record<string, string>[]) {
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
       : null;
+
+    // Resolve bdAlbumId. Three cases:
+    //   - row.bdAlbum_slug missing / empty → keep existing value on update,
+    //     leave null on create (no override).
+    //   - row.bdAlbum_slug set + Album found → set bdAlbumId.
+    //   - row.bdAlbum_slug set + Album not found → already WARNed above;
+    //     keep existing on update, leave null on create.
+    const bdAlbumSlugTrimmed = (row.bdAlbum_slug ?? "").trim();
+    const bdAlbumIdResolved = bdAlbumSlugTrimmed ? bdAlbumIdBySlug.get(bdAlbumSlugTrimmed) ?? null : null;
 
     const eventOriginalLanguage = resolveOriginalLanguage(row.originalLanguage);
     const eventSource = pickOriginalSource(translations, eventOriginalLanguage);
@@ -1208,6 +1238,11 @@ async function importEvents(rows: Record<string, string>[]) {
           // "keep the existing value", not "clear it".
           ...(row.startTime ? { startTime: new Date(row.startTime) } : {}),
           country: row.country || null,
+          // bdAlbumId: only overwrite when the CSV row supplied a slug
+          // that actually resolved. Missing/blank column + unresolved
+          // slug both preserve the existing DB value so admin-UI edits
+          // survive re-imports of stale scrape output.
+          ...(bdAlbumIdResolved !== null ? { bdAlbumId: bdAlbumIdResolved } : {}),
           ...eventOriginals,
         },
       });
@@ -1231,6 +1266,7 @@ async function importEvents(rows: Record<string, string>[]) {
           type: (row.event_type as "concert" | "festival" | "fan_meeting" | "showcase" | "virtual_live") || "concert",
           status: "scheduled",
           eventSeriesId: seriesId,
+          bdAlbumId: bdAlbumIdResolved,
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           country: row.country || null,
