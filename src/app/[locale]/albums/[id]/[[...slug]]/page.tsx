@@ -32,6 +32,15 @@ import { colors } from "@/styles/tokens";
 type AlbumTabKey = "bonus" | "tracks" | "events";
 
 /*
+ * Shared max-width for the breadcrumb + content column. Both the
+ * `<nav>` (breadcrumb) and the `<main>` (sidebar + tab body grid)
+ * read from this constant so a future tweak ripples through both
+ * surfaces and they never silently misalign at the column edge.
+ * Picked literal from raw/mockups/album-page-mockup.jsx line 595.
+ */
+const ALBUM_PAGE_MAX_WIDTH = 1280;
+
+/*
  * Album detail page — `/[locale]/albums/[id]/[[...slug]]/`.
  *
  * Public route shipped in Sprint B1 Task b02. Renders an Album row's
@@ -306,7 +315,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       <nav
         aria-label={t("breadcrumb.aria")}
         style={{
-          maxWidth: 1280,
+          maxWidth: ALBUM_PAGE_MAX_WIDTH,
           margin: "0 auto",
           padding: "14px 16px",
           fontSize: 12,
@@ -340,7 +349,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       </nav>
       <main
         style={{
-          maxWidth: 1280,
+          maxWidth: ALBUM_PAGE_MAX_WIDTH,
           margin: "0 auto",
           padding: "0 16px 60px",
           display: "grid",
