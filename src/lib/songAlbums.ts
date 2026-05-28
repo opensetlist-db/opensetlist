@@ -119,15 +119,23 @@ export function getSongAlbums(
   //    array — the dedupe step's first-wins behaviour is only
   //    canonical-correct if the upstream sort is intact. Cheap on
   //    Phase 1/2 scale (<10 albums per song).
+  //
+  //    Tiebreak uses `localeCompare(..., numeric: true)` so it works
+  //    correctly across every shape the `id` union admits — numeric
+  //    BigInt-derived strings ("10" sorts after "2", not before) AND
+  //    the UUID strings the LiveSetlistItem-precedent type still
+  //    permits in theory. `BigInt(ia)` would throw RangeError on a
+  //    UUID; Album.id is always numeric in practice today (b01 schema
+  //    migration), but the type-safe comparator costs nothing extra.
   const sorted = deduped.sort((a, b) => {
     const ra = getReleaseDateMs(a.album.releaseDate);
     const rb = getReleaseDateMs(b.album.releaseDate);
     if (ra !== rb) return ra - rb;
-    const ia = albumIdAsString(a.album.id);
-    const ib = albumIdAsString(b.album.id);
-    const na = BigInt(ia);
-    const nb = BigInt(ib);
-    return na < nb ? -1 : na > nb ? 1 : 0;
+    return albumIdAsString(a.album.id).localeCompare(
+      albumIdAsString(b.album.id),
+      undefined,
+      { numeric: true },
+    );
   });
 
   return sorted.map((track, i) => ({
