@@ -310,6 +310,19 @@
       "unit": "ユニット",
       "solo": "ソロ",
       "special": "スペシャル"
+    },
+    "bd": {
+      "sectionTitle": "このライブのBD",
+      "teaserTitle": "このライブのBD",
+      "teaserBody": "Blu-ray発売情報は後日公開",
+      "announcedBadge": "発売予定",
+      "preorderBadge": "受付中",
+      "releasedBadge": "発売中",
+      "releaseDateLabel": "発売",
+      "bonusPreviewHeading": "店舗特典プレビュー",
+      "compareCta": "店舗特典を比較する →",
+      "purchaseCta": "BDを購入する →",
+      "detailsCta": "アルバム詳細を見る →"
     }
   },
   "EventDateTime": {

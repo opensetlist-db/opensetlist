@@ -29,6 +29,7 @@ import {
   type EventPerformerSummary,
 } from "@/lib/sidebarDerivations";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { EventBdSection } from "@/components/EventBdSection";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
@@ -70,6 +71,34 @@ const getEvent = cache(async (id: bigint, locale: string) => {
           // `artistId` is nullable on EventSeries (multi-artist
           // festivals fall back to `organizerName`).
           artist: { include: { translations: { where: localeFilter } } },
+        },
+      },
+      // BD album linked via `Event.bdAlbumId` (added in v0.14.0). Pulled
+      // here so `<EventBdSection>` can resolve its state machine + render
+      // the album / top-3 매장特典 preview without a second roundtrip.
+      // Nested include order matches the album-page (`getAlbum`) shape so
+      // `displayOriginalTitle` / `displayOriginalName` / `resolveStoreName`
+      // / `resolveBonusType` all run against identical translation slices.
+      // Returns null when `bdAlbumId` is null (most events at MVP); the
+      // component handles the null safely.
+      bdAlbum: {
+        include: {
+          translations: { where: localeFilter },
+          artists: {
+            include: {
+              artist: {
+                include: { translations: { where: localeFilter } },
+              },
+            },
+          },
+          listings: {
+            include: {
+              translations: { where: localeFilter },
+              bonuses: {
+                include: { translations: { where: localeFilter } },
+              },
+            },
+          },
         },
       },
       // Event-level performer roster — used to source the guest set
@@ -944,6 +973,32 @@ export default async function EventPage({ params }: Props) {
         eventId={id}
         isOngoing={isOngoing}
         locale={locale}
+        // Rendered as a server-component slot. `LiveEventLayout` is a
+        // client component that owns the column-layout grid + sibling
+        // order between `<LiveSetlist>` and `<EventImpressions>`; passing
+        // EventBdSection's JSX through as a node keeps the section
+        // server-rendered (state machine + bonus selection on the server)
+        // without making LiveEventLayout aware of the BD data shape.
+        bdSection={
+          <EventBdSection
+            event={{
+              id: String(event.id),
+              startTime: event.startTime,
+              status: event.status,
+              bdAlbumId: event.bdAlbumId !== null && event.bdAlbumId !== undefined
+                ? String(event.bdAlbumId)
+                : null,
+              bdAlbum: event.bdAlbum
+                ? // serializeBigInt has already converted bigint ids to
+                  // numbers on the wire; the component type expects strings
+                  // (BigIntStringified). Cast via unknown to bridge.
+                  (event.bdAlbum as unknown as Parameters<typeof EventBdSection>[0]["event"]["bdAlbum"])
+                : null,
+            }}
+            locale={locale}
+            referenceNow={referenceNow}
+          />
+        }
         unknownArtistLabel={aT("unknown")}
         unknownPerformerLabel={t("unknownPerformer")}
         unknownSongLabel={st("unknown")}

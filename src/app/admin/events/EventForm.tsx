@@ -33,6 +33,7 @@ type EventFormProps = {
     status: string;
     eventSeriesId: number | null;
     artistId: number | null;
+    bdAlbumId: number | null;
     organizerName: string | null;
     date: string | null;
     country: string | null;
@@ -46,6 +47,15 @@ type EventFormProps = {
     translations: Translation[];
     performers: InitialPerformer[];
   };
+};
+
+type AlbumOption = {
+  id: number;
+  slug: string;
+  type: string;
+  releaseDate: string | null;
+  originalTitle: string;
+  translations: { locale: string; title: string }[];
 };
 
 type ArtistOption = {
@@ -87,6 +97,14 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [artistId, setArtistId] = useState(
     initialData?.artistId?.toString() ?? ""
   );
+  // BD 앨범 — 이 라이브의 Blu-ray 발매가 결정되면 운영자가 Album row를
+  // 만들고 (CSV import 또는 /admin/albums/[id]/edit) 해당 id를 여기서
+  // 선택한다. 멀티-이벤트 BD(예: 6th 도쿄 Day1+Day2 → Memorial BOX)도
+  // 같은 Album id를 양쪽 이벤트에 지정하면 양쪽 페이지가 같은
+  // EventBdSection을 노출한다.
+  const [bdAlbumId, setBdAlbumId] = useState(
+    initialData?.bdAlbumId?.toString() ?? ""
+  );
   const [organizerName, setOrganizerName] = useState(
     initialData?.organizerName ?? ""
   );
@@ -114,6 +132,8 @@ export default function EventForm({ initialData }: EventFormProps) {
   >([]);
 
   const [artistList, setArtistList] = useState<ArtistOption[]>([]);
+
+  const [albumList, setAlbumList] = useState<AlbumOption[]>([]);
 
   const [stageIdentities, setStageIdentities] = useState<StageIdentityOption[]>([]);
 
@@ -144,6 +164,9 @@ export default function EventForm({ initialData }: EventFormProps) {
     fetch("/api/admin/artists")
       .then((r) => r.json())
       .then(setArtistList);
+    fetch("/api/admin/albums")
+      .then((r) => r.json())
+      .then(setAlbumList);
     fetch("/api/admin/stage-identities")
       .then((r) => r.json())
       .then(setStageIdentities);
@@ -229,6 +252,7 @@ export default function EventForm({ initialData }: EventFormProps) {
       status,
       eventSeriesId: eventSeriesId || null,
       artistId: artistId || null,
+      bdAlbumId: bdAlbumId || null,
       organizerName: organizerName.trim() || null,
       date: date || null,
       country: country || null,
@@ -474,6 +498,43 @@ export default function EventForm({ initialData }: EventFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           />
         </div>
+      </div>
+
+      {/*
+        BD 앨범 — 이 라이브의 Blu-ray가 발표된 경우 해당 Album row를
+        연결한다. 공개 페이지의 EventBdSection이 이 값을 읽어
+        announce/preorder/released 상태를 자동 판정한다. 단독공연이거나
+        BD 발매가 없는 라이브는 비워둔다 (대부분의 이벤트가 이쪽).
+        멀티-이벤트 BD(Day1+Day2 → 같은 Memorial BOX)는 두 이벤트 모두
+        동일 Album id를 선택.
+
+        목록은 releaseDate desc 정렬 — 최근 발매 앨범부터 보여줘서
+        운영자 멘탈 모델 ("방금 발표된 BD")과 일치시킨다.
+      */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">BD 앨범</label>
+        <select
+          value={bdAlbumId}
+          onChange={(e) => setBdAlbumId(e.target.value)}
+          className="w-full rounded border border-zinc-300 px-3 py-2"
+        >
+          <option value="">없음 (BD 미발표 / 발매 없음)</option>
+          {albumList.map((a) => {
+            const koTitle = a.translations.find((t) => t.locale === "ko")?.title;
+            const title = koTitle ?? a.originalTitle ?? `ID: ${a.id}`;
+            const releaseTag = a.releaseDate
+              ? ` · ${a.releaseDate.slice(0, 10)}`
+              : "";
+            return (
+              <option key={a.id} value={a.id}>
+                [{a.type}] {title}{releaseTag}
+              </option>
+            );
+          })}
+        </select>
+        <p className="mt-1 text-xs text-zinc-500">
+          이 라이브의 Blu-ray Album row. 동일 BD가 여러 Event(예: Day1/Day2)에 걸치면 같은 Album을 선택.
+        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
