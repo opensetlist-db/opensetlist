@@ -127,6 +127,11 @@
       "live_album": "라이브 앨범",
       "soundtrack": "OST"
     },
+    "albumsSectionLabel": "수록 앨범",
+    "albumOriginalRecording": "원본 수록",
+    "albumsTotalCount": "총 {count}개 앨범에 수록",
+    "albumActiveBonuses": "매장특전 {count}건",
+    "albumActiveBonusesBadge": "특전 {count}",
     "tableHeader": {
       "status": "상태",
       "date": "날짜",

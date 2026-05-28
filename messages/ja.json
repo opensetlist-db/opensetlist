@@ -127,6 +127,11 @@
       "live_album": "ライブアルバム",
       "soundtrack": "サウンドトラック"
     },
+    "albumsSectionLabel": "収録アルバム",
+    "albumOriginalRecording": "原本収録",
+    "albumsTotalCount": "全 {count} 枚に収録",
+    "albumActiveBonuses": "店舗特典 {count}件",
+    "albumActiveBonusesBadge": "特典 {count}",
     "tableHeader": {
       "status": "ステータス",
       "date": "日付",

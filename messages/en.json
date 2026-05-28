@@ -127,6 +127,11 @@
       "live_album": "Live Album",
       "soundtrack": "Soundtrack"
     },
+    "albumsSectionLabel": "Featured on",
+    "albumOriginalRecording": "Original",
+    "albumsTotalCount": "{count, plural, one {On # album} other {On # albums}}",
+    "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
+    "albumActiveBonusesBadge": "Bonus {count}",
     "tableHeader": {
       "status": "Status",
       "date": "Date",
