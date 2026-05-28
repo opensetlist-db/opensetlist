@@ -123,7 +123,6 @@ export async function AlbumInfoCard({
   // mirror how the song page exposes the same relationship.
   const secondaryArtists = album.artists.slice(1);
 
-  const trackCount = album.tracks.length;
   // `totalBonusCount` arrives as a prop (single source of truth with
   // the tab-bar badge). `activeBonusCount` + `endedBonusCount` are
   // derived locally — they partition the same listings tree, so their
@@ -136,13 +135,22 @@ export async function AlbumInfoCard({
     .filter(isEndedListing)
     .reduce((sum, l) => sum + l.bonuses.length, 0);
 
-  // Mockup's sidebar meta block (line 656-676): 4 label/value rows
-  // with a fixed 48-px label gutter. Each row only renders when its
-  // value is non-empty so a Phase 1 row missing label / release date
-  // doesn't draw an "—" stub. The artist row links to the primary
-  // artist page; the rest are static text.
+  // Sidebar meta block — pared down from the mockup's full 4-row set
+  // (line 656-676) to the two rows that carry irreplaceable info:
+  //   - 아티스트 (links to the primary artist page)
+  //   - 발매일 (the only place this surfaces on the page)
+  //
+  // The two rows the mockup also had — 레이블 + 수록곡 — were
+  // dropped on operator feedback during the mockup-gap pass:
+  //   - 레이블: low-value label info that doesn't drive user action
+  //   - 수록곡: track count already shows in the TabBar badge
+  //            ("수록곡 (10)") right next to the sidebar, so a second
+  //            "수록곡: 10곡" row is redundant.
+  //
+  // Each row still only renders when its value is non-empty so a row
+  // with missing data doesn't draw an "—" stub.
   const metaRows: Array<{
-    key: "artist" | "releaseDate" | "label" | "trackCount";
+    key: "artist" | "releaseDate";
     label: string;
     value: React.ReactNode;
   }> = [];
@@ -170,20 +178,6 @@ export async function AlbumInfoCard({
       key: "releaseDate",
       label: t("meta.label.releaseDate"),
       value: formatDate(album.releaseDate, locale),
-    });
-  }
-  if (album.labelName) {
-    metaRows.push({
-      key: "label",
-      label: t("meta.label.label"),
-      value: album.labelName,
-    });
-  }
-  if (trackCount > 0) {
-    metaRows.push({
-      key: "trackCount",
-      label: t("meta.label.trackCount"),
-      value: t("stats.trackCount", { count: trackCount }),
     });
   }
 

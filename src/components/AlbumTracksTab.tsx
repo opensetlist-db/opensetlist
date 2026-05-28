@@ -76,6 +76,13 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
   const sortedDiscs = Array.from(groupedByDisc.entries()).sort(
     (a, b) => a[0] - b[0],
   );
+  // Single-disc albums skip the "DISC 1" header — for the common
+  // single-/EP-/single-CD-album case the disc label adds no info,
+  // just visual noise. Multi-disc releases (live BD Memorial BOX,
+  // anniversary collections) keep the header so the boundary between
+  // Disc 1 and Disc 2 is visible. Operator feedback during mockup-
+  // gap audit.
+  const showDiscHeaders = sortedDiscs.length > 1;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -88,18 +95,20 @@ export async function AlbumTracksTab({ tracks, locale }: Props) {
             padding: "14px 18px 18px",
           }}
         >
-          <h3
-            style={{
-              margin: "0 0 10px",
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: colors.textSubtle,
-            }}
-          >
-            {tNs("discN", { disc: discNumber })}
-          </h3>
+          {showDiscHeaders ? (
+            <h3
+              style={{
+                margin: "0 0 10px",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: colors.textSubtle,
+              }}
+            >
+              {tNs("discN", { disc: discNumber })}
+            </h3>
+          ) : null}
           <ol
             style={{
               listStyle: "none",
@@ -159,13 +168,19 @@ function TrackRow({
       {trackNumberLabel}
     </span>
   );
+  // Linkable rows (Pattern 1 — vocal Song-backed) render the title
+  // in the brand-primary blue as an affordance cue: it's a click
+  // target. Pattern 2 (off-vocal w/ vocal parent) + Pattern 3
+  // (drama/bgm direct title) stay in the standard textPrimary —
+  // they're informational and have no link target. Operator
+  // feedback during mockup-gap audit.
   const titleCell = (
     <span
       style={{
         flex: 1,
         minWidth: 0,
         fontSize: 14,
-        color: colors.textPrimary,
+        color: linkHref ? colors.primary : colors.textPrimary,
         wordBreak: "break-word",
       }}
     >
