@@ -3,6 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus } from "@/lib/eventStatus";
+import {
+  locales,
+  defaultLocale,
+  FALLBACK_LOCALE,
+  type Locale,
+} from "@/i18n/routing";
 
 export async function GET(req: NextRequest) {
   // `new URL(req.url)` over `req.nextUrl` so unit tests can invoke
@@ -12,32 +18,25 @@ export async function GET(req: NextRequest) {
   if (!eventIdParam) {
     return NextResponse.json({ error: "eventId required" }, { status: 400 });
   }
-  // Locale is normalized to one of the supported values and defaults
-  // to "ko" (mirroring src/i18n/routing.ts). The polling hook and
-  // realtime fetchSnapshot both always pass `?locale=`; the default
-  // is defensive coverage for unauthenticated tooling / direct curls.
+  // Locale is normalized to one of the supported values from
+  // `src/i18n/routing.ts` (single source of truth for the locale set
+  // + default). The polling hook and realtime fetchSnapshot both
+  // always pass `?locale=`; the default-on-miss is defensive coverage
+  // for unauthenticated tooling / direct curls.
   //
-  // The normalized locale drives both:
+  // The normalized locale drives:
   //   1. `fetchEventWishlistTop3` — already locale-aware.
-  //   2. The `{ in: [locale, "ja"] }` filter on every nested
-  //      `translations` include below. The `"ja"` fallback row is
-  //      load-bearing because `src/lib/display.ts` (displayOriginalName,
-  //      resolveOriginalShortLabel) falls through to the
-  //      `originalLanguage` row when the parent's `originalName`/
-  //      `originalShortName` is null. All Phase 1 IPs are JP-origin,
-  //      so `"ja"` is the universal fallback. Mirrors the SSR event-
-  //      page filter at `src/app/[locale]/events/[id]/[[...slug]]/
-  //      page.tsx:60`. When locale === "ja", Postgres dedupes the IN
-  //      list and returns 1 row; for ko/en, 2 rows ship.
-  const SUPPORTED_LOCALES = ["ko", "ja", "en"] as const;
-  type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+  //   2. The `{ in: [locale, FALLBACK_LOCALE] }` filter on every
+  //      nested `translations` include below. See the JSDoc on
+  //      `FALLBACK_LOCALE` for why the fallback row is load-bearing
+  //      and why it's a shared constant rather than an inlined literal
+  //      (this route + SSR `page.tsx:getEvent` must move in sync if
+  //      the fallback locale ever changes).
   const localeParam = url.searchParams.get("locale");
-  const locale: SupportedLocale = SUPPORTED_LOCALES.includes(
-    localeParam as SupportedLocale,
-  )
-    ? (localeParam as SupportedLocale)
-    : "ko";
-  const localeFilter = { locale: { in: [locale, "ja"] } };
+  const locale: Locale = locales.includes(localeParam as Locale)
+    ? (localeParam as Locale)
+    : defaultLocale;
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
 
   let eventId: bigint;
   try {

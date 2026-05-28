@@ -5,6 +5,7 @@ import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { loadOgFonts, OG_FONT_STACK, titleFontSize } from "@/lib/ogFonts";
 import { BRAND_GRADIENT, getArtistColor } from "@/lib/artistColor";
 import { normalizeOgLocale } from "@/lib/ogLabels";
+import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
  * Open Graph image for `/[locale]/albums/[id]/...`. Mirrors the
@@ -60,13 +61,15 @@ export async function GET(req: Request, { params }: Props) {
     const album = await prisma.album.findUnique({
       where: { id: BigInt(id) },
       include: {
-        translations: { where: { locale: { in: [lang, "ja"] } } },
+        translations: { where: { locale: { in: [lang, FALLBACK_LOCALE] } } },
         artists: {
           take: 1,
           include: {
             artist: {
               include: {
-                translations: { where: { locale: { in: [lang, "ja"] } } },
+                translations: {
+                  where: { locale: { in: [lang, FALLBACK_LOCALE] } },
+                },
               },
             },
           },
