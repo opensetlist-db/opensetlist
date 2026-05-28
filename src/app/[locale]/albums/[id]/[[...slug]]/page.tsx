@@ -1,5 +1,4 @@
 import { cache } from "react";
-import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
@@ -11,6 +10,7 @@ import { AlbumBonusTab } from "@/components/AlbumBonusTab";
 import { AlbumTracksTab } from "@/components/AlbumTracksTab";
 import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
 import { TabBar } from "@/components/TabBar";
+import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import {
   getAlbumRelatedEvents,
   getAlbumRelatedEventsCount,
@@ -18,7 +18,6 @@ import {
 } from "@/lib/albumRelatedEvents";
 import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
-import { colors } from "@/styles/tokens";
 
 /*
  * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
@@ -250,6 +249,22 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const defaultTab: AlbumTabKey = album.type === AlbumType.live_album ? "events" : "bonus";
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
+  // Derive Pattern 1 song ids once from the already-loaded album.tracks
+  // (getAlbum's include carries them). Both the count helper and the
+  // full-fetch helper take this array — the two `react.cache` wraps
+  // are independent identities, so without forwarding the ids the
+  // events-tab view ran `albumTrack.findMany` twice (once per helper).
+  // Caller-side derive + pass = single derive, zero duplicate DB hits.
+  //
+  // album.tracks come through serializeBigIntAsString — `songId` is
+  // either a numeric-string or null. `BigInt(stringId)` reverses the
+  // string back to a bigint without rounding (the precision survives
+  // because we never went through Number()).
+  const pattern1SongIds: bigint[] = album.tracks
+    .map((t) => t.songId)
+    .filter((sid): sid is string => sid !== null)
+    .map((sid) => BigInt(sid));
+
   // Events tab needs its count for the tab-label string regardless of
   // which tab is active (per mockup tab format "관련 공연 (N)"). Use
   // the dedicated COUNT-only helper instead of the full fetch — the
@@ -260,6 +275,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const eventsCount = await getAlbumRelatedEventsCount(
     BigInt(id),
     album.type as AlbumType,
+    pattern1SongIds,
   );
 
   // Tab counts surfaced inline in the tab labels per mockup
@@ -300,6 +316,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       BigInt(id),
       album.type as AlbumType,
       locale,
+      pattern1SongIds,
     );
   }
 
@@ -318,62 +335,49 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
     ? displayOriginalName(primaryArtist, primaryArtist.translations, locale).main
     : null;
 
+  // Breadcrumb items — same shape the artist + member + song pages
+  // pass to the shared <Breadcrumb> component (left-aligned `Home ›
+  // <artist> › Albums`). Mid-segment Drops cleanly when the album
+  // has no resolved primary artist; the Albums leaf is the current
+  // page (no href).
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: t("breadcrumb.home"), href: `/${locale}` },
+  ];
+  if (primaryArtist && primaryArtistName) {
+    breadcrumbItems.push({
+      label: primaryArtistName,
+      href: `/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`,
+    });
+  }
+  breadcrumbItems.push({ label: t("breadcrumb.albums") });
+
   return (
-    <>
-      {/* Breadcrumb — mockup line 580-591. Mid-segment links to the
-          primary artist page (mockup's intent: artist is the
-          navigational parent of an album; Albums itself is not a
-          standalone list page in Sprint B1 scope). When the album
-          has no resolved primary artist, the middle segment is
-          dropped rather than rendering an empty link. */}
-      <nav
-        aria-label={t("breadcrumb.aria")}
-        style={{
-          maxWidth: ALBUM_PAGE_MAX_WIDTH,
-          margin: "0 auto",
-          padding: "14px 16px",
-          fontSize: 12,
-          color: colors.textMuted,
-        }}
-      >
-        <Link
-          href={`/${locale}`}
-          style={{ color: "inherit", textDecoration: "none" }}
-        >
-          {t("breadcrumb.home")}
-        </Link>
-        {primaryArtist && primaryArtistName ? (
-          <>
-            <span style={{ margin: "0 6px" }}>›</span>
-            <Link
-              href={`/${locale}/artists/${primaryArtist.id}/${primaryArtist.slug}`}
-              style={{
-                color: colors.primary,
-                textDecoration: "none",
-              }}
-            >
-              {primaryArtistName}
-            </Link>
-          </>
-        ) : null}
-        <span style={{ margin: "0 6px" }}>›</span>
-        <span style={{ color: colors.textPrimary }}>
-          {t("breadcrumb.albums")}
-        </span>
-      </nav>
+    // Outer wrapper mirrors the artist page (page.tsx ~line 670-673)
+    // so the breadcrumb sits left-aligned at the same column edge as
+    // the main content — operator caught the prior inline-nav shape
+    // centering the breadcrumb on desktop while every other detail
+    // page kept it left-aligned. mx-auto + maxWidth centers the
+    // wrapper itself; the Breadcrumb component sits at its top-left,
+    // matching the convention.
+    <div
+      className="mx-auto px-4"
+      style={{ maxWidth: ALBUM_PAGE_MAX_WIDTH }}
+    >
+      <div style={{ paddingTop: 14 }}>
+        <Breadcrumb
+          ariaLabel={t("breadcrumb.aria")}
+          items={breadcrumbItems}
+        />
+      </div>
       {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
-          pattern the artist page uses (page.tsx ~line 707) — `grid`
-          at every breakpoint, not just lg. Mobile uses `grid-cols-1`
-          which Tailwind compiles to `grid-template-columns: minmax(0,
-          1fr)`; that single-track form clamps the column to the
-          viewport width and lets the inner content's
-          `overflow: hidden` / ellipsis actually engage.
-          A bare `block` (the previous shape here) defaulted children
-          to `min-width: auto` = intrinsic content size, so a wide
-          descendant — long event title, PerformanceGroup row's grid
-          track — pushed the section box past the viewport and
-          dragged the page into horizontal scroll. Operator caught
-          this on the 관련 공연 tab on iPhone.
+          pattern the artist page uses — `grid` at every breakpoint,
+          not just lg. Mobile uses `grid-cols-1` which Tailwind
+          compiles to `grid-template-columns: minmax(0, 1fr)`; that
+          single-track form clamps the column to the viewport width
+          and lets the inner content's `overflow: hidden` / ellipsis
+          actually engage. A bare `block` would default children to
+          `min-width: auto` = intrinsic content size, dragging the
+          page into horizontal scroll on mobile.
           Desktop track `minmax(0, 1fr)` on the main column is the
           same defensive clamp — a bare `1fr` would let a wide
           intrinsic child grow the column past the maxWidth.
@@ -382,9 +386,7 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
       <main
         className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
         style={{
-          maxWidth: ALBUM_PAGE_MAX_WIDTH,
-          margin: "0 auto",
-          padding: "0 16px 60px",
+          paddingBottom: 60,
           alignItems: "start",
         }}
       >
@@ -435,6 +437,6 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
           )}
         </section>
       </main>
-    </>
+    </div>
   );
 }
