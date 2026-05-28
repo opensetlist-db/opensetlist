@@ -343,7 +343,7 @@ async function FullVariant({
                 borderRadius: radius.tag,
                 flexShrink: 0,
                 objectFit: "cover",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                boxShadow: shadows.imageThumbnail,
               }}
             />
           ) : (
@@ -359,7 +359,7 @@ async function FullVariant({
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: 26,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                boxShadow: shadows.imageThumbnail,
               }}
             >
               💿

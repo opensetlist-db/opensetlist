@@ -391,6 +391,11 @@ export const shadows = {
   // Same brand RGB as `card` (rgba of `colors.primary` #0277BD) but at
   // a deeper alpha + larger blur for a "lifted off the page" feel.
   heroLive: "0 8px 32px rgba(2,119,189,0.25)",
+  // Neutral lift used by small image thumbnails (album covers, etc.)
+  // that sit inside larger cards. Less brand-tinted than `card` so a
+  // thumbnail's shadow doesn't compete with its enclosing card's
+  // shadow and the two cleanly nest.
+  imageThumbnail: "0 2px 8px rgba(0,0,0,0.1)",
 } as const;
 
 export const radius = {
