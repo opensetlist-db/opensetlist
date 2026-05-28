@@ -310,6 +310,19 @@
       "unit": "Unit",
       "solo": "Solo",
       "special": "Special"
+    },
+    "bd": {
+      "sectionTitle": "This concert's BD",
+      "teaserTitle": "This concert's BD",
+      "teaserBody": "Blu-ray release info coming soon",
+      "announcedBadge": "Release planned",
+      "preorderBadge": "Pre-order open",
+      "releasedBadge": "Released",
+      "releaseDateLabel": "Release",
+      "bonusPreviewHeading": "Store bonuses preview",
+      "compareCta": "Compare store bonuses →",
+      "purchaseCta": "Buy BD →",
+      "detailsCta": "View album details →"
     }
   },
   "EventDateTime": {

@@ -310,6 +310,19 @@
       "unit": "유닛",
       "solo": "솔로",
       "special": "스페셜"
+    },
+    "bd": {
+      "sectionTitle": "이 라이브의 BD",
+      "teaserTitle": "이 라이브의 BD",
+      "teaserBody": "Blu-ray 발매 정보가 곧 공개됩니다",
+      "announcedBadge": "발매 예정",
+      "preorderBadge": "예약 수락 중",
+      "releasedBadge": "발매 중",
+      "releaseDateLabel": "발매",
+      "bonusPreviewHeading": "매장특전 미리보기",
+      "compareCta": "매장특전 비교하기 →",
+      "purchaseCta": "BD 구매하기 →",
+      "detailsCta": "앨범 상세 보기 →"
     }
   },
   "EventDateTime": {

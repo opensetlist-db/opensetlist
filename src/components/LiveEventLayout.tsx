@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 // useSetlistPolling type re-export kept; the hook itself is no
 // longer called here (lives inside useRealtimeEventChannel as the
 // R3 fallback path that takes over on CHANNEL_ERROR / TIMED_OUT).
@@ -115,6 +115,16 @@ interface Props {
    */
   availableSongs: AvailableSong[];
   unitFilters: UnitFilter[];
+
+  /**
+   * Server-component slot rendered between `<LiveSetlist>` and
+   * `<EventImpressions>`. Carries `EventBdSection`'s server-rendered
+   * output (state machine + bonus selection happen on the server, the
+   * page passes the JSX through as a node). May be falsy when the
+   * resolver returns `pre`/`immediate_post` and the component returns
+   * null — that's fine, React renders nothing for it.
+   */
+  bdSection?: ReactNode;
 }
 
 /**
@@ -179,6 +189,7 @@ export function LiveEventLayout({
   initialFanTop3,
   availableSongs,
   unitFilters,
+  bdSection,
 }: Props) {
   // Stays enabled for ongoing AND upcoming events: the wishlist fan
   // TOP-3 needs to update pre-show as more fans submit wishes (per
@@ -383,6 +394,14 @@ export function LiveEventLayout({
           availableSongs={availableSongs}
           unitFilters={unitFilters}
         />
+
+        {/* BD section slot — rendered server-side in `page.tsx` and
+            passed through as a ReactNode. Position invariant per the v2
+            mockup: between Setlist (above) and Impressions (below). The
+            component itself returns null when the resolver picks
+            `pre`/`immediate_post`, so this slot is conditionally
+            visible without an enclosing branch. */}
+        {bdSection}
 
         <EventImpressions
           eventId={eventId}
