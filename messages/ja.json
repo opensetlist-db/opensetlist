@@ -134,8 +134,6 @@
     "albumsSectionLabel": "収録アルバム",
     "albumOriginalRecording": "原本収録",
     "albumsTotalCount": "全 {count} 枚に収録",
-    "albumActiveBonuses": "店舗特典 {count}件",
-    "albumActiveBonusesBadge": "特典 {count}",
     "tableHeader": {
       "status": "ステータス",
       "date": "日付",
@@ -151,6 +149,11 @@
   "Album": {
     "title": "アルバム",
     "related": "関連アルバム",
+    "noAlbums": "表示できるアルバムはありません",
+    "yearAlbumCount": "{count}枚",
+    "undatedYear": "発売日未定",
+    "albumActiveBonuses": "店舗特典 {count}件",
+    "albumActiveBonusesBadge": "特典 {count}",
     "unknown": "名称未定のアルバム",
     "type": {
       "single": "シングル",
@@ -588,6 +591,7 @@
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",
+    "albums": "アルバム",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる"

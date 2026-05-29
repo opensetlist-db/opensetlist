@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
-import { colors, radius } from "@/styles/tokens";
+import { parseReleaseYear } from "@/lib/utils";
+import { colors, radius, shadows } from "@/styles/tokens";
 
 /*
  * AlbumCard — reusable album mini-card used across Sprint B2 cross-link
@@ -31,11 +32,10 @@ import { colors, radius } from "@/styles/tokens";
  * (which works in both server and client trees).
  */
 
-// Open string union to keep b10b's addition trivial — adding "list"
-// later is a one-line change here + a new branch below. Closed-set
-// discriminated union would force every caller to update on variant
-// addition.
-export type AlbumCardVariant = "mini" | "hero";
+// All three planned variants now implemented (mini = b08, hero = b09,
+// list = b10b). The open string union + discriminated props kept each
+// addition self-contained; no further variants are reserved.
+export type AlbumCardVariant = "mini" | "hero" | "list";
 
 // Per-AlbumType pill styling. Mirrors the mockup's ALBUM_TYPE_LABEL
 // map (lines 96–102) but uses semantic tokens from
@@ -78,6 +78,14 @@ export type AlbumCardAlbum = {
     artist: {
       color: string | null;
       translations: Array<{ locale: string; name: string }>;
+      // Artist-name fields — OPTIONAL so the b08 song-page payload
+      // (`SongAlbumsAlbum`, which selects only color + translations)
+      // still satisfies this type. Only the `list` variant reads them,
+      // and only via the caller-supplied `artistName` prop (resolved
+      // upstream by `getAlbums`); mini/hero never touch them.
+      originalName?: string | null;
+      originalShortName?: string | null;
+      originalLanguage?: string;
     };
   }>;
 };
@@ -122,7 +130,27 @@ interface HeroProps {
   activeBonusCount?: number;
 }
 
-type Props = MiniProps | HeroProps;
+interface ListProps {
+  variant: "list";
+  album: AlbumCardAlbum;
+  locale: string;
+  /**
+   * Pre-resolved artist label (e.g. `displayOriginalName(...).main`).
+   * Passed in by the list page rather than resolved here so AlbumCard
+   * doesn't have to depend on the optional artist-name fields being
+   * present. Rendered as a plain text pill — NOT a nested link, since
+   * the whole card is already an album link.
+   */
+  artistName?: string;
+  /**
+   * Count of active bonuses on this album (same formula as `mini` /
+   * `hero` — `countActiveBonuses(listings)`). Renders the green 特典 N
+   * badge when > 0.
+   */
+  activeBonusCount?: number;
+}
+
+type Props = MiniProps | HeroProps | ListProps;
 
 export async function AlbumCard(props: Props) {
   if (props.variant === "mini") {
@@ -130,6 +158,9 @@ export async function AlbumCard(props: Props) {
   }
   if (props.variant === "hero") {
     return await HeroVariant(props);
+  }
+  if (props.variant === "list") {
+    return await ListVariant(props);
   }
   return null;
 }
@@ -149,6 +180,11 @@ async function MiniVariant({
   // `useTranslations` from `next-intl` would force a `"use client"`
   // boundary on every consumer that mounts AlbumCard, defeating the
   // RSC tree the rest of the album-surface stack relies on.
+  //
+  // Mini is the only variant that still loads the `Song` namespace — it
+  // renders Disc/Track footers + the "원본 수록" canonical pill, which are
+  // genuinely Song-page-sidebar concepts. The cross-surface active-bonus
+  // badge keys moved to `Album` (PR #486), so hero/list load `Album` only.
   const [albumT, songT] = await Promise.all([
     getTranslations({ locale, namespace: "Album" }),
     getTranslations({ locale, namespace: "Song" }),
@@ -157,15 +193,7 @@ async function MiniVariant({
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
-  const releaseYear = (() => {
-    if (album.releaseDate === null) return null;
-    const d =
-      album.releaseDate instanceof Date
-        ? album.releaseDate
-        : new Date(album.releaseDate);
-    const year = d.getUTCFullYear();
-    return Number.isNaN(year) ? null : year;
-  })();
+  const releaseYear = parseReleaseYear(album.releaseDate);
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;
@@ -309,13 +337,13 @@ async function MiniVariant({
       {/* Active-bonus badge — only when count > 0. Mirrors
           AlbumInfoCard's bonusActive token pair so the green
           treatment reads consistently across album surfaces. Visible
-          text uses `Song.albumActiveBonusesBadge` (compact "특전 N" /
+          text uses `Album.albumActiveBonusesBadge` (compact "특전 N" /
           "特典 N" / "Bonus N" per locale); the longer aria-label
           ("매장특전 N건" / "店舗特典 N件" / plural-aware en) lives
-          in `Song.albumActiveBonuses` for screen readers. */}
+          in `Album.albumActiveBonuses` for screen readers. */}
       {activeBonusCount > 0 && (
         <span
-          aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+          aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
           style={{
             fontSize: 10,
             fontWeight: 700,
@@ -326,7 +354,7 @@ async function MiniVariant({
             flexShrink: 0,
           }}
         >
-          {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+          {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
         </span>
       )}
 
@@ -349,28 +377,16 @@ async function HeroVariant({
   locale,
   activeBonusCount = 0,
 }: HeroProps) {
-  // Same server-side lookup as MiniVariant — Album namespace for the
-  // type-pill label, Song namespace for the active-bonus badge text
-  // (the badge strings are shared across the Song page sidebar and
-  // every AlbumCard variant). See MiniVariant's note on why this is
-  // `getTranslations` (server) rather than `useTranslations`.
-  const [albumT, songT] = await Promise.all([
-    getTranslations({ locale, namespace: "Album" }),
-    getTranslations({ locale, namespace: "Song" }),
-  ]);
+  // Album namespace only — type-pill label + active-bonus badge text
+  // both live under `Album` now (the badge keys moved out of `Song` in
+  // PR #486 since AlbumCard renders on non-Song surfaces). Server-side
+  // `getTranslations` per the MiniVariant note (keeps consumers RSC).
+  const albumT = await getTranslations({ locale, namespace: "Album" });
 
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
-  const releaseYear = (() => {
-    if (album.releaseDate === null) return null;
-    const d =
-      album.releaseDate instanceof Date
-        ? album.releaseDate
-        : new Date(album.releaseDate);
-    const year = d.getUTCFullYear();
-    return Number.isNaN(year) ? null : year;
-  })();
+  const releaseYear = parseReleaseYear(album.releaseDate);
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;
@@ -429,7 +445,7 @@ async function HeroVariant({
             reads identically across surfaces. */}
         {activeBonusCount > 0 && (
           <span
-            aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+            aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
             style={{
               position: "absolute",
               top: 8,
@@ -442,7 +458,7 @@ async function HeroVariant({
               padding: "2px 7px",
             }}
           >
-            {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+            {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
           </span>
         )}
       </div>
@@ -507,6 +523,255 @@ async function HeroVariant({
             {releaseYear}
           </div>
         )}
+      </div>
+    </Link>
+  );
+}
+
+async function ListVariant({
+  album,
+  locale,
+  artistName,
+  activeBonusCount = 0,
+}: ListProps) {
+  // Album namespace only — type pill + active-bonus badge both resolve
+  // here (the badge keys moved out of `Song` in PR #486).
+  const albumT = await getTranslations({ locale, namespace: "Album" });
+
+  const titleParts = displayOriginalTitle(album, album.translations, locale);
+  const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
+
+  const releaseYear = parseReleaseYear(album.releaseDate);
+
+  const primaryArtist = album.artists[0]?.artist ?? null;
+  const fallbackColor = primaryArtist?.color ?? colors.primary;
+  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+
+  // Shared sub-elements rendered in both the mobile-row and desktop-card
+  // layouts so they can't drift apart.
+  const typePill = (
+    <span
+      style={{
+        fontSize: 9,
+        fontWeight: 700,
+        color: pillStyle.color,
+        background: pillStyle.bg,
+        borderRadius: 8,
+        padding: "1px 5px",
+        textTransform: "uppercase",
+        letterSpacing: "0.04em",
+      }}
+    >
+      {albumT(`type.${album.type}`)}
+    </span>
+  );
+  const artistPill = artistName ? (
+    <span
+      style={{
+        fontSize: 9,
+        fontWeight: 600,
+        color: colors.textSubtle,
+        background: colors.bgSubtle,
+        borderRadius: 8,
+        padding: "1px 5px",
+        maxWidth: 140,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {artistName}
+    </span>
+  ) : null;
+  const bonusBadge =
+    activeBonusCount > 0 ? (
+      <span
+        aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: colors.bonusActiveText,
+          background: colors.bonusActiveBg,
+          borderRadius: 8,
+          padding: "1px 5px",
+        }}
+      >
+        {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
+      </span>
+    ) : null;
+
+  const coverImg = album.imageUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={album.imageUrl}
+      alt=""
+      referrerPolicy="no-referrer"
+      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+    />
+  ) : (
+    <span aria-hidden="true">💿</span>
+  );
+
+  return (
+    // One <Link> renders both layouts; Tailwind breakpoint visibility
+    // picks which shows. Mobile: a borderless row — the year-section
+    // wrapper supplies the white container + `divide-y` separators, so
+    // the row needs no border of its own (sidesteps the responsive
+    // last-child-divider problem inline styles can't express). Desktop:
+    // a self-contained bordered card inside the wrapper's grid. The
+    // arbitrary `lg:` border/rounded values are the token hexes
+    // (colors.border / radius) — they live in className rather than
+    // `style` only because a media-query-conditional border can't be
+    // expressed inline.
+    <Link
+      href={albumHref}
+      className="block lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:rounded-[14px] lg:border lg:border-[#e2e8f0] lg:bg-white"
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
+      {/* ── Mobile row ── */}
+      <div
+        className="flex lg:hidden"
+        style={{ alignItems: "center", gap: 14, padding: "12px 16px" }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 10,
+            flexShrink: 0,
+            background: album.imageUrl
+              ? "transparent"
+              : `linear-gradient(135deg, ${fallbackColor}30, ${fallbackColor}60)`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 22,
+            overflow: "hidden",
+            boxShadow: shadows.imageThumbnail,
+          }}
+        >
+          {coverImg}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              marginBottom: 4,
+              flexWrap: "wrap",
+            }}
+          >
+            {typePill}
+            {artistPill}
+            {bonusBadge}
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: colors.primary,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              marginBottom: 2,
+            }}
+          >
+            {titleParts.main}
+          </div>
+          <div style={{ fontSize: 11, color: colors.textMuted }}>
+            {[titleParts.sub, releaseYear !== null ? String(releaseYear) : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+        <span
+          style={{ fontSize: 14, color: colors.borderSubtle, flexShrink: 0 }}
+          aria-hidden="true"
+        >
+          ›
+        </span>
+      </div>
+
+      {/* ── Desktop card ── */}
+      <div className="hidden lg:flex lg:h-full lg:flex-col">
+        <div
+          style={{
+            position: "relative",
+            height: 120,
+            background: album.imageUrl
+              ? "transparent"
+              : `linear-gradient(135deg, ${fallbackColor}25, ${fallbackColor}55)`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 40,
+            overflow: "hidden",
+          }}
+        >
+          {coverImg}
+          {activeBonusCount > 0 && (
+            <span
+              aria-label={albumT("albumActiveBonuses", {
+                count: activeBonusCount,
+              })}
+              style={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                fontSize: 10,
+                fontWeight: 700,
+                color: colors.bonusActiveText,
+                background: colors.bonusActiveBg,
+                borderRadius: 10,
+                padding: "2px 7px",
+              }}
+            >
+              {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            padding: "10px 12px 12px",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              marginBottom: 5,
+              flexWrap: "wrap",
+            }}
+          >
+            {typePill}
+            {artistPill}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: colors.primary,
+              lineHeight: 1.4,
+              marginBottom: 3,
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {titleParts.main}
+          </div>
+          {releaseYear !== null && (
+            <div style={{ fontSize: 10, color: colors.textMuted }}>
+              {releaseYear}
+            </div>
+          )}
+        </div>
       </div>
     </Link>
   );

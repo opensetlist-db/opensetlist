@@ -2,6 +2,29 @@ import type { Prisma } from "@/generated/prisma/client";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
+ * Collect the distinct, non-null BD album ids referenced by a set of
+ * events (each event optionally points at one live-BD album via
+ * Event.bdAlbumId). Used by the Series tour-BD catalog to fan the
+ * series' events out to their BD albums.
+ *
+ * Pure + generic over the id type so it's unit-testable with plain
+ * numbers and works whether the caller passes raw BigInt ids (server
+ * query) or already-serialized Number ids. First-occurrence order is
+ * preserved (a Set keyed on the value), though the caller re-sorts the
+ * resolved albums by release date anyway — the dedupe is what matters
+ * here, not the order.
+ */
+export function collectBdAlbumIds<T>(
+  events: ReadonlyArray<{ bdAlbumId: T | null }>,
+): T[] {
+  const ids = new Set<T>();
+  for (const e of events) {
+    if (e.bdAlbumId !== null) ids.add(e.bdAlbumId);
+  }
+  return [...ids];
+}
+
+/*
  * Shared Prisma include for the b09 album-highlight surfaces:
  *   - Artist page "최신 앨범" hero + discography (ArtistAlbumsSection)
  *   - Series page tour-BD catalog (SeriesBdAlbumsSection)
@@ -29,29 +52,6 @@ import { FALLBACK_LOCALE } from "@/i18n/routing";
  * not a const. `satisfies Prisma.AlbumInclude` keeps the shape
  * type-checked against the schema without widening the inferred type.
  */
-/*
- * Collect the distinct, non-null BD album ids referenced by a set of
- * events (each event optionally points at one live-BD album via
- * Event.bdAlbumId). Used by the Series tour-BD catalog to fan the
- * series' events out to their BD albums.
- *
- * Pure + generic over the id type so it's unit-testable with plain
- * numbers and works whether the caller passes raw BigInt ids (server
- * query) or already-serialized Number ids. First-occurrence order is
- * preserved (a Set keyed on the value), though the caller re-sorts the
- * resolved albums by release date anyway — the dedupe is what matters
- * here, not the order.
- */
-export function collectBdAlbumIds<T>(
-  events: ReadonlyArray<{ bdAlbumId: T | null }>,
-): T[] {
-  const ids = new Set<T>();
-  for (const e of events) {
-    if (e.bdAlbumId !== null) ids.add(e.bdAlbumId);
-  }
-  return [...ids];
-}
-
 export function albumCardInclude(locale: string) {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   return {

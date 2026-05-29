@@ -35,12 +35,14 @@ describe("collectBdAlbumIds", () => {
   });
 
   it("works with bigint ids (server-query shape)", () => {
+    // BigInt(...) calls rather than `10n` literals — the project's tsc
+    // target predates ES2020 BigInt literal syntax.
     const events = [
-      { bdAlbumId: 10n },
-      { bdAlbumId: 10n },
-      { bdAlbumId: 99n },
+      { bdAlbumId: BigInt(10) },
+      { bdAlbumId: BigInt(10) },
+      { bdAlbumId: BigInt(99) },
     ];
-    expect(collectBdAlbumIds(events)).toEqual([10n, 99n]);
+    expect(collectBdAlbumIds(events)).toEqual([BigInt(10), BigInt(99)]);
   });
 });
 
