@@ -208,3 +208,21 @@ export function formatDate(
     return d.toLocaleDateString("en-US", options);
   }
 }
+
+/**
+ * Release-year extractor shared by the album surfaces (AlbumCard's
+ * three variants + the `/albums` list page's year grouping). Returns
+ * the UTC year of a date-only / ISO-string / Date value, or null when
+ * the input is null or unparseable.
+ *
+ * UTC per the CLAUDE.md date rule: `Album.releaseDate` is a date-only
+ * column, so the year is timezone-stable, but reading it through a
+ * local-time getter would be a latent bug if the column ever carried a
+ * time — `getUTCFullYear` keeps the boundary correct regardless.
+ */
+export function parseReleaseYear(date: string | Date | null): number | null {
+  if (date === null) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getUTCFullYear();
+  return Number.isNaN(year) ? null : year;
+}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { displayOriginalTitle } from "@/lib/display";
+import { parseReleaseYear } from "@/lib/utils";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 /*
@@ -187,15 +188,7 @@ async function MiniVariant({
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
-  const releaseYear = (() => {
-    if (album.releaseDate === null) return null;
-    const d =
-      album.releaseDate instanceof Date
-        ? album.releaseDate
-        : new Date(album.releaseDate);
-    const year = d.getUTCFullYear();
-    return Number.isNaN(year) ? null : year;
-  })();
+  const releaseYear = parseReleaseYear(album.releaseDate);
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;
@@ -392,15 +385,7 @@ async function HeroVariant({
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
-  const releaseYear = (() => {
-    if (album.releaseDate === null) return null;
-    const d =
-      album.releaseDate instanceof Date
-        ? album.releaseDate
-        : new Date(album.releaseDate);
-    const year = d.getUTCFullYear();
-    return Number.isNaN(year) ? null : year;
-  })();
+  const releaseYear = parseReleaseYear(album.releaseDate);
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;
@@ -556,15 +541,7 @@ async function ListVariant({
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
 
-  const releaseYear = (() => {
-    if (album.releaseDate === null) return null;
-    const d =
-      album.releaseDate instanceof Date
-        ? album.releaseDate
-        : new Date(album.releaseDate);
-    const year = d.getUTCFullYear();
-    return Number.isNaN(year) ? null : year;
-  })();
+  const releaseYear = parseReleaseYear(album.releaseDate);
 
   const primaryArtist = album.artists[0]?.artist ?? null;
   const fallbackColor = primaryArtist?.color ?? colors.primary;

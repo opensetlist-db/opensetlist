@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigInt, parseReleaseYear } from "@/lib/utils";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
@@ -103,7 +103,7 @@ export function groupAlbumsByYear(
 ): AlbumYearGroup[] {
   const byYear = new Map<number | null, AlbumsListItem[]>();
   for (const album of albums) {
-    const year = releaseYear(album.releaseDate);
+    const year = parseReleaseYear(album.releaseDate);
     const bucket = byYear.get(year);
     if (bucket) {
       bucket.push(album);
@@ -119,11 +119,4 @@ export function groupAlbumsByYear(
       if (b.year === null) return -1;
       return b.year - a.year;
     });
-}
-
-function releaseYear(releaseDate: string | Date | null): number | null {
-  if (releaseDate === null) return null;
-  const d = releaseDate instanceof Date ? releaseDate : new Date(releaseDate);
-  const year = d.getUTCFullYear();
-  return Number.isNaN(year) ? null : year;
 }
