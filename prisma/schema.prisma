@@ -149,6 +149,20 @@ enum AlbumStoreListingStatus {
   unknown // operator 미확인
 }
 
+// Operator-review workflow status for an AlbumBonusImportJob (b10).
+// Lifecycle:
+//   pending   — candidate JSON loaded; operator has not yet acted on rows.
+//   applied   — every per-row `decisions` entry resolved (approved → written,
+//               rejected → skipped). Job rows persist for the audit trail.
+//   discarded — operator threw the whole job away without applying any row.
+// Once applied or discarded the job is read-only — re-running the parser
+// produces a new job rather than reopening a closed one.
+enum AlbumBonusImportJobStatus {
+  pending
+  applied
+  discarded
+}
+
 enum ReactionType {
   waiting
   best
@@ -848,11 +862,12 @@ model Album {
   imageUrl         String?
   createdAt        DateTime  @default(now())
 
-  translations AlbumTranslation[]
-  tracks       AlbumTrack[]
-  artists      AlbumArtist[]
-  listings     AlbumStoreListing[]
-  bdEvents     Event[]             @relation("EventBdAlbum")
+  translations    AlbumTranslation[]
+  tracks          AlbumTrack[]
+  artists         AlbumArtist[]
+  listings        AlbumStoreListing[]
+  bdEvents        Event[]               @relation("EventBdAlbum")
+  bonusImportJobs AlbumBonusImportJob[]
 }
 
 model AlbumArtist {
@@ -1068,6 +1083,52 @@ model AlbumStoreBonusTranslation {
 
   @@unique([bonusId, locale])
   @@index([bonusId])
+}
+
+// ── ALBUM BONUS IMPORT JOB ────────────────────────────
+// Operator-review queue row for b10 (Bonus scrape automation). One job
+// = one parse run of `wiki/scrape/bonus/fetch-bonus.mjs` against a
+// 公式 release-announcement page. Stores the parser's candidate JSON
+// verbatim plus the operator's per-row decisions, then drives the
+// "apply approved" action that writes AlbumStoreListing /
+// AlbumStoreBonus rows.
+//
+// Why persist instead of holding state in the admin UI:
+//
+// - Operator review naturally spans sessions — the queue might sit
+//   for days while the operator confirms retailer-side details.
+// - Multi-job batching: parser may produce several jobs in a row
+//   (one per news page); operator picks them off the queue over time.
+// - Audit trail: applied/discarded jobs stay for "what did I import
+//   from this news page" reference; deletion is operator-initiated.
+//
+// `albumId` is nullable because the parser does NOT resolve Album.id
+// (see wiki/scrape/bonus/pattern-notes.md §8) — the operator picks
+// the album in the review UI's dropdown, which then sets this field.
+// Apply requires albumId to be non-NULL; the endpoint refuses
+// otherwise.
+//
+// `candidates` JSON shape is documented at pattern-notes.md §12 and
+// frozen at job-create time. `decisions` JSON tracks per-row
+// approve/reject; shape lives in src/lib/album-bonus-import.ts so
+// both the API route and the review UI share one type.
+model AlbumBonusImportJob {
+  id          String                    @id @default(uuid())
+  albumId     BigInt?
+  sourceUrl   String? // 公式 news URL; operator fills via review UI
+  candidates  Json
+  decisions   Json?
+  status      AlbumBonusImportJobStatus @default(pending)
+  notes       String? // free-text operator note (private to admin)
+  appliedAt   DateTime?
+  discardedAt DateTime?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  album Album? @relation(fields: [albumId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([albumId])
 }
 
 // ── USER ──────────────────────────────────────────────
