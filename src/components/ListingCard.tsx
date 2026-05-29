@@ -4,10 +4,12 @@ import {
   resolveStoreName,
   resolveEditionLabel,
   resolveBonusType,
+  resolveStoreKey,
   mapStatusToUiKey,
   type EnrichedListing,
   type EnrichedBonus,
 } from "@/lib/albumBonusDisplay";
+import { TrackedStoreLink } from "@/components/TrackedStoreLink";
 // Limits the buy-button anchor to genuine external URLs. Operator
 // types productUrl as free-text in admin (per the b03↔b05
 // simplification handoff — no closed allowlist of stores), so a
@@ -66,6 +68,14 @@ interface Props {
    * own borderRadius / box edge in the standalone shape).
    */
   dividerAbove?: boolean;
+  /**
+   * Album id (string) for the b10c `store_click` GA event. When set,
+   * the buy button is rendered through <TrackedStoreLink> so clicks
+   * fire `store_click` (surface `album_page`). Omitted by admin call
+   * sites (ListingsClient / AlbumListingFormModal) so operator clicks
+   * never reach analytics — those render a plain anchor instead.
+   */
+  albumId?: string;
 }
 
 export async function ListingCard({
@@ -74,6 +84,7 @@ export async function ListingCard({
   muted = false,
   embedded = false,
   dividerAbove = false,
+  albumId,
 }: Props) {
   const t = await getTranslations({ locale, namespace: "Album.bonus" });
   const storeName = resolveStoreName(listing, locale);
@@ -159,26 +170,48 @@ export async function ListingCard({
         <StatusBadge label={t(`status.${uiStatus}`)} variant={uiStatus} />
       </header>
 
-      {!muted && isSafeExternalUrl(listing.productUrl) ? (
-        <a
-          href={listing.productUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "inline-block",
-            padding: "8px 16px",
-            background: colors.primary,
-            color: "white",
-            borderRadius: radius.tag,
-            fontSize: 13,
-            fontWeight: 700,
-            textDecoration: "none",
-            marginBottom: listing.bonuses.length > 0 ? 14 : 0,
-          }}
-        >
-          {t("buy")} →
-        </a>
-      ) : null}
+      {!muted && isSafeExternalUrl(listing.productUrl)
+        ? (() => {
+            const buyStyle = {
+              display: "inline-block",
+              padding: "8px 16px",
+              background: colors.primary,
+              color: "white",
+              borderRadius: radius.tag,
+              fontSize: 13,
+              fontWeight: 700,
+              textDecoration: "none",
+              marginBottom: listing.bonuses.length > 0 ? 14 : 0,
+            } as const;
+            const label = `${t("buy")} →`;
+            // Tracked (album-page) vs plain (admin) per `albumId`
+            // presence — admin previews don't fire `store_click`.
+            // `bonus_id` is omitted: productUrl is per-listing, the
+            // bonuses below have no own link (b01 data model).
+            return albumId ? (
+              <TrackedStoreLink
+                href={listing.productUrl}
+                albumId={albumId}
+                storeKey={resolveStoreKey(listing.originalStoreName)}
+                storeStatus={listing.status}
+                surface="album_page"
+                isAffiliate={false}
+                style={buyStyle}
+              >
+                {label}
+              </TrackedStoreLink>
+            ) : (
+              <a
+                href={listing.productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={buyStyle}
+              >
+                {label}
+              </a>
+            );
+          })()
+        : null}
 
       {listing.bonuses.length > 0 ? (
         <ul
