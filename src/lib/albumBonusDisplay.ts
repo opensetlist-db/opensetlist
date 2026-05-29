@@ -23,6 +23,7 @@ import type {
   AlbumStoreBonusTranslationModel,
 } from "@/generated/prisma/models";
 import type { BigIntStringified } from "@/lib/utils";
+import { STORE_REGEXES } from "@/lib/storeKeys";
 
 // BigIntStringified-wrapped because every caller in the b03 chain
 // (`AlbumBonusTab` → `ListingCard` / `EndedListingToggle`) receives
@@ -128,24 +129,14 @@ export function countActiveBonuses(
 // "Amazon JP" / "amazon_jp" / "アマゾン" freely — see the
 // AlbumStoreListing schema comment), so the b10c `store_click` event +
 // the album page's `has_amazon_listing` flag need a stable key derived
-// at read time. Regex set mirrors eventBdState's STORE_PRIORITY (first
-// match wins); anything unmatched is `other` so the funnel never drops a
-// click. Kept here next to resolveStoreName as the single store-identity
-// resolver.
-const STORE_KEY_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
-  [/amazon/i, "amazon_jp"],
-  [/楽天|rakuten/i, "rakuten"],
-  [/アニメイト|animate/i, "animate"],
-  [/タワー|tower\s*record/i, "tower"],
-  [/HMV/i, "hmv"],
-  [/ヨドバシ|yodobashi/i, "yodobashi"],
-  [/ソフマップ|sofmap/i, "sofmap"],
-  [/ゲーマーズ|gamers/i, "gamers"],
-];
-
+// at read time. Patterns come from the shared `STORE_REGEXES` list
+// (src/lib/storeKeys.ts) — the same source eventBdState's STORE_PRIORITY
+// derives from, so the analytics key and the BD-preview sort rank can't
+// drift. First match wins; anything unmatched is `other` so the funnel
+// never drops a click.
 export function resolveStoreKey(storeName: string | null | undefined): string {
   if (!storeName) return "other";
-  for (const [pattern, key] of STORE_KEY_PATTERNS) {
+  for (const [pattern, key] of STORE_REGEXES) {
     if (pattern.test(storeName)) return key;
   }
   return "other";
