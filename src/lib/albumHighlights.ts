@@ -57,6 +57,12 @@ export function albumCardInclude(locale: string) {
   return {
     translations: { where: localeFilter },
     artists: {
+      // Deterministic first artist — these surfaces read `artists[0]`
+      // for the gradient fallback color, and AlbumArtist has no
+      // role/order column, so order by `artistId ASC` (same tiebreak
+      // albumsListInclude + b08 use) to keep a multi-artist album's
+      // cover color stable across requests.
+      orderBy: { artistId: "asc" },
       include: {
         artist: {
           select: {
