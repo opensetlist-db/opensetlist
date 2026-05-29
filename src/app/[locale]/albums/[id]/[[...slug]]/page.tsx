@@ -22,6 +22,7 @@ import {
 import { resolveLocalizedField, displayOriginalName } from "@/lib/display";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
+import { colors } from "@/styles/tokens";
 
 /*
  * Tab discriminator. `live_bd` albums skip the Tracks tab entirely
@@ -360,54 +361,74 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   breadcrumbItems.push({ label: t("breadcrumb.albums") });
 
   return (
-    // Outer wrapper mirrors the artist page (page.tsx ~line 670-673)
-    // so the breadcrumb sits left-aligned at the same column edge as
-    // the main content. mx-auto + maxWidth centers the wrapper.
-    //
-    // `overflowX: clip` is the events-tab width-leak guard. The
-    // events-tab PerformanceGroup row uses a 5-track grid with two
-    // `auto` columns (chip + chevron), whose intrinsic min sizes
-    // sum to ~216 px. On mobile this can push the main grid column
-    // wider than the viewport — which manifested as the sidebar
-    // visibly shrinking on the bonus / tracks tabs (no wide
-    // intrinsic content there) vs the events tab (wide intrinsic
-    // content expands the column). Clipping at the wrapper kills
-    // the horizontal-bleed surface so the column width stays a
-    // function of the viewport, not the active tab's content.
-    <div
-      className="mx-auto px-4"
-      style={{
-        maxWidth: ALBUM_PAGE_MAX_WIDTH,
-        overflowX: "clip",
-      }}
-    >
-      <div style={{ paddingTop: 14 }}>
-        <Breadcrumb
-          ariaLabel={t("breadcrumb.aria")}
-          items={breadcrumbItems}
-        />
-      </div>
-      {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
-          pattern the artist page uses — `grid` at every breakpoint,
-          not just lg. Mobile uses `grid-cols-1` which Tailwind
-          compiles to `grid-template-columns: minmax(0, 1fr)`; that
-          single-track form clamps the column to the viewport width
-          and lets the inner content's `overflow: hidden` / ellipsis
-          actually engage. A bare `block` would default children to
-          `min-width: auto` = intrinsic content size, dragging the
-          page into horizontal scroll on mobile.
-          Desktop track `minmax(0, 1fr)` on the main column is the
-          same defensive clamp — a bare `1fr` would let a wide
-          intrinsic child grow the column past the maxWidth.
-          alignItems sits on inline style so the same value applies
-          at every breakpoint. */}
-      <main
-        className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
+    // Outer `<main>` carries the page background + min-height so the
+    // bgPage tint extends edge-to-edge of the viewport (matches the
+    // artist / song / member detail pages — operator wanted visual
+    // parity with the artist page's blue-tinted background). The
+    // block-level `<main>` also serves as the structural answer to
+    // the earlier flex-item width bug: `<body>` is `flex flex-col`,
+    // so previously when this page's `mx-auto` wrapper was the
+    // direct flex child, mx-auto without an explicit cross-axis
+    // size shrank the wrapper to content-fit width — the page
+    // visibly resized across tab switches (events tab's wide
+    // PerformanceGroup widened the wrapper; bonus / tracks tabs
+    // narrow content collapsed it to half-viewport). Wrapping in
+    // `<main>` puts a block element between the flex column and
+    // the mx-auto div, restoring the standard
+    // mx-auto + max-width centering behavior the other detail
+    // pages rely on — no `width: 100%` defense needed on the
+    // inner div anymore. See [[feedback-flex-body-mx-auto]].
+    <main style={{ minHeight: "100vh", background: colors.bgPage }}>
+      {/* `mx-auto + maxWidth` centers the content column inside the
+          full-bleed background; breadcrumb sits left-aligned at the
+          same column edge as the main content.
+          `overflowX: clip` is the events-tab width-leak guard. The
+          events-tab PerformanceGroup row uses a 5-track grid with
+          two `auto` columns (chip + chevron), whose intrinsic min
+          sizes sum to ~216 px. On mobile this can push the inner
+          grid column wider than the viewport — which manifested as
+          the sidebar visibly shrinking on the bonus / tracks tabs
+          (no wide intrinsic content there) vs the events tab (wide
+          intrinsic content expands the column). Clipping here kills
+          the horizontal-bleed surface so the column width stays a
+          function of the viewport, not the active tab's content. */}
+      <div
+        className="mx-auto px-4"
         style={{
-          paddingBottom: 60,
-          alignItems: "start",
+          maxWidth: ALBUM_PAGE_MAX_WIDTH,
+          overflowX: "clip",
         }}
       >
+        <div style={{ paddingTop: 14 }}>
+          <Breadcrumb
+            ariaLabel={t("breadcrumb.aria")}
+            items={breadcrumbItems}
+          />
+        </div>
+        {/* Same `grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]`
+            pattern the artist page uses — `grid` at every breakpoint,
+            not just lg. Mobile uses `grid-cols-1` which Tailwind
+            compiles to `grid-template-columns: minmax(0, 1fr)`; that
+            single-track form clamps the column to the viewport width
+            and lets the inner content's `overflow: hidden` / ellipsis
+            actually engage. A bare `block` would default children to
+            `min-width: auto` = intrinsic content size, dragging the
+            page into horizontal scroll on mobile.
+            Desktop track `minmax(0, 1fr)` on the main column is the
+            same defensive clamp — a bare `1fr` would let a wide
+            intrinsic child grow the column past the maxWidth.
+            alignItems sits on inline style so the same value applies
+            at every breakpoint.
+            This div is no longer a `<main>` (the outer `<main>` now
+            owns the page semantic landmark + bg). It stays a `<div>`
+            because nesting two `<main>` elements is invalid. */}
+        <div
+          className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-7"
+          style={{
+            paddingBottom: 60,
+            alignItems: "start",
+          }}
+        >
         {/* `lg:sticky lg:top-[72px]` mirrors the song page's sidebar
             pattern (song page.tsx ~line 644) so the InfoCard pins under
             the global nav on desktop while scrolling the tab body. The
@@ -478,7 +499,8 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             (l) => resolveStoreKey(l.originalStoreName) === "amazon_jp",
           )}
         />
-      </main>
-    </div>
+        </div>
+      </div>
+    </main>
   );
 }
