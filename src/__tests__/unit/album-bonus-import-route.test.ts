@@ -12,6 +12,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     albumStoreListing: {
       findMany: vi.fn(),
@@ -315,20 +316,42 @@ describe("DELETE /api/admin/album-bonuses/import/[jobId]", () => {
       fakeParams("job-1"),
     );
     expect(res.status).toBe(409);
-    expect(prisma.albumBonusImportJob.delete).not.toHaveBeenCalled();
+    expect(prisma.albumBonusImportJob.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("hard-deletes a pending job", async () => {
+  it("hard-deletes a pending job via atomic deleteMany", async () => {
     (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
       { status: "pending" },
     );
-    (prisma.albumBonusImportJob.delete as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    (prisma.albumBonusImportJob.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { count: 1 },
+    );
     const res = await JOB_DELETE(
       new Request("http://x", { method: "DELETE" }) as never,
       fakeParams("job-1"),
     );
     expect(res.status).toBe(200);
-    expect(prisma.albumBonusImportJob.delete).toHaveBeenCalledWith({ where: { id: "job-1" } });
+    expect(prisma.albumBonusImportJob.deleteMany).toHaveBeenCalledWith({
+      where: { id: "job-1", status: { not: "applied" } },
+    });
+  });
+
+  it("returns 409 when a concurrent apply landed between findUnique and deleteMany", async () => {
+    // TOCTOU race: findUnique sees pending, but by the time deleteMany
+    // runs, a concurrent apply has flipped status to applied. The
+    // status filter in deleteMany guards the audit record from being
+    // erased — count returns 0 and the route surfaces 409.
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { status: "pending" },
+    );
+    (prisma.albumBonusImportJob.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue(
+      { count: 0 },
+    );
+    const res = await JOB_DELETE(
+      new Request("http://x", { method: "DELETE" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(409);
   });
 });
 
@@ -374,6 +397,138 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     expect(res.status).toBe(404);
   });
 
+  it("returns 409 when a concurrent tx wins the atomic claim", async () => {
+    // findUnique outside the tx saw pending, but inside the tx the
+    // updateMany compare-and-set returns count=0 — another apply
+    // request already claimed the job. The route must surface 409
+    // and write nothing, even though the bonus/listing mocks would
+    // succeed if called.
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      albumId: BigInt(42),
+      sourceUrl: null,
+      candidates: validCandidates,
+      decisions: {
+        listings: { 0: { approved: true } },
+        bonuses: { "0:0": { approved: true } },
+        globalEarlyBooking: null,
+      },
+    });
+
+    const createListing = vi.fn();
+    const createManyBonus = vi.fn();
+    const findManyListings = vi.fn();
+    // Loser of the race: count=0.
+    const claimJob = vi.fn().mockResolvedValue({ count: 0 });
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const tx = {
+          albumStoreListing: {
+            findMany: findManyListings,
+            create: createListing,
+            update: vi.fn(),
+          },
+          albumStoreBonus: { createMany: createManyBonus },
+          albumBonusImportJob: { updateMany: claimJob },
+        } as unknown as typeof prisma;
+        return fn(tx);
+      },
+    );
+
+    const res = await JOB_APPLY(
+      new Request("http://x", { method: "POST" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(409);
+    // No DB writes — claim short-circuits the rest of the tx.
+    expect(findManyListings).not.toHaveBeenCalled();
+    expect(createListing).not.toHaveBeenCalled();
+    expect(createManyBonus).not.toHaveBeenCalled();
+  });
+
+  it("dedupes globalEarlyBooking inserts against existing bonuses on the target listing", async () => {
+    // Operator picked the global early-booking item and chose to
+    // attach it to listing-idx 0, which matches an existing listing
+    // that already has a bonus with the same originalBonusType.
+    // The fan-out must skip the duplicate rather than inserting it
+    // (the schema permits dups by design, so the apply layer is the
+    // last line of defense for early-booking specifically).
+    const candidatesWithEarly = {
+      ...validCandidates,
+      globalEarlyBooking: {
+        bonuses: [
+          {
+            originalBonusType: "[早期予約] アクリルキーホルダー",
+            originalBonusDescription: null,
+            bonusImageUrl: null,
+            storeNameHint: null,
+          },
+        ],
+      },
+    };
+
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      albumId: BigInt(42),
+      sourceUrl: null,
+      candidates: candidatesWithEarly,
+      decisions: {
+        // No listing decisions approved (we're testing the global
+        // path attaching to an existing listing).
+        listings: {},
+        bonuses: {},
+        globalEarlyBooking: {
+          approved: true,
+          attachToListings: [0],
+        },
+      },
+    });
+
+    const createManyBonus = vi.fn().mockResolvedValue({ count: 0 });
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const tx = {
+          albumStoreListing: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: "L-amazon",
+                originalStoreName: "Amazon.co.jp", // matches candidates.listings[0]
+                originalEditionLabel: null,
+                productUrl: null,
+                sourceUrl: null,
+                bonuses: [
+                  // Already has the exact bonus the global early-
+                  // booking item would insert — must dedupe.
+                  { id: "B-existing", originalBonusType: "[早期予約] アクリルキーホルダー" },
+                ],
+              },
+            ]),
+            create: vi.fn(),
+            update: vi.fn(),
+          },
+          albumStoreBonus: { createMany: createManyBonus },
+          albumBonusImportJob: { updateMany: claimJob },
+        } as unknown as typeof prisma;
+        return fn(tx);
+      },
+    );
+
+    const res = await JOB_APPLY(
+      new Request("http://x", { method: "POST" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.applied.bonusesInserted).toBe(0);
+    // createMany never called because the only candidate was deduped.
+    expect(createManyBonus).not.toHaveBeenCalled();
+  });
+
   it("applies approved inserts in a transaction and flips status to applied", async () => {
     (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "job-1",
@@ -392,7 +547,8 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     const createListing = vi.fn().mockResolvedValue(createdListing);
     const updateListing = vi.fn();
     const createManyBonus = vi.fn().mockResolvedValue({ count: 1 });
-    const updateJob = vi.fn().mockResolvedValue({});
+    // Atomic claim: returns count=1 → this tx wins the race.
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
 
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof prisma) => Promise<unknown>) => {
@@ -403,7 +559,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: updateListing,
           },
           albumStoreBonus: { createMany: createManyBonus },
-          albumBonusImportJob: { update: updateJob },
+          albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
       },
@@ -436,13 +592,11 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
         }),
       ],
     });
-    // Status flipped to applied.
-    expect(updateJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "job-1" },
-        data: expect.objectContaining({ status: "applied" }),
-      }),
-    );
+    // Atomic claim flipped status to applied at the top of the tx.
+    expect(claimJob).toHaveBeenCalledWith({
+      where: { id: "job-1", status: "pending" },
+      data: expect.objectContaining({ status: "applied" }),
+    });
   });
 
   it("skips listings the operator did not approve", async () => {
@@ -461,7 +615,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
 
     const createListing = vi.fn();
     const createManyBonus = vi.fn();
-    const updateJob = vi.fn().mockResolvedValue({});
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
 
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
       async (fn: (tx: typeof prisma) => Promise<unknown>) => {
@@ -472,7 +626,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: vi.fn(),
           },
           albumStoreBonus: { createMany: createManyBonus },
-          albumBonusImportJob: { update: updateJob },
+          albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
       },

@@ -118,9 +118,15 @@ export default function ReviewClient({
     });
   }
 
-  async function onSave() {
-    setBusy("save");
-    setToast(null);
+  // PATCH the operator's current local state (albumId / sourceUrl /
+  // notes / decisions) to the server. Returns a discriminated result
+  // so callers can chain (onApply calls this first to ensure the
+  // server sees the latest checkbox toggles + album pick before the
+  // apply endpoint reads them — without this hop, unsaved local
+  // edits would be silently dropped on apply).
+  async function persistDecisions(): Promise<
+    { ok: true } | { ok: false; error: string }
+  > {
     const albumIdValue = albumId.trim();
     try {
       const resp = await fetch(`/api/admin/album-bonuses/import/${job.id}`, {
@@ -135,20 +141,29 @@ export default function ReviewClient({
       });
       if (!resp.ok) {
         const body = (await resp.json().catch(() => ({}))) as { error?: string };
-        setToast({ tone: "error", text: body.error ?? `저장 실패 (${resp.status})` });
-      } else {
-        setToast({ tone: "success", text: "저장됨." });
-        // Refresh so classifications reflect the new albumId
-        router.refresh();
+        return { ok: false, error: body.error ?? `저장 실패 (${resp.status})` };
       }
+      return { ok: true };
     } catch (e) {
-      setToast({
-        tone: "error",
-        text: e instanceof Error ? e.message : "저장 실패",
-      });
-    } finally {
-      setBusy(null);
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "저장 실패",
+      };
     }
+  }
+
+  async function onSave() {
+    setBusy("save");
+    setToast(null);
+    const result = await persistDecisions();
+    if (!result.ok) {
+      setToast({ tone: "error", text: result.error });
+    } else {
+      setToast({ tone: "success", text: "저장됨." });
+      // Refresh so classifications reflect the new albumId
+      router.refresh();
+    }
+    setBusy(null);
   }
 
   async function onApply() {
@@ -159,6 +174,20 @@ export default function ReviewClient({
     if (!confirm("승인된 후보를 적용합니다. 이 작업은 되돌릴 수 없습니다.")) return;
     setBusy("apply");
     setToast(null);
+
+    // Persist current local edits FIRST. The apply endpoint reads
+    // decisions from the DB; without this PATCH, the operator's
+    // unsaved checkbox toggles would be ignored and apply would
+    // either insert/update the wrong rows or no-op silently (if
+    // job.decisions was still null from job creation). Abort on
+    // save failure rather than running apply against stale state.
+    const saved = await persistDecisions();
+    if (!saved.ok) {
+      setToast({ tone: "error", text: `저장 실패로 적용 중단 — ${saved.error}` });
+      setBusy(null);
+      return;
+    }
+
     try {
       const resp = await fetch(
         `/api/admin/album-bonuses/import/${job.id}/apply`,

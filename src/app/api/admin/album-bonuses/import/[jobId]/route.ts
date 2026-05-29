@@ -280,7 +280,21 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
     );
   }
 
-  await prisma.albumBonusImportJob.delete({ where: { id: jobId } });
+  // Atomic delete guarded by status. The findUnique above gives us
+  // the 404 / 409 distinction, but between that read and the actual
+  // delete a concurrent apply could flip the row to `applied` — and
+  // a plain `delete({ where: { id }})` would then erase the audit
+  // record. `deleteMany` with the status filter closes the window:
+  // 0-count means "applied between our read and now" → 409.
+  const deleted = await prisma.albumBonusImportJob.deleteMany({
+    where: { id: jobId, status: { not: "applied" } },
+  });
+  if (deleted.count === 0) {
+    return NextResponse.json(
+      { error: "이미 적용된 작업은 삭제할 수 없습니다." },
+      { status: 409 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }
 

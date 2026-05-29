@@ -94,6 +94,24 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
   // in-memory diff); doing it inside the tx costs ~one extra query
   // but eliminates the race window completely.
   const result = await prisma.$transaction(async (tx) => {
+    // Atomically claim the job. updateMany with the status filter
+    // is the standard "compare-and-set" pattern: exactly one
+    // concurrent apply transitions pending→applied; the loser sees
+    // count=0 and bails out without writing anything. Without this,
+    // two parallel applies (double-click on the operator's "적용"
+    // button, or a stuck spinner re-submit) would both pass the
+    // earlier findUnique gate and double-insert every approved row.
+    // AlbumStoreBonus has no unique constraint by design (variants
+    // are intentional duplicates), so dup inserts would persist
+    // silently — atomic claim closes that hole.
+    const claimed = await tx.albumBonusImportJob.updateMany({
+      where: { id: job.id, status: "pending" },
+      data: { status: "applied", appliedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      return { conflict: true as const };
+    }
+
     const existing = await tx.albumStoreListing.findMany({
       where: { albumId: job.albumId! },
       select: {
@@ -109,6 +127,20 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       candidates,
       existing as ExistingListingRow[],
     );
+
+    // Cache of existing bonus.originalBonusType per existing listing,
+    // used by the globalEarlyBooking fan-out below to skip rows that
+    // would duplicate an existing bonus on a matched listing.
+    // Freshly-inserted listings (created later in this tx) are
+    // intentionally absent from the cache — they have no existing
+    // bonuses to clash with.
+    const existingBonusTypesByListingId = new Map<string, Set<string>>();
+    for (const e of existing) {
+      existingBonusTypesByListingId.set(
+        e.id,
+        new Set(e.bonuses.map((b) => b.originalBonusType)),
+      );
+    }
 
     let listingsInserted = 0;
     let listingsUpdated = 0;
@@ -202,6 +234,14 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
 
     // Global early-booking fan-out — flatten the (attachTo × items)
     // cartesian product into the same insert batch for one round-trip.
+    //
+    // Unlike the regular bonus loop above (where reconcile classifies
+    // each candidate against existing rows), globalEarlyBooking
+    // candidates have no per-row classification — the parser emits
+    // them as "unattached" and the operator picks the attach targets
+    // at review time. So we dedupe here against the existing-bonus
+    // cache: if the target listing already has a bonus with the same
+    // originalBonusType, skip the insert rather than creating a dup.
     if (
       decisions.globalEarlyBooking?.approved &&
       candidates.globalEarlyBooking?.bonuses?.length
@@ -210,7 +250,15 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       for (const targetIdx of attachTo) {
         const targetListingId = listingIdByIdx.get(targetIdx);
         if (!targetListingId) continue;
+        const existingTypes =
+          existingBonusTypesByListingId.get(targetListingId) ?? null;
         for (const item of candidates.globalEarlyBooking.bonuses) {
+          if (existingTypes && existingTypes.has(item.originalBonusType)) {
+            // Already exists on this listing — skip to keep the
+            // schema-level "variants are intentional duplicates"
+            // contract from spreading to early-booking accidentally.
+            continue;
+          }
           bonusInserts.push({
             listingId: targetListingId,
             originalBonusType: item.originalBonusType,
@@ -227,16 +275,18 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       bonusesInserted = bonusInserts.length;
     }
 
-    await tx.albumBonusImportJob.update({
-      where: { id: job.id },
-      data: {
-        status: "applied",
-        appliedAt: new Date(),
-      },
-    });
+    // Job status flip happened at the top of the tx via the atomic
+    // claim. Don't update again — would just rewrite appliedAt.
 
     return { listingsInserted, listingsUpdated, bonusesInserted };
   });
+
+  if ("conflict" in result) {
+    return NextResponse.json(
+      { error: "이 작업은 이미 처리되었습니다." },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({ applied: serializeBigInt(result) });
 }
