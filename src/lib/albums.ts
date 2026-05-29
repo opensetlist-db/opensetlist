@@ -29,6 +29,14 @@ function albumsListInclude(locale: string) {
   return {
     translations: { where: lf },
     artists: {
+      // AlbumArtist has no role/display-order column (unlike SongArtist's
+      // `role`), so order the junction by `artistId ASC` for a stable
+      // "first artist" — the list page reads `artists[0]` for the card's
+      // display name, and without an explicit orderBy Prisma's relation
+      // order is undefined, which would let a multi-artist album's shown
+      // name flip between requests. Same determinism tiebreak b08 uses
+      // for `album.id`.
+      orderBy: { artistId: "asc" },
       include: {
         artist: {
           select: {
