@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { readCrossLinkSampleIds } from "./helpers/sampleIds";
 
 /*
@@ -12,16 +12,20 @@ import { readCrossLinkSampleIds } from "./helpers/sampleIds";
  *   - /albums list + 4th nav item → Album (b10b)
  *
  * Assertion philosophy (mirrors the b06 album.spec): structural,
- * i18n-stable anchors under the ko-KR context — section-heading text +
+ * i18n-stable anchors under the ko-KR context — section-label text +
  * link hrefs + the nav's `aria-current`, never dev-DB-row *counts*
- * (catalog volume varies per environment). "Link resolves" is verified
- * by following the first album href and checking the detail page's
- * `main h1` — the same anchor album.spec uses.
+ * (catalog volume varies per environment). The album-link check is
+ * SCOPED to the section under test (the label's container) so a link
+ * from another region can't make a broken section's link pass; "link
+ * resolves" then follows the first in-section album href and checks the
+ * destination's `main h1`.
  *
  * Reconciled against what actually shipped (the b11 wiki spec predated
- * b08/b09): the Song "수록 앨범" list is FLAT (no expandable secondary
- * list — dropped in b08), and the Artist discography is the overview-tab
- * hero + grid (b09 spec-only scope), not a standalone 30-album page.
+ * b08/b09): the Song "수록 앨범" list is FLAT (no expandable secondary —
+ * dropped in b08) and its label is a styled <div>, not a heading (so it
+ * anchors via getByText, unlike the b09 sections' real <h2>/<h3>); the
+ * Artist discography is the overview-tab hero + grid (b09 spec-only
+ * scope), not a standalone 30-album page.
  *
  * Sample IDs come from env (see helpers/sampleIds.ts). Missing vars skip
  * the relevant case with a populate-via-admin message; the rest run.
@@ -50,16 +54,19 @@ function requireSample(id: string | null, envVar: string): asserts id is string 
   );
 }
 
-// Follow the first link that targets an album detail URL and assert the
-// destination renders. Album hrefs are `/ko/albums/<id>[/slug]`; the
-// `/\d/` guard skips the bare `/ko/albums` list link if it's ever in
-// scope (it has no numeric segment).
-async function firstAlbumLinkResolves(page: Page) {
-  const albumLink = page.locator('a[href*="/albums/"]').first();
+// Follow the first album-detail link WITHIN `scope` and assert the
+// destination renders. Scoping to the section container (not the whole
+// page) is the point: a link from a different region must not satisfy a
+// test whose section's own link is broken. Album hrefs are
+// `/ko/albums/<id>[/slug]`; the `\d` guard ignores the bare `/albums`
+// list link (no numeric segment).
+async function firstAlbumLinkResolves(scope: Locator) {
+  const albumLink = scope.locator('a[href*="/albums/"]').first();
   await expect(albumLink).toBeVisible();
   const href = await albumLink.getAttribute("href");
   expect(href, "album link should have an href").toBeTruthy();
   expect(href!, "href targets a numeric album id").toMatch(/\/albums\/\d+/);
+  const page = scope.page();
   const resp = await page.goto(href!);
   expect(resp?.ok(), "the linked album page resolves 2xx").toBeTruthy();
   await expect(page.locator("main h1")).toHaveText(/\S/);
@@ -73,10 +80,11 @@ test.describe("Song → Album (b08)", () => {
     const resp = await page.goto(`/ko/songs/${crossLinkSongId}`);
     expect(resp?.ok()).toBeTruthy();
 
-    await expect(
-      page.getByRole("heading", { name: HEADINGS.songAlbums }),
-    ).toBeVisible();
-    await firstAlbumLinkResolves(page);
+    // The 수록 앨범 label is a styled <div> (not a heading); its parent
+    // container holds the album cards — scope the link search there.
+    const label = page.getByText(HEADINGS.songAlbums, { exact: true });
+    await expect(label).toBeVisible();
+    await firstAlbumLinkResolves(label.locator("xpath=.."));
   });
 });
 
@@ -88,10 +96,11 @@ test.describe("Artist highlights → Album (b09)", () => {
     const resp = await page.goto(`/ko/artists/${discographyArtistId}`);
     expect(resp?.ok()).toBeTruthy();
 
-    await expect(
-      page.getByRole("heading", { name: HEADINGS.artistLatest }),
-    ).toBeVisible();
-    await firstAlbumLinkResolves(page);
+    // SectionLabel renders a real <h2>; its parent <section> contains the
+    // hero + discography album cards.
+    const heading = page.getByRole("heading", { name: HEADINGS.artistLatest });
+    await expect(heading).toBeVisible();
+    await firstAlbumLinkResolves(heading.locator("xpath=.."));
   });
 });
 
@@ -103,10 +112,9 @@ test.describe("Series tour BDs → Album (b09)", () => {
     const resp = await page.goto(`/ko/series/${bdSeriesId}`);
     expect(resp?.ok()).toBeTruthy();
 
-    await expect(
-      page.getByRole("heading", { name: HEADINGS.seriesTourBds }),
-    ).toBeVisible();
-    await firstAlbumLinkResolves(page);
+    const heading = page.getByRole("heading", { name: HEADINGS.seriesTourBds });
+    await expect(heading).toBeVisible();
+    await firstAlbumLinkResolves(heading.locator("xpath=.."));
   });
 });
 
@@ -136,12 +144,14 @@ test.describe("Albums list page + nav (b10b)", () => {
     await expect(page.locator("main h1")).toHaveText(HEADINGS.albumsListTitle);
 
     // 4th nav item is the active page. `aria-current="page"` is the
-    // stable anchor (added in b11 alongside this spec); assert exactly
-    // one current link and that it's Albums.
+    // stable anchor (added in b11 alongside this spec); assert the
+    // current link is Albums.
     const current = page.locator('a[aria-current="page"]');
     await expect(current.first()).toHaveText(HEADINGS.navAlbums);
 
-    // At least one album card links into a detail page, and it resolves.
-    await firstAlbumLinkResolves(page);
+    // The list itself (main) is all album cards — scope there so the
+    // nav's own `/albums` link can't satisfy the check (it has no
+    // numeric segment anyway, but scoping keeps intent explicit).
+    await firstAlbumLinkResolves(page.locator("main"));
   });
 });

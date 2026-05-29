@@ -49,8 +49,13 @@ test.describe("EventBdSection (b07)", () => {
       page.getByText(BD_SECTION_TITLE, { exact: true }),
     ).toBeVisible();
 
-    // The section (album info row + CTA) links to the Album detail page.
-    const albumLink = page.locator('a[href*="/albums/"]').first();
+    // Scope the album-link check to the BD <section> (the FullVariant
+    // wrapper) so a link from elsewhere on the event page can't satisfy
+    // it — the section's own album info row + CTA must carry the link.
+    const bdSection = page
+      .locator("section")
+      .filter({ has: page.getByText(BD_SECTION_TITLE, { exact: true }) });
+    const albumLink = bdSection.locator('a[href*="/albums/"]').first();
     await expect(albumLink).toBeVisible();
     const href = await albumLink.getAttribute("href");
     expect(href!).toMatch(/\/albums\/\d+/);
