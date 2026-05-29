@@ -180,6 +180,11 @@ async function MiniVariant({
   // `useTranslations` from `next-intl` would force a `"use client"`
   // boundary on every consumer that mounts AlbumCard, defeating the
   // RSC tree the rest of the album-surface stack relies on.
+  //
+  // Mini is the only variant that still loads the `Song` namespace — it
+  // renders Disc/Track footers + the "원본 수록" canonical pill, which are
+  // genuinely Song-page-sidebar concepts. The cross-surface active-bonus
+  // badge keys moved to `Album` (PR #486), so hero/list load `Album` only.
   const [albumT, songT] = await Promise.all([
     getTranslations({ locale, namespace: "Album" }),
     getTranslations({ locale, namespace: "Song" }),
@@ -332,13 +337,13 @@ async function MiniVariant({
       {/* Active-bonus badge — only when count > 0. Mirrors
           AlbumInfoCard's bonusActive token pair so the green
           treatment reads consistently across album surfaces. Visible
-          text uses `Song.albumActiveBonusesBadge` (compact "특전 N" /
+          text uses `Album.albumActiveBonusesBadge` (compact "특전 N" /
           "特典 N" / "Bonus N" per locale); the longer aria-label
           ("매장특전 N건" / "店舗特典 N件" / plural-aware en) lives
-          in `Song.albumActiveBonuses` for screen readers. */}
+          in `Album.albumActiveBonuses` for screen readers. */}
       {activeBonusCount > 0 && (
         <span
-          aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+          aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
           style={{
             fontSize: 10,
             fontWeight: 700,
@@ -349,7 +354,7 @@ async function MiniVariant({
             flexShrink: 0,
           }}
         >
-          {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+          {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
         </span>
       )}
 
@@ -372,15 +377,11 @@ async function HeroVariant({
   locale,
   activeBonusCount = 0,
 }: HeroProps) {
-  // Same server-side lookup as MiniVariant — Album namespace for the
-  // type-pill label, Song namespace for the active-bonus badge text
-  // (the badge strings are shared across the Song page sidebar and
-  // every AlbumCard variant). See MiniVariant's note on why this is
-  // `getTranslations` (server) rather than `useTranslations`.
-  const [albumT, songT] = await Promise.all([
-    getTranslations({ locale, namespace: "Album" }),
-    getTranslations({ locale, namespace: "Song" }),
-  ]);
+  // Album namespace only — type-pill label + active-bonus badge text
+  // both live under `Album` now (the badge keys moved out of `Song` in
+  // PR #486 since AlbumCard renders on non-Song surfaces). Server-side
+  // `getTranslations` per the MiniVariant note (keeps consumers RSC).
+  const albumT = await getTranslations({ locale, namespace: "Album" });
 
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
@@ -444,7 +445,7 @@ async function HeroVariant({
             reads identically across surfaces. */}
         {activeBonusCount > 0 && (
           <span
-            aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+            aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
             style={{
               position: "absolute",
               top: 8,
@@ -457,7 +458,7 @@ async function HeroVariant({
               padding: "2px 7px",
             }}
           >
-            {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+            {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
           </span>
         )}
       </div>
@@ -533,10 +534,9 @@ async function ListVariant({
   artistName,
   activeBonusCount = 0,
 }: ListProps) {
-  const [albumT, songT] = await Promise.all([
-    getTranslations({ locale, namespace: "Album" }),
-    getTranslations({ locale, namespace: "Song" }),
-  ]);
+  // Album namespace only — type pill + active-bonus badge both resolve
+  // here (the badge keys moved out of `Song` in PR #486).
+  const albumT = await getTranslations({ locale, namespace: "Album" });
 
   const titleParts = displayOriginalTitle(album, album.translations, locale);
   const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
@@ -586,7 +586,7 @@ async function ListVariant({
   const bonusBadge =
     activeBonusCount > 0 ? (
       <span
-        aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+        aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
         style={{
           fontSize: 9,
           fontWeight: 700,
@@ -596,7 +596,7 @@ async function ListVariant({
           padding: "1px 5px",
         }}
       >
-        {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+        {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
       </span>
     ) : null;
 
@@ -712,7 +712,7 @@ async function ListVariant({
           {coverImg}
           {activeBonusCount > 0 && (
             <span
-              aria-label={songT("albumActiveBonuses", {
+              aria-label={albumT("albumActiveBonuses", {
                 count: activeBonusCount,
               })}
               style={{
@@ -727,7 +727,7 @@ async function ListVariant({
                 padding: "2px 7px",
               }}
             >
-              {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+              {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
             </span>
           )}
         </div>
