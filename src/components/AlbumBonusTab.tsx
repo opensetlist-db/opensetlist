@@ -116,6 +116,8 @@ export async function AlbumBonusTab({ album, locale }: Props) {
               locale={locale}
               embedded
               dividerAbove={idx > 0}
+              // b10c: enables store_click tracking on the buy button.
+              albumId={String(album.id)}
             />
           ))}
         </div>

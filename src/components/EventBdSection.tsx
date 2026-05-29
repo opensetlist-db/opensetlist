@@ -4,8 +4,10 @@ import type { Prisma } from "@/generated/prisma/client";
 import {
   resolveEventBdState,
   selectTopBonuses,
+  BD_STATE_GA_VALUE,
   type EventBdState,
 } from "@/lib/eventBdState";
+import { FireBdSectionView } from "@/components/FireBdSectionView";
 import {
   resolveStoreName,
   resolveBonusType,
@@ -142,6 +144,7 @@ export async function EventBdSection({ event, locale, referenceNow }: Props) {
   return (
     <FullVariant
       state={state}
+      eventId={String(event.id)}
       album={album}
       locale={locale}
       referenceNow={referenceNow}
@@ -214,6 +217,7 @@ type FullVariantState = Exclude<
 
 interface FullVariantProps {
   state: FullVariantState;
+  eventId: string;
   album: EventBdAlbumInput;
   locale: string;
   referenceNow: Date;
@@ -222,6 +226,7 @@ interface FullVariantProps {
 
 async function FullVariant({
   state,
+  eventId,
   album,
   locale,
   referenceNow,
@@ -517,6 +522,17 @@ async function FullVariant({
           {cta.label}
         </Link>
       </div>
+      {/* b10c: fire `bd_section_view` once on mount. Only reached for
+          the three rendering states (bd_announced / bd_preorder /
+          bd_released), all of which carry a linked album — so the
+          event always has a real album_id + hyphenated bd_state. The
+          null states + the album-less long_mid teaser never mount this. */}
+      <FireBdSectionView
+        eventId={eventId}
+        albumId={String(album.id)}
+        bdState={BD_STATE_GA_VALUE[state]}
+        topBonusCount={topBonuses.length}
+      />
     </section>
   );
 }

@@ -7,6 +7,8 @@ import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { RelatedAlbumsSection } from "@/components/RelatedAlbumsSection";
+import { FireAlbumView } from "@/components/FireAlbumView";
+import { resolveStoreKey } from "@/lib/albumBonusDisplay";
 import { AlbumBonusTab } from "@/components/AlbumBonusTab";
 import { AlbumTracksTab } from "@/components/AlbumTracksTab";
 import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
@@ -462,6 +464,20 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             />
           )}
         </section>
+        {/* b10c: fire `album_view` on client mount. Renders nothing.
+            `has_amazon_listing` reflects whether any store listing
+            resolves to Amazon JP (there's no ASIN column — store data
+            lives on AlbumStoreListing.productUrl). artist_id falls back
+            to "" when the album has no credited artist. */}
+        <FireAlbumView
+          albumId={String(album.id)}
+          albumType={album.type}
+          artistId={primaryArtist ? String(primaryArtist.id) : ""}
+          locale={locale}
+          hasAmazonListing={album.listings.some(
+            (l) => resolveStoreKey(l.originalStoreName) === "amazon_jp",
+          )}
+        />
       </main>
     </div>
   );

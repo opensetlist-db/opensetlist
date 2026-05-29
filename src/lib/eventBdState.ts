@@ -36,6 +36,7 @@ import type {
   AlbumStoreListingStatus,
   EventStatus,
 } from "@/generated/prisma/enums";
+import { STORE_REGEXES } from "@/lib/storeKeys";
 
 export type EventBdState =
   | "pre"
@@ -44,6 +45,24 @@ export type EventBdState =
   | "bd_announced"
   | "bd_preorder"
   | "bd_released";
+
+// GA4 `bd_state` param values for the b10c `bd_section_view` event.
+// Maps the three *rendering* states (the only ones that mount the BD
+// section with a linked album) to the hyphenated values the analytics
+// spec + downstream GA4 dashboard config expect. `bd-postrelease` is
+// intentionally absent — b07 folded the post-release case into
+// `bd_released` (the section renders compactly when no active bonus
+// remains), so the funnel only ever sees these three. `pre` /
+// `immediate_post` (render null) and `long_mid` (album-less teaser) do
+// not fire bd_section_view, so they have no GA value here.
+export const BD_STATE_GA_VALUE: Record<
+  "bd_announced" | "bd_preorder" | "bd_released",
+  string
+> = {
+  bd_announced: "bd-announce",
+  bd_preorder: "bd-preorder-open",
+  bd_released: "bd-released",
+};
 
 // D+60 = the boundary between "the event just happened, don't push
 // commerce" (immediate_post → hide entirely) and "enough time has
@@ -55,25 +74,15 @@ const IMMEDIATE_POST_DAYS = 60;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const IMMEDIATE_POST_MS = IMMEDIATE_POST_DAYS * MS_PER_DAY;
 
-// Regex-based store priority. The schema's `originalStoreName` is
-// free-text (operator can type "Amazon JP" / "amazon_jp" / "アマゾン"
-// — see schema comment on AlbumStoreListing); no normalized storeKey
-// column to match against. Order matters: first regex to match wins.
-// Stores not matching any regex sort to the end (Number.MAX_SAFE_INTEGER).
-//
-// Affiliate-revenue stores (Amazon, Rakuten) lead so they appear
-// in the 3-row preview when present. Visit-only stores (アニメイト,
-// タワレコ, HMV, ヨドバシ) fill the rest of the priority order.
-const STORE_PRIORITY: ReadonlyArray<RegExp> = [
-  /amazon/i,
-  /楽天|rakuten/i,
-  /アニメイト|animate/i,
-  /タワー|tower\s*record/i,
-  /HMV/i,
-  /ヨドバシ|yodobashi/i,
-  /ソフマップ|sofmap/i,
-  /ゲーマーズ|gamers/i,
-];
+// Regex-based store priority. Derived from the shared `STORE_REGEXES`
+// list (src/lib/storeKeys.ts) — the same source `resolveStoreKey` uses
+// for the analytics store key — so the preview sort rank and the GA key
+// can't drift apart. Order matters: first regex to match wins; the list
+// is ordered affiliate-revenue-first (Amazon, Rakuten lead the 3-row
+// preview). Stores matching nothing sort to the end (MAX_SAFE_INTEGER).
+const STORE_PRIORITY: ReadonlyArray<RegExp> = STORE_REGEXES.map(
+  ([pattern]) => pattern,
+);
 
 // 4-state listing enum (active / sold_out / unknown / ended). The
 // inline preview never shows `ended`; `sold_out` / `unknown` stay

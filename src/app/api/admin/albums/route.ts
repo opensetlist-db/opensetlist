@@ -34,21 +34,34 @@ import { serializeBigInt } from "@/lib/utils";
  * creation. See the comment on `/api/admin/albums/[id]/route.ts`.
  */
 export async function GET() {
-  const albums = await prisma.album.findMany({
-    select: {
-      id: true,
-      slug: true,
-      type: true,
-      releaseDate: true,
-      originalTitle: true,
-      translations: {
-        select: { locale: true, title: true },
+  // Wrap the query so a DB connection error returns a structured JSON
+  // 500 rather than an unstructured framework error page. The EventForm
+  // BD-picker reads this via `.then(r => r.json())`; a non-JSON body
+  // would throw in that chain and leave the picker silently empty with
+  // no operator signal. Mirrors the JSON-500 convention on
+  // `/api/songs/search`.
+  try {
+    const albums = await prisma.album.findMany({
+      select: {
+        id: true,
+        slug: true,
+        type: true,
+        releaseDate: true,
+        originalTitle: true,
+        translations: {
+          select: { locale: true, title: true },
+        },
       },
-    },
-    orderBy: [
-      { releaseDate: { sort: "desc", nulls: "last" } },
-      { createdAt: "desc" },
-    ],
-  });
-  return NextResponse.json(serializeBigInt(albums));
+      orderBy: [
+        { releaseDate: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
+    });
+    return NextResponse.json(serializeBigInt(albums));
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
+  }
 }
