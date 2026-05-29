@@ -151,6 +151,9 @@
   "Album": {
     "title": "앨범",
     "related": "관련 앨범",
+    "noAlbums": "표시할 앨범이 없습니다",
+    "yearAlbumCount": "{count}개",
+    "undatedYear": "발매일 미정",
     "unknown": "이름 없는 앨범",
     "type": {
       "single": "싱글",
@@ -588,6 +591,7 @@
     "home": "홈",
     "artists": "아티스트",
     "events": "이벤트",
+    "albums": "앨범",
     "signIn": "로그인",
     "openMenu": "메뉴 열기",
     "closeMenu": "메뉴 닫기"

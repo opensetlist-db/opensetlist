@@ -8,12 +8,13 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { colors } from "@/styles/tokens";
 
-type NavItem = { key: "home" | "artists" | "events"; href: string };
+type NavItem = { key: "home" | "artists" | "events" | "albums"; href: string };
 
 const NAV_ITEMS: NavItem[] = [
   { key: "home", href: "/" },
   { key: "artists", href: "/artists" },
   { key: "events", href: "/events" },
+  { key: "albums", href: "/albums" },
 ];
 
 function isActive(pathname: string, href: string) {

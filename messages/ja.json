@@ -151,6 +151,9 @@
   "Album": {
     "title": "アルバム",
     "related": "関連アルバム",
+    "noAlbums": "表示できるアルバムはありません",
+    "yearAlbumCount": "{count}枚",
+    "undatedYear": "発売日未定",
     "unknown": "名称未定のアルバム",
     "type": {
       "single": "シングル",
@@ -588,6 +591,7 @@
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",
+    "albums": "アルバム",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる"

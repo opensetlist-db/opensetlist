@@ -151,6 +151,9 @@
   "Album": {
     "title": "Album",
     "related": "Related albums",
+    "noAlbums": "No albums to show",
+    "yearAlbumCount": "{count, plural, one {# album} other {# albums}}",
+    "undatedYear": "Release date TBA",
     "unknown": "Unknown album",
     "type": {
       "single": "Single",
@@ -588,6 +591,7 @@
     "home": "Home",
     "artists": "Artists",
     "events": "Events",
+    "albums": "Albums",
     "signIn": "Sign in",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"
