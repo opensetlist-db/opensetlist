@@ -45,22 +45,32 @@ export function TrackedStoreLink({
   style?: CSSProperties;
   children: ReactNode;
 }) {
+  const fireStoreClick = () =>
+    trackStoreClick({
+      albumId,
+      storeKey,
+      storeStatus,
+      surface,
+      isAffiliate,
+      bonusId,
+    });
+
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       style={style}
-      onClick={() =>
-        trackStoreClick({
-          albumId,
-          storeKey,
-          storeStatus,
-          surface,
-          isAffiliate,
-          bonusId,
-        })
-      }
+      onClick={fireStoreClick}
+      onAuxClick={(e) => {
+        // Middle-click (and some browsers' modifier-click) opens a new
+        // tab via `auxclick`, not `click`, so the onClick above never
+        // runs for those. On a `target="_blank"` buy button that's a
+        // common new-tab path, and missing it would undercount exactly
+        // the conversion the funnel baseline measures. Fire on button 1
+        // (middle); left-click (button 0) is already covered by onClick.
+        if (e.button === 1) fireStoreClick();
+      }}
     >
       {children}
     </a>
