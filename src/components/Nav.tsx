@@ -90,6 +90,11 @@ export function Nav() {
                 <Link
                   key={item.key}
                   href={item.href}
+                  // Active page exposed as `aria-current="page"` — a real
+                  // a11y signal (screen readers announce the current
+                  // section) and the stable structural anchor the e2e
+                  // suite keys on, matching the page TabBar convention.
+                  aria-current={active ? "page" : undefined}
                   className="font-dm-sans text-[13px]"
                   style={{
                     color: active ? colors.primary : colors.textSubtle,
@@ -179,6 +184,7 @@ export function Nav() {
                   key={item.key}
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
                   className="font-dm-sans text-[15px] py-3"
                   style={{
                     color: active ? colors.primary : colors.textPrimary,
