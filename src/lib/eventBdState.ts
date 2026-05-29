@@ -45,6 +45,24 @@ export type EventBdState =
   | "bd_preorder"
   | "bd_released";
 
+// GA4 `bd_state` param values for the b10c `bd_section_view` event.
+// Maps the three *rendering* states (the only ones that mount the BD
+// section with a linked album) to the hyphenated values the analytics
+// spec + downstream GA4 dashboard config expect. `bd-postrelease` is
+// intentionally absent — b07 folded the post-release case into
+// `bd_released` (the section renders compactly when no active bonus
+// remains), so the funnel only ever sees these three. `pre` /
+// `immediate_post` (render null) and `long_mid` (album-less teaser) do
+// not fire bd_section_view, so they have no GA value here.
+export const BD_STATE_GA_VALUE: Record<
+  "bd_announced" | "bd_preorder" | "bd_released",
+  string
+> = {
+  bd_announced: "bd-announce",
+  bd_preorder: "bd-preorder-open",
+  bd_released: "bd-released",
+};
+
 // D+60 = the boundary between "the event just happened, don't push
 // commerce" (immediate_post → hide entirely) and "enough time has
 // passed that BD release info is plausibly imminent" (long_mid →
