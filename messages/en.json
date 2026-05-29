@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "Artists",
+    "albums": {
+      "latest": "Latest album",
+      "discography": "Discography"
+    },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
     "unknownGroup": "Untitled Group",
@@ -146,6 +150,7 @@
   },
   "Album": {
     "title": "Album",
+    "related": "Related albums",
     "unknown": "Unknown album",
     "type": {
       "single": "Single",
@@ -335,6 +340,7 @@
   },
   "EventSeries": {
     "title": "Series",
+    "tourBds": "Tour BDs",
     "type": {
       "concert_tour": "Concert Tour",
       "festival": "Festival",

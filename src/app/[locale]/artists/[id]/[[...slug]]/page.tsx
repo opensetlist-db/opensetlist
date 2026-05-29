@@ -21,6 +21,7 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { ArtistAlbumsSection } from "@/components/ArtistAlbumsSection";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -910,6 +911,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     </div>
                   </section>
                 )}
+
+                {/* "최신 앨범" highlight + discography (b09). Self-fetching
+                    server component — renders null when the artist has no
+                    albums, so it's mounted unconditionally. */}
+                <ArtistAlbumsSection artistId={artistId} locale={locale} />
 
                 <section
                   style={{

@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "아티스트",
+    "albums": {
+      "latest": "최신 앨범",
+      "discography": "디스코그래피"
+    },
     "noArtists": "표시할 아티스트가 없습니다",
     "unknown": "알 수 없는 아티스트",
     "unknownGroup": "이름 없는 그룹",
@@ -146,6 +150,7 @@
   },
   "Album": {
     "title": "앨범",
+    "related": "관련 앨범",
     "unknown": "이름 없는 앨범",
     "type": {
       "single": "싱글",
@@ -335,6 +340,7 @@
   },
   "EventSeries": {
     "title": "시리즈",
+    "tourBds": "투어 BD 목록",
     "type": {
       "concert_tour": "콘서트 투어",
       "festival": "페스티벌",

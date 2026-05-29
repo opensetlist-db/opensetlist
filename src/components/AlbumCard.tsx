@@ -16,9 +16,13 @@ import { colors, radius } from "@/styles/tokens";
  *   F:\work\vaults\opensetlist\raw\mockups\song-page-v2-mockup.jsx
  *   lines 127–201 (AlbumLinkCard).
  *
+ * b09 hero variant: vertical card — square cover on top, type pill +
+ *   title (main + localized sub) + release year below. No Disc/Track
+ *   footer (the Artist "최신 앨범" highlight has no AlbumTrack context).
+ *   The card sets no width of its own; the consumer constrains it (the
+ *   Artist section wraps the latest album so the cover reads ~180px).
+ *
  * Future variants (do NOT add here; document for handoff):
- *   - hero (b09): 160×160 cover above title, "최신 앨범" emphasis,
- *     no Disc/Track context (Artist page latest-album highlight)
  *   - list (b10b): full-width row for `/[locale]/albums` list page,
  *     larger cover + artist sub-label + type pill, no chevron
  *     (whole card is the link)
@@ -27,11 +31,11 @@ import { colors, radius } from "@/styles/tokens";
  * (which works in both server and client trees).
  */
 
-// Open string union to keep b09 / b10b additions trivial — adding
-// "hero" / "list" later is a one-line change here + a new branch
-// below. Closed-set discriminated union would force every caller to
-// update on variant addition.
-export type AlbumCardVariant = "mini";
+// Open string union to keep b10b's addition trivial — adding "list"
+// later is a one-line change here + a new branch below. Closed-set
+// discriminated union would force every caller to update on variant
+// addition.
+export type AlbumCardVariant = "mini" | "hero";
 
 // Per-AlbumType pill styling. Mirrors the mockup's ALBUM_TYPE_LABEL
 // map (lines 96–102) but uses semantic tokens from
@@ -106,11 +110,26 @@ interface MiniProps {
   activeBonusCount?: number;
 }
 
-type Props = MiniProps;
+interface HeroProps {
+  variant: "hero";
+  album: AlbumCardAlbum;
+  locale: string;
+  /**
+   * Count of active bonuses on this album (same formula as `mini` —
+   * `countActiveBonuses(listings)`). Renders the green 特典 N badge
+   * pinned to the top-right of the cover when > 0.
+   */
+  activeBonusCount?: number;
+}
+
+type Props = MiniProps | HeroProps;
 
 export async function AlbumCard(props: Props) {
   if (props.variant === "mini") {
     return await MiniVariant(props);
+  }
+  if (props.variant === "hero") {
+    return await HeroVariant(props);
   }
   return null;
 }
@@ -321,6 +340,174 @@ async function MiniVariant({
       >
         ›
       </span>
+    </Link>
+  );
+}
+
+async function HeroVariant({
+  album,
+  locale,
+  activeBonusCount = 0,
+}: HeroProps) {
+  // Same server-side lookup as MiniVariant — Album namespace for the
+  // type-pill label, Song namespace for the active-bonus badge text
+  // (the badge strings are shared across the Song page sidebar and
+  // every AlbumCard variant). See MiniVariant's note on why this is
+  // `getTranslations` (server) rather than `useTranslations`.
+  const [albumT, songT] = await Promise.all([
+    getTranslations({ locale, namespace: "Album" }),
+    getTranslations({ locale, namespace: "Song" }),
+  ]);
+
+  const titleParts = displayOriginalTitle(album, album.translations, locale);
+  const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
+
+  const releaseYear = (() => {
+    if (album.releaseDate === null) return null;
+    const d =
+      album.releaseDate instanceof Date
+        ? album.releaseDate
+        : new Date(album.releaseDate);
+    const year = d.getUTCFullYear();
+    return Number.isNaN(year) ? null : year;
+  })();
+
+  const primaryArtist = album.artists[0]?.artist ?? null;
+  const fallbackColor = primaryArtist?.color ?? colors.primary;
+
+  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
+
+  return (
+    <Link
+      href={albumHref}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        background: colors.bgCard,
+        border: `1.5px solid ${colors.border}`,
+        borderRadius: radius.card,
+        overflow: "hidden",
+        textDecoration: "none",
+        color: "inherit",
+        transition: "border-color 0.12s",
+      }}
+    >
+      {/* Square cover. `aspectRatio: 1` keeps the cover proportional
+          at whatever width the consumer constrains the card to (the
+          Artist section caps it ~180px). `referrerPolicy="no-referrer"`
+          is required regardless of source per
+          album-image-source-policy.md (Amazon CDN leak guard). */}
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "1 / 1",
+          background: album.imageUrl
+            ? "transparent"
+            : `linear-gradient(135deg, ${fallbackColor}30, ${fallbackColor}70)`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 44,
+          overflow: "hidden",
+        }}
+      >
+        {album.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={album.imageUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <span aria-hidden="true">💿</span>
+        )}
+        {/* Active-bonus badge pinned over the cover top-right — mirrors
+            the artist-page-v2 mockup's 特典 badge placement. Same token
+            pair + i18n keys as the mini variant so the green treatment
+            reads identically across surfaces. */}
+        {activeBonusCount > 0 && (
+          <span
+            aria-label={songT("albumActiveBonuses", { count: activeBonusCount })}
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              fontSize: 10,
+              fontWeight: 700,
+              color: colors.bonusActiveText,
+              background: colors.bonusActiveBg,
+              borderRadius: 10,
+              padding: "2px 7px",
+            }}
+          >
+            {songT("albumActiveBonusesBadge", { count: activeBonusCount })}
+          </span>
+        )}
+      </div>
+
+      {/* Meta block */}
+      <div style={{ padding: "12px 14px 14px" }}>
+        <div style={{ marginBottom: 6 }}>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: pillStyle.color,
+              background: pillStyle.bg,
+              borderRadius: 8,
+              padding: "1px 5px",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {albumT(`type.${album.type}`)}
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            color: colors.primary,
+            lineHeight: 1.35,
+            // Two-line clamp — hero titles get more room than the
+            // single-line mini, but a runaway title still can't push
+            // the card height unbounded.
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {titleParts.main}
+        </div>
+        {titleParts.sub && (
+          <div
+            style={{
+              fontSize: 11,
+              color: colors.textMuted,
+              marginTop: 2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {titleParts.sub}
+          </div>
+        )}
+        {releaseYear !== null && (
+          <div
+            style={{
+              fontSize: 11,
+              color: colors.textMuted,
+              marginTop: 6,
+            }}
+          >
+            {releaseYear}
+          </div>
+        )}
+      </div>
     </Link>
   );
 }

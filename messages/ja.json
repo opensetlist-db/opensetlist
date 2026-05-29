@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "アーティスト",
+    "albums": {
+      "latest": "最新アルバム",
+      "discography": "ディスコグラフィー"
+    },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
     "unknownGroup": "名称未定のグループ",
@@ -146,6 +150,7 @@
   },
   "Album": {
     "title": "アルバム",
+    "related": "関連アルバム",
     "unknown": "名称未定のアルバム",
     "type": {
       "single": "シングル",
@@ -335,6 +340,7 @@
   },
   "EventSeries": {
     "title": "シリーズ",
+    "tourBds": "ツアーBDカタログ",
     "type": {
       "concert_tour": "コンサートツアー",
       "festival": "フェスティバル",
