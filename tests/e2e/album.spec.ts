@@ -28,7 +28,7 @@ import { readSampleIds } from "./helpers/sampleIds";
  */
 
 const TAB_LABELS = {
-  bonus: "매장특전",
+  bonus: "구입",
   tracks: "수록곡",
   events: "관련 공연",
 } as const;
@@ -62,10 +62,13 @@ test.describe("Album detail page — type-aware render", () => {
 
     await expect(page.locator("main h1")).toHaveText(/\S/);
     await expect(tabButtons(page)).toHaveCount(2);
-    await expect(activeTab(page)).toHaveText(TAB_LABELS.events);
+    // Labels carry a "(N)" count suffix (Album.tab.withCount) → match
+    // the prefix. live_album hides 수록곡, so the first/default tab is
+    // 관련 공연.
+    await expect(activeTab(page)).toContainText(TAB_LABELS.events);
   });
 
-  test("album renders with all 3 tabs and Bonus as the default", async ({
+  test("album renders with all 3 tabs and Tracks as the default", async ({
     page,
   }) => {
     requireSample(albumId, "E2E_ALBUM_ID");
@@ -74,10 +77,11 @@ test.describe("Album detail page — type-aware render", () => {
 
     await expect(page.locator("main h1")).toHaveText(/\S/);
     await expect(tabButtons(page)).toHaveCount(3);
-    await expect(activeTab(page)).toHaveText(TAB_LABELS.bonus);
+    // Tab order is 수록곡 → 관련 공연 → 구입; default is the first (수록곡).
+    await expect(activeTab(page)).toContainText(TAB_LABELS.tracks);
   });
 
-  test("single renders with all 3 tabs and Bonus as the default", async ({
+  test("single renders with all 3 tabs and Tracks as the default", async ({
     page,
   }) => {
     requireSample(singleId, "E2E_SINGLE_ID");
@@ -85,7 +89,7 @@ test.describe("Album detail page — type-aware render", () => {
     expect(resp?.ok(), "GET should resolve with a 2xx status").toBeTruthy();
 
     await expect(tabButtons(page)).toHaveCount(3);
-    await expect(activeTab(page)).toHaveText(TAB_LABELS.bonus);
+    await expect(activeTab(page)).toContainText(TAB_LABELS.tracks);
   });
 });
 
@@ -112,7 +116,7 @@ test.describe("Album detail page — URL sanitisers", () => {
   test("?tab=<unknown> falls back to the default tab", async ({ page }) => {
     requireSample(albumId, "E2E_ALBUM_ID");
     await page.goto(`/ko/albums/${albumId}?tab=foo`);
-    await expect(activeTab(page)).toHaveText(TAB_LABELS.bonus);
+    await expect(activeTab(page)).toContainText(TAB_LABELS.tracks);
   });
 
   test("?tab=tracks on a live_album falls back to Events (tracks hidden)", async ({
@@ -120,7 +124,7 @@ test.describe("Album detail page — URL sanitisers", () => {
   }) => {
     requireSample(liveAlbumId, "E2E_LIVE_ALBUM_ID");
     await page.goto(`/ko/albums/${liveAlbumId}?tab=tracks`);
-    await expect(activeTab(page)).toHaveText(TAB_LABELS.events);
+    await expect(activeTab(page)).toContainText(TAB_LABELS.events);
   });
 });
 

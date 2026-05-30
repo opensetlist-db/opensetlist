@@ -24,7 +24,7 @@ import { readCrossLinkSampleIds } from "./helpers/sampleIds";
  * listing). Missing var skips.
  */
 
-const BONUS_TAB_LABEL = "매장특전";
+const BONUS_TAB_LABEL = "구입";
 const ALBUM_TAB_NAV = 'nav[aria-label="앨범 페이지 탭"]';
 
 const { bonusAlbumId } = readCrossLinkSampleIds();
