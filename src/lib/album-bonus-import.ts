@@ -275,6 +275,25 @@ export function isParsedCandidates(v: unknown): v is ParsedCandidates {
       }
     }
   }
+  // globalEarlyBooking is optional (null OR a `{ bonuses: [...] }`
+  // object). When present, every entry has the same shape as a
+  // listing-attached bonus + optional translations + a storeNameHint.
+  // The apply route fans these out via normalizeBonusTranslations, so
+  // a malformed translations entry that bypassed validation here would
+  // make it all the way to a DB write — validate before persist.
+  if (o.globalEarlyBooking !== null && o.globalEarlyBooking !== undefined) {
+    if (typeof o.globalEarlyBooking !== "object") return false;
+    const geb = o.globalEarlyBooking as Record<string, unknown>;
+    if (!Array.isArray(geb.bonuses)) return false;
+    for (const item of geb.bonuses) {
+      if (!item || typeof item !== "object") return false;
+      const ii = item as Record<string, unknown>;
+      if (typeof ii.originalBonusType !== "string") return false;
+      if (ii.translations !== undefined && !isTranslationsArray(ii.translations, "bonus")) {
+        return false;
+      }
+    }
+  }
   return true;
 }
 
