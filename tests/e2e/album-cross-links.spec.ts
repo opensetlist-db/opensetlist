@@ -96,11 +96,14 @@ test.describe("Artist highlights → Album (b09)", () => {
     const resp = await page.goto(`/ko/artists/${discographyArtistId}`);
     expect(resp?.ok()).toBeTruthy();
 
-    // SectionLabel renders a real <h2>; its parent <section> contains the
-    // hero + discography album cards.
+    // The 최신 앨범 preview is a <section>; its SectionLabel heading sits
+    // in a header row (alongside the 전체 보기 link), so scope to the
+    // whole section (not the heading's immediate parent) to reach the
+    // album-card rows below the header.
     const heading = page.getByRole("heading", { name: HEADINGS.artistLatest });
     await expect(heading).toBeVisible();
-    await firstAlbumLinkResolves(heading.locator("xpath=.."));
+    const section = page.locator("section").filter({ has: heading });
+    await firstAlbumLinkResolves(section);
   });
 });
 

@@ -48,7 +48,7 @@ type Props = {
   searchParams: Promise<{ tab?: string | string[] }>;
 };
 
-const TABS = ["overview", "history"] as const;
+const TABS = ["overview", "albums", "history"] as const;
 type TabKey = (typeof TABS)[number];
 
 function resolveTab(value: string | string[] | undefined): TabKey {
@@ -307,12 +307,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  // Fetch artist + events in parallel — events query traverses
-  // SetlistItemArtist via `OR` so sub-units (which don't own any
-  // EventSeries) still surface their parent-series events.
-  const [artist, artistEvents] = await Promise.all([
+  // Fetch artist + events + album count in parallel — events query
+  // traverses SetlistItemArtist via `OR` so sub-units (which don't own
+  // any EventSeries) still surface their parent-series events. The
+  // album count drives the "앨범 (N)" tab label (the tab body fetches the
+  // rows itself via <ArtistAlbumsSection mode="full">).
+  const [artist, artistEvents, albumCount] = await Promise.all([
     getArtist(artistId),
     getArtistEvents(artistId),
+    prisma.album.count({ where: { artists: { some: { artistId } } } }),
   ]);
   if (!artist) notFound();
 
@@ -452,6 +455,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
 
   const tabs = [
     { key: "overview", label: t("tabOverview") },
+    // Albums tab only when the artist has albums — no point in an empty
+    // tab. The full discography is fetched by the tab body, not here.
+    ...(albumCount > 0
+      ? [{ key: "albums", label: t("tabAlbums", { count: albumCount }) }]
+      : []),
     { key: "history", label: t("tabHistory", { count: totalEvents }) },
   ];
 
@@ -912,10 +920,14 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   </section>
                 )}
 
-                {/* "최신 앨범" highlight + discography (b09). Self-fetching
-                    server component — renders null when the artist has no
-                    albums, so it's mounted unconditionally. */}
-                <ArtistAlbumsSection artistId={artistId} locale={locale} />
+                {/* "최신 앨범" compact preview (b09 + QA pass). Self-
+                    fetching; renders null when the artist has no albums.
+                    The full discography lives in the Albums tab. */}
+                <ArtistAlbumsSection
+                  artistId={artistId}
+                  locale={locale}
+                  mode="preview"
+                />
 
                 <section
                   style={{
@@ -1054,6 +1066,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   )}
                 </section>
               </div>
+            )}
+
+            {activeTab === "albums" && albumCount > 0 && (
+              // Full discography (single-column rows). Self-fetching.
+              <ArtistAlbumsSection
+                artistId={artistId}
+                locale={locale}
+                mode="full"
+              />
             )}
 
             {activeTab === "history" && (

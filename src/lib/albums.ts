@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, parseReleaseYear } from "@/lib/utils";
+import { displayNameWithFallback } from "@/lib/display";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 
 /*
@@ -58,8 +59,15 @@ function albumsListInclude(locale: string) {
 
 export type AlbumsListItem = Awaited<ReturnType<typeof getAlbums>>[number];
 
-export async function getAlbums(locale: string) {
+export async function getAlbums(locale: string, artistId?: bigint) {
   const albums = await prisma.album.findMany({
+    // Artist filter (the list page's `?artist=` chip). AlbumArtist is the
+    // N:N junction, so match albums that credit the artist. Undefined =
+    // no filter (the "전체" chip).
+    where:
+      artistId !== undefined
+        ? { artists: { some: { artistId } } }
+        : undefined,
     // Newest release first. NULL releaseDate sinks to the bottom —
     // Postgres' default is NULLS FIRST on DESC, which would float
     // un-dated scraping artifacts above the real catalog, so pin
@@ -119,4 +127,38 @@ export function groupAlbumsByYear(
       if (b.year === null) return -1;
       return b.year - a.year;
     });
+}
+
+export type AlbumArtistFilterOption = { id: string; name: string };
+
+/*
+ * Artists that have ≥1 album — the chip set for the `/albums` artist
+ * filter (added in the Sprint B2 QA pass). Returns id (string, for the
+ * `?artist=` param) + a short display name. Sub-units are included
+ * (they have their own credited albums); ordered by id (≈ creation
+ * order, so the parent group leads).
+ */
+export async function getAlbumArtistFilters(
+  locale: string,
+): Promise<AlbumArtistFilterOption[]> {
+  const artists = await prisma.artist.findMany({
+    where: { isDeleted: false, albums: { some: {} } },
+    select: {
+      id: true,
+      originalName: true,
+      originalShortName: true,
+      originalLanguage: true,
+      translations: {
+        where: localeFilter(locale),
+        select: { locale: true, name: true, shortName: true },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+  return artists.map((a) => ({
+    id: String(a.id),
+    name:
+      displayNameWithFallback(a, a.translations, locale, "short") ||
+      a.originalName,
+  }));
 }
