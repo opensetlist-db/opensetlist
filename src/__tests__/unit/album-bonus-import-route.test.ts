@@ -23,6 +23,9 @@ vi.mock("@/lib/prisma", () => ({
       create: vi.fn(),
       createMany: vi.fn(),
     },
+    albumStoreBonusTranslation: {
+      createMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -431,6 +434,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: vi.fn(),
           },
           albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -512,6 +516,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: vi.fn(),
           },
           albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -559,6 +564,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: updateListing,
           },
           albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -626,6 +632,7 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
             update: vi.fn(),
           },
           albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: vi.fn() },
           albumBonusImportJob: { updateMany: claimJob },
         } as unknown as typeof prisma;
         return fn(tx);
@@ -645,6 +652,165 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     expect(body.applied.bonusesInserted).toBe(0);
     expect(createListing).not.toHaveBeenCalled();
     expect(createManyBonus).not.toHaveBeenCalled();
+  });
+
+  it("writes listing + bonus translation rows on insert", async () => {
+    // Candidate carries translations on both the listing AND its
+    // bonus. Apply should:
+    //   - inline the listing's translations.create nested write
+    //     (one round-trip, since listing.create already returns id)
+    //   - createMany the bonus first with an explicit uuid
+    //   - createMany the translations second, keyed on that uuid
+    const candidatesWithTranslations = {
+      ...validCandidates,
+      listings: [
+        {
+          originalStoreName: "Amazon.co.jp",
+          originalEditionLabel: null,
+          productUrl: null,
+          translations: [
+            { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
+            { locale: "en", storeName: "Amazon JP", editionLabel: null },
+          ],
+          bonuses: [
+            {
+              originalBonusType: "スリーブケース",
+              originalBonusDescription: null,
+              bonusImageUrl: null,
+              translations: [
+                { locale: "ko", bonusType: "슬리브 케이스", bonusDescription: null },
+                { locale: "en", bonusType: "Sleeve case", bonusDescription: null },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      albumId: BigInt(42),
+      sourceUrl: null,
+      candidates: candidatesWithTranslations,
+      decisions: {
+        listings: { 0: { approved: true } },
+        bonuses: { "0:0": { approved: true } },
+        globalEarlyBooking: null,
+      },
+    });
+
+    const createListing = vi.fn().mockResolvedValue({ id: "L-NEW" });
+    const createManyBonus = vi.fn().mockResolvedValue({ count: 1 });
+    const createManyBonusTranslation = vi.fn().mockResolvedValue({ count: 2 });
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const tx = {
+          albumStoreListing: {
+            findMany: vi.fn().mockResolvedValue([]),
+            create: createListing,
+            update: vi.fn(),
+          },
+          albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
+          albumBonusImportJob: { updateMany: claimJob },
+        } as unknown as typeof prisma;
+        return fn(tx);
+      },
+    );
+
+    const res = await JOB_APPLY(
+      new Request("http://x", { method: "POST" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(200);
+
+    // Listing translations land via nested create on the listing row.
+    expect(createListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          originalStoreName: "Amazon.co.jp",
+          translations: {
+            create: [
+              { locale: "ko", storeName: "아마존 재팬", editionLabel: null },
+              { locale: "en", storeName: "Amazon JP", editionLabel: null },
+            ],
+          },
+        }),
+      }),
+    );
+
+    // Bonus carries an explicit `id` (so the translation rows can
+    // reference it without a round-trip back from createMany).
+    const bonusCall = createManyBonus.mock.calls[0][0];
+    expect(bonusCall.data).toHaveLength(1);
+    const bonusRow = bonusCall.data[0];
+    expect(typeof bonusRow.id).toBe("string");
+    expect(bonusRow.id.length).toBeGreaterThan(0);
+    expect(bonusRow.originalBonusType).toBe("スリーブケース");
+
+    // Translations reference the same uuid.
+    expect(createManyBonusTranslation).toHaveBeenCalledWith({
+      data: [
+        { bonusId: bonusRow.id, locale: "ko", bonusType: "슬리브 케이스", bonusDescription: null },
+        { bonusId: bonusRow.id, locale: "en", bonusType: "Sleeve case", bonusDescription: null },
+      ],
+    });
+  });
+
+  it("does NOT call translation createMany when no translations exist", async () => {
+    // Backward-compat path: candidate JSON without translations
+    // (validCandidates fixture). Verifies the legacy paste shape
+    // still applies cleanly and skips the second createMany.
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      albumId: BigInt(42),
+      sourceUrl: null,
+      candidates: validCandidates,
+      decisions: {
+        listings: { 0: { approved: true } },
+        bonuses: { "0:0": { approved: true } },
+        globalEarlyBooking: null,
+      },
+    });
+
+    const createListing = vi.fn().mockResolvedValue({ id: "L-NEW" });
+    const createManyBonus = vi.fn().mockResolvedValue({ count: 1 });
+    const createManyBonusTranslation = vi.fn();
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const tx = {
+          albumStoreListing: {
+            findMany: vi.fn().mockResolvedValue([]),
+            create: createListing,
+            update: vi.fn(),
+          },
+          albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
+          albumBonusImportJob: { updateMany: claimJob },
+        } as unknown as typeof prisma;
+        return fn(tx);
+      },
+    );
+
+    const res = await JOB_APPLY(
+      new Request("http://x", { method: "POST" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(200);
+
+    // No translations.create on the listing.
+    expect(createListing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ translations: expect.anything() }),
+      }),
+    );
+    expect(createManyBonusTranslation).not.toHaveBeenCalled();
   });
 });
 
