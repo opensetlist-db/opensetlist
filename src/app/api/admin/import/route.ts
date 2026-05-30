@@ -1197,9 +1197,38 @@ async function importEvents(rows: Record<string, string>[]) {
     const slug = row.event_slug;
     if (!slug) continue;
 
-    const jaTranslation = row.ja_name ? { locale: "ja", name: row.ja_name, shortName: row.ja_shortName || null, city: row.ja_city || null, venue: row.ja_venue || null } : null;
-    const koTranslation = row.ko_name ? { locale: "ko", name: row.ko_name, shortName: row.ko_shortName || null, city: row.ko_city || null, venue: row.ko_venue || null } : null;
-    const enTranslation = row.en_name ? { locale: "en", name: row.en_name, shortName: row.en_shortName || null, city: row.en_city || null, venue: row.en_venue || null } : null;
+    // Event translation rows: create a per-locale row whenever ANY of
+    // name / shortName / city / venue is supplied for that locale.
+    // EventTranslation.name is NOT NULL in the schema, so when the
+    // operator only supplies city/venue (a common case for events whose
+    // Korean event name hasn't been picked yet but the venue mapping
+    // exists — e.g. Niji 8th Live where the city/venue is well-known
+    // 사이타마 / 벨루나돔 but the official Korean event name is
+    // pending), we fall back to originalName (or ja_name as a final
+    // fallback) so the row passes the NOT NULL constraint while still
+    // surfacing the city/venue translation to the locale page.
+    function buildEventTranslation(locale: "ja" | "ko" | "en") {
+      const name = row[`${locale}_name`];
+      const shortName = row[`${locale}_shortName`];
+      const city = row[`${locale}_city`];
+      const venue = row[`${locale}_venue`];
+      if (!name && !shortName && !city && !venue) return null;
+      return {
+        locale,
+        // Name fallback hierarchy: locale-specific → originalName → ja_name.
+        // ja_name fallback is the bottom rung because operator-authored
+        // events.csv rows that omit ja_name (Latin-only originalName)
+        // would otherwise leave the locale row with an empty name when
+        // ja_name itself is the fallback.
+        name: name || row.originalName || row.ja_name || "",
+        shortName: shortName || null,
+        city: city || null,
+        venue: venue || null,
+      };
+    }
+    const jaTranslation = buildEventTranslation("ja");
+    const koTranslation = buildEventTranslation("ko");
+    const enTranslation = buildEventTranslation("en");
     const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null; city: string | null; venue: string | null }[];
 
     const seriesId = row.series_slug
