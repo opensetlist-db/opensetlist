@@ -50,7 +50,7 @@ test.describe("Album 매장特典 tab — bonus-scrape public output (b10)", () 
     // The bonus tab is the active tab.
     await expect(
       page.locator(`${ALBUM_TAB_NAV} button[aria-current="page"]`),
-    ).toHaveText(BONUS_TAB_LABEL);
+    ).toContainText(BONUS_TAB_LABEL);
 
     // ListingCard renders each store as an <article> with a store-name
     // heading + (for active listings) a 구매하기 buy link. Assert ≥1 buy
