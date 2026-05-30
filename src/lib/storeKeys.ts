@@ -22,7 +22,7 @@ export const STORE_REGEXES: ReadonlyArray<readonly [RegExp, string]> = [
   [/amazon/i, "amazon_jp"],
   [/楽天|rakuten/i, "rakuten"],
   [/アニメイト|animate/i, "animate"],
-  [/タワー|tower\s*record/i, "tower"],
+  [/タワー|tower\s*records?/i, "tower"],
   [/HMV/i, "hmv"],
   [/ヨドバシ|yodobashi/i, "yodobashi"],
   [/ソフマップ|sofmap/i, "sofmap"],
