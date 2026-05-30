@@ -3,7 +3,10 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { randomUUID } from "node:crypto";
 import {
+  normalizeBonusTranslations,
+  normalizeListingTranslations,
   readCandidates,
   readDecisions,
   reconcile,
@@ -168,6 +171,13 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       if (!approved) continue;
 
       if (lc.kind === "insert") {
+        // Listing inserts use nested `translations.create` rather than
+        // a separate createMany — already one create per listing (we
+        // need the returned id for the bonus-loop's listingIdByIdx),
+        // so the nested syntax adds no round-trips. Bonus translations
+        // can't use the same trick because bonuses go through
+        // createMany (no nested writes), see the bonus loop below.
+        const candTranslations = normalizeListingTranslations(cand.translations);
         const created = await tx.albumStoreListing.create({
           data: {
             albumId: job.albumId!,
@@ -177,6 +187,9 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
             productUrl: cand.productUrl,
             status: "unknown",
             sourceUrl: job.sourceUrl ?? undefined,
+            translations: candTranslations.length
+              ? { create: candTranslations }
+              : undefined,
           },
           select: { id: true },
         });
@@ -207,7 +220,18 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     // loop would issue one round-trip per bonus (N+1) — for a
     // 10-store BD release with one bonus each, that's 10 extra
     // queries inside a transaction holding row locks. Batch it.
+    //
+    // Translations need a parallel pre-generated id pattern because
+    // createMany doesn't accept nested writes: we explicitly assign
+    // `id: randomUUID()` per bonus row (overriding @default(uuid())
+    // at the column), then build the translation rows keyed by the
+    // same uuid, and emit them as a SECOND createMany after the
+    // bonuses land. Two round-trips total, no matter how many
+    // bonuses or translations.
     const bonusInserts: Array<Prisma.AlbumStoreBonusCreateManyInput> = [];
+    const bonusTranslationInserts: Array<Prisma.AlbumStoreBonusTranslationCreateManyInput> =
+      [];
+
     for (const bc of classifications.bonuses) {
       const decision = decisions.bonuses[`${bc.listingIdx}:${bc.bonusIdx}`];
       const approved = decision?.approved === true;
@@ -223,13 +247,23 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       if (!listingId) continue;
 
       const bonus = candidates.listings[bc.listingIdx].bonuses[bc.bonusIdx];
+      const bonusId = randomUUID();
       bonusInserts.push({
+        id: bonusId,
         listingId,
         originalBonusType: bonus.originalBonusType,
         originalBonusDescription: bonus.originalBonusDescription,
         originalLanguage: "ja",
         bonusImageUrl: bonus.bonusImageUrl,
       });
+      for (const t of normalizeBonusTranslations(bonus.translations)) {
+        bonusTranslationInserts.push({
+          bonusId,
+          locale: t.locale,
+          bonusType: t.bonusType,
+          bonusDescription: t.bonusDescription,
+        });
+      }
     }
 
     // Global early-booking fan-out — flatten the (attachTo × items)
@@ -259,13 +293,23 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
             // contract from spreading to early-booking accidentally.
             continue;
           }
+          const bonusId = randomUUID();
           bonusInserts.push({
+            id: bonusId,
             listingId: targetListingId,
             originalBonusType: item.originalBonusType,
             originalBonusDescription: item.originalBonusDescription,
             originalLanguage: "ja",
             bonusImageUrl: item.bonusImageUrl,
           });
+          for (const t of normalizeBonusTranslations(item.translations)) {
+            bonusTranslationInserts.push({
+              bonusId,
+              locale: t.locale,
+              bonusType: t.bonusType,
+              bonusDescription: t.bonusDescription,
+            });
+          }
         }
       }
     }
@@ -273,6 +317,11 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     if (bonusInserts.length > 0) {
       await tx.albumStoreBonus.createMany({ data: bonusInserts });
       bonusesInserted = bonusInserts.length;
+    }
+    if (bonusTranslationInserts.length > 0) {
+      await tx.albumStoreBonusTranslation.createMany({
+        data: bonusTranslationInserts,
+      });
     }
 
     // Job status flip happened at the top of the tx via the atomic

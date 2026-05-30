@@ -21,16 +21,40 @@ import type { Prisma } from "@/generated/prisma/client";
 
 // ── Parsed candidates (matches wiki/scrape/bonus/pattern-notes.md §12)
 
+// Per-locale translation overrides. Both fields are nullable so a
+// translator can populate only what they need (b03 display walks the
+// translation row first, then falls through to original* fields).
+// Same `{ locale, ... }` shape the admin endpoints already accept via
+// parseListingTranslations / parseBonusTranslations.
+export type ParsedListingTranslation = {
+  locale: string; // "ko" | "ja" | "en" | "zh-CN"
+  storeName: string | null;
+  editionLabel: string | null;
+};
+
+export type ParsedBonusTranslation = {
+  locale: string;
+  bonusType: string | null;
+  bonusDescription: string | null;
+};
+
+// `translations` is OPTIONAL — backward-compatible with candidate JSON
+// produced before this field was added, and with hand-edited paste
+// where the operator deletes empty arrays. The parser always emits `[]`,
+// the validator accepts presence-or-absence, and normalize* helpers
+// treat `undefined` as "no translations."
 export type ParsedBonus = {
   originalBonusType: string;
   originalBonusDescription: string | null;
   bonusImageUrl: string | null;
+  translations?: ParsedBonusTranslation[];
 };
 
 export type ParsedListing = {
   originalStoreName: string;
   originalEditionLabel: string | null;
   productUrl: string | null;
+  translations?: ParsedListingTranslation[];
   bonuses: ParsedBonus[];
 };
 
@@ -39,6 +63,7 @@ export type ParsedGlobalEarlyBookingItem = {
   originalBonusDescription: string | null;
   bonusImageUrl: string | null;
   storeNameHint: string | null;
+  translations?: ParsedBonusTranslation[];
 };
 
 export type ParsedCandidates = {
@@ -219,6 +244,13 @@ function listingKey(storeName: string, editionLabel: string | null): string {
  * Reject anything that doesn't match the contract — the parser is
  * trusted, but the endpoint accepts arbitrary JSON so a hand-crafted
  * malformed payload must fail loudly before it gets persisted.
+ *
+ * `translations` arrays are optional on every level — the parser emits
+ * `[]` but older JSON without the field, or operator-edited paste
+ * lacking it, is treated as "no translations." Inside the array each
+ * entry must at least carry a string `locale`; field overrides are
+ * each nullable (matching the `parse{Listing,Bonus}Translations`
+ * contract in adminParsers).
  */
 export function isParsedCandidates(v: unknown): v is ParsedCandidates {
   if (!v || typeof v !== "object") return false;
@@ -231,13 +263,120 @@ export function isParsedCandidates(v: unknown): v is ParsedCandidates {
     if (typeof ll.originalStoreName !== "string") return false;
     if (ll.originalEditionLabel !== null && typeof ll.originalEditionLabel !== "string") return false;
     if (!Array.isArray(ll.bonuses)) return false;
+    if (ll.translations !== undefined && !isTranslationsArray(ll.translations, "listing")) {
+      return false;
+    }
     for (const b of ll.bonuses) {
       if (!b || typeof b !== "object") return false;
       const bb = b as Record<string, unknown>;
       if (typeof bb.originalBonusType !== "string") return false;
+      if (bb.translations !== undefined && !isTranslationsArray(bb.translations, "bonus")) {
+        return false;
+      }
+    }
+  }
+  // globalEarlyBooking is optional (null OR a `{ bonuses: [...] }`
+  // object). When present, every entry has the same shape as a
+  // listing-attached bonus + optional translations + a storeNameHint.
+  // The apply route fans these out via normalizeBonusTranslations, so
+  // a malformed translations entry that bypassed validation here would
+  // make it all the way to a DB write — validate before persist.
+  if (o.globalEarlyBooking !== null && o.globalEarlyBooking !== undefined) {
+    if (typeof o.globalEarlyBooking !== "object") return false;
+    const geb = o.globalEarlyBooking as Record<string, unknown>;
+    if (!Array.isArray(geb.bonuses)) return false;
+    for (const item of geb.bonuses) {
+      if (!item || typeof item !== "object") return false;
+      const ii = item as Record<string, unknown>;
+      if (typeof ii.originalBonusType !== "string") return false;
+      if (ii.translations !== undefined && !isTranslationsArray(ii.translations, "bonus")) {
+        return false;
+      }
     }
   }
   return true;
+}
+
+function isTranslationsArray(
+  v: unknown,
+  kind: "listing" | "bonus",
+): boolean {
+  if (!Array.isArray(v)) return false;
+  for (const t of v) {
+    if (!t || typeof t !== "object") return false;
+    const tt = t as Record<string, unknown>;
+    if (typeof tt.locale !== "string" || !tt.locale.trim()) return false;
+    // Override columns are each nullable / undefined. Reject only if
+    // present with the wrong type — an empty translation row (no
+    // overrides) is still a valid "row exists, no overrides" signal.
+    if (kind === "listing") {
+      if (tt.storeName != null && typeof tt.storeName !== "string") return false;
+      if (tt.editionLabel != null && typeof tt.editionLabel !== "string") return false;
+    } else {
+      if (tt.bonusType != null && typeof tt.bonusType !== "string") return false;
+      if (tt.bonusDescription != null && typeof tt.bonusDescription !== "string") return false;
+    }
+  }
+  return true;
+}
+
+// ── Translation normalization for the apply path
+
+/**
+ * Coerce ParsedListingTranslation entries to the schema-side shape
+ * `AlbumStoreListingTranslation` rows accept. Trim string overrides;
+ * drop trim-empty values to null so display fallthrough kicks in.
+ * Drops trailing rows whose `locale` is blank (shouldn't happen
+ * after isTranslationsArray, but cheap to double-check).
+ */
+export function normalizeListingTranslations(
+  list: ParsedListingTranslation[] | undefined,
+): { locale: string; storeName: string | null; editionLabel: string | null }[] {
+  if (!list?.length) return [];
+  return list
+    .filter((t) => typeof t.locale === "string" && t.locale.trim())
+    .map((t) => ({
+      locale: t.locale.trim(),
+      storeName:
+        typeof t.storeName === "string" && t.storeName.trim()
+          ? t.storeName.trim()
+          : null,
+      editionLabel:
+        typeof t.editionLabel === "string" && t.editionLabel.trim()
+          ? t.editionLabel.trim()
+          : null,
+    }));
+}
+
+/**
+ * Bonus-translation counterpart. Unlike the admin form (which the
+ * b03-b05 simplification handoff scoped to bonusType only), the b10
+ * import path writes BOTH bonusType and bonusDescription overrides
+ * when the candidate supplies them — automated translation passes
+ * generally fill both fields together and the schema column exists
+ * either way.
+ */
+export function normalizeBonusTranslations(
+  list: ParsedBonusTranslation[] | undefined,
+): {
+  locale: string;
+  bonusType: string | null;
+  bonusDescription: string | null;
+}[] {
+  if (!list?.length) return [];
+  return list
+    .filter((t) => typeof t.locale === "string" && t.locale.trim())
+    .map((t) => ({
+      locale: t.locale.trim(),
+      bonusType:
+        typeof t.bonusType === "string" && t.bonusType.trim()
+          ? t.bonusType.trim()
+          : null,
+      bonusDescription:
+        typeof t.bonusDescription === "string" && t.bonusDescription.trim()
+          ? t.bonusDescription.trim()
+          : null,
+    }));
 }
 
 /**
