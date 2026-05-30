@@ -1,27 +1,24 @@
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
-import { getAlbums, groupAlbumsByYear } from "@/lib/albums";
+import {
+  getAlbums,
+  groupAlbumsByYear,
+  getAlbumArtistFilters,
+} from "@/lib/albums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { AlbumCard } from "@/components/AlbumCard";
+import { AlbumArtistFilter } from "@/components/albums/AlbumArtistFilter";
 import { displayOriginalName } from "@/lib/display";
 import { colors } from "@/styles/tokens";
 
 /*
- * `/[locale]/albums` — top-level album discovery list (b10b).
+ * `/[locale]/albums` — top-level album discovery list (b10b; Sprint B2
+ * QA pass tweaks).
  *
- * Closes the Album discovery loop: b02 shipped the detail page and
- * b08/b09 added inbound cross-links, but there was no entry point to
- * browse the catalog. This page + the 4th header nav item (`albums`)
- * provide it.
- *
- * Layout follows raw/mockups/albums-list-mockup.jsx: albums grouped by
- * release year (desc), rendered via the AlbumCard `list` variant which
- * is itself responsive (mobile row / desktop grid card). The year-
- * section wrapper below is white-rounded-container-with-dividers on
- * mobile and a transparent grid on desktop — the two halves the `list`
- * variant's mobile-row and desktop-card blocks slot into. No type/
- * artist filter (Phase 3) and no pagination (small catalog; same rule
- * as /artists).
+ * Albums grouped by release year (desc), rendered as single-column
+ * `AlbumCard` list rows at every breakpoint (the QA pass dropped the
+ * former desktop 4-col grid — desktop now matches mobile). A top-level
+ * artist filter (`?artist=`) narrows the catalog.
  *
  * Frame mirrors src/app/[locale]/artists/page.tsx: `<main flex-1>`
  * carries the full-width page background, the inner `mx-auto` div holds
@@ -30,9 +27,9 @@ import { colors } from "@/styles/tokens";
  * (see the album-detail width-parity fix, PR #480).
  */
 
-// Wider than /artists' 960 — the desktop year grid wants up to 4
-// columns of album cards, which reads cramped under ~1000px.
-const PAGE_MAX_WIDTH = 1100;
+// Single-column rows read better in a narrower column — match the
+// /artists list width (was 1100 for the now-removed 4-col grid).
+const PAGE_MAX_WIDTH = 960;
 
 export async function generateMetadata({
   params,
@@ -46,13 +43,30 @@ export async function generateMetadata({
 
 export default async function AlbumsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ artist?: string | string[] }>;
 }) {
   const { locale } = await params;
+  const sp = await searchParams;
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  const albums = await getAlbums(locale);
+  const artistFilters = await getAlbumArtistFilters(locale);
+  // Validate the `?artist=` param against the known filter set — an
+  // unknown / hand-typed value falls back to "전체" (no filter) rather
+  // than a guaranteed-empty list. Validated ids are our own numeric
+  // strings, so BigInt() is safe.
+  const rawArtist = Array.isArray(sp.artist) ? sp.artist[0] : sp.artist;
+  const activeArtist =
+    rawArtist && artistFilters.some((o) => o.id === rawArtist)
+      ? rawArtist
+      : null;
+
+  const albums = await getAlbums(
+    locale,
+    activeArtist ? BigInt(activeArtist) : undefined,
+  );
   const groups = groupAlbumsByYear(albums);
 
   return (
@@ -73,6 +87,8 @@ export default async function AlbumsPage({
             {t("title")}
           </h1>
         </header>
+
+        <AlbumArtistFilter active={activeArtist} options={artistFilters} />
 
         {albums.length === 0 ? (
           <p
@@ -122,13 +138,12 @@ export default async function AlbumsPage({
                   </span>
                 </div>
 
-                {/* Responsive wrapper — mobile: one white rounded card
-                    with `divide-y` separators between rows; desktop:
-                    transparent grid (2→4 cols). The arbitrary
-                    `divide-[#f1f5f9]` is the `colors.borderLight` hex; a
-                    breakpoint-conditional divide color can't be inlined,
-                    so it lives in className. */}
-                <div className="overflow-hidden rounded-2xl bg-white shadow-sm divide-y divide-[#f1f5f9] lg:grid lg:grid-cols-2 xl:grid-cols-4 lg:gap-3 lg:divide-y-0 lg:rounded-none lg:bg-transparent lg:shadow-none lg:overflow-visible">
+                {/* One white rounded container per year with `divide-y`
+                    separators between the rows — at every breakpoint (the
+                    desktop grid was removed in the QA pass). The arbitrary
+                    `divide-[#f1f5f9]` is the `colors.borderLight` hex (a
+                    divide color can't be expressed inline). */}
+                <div className="overflow-hidden rounded-2xl bg-white shadow-sm divide-y divide-[#f1f5f9]">
                   {group.albums.map((album) => {
                     const primaryArtist = album.artists[0]?.artist ?? null;
                     const artistName = primaryArtist

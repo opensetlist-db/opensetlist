@@ -12,30 +12,30 @@ import { colors, radius, shadows } from "@/styles/tokens";
  * a self-contained render block, and shared atoms (type pill, cover,
  * bonus badge) are extracted as internal helpers.
  *
- * b08 mini variant: horizontal compact 44×44-cover + meta + chevron
- *   row inside the Song page sidebar InfoCard. Mockup reference:
- *   F:\work\vaults\opensetlist\raw\mockups\song-page-v2-mockup.jsx
- *   lines 127–201 (AlbumLinkCard).
+ * mini variant (b08): horizontal compact 44×44-cover + meta + chevron
+ *   row. Used in the Song page sidebar InfoCard AND the Artist page
+ *   discography / 최신 앨범 preview (single-column list of these rows).
+ *   Mockup reference: song-page-v2-mockup.jsx lines 127–201.
  *
- * b09 hero variant: vertical card — square cover on top, type pill +
- *   title (main + localized sub) + release year below. No Disc/Track
- *   footer (the Artist "최신 앨범" highlight has no AlbumTrack context).
- *   The card sets no width of its own; the consumer constrains it (the
- *   Artist section wraps the latest album so the cover reads ~180px).
+ * list variant (b10b): full-width store/catalog row for the
+ *   `/[locale]/albums` list page — cover-left + type pill + artist
+ *   label + title + sub + year + chevron. Same horizontal shape as
+ *   mini, sized larger; the year-section wrapper supplies the white
+ *   container + dividers.
  *
- * Future variants (do NOT add here; document for handoff):
- *   - list (b10b): full-width row for `/[locale]/albums` list page,
- *     larger cover + artist sub-label + type pill, no chevron
- *     (whole card is the link)
+ * (A `hero` vertical-card variant existed for the Artist "최신 앨범"
+ * highlight but was removed in the Sprint B2 QA pass — the artist page
+ * now uses a compact single-column `mini` preview + a dedicated Albums
+ * tab instead of an oversized square hero card.)
  *
  * Server component — no client state, no hooks beyond useTranslations
  * (which works in both server and client trees).
  */
 
-// All three planned variants now implemented (mini = b08, hero = b09,
-// list = b10b). The open string union + discriminated props kept each
-// addition self-contained; no further variants are reserved.
-export type AlbumCardVariant = "mini" | "hero" | "list";
+// Two variants: `mini` (compact row, Song + Artist surfaces) and `list`
+// (the /albums catalog row). The open string union + discriminated props
+// keep each render block self-contained.
+export type AlbumCardVariant = "mini" | "list";
 
 // Per-AlbumType pill styling. Mirrors the mockup's ALBUM_TYPE_LABEL
 // map (lines 96–102) but uses semantic tokens from
@@ -118,18 +118,6 @@ interface MiniProps {
   activeBonusCount?: number;
 }
 
-interface HeroProps {
-  variant: "hero";
-  album: AlbumCardAlbum;
-  locale: string;
-  /**
-   * Count of active bonuses on this album (same formula as `mini` —
-   * `countActiveBonuses(listings)`). Renders the green 特典 N badge
-   * pinned to the top-right of the cover when > 0.
-   */
-  activeBonusCount?: number;
-}
-
 interface ListProps {
   variant: "list";
   album: AlbumCardAlbum;
@@ -150,14 +138,11 @@ interface ListProps {
   activeBonusCount?: number;
 }
 
-type Props = MiniProps | HeroProps | ListProps;
+type Props = MiniProps | ListProps;
 
 export async function AlbumCard(props: Props) {
   if (props.variant === "mini") {
     return await MiniVariant(props);
-  }
-  if (props.variant === "hero") {
-    return await HeroVariant(props);
   }
   if (props.variant === "list") {
     return await ListVariant(props);
@@ -321,6 +306,24 @@ async function MiniVariant({
         >
           {titleParts.main}
         </div>
+        {/* Localized sub-title (e.g. the Korean album title under the
+            original). displayOriginalTitle returns it as `.sub`; the
+            mini variant previously dropped it — surfaced in the Sprint
+            B2 QA pass on the Song page 수록 앨범 cards. */}
+        {titleParts.sub && (
+          <div
+            style={{
+              fontSize: 10,
+              color: colors.textMuted,
+              marginTop: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {titleParts.sub}
+          </div>
+        )}
         {footerSegments.length > 0 && (
           <div
             style={{
@@ -368,162 +371,6 @@ async function MiniVariant({
       >
         ›
       </span>
-    </Link>
-  );
-}
-
-async function HeroVariant({
-  album,
-  locale,
-  activeBonusCount = 0,
-}: HeroProps) {
-  // Album namespace only — type-pill label + active-bonus badge text
-  // both live under `Album` now (the badge keys moved out of `Song` in
-  // PR #486 since AlbumCard renders on non-Song surfaces). Server-side
-  // `getTranslations` per the MiniVariant note (keeps consumers RSC).
-  const albumT = await getTranslations({ locale, namespace: "Album" });
-
-  const titleParts = displayOriginalTitle(album, album.translations, locale);
-  const pillStyle = TYPE_PILL_STYLE[album.type] ?? DEFAULT_TYPE_PILL;
-
-  const releaseYear = parseReleaseYear(album.releaseDate);
-
-  const primaryArtist = album.artists[0]?.artist ?? null;
-  const fallbackColor = primaryArtist?.color ?? colors.primary;
-
-  const albumHref = `/${locale}/albums/${album.id}/${album.slug}`;
-
-  return (
-    <Link
-      href={albumHref}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        background: colors.bgCard,
-        border: `1.5px solid ${colors.border}`,
-        borderRadius: radius.card,
-        overflow: "hidden",
-        textDecoration: "none",
-        color: "inherit",
-        transition: "border-color 0.12s",
-      }}
-    >
-      {/* Square cover. `aspectRatio: 1` keeps the cover proportional
-          at whatever width the consumer constrains the card to (the
-          Artist section caps it ~180px). `referrerPolicy="no-referrer"`
-          is required regardless of source per
-          album-image-source-policy.md (Amazon CDN leak guard). */}
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "1 / 1",
-          background: album.imageUrl
-            ? "transparent"
-            : `linear-gradient(135deg, ${fallbackColor}30, ${fallbackColor}70)`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 44,
-          overflow: "hidden",
-        }}
-      >
-        {album.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={album.imageUrl}
-            alt=""
-            referrerPolicy="no-referrer"
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <span aria-hidden="true">💿</span>
-        )}
-        {/* Active-bonus badge pinned over the cover top-right — mirrors
-            the artist-page-v2 mockup's 特典 badge placement. Same token
-            pair + i18n keys as the mini variant so the green treatment
-            reads identically across surfaces. */}
-        {activeBonusCount > 0 && (
-          <span
-            aria-label={albumT("albumActiveBonuses", { count: activeBonusCount })}
-            style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              fontSize: 10,
-              fontWeight: 700,
-              color: colors.bonusActiveText,
-              background: colors.bonusActiveBg,
-              borderRadius: 10,
-              padding: "2px 7px",
-            }}
-          >
-            {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
-          </span>
-        )}
-      </div>
-
-      {/* Meta block */}
-      <div style={{ padding: "12px 14px 14px" }}>
-        <div style={{ marginBottom: 6 }}>
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 700,
-              color: pillStyle.color,
-              background: pillStyle.bg,
-              borderRadius: 8,
-              padding: "1px 5px",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-            }}
-          >
-            {albumT(`type.${album.type}`)}
-          </span>
-        </div>
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: colors.primary,
-            lineHeight: 1.35,
-            // Two-line clamp — hero titles get more room than the
-            // single-line mini, but a runaway title still can't push
-            // the card height unbounded.
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {titleParts.main}
-        </div>
-        {titleParts.sub && (
-          <div
-            style={{
-              fontSize: 11,
-              color: colors.textMuted,
-              marginTop: 2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {titleParts.sub}
-          </div>
-        )}
-        {releaseYear !== null && (
-          <div
-            style={{
-              fontSize: 11,
-              color: colors.textMuted,
-              marginTop: 6,
-            }}
-          >
-            {releaseYear}
-          </div>
-        )}
-      </div>
     </Link>
   );
 }
@@ -613,26 +460,23 @@ async function ListVariant({
   );
 
   return (
-    // One <Link> renders both layouts; Tailwind breakpoint visibility
-    // picks which shows. Mobile: a borderless row — the year-section
-    // wrapper supplies the white container + `divide-y` separators, so
-    // the row needs no border of its own (sidesteps the responsive
-    // last-child-divider problem inline styles can't express). Desktop:
-    // a self-contained bordered card inside the wrapper's grid. The
-    // arbitrary `lg:` border/rounded values are the token hexes
-    // (colors.border / radius) — they live in className rather than
-    // `style` only because a media-query-conditional border can't be
-    // expressed inline.
+    // A single horizontal row at every breakpoint. The Sprint B2 QA
+    // pass unified the /albums list to rows on desktop too (the former
+    // 4-col grid card was dropped), so there's no longer a separate
+    // desktop layout. Borderless — the year-section wrapper supplies
+    // the white container + `divide-y` separators, so the row carries
+    // no border of its own.
     <Link
       href={albumHref}
-      className="block lg:flex lg:h-full lg:flex-col lg:overflow-hidden lg:rounded-[14px] lg:border lg:border-[#e2e8f0] lg:bg-white"
-      style={{ textDecoration: "none", color: "inherit" }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "12px 16px",
+        textDecoration: "none",
+        color: "inherit",
+      }}
     >
-      {/* ── Mobile row ── */}
-      <div
-        className="flex lg:hidden"
-        style={{ alignItems: "center", gap: 14, padding: "12px 16px" }}
-      >
         <div
           style={{
             width: 52,
@@ -691,88 +535,6 @@ async function ListVariant({
         >
           ›
         </span>
-      </div>
-
-      {/* ── Desktop card ── */}
-      <div className="hidden lg:flex lg:h-full lg:flex-col">
-        <div
-          style={{
-            position: "relative",
-            height: 120,
-            background: album.imageUrl
-              ? "transparent"
-              : `linear-gradient(135deg, ${fallbackColor}25, ${fallbackColor}55)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 40,
-            overflow: "hidden",
-          }}
-        >
-          {coverImg}
-          {activeBonusCount > 0 && (
-            <span
-              aria-label={albumT("albumActiveBonuses", {
-                count: activeBonusCount,
-              })}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                fontSize: 10,
-                fontWeight: 700,
-                color: colors.bonusActiveText,
-                background: colors.bonusActiveBg,
-                borderRadius: 10,
-                padding: "2px 7px",
-              }}
-            >
-              {albumT("albumActiveBonusesBadge", { count: activeBonusCount })}
-            </span>
-          )}
-        </div>
-        <div
-          style={{
-            padding: "10px 12px 12px",
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              marginBottom: 5,
-              flexWrap: "wrap",
-            }}
-          >
-            {typePill}
-            {artistPill}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: colors.primary,
-              lineHeight: 1.4,
-              marginBottom: 3,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {titleParts.main}
-          </div>
-          {releaseYear !== null && (
-            <div style={{ fontSize: 10, color: colors.textMuted }}>
-              {releaseYear}
-            </div>
-          )}
-        </div>
-      </div>
     </Link>
   );
 }

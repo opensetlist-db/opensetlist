@@ -124,17 +124,22 @@ export async function EventBdSection({ event, locale, referenceNow }: Props) {
     referenceNow,
   );
 
-  // pre / immediate_post / cancelled / no-album-but-time-bucket-says-hide
-  // — all collapse to no render. The teaser banner takes over once we
-  // hit long_mid; only the three post-link buckets render the full
-  // section.
-  if (state === "pre" || state === "immediate_post") return null;
+  // Only the three post-link states render. `long_mid` used to show a
+  // "BD 발매 정보 곧 공개" teaser, but it fired for every completed event
+  // past D+60 — including events that may never get a BD, which read as
+  // a false promise. Removed in the Sprint B2 QA pass: the BD section
+  // now appears only once an album is actually linked (bd_announced /
+  // bd_preorder / bd_released). `eventBdState` still resolves `long_mid`
+  // (its unit tests assert the state); it simply renders nothing here.
+  if (
+    state === "pre" ||
+    state === "immediate_post" ||
+    state === "long_mid"
+  ) {
+    return null;
+  }
 
   const t = await getTranslations({ locale, namespace: "Event" });
-
-  if (state === "long_mid") {
-    return <LongMidTeaser title={t("bd.teaserTitle")} body={t("bd.teaserBody")} />;
-  }
 
   // All three post-link states need the album + its primary artist
   // resolved. The resolver above already guards `album !== null` for
@@ -153,54 +158,6 @@ export async function EventBdSection({ event, locale, referenceNow }: Props) {
   );
 }
 
-// ── long_mid teaser banner ────────────────────────────────
-// Light single-row preview surface; no album info, no bonus.
-// Renders even when no `bdAlbumId` is set yet — the operator hasn't
-// linked the BD row in admin, but the time bucket says "BD news is
-// plausibly imminent." Used to hint to fans that a BD section will
-// surface here once announced.
-
-function LongMidTeaser({ title, body }: { title: string; body: string }) {
-  return (
-    <section
-      style={{
-        background: colors.bgCard,
-        borderRadius: radius.card,
-        marginBottom: 12,
-        boxShadow: shadows.card,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          background: `linear-gradient(135deg, ${colors.primary}15, ${colors.primary}05)`,
-          borderLeft: `3px solid ${colors.primary}`,
-          padding: "14px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <span style={{ fontSize: 24, flexShrink: 0 }} aria-hidden="true">
-          💿
-        </span>
-        <div>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: colors.textPrimary,
-              marginBottom: 3,
-            }}
-          >
-            {title}
-          </div>
-          <div style={{ fontSize: 12, color: colors.textSubtle }}>{body}</div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 // ── full variant (bd_announced / bd_preorder / bd_released) ──
 // One JSX block; the three states differ in:
