@@ -74,6 +74,10 @@ export async function getAlbums(locale: string, artistId?: bigint) {
             artists: {
               some: {
                 artist: {
+                  // Exclude soft-deleted sub-units (the top-level chip
+                  // query already filters isDeleted; keep both consistent
+                  // so a deleted sub-unit's albums can't leak in).
+                  isDeleted: false,
                   OR: [{ id: artistId }, { parentArtistId: artistId }],
                 },
               },
@@ -161,7 +165,9 @@ export async function getAlbumArtistFilters(
       parentArtistId: null,
       OR: [
         { albums: { some: {} } },
-        { subArtists: { some: { albums: { some: {} } } } },
+        // Non-deleted sub-units only — consistent with the top-level
+        // isDeleted filter + getAlbums' sub-unit branch.
+        { subArtists: { some: { isDeleted: false, albums: { some: {} } } } },
       ],
     },
     select: {
