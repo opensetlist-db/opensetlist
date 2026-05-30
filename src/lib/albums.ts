@@ -157,8 +157,12 @@ export async function getAlbumArtistFilters(
   });
   return artists.map((a) => ({
     id: String(a.id),
+    // `Artist.originalName` is non-nullable in the schema, so the chain
+    // already yields a string — the trailing `|| ""` is belt-and-suspenders
+    // to keep `name: string` airtight if the column ever goes nullable.
     name:
       displayNameWithFallback(a, a.translations, locale, "short") ||
-      a.originalName,
+      a.originalName ||
+      "",
   }));
 }
