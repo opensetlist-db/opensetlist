@@ -117,7 +117,20 @@ export default async function ImportReviewListPage({ searchParams }: Props) {
           {rows.map((j) => (
             <tr key={j.id} className="border-b border-zinc-100 align-top">
               <td className="py-2 whitespace-nowrap text-zinc-500">
-                {formatDate(j.createdAt, "ko")}
+                {/* `createdAt` is a timestamp (full instant), not a
+                    date-only value like Event.date. Without an
+                    explicit timeZone option, `formatDate` falls
+                    through to the runtime's local zone — UTC on
+                    Vercel — and a late-night-KST job would display
+                    the next-day's date (silent 9h shift). Pin to
+                    Asia/Seoul (operator-only surface, single
+                    locale). */}
+                {formatDate(j.createdAt, "ko", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  timeZone: "Asia/Seoul",
+                })}
               </td>
               <td className="py-2">
                 {j.album ? (
