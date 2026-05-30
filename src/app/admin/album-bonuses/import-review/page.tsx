@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { formatDate, serializeBigInt } from "@/lib/utils";
 import type { AlbumBonusImportJobStatus } from "@/generated/prisma/enums";
 import CreateJobClient from "./CreateJobClient";
 
@@ -117,9 +117,7 @@ export default async function ImportReviewListPage({ searchParams }: Props) {
           {rows.map((j) => (
             <tr key={j.id} className="border-b border-zinc-100 align-top">
               <td className="py-2 whitespace-nowrap text-zinc-500">
-                {new Date(j.createdAt).toLocaleString("ko-KR", {
-                  timeZone: "Asia/Seoul",
-                })}
+                {formatDate(j.createdAt, "ko")}
               </td>
               <td className="py-2">
                 {j.album ? (

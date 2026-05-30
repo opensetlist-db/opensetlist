@@ -534,6 +534,81 @@ describe("POST /api/admin/album-bonuses/import/[jobId]/apply", () => {
     expect(createManyBonus).not.toHaveBeenCalled();
   });
 
+  it("dedupes attachToListings indices to prevent fan-out double-insert on freshly-created listings", async () => {
+    // Edge case: operator's attachToListings carries the same idx
+    // twice (UI doesn't prevent it) AND the listing for that idx is
+    // a brand-new insert. existingBonusTypesByListingId only holds
+    // pre-tx rows, so for a fresh listing the per-item dedup branch
+    // resolves null and would push the bonus once per duplicate
+    // entry. attachTo collapse via Set guarantees one fan-out per
+    // distinct target.
+    const candidatesEarly = {
+      ...validCandidates,
+      globalEarlyBooking: {
+        bonuses: [
+          {
+            originalBonusType: "[早期予約] アクリルキーホルダー",
+            originalBonusDescription: null,
+            bonusImageUrl: null,
+            storeNameHint: null,
+          },
+        ],
+      },
+    };
+
+    (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "job-1",
+      status: "pending",
+      albumId: BigInt(42),
+      sourceUrl: null,
+      candidates: candidatesEarly,
+      decisions: {
+        // Approve the candidate listing so it becomes a fresh insert.
+        listings: { 0: { approved: true } },
+        bonuses: {},
+        globalEarlyBooking: {
+          approved: true,
+          // Same target twice — UI doesn't prevent this. Dedup must
+          // collapse it to one fan-out.
+          attachToListings: [0, 0],
+        },
+      },
+    });
+
+    const createListing = vi.fn().mockResolvedValue({ id: "L-NEW" });
+    const createManyBonus = vi.fn().mockResolvedValue({ count: 1 });
+    const createManyBonusTranslation = vi.fn();
+    const claimJob = vi.fn().mockResolvedValue({ count: 1 });
+
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const tx = {
+          albumStoreListing: {
+            findMany: vi.fn().mockResolvedValue([]),
+            create: createListing,
+            update: vi.fn(),
+          },
+          albumStoreBonus: { createMany: createManyBonus },
+          albumStoreBonusTranslation: { createMany: createManyBonusTranslation },
+          albumBonusImportJob: { updateMany: claimJob },
+        } as unknown as typeof prisma;
+        return fn(tx);
+      },
+    );
+
+    const res = await JOB_APPLY(
+      new Request("http://x", { method: "POST" }) as never,
+      fakeParams("job-1"),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // One bonus inserted (the only candidate item), not two — proves
+    // the Set-dedup collapsed the duplicate attach target.
+    expect(body.applied.bonusesInserted).toBe(1);
+    const bonusCall = createManyBonus.mock.calls[0][0];
+    expect(bonusCall.data).toHaveLength(1);
+  });
+
   it("applies approved inserts in a transaction and flips status to applied", async () => {
     (prisma.albumBonusImportJob.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "job-1",

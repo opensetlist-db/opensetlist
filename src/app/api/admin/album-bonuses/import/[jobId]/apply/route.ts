@@ -280,7 +280,17 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
       decisions.globalEarlyBooking?.approved &&
       candidates.globalEarlyBooking?.bonuses?.length
     ) {
-      const attachTo = decisions.globalEarlyBooking.attachToListings ?? [];
+      // Dedupe attachToListings before the fan-out. The
+      // existingBonusTypesByListingId cache only holds listings that
+      // existed at tx start — so for a freshly-inserted target listing
+      // (idx not in the cache, existingTypes resolves to null), the
+      // per-item dedup branch is skipped and the bonus would be
+      // pushed once per duplicate entry in attachToListings. The UI
+      // currently doesn't prevent the operator from selecting the
+      // same listing twice; collapsing here is the safe belt-suspenders.
+      const attachTo = [
+        ...new Set(decisions.globalEarlyBooking.attachToListings ?? []),
+      ];
       for (const targetIdx of attachTo) {
         const targetListingId = listingIdByIdx.get(targetIdx);
         if (!targetListingId) continue;
