@@ -8,7 +8,7 @@ import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
 import { RelatedAlbumsSection } from "@/components/RelatedAlbumsSection";
 import { FireAlbumView } from "@/components/FireAlbumView";
-import { resolveStoreKey } from "@/lib/albumBonusDisplay";
+import { resolveStoreKey, countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { AlbumBonusTab } from "@/components/AlbumBonusTab";
 import { AlbumTracksTab } from "@/components/AlbumTracksTab";
 import { AlbumRelatedEventsTab } from "@/components/AlbumRelatedEventsTab";
@@ -248,14 +248,15 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
 
   const t = await getTranslations({ locale, namespace: "Album" });
 
-  // Type-aware tab visibility: live_bd albums hide the Tracks tab
-  // (BDs don't carry an audio-track listing). Bonus + Events tabs
-  // always show.
+  // Tab order (Sprint B2 QA pass): 수록곡 → 관련 공연 → 구입. live_album
+  // hides 수록곡 (BDs carry no audio tracklist). Default tab is the first
+  // visible one — tracks for audio albums, events for live_album.
   const showTracks = album.type !== AlbumType.live_album;
-  const visibleTabs: AlbumTabKey[] = ["bonus"];
+  const visibleTabs: AlbumTabKey[] = [];
   if (showTracks) visibleTabs.push("tracks");
   visibleTabs.push("events");
-  const defaultTab: AlbumTabKey = album.type === AlbumType.live_album ? "events" : "bonus";
+  visibleTabs.push("bonus");
+  const defaultTab: AlbumTabKey = visibleTabs[0];
   const activeTab = resolveActiveTab(rawTab, visibleTabs, defaultTab);
 
   // Derive Pattern 1 song ids once from the already-loaded album.tracks
@@ -307,12 +308,17 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   // pattern — the parens + spacing are an i18n concern (some locales
   // would prefer full-width parens or no space), not hard-coded
   // formatting, so route the composition through next-intl.
+  // Active (non-ended) bonus count drives the 구입 tab's "특전 있음"
+  // indicator dot — distinct from the `(N)` count, which is the total
+  // bonus count incl. ended. Shows only when ≥1 bonus is currently live.
+  const activeBonusCount = countActiveBonuses(album.listings);
   const tabs = visibleTabs.map((key) => ({
     key,
     label: t("tab.withCount", {
       label: t(`tab.${key}`),
       count: tabCounts[key],
     }),
+    indicator: key === "bonus" && activeBonusCount > 0,
   }));
 
   // Full events fetch is lazy — only the events tab body needs the
