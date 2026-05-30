@@ -183,7 +183,14 @@ export default function EventForm({ initialData }: EventFormProps) {
       .then(setArtistList);
     fetch("/api/admin/albums")
       .then((r) => r.json())
-      .then(setAlbumList);
+      // The endpoint returns a JSON `{ error }` (not an array) on a DB
+      // error, so guard before setState — otherwise `albumList.map(...)`
+      // in the BD-album picker throws and crashes the whole form. Keep
+      // the prior `[]` on failure so the form still renders (sans picker).
+      .then((data) => {
+        if (Array.isArray(data)) setAlbumList(data);
+      })
+      .catch(() => {});
     fetch("/api/admin/stage-identities")
       .then((r) => r.json())
       .then(setStageIdentities);

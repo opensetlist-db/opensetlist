@@ -984,7 +984,18 @@ export default async function EventPage({ params }: Props) {
             event={{
               id: event.id,
               startTime: event.startTime,
-              status: event.status,
+              // Use the page's snap-frozen `resolvedStatus`
+              // (getEventStatus at request time), not the raw stored
+              // `event.status` — they can disagree at a clock boundary
+              // (stored status updated lazily), and a mismatch would let
+              // the BD purchase CTA open while the page renders `ongoing`
+              // (resolveEventBdState's D+0 ad gate keys off `=== "ongoing"`).
+              // `resolvedStatus` is the UI status; its only value outside
+              // the DB EventStatus enum is `"upcoming"`, which the resolver
+              // treats the same as the DB's pre-event `"scheduled"` (neither
+              // is ongoing/cancelled → time-based logic takes over), so map
+              // it across to satisfy EventStatus.
+              status: resolvedStatus === "upcoming" ? "scheduled" : resolvedStatus,
               bdAlbumId: event.bdAlbumId ?? null,
               // Run the bdAlbum subtree through serializeBigIntAsString
               // so the **type system** narrows to BigIntStringified
