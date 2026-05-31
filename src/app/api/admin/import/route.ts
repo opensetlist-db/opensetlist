@@ -80,6 +80,42 @@ function pickOriginalSource<T extends { locale: string }>(
   return translations.find((t) => t.locale === originalLanguage) ?? null;
 }
 
+/**
+ * Resolve a StageIdentity slug → id, with a legacy name fallback. Shared by
+ * the EventPerformer pass in importEvents and the performer resolution in
+ * importSetlistItems (both consume `stageIdentity.findMany({ include:
+ * { translations: true } })`).
+ *
+ * Two-pass on purpose: the CSV columns (performer_slugs / event_*_slugs)
+ * carry slug values by documented convention, so exact-slug is tried first.
+ * The translation-name fallback exists only for legacy pre-launch CSV rows
+ * that still passed names — and it MUST run as a second pass, never merged
+ * with the slug pass: a single Array.find that ORs both conditions could
+ * return an earlier SI whose translation name fuzzy-matches when a LATER SI
+ * holds the exact slug, landing the wrong stageIdentityId.
+ */
+function resolveStageIdentityId(
+  allSIs: ReadonlyArray<{
+    id: string;
+    slug: string | null;
+    translations: ReadonlyArray<{ name: string }>;
+  }>,
+  slug: string,
+): string | null {
+  const bySlug = allSIs.find((si) => si.slug === slug);
+  if (bySlug) return bySlug.id;
+
+  const normalizedSlug = slug.toLowerCase();
+  const byLegacyName = allSIs.find((si) =>
+    si.translations.some(
+      (t) =>
+        t.name === slug ||
+        t.name.toLowerCase().replace(/\s+/g, "-") === normalizedSlug,
+    ),
+  );
+  return byLegacyName?.id ?? null;
+}
+
 function parseCSV(text: string): Record<string, string>[] {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
@@ -1313,30 +1349,11 @@ async function importEvents(rows: Record<string, string>[]) {
     include: { translations: true },
   });
 
-  // Two-pass lookup. The CSV columns (event_performer_slugs /
-  // event_guest_slugs) carry slug values by documented convention, so we
-  // resolve those first. The translation-name fallback exists only for
-  // legacy pre-launch CSV rows that still passed names. Without splitting
-  // the passes, Array.find can return the first SI whose translation
-  // name fuzzy-matches the input even when a LATER SI has the exact
-  // slug — wrong stageIdentityId on the EventPerformer row.
-  //
-  // Without ANY slug match (the bug this hotfix replaces) every imported
-  // event ended up with zero performers and zero guests on prod.
-  function findSIIdBySlug(slug: string): string | null {
-    const bySlug = allSIs.find((si) => si.slug === slug);
-    if (bySlug) return bySlug.id;
-
-    const normalizedSlug = slug.toLowerCase();
-    const byLegacyName = allSIs.find((si) =>
-      si.translations.some(
-        (t) =>
-          t.name === slug ||
-          t.name.toLowerCase().replace(/\s+/g, "-") === normalizedSlug
-      )
-    );
-    return byLegacyName?.id ?? null;
-  }
+  // Resolve performer/guest slugs via the shared two-pass helper (exact
+  // slug → legacy name fallback). See resolveStageIdentityId for why the
+  // passes must stay split. Without ANY slug match (the bug an earlier
+  // hotfix replaced) every imported event ended up with zero performers
+  // and zero guests on prod.
 
   for (const row of rows) {
     if (!row.event_slug) continue;
@@ -1351,7 +1368,7 @@ async function importEvents(rows: Record<string, string>[]) {
     await prisma.eventPerformer.deleteMany({ where: { eventId: event.id } });
 
     for (const slug of performerSlugs) {
-      const siId = findSIIdBySlug(slug);
+      const siId = resolveStageIdentityId(allSIs, slug);
       if (siId) {
         await prisma.eventPerformer.create({
           data: { eventId: event.id, stageIdentityId: siId, isGuest: false },
@@ -1360,7 +1377,7 @@ async function importEvents(rows: Record<string, string>[]) {
     }
 
     for (const slug of guestSlugs) {
-      const siId = findSIIdBySlug(slug);
+      const siId = resolveStageIdentityId(allSIs, slug);
       if (siId) {
         await prisma.eventPerformer.create({
           data: { eventId: event.id, stageIdentityId: siId, isGuest: true },
@@ -1377,28 +1394,11 @@ async function importEvents(rows: Record<string, string>[]) {
 async function importSetlistItems(rows: Record<string, string>[]) {
   const results: string[] = [];
 
-  // Look up SIs by slug
+  // Look up SIs by slug — performer resolution uses the shared
+  // resolveStageIdentityId helper (exact slug → legacy name fallback).
   const allSIs = await prisma.stageIdentity.findMany({
     include: { translations: true },
   });
-
-  // Two-pass lookup, matching the helper in importEvents above. Splitting
-  // exact slug from legacy name fallback prevents an earlier SI's
-  // translation-name fuzzy match from shadowing a later SI's exact slug.
-  function findSIId(slug: string): string | null {
-    const bySlug = allSIs.find((si) => si.slug === slug);
-    if (bySlug) return bySlug.id;
-
-    const normalizedSlug = slug.toLowerCase();
-    const byLegacyName = allSIs.find((si) =>
-      si.translations.some(
-        (t) =>
-          t.name === slug ||
-          t.name.toLowerCase().replace(/\s+/g, "-") === normalizedSlug
-      )
-    );
-    return byLegacyName?.id ?? null;
-  }
 
   // Batch-resolve every song/artist slug referenced across the CSV in one
   // findMany each, then look up per-row from these maps. The per-row
@@ -1495,7 +1495,7 @@ async function importSetlistItems(rows: Record<string, string>[]) {
       const performerIds = (row.performer_slugs || "")
         .split(/\s+/)
         .filter(Boolean)
-        .map(findSIId)
+        .map((s) => resolveStageIdentityId(allSIs, s))
         .filter((id): id is string => id !== null);
 
       createOps.push(
