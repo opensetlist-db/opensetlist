@@ -61,12 +61,28 @@ export type AlbumsListItem = Awaited<ReturnType<typeof getAlbums>>[number];
 
 export async function getAlbums(locale: string, artistId?: bigint) {
   const albums = await prisma.album.findMany({
-    // Artist filter (the list page's `?artist=` chip). AlbumArtist is the
-    // N:N junction, so match albums that credit the artist. Undefined =
-    // no filter (the "전체" chip).
+    // Artist filter (the list page's `?artist=` chip). The chips are
+    // top-level (representative) artists only — matching /artists — so a
+    // pick must include albums credited to that artist OR to any of its
+    // sub-units (Cerise Bouquet / DOLLCHESTRA / … have no chip of their
+    // own; without this their albums would be unreachable except via
+    // "전체"). One level of nesting is the Phase-1/2 data shape.
+    // Undefined = no filter (the "전체" chip).
     where:
       artistId !== undefined
-        ? { artists: { some: { artistId } } }
+        ? {
+            artists: {
+              some: {
+                artist: {
+                  // Exclude soft-deleted sub-units (the top-level chip
+                  // query already filters isDeleted; keep both consistent
+                  // so a deleted sub-unit's albums can't leak in).
+                  isDeleted: false,
+                  OR: [{ id: artistId }, { parentArtistId: artistId }],
+                },
+              },
+            },
+          }
         : undefined,
     // Newest release first. NULL releaseDate sinks to the bottom —
     // Postgres' default is NULLS FIRST on DESC, which would float
@@ -132,17 +148,28 @@ export function groupAlbumsByYear(
 export type AlbumArtistFilterOption = { id: string; name: string };
 
 /*
- * Artists that have ≥1 album — the chip set for the `/albums` artist
- * filter (added in the Sprint B2 QA pass). Returns id (string, for the
- * `?artist=` param) + a short display name. Sub-units are included
- * (they have their own credited albums); ordered by id (≈ creation
- * order, so the parent group leads).
+ * Chip set for the `/albums` artist filter — only top-level
+ * (representative) artists, matching the /artists list (the QA pass
+ * intent: don't list every sub-unit). A top-level artist appears when it
+ * OR any of its sub-units has ≥1 album, since a pick covers the whole
+ * family (see getAlbums). Returns id (string, for `?artist=`) + a short
+ * display name; ordered by id (≈ creation order, so the parent group
+ * leads).
  */
 export async function getAlbumArtistFilters(
   locale: string,
 ): Promise<AlbumArtistFilterOption[]> {
   const artists = await prisma.artist.findMany({
-    where: { isDeleted: false, albums: { some: {} } },
+    where: {
+      isDeleted: false,
+      parentArtistId: null,
+      OR: [
+        { albums: { some: {} } },
+        // Non-deleted sub-units only — consistent with the top-level
+        // isDeleted filter + getAlbums' sub-unit branch.
+        { subArtists: { some: { isDeleted: false, albums: { some: {} } } } },
+      ],
+    },
     select: {
       id: true,
       originalName: true,
