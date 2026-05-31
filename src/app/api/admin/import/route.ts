@@ -1400,28 +1400,40 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     return byLegacyName?.id ?? null;
   }
 
-  // Pre-pass: delete existing setlist items for events being imported (re-import support)
-  const eventSlugs = new Set(rows.map((r) => r.event_slug).filter(Boolean));
-  for (const slug of eventSlugs) {
-    const event = await prisma.event.findUnique({ where: { slug } });
-    if (event) {
-      // Delete related junction rows first, then setlist items
-      const existingItems = await prisma.setlistItem.findMany({
-        where: { eventId: event.id },
-        select: { id: true },
-      });
-      const itemIds = existingItems.map((i) => i.id);
-      if (itemIds.length > 0) {
-        await prisma.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } });
-        await prisma.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } });
-        await prisma.setlistItemArtist.deleteMany({ where: { setlistItemId: { in: itemIds } } });
-        await prisma.setlistItem.deleteMany({ where: { id: { in: itemIds } } });
-        results.push(`CLEARED: ${slug} — ${itemIds.length} existing items deleted`);
-      }
-    }
-  }
+  // Batch-resolve every song/artist slug referenced across the CSV in one
+  // findMany each, then look up per-row from these maps. The per-row
+  // findUnique-per-slug this replaces was a classic N+1 in a hot import
+  // loop. Performers stay in-memory via allSIs above.
+  const distinctSongSlugs = Array.from(
+    new Set(rows.map((r) => (r.song_slug ?? "").trim()).filter(Boolean)),
+  );
+  const songIdBySlug = new Map<string, bigint>(
+    distinctSongSlugs.length === 0
+      ? []
+      : (
+          await prisma.song.findMany({
+            where: { slug: { in: distinctSongSlugs } },
+            select: { slug: true, id: true },
+          })
+        ).map((s) => [s.slug, s.id] as [string, bigint]),
+  );
+  const distinctArtistSlugs = Array.from(
+    new Set(rows.flatMap((r) => (r.artist_slugs ?? "").split(/\s+/).filter(Boolean))),
+  );
+  const artistIdBySlug = new Map<string, bigint>(
+    distinctArtistSlugs.length === 0
+      ? []
+      : (
+          await prisma.artist.findMany({
+            where: { slug: { in: distinctArtistSlugs } },
+            select: { slug: true, id: true },
+          })
+        ).map((a) => [a.slug, a.id] as [string, bigint]),
+  );
 
-  // Validate encore ordering per event
+  // Group rows by event so each event's setlist is replaced as an atomic
+  // unit (see the per-event transaction below). Preserves CSV row order
+  // within an event and event first-appearance order across events.
   const rowsByEvent = new Map<string, Record<string, string>[]>();
   for (const row of rows) {
     const slug = row.event_slug;
@@ -1429,73 +1441,141 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     if (!rowsByEvent.has(slug)) rowsByEvent.set(slug, []);
     rowsByEvent.get(slug)!.push(row);
   }
-  const skippedEvents = new Set<string>();
-  for (const [slug, eventRows] of rowsByEvent) {
-    const items = eventRows
+
+  // Batch-resolve every referenced event slug → id in one findMany (was a
+  // per-event findUnique inside the loop — the same N+1 the song/artist
+  // batch above fixes). Slugs absent from the map fall through to the
+  // "event not found" skip below.
+  const eventIdBySlug = new Map<string, bigint>(
+    rowsByEvent.size === 0
+      ? []
+      : (
+          await prisma.event.findMany({
+            where: { slug: { in: [...rowsByEvent.keys()] } },
+            select: { slug: true, id: true },
+          })
+        ).map((e) => [e.slug, e.id] as [string, bigint]),
+  );
+
+  for (const [eventSlug, eventRows] of rowsByEvent) {
+    // Validate encore ordering — a violation skips the whole event,
+    // leaving its existing setlist untouched.
+    const encoreItems = eventRows
       .map((r) => ({
         position: parseInt(r.position),
         isEncore: r.isEncore?.toLowerCase() === "true" || r.isEncore === "1",
       }))
       .filter((i) => !isNaN(i.position));
-    const encoreError = validateEncoreOrder(items);
+    const encoreError = validateEncoreOrder(encoreItems);
     if (encoreError) {
-      results.push(`ERROR: ${slug} — ${encoreError} 이 이벤트를 건너뜁니다.`);
-      skippedEvents.add(slug);
-    }
-  }
-
-  for (const row of rows) {
-    if (skippedEvents.has(row.event_slug)) continue;
-
-    // Look up event by slug
-    const event = row.event_slug
-      ? await prisma.event.findUnique({ where: { slug: row.event_slug } })
-      : null;
-    if (!event) {
-      results.push(`SKIP: event not found for "${row.event_slug}"`);
+      results.push(`ERROR: ${eventSlug} — ${encoreError} 이 이벤트를 건너뜁니다.`);
       continue;
     }
 
-    const position = parseInt(row.position);
-    if (isNaN(position)) continue;
-
-    // Look up song by slug
-    const song = row.song_slug
-      ? await prisma.song.findUnique({ where: { slug: row.song_slug } })
-      : null;
-
-    // Look up artists by slug
-    const artistSlugs = (row.artist_slugs || "").split(/\s+/).filter(Boolean);
-    const artistIds: bigint[] = [];
-    for (const s of artistSlugs) {
-      const a = await prisma.artist.findUnique({ where: { slug: s } });
-      if (a) artistIds.push(a.id);
+    const eventId = eventIdBySlug.get(eventSlug);
+    if (eventId === undefined) {
+      results.push(`SKIP: event not found for "${eventSlug}"`);
+      continue;
     }
 
-    const performerSlugs = (row.performer_slugs || "").split(/\s+/).filter(Boolean);
-    const performerIds = performerSlugs.map(findSIId).filter((id): id is string => id !== null);
+    // Build every create payload up front from the resolved slug maps, so
+    // the transaction below only holds a connection for the writes — no
+    // slug lookups inside the tx.
+    const createOps = [];
+    for (const row of eventRows) {
+      const position = parseInt(row.position);
+      if (isNaN(position)) continue;
 
-    const item = await prisma.setlistItem.create({
-      data: {
-        eventId: event.id,
-        position,
-        isEncore: row.isEncore?.toLowerCase() === "true" || row.isEncore === "1",
-        type: (row.itemType as "song" | "mc" | "video" | "interval") || "song",
-        performanceType: (row.performanceType as "live_performance" | "virtual_live" | "video_playback") || "live_performance",
-        stageType: (row.stageType as "full_group" | "unit" | "solo" | "special") || "full_group",
-        unitName: row.unitName || null,
-        note: row.note || null,
-        status: (row.status as "confirmed" | "live" | "rumoured") || "confirmed",
-        artists: artistIds.length
-          ? { create: artistIds.map((aid) => ({ artistId: aid })) }
-          : undefined,
-        songs: song ? { create: { songId: song.id, order: 0 } } : undefined,
-        performers: performerIds.length
-          ? { create: performerIds.map((siId) => ({ stageIdentityId: siId })) }
-          : undefined,
-      },
+      const songId = row.song_slug ? songIdBySlug.get(row.song_slug.trim()) : undefined;
+      const artistIds = (row.artist_slugs || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((s) => artistIdBySlug.get(s))
+        .filter((id): id is bigint => id != null);
+      const performerIds = (row.performer_slugs || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(findSIId)
+        .filter((id): id is string => id !== null);
+
+      createOps.push(
+        prisma.setlistItem.create({
+          data: {
+            eventId,
+            position,
+            isEncore: row.isEncore?.toLowerCase() === "true" || row.isEncore === "1",
+            type: (row.itemType as "song" | "mc" | "video" | "interval") || "song",
+            performanceType: (row.performanceType as "live_performance" | "virtual_live" | "video_playback") || "live_performance",
+            stageType: (row.stageType as "full_group" | "unit" | "solo" | "special") || "full_group",
+            unitName: row.unitName || null,
+            note: row.note || null,
+            status: (row.status as "confirmed" | "live" | "rumoured") || "confirmed",
+            artists: artistIds.length
+              ? { create: artistIds.map((aid) => ({ artistId: aid })) }
+              : undefined,
+            songs: songId ? { create: { songId, order: 0 } } : undefined,
+            performers: performerIds.length
+              ? { create: performerIds.map((siId) => ({ stageIdentityId: siId })) }
+              : undefined,
+          },
+        }),
+      );
+    }
+
+    // The id read happens just outside the transaction (single-operator
+    // admin import — the TOCTOU window is irrelevant), matching the
+    // read-then-$transaction pattern in importArtists' third pass.
+    const existingItems = await prisma.setlistItem.findMany({
+      where: { eventId },
+      select: { id: true },
     });
-    results.push(`SetlistItem: ${row.event_slug} #${position} → ${item.id}`);
+    const itemIds = existingItems.map((i) => i.id);
+
+    // Atomic per-event replace. Wrapping the delete + recreate in ONE
+    // transaction is the fix for the (eventId, position) P2002 that broke
+    // the niji re-import: the previous form ran the pre-pass delete and the
+    // per-row creates as independent, uncommitted-together statements with
+    // no transaction, so an interrupted or mid-way-failed run (a closed
+    // browser tab, a single bad row) left the event's deletes AND partial
+    // creates committed. The next attempt then collided with those leftover
+    // rows on the partial unique (eventId, position) WHERE isDeleted=false.
+    // With the whole replace atomic, a failure rolls the event back to its
+    // prior setlist and a retry starts from a clean, consistent state.
+    //
+    // Child cleanup order matters — children before the parent.
+    // SetlistItemReaction is omitted because it cascades via its
+    // schema-level onDelete: Cascade; SetlistItemConfirm and ContestReport
+    // have NO cascade, so a re-import over an event that accumulated
+    // confirm votes (✓) or contest reports — any live prod event with
+    // Phase 1B/1C participation on — would otherwise fail the parent
+    // delete with a foreign-key violation. Clearing them is correct, not
+    // damage control: the recreate assigns fresh autoincrement ids, so the
+    // old child rows are orphaned regardless of whether we delete them.
+    const ops = [];
+    if (itemIds.length > 0) {
+      ops.push(prisma.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
+      ops.push(prisma.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
+      ops.push(prisma.setlistItemArtist.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
+      ops.push(prisma.setlistItemConfirm.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
+      ops.push(prisma.contestReport.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
+      ops.push(prisma.setlistItem.deleteMany({ where: { id: { in: itemIds } } }));
+    }
+    ops.push(...createOps);
+
+    try {
+      await prisma.$transaction(ops);
+      if (itemIds.length > 0) {
+        results.push(`CLEARED: ${eventSlug} — ${itemIds.length} existing items deleted`);
+      }
+      results.push(`SetlistItems: ${eventSlug} — ${createOps.length} items created`);
+    } catch (err) {
+      // Per-event isolation: a failure here is fully rolled back (the event
+      // keeps its prior setlist) and logged, so one malformed event — e.g. a
+      // duplicate position within the CSV — doesn't abort the rest of the
+      // import or leave partial state behind.
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push(`ERROR: ${eventSlug} — import rolled back: ${msg}`);
+    }
   }
 
   return { count: results.length, log: results };
