@@ -26,8 +26,25 @@ let capturedSubscribeCallback:
   | ((status: string, err?: Error) => void)
   | null = null;
 
+// Captured postgres_changes handlers, keyed by their subscription
+// config so a test can drive a specific table's push (e.g. the
+// SetlistItem Path B handler) and assert the scopedRefetch guard.
+const capturedPostgresHandlers: Array<{
+  config: { table?: string; event?: string };
+  handler: (payload: unknown) => void;
+}> = [];
+
 const fakeChannel = {
-  on: vi.fn().mockReturnThis(),
+  on: vi.fn(
+    (
+      _event: string,
+      config: { table?: string; event?: string },
+      handler: (payload: unknown) => void,
+    ) => {
+      capturedPostgresHandlers.push({ config, handler });
+      return fakeChannel;
+    },
+  ),
   subscribe: vi.fn((cb: (status: string, err?: Error) => void) => {
     capturedSubscribeCallback = cb;
     return fakeChannel;
@@ -82,6 +99,20 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     removeChannelMock.mockClear();
     fakeChannel.on.mockClear();
     fakeChannel.subscribe.mockClear();
+    // Re-establish the handler-capturing impl + clear the capture
+    // buffer so each test sees only its own subscription handlers
+    // (restoreAllMocks in afterEach can reset the vi.fn impl).
+    capturedPostgresHandlers.length = 0;
+    fakeChannel.on.mockImplementation(
+      (
+        _event: string,
+        config: { table?: string; event?: string },
+        handler: (payload: unknown) => void,
+      ) => {
+        capturedPostgresHandlers.push({ config, handler });
+        return fakeChannel;
+      },
+    );
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
@@ -176,6 +207,85 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     });
 
     expect(removeChannelMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes Path B refetch to this event — cross-event pushes don't refetch", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "5",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+
+    // Channel registered against event:5 and captured the per-table
+    // postgres_changes handlers synchronously on mount.
+    expect(channelMock).toHaveBeenCalledWith("event:5");
+    const setlistItemHandler = capturedPostgresHandlers.find(
+      (h) => h.config.table === "SetlistItem",
+    )?.handler;
+    const songWishHandler = capturedPostgresHandlers.find(
+      (h) => h.config.table === "SongWish",
+    )?.handler;
+    expect(setlistItemHandler).toBeTypeOf("function");
+    expect(songWishHandler).toBeTypeOf("function");
+
+    // Drive SUBSCRIBED, then snapshot the post-subscribe fetch count as
+    // the baseline (mount/recovery may fetch; we assert on deltas).
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      await flushMicrotasks();
+    });
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const baseline = fetchMock.mock.calls.length;
+
+    // Cross-event INSERT/UPDATE (payload.new.eventId = 9 ≠ 5): no refetch.
+    await act(async () => {
+      setlistItemHandler!({ new: { eventId: 9 }, old: null });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline);
+
+    // Cross-event DELETE (eventId only on payload.old — populated
+    // because SetlistItem is REPLICA IDENTITY FULL): still no refetch.
+    await act(async () => {
+      setlistItemHandler!({ new: null, old: { eventId: 9 } });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline);
+
+    // Cross-event SongWish push: no refetch either.
+    await act(async () => {
+      songWishHandler!({ new: { eventId: 9 }, old: null });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline);
+
+    // Same-event SetlistItem push (eventId = 5): exactly one refetch.
+    await act(async () => {
+      setlistItemHandler!({ new: { eventId: 5 }, old: null });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline + 1);
+
+    // Same-event SongWish push: one more refetch.
+    await act(async () => {
+      songWishHandler!({ new: { eventId: 5 }, old: null });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline + 2);
+
+    // Missing eventId (REPLICA IDENTITY misconfig / unexpected shape):
+    // fall through to a refetch — correctness over efficiency.
+    await act(async () => {
+      setlistItemHandler!({ new: {}, old: null });
+      await flushMicrotasks();
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline + 3);
   });
 
   it("emits captureMessage exactly once per session even on repeated errors", async () => {
