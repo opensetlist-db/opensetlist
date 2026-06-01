@@ -327,20 +327,39 @@ async function collectEventSetlistColors(
   return frequency;
 }
 
+// Event-page empty-setlist fallback frequency. Uses own-first-then-
+// parent semantics — mirror of `deriveOgPaletteFromArtist`'s pattern
+// (its own roster first, parent only when empty). Before this revision
+// the helper walked `findRootArtistId` and used the **root group's**
+// roster regardless of whether the series headlined a sub-unit; the
+// shift unifies the rule with the artist page so a sub-unit-headlined
+// event's OG palette reflects the sub-unit's own members rather than
+// the parent group's full roster. See PR description for the affected-
+// event SQL + CDN-refresh playbook. Schema-assumption note: today's
+// parent chain is at most one level deep (sub-unit → parent group →
+// null), so a single `parentArtistId` peek is sufficient; nested sub-
+// units would need to extend this and the matching cached helper.
 async function collectEventArtistRosterColors(
   eventId: bigint
 ): Promise<Map<string, number>> {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: {
-      eventSeries: { select: { artistId: true } },
+      eventSeries: {
+        select: {
+          artist: { select: { id: true, parentArtistId: true } },
+        },
+      },
     },
   });
-  const seedArtistId = event?.eventSeries?.artistId;
-  if (!seedArtistId) return new Map();
+  const seedArtist = event?.eventSeries?.artist;
+  if (!seedArtist) return new Map();
 
-  const rootId = await findRootArtistId(seedArtistId);
-  return collectRosterColorsByArtistId(rootId);
+  let frequency = await collectRosterColorsByArtistId(seedArtist.id);
+  if (frequency.size === 0 && seedArtist.parentArtistId !== null) {
+    frequency = await collectRosterColorsByArtistId(seedArtist.parentArtistId);
+  }
+  return frequency;
 }
 
 async function collectSongPerformerColors(
@@ -517,7 +536,7 @@ export async function deriveOgPaletteFromCachedEvent(
     const frequency =
       setlistFrequency.size > 0
         ? setlistFrequency
-        : collectRootArtistRosterFromCachedEvent(
+        : collectArtistRosterFromCachedEvent(
             event.eventSeries?.artist ?? null,
           );
     return paletteFromAnchorAndFrequency(anchor, frequency);
@@ -538,28 +557,40 @@ export async function deriveOgPaletteFromCachedEvent(
 // slug]]/page.tsx#getEvent` and Sentry issue 7516837136 for the
 // motivating trace.
 //
-// Semantics: **always use the root group's roster**, matching
-// `deriveOgPaletteFromEvent`'s `findRootArtistId → collectRoster
-// ColorsByArtistId(rootId)` behavior. For a sub-unit primary artist
-// (`parentArtist !== null`) the parent's stageLinks are used; for a
-// root group (`parentArtist === null`) its own stageLinks are used.
+// Semantics: **own first, parent fallback** — matches
+// `deriveOgPaletteFromCachedArtist`'s rule. For a sub-unit primary
+// artist whose own `stageLinks` is non-empty, that sub-unit's members
+// drive the palette; only when the artist's own stageLinks is empty
+// do we fall back to the parent group's roster (one level — schema's
+// parent chain depth ≤ 1). For a root group, `parentArtist === null`
+// and we use the group's own stageLinks directly.
 //
-// NOTE: this deliberately diverges from `deriveOgPaletteFromCached
-// Artist`'s "own first, parent fallback" rule. The artist page wants
-// a sub-unit's OG image to reflect the sub-unit's own members; event
-// pages want the parent group's full identity regardless of which
-// sub-unit headlines. Unifying the two is a separate change — it
-// would alter every prod sub-unit-headlined event's OG fingerprint
-// and churn social-unfurl caches, so it warrants its own PR with
-// explicit release notes.
-function collectRootArtistRosterFromCachedEvent(
+// Prior revision used "always use root" semantics — a sub-unit-
+// headlined event would render with the parent group's full roster
+// regardless of the sub-unit's own identity. PR for this change
+// unifies the rule with the artist page so a sub-unit-headlined
+// event's OG image reflects the sub-unit's own members. This is a
+// one-shot OG fingerprint change for affected prod events; new shares
+// pick up the new image on the next fresh render, cached unfurls on
+// X / Discord age out on each platform's TTL. See the matching
+// `collectEventArtistRosterColors` non-cached helper for the
+// DB-loading version (same own-first rule).
+//
+// Exported for unit testing — the helper is pure (in-process only)
+// and the rule change is small but visible, so it earns its own
+// `og-palette-cached-event-roster.test.ts`. The DB-touching siblings
+// (`collectEventArtistRosterColors` et al.) stay integration-tested
+// via the OG preview routes per the comment on
+// `paletteFromAnchorAndFrequency`.
+export function collectArtistRosterFromCachedEvent(
   artist: NonNullable<CachedEventForOgPalette["eventSeries"]>["artist"],
 ): Map<string, number> {
   if (!artist) return new Map();
-  const rosterLinks = artist.parentArtist
-    ? artist.parentArtist.stageLinks
-    : artist.stageLinks;
-  return collectStageLinkColors(rosterLinks);
+  let frequency = collectStageLinkColors(artist.stageLinks);
+  if (frequency.size === 0 && artist.parentArtist) {
+    frequency = collectStageLinkColors(artist.parentArtist.stageLinks);
+  }
+  return frequency;
 }
 
 // Cached-song variant of `deriveOgPaletteFromSong`. The song detail
