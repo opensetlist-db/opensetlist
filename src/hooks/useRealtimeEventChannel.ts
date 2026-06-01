@@ -643,6 +643,50 @@ export function useRealtimeEventChannel<T>({
       });
     };
 
+    // ──── Path B refetch scope-check ────
+    //
+    // SetlistItem + SongWish are Path B (refetch /api/setlist on push),
+    // and their subscriptions carry NO server-side `filter: eventId=eq.X`
+    // — the filter was dropped 2026-05-16 to sidestep Supabase Realtime's
+    // stale filter-validation cache (see the subscription blocks below
+    // and prisma/post-deploy.sql). Without a server-side filter, a write
+    // to ANY event's SetlistItem/SongWish row is delivered to EVERY
+    // subscriber of EVERY `event:{id}` channel. The original handlers
+    // refetched unconditionally, on the (then-reasonable) assumption that
+    // cross-event pushes were "a few wasted refetches per minute."
+    //
+    // That assumption broke once the catalog grew to many concurrently-
+    // active events (multi-IP onboarding): bulk-importing or editing one
+    // IP's setlist rows fans a full /api/setlist refetch out to every
+    // live viewer of every OTHER event. Post-F24 each refetch is ~83 KB
+    // on the (uncompressed) Supabase pooler wire, and that pooler hop is
+    // ~99.9% of our Free-tier egress — so the cross-event fan-out, not
+    // the per-call size, is what holds egress flat on live days when
+    // other events are being edited.
+    //
+    // The fix is a client-side scope-check (NOT a server-side filter, so
+    // it's immune to the validator-cache bug): compare the pushed row's
+    // eventId — present on INSERT/UPDATE via `payload.new` and on DELETE
+    // via `payload.old`, both populated because SetlistItem and SongWish
+    // are REPLICA IDENTITY FULL (prisma/post-deploy.sql) — against this
+    // page's eventId, and only refetch on a match. Mirrors the Path A
+    // reaction handlers above. If eventId is absent (REPLICA IDENTITY
+    // misconfigured or an unexpected payload shape) we fall through and
+    // refetch — correctness over efficiency.
+    const scopedRefetch = (payload: {
+      new?: { eventId?: number | string | bigint | null } | null;
+      old?: { eventId?: number | string | bigint | null } | null;
+    }) => {
+      const pushedEventId = payload.new?.eventId ?? payload.old?.eventId;
+      if (
+        pushedEventId != null &&
+        String(pushedEventId) !== currentEventIdStr
+      ) {
+        return;
+      }
+      void fetchSnapshot();
+    };
+
     // ──── Channel subscription ────
     const supabase = getSupabaseBrowserClient();
     const channel = supabase
@@ -659,12 +703,13 @@ export function useRealtimeEventChannel<T>({
       // 2026-05-16, [[wiki/log.md#[2026-05-16] incident | SongWish
       // realtime filter rejected on prod]]) and pre-emptively dropped
       // the SetlistItem filter too — same Path B refetch pattern,
-      // same risk surface. The fetchSnapshot() handler re-pulls
-      // /api/setlist scoped to *this page's* eventId regardless of
-      // which event triggered the push, so receiving cross-event
-      // pushes is just a few wasted refetches per minute at prod
-      // scale (~10s of wishes per show). Filter cost
-      // (perf optimization) < filter risk (subscription rejected).
+      // same risk surface. The server-side filter is replaced by the
+      // client-side `scopedRefetch` guard (see its JSDoc above): the
+      // handler reads the pushed row's eventId from the WAL payload we
+      // already receive and refetches only on a match, so cross-event
+      // pushes cost an O(1) check instead of a wasted ~83 KB refetch.
+      // Client-side scoping (perf optimization) < server-side filter
+      // risk (subscription rejected by the stale validator cache).
       //
       // Filters stay on SetlistItemReaction (Path A diff-merge —
       // needs row data, which the validator's stale cache for that
@@ -678,8 +723,12 @@ export function useRealtimeEventChannel<T>({
           schema: "public",
           table: "SetlistItem",
         },
-        () => {
-          void fetchSnapshot();
+        (payload) => {
+          // Scope-check the pushed row's eventId before refetching —
+          // see the scopedRefetch JSDoc above. Cross-event SetlistItem
+          // writes (e.g. another IP's bulk import) no longer fan a
+          // refetch out to this event's live viewers.
+          scopedRefetch(payload);
         },
       )
       // SetlistItemReaction — Path A (diff merge).
@@ -731,10 +780,10 @@ export function useRealtimeEventChannel<T>({
       // for the full incident write-up. tl;dr: Supabase Realtime's
       // filter-validation cache went stale on prod and rejected the
       // filter despite the column being in the publication with
-      // REPLICA IDENTITY FULL. fetchSnapshot() is scoped to *this
-      // page's* eventId regardless of trigger, so cross-event
-      // pushes just cost a few wasted refetches per minute at
-      // current scale.
+      // REPLICA IDENTITY FULL. The client-side `scopedRefetch` guard
+      // (JSDoc above) replaces it: SongWish carries eventId, so a
+      // cross-event wish push is dropped by the O(1) check instead of
+      // triggering a wasted /api/setlist refetch.
       .on(
         "postgres_changes",
         {
@@ -742,8 +791,11 @@ export function useRealtimeEventChannel<T>({
           schema: "public",
           table: "SongWish",
         },
-        () => {
-          void fetchSnapshot();
+        (payload) => {
+          // Scope-check before refetching — see scopedRefetch JSDoc.
+          // SongWish carries eventId (REPLICA IDENTITY FULL), so
+          // cross-event wish pushes are dropped without a refetch.
+          scopedRefetch(payload);
         },
       )
       .subscribe((channelStatus) => {
