@@ -69,7 +69,44 @@ const getEvent = cache(async (id: bigint, locale: string) => {
           // Pulled in so EventHeader can render an artist link.
           // `artistId` is nullable on EventSeries (multi-artist
           // festivals fall back to `organizerName`).
-          artist: { include: { translations: { where: localeFilter } } },
+          artist: {
+            include: {
+              translations: { where: localeFilter },
+              // Roster colors for OG palette empty-setlist fallback.
+              // `deriveOgPaletteFromCachedEvent` previously fired
+              // sequential `Artist.findUnique` (parent-chain walk in
+              // `findRootArtistId`) + `StageIdentityArtist.findMany`
+              // (`collectRosterColorsByArtistId`) inside
+              // `generateMetadata` whenever an event's setlist had no
+              // member colors — typical for upcoming events with
+              // predicted-only setlists. Sentry issue 7516837136
+              // measured the two queries at ~189ms + ~180ms wall
+              // clock, sequential after the mega Event.findFirst.
+              //
+              // Folding `parentArtist.stageLinks` + own `stageLinks`
+              // into the relationJoins LATERAL JOIN tree pays one
+              // extra join per request to eliminate both follow-up
+              // round-trips. Same pattern that fixed the artist page
+              // in commit 30a33c5.
+              //
+              // Schema-assumption note: today's parent chain is at
+              // most one level deep (sub-unit → parent group → null).
+              // The "always use root" semantics in
+              // `deriveOgPaletteFromCachedEvent` rely on that —
+              // nested sub-units would need a deeper include here
+              // (and a chain walk in the cached helper).
+              parentArtist: {
+                select: {
+                  stageLinks: {
+                    select: { stageIdentity: { select: { color: true } } },
+                  },
+                },
+              },
+              stageLinks: {
+                select: { stageIdentity: { select: { color: true } } },
+              },
+            },
+          },
         },
       },
       // Event-level performer roster — used to source the guest set

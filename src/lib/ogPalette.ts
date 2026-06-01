@@ -461,9 +461,26 @@ type SerializedId = string | number | bigint;
 // minimal (translations only) and doesn't carry the color columns.
 export type CachedEventForOgPalette = {
   eventSeries: {
-    artistId: SerializedId | null;
     artist: {
       color: string | null;
+      // Roster of this artist's stage identities, used for the
+      // empty-setlist fallback frequency map. Only `stageIdentity.color`
+      // is read.
+      stageLinks: ReadonlyArray<{
+        stageIdentity: { color: string | null };
+      }>;
+      // Parent group's roster (when this artist is a sub-unit). Used
+      // by the "always use root" branch of the fallback below — the
+      // event-page semantics match the DB-loading
+      // `deriveOgPaletteFromEvent`, which walks `parentArtistId` to
+      // the topmost ancestor before collecting roster colors. With
+      // schema's current parent-chain depth ≤ 1, one level of include
+      // is sufficient.
+      parentArtist: {
+        stageLinks: ReadonlyArray<{
+          stageIdentity: { color: string | null };
+        }>;
+      } | null;
     } | null;
   } | null;
   setlistItems: ReadonlyArray<{
@@ -500,8 +517,8 @@ export async function deriveOgPaletteFromCachedEvent(
     const frequency =
       setlistFrequency.size > 0
         ? setlistFrequency
-        : await collectFallbackArtistRosterColors(
-            event.eventSeries?.artistId ?? null,
+        : collectRootArtistRosterFromCachedEvent(
+            event.eventSeries?.artist ?? null,
           );
     return paletteFromAnchorAndFrequency(anchor, frequency);
   } catch (err) {
@@ -513,19 +530,36 @@ export async function deriveOgPaletteFromCachedEvent(
   }
 }
 
-// Empty-roster fallback for the cached-event path. The series'
-// `artistId` is already known (carried in the cached event), so
-// unlike `collectEventArtistRosterColors` we skip the redundant
-// Event.findUnique and go straight to the parent-chain walk +
-// StageIdentityArtist gather.
-async function collectFallbackArtistRosterColors(
-  seedArtistIdRaw: SerializedId | null,
-): Promise<Map<string, number>> {
-  if (seedArtistIdRaw === null || seedArtistIdRaw === undefined) {
-    return new Map();
-  }
-  const rootId = await findRootArtistId(BigInt(seedArtistIdRaw));
-  return collectRosterColorsByArtistId(rootId);
+// In-process empty-roster fallback for the cached-event path.
+// Replaces the previous `collectFallbackArtistRosterColors` which
+// fired sequential `Artist.findUnique` (parent walk) + `StageIdentity
+// Artist.findMany` (roster gather) inside `generateMetadata` — see
+// the matching include block in `src/app/[locale]/events/[id]/[[...
+// slug]]/page.tsx#getEvent` and Sentry issue 7516837136 for the
+// motivating trace.
+//
+// Semantics: **always use the root group's roster**, matching
+// `deriveOgPaletteFromEvent`'s `findRootArtistId → collectRoster
+// ColorsByArtistId(rootId)` behavior. For a sub-unit primary artist
+// (`parentArtist !== null`) the parent's stageLinks are used; for a
+// root group (`parentArtist === null`) its own stageLinks are used.
+//
+// NOTE: this deliberately diverges from `deriveOgPaletteFromCached
+// Artist`'s "own first, parent fallback" rule. The artist page wants
+// a sub-unit's OG image to reflect the sub-unit's own members; event
+// pages want the parent group's full identity regardless of which
+// sub-unit headlines. Unifying the two is a separate change — it
+// would alter every prod sub-unit-headlined event's OG fingerprint
+// and churn social-unfurl caches, so it warrants its own PR with
+// explicit release notes.
+function collectRootArtistRosterFromCachedEvent(
+  artist: NonNullable<CachedEventForOgPalette["eventSeries"]>["artist"],
+): Map<string, number> {
+  if (!artist) return new Map();
+  const rosterLinks = artist.parentArtist
+    ? artist.parentArtist.stageLinks
+    : artist.stageLinks;
+  return collectStageLinkColors(rosterLinks);
 }
 
 // Cached-song variant of `deriveOgPaletteFromSong`. The song detail
