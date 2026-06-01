@@ -61,15 +61,40 @@ const getEvent = cache(async (id: bigint, locale: string) => {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
+    // F24-sibling: this SSR query uses the `relationJoins` strategy
+    // (single LATERAL JOIN with JSONB aggregation — see the q1/q2
+    // comment below), so every one-to-many relation's rows are
+    // materialized INLINE in the aggregated JSON. That duplicates each
+    // nested entity once per parent edge (e.g. a stage identity that
+    // performs on 30 setlist items is serialized 30×) on the
+    // Postgres→Vercel pooler wire, which Supabase meters uncompressed.
+    // `include` also returns every scalar column. We `omit` the columns
+    // no public-page render path reads (grep-verified): `originalBio` /
+    // `sourceNote` are free-text fields (largest single offenders, and
+    // multiplied by the inline duplication), and the soft-delete pair
+    // `isDeleted` / `deletedAt` is dead weight on every row (the query
+    // already filters `isDeleted: false`, and nothing renders the
+    // flags). Omitted, not select-narrowed, to keep the join shape and
+    // its TTFB win (PR #262 / F20) untouched. `createdAt` stays — the
+    // conflict-sort in <ActualSetlist> reads it; `baseVersionId` stays
+    // — song-variant matching reads it.
+    omit: { isDeleted: true, deletedAt: true },
     include: {
       translations: { where: localeFilter },
       eventSeries: {
+        omit: { isDeleted: true, deletedAt: true },
         include: {
           translations: { where: localeFilter },
           // Pulled in so EventHeader can render an artist link.
           // `artistId` is nullable on EventSeries (multi-artist
           // festivals fall back to `organizerName`).
           artist: {
+            // NB: `isDeleted` is NOT omitted here — unlike the other
+            // artist relations below, the page reads
+            // `eventSeries.artist.isDeleted` to drop soft-deleted
+            // series artists from the header/predict links (this
+            // relation isn't `where: { isDeleted: false }`-filtered).
+            omit: { originalBio: true, deletedAt: true },
             include: {
               translations: { where: localeFilter },
               // Roster colors for OG palette empty-setlist fallback.
@@ -126,16 +151,22 @@ const getEvent = cache(async (id: bigint, locale: string) => {
       },
       setlistItems: {
         where: { isDeleted: false },
-        omit: { note: true },
+        omit: { note: true, isDeleted: true, deletedAt: true },
         include: {
           songs: {
             include: {
               song: {
+                omit: { sourceNote: true, isDeleted: true, deletedAt: true },
                 include: {
                   translations: { where: localeFilter },
                   artists: {
                     include: {
                       artist: {
+                        omit: {
+                          originalBio: true,
+                          isDeleted: true,
+                          deletedAt: true,
+                        },
                         include: { translations: { where: localeFilter } },
                       },
                     },
@@ -171,6 +202,11 @@ const getEvent = cache(async (id: bigint, locale: string) => {
           artists: {
             include: {
               artist: {
+                omit: {
+                  originalBio: true,
+                  isDeleted: true,
+                  deletedAt: true,
+                },
                 include: { translations: { where: localeFilter } },
               },
             },
