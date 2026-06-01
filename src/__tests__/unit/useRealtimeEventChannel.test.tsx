@@ -602,6 +602,22 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     removeChannelMock.mockClear();
     fakeChannel.on.mockClear();
     fakeChannel.subscribe.mockClear();
+    // Mirror the first describe's reset (CR #504): clear the capture
+    // buffer + re-establish the handler-capturing impl so any future
+    // Path B handler test added to this block isn't flaky. The R3.5
+    // tests below don't read capturedPostgresHandlers today, but the
+    // two beforeEach blocks should stay symmetric.
+    capturedPostgresHandlers.length = 0;
+    fakeChannel.on.mockImplementation(
+      (
+        _event: string,
+        config: { table?: string; event?: string },
+        handler: (payload: unknown) => void,
+      ) => {
+        capturedPostgresHandlers.push({ config, handler });
+        return fakeChannel;
+      },
+    );
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
