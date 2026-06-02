@@ -489,12 +489,15 @@ export type CachedEventForOgPalette = {
         stageIdentity: { color: string | null };
       }>;
       // Parent group's roster (when this artist is a sub-unit). Used
-      // by the "always use root" branch of the fallback below — the
-      // event-page semantics match the DB-loading
-      // `deriveOgPaletteFromEvent`, which walks `parentArtistId` to
-      // the topmost ancestor before collecting roster colors. With
-      // schema's current parent-chain depth ≤ 1, one level of include
-      // is sufficient.
+      // as the FALLBACK branch of `collectArtistRosterFromCachedEvent`
+      // below: that helper reads the event artist's OWN `stageLinks`
+      // first and only falls back to `parentArtist.stageLinks` when
+      // the own roster is empty (own-first, parent-fallback — #506,
+      // matching `deriveOgPaletteFromCachedArtist`). The DB-loading
+      // `deriveOgPaletteFromEvent` enforces the same own-first rule.
+      // With schema's current parent-chain depth ≤ 1, one level of
+      // include is sufficient; a nested sub-unit would need a deeper
+      // include here and an explicit chain-walk in the helper.
       parentArtist: {
         stageLinks: ReadonlyArray<{
           stageIdentity: { color: string | null };

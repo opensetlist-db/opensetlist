@@ -114,12 +114,23 @@ const getEvent = cache(async (id: bigint, locale: string) => {
               // round-trips. Same pattern that fixed the artist page
               // in commit 30a33c5.
               //
+              // Roster-selection rule (#506): `collectArtistRoster
+              // FromCachedEvent` uses the event artist's OWN roster
+              // first and falls back to `parentArtist`'s roster only
+              // when the own roster is empty — matching the artist
+              // page's `deriveOgPaletteFromCachedArtist` rule. So a
+              // sub-unit-headlined event derives its palette from the
+              // sub-unit, not the parent group; root-headlined events
+              // are unaffected (own == root). We still pull
+              // `parentArtist.stageLinks` so the fallback has data
+              // without a second round-trip.
+              //
               // Schema-assumption note: today's parent chain is at
-              // most one level deep (sub-unit → parent group → null).
-              // The "always use root" semantics in
-              // `deriveOgPaletteFromCachedEvent` rely on that —
-              // nested sub-units would need a deeper include here
-              // (and a chain walk in the cached helper).
+              // most one level deep (sub-unit → parent group → null),
+              // so a single level of `parentArtist` include covers the
+              // fallback. A nested sub-unit (depth ≥ 2) would need a
+              // deeper include here AND an explicit chain-walk in the
+              // cached helper — neither exists yet by design.
               parentArtist: {
                 select: {
                   stageLinks: {
