@@ -1563,7 +1563,22 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     ops.push(...createOps);
 
     try {
-      await prisma.$transaction(ops);
+      // Raise the transaction timeout well above Prisma's 5 s default.
+      // A full-roster event (e.g. the Niji boooooom×2 days at 27 items
+      // each) replaces ~6 child deletes + 27 SetlistItem creates, and
+      // every create fans out to nested SetlistItemSong / Member /
+      // Artist inserts — easily 200+ statements. Against the prod
+      // transaction pooler (Supabase Seoul) the per-statement round-trip
+      // latency pushed the batch past 5 000 ms (observed 5.4 s / 5.7 s),
+      // so the whole atomic replace from #499 rolled back with
+      // "A rollback cannot be executed on an expired transaction" — the
+      // data was valid, only the clock ran out. `timeout` caps the
+      // transaction run time; `maxWait` caps how long we'll wait for a
+      // pooler connection (2 s default is too tight under any contention
+      // for a bulk operator import). These are generous because this is
+      // an operator-only, off-peak admin path — holding one pooler
+      // connection for up to 30 s here doesn't compete with live traffic.
+      await prisma.$transaction(ops, { timeout: 30_000, maxWait: 10_000 });
       if (itemIds.length > 0) {
         results.push(`CLEARED: ${eventSlug} — ${itemIds.length} existing items deleted`);
       }
