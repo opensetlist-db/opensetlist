@@ -1481,25 +1481,28 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     // Build every create payload up front from the resolved slug maps, so
     // the transaction below only holds a connection for the writes — no
     // slug lookups inside the tx.
-    const createOps = [];
-    for (const row of eventRows) {
-      const position = parseInt(row.position);
-      if (isNaN(position)) continue;
+    // Build every create payload (data only — not a bound prisma promise)
+    // up front from the resolved slug maps, so the transaction below only
+    // holds a connection for the writes (no slug lookups inside the tx) and
+    // the creates can run against the interactive `tx` client.
+    const createArgs = eventRows
+      .map((row) => {
+        const position = parseInt(row.position);
+        if (isNaN(position)) return null;
 
-      const songId = row.song_slug ? songIdBySlug.get(row.song_slug.trim()) : undefined;
-      const artistIds = (row.artist_slugs || "")
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((s) => artistIdBySlug.get(s))
-        .filter((id): id is bigint => id != null);
-      const performerIds = (row.performer_slugs || "")
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((s) => resolveStageIdentityId(allSIs, s))
-        .filter((id): id is string => id !== null);
+        const songId = row.song_slug ? songIdBySlug.get(row.song_slug.trim()) : undefined;
+        const artistIds = (row.artist_slugs || "")
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((s) => artistIdBySlug.get(s))
+          .filter((id): id is bigint => id != null);
+        const performerIds = (row.performer_slugs || "")
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((s) => resolveStageIdentityId(allSIs, s))
+          .filter((id): id is string => id !== null);
 
-      createOps.push(
-        prisma.setlistItem.create({
+        return {
           data: {
             eventId,
             position,
@@ -1518,9 +1521,9 @@ async function importSetlistItems(rows: Record<string, string>[]) {
               ? { create: performerIds.map((siId) => ({ stageIdentityId: siId })) }
               : undefined,
           },
-        }),
-      );
-    }
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> => a !== null);
 
     // The id read happens just outside the transaction (single-operator
     // admin import — the TOCTOU window is irrelevant), matching the
@@ -1531,16 +1534,28 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     });
     const itemIds = existingItems.map((i) => i.id);
 
-    // Atomic per-event replace. Wrapping the delete + recreate in ONE
-    // transaction is the fix for the (eventId, position) P2002 that broke
-    // the niji re-import: the previous form ran the pre-pass delete and the
-    // per-row creates as independent, uncommitted-together statements with
-    // no transaction, so an interrupted or mid-way-failed run (a closed
-    // browser tab, a single bad row) left the event's deletes AND partial
-    // creates committed. The next attempt then collided with those leftover
-    // rows on the partial unique (eventId, position) WHERE isDeleted=false.
-    // With the whole replace atomic, a failure rolls the event back to its
-    // prior setlist and a retry starts from a clean, consistent state.
+    // Atomic per-event replace, as an INTERACTIVE transaction. Wrapping the
+    // delete + recreate in ONE transaction is the #499 fix for the
+    // (eventId, position) P2002 that broke the niji re-import (a partial,
+    // non-atomic replace left leftover rows that collided on the partial
+    // unique (eventId, position) WHERE isDeleted=false); a failure now
+    // rolls the event back to its prior setlist for a clean retry.
+    //
+    // Why interactive and NOT the array/batch form: with the PrismaPg
+    // driver adapter, `prisma.$transaction([...ops], { timeout })` silently
+    // IGNORES the timeout option — it stayed pinned at Prisma's 5 000 ms
+    // default and kept rolling back full-roster events even after v0.15.3
+    // tried to raise it (observed 5.38 s on the 27-item Niji boooooom days,
+    // error still reporting "timeout ... was 5000 ms"). The interactive
+    // form honors `{ timeout, maxWait }`. A full-roster event is ~6 child
+    // deletes + 27 SetlistItem creates, each fanning out to nested
+    // SetlistItemSong / Member / Artist inserts (200+ statements), and the
+    // per-statement round-trip latency to the prod pooler (Supabase Seoul)
+    // crosses 5 s. `timeout: 30_000` gives ~5× headroom; `maxWait: 10_000`
+    // covers pool-acquire (2 s default is too tight for a bulk import).
+    // Generous values are safe — operator-only, off-peak admin path, so
+    // holding one pooler connection up to 30 s doesn't compete with live
+    // traffic.
     //
     // Child cleanup order matters — children before the parent.
     // SetlistItemReaction is omitted because it cascades via its
@@ -1551,38 +1566,27 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     // delete with a foreign-key violation. Clearing them is correct, not
     // damage control: the recreate assigns fresh autoincrement ids, so the
     // old child rows are orphaned regardless of whether we delete them.
-    const ops = [];
-    if (itemIds.length > 0) {
-      ops.push(prisma.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
-      ops.push(prisma.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
-      ops.push(prisma.setlistItemArtist.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
-      ops.push(prisma.setlistItemConfirm.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
-      ops.push(prisma.contestReport.deleteMany({ where: { setlistItemId: { in: itemIds } } }));
-      ops.push(prisma.setlistItem.deleteMany({ where: { id: { in: itemIds } } }));
-    }
-    ops.push(...createOps);
-
     try {
-      // Raise the transaction timeout well above Prisma's 5 s default.
-      // A full-roster event (e.g. the Niji boooooom×2 days at 27 items
-      // each) replaces ~6 child deletes + 27 SetlistItem creates, and
-      // every create fans out to nested SetlistItemSong / Member /
-      // Artist inserts — easily 200+ statements. Against the prod
-      // transaction pooler (Supabase Seoul) the per-statement round-trip
-      // latency pushed the batch past 5 000 ms (observed 5.4 s / 5.7 s),
-      // so the whole atomic replace from #499 rolled back with
-      // "A rollback cannot be executed on an expired transaction" — the
-      // data was valid, only the clock ran out. `timeout` caps the
-      // transaction run time; `maxWait` caps how long we'll wait for a
-      // pooler connection (2 s default is too tight under any contention
-      // for a bulk operator import). These are generous because this is
-      // an operator-only, off-peak admin path — holding one pooler
-      // connection for up to 30 s here doesn't compete with live traffic.
-      await prisma.$transaction(ops, { timeout: 30_000, maxWait: 10_000 });
+      await prisma.$transaction(
+        async (tx) => {
+          if (itemIds.length > 0) {
+            await tx.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+            await tx.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+            await tx.setlistItemArtist.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+            await tx.setlistItemConfirm.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+            await tx.contestReport.deleteMany({ where: { setlistItemId: { in: itemIds } } });
+            await tx.setlistItem.deleteMany({ where: { id: { in: itemIds } } });
+          }
+          for (const args of createArgs) {
+            await tx.setlistItem.create(args);
+          }
+        },
+        { timeout: 30_000, maxWait: 10_000 },
+      );
       if (itemIds.length > 0) {
         results.push(`CLEARED: ${eventSlug} — ${itemIds.length} existing items deleted`);
       }
-      results.push(`SetlistItems: ${eventSlug} — ${createOps.length} items created`);
+      results.push(`SetlistItems: ${eventSlug} — ${createArgs.length} items created`);
     } catch (err) {
       // Per-event isolation: a failure here is fully rolled back (the event
       // keeps its prior setlist) and logged, so one malformed event — e.g. a
