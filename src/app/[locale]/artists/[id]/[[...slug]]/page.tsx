@@ -925,6 +925,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     The full discography lives in the Albums tab. */}
                 <ArtistAlbumsSection
                   artistId={artistId}
+                  artistSlug={artist.slug}
                   locale={locale}
                   mode="preview"
                 />
@@ -1072,6 +1073,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
               // Full discography (single-column rows). Self-fetching.
               <ArtistAlbumsSection
                 artistId={artistId}
+                artistSlug={artist.slug}
                 locale={locale}
                 mode="full"
               />

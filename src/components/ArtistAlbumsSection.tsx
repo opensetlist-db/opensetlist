@@ -42,10 +42,12 @@ const cardSectionStyle = {
 
 export async function ArtistAlbumsSection({
   artistId,
+  artistSlug,
   locale,
   mode,
 }: {
   artistId: bigint;
+  artistSlug: string;
   locale: string;
   mode: "preview" | "full";
 }) {
@@ -112,11 +114,12 @@ export async function ArtistAlbumsSection({
           {t("albums.latest")}
         </SectionLabel>
         {hasMore && (
-          // Switches to the albums tab on this same artist page. Bare
-          // numeric id (no slug) is a valid URL — the page renders it
-          // directly without a redirect.
+          // Switches to the albums tab on this same artist page. Use
+          // the `/id/slug` form — the bare-id URL would also work (the
+          // page resolves both), but every other navigation link in the
+          // project goes through the slug form, so match that pattern.
           <Link
-            href={`/${locale}/artists/${artistId}?tab=albums`}
+            href={`/${locale}/artists/${artistId}/${artistSlug}?tab=albums`}
             style={{
               fontSize: 12,
               fontWeight: 600,
