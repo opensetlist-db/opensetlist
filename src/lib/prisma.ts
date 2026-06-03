@@ -47,8 +47,25 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient;
 };
 
+// `transactionOptions.timeout` raised 5 s → 30 s as a global backstop for
+// the setlist re-import (`/api/admin/import`), whose atomic per-event
+// replace runs 200+ statements for a full-roster event and crossed the
+// 5 s default against the prod pooler. The import also passes the same
+// timeout per-call on its interactive `$transaction`, but with the
+// PrismaPg driver adapter the per-call option was observed to be ignored
+// on the array/batch form (v0.15.3 set it and the engine still reported
+// "timeout ... was 5000 ms"); setting it at the client level guarantees
+// the ceiling applies regardless of which path honors the per-call value.
+// Only `timeout` is raised globally — `maxWait` (pool-acquire wait) stays
+// at its 2 s default so live-traffic transactions still fail fast under
+// pool contention rather than holding a request open; the import overrides
+// `maxWait` per-call on its own off-peak interactive transaction. 30 s
+// only ever matters for a transaction that would otherwise run past 5 s —
+// every hot-path transaction finishes well under that, so this is a no-op
+// for them.
 export const prisma =
-  globalForPrisma.prisma ?? new PrismaClient({ adapter });
+  globalForPrisma.prisma ??
+  new PrismaClient({ adapter, transactionOptions: { timeout: 30_000 } });
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
