@@ -149,7 +149,6 @@
   },
   "Album": {
     "title": "Album",
-    "related": "Related albums",
     "noAlbums": "No albums to show",
     "filterAll": "All",
     "artistFilterAria": "Artist filter",

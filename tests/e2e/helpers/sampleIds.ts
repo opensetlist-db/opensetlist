@@ -59,8 +59,6 @@ export function readSampleIds(): AlbumSampleIds {
  *                      Artist overview 최신 앨범 + discography, b09).
  *   bdSeriesId       — an EventSeries with ≥1 live_album BD reachable
  *                      via its events' bdAlbumId (drives 투어 BD 목록, b09).
- *   relatedAlbumId   — an Album whose artist has ≥1 OTHER album (drives
- *                      the Album sidebar 관련 앨범 section, b09).
  *   bonusAlbumId     — an Album with ≥1 active store listing (drives the
  *                      매장특전 tab — b10's public output, b03 render).
  *   bdEventId        — an Event with a linked BD album whose section
@@ -71,7 +69,6 @@ export interface CrossLinkSampleIds {
   crossLinkSongId: string | null;
   discographyArtistId: string | null;
   bdSeriesId: string | null;
-  relatedAlbumId: string | null;
   bonusAlbumId: string | null;
 }
 
@@ -80,7 +77,6 @@ export function readCrossLinkSampleIds(): CrossLinkSampleIds {
     crossLinkSongId: normalize(process.env.E2E_MULTI_ALBUM_SONG_ID),
     discographyArtistId: normalize(process.env.E2E_DISCOGRAPHY_ARTIST_ID),
     bdSeriesId: normalize(process.env.E2E_BD_SERIES_ID),
-    relatedAlbumId: normalize(process.env.E2E_RELATED_ALBUM_ID),
     bonusAlbumId: normalize(process.env.E2E_BONUS_ALBUM_ID),
   };
 }
