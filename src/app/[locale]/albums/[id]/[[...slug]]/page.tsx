@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
 import { AlbumInfoCard } from "@/components/AlbumInfoCard";
-import { RelatedAlbumsSection } from "@/components/RelatedAlbumsSection";
 import { FireAlbumView } from "@/components/FireAlbumView";
 import { resolveStoreKey, countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { AlbumBonusTab } from "@/components/AlbumBonusTab";
@@ -451,16 +450,6 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
             album={album}
             locale={locale}
             totalBonusCount={bonusTotal}
-          />
-          {/* "관련 앨범" — other albums by the same artist(s) (b09).
-              Self-fetching server component; renders null when the
-              artist has no other albums. album.id / artist.id are
-              numeric strings post-serializeBigIntAsString, so reverse
-              them to BigInt for the scoped query. */}
-          <RelatedAlbumsSection
-            albumId={BigInt(album.id)}
-            artistIds={album.artists.map((a) => BigInt(a.artist.id))}
-            locale={locale}
           />
         </aside>
         {/* `minWidth: 0` is the mobile-overflow guard: block layout

@@ -8,8 +8,10 @@ import { readCrossLinkSampleIds } from "./helpers/sampleIds";
  *   - Song page  "수록 앨범"      → Album (b08)
  *   - Artist page "최신 앨범" + discography → Album (b09)
  *   - Series page "투어 BD 목록"  → Album (b09)
- *   - Album page  "관련 앨범"      → Album (b09)
  *   - /albums list + 4th nav item → Album (b10b)
+ *
+ * The Album page "관련 앨범" sidebar (b09) was removed post-Sprint B2 —
+ * the /albums list page covers the same browsing intent.
  *
  * Assertion philosophy (mirrors the b06 album.spec): structural,
  * i18n-stable anchors under the ko-KR context — section-label text +
@@ -35,7 +37,6 @@ const HEADINGS = {
   songAlbums: "수록 앨범",
   artistLatest: "최신 앨범",
   seriesTourBds: "투어 BD 목록",
-  albumRelated: "관련 앨범",
   albumsListTitle: "앨범",
   navAlbums: "앨범",
 } as const;
@@ -44,7 +45,6 @@ const {
   crossLinkSongId,
   discographyArtistId,
   bdSeriesId,
-  relatedAlbumId,
 } = readCrossLinkSampleIds();
 
 function requireSample(id: string | null, envVar: string): asserts id is string {
@@ -118,22 +118,6 @@ test.describe("Series tour BDs → Album (b09)", () => {
     const heading = page.getByRole("heading", { name: HEADINGS.seriesTourBds });
     await expect(heading).toBeVisible();
     await firstAlbumLinkResolves(heading.locator("xpath=.."));
-  });
-});
-
-test.describe("Album related sidebar (b09)", () => {
-  test("album page sidebar shows 관련 앨범 (same-artist albums)", async ({
-    page,
-  }) => {
-    requireSample(relatedAlbumId, "E2E_RELATED_ALBUM_ID");
-    const resp = await page.goto(`/ko/albums/${relatedAlbumId}`);
-    expect(resp?.ok()).toBeTruthy();
-
-    // The section returns null when the artist has no other albums, so
-    // its heading being present already proves ≥1 related album rendered.
-    await expect(
-      page.getByRole("heading", { name: HEADINGS.albumRelated }),
-    ).toBeVisible();
   });
 });
 

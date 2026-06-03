@@ -28,7 +28,6 @@ export function collectBdAlbumIds<T>(
  * Shared Prisma include for the b09 album-highlight surfaces:
  *   - Artist page "최신 앨범" hero + discography (ArtistAlbumsSection)
  *   - Series page tour-BD catalog (SeriesBdAlbumsSection)
- *   - Album page "관련 앨범" sidebar (RelatedAlbumsSection)
  *
  * Produces exactly the fields <AlbumCard>'s `mini` + `hero` variants
  * read, nothing more:

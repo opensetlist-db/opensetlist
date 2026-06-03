@@ -149,7 +149,6 @@
   },
   "Album": {
     "title": "アルバム",
-    "related": "関連アルバム",
     "noAlbums": "表示できるアルバムはありません",
     "filterAll": "すべて",
     "artistFilterAria": "アーティストフィルター",

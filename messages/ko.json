@@ -149,7 +149,6 @@
   },
   "Album": {
     "title": "앨범",
-    "related": "관련 앨범",
     "noAlbums": "표시할 앨범이 없습니다",
     "filterAll": "전체",
     "artistFilterAria": "아티스트 필터",
