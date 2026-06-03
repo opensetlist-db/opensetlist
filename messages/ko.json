@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "아티스트",
+    "albums": {
+      "latest": "최신 앨범",
+      "discography": "디스코그래피"
+    },
     "noArtists": "표시할 아티스트가 없습니다",
     "unknown": "알 수 없는 아티스트",
     "unknownGroup": "이름 없는 그룹",
@@ -61,6 +65,7 @@
     "graduated": "졸업",
     "cv": "CV",
     "tabOverview": "개요",
+    "tabAlbums": "앨범 ({count})",
     "tabHistory": "공연 이력 ({count})",
     "statsTotalEvents": "총 공연",
     "statsCompleted": "완료",
@@ -127,6 +132,9 @@
       "live_album": "라이브 앨범",
       "soundtrack": "OST"
     },
+    "albumsSectionLabel": "수록 앨범",
+    "albumOriginalRecording": "원본 수록",
+    "albumsTotalCount": "총 {count}개 앨범에 수록",
     "tableHeader": {
       "status": "상태",
       "date": "날짜",
@@ -141,6 +149,13 @@
   },
   "Album": {
     "title": "앨범",
+    "noAlbums": "표시할 앨범이 없습니다",
+    "filterAll": "전체",
+    "artistFilterAria": "아티스트 필터",
+    "yearAlbumCount": "{count}개",
+    "undatedYear": "발매일 미정",
+    "albumActiveBonuses": "매장특전 {count}건",
+    "albumActiveBonusesBadge": "특전 {count}",
     "unknown": "이름 없는 앨범",
     "type": {
       "single": "싱글",
@@ -150,7 +165,7 @@
       "soundtrack": "OST"
     },
     "tab": {
-      "bonus": "매장특전",
+      "bonus": "구입",
       "tracks": "수록곡",
       "events": "관련 공연",
       "withCount": "{label} ({count})"
@@ -310,6 +325,17 @@
       "unit": "유닛",
       "solo": "솔로",
       "special": "스페셜"
+    },
+    "bd": {
+      "sectionTitle": "이 라이브의 BD",
+      "announcedBadge": "발매 예정",
+      "preorderBadge": "예약 수락 중",
+      "releasedBadge": "발매 중",
+      "releaseDateLabel": "발매",
+      "bonusPreviewHeading": "매장특전 미리보기",
+      "compareCta": "매장특전 비교하기 →",
+      "purchaseCta": "BD 구매하기 →",
+      "detailsCta": "앨범 상세 보기 →"
     }
   },
   "EventDateTime": {
@@ -317,6 +343,7 @@
   },
   "EventSeries": {
     "title": "시리즈",
+    "tourBds": "투어 BD 목록",
     "type": {
       "concert_tour": "콘서트 투어",
       "festival": "페스티벌",
@@ -564,6 +591,7 @@
     "home": "홈",
     "artists": "아티스트",
     "events": "이벤트",
+    "albums": "앨범",
     "signIn": "로그인",
     "openMenu": "메뉴 열기",
     "closeMenu": "메뉴 닫기"

@@ -23,6 +23,7 @@ import type {
   AlbumStoreBonusTranslationModel,
 } from "@/generated/prisma/models";
 import type { BigIntStringified } from "@/lib/utils";
+import { STORE_REGEXES } from "@/lib/storeKeys";
 
 // BigIntStringified-wrapped because every caller in the b03 chain
 // (`AlbumBonusTab` → `ListingCard` / `EndedListingToggle`) receives
@@ -97,4 +98,46 @@ export function mapStatusToUiKey(status: string): "active" | "ended" {
 // stays terse.
 export function isEndedListing(listing: { status: string }): boolean {
   return listing.status === "ended";
+}
+
+// Count of "active" bonuses across an album's store listings — the
+// number rendered in the green 特典 N badge on AlbumCard and the
+// "현재 특전" stat chip on AlbumInfoCard. A bonus counts as active
+// when its listing is not `ended` (sold_out + unknown collapse into
+// active per isEndedListing's 2-state mapping — they're still buyable,
+// just unconfirmed). Extracted here, next to isEndedListing, so the
+// Song page sidebar (songAlbums), the Album detail sidebar
+// (AlbumInfoCard), and the b09 Artist/Series/Related album surfaces
+// all read the same number — the "tab badge says 5, sidebar says 4"
+// divergence earlier Album work hit came from this formula being
+// copy-pasted into each call site.
+//
+// Structural input only: each listing needs a `status` string and a
+// `bonuses` array whose length is the per-listing contribution. The
+// elements themselves are never inspected, so `unknown[]` keeps the
+// helper agnostic to whichever bonus include shape the caller fetched.
+export function countActiveBonuses(
+  listings: ReadonlyArray<{ status: string; bonuses: ReadonlyArray<unknown> }>,
+): number {
+  return listings
+    .filter((l) => !isEndedListing(l))
+    .reduce((sum, l) => sum + l.bonuses.length, 0);
+}
+
+// Canonical analytics store key from the free-text `originalStoreName`.
+// The schema has no normalized store-key column (operator types
+// "Amazon JP" / "amazon_jp" / "アマゾン" freely — see the
+// AlbumStoreListing schema comment), so the b10c `store_click` event +
+// the album page's `has_amazon_listing` flag need a stable key derived
+// at read time. Patterns come from the shared `STORE_REGEXES` list
+// (src/lib/storeKeys.ts) — the same source eventBdState's STORE_PRIORITY
+// derives from, so the analytics key and the BD-preview sort rank can't
+// drift. First match wins; anything unmatched is `other` so the funnel
+// never drops a click.
+export function resolveStoreKey(storeName: string | null | undefined): string {
+  if (!storeName) return "other";
+  for (const [pattern, key] of STORE_REGEXES) {
+    if (pattern.test(storeName)) return key;
+  }
+  return "other";
 }

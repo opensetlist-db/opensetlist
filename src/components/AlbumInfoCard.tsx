@@ -7,7 +7,7 @@ import {
   displayOriginalTitle,
   displayOriginalName,
 } from "@/lib/display";
-import { isEndedListing } from "@/lib/albumBonusDisplay";
+import { countActiveBonuses, isEndedListing } from "@/lib/albumBonusDisplay";
 import { formatDate } from "@/lib/utils";
 import type { BigIntStringified } from "@/lib/utils";
 
@@ -140,9 +140,7 @@ export async function AlbumInfoCard({
   // derived locally — they partition the same listings tree, so their
   // sum is invariant to `totalBonusCount` by construction and no
   // cross-component divergence is possible.
-  const activeBonusCount = album.listings
-    .filter((l) => !isEndedListing(l))
-    .reduce((sum, l) => sum + l.bonuses.length, 0);
+  const activeBonusCount = countActiveBonuses(album.listings);
   const endedBonusCount = album.listings
     .filter(isEndedListing)
     .reduce((sum, l) => sum + l.bonuses.length, 0);

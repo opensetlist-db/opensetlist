@@ -71,6 +71,11 @@ export default async function EditEventPage({ params }: Props) {
             // mirrored so a future refactor of `serializeBigInt`'s
             // return type can drop both at once.
             artistId: data.artistId ? Number(data.artistId) : null,
+            // bdAlbumId follows the same serializeBigInt → Number cast as
+            // eventSeriesId / artistId above. The PUT route validates via
+            // validateBdAlbumId → validateNullableBigIntFk, which accepts
+            // either the number form or "" / null for "no selection."
+            bdAlbumId: data.bdAlbumId ? Number(data.bdAlbumId) : null,
             organizerName: data.organizerName ?? null,
             date: data.date
               ? new Date(data.date).toISOString().split("T")[0]
