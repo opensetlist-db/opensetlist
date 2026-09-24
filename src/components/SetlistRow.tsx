@@ -19,6 +19,7 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
+import { pickRowArtistBadge } from "@/lib/setlistRowBadge";
 import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
@@ -40,6 +41,15 @@ interface Props {
   reactionCounts: ReactionCountsMap;
   locale: string;
   eventId: string;
+  /**
+   * The event's primary artist id (stringified BigInt), `null` when
+   * the event has none, or `undefined` when the caller has no event
+   * context. Decides whether `full_group` rows get a group badge —
+   * see `pickRowArtistBadge` for the rule. Multi-group events (LL
+   * 15th Fes under the `lovelive-series` umbrella) badge every row;
+   * single-artist events keep badges on unit/solo/special rows only.
+   */
+  eventArtistId?: string | null;
   /**
    * Binary row state — defaults to `"confirmed"` so existing
    * non-Confirm-UI callers (admin SetlistBuilder etc.) see
@@ -114,6 +124,7 @@ export function SetlistRow({
   reactionCounts,
   locale,
   eventId,
+  eventArtistId,
   rowState = "confirmed",
   myVote = "none",
   onConfirmTap,
@@ -140,6 +151,7 @@ export function SetlistRow({
   const showIssueReport = canReport === true && onIssueReport !== undefined;
   const t = useTranslations("Event");
   const confirmT = useTranslations("Confirm");
+  const setlistT = useTranslations("Setlist");
 
   const songNames = item.songs.map((s) => {
     const { main, sub, variant } = displayOriginalTitle(
@@ -197,27 +209,38 @@ export function SetlistRow({
   // PR #190 D4b: never expose half-formed unit data publicly. The
   // desktop col-3 list (`item.performers.join(", ")`) continues to
   // show the full lineup unchanged.
-  const firstArtist = item.artists?.[0] ?? null;
-  const isSoloArtistMisfire =
-    firstArtist?.artist.type === "solo" && item.stageType !== "solo";
-  const unitArtist =
-    item.stageType !== "full_group" && firstArtist && !isSoloArtistMisfire
-      ? firstArtist
-      : null;
+  //
+  // On multi-group events (LL Fes) the same helper also badges
+  // `full_group` rows whose credit differs from the event's primary
+  // artist — see `pickRowArtistBadge` for the full rule table.
+  const unitArtist = pickRowArtistBadge(item, eventArtistId);
   // Full unit name on setlist rows — operator preference. UnitBadge
   // already constrains horizontal width via the row's grid column,
   // so a longer label clips with ellipsis rather than reflowing the
-  // row.
+  // row. Group-type credits (the festival case: 「Aqours」「虹ヶ咲」
+  // 「蓮ノ空」) use the SHORT form instead — group full names
+  // ("虹ヶ咲学園スクールアイドル同好会") would eat the whole badge
+  // and the short form is how fans name them anyway.
   const unitArtistName = unitArtist
     ? displayNameWithFallback(
-        unitArtist.artist,
-        unitArtist.artist.translations,
+        unitArtist,
+        unitArtist.translations,
         locale,
-        "full",
+        unitArtist.type === "group" ? "short" : "full",
       )
     : "";
 
   const isNonSong = NON_SONG_TYPES.has(item.type);
+  // "Unknown song" row: a song-typed item with no `SetlistItemSong`
+  // yet. The operator saved it to hold the slot + order while the
+  // title is being identified (festival night: not every song is
+  // recognised in real time); filling in the song later turns it into
+  // a normal row at the same position. Publicly it renders a
+  // "song TBC" label, never the operator's `note` (unlocalised
+  // operator text — same reasoning as the `unitName` suppression
+  // below), and exposes no ✓/✕ vote (nothing to confirm yet) and no
+  // reactions (no songId to attach them to).
+  const isUnknownSong = item.type === "song" && songNames.length === 0;
   const showReactions = !isNonSong && songNames.length > 0;
   const reactions = showReactions ? (
     <ReactionButtons
@@ -304,7 +327,7 @@ export function SetlistRow({
           the "wrong row" signal with one tap instead of opening a
           mail picker. */}
       <NumberSlot
-        state={rowState}
+        state={isUnknownSong ? "confirmed" : rowState}
         position={index + 1}
         myVote={myVote}
         onConfirmTap={onConfirmTap}
@@ -321,13 +344,14 @@ export function SetlistRow({
           position={item.position}
           eventId={eventId}
           t={t}
+          unknownSongLabel={setlistT("unknownSong")}
         />
         {!isNonSong && unitArtist && unitArtistName && (
           <UnitBadge
-            artistColor={unitArtist.artist.color}
+            artistColor={unitArtist.color}
             locale={locale}
-            artistId={unitArtist.artist.id}
-            artistSlug={unitArtist.artist.slug}
+            artistId={unitArtist.id}
+            artistSlug={unitArtist.slug}
             label={unitArtistName}
           />
         )}
@@ -429,6 +453,7 @@ function SongTitleBlock({
   position,
   eventId,
   t,
+  unknownSongLabel,
 }: {
   songNames: Array<{
     id: number;
@@ -441,6 +466,7 @@ function SongTitleBlock({
   position: number;
   eventId: string;
   t: ReturnType<typeof useTranslations<"Event">>;
+  unknownSongLabel: string;
 }) {
   if (songNames.length === 0) {
     return (
@@ -453,7 +479,9 @@ function SongTitleBlock({
             {t(`itemType.${itemType}` as Parameters<typeof t>[0])}
           </span>
         ) : (
-          <span style={{ color: colors.textMuted }}>{t("noSongAssigned")}</span>
+          <span className="italic" style={{ color: colors.textMuted }}>
+            {unknownSongLabel}
+          </span>
         )}
       </div>
     );

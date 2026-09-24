@@ -216,11 +216,129 @@ describe("SetlistRow", () => {
         eventId="42"
       />,
     );
-    // The empty-songs branch renders the noSongAssigned label instead
-    // of any title; reactions must be suppressed because there's no
-    // valid songId to attach POSTs to.
+    // The empty-songs branch renders the Setlist.unknownSong label
+    // ("曲名確認中" / "곡 확인 중" / "Song TBC") instead of any title;
+    // reactions must be suppressed because there's no valid songId to
+    // attach POSTs to.
     expect(screen.queryByTitle("best")).toBeNull();
-    expect(screen.getByText("noSongAssigned")).toBeInTheDocument();
+    expect(screen.getByText("unknownSong")).toBeInTheDocument();
+  });
+
+  it("unknown-song row: never renders the operator note, and hides ✓/✕ even when rumoured", () => {
+    render(
+      <SetlistRow
+        item={{
+          ...makeItem({ type: "song", songs: [], status: "rumoured" }),
+          // `note` isn't part of LiveSetlistItem's public type, but the
+          // raw Prisma row can carry it — make sure nothing renders it.
+          note: "Liella! 신곡? 후렴 '...'",
+        } as LiveSetlistItem}
+        index={0}
+        reactionCounts={{}}
+        locale="en"
+        eventId="42"
+        rowState="rumoured"
+      />,
+    );
+    expect(screen.getByText("unknownSong")).toBeInTheDocument();
+    expect(screen.queryByText(/Liella! 신곡/)).toBeNull();
+    // Nothing to confirm yet — the vote pair is replaced by the plain
+    // position number.
+    expect(screen.queryByRole("button", { name: "confirmAria" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "disagreeAria" })).toBeNull();
+    expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  describe("group badge on multi-group events", () => {
+    const aqours = {
+      artist: {
+        id: 10,
+        slug: "aqours",
+        type: "group",
+        color: "#00a0e9",
+        originalName: "Aqours",
+        originalShortName: null,
+        originalLanguage: "ja",
+        translations: [],
+      },
+    };
+    const niji = {
+      artist: {
+        id: 20,
+        slug: "nijigasaki",
+        type: "group",
+        color: null,
+        originalName: "虹ヶ咲学園スクールアイドル同好会",
+        originalShortName: "虹ヶ咲",
+        originalLanguage: "ja",
+        translations: [],
+      },
+    };
+
+    it("full_group row credited to a group ≠ event artist → group badge linking to the artist page", () => {
+      render(
+        <SetlistRow
+          item={makeItem({ stageType: "full_group", artists: [aqours] })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId="99"
+        />,
+      );
+      const badge = screen.getByText("Aqours");
+      expect(badge.closest("a")?.getAttribute("href")).toBe(
+        "/en/artists/10/aqours",
+      );
+    });
+
+    it("group badge uses the SHORT name form", () => {
+      render(
+        <SetlistRow
+          item={makeItem({ stageType: "full_group", artists: [niji] })}
+          index={0}
+          reactionCounts={{}}
+          locale="ja"
+          eventId="42"
+          eventArtistId="99"
+        />,
+      );
+      expect(screen.getByText("虹ヶ咲")).toBeInTheDocument();
+      expect(screen.queryByText("虹ヶ咲学園スクールアイドル同好会")).toBeNull();
+    });
+
+    it("single-artist event: full_group row credited to the event artist stays badge-free", () => {
+      render(
+        <SetlistRow
+          item={makeItem({ stageType: "full_group", artists: [aqours] })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId="10"
+        />,
+      );
+      expect(screen.queryByText("Aqours")).toBeNull();
+    });
+
+    it("unknown-song row on a multi-group event still carries the group badge", () => {
+      render(
+        <SetlistRow
+          item={makeItem({
+            stageType: "full_group",
+            songs: [],
+            artists: [aqours],
+          })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId="99"
+        />,
+      );
+      expect(screen.getByText("unknownSong")).toBeInTheDocument();
+      expect(screen.getByText("Aqours")).toBeInTheDocument();
+    });
   });
 
   it("uses Artist.color for unit badge background + text when present", () => {
