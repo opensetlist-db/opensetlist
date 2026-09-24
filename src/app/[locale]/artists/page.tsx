@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { staticAlternates } from "@/lib/seo/entityUrl";
 import {
   getArtistGroupsForList,
   getAvailableArtistFilters,
@@ -111,5 +112,5 @@ export async function generateMetadata({
 }) {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "Artist" });
-  return { title: t("title") };
+  return { title: t("title"), alternates: staticAlternates(locale, "/artists") };
 }

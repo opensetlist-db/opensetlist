@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -50,7 +51,7 @@ import type { AlbumType } from "@/generated/prisma/enums";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
   searchParams: Promise<{ tab?: string | string[] }>;
 };
 
@@ -293,21 +294,28 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? displayNameWithFallback(firstArtist, firstArtist.translations, locale)
     : null;
 
-  const title = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""} | OpenSetlist`;
+  // Group name in the title: song-name queries are ambiguous across
+  // IPs (and "Rise Up High! | OpenSetlist" gave no reason to click at
+  // position ~11), so name who sings it plus what the page offers.
+  const fullSongTitle = `${songTitle}${metaVariant ? ` (${metaVariant})` : ""}`;
+  const title = artistName
+    ? metaT("songTitle", { title: fullSongTitle, group: artistName })
+    : metaT("songTitleNoGroup", { title: fullSongTitle });
   const description = artistName
-    ? `${artistName} · ${metaT("performanceHistory")}`
-    : metaT("performanceHistory");
+    ? metaT("songDescription", { title: fullSongTitle, group: artistName })
+    : metaT("songDescriptionNoGroup", { title: fullSongTitle });
 
   const ogImage = `/api/og/song/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
-  const pageUrl = `/${locale}/songs/${id}/${song.slug}`;
+  const alternates = entityAlternates("songs", locale, id, song.slug);
 
   return {
     title,
     description,
+    alternates,
     openGraph: {
       title,
       description,
-      url: pageUrl,
+      url: alternates.canonical,
       siteName: "OpenSetlist",
       images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
       locale,
@@ -324,7 +332,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function SongPage({ params, searchParams }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
   const sp = await searchParams;
   // `requestedTab` is the tab the URL asked for; `activeTab` is the
   // tab we actually render. They diverge when the URL says
@@ -356,6 +364,7 @@ export default async function SongPage({ params, searchParams }: Props) {
   ]);
 
   if (!song) notFound();
+  enforceCanonicalSlug("songs", locale, id, song.slug, slug, sp);
 
   const albumTrack = song.vocalTracks[0] ?? null;
   const performanceCount = song._count.setlistItems;

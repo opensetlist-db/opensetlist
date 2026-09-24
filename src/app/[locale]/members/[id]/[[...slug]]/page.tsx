@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -42,7 +43,7 @@ import {
 import { colors, radius, shadows } from "@/styles/tokens";
 
 type Props = {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
   searchParams: Promise<{ tab?: string | string[] }>;
 };
 
@@ -206,18 +207,34 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     displayNameWithFallback(member, member.translations, locale, "full") ||
     memberT("unknown");
 
-  const title = `${fullName} | OpenSetlist`;
+  // Group for the title: the parent of the first unit link that has
+  // one (unit → group), else a direct group affiliation. Cheaper
+  // cousin of the page body's primary-unit/breadcrumb derivation —
+  // the title only needs *a* group name for disambiguation, not the
+  // most-recent-unit ordering the hero badge cares about.
+  const group =
+    member.artistLinks.find((l) => l.artist.parentArtist)?.artist
+      .parentArtist ??
+    member.artistLinks.find((l) => l.artist.type === "group")?.artist ??
+    null;
+  const groupName = group
+    ? displayNameWithFallback(group, group.translations, locale)
+    : null;
   const mt = await getTranslations({ locale, namespace: "Meta" });
+  const title = groupName
+    ? mt("memberTitle", { name: fullName, group: groupName })
+    : mt("memberTitleNoGroup", { name: fullName });
   const description = `${fullName} ${mt("performanceHistory")}`;
-  const pageUrl = `/${locale}/members/${id}/${member.slug}`;
+  const alternates = entityAlternates("members", locale, id, member.slug);
 
   return {
     title,
     description,
+    alternates,
     openGraph: {
       title,
       description,
-      url: pageUrl,
+      url: alternates.canonical,
       siteName: "OpenSetlist",
       locale,
       type: "website",
@@ -232,12 +249,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function MemberPage({ params, searchParams }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
   const sp = await searchParams;
   const activeTab = resolveTab(sp.tab);
 
   const member = await getMember(id);
   if (!member) notFound();
+  enforceCanonicalSlug("members", locale, id, member.slug, slug, sp);
 
   const [t, ct, evT, at] = await Promise.all([
     getTranslations("Member"),
@@ -749,8 +767,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
           id: sid,
           // `song.slug` is the canonical, already-stable slug from the
           // DB. Don't recompute via slugify(main) — that would diverge
-          // for locales whose translated title slugifies differently
-          // and produce a 404 round-trip via the slug-redirect handler.
+          // for locales whose translated title slugifies differently,
+          // and the song page 308s every non-canonical slug
+          // (`enforceCanonicalSlug`), costing each click a redirect hop.
           href: `/${locale}/songs/${sid}/${song.slug}`,
           titleMain: main || song.originalTitle,
           titleSub: sub,

@@ -7,7 +7,7 @@ import { readSampleIds } from "./helpers/sampleIds";
  * Coverage scope (deliberate trims vs the original b06 wiki spec):
  *   - 3 album types (live_album / album / single) render at the
  *     public route with the right tab count + default-tab anchor.
- *   - Slug redirect normalizes a stale path to the canonical numeric
+ *   - Slug redirect normalizes a stale path to the canonical DB-slug
  *     URL per CLAUDE.md URL strategy.
  *   - Tab query-param sanitiser falls back when the value is unknown
  *     or refers to a tab hidden for the current album type.
@@ -94,23 +94,24 @@ test.describe("Album detail page — type-aware render", () => {
 });
 
 test.describe("Album detail page — URL sanitisers", () => {
-  test("wrong slug 308s to the canonical numeric URL", async ({ page }) => {
+  test("wrong slug 308s to the canonical DB-slug URL", async ({ page }) => {
     requireSample(albumId, "E2E_ALBUM_ID");
     // A timestamped slug guarantees we're not accidentally hitting the
     // album's actual slug if the dev DB row happens to be named
     // "wrong-slug" (paranoia, not a real-world concern).
-    const resp = await page.goto(
-      `/ko/albums/${albumId}/wrong-slug-${Date.now()}`,
-    );
+    const wrong = `wrong-slug-${Date.now()}`;
+    const resp = await page.goto(`/ko/albums/${albumId}/${wrong}`);
     expect(resp?.ok()).toBeTruthy();
-    // After redirect we land on the bare numeric URL per page.tsx
-    // (`permanentRedirect('/${locale}/albums/${id}')`). Compare the
-    // pathname as a plain string rather than building a RegExp from
-    // an id whose digits never collide with regex metacharacters
-    // today — but the parsed-URL comparison documents intent more
-    // clearly and dodges the lint warning about implicit
-    // RegExp interpolation.
-    expect(new URL(page.url()).pathname).toBe(`/ko/albums/${albumId}`);
+    // Canonical is `/albums/{id}/{album.slug}` (CLAUDE.md URL
+    // Strategy). The spec doesn't know the slug up front, so assert
+    // the landing path is the one the page declares canonical.
+    const pathname = new URL(page.url()).pathname;
+    expect(pathname.startsWith(`/ko/albums/${albumId}/`)).toBe(true);
+    expect(pathname).not.toContain(wrong);
+    const canonical = await page
+      .locator('link[rel="canonical"]')
+      .getAttribute("href");
+    expect(new URL(canonical!).pathname).toBe(pathname);
   });
 
   test("?tab=<unknown> falls back to the default tab", async ({ page }) => {

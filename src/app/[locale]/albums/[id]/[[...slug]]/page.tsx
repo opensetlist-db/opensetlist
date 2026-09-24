@@ -1,7 +1,8 @@
 import { cache } from "react";
-import { notFound, permanentRedirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import { serializeBigIntAsString } from "@/lib/utils";
 import { AlbumType } from "@/generated/prisma/enums";
@@ -136,7 +137,7 @@ type Props = {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
 }): Promise<Metadata> {
   const { locale, id } = await params;
   const metaT = await getTranslations({ locale, namespace: "Meta" });
@@ -170,25 +171,18 @@ export async function generateMetadata({
   const description = t("meta.descriptionTemplate", { title });
 
   const ogImage = `/api/og/album/${id}?lang=${normalizeOgLocale(locale)}`;
-  // Numeric ID is the canonical URL per CLAUDE.md's URL strategy
-  // ("Numeric ID is canonical — slug is decorative only, for SEO and
-  // readability."). The slug-bearing path is a display variant that
-  // crawlers should be told to consolidate onto the numeric URL.
-  const canonicalUrl = `/${locale}/albums/${id}`;
-  const displayUrl = `/${locale}/albums/${id}/${album.slug}`;
+  // Canonical = the DB-slug URL, same as every entity page (CLAUDE.md
+  // "URL Strategy"); og:url reuses it so shares and the index agree.
+  const alternates = entityAlternates("albums", locale, id, album.slug);
 
   return {
     title: fullTitle,
     description,
-    alternates: { canonical: canonicalUrl },
+    alternates,
     openGraph: {
       title: fullTitle,
       description,
-      // og:url uses the display URL — that's the link people share
-      // and the URL the unfurl preview should label. The
-      // alternates.canonical above tells the search index where to
-      // consolidate the signal.
-      url: displayUrl,
+      url: alternates.canonical,
       siteName: "OpenSetlist",
       images: [{ url: ogImage, width: 1200, height: 630, alt: fullTitle }],
       locale,
@@ -229,21 +223,12 @@ export default async function AlbumDetailPage({ params, searchParams }: Props) {
   const album = await getAlbum(BigInt(id), locale);
   if (!album) notFound();
 
-  // Wrong-slug redirect per CLAUDE.md URL strategy: numeric ID is
-  // canonical; the slug segment is a display-only decoration. An
-  // incoming path with a slug that doesn't match the album's
-  // canonical slug (`/albums/42/wrong-slug`, `/albums/42/foo/bar`,
-  // a copy-pasted URL from a since-renamed album) 308s back to the
-  // canonical numeric-ID URL `/albums/42`. The bare numeric URL
-  // (`/albums/42`, no slug at all) and the matched-slug URL
-  // (`/albums/42/<album.slug>`) both render directly — they're both
-  // valid surfaces, and crawlers are told via the alternates.canonical
-  // metadata that the numeric URL is the one to consolidate signal
-  // onto.
-  const incomingSlug = (slug ?? []).join("/");
-  if (incomingSlug !== "" && incomingSlug !== album.slug) {
-    permanentRedirect(`/${locale}/albums/${id}`);
-  }
+  // Bare id (`/albums/42`), a wrong or since-renamed slug, or extra
+  // segments (`/albums/42/foo/bar`) all 308 to the canonical
+  // `/albums/42/<album.slug>` (CLAUDE.md "URL Strategy").
+  enforceCanonicalSlug("albums", locale, id, album.slug, slug, {
+    tab: rawTab,
+  });
 
   const t = await getTranslations({ locale, namespace: "Album" });
 

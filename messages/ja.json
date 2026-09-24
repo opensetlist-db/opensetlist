@@ -620,9 +620,20 @@
     "unavailableInLocale": "韓国語のみ提供しています"
   },
   "Meta": {
-    "description": "ライブイベントのオープンセットリストデータベース (JP/EN/KR)",
-    "setlistDb": "公演セットリストデータベース",
+    "description": "アニメ・ゲーム音楽ライブのセットリストをリアルタイムで記録するオープンデータベース",
     "performanceHistory": "公演履歴・セットリスト",
-    "notFound": "見つかりません"
+    "notFound": "見つかりません",
+    "eventTitle": "{name} セットリスト・セトリ | OpenSetlist",
+    "eventDescriptionTail": "曲順・ユニット・メンバー付きセットリスト",
+    "songTitle": "{title} — {group} | 歌唱メンバー・披露ライブ一覧 | OpenSetlist",
+    "songTitleNoGroup": "{title} | 歌唱メンバー・披露ライブ一覧 | OpenSetlist",
+    "songDescription": "{group}「{title}」を歌ったメンバーと披露された公演の履歴",
+    "songDescriptionNoGroup": "「{title}」を歌ったメンバーと披露された公演の履歴",
+    "artistTitle": "{name} セットリスト・ライブ履歴 | OpenSetlist",
+    "artistDescription": "{name}の全公演セットリストとディスコグラフィ",
+    "memberTitle": "{name}（{group}）| 歌唱曲・出演ライブ | OpenSetlist",
+    "memberTitleNoGroup": "{name} | 歌唱曲・出演ライブ | OpenSetlist",
+    "seriesTitle": "{name} 全公演セットリスト | OpenSetlist",
+    "seriesDescription": "{name}の全公演のセットリスト・曲順"
   }
 }

@@ -35,9 +35,10 @@ import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 
 type Props = {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
 };
 
 // Wrapped in `react.cache()` so the duplicate call across
@@ -279,7 +280,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const event = await getEvent(eventId, locale);
   if (!event) return { title: metaT("notFound") };
   const palette = await deriveOgPaletteFromCachedEvent(event);
-  const t = await getTranslations({ locale, namespace: "Event" });
   const seriesFullName = event.eventSeries
     ? displayNameWithFallback(
         event.eventSeries,
@@ -292,7 +292,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? displayNameWithFallback(
         event.eventSeries,
         event.eventSeries.translations,
-        locale
+        locale,
+        "short"
       )
     : null;
   const eventFullName = displayNameWithFallback(
@@ -316,15 +317,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     "originalVenue"
   );
 
-  const headlineName = seriesFullName || eventFullName || null;
+  // Event names are per-day labels ("東京公演 Day.2") that are
+  // ambiguous on their own, while the series full name is identical for
+  // every day of a tour — using it alone gave all days one shared
+  // <title>. Prefix the series SHORT name ("蓮ノ空 6th Live") onto the
+  // event's full name so each day's title is unique and still carries
+  // the group keyword people search for.
+  const headlineName =
+    [seriesShortName || seriesFullName, eventFullName]
+      .filter(Boolean)
+      .join(" ") || null;
   const title = headlineName
-    ? `${headlineName} ${t("setlist")} | OpenSetlist`
+    ? metaT("eventTitle", { name: headlineName })
     : "OpenSetlist";
-  const description = [
+  const details = [
     event.date ? formatVenueDate(event.date, locale) : "",
-    city ?? "",
     venue ?? "",
-    seriesShortName ?? "",
+    city ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const description = [
+    [details, seriesFullName ?? ""].filter(Boolean).join(" — "),
+    metaT("eventDescriptionTail"),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -340,15 +355,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // the route's clock-derived path — byte-for-byte the prior behavior.
   const ogStatus = getEventStatus(event);
   const ogImage = `/api/og/event/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}&s=${ogStatus}`;
-  const pageUrl = `/${locale}/events/${id}/${event.slug}`;
+  const alternates = entityAlternates("events", locale, id, event.slug);
 
   return {
     title,
     description,
+    alternates,
     openGraph: {
       title,
       description,
-      url: pageUrl,
+      url: alternates.canonical,
       siteName: "OpenSetlist",
       images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
       locale,
@@ -731,7 +747,7 @@ async function getTrendingSongs(
 }
 
 export default async function EventPage({ params }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
 
   let eventId: bigint;
   try {
@@ -767,6 +783,12 @@ export default async function EventPage({ params }: Props) {
       fetchEventWishlistTop3(eventId, locale),
     ]);
   if (!event) notFound();
+  // Bare id / wrong or legacy localized slug → 308 to the canonical
+  // `/events/{id}/{db-slug}`. Runs after the parallel batch above
+  // rather than before it: serializing `getEvent` in front would add
+  // a DB round-trip to every canonical hit (the common case) to save
+  // work only on the rare non-canonical one.
+  enforceCanonicalSlug("events", locale, id, event.slug, slug);
 
   // Anchor every per-request status read to the same `now`. Two
   // `getEventStatus(event)` calls without this would each construct

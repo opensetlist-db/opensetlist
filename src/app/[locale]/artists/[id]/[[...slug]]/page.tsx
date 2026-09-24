@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -44,7 +45,7 @@ import { UnitsToggle } from "@/components/artists/UnitsToggle";
 import { MemberChip } from "@/components/artists/MemberChip";
 
 type Props = {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
   searchParams: Promise<{ tab?: string | string[] }>;
 };
 
@@ -267,19 +268,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const shortName = displayNameWithFallback(artist, artist.translations, locale);
   if (!fullName) return { title: "OpenSetlist" };
 
-  const title = `${fullName} | OpenSetlist`;
-  const description = `${shortName} ${metaT("setlistDb")}`;
+  const title = metaT("artistTitle", { name: fullName });
+  const description = metaT("artistDescription", { name: shortName || fullName });
 
   const ogImage = `/api/og/artist/${id}?lang=${normalizeOgLocale(locale)}&v=${palette.fingerprint}`;
-  const pageUrl = `/${locale}/artists/${id}/${artist.slug}`;
+  const alternates = entityAlternates("artists", locale, id, artist.slug);
 
   return {
     title,
     description,
+    alternates,
     openGraph: {
       title,
       description,
-      url: pageUrl,
+      url: alternates.canonical,
       siteName: "OpenSetlist",
       images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
       locale,
@@ -296,7 +298,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ArtistPage({ params, searchParams }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
   const sp = await searchParams;
   const activeTab = resolveTab(sp.tab);
 
@@ -318,6 +320,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     prisma.album.count({ where: { artists: { some: { artistId } } } }),
   ]);
   if (!artist) notFound();
+  enforceCanonicalSlug("artists", locale, id, artist.slug, slug, sp);
 
   const [t, ct, evT] = await Promise.all([
     getTranslations("Artist"),

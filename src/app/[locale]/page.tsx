@@ -11,7 +11,6 @@ import { LiveHeroCard } from "@/components/home/LiveHeroCard";
 import { UpcomingCard } from "@/components/home/UpcomingCard";
 import { RecentEventRow } from "@/components/home/RecentEventRow";
 import { SectionHeader } from "@/components/home/SectionHeader";
-import { BASE_URL } from "@/lib/config";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 import {
   MS_PER_DAY,
@@ -19,35 +18,22 @@ import {
   shouldShowWishBadge,
 } from "@/lib/eventTiming";
 import { routing } from "@/i18n/routing";
+import { staticAlternates } from "@/lib/seo/entityUrl";
 import { colors, radius, shadows } from "@/styles/tokens";
 
 // hreflang lives on the homepage (not the locale layout) so the canonical
 // only applies to the locale root. A layout-level canonical would be
 // inherited by every child page (e.g. /ko/songs/789), pointing them all at
 // the home URL — search engines would then de-prioritize the actual content
-// pages. x-default → /en is the safe English fallback for visitors whose
-// language isn't a configured locale; keep it explicit (not tied to
-// routing.defaultLocale, which is currently ko) so adding/changing the
-// default locale doesn't accidentally repoint the international fallback.
+// pages. x-default follows the site-wide policy in `staticAlternates`:
+// the default-locale (ja) URL, same as every entity page.
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
-  const localeUrl = (l: string) => new URL(`/${l}`, BASE_URL).toString();
-  const languages: Record<string, string> = Object.fromEntries(
-    routing.locales.map((l) => [l, localeUrl(l)])
-  );
-  return {
-    alternates: {
-      canonical: localeUrl(locale),
-      languages: {
-        ...languages,
-        "x-default": localeUrl("en"),
-      },
-    },
-  };
+  return { alternates: staticAlternates(locale, "") };
 }
 
 const HOME_TAKE = 5;
@@ -341,7 +327,7 @@ export default async function HomePage({
   const ongoingViews: OngoingView[] = ongoingEvents.map((e: OngoingEvent) => {
     const { eventName, seriesName } = projectNames(e, locale);
     return {
-      href: eventHref(locale, e.id, eventName),
+      href: eventHref(locale, e.id, e.slug),
       startTimeIso: toIso(e.startTime),
       seriesName,
       eventName: eventName || evT("unknownEvent"),
@@ -364,7 +350,7 @@ export default async function HomePage({
       const days = daysUntil(start, now);
       return {
         eventId: String(e.id),
-        href: eventHref(locale, e.id, eventName),
+        href: eventHref(locale, e.id, e.slug),
         startTimeIso: toIso(e.startTime),
         seriesName,
         eventName: eventName || evT("unknownEvent"),
@@ -380,7 +366,7 @@ export default async function HomePage({
     const { eventName, seriesName } = projectNames(e, locale);
     const start = new Date(e.startTime);
     return {
-      href: eventHref(locale, e.id, eventName),
+      href: eventHref(locale, e.id, e.slug),
       seriesName,
       eventName: eventName || evT("unknownEvent"),
       venue: projectVenue(e, locale),
