@@ -17,6 +17,7 @@ import {
   StageIdentityNotFoundError,
   stageIdentityNotFoundResponse,
   validateArtistId,
+  validateBdAlbumId,
   validateDateInput,
   validateEventOriginals,
   validateEventSeriesId,
@@ -121,6 +122,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!artistCheck.ok) return artistCheck.response;
   const artistId = artistCheck.value;
 
+  const bdAlbumCheck = validateBdAlbumId(body.bdAlbumId);
+  if (!bdAlbumCheck.ok) return bdAlbumCheck.response;
+  const bdAlbumId = bdAlbumCheck.value;
+
   const organizerName = nullableString(body.organizerName, "organizerName");
   if (!organizerName.ok) return badRequest(organizerName.message);
 
@@ -161,6 +166,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
           ...(statusCheck.value !== null ? { status: statusCheck.value } : {}),
           eventSeriesId,
           artistId,
+          bdAlbumId,
           organizerName: organizerName.value,
           date,
           startTime,

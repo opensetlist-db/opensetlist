@@ -26,6 +26,12 @@ import { colors, radius, shadows } from "@/styles/tokens";
 interface Tab {
   key: string;
   label: string;
+  /**
+   * Renders a small accent dot after the label — used by the album page
+   * to mark the 구입 tab when active store bonuses (특전) exist. Optional;
+   * other consumers (Artist / Member / Song / Series) omit it.
+   */
+  indicator?: boolean;
 }
 
 interface Props {
@@ -106,9 +112,27 @@ export function TabBar({
               cursor: "pointer",
               transition: "background 0.15s ease, color 0.15s ease",
               fontFamily: "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 5,
             }}
           >
             {tab.label}
+            {tab.indicator && (
+              // "특전 있음" accent dot. White on the active (blue) tab for
+              // contrast; the bonus-active green on inactive tabs.
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  background: isActive ? "white" : colors.bonusActiveText,
+                }}
+              />
+            )}
           </button>
         );
       })}

@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "Artists",
+    "albums": {
+      "latest": "Latest album",
+      "discography": "Discography"
+    },
     "noArtists": "No artists to show",
     "unknown": "Unknown Artist",
     "unknownGroup": "Untitled Group",
@@ -61,6 +65,7 @@
     "graduated": "Graduated",
     "cv": "CV",
     "tabOverview": "Overview",
+    "tabAlbums": "Albums ({count})",
     "tabHistory": "History ({count})",
     "statsTotalEvents": "Total events",
     "statsCompleted": "Completed",
@@ -127,6 +132,9 @@
       "live_album": "Live Album",
       "soundtrack": "Soundtrack"
     },
+    "albumsSectionLabel": "Featured on",
+    "albumOriginalRecording": "Original",
+    "albumsTotalCount": "{count, plural, one {On # album} other {On # albums}}",
     "tableHeader": {
       "status": "Status",
       "date": "Date",
@@ -141,6 +149,13 @@
   },
   "Album": {
     "title": "Album",
+    "noAlbums": "No albums to show",
+    "filterAll": "All",
+    "artistFilterAria": "Artist filter",
+    "yearAlbumCount": "{count, plural, one {# album} other {# albums}}",
+    "undatedYear": "Release date TBA",
+    "albumActiveBonuses": "{count, plural, one {# store bonus} other {# store bonuses}}",
+    "albumActiveBonusesBadge": "Bonus {count}",
     "unknown": "Unknown album",
     "type": {
       "single": "Single",
@@ -150,7 +165,7 @@
       "soundtrack": "Soundtrack"
     },
     "tab": {
-      "bonus": "Store bonuses",
+      "bonus": "Buy",
       "tracks": "Tracks",
       "events": "Related events",
       "withCount": "{label} ({count})"
@@ -310,6 +325,17 @@
       "unit": "Unit",
       "solo": "Solo",
       "special": "Special"
+    },
+    "bd": {
+      "sectionTitle": "This concert's BD",
+      "announcedBadge": "Release planned",
+      "preorderBadge": "Pre-order open",
+      "releasedBadge": "Released",
+      "releaseDateLabel": "Release",
+      "bonusPreviewHeading": "Store bonuses preview",
+      "compareCta": "Compare store bonuses →",
+      "purchaseCta": "Buy BD →",
+      "detailsCta": "View album details →"
     }
   },
   "EventDateTime": {
@@ -317,6 +343,7 @@
   },
   "EventSeries": {
     "title": "Series",
+    "tourBds": "Tour BDs",
     "type": {
       "concert_tour": "Concert Tour",
       "festival": "Festival",
@@ -564,6 +591,7 @@
     "home": "Home",
     "artists": "Artists",
     "events": "Events",
+    "albums": "Albums",
     "signIn": "Sign in",
     "openMenu": "Open menu",
     "closeMenu": "Close menu"

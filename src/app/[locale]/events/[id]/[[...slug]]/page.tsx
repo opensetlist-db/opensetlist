@@ -2,7 +2,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
+import { serializeBigInt, serializeBigIntAsString } from "@/lib/utils";
 import { formatVenueDate } from "@/lib/eventDateTime";
 import {
   displayNameWithFallback,
@@ -29,6 +29,7 @@ import {
   type EventPerformerSummary,
 } from "@/lib/sidebarDerivations";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
+import { EventBdSection } from "@/components/EventBdSection";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
@@ -140,6 +141,34 @@ const getEvent = cache(async (id: bigint, locale: string) => {
               },
               stageLinks: {
                 select: { stageIdentity: { select: { color: true } } },
+              },
+            },
+          },
+        },
+      },
+      // BD album linked via `Event.bdAlbumId` (added in v0.14.0). Pulled
+      // here so `<EventBdSection>` can resolve its state machine + render
+      // the album / top-3 매장特典 preview without a second roundtrip.
+      // Nested include order matches the album-page (`getAlbum`) shape so
+      // `displayOriginalTitle` / `displayOriginalName` / `resolveStoreName`
+      // / `resolveBonusType` all run against identical translation slices.
+      // Returns null when `bdAlbumId` is null (most events at MVP); the
+      // component handles the null safely.
+      bdAlbum: {
+        include: {
+          translations: { where: localeFilter },
+          artists: {
+            include: {
+              artist: {
+                include: { translations: { where: localeFilter } },
+              },
+            },
+          },
+          listings: {
+            include: {
+              translations: { where: localeFilter },
+              bonuses: {
+                include: { translations: { where: localeFilter } },
               },
             },
           },
@@ -1028,6 +1057,55 @@ export default async function EventPage({ params }: Props) {
         eventId={id}
         isOngoing={isOngoing}
         locale={locale}
+        // Rendered as a server-component slot. `LiveEventLayout` is a
+        // client component that owns the column-layout grid + sibling
+        // order between `<LiveSetlist>` and `<EventImpressions>`; passing
+        // EventBdSection's JSX through as a node keeps the section
+        // server-rendered (state machine + bonus selection on the server)
+        // without making LiveEventLayout aware of the BD data shape.
+        bdSection={
+          <EventBdSection
+            event={{
+              id: event.id,
+              startTime: event.startTime,
+              // Use the page's snap-frozen `resolvedStatus`
+              // (getEventStatus at request time), not the raw stored
+              // `event.status` — they can disagree at a clock boundary
+              // (stored status updated lazily), and a mismatch would let
+              // the BD purchase CTA open while the page renders `ongoing`
+              // (resolveEventBdState's D+0 ad gate keys off `=== "ongoing"`).
+              // `resolvedStatus` is the UI status; its only value outside
+              // the DB EventStatus enum is `"upcoming"`, which the resolver
+              // treats the same as the DB's pre-event `"scheduled"` (neither
+              // is ongoing/cancelled → time-based logic takes over), so map
+              // it across to satisfy EventStatus.
+              status: resolvedStatus === "upcoming" ? "scheduled" : resolvedStatus,
+              bdAlbumId: event.bdAlbumId ?? null,
+              // Run the bdAlbum subtree through serializeBigIntAsString
+              // so the **type system** narrows to BigIntStringified
+              // (string ids + ISO-string Dates) — the same contract the
+              // bonus-display helpers (resolveStoreName /
+              // resolveBonusType) expect, sourced from AlbumInfoCard /
+              // ListingCard / AlbumBonusTab. At runtime this is
+              // effectively a deep clone: getEvent already ran
+              // serializeBigInt over the whole tree, so the bigints are
+              // already Numbers (not bigints) by the time we get here —
+              // serializeBigIntAsString's replacer only matches
+              // `typeof === "bigint"`, leaves Numbers alone. The
+              // section's read sites (template literals,
+              // React keys, bonus-helper translation lookups) are all
+              // coercion-tolerant between Number and string, so the
+              // residual type/runtime mismatch on id columns is the
+              // same shape every other Prisma-payload consumer in this
+              // file accepts (see LiveSetlistItem cast at line 881).
+              bdAlbum: event.bdAlbum
+                ? serializeBigIntAsString(event.bdAlbum)
+                : null,
+            }}
+            locale={locale}
+            referenceNow={referenceNow}
+          />
+        }
         unknownArtistLabel={aT("unknown")}
         unknownPerformerLabel={t("unknownPerformer")}
         unknownSongLabel={st("unknown")}

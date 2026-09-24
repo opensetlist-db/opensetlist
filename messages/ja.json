@@ -40,6 +40,10 @@
   },
   "Artist": {
     "title": "アーティスト",
+    "albums": {
+      "latest": "最新アルバム",
+      "discography": "ディスコグラフィー"
+    },
     "noArtists": "表示できるアーティストはありません",
     "unknown": "不明なアーティスト",
     "unknownGroup": "名称未定のグループ",
@@ -61,6 +65,7 @@
     "graduated": "卒業",
     "cv": "CV",
     "tabOverview": "概要",
+    "tabAlbums": "アルバム ({count})",
     "tabHistory": "公演履歴 ({count})",
     "statsTotalEvents": "総公演",
     "statsCompleted": "終了",
@@ -127,6 +132,9 @@
       "live_album": "ライブアルバム",
       "soundtrack": "サウンドトラック"
     },
+    "albumsSectionLabel": "収録アルバム",
+    "albumOriginalRecording": "原本収録",
+    "albumsTotalCount": "全 {count} 枚に収録",
     "tableHeader": {
       "status": "ステータス",
       "date": "日付",
@@ -141,6 +149,13 @@
   },
   "Album": {
     "title": "アルバム",
+    "noAlbums": "表示できるアルバムはありません",
+    "filterAll": "すべて",
+    "artistFilterAria": "アーティストフィルター",
+    "yearAlbumCount": "{count}枚",
+    "undatedYear": "発売日未定",
+    "albumActiveBonuses": "店舗特典 {count}件",
+    "albumActiveBonusesBadge": "特典 {count}",
     "unknown": "名称未定のアルバム",
     "type": {
       "single": "シングル",
@@ -150,7 +165,7 @@
       "soundtrack": "サントラ"
     },
     "tab": {
-      "bonus": "店舗特典",
+      "bonus": "購入",
       "tracks": "収録曲",
       "events": "関連公演",
       "withCount": "{label} ({count})"
@@ -310,6 +325,17 @@
       "unit": "ユニット",
       "solo": "ソロ",
       "special": "スペシャル"
+    },
+    "bd": {
+      "sectionTitle": "このライブのBD",
+      "announcedBadge": "発売予定",
+      "preorderBadge": "受付中",
+      "releasedBadge": "発売中",
+      "releaseDateLabel": "発売",
+      "bonusPreviewHeading": "店舗特典プレビュー",
+      "compareCta": "店舗特典を比較する →",
+      "purchaseCta": "BDを購入する →",
+      "detailsCta": "アルバム詳細を見る →"
     }
   },
   "EventDateTime": {
@@ -317,6 +343,7 @@
   },
   "EventSeries": {
     "title": "シリーズ",
+    "tourBds": "ツアーBDカタログ",
     "type": {
       "concert_tour": "コンサートツアー",
       "festival": "フェスティバル",
@@ -564,6 +591,7 @@
     "home": "ホーム",
     "artists": "アーティスト",
     "events": "イベント",
+    "albums": "アルバム",
     "signIn": "ログイン",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる"

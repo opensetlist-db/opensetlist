@@ -170,6 +170,16 @@ export function validateArtistId(value: unknown) {
   return validateNullableBigIntFk(value, "artistId");
 }
 
+// `Event.bdAlbumId` — nullable FK to Album. Same shape contract as the
+// other two FKs: empty / null / undefined coerce to null (the picker
+// submits "" for "no selection"); strings must be digits-only.
+// `fkViolationResponse` handles the P2003 case at the route boundary
+// without naming the field, so a stale Album id (deleted between picker
+// fetch and PUT) surfaces as a friendly 400, not a 500.
+export function validateBdAlbumId(value: unknown) {
+  return validateNullableBigIntFk(value, "bdAlbumId");
+}
+
 /**
  * Parse a required ISO date/datetime string into a Date, rejecting
  * anything `new Date(...)` would coerce to Invalid Date.
