@@ -159,8 +159,20 @@ const getEvent = cache(async (id: bigint, locale: string) => {
           translations: { where: localeFilter },
           artists: {
             include: {
+              // Same egress rule as the other artist relations in this
+              // query: `originalBio` / `bio` are the widest free-text
+              // columns and nothing on the BD render path reads them
+              // (the section only needs the name for
+              // `displayOriginalName`). The soft-delete pair is dead
+              // weight here too — the section doesn't render it.
               artist: {
-                include: { translations: { where: localeFilter } },
+                omit: { originalBio: true, isDeleted: true, deletedAt: true },
+                include: {
+                  translations: {
+                    where: localeFilter,
+                    omit: { bio: true },
+                  },
+                },
               },
             },
           },

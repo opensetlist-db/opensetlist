@@ -58,7 +58,12 @@ export type EventBdAlbumInput = BigIntStringified<
       translations: true;
       artists: {
         include: {
-          artist: { include: { translations: true } };
+          // Mirrors the page's `getEvent` omits (egress diet) — the
+          // section only reads the artist name via displayOriginalName.
+          artist: {
+            omit: { originalBio: true; isDeleted: true; deletedAt: true };
+            include: { translations: { omit: { bio: true } } };
+          };
         };
       };
       listings: {
