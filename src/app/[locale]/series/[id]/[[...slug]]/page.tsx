@@ -36,6 +36,7 @@ import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { SeriesBdAlbumsSection } from "@/components/SeriesBdAlbumsSection";
 import { StatsSubLabel } from "@/components/StatsSubLabel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CountCell } from "@/components/CountCell";
@@ -835,6 +836,11 @@ export default async function EventSeriesPage({
                     </ul>
                   </section>
                 )}
+
+                {/* "투어 BD 목록" catalog (b09). Self-fetching server
+                    component — fans the series' events out to their
+                    bdAlbumId set and renders null when there are none. */}
+                <SeriesBdAlbumsSection seriesId={series.id} locale={locale} />
 
                 {preparedLegs.length === 0 ? (
                   <p

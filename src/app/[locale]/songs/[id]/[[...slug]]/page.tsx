@@ -25,6 +25,8 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { InfoCard } from "@/components/InfoCard";
 import { TabBar } from "@/components/TabBar";
 import { SectionLabel } from "@/components/SectionLabel";
+import { AlbumCard } from "@/components/AlbumCard";
+import { getSongAlbums } from "@/lib/songAlbums";
 import {
   PerformanceGroup,
   type PerformanceSeries,
@@ -83,13 +85,18 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // the variant `groupBy` isolated (cross-variant aggregation,
 // SQL-efficient as a single set operation — see `page.tsx:512`).
 //
-// `vocalTracks: { take: 1 }` picks the earliest-released album as
-// the canonical "first" (matches the prior `getFirstAlbumTrack`
-// semantics: `album.releaseDate ASC, discNumber ASC, trackNumber
-// ASC` is deterministic regardless of insertion order and matches
-// the user's mental model — "the album where this song first
-// appeared"; disc/track as secondary so re-issues + special editions
-// don't overrule the original release).
+// `vocalTracks` is fetched unbounded — b08 dropped the prior
+// `take: 1` cap so the sidebar's 수록 앨범 section can render one
+// card per album the song appears on. The orderBy chain
+// (`album.releaseDate ASC, album.id ASC, discNumber ASC,
+// trackNumber ASC`) is deterministic regardless of insertion order
+// and matches the user's mental model — "the album where this song
+// first appeared." `vocalTracks[0]` post-sort is still the
+// earliest-released album, so the existing sidebar `albumInfo`
+// stat row that consumes index 0 (replacing the prior
+// `getFirstAlbumTrack` standalone helper) reads byte-identically
+// to the take:1 era. The full array drives `getSongAlbums` for the
+// new section.
 //
 // b01b note: `albumTracks` was split into `vocalTracks` (this song
 // is the vocal — Pattern 1) and `offVocalTracks` (this song is the
@@ -124,18 +131,47 @@ const getSong = cache(async (id: bigint) => {
           },
         },
       },
-      // First album by release date (multi-album: earliest wins).
-      // Replaces the standalone `getFirstAlbumTrack` helper — see
-      // the comment block above for the Sentry-issue context.
+      // Albums this song appears on (Pattern 1 vocal AlbumTracks).
+      // Ordered earliest-release-first so vocalTracks[0] continues to
+      // feed the sidebar's existing `albumInfo` stat row (replacing
+      // the original `getFirstAlbumTrack` standalone helper folded
+      // inline per the Sentry-issue comment block above), AND the
+      // full array drives the b08 수록 앨범 section beneath the
+      // performance count box. The previous `take: 1` cap is dropped
+      // — the section needs every album, and Phase 2 catalog scale
+      // makes the unbounded fetch trivially small (typical song
+      // sits on 1–3 albums; outliers like anniversary compilations
+      // hit ~5 max).
+      //
+      // Include extensions vs the take:1 era:
+      //   - `artists.artist.translations` — feeds the gradient
+      //     fallback color on AlbumCard's cover thumbnail when an
+      //     album has no `imageUrl` (uses the first credited
+      //     artist's `color`).
+      //   - `listings.bonuses` — supplies the active-bonus count
+      //     for AlbumCard's 特典 N badge. Mirrors the formula
+      //     AlbumInfoCard already uses (see lib/songAlbums.ts).
       vocalTracks: {
-        take: 1,
         orderBy: [
           { album: { releaseDate: "asc" } },
+          { album: { id: "asc" } },
           { discNumber: "asc" },
           { trackNumber: "asc" },
         ],
         include: {
-          album: { include: { translations: true } },
+          album: {
+            include: {
+              translations: true,
+              artists: {
+                include: {
+                  artist: { include: { translations: true } },
+                },
+              },
+              listings: {
+                include: { bonuses: true },
+              },
+            },
+          },
         },
       },
       // Total active performance count. Filter mirrors the prior
@@ -306,11 +342,14 @@ export default async function SongPage({ params, searchParams }: Props) {
     notFound();
   }
 
-  // `getSong` now carries the first AlbumTrack + the total performance
-  // count inline via its `vocalTracks: { take: 1 }` + `_count.setlistItems`
-  // includes — see the comment block on `getSong` above for the
-  // Sentry-issue context (issue 7504931765). Page render fans out to
-  // 2 prisma queries now (Song + Performances) instead of the prior 4.
+  // `getSong` now carries the full `vocalTracks` array + the total
+  // performance count inline via its `vocalTracks` (b08: unbounded)
+  // + `_count.setlistItems` includes — see the comment block on
+  // `getSong` above for the Sentry-issue context (issue 7504931765)
+  // and the b08 orderBy/include extension. `vocalTracks[0]` post-ASC
+  // sort is still the canonical earliest-released album the original
+  // `take: 1` cap fetched. Page render fans out to 2 prisma queries
+  // (Song + Performances) instead of the prior 4.
   const [song, performances] = await Promise.all([
     getSong(songId),
     getSongPerformances(songId),
@@ -320,6 +359,14 @@ export default async function SongPage({ params, searchParams }: Props) {
 
   const albumTrack = song.vocalTracks[0] ?? null;
   const performanceCount = song._count.setlistItems;
+
+  // b08: per-album rows for the sidebar's 수록 앨범 section. Same
+  // input array the existing `albumTrack` (line above) reads from —
+  // the sort order is now ASC-by-releaseDate (oldest first), so
+  // vocalTracks[0] is still the canonical album just like before
+  // the take:1 → unbounded change. See src/lib/songAlbums.ts for
+  // sort + tiebreak + activeBonusCount semantics.
+  const songAlbums = getSongAlbums(song.vocalTracks);
 
   const [t, ct, et, at] = await Promise.all([
     getTranslations("Song"),
@@ -833,6 +880,69 @@ export default async function SongPage({ params, searchParams }: Props) {
                   </div>
                 </div>
               </div>
+
+              {/* b08: 수록 앨범 section. Sidebar placement per the v2
+                  mockup (raw/mockups/song-page-v2-mockup.jsx lines
+                  444–463) — separated from the performance count box
+                  above by a borderTop divider. Section returns nothing
+                  for songs with no album rows (orphans), so the
+                  divider is also conditional. Canonical album (oldest
+                  releaseDate) gets the bordered + "원본 수록" pill
+                  emphasis; siblings render plainer. */}
+              {songAlbums.length > 0 && (
+                <div
+                  style={{
+                    borderTop: `1px solid ${colors.borderLight}`,
+                    paddingTop: 14,
+                    marginTop: 14,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: colors.textMuted,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      marginBottom: 10,
+                    }}
+                  >
+                    {t("albumsSectionLabel")}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    {songAlbums.map((row) => (
+                      <AlbumCard
+                        key={String(row.album.id)}
+                        variant="mini"
+                        album={row.album}
+                        locale={locale}
+                        isCanonical={row.isCanonical}
+                        discNumber={row.discNumber}
+                        trackNumber={row.trackNumber}
+                        activeBonusCount={row.activeBonusCount}
+                      />
+                    ))}
+                  </div>
+                  {songAlbums.length > 1 && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: colors.textMuted,
+                        marginTop: 8,
+                        textAlign: "center",
+                      }}
+                    >
+                      {t("albumsTotalCount", { count: songAlbums.length })}
+                    </div>
+                  )}
+                </div>
+              )}
             </InfoCard>
           </div>
 

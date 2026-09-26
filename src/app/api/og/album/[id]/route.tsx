@@ -137,7 +137,16 @@ export async function GET(req: Request, { params }: Props) {
         >
           <div
             style={{
-              display: "inline-flex",
+              // Satori only accepts flex | block | contents | none |
+              // -webkit-box — `inline-flex` throws "Invalid value for
+              // CSS property display". ImageResponse renders lazily
+              // (the stream body is produced after this handler
+              // returns), so that throw escapes the try/catch below
+              // and surfaces as a bare 500 on every album. Plain
+              // `flex` keeps the pill hugging its label because the
+              // parent column sets `alignItems: "flex-start"` (no
+              // cross-axis stretch).
+              display: "flex",
               alignItems: "center",
               padding: "8px 20px",
               background: "rgba(255, 255, 255, 0.18)",
