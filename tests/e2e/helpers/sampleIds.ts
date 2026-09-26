@@ -92,3 +92,25 @@ export function readBdEventSampleIds(): BdEventSampleIds {
     plainEventId: normalize(process.env.E2E_PLAIN_EVENT_ID),
   };
 }
+
+/*
+ * n05 unknown-song row spec. `unknownSongEventId` is a dev-DB Event the
+ * spec may append (and then soft-delete) a throwaway setlist row on —
+ * pick a past event you don't mind getting a transient row. The fill-in
+ * step reuses `E2E_MULTI_ALBUM_SONG_ID` as "any real song id" so no
+ * extra var is needed. The spec also needs `ADMIN_PASSWORD` (from
+ * .env/.env.local) to log in; missing any of these skips.
+ */
+export interface UnknownSongSampleIds {
+  unknownSongEventId: string | null;
+  fillSongId: string | null;
+  adminPassword: string | null;
+}
+
+export function readUnknownSongSampleIds(): UnknownSongSampleIds {
+  return {
+    unknownSongEventId: normalize(process.env.E2E_UNKNOWN_SONG_EVENT_ID),
+    fillSongId: normalize(process.env.E2E_MULTI_ALBUM_SONG_ID),
+    adminPassword: normalize(process.env.ADMIN_PASSWORD),
+  };
+}

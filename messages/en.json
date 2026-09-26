@@ -393,7 +393,8 @@
     "tabActual": "Actual setlist",
     "tabPredicted": "Predicted setlist",
     "tablistAriaLabel": "Setlist views",
-    "predictedComingSoon": "Predicted setlist — coming soon"
+    "predictedComingSoon": "Predicted setlist — coming soon",
+    "unknownSong": "Song TBC"
   },
   "Predict": {
     "add": "+ Add a song",

@@ -44,6 +44,12 @@ interface Props {
    * the Predicted-tab gating.
    */
   status: ResolvedEventStatus;
+  /**
+   * Event primary artist id (stringified BigInt) or null. Forwarded to
+   * `<SetlistRow>` for the multi-group-event badge rule — see
+   * `pickRowArtistBadge`.
+   */
+  eventArtistId?: string | null;
 }
 
 /**
@@ -68,6 +74,7 @@ export function ActualSetlist({
   locale,
   eventId,
   status,
+  eventArtistId,
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
@@ -300,6 +307,7 @@ export function ActualSetlist({
                   reactionCounts={reactionCounts}
                   locale={locale}
                   eventId={eventId}
+                  eventArtistId={eventArtistId}
                   rowState={deriveRowState(item, siblings)}
                   myVote={deriveMyVote(
                     item.id,
@@ -395,6 +403,7 @@ export function ActualSetlist({
                       reactionCounts={reactionCounts}
                       locale={locale}
                       eventId={eventId}
+                      eventArtistId={eventArtistId}
                       rowState={deriveRowState(item, siblings)}
                       myVote={deriveMyVote(
                         item.id,

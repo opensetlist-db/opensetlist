@@ -393,7 +393,8 @@
     "tabActual": "실제 세트리스트",
     "tabPredicted": "예상 세트리스트",
     "tablistAriaLabel": "세트리스트 보기",
-    "predictedComingSoon": "예상 세트리스트 — 곧 공개"
+    "predictedComingSoon": "예상 세트리스트 — 곧 공개",
+    "unknownSong": "곡 확인 중"
   },
   "Predict": {
     "add": "+ 곡 추가",
