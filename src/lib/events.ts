@@ -51,6 +51,9 @@ type EventTranslation = {
 
 export type EventForList = {
   id: number;
+  // DB slug — the canonical URL segment (`eventHref`). Never derive a
+  // slug from the display name; see `src/lib/seo/entityUrl.ts`.
+  slug: string;
   eventSeriesId: number | null;
   // Primary artist for series-less events. Populated explicitly via the
   // admin form, or backfilled by prisma/post-deploy.sql when the
@@ -197,6 +200,7 @@ export async function getEventsListGrouped(
       where: { isDeleted: false },
       select: {
         id: true,
+        slug: true,
         eventSeriesId: true,
         artistId: true,
         organizerName: true,

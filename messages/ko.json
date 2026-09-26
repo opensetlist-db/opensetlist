@@ -620,9 +620,20 @@
     "unavailableInLocale": "이 페이지는 한국어로만 제공됩니다"
   },
   "Meta": {
-    "description": "라이브 이벤트 오픈 세트리스트 데이터베이스 (JP/EN/KR)",
-    "setlistDb": "공연 세트리스트 데이터베이스",
+    "description": "애니·게임 음악 라이브의 세트리스트를 실시간으로 기록하는 오픈 데이터베이스",
     "performanceHistory": "공연 이력 및 세트리스트",
-    "notFound": "찾을 수 없음"
+    "notFound": "찾을 수 없음",
+    "eventTitle": "{name} 세트리스트 | OpenSetlist",
+    "eventDescriptionTail": "곡 순서·유닛·멤버까지 담은 세트리스트",
+    "songTitle": "{title} — {group} | 가창 멤버·공연 이력 | OpenSetlist",
+    "songTitleNoGroup": "{title} | 가창 멤버·공연 이력 | OpenSetlist",
+    "songDescription": "{group} 「{title}」 가창 멤버와 공연 이력",
+    "songDescriptionNoGroup": "「{title}」 가창 멤버와 공연 이력",
+    "artistTitle": "{name} 세트리스트·공연 이력 | OpenSetlist",
+    "artistDescription": "{name} 전 공연 세트리스트와 디스코그래피",
+    "memberTitle": "{name} ({group}) | 가창곡·출연 공연 | OpenSetlist",
+    "memberTitleNoGroup": "{name} | 가창곡·출연 공연 | OpenSetlist",
+    "seriesTitle": "{name} 전 공연 세트리스트 | OpenSetlist",
+    "seriesDescription": "{name} 전 공연의 세트리스트와 곡 순서"
   }
 }

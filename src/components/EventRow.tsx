@@ -2,7 +2,7 @@ import Link from "next/link";
 import { EventDateTime } from "@/components/EventDateTime";
 import EventStatusTicker from "@/components/EventStatusTicker";
 import { StatusBadge } from "@/components/StatusBadge";
-import { slugify } from "@/lib/utils";
+import { eventHref } from "@/lib/eventHref";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 // Accepts the row both pre-serialization (bigint id, raw prisma rows) and
@@ -10,6 +10,7 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 // former; the events list page passes the latter.
 interface RowEvent {
   id: number | bigint;
+  slug: string;
   date: string | Date | null;
   startTime: string | Date;
 }
@@ -19,7 +20,6 @@ interface Props {
   locale: string;
   title: string;
   subtitle?: string | null;
-  slugSource: string | null;
   // Resolved by the caller via getTranslations("Event") on locale pages.
   // Splitting status (semantic) from statusLabel (i18n string) keeps
   // <StatusBadge> usable from both server and client trees without forcing
@@ -33,16 +33,10 @@ export function EventRow({
   locale,
   title,
   subtitle,
-  slugSource,
   status,
   statusLabel,
 }: Props) {
-  // slugSource may be all-punctuation (`!!!`, `***`); slugify strips it to ""
-  // and we'd emit `/events/{id}/`. Branch on the slug, not the source.
-  const slug = slugSource ? slugify(slugSource) : "";
-  const href = slug
-    ? `/${locale}/events/${event.id}/${slug}`
-    : `/${locale}/events/${event.id}`;
+  const href = eventHref(locale, event.id, event.slug);
   const startTimeIso =
     typeof event.startTime === "string"
       ? event.startTime

@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { staticAlternates } from "@/lib/seo/entityUrl";
 import { getEventsListGrouped, type EventsListGroup } from "@/lib/events";
 import { getEventStatus } from "@/lib/eventStatus";
 import { eventHref } from "@/lib/eventHref";
@@ -152,7 +153,7 @@ export default async function EventsPage({
     const venueCity =
       venue && city ? `${venue} · ${city}` : (venue ?? city);
     return {
-      href: eventHref(locale, ev.id, eventName),
+      href: eventHref(locale, ev.id, ev.slug),
       startTimeIso: ev.startTime,
       status,
       // Per-row badge: "LIVE" for ongoing (matches mockup); locale
@@ -443,5 +444,10 @@ export async function generateMetadata({
 }) {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "Event" });
-  return { title: t("allEvents") };
+  return {
+    title: t("allEvents"),
+    // Canonical is the unfiltered list; filter query params
+    // (`?status=…`) consolidate onto it.
+    alternates: staticAlternates(locale, "/events"),
+  };
 }
