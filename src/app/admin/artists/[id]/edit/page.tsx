@@ -70,6 +70,7 @@ export default async function EditArtistPage({ params }: Props) {
           translations: data.translations.map((t) => ({
             locale: t.locale,
             name: t.name,
+            shortName: t.shortName ?? "",
             bio: t.bio ?? "",
           })),
           groupIds: data.groupLinks.map(
