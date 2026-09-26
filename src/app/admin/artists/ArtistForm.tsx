@@ -8,7 +8,7 @@ import {
   GROUP_CATEGORY_VALUES,
 } from "@/lib/admin-constants";
 
-type Translation = { locale: string; name: string; bio: string };
+type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
   type: "character" | "persona";
   color: string;
@@ -82,7 +82,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "", bio: "" }]
+      : [{ locale: "ko", name: "", shortName: "", bio: "" }]
   );
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(
     initialData?.groupIds ?? []
@@ -151,7 +151,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     const usedLocales = translations.map((t) => t.locale);
     const next = LOCALES.find((l) => !usedLocales.includes(l));
     if (next) {
-      setTranslations((prev) => [...prev, { locale: next, name: "", bio: "" }]);
+      setTranslations((prev) => [
+        ...prev,
+        { locale: next, name: "", shortName: "", bio: "" },
+      ]);
     }
   }
 
@@ -621,6 +624,14 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 placeholder="이름"
                 value={tr.name}
                 onChange={(e) => updateTranslation(i, "name", e.target.value)}
+                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="짧은 이름 (선택)"
+                value={tr.shortName}
+                onChange={(e) =>
+                  updateTranslation(i, "shortName", e.target.value)
+                }
                 className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               <textarea

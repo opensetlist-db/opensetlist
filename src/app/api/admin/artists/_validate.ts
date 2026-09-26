@@ -9,6 +9,7 @@ import {
 export type ArtistTranslationInput = {
   locale: string;
   name: string;
+  shortName: string | null;
   bio: string | null;
 };
 
@@ -49,11 +50,25 @@ export function parseArtistTranslations(
     if (!locale.ok) return locale;
     const name = requireString(t.name, `translations[${i}].name`);
     if (!name.ok) return name;
+    // shortName must round-trip: the edit route deletes and recreates
+    // every ArtistTranslation from this payload, so a field dropped here
+    // is wiped from the DB on each admin save (the chip/short-label
+    // fallback in displayNameWithFallback then shows the full name).
+    const shortName = nullableString(
+      t.shortName,
+      `translations[${i}].shortName`
+    );
+    if (!shortName.ok) return shortName;
     const bio = nullableString(t.bio, `translations[${i}].bio`);
     if (!bio.ok) return bio;
     return {
       ok: true,
-      value: { locale: locale.value, name: name.value, bio: bio.value },
+      value: {
+        locale: locale.value,
+        name: name.value,
+        shortName: shortName.value,
+        bio: bio.value,
+      },
     };
   });
 }
