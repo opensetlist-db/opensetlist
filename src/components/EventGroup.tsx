@@ -40,7 +40,6 @@ export async function EventGroup({
               event={event}
               locale={locale}
               title={eventName ?? evT("unknownEvent")}
-              slugSource={eventName}
               status={status}
               statusLabel={evT(`status.${status}`)}
             />

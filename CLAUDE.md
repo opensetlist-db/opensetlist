@@ -127,18 +127,26 @@ See `memory/schema_design.md` for full table overview, or read `prisma/schema.pr
 ## URL Strategy
 
 ```
-Canonical:    /[locale]/songs/789
-Display:      /[locale]/songs/789/hanamusubi
-Redirect:     Any slug variant → canonical numeric ID
+Canonical:    /[locale]/<kind>/<id>/<db-slug>      e.g. /ja/songs/789/hanamusubi
+Redirect:     308 → canonical for a bare id (/ja/songs/789), any other
+              slug (wrong, renamed, localized), or extra segments
+x-default:    the ja URL (defaultLocale = ja)
 
 Examples:
-  /ko/songs/789/하나무스비
+  /ja/events/8/hasunosora-6th-saitama-day2
   /ko/artists/42/cerise-bouquet
-  /ko/events/123/4th-live-kobe-day-2
-  /ko/series/7/4th-live-dream-bloom
+  /en/series/7/4th-live-dream-bloom
 ```
 
-Numeric ID is canonical — slug is decorative only, for SEO and readability.
+The slug is the entity's DB `slug` column — ASCII, unique, locale-neutral,
+so every locale shares one path shape and no CJK ever appears in a URL.
+Never build an entity link by slugifying a display name.
+
+All entity URLs, canonicals, hreflang sets, and slug redirects go through
+`src/lib/seo/entityUrl.ts` (`entityPath`, `entityAlternates`,
+`enforceCanonicalSlug`); the sitemap uses the same helper. hreflang lives
+in page metadata only — next-intl's `Link` header is off
+(`alternateLinks: false` in `src/i18n/routing.ts`).
 
 ---
 

@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { staticAlternates } from "@/lib/seo/entityUrl";
 import type { Metadata } from "next";
 import {
   getAlbums,
@@ -38,7 +39,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "Album" });
-  return { title: t("title") };
+  // `?artist=` filter variants consolidate onto the unfiltered list.
+  return { title: t("title"), alternates: staticAlternates(locale, "/albums") };
 }
 
 export default async function AlbumsPage({

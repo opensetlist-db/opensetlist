@@ -620,9 +620,20 @@
     "unavailableInLocale": "Available in Korean only"
   },
   "Meta": {
-    "description": "Open setlist database for live events (JP/EN/KR)",
-    "setlistDb": "setlist database",
+    "description": "Open database recording anime & game music live setlists in real time",
     "performanceHistory": "performance history & setlist",
-    "notFound": "Not Found"
+    "notFound": "Not Found",
+    "eventTitle": "{name} Setlist | OpenSetlist",
+    "eventDescriptionTail": "Full setlist with song order, units and members",
+    "songTitle": "{title} — {group} | Performers & Live History | OpenSetlist",
+    "songTitleNoGroup": "{title} | Performers & Live History | OpenSetlist",
+    "songDescription": "Members who sang “{title}” by {group} and every show it was performed at",
+    "songDescriptionNoGroup": "Members who sang “{title}” and every show it was performed at",
+    "artistTitle": "{name} Setlists & Live History | OpenSetlist",
+    "artistDescription": "Every live setlist and the discography of {name}",
+    "memberTitle": "{name} ({group}) | Songs & Live Appearances | OpenSetlist",
+    "memberTitleNoGroup": "{name} | Songs & Live Appearances | OpenSetlist",
+    "seriesTitle": "{name} — All Setlists | OpenSetlist",
+    "seriesDescription": "Setlists and song order for every show of {name}"
   }
 }

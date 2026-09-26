@@ -1,6 +1,6 @@
 import { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
-import { BASE_URL } from "@/lib/config";
+import { buildSitemap, type SitemapEntity } from "@/lib/seo/sitemap";
 
 // Sitemap is computed on demand, not statically prerendered at build
 // time. Background — the v0.13.16 deploy (the first v0.13.x release
@@ -23,80 +23,68 @@ import { BASE_URL } from "@/lib/config";
 // route the right fix is the same `force-dynamic` opt-out there.
 export const dynamic = "force-dynamic";
 
+// Egress: this runs on every /sitemap.xml fetch against the pooler, so
+// every query selects only the three columns the sitemap needs — the
+// previous version pulled every column of every event/series/artist/song.
+// No entity model has `updatedAt`; `createdAt` is the fallback, and events
+// use their newest setlist row so a freshly-filled setlist is recrawled.
+const ENTITY_SELECT = { id: true, slug: true, createdAt: true } as const;
+
+type Row = { id: bigint | string; slug: string; createdAt: Date };
+const toEntity = (r: Row): SitemapEntity => ({
+  id: r.id,
+  slug: r.slug,
+  lastModified: r.createdAt,
+});
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const locales = ["ko", "ja", "en"];
+  const [events, setlistActivity, series, artists, songs, albums, members] =
+    await Promise.all([
+      prisma.event.findMany({
+        where: { isDeleted: false },
+        select: ENTITY_SELECT,
+        orderBy: { date: "desc" },
+      }),
+      prisma.setlistItem.groupBy({
+        by: ["eventId"],
+        where: { isDeleted: false },
+        _max: { createdAt: true },
+      }),
+      prisma.eventSeries.findMany({
+        where: { isDeleted: false },
+        select: ENTITY_SELECT,
+      }),
+      prisma.artist.findMany({
+        where: { isDeleted: false },
+        select: ENTITY_SELECT,
+      }),
+      prisma.song.findMany({
+        where: { isDeleted: false },
+        select: ENTITY_SELECT,
+      }),
+      // Album and StageIdentity have no soft-delete column.
+      prisma.album.findMany({ select: ENTITY_SELECT }),
+      prisma.stageIdentity.findMany({ select: ENTITY_SELECT }),
+    ]);
 
-  const staticPages: MetadataRoute.Sitemap = locales.flatMap((locale) => [
-    {
-      url: `${BASE_URL}/${locale}`,
-      lastModified: new Date(),
-      changeFrequency: "daily" as const,
-      priority: 1.0,
-    },
-    {
-      url: `${BASE_URL}/${locale}/privacy`,
-      lastModified: new Date("2026-04-15"),
-      changeFrequency: "yearly" as const,
-      priority: 0.3,
-    },
-    {
-      url: `${BASE_URL}/${locale}/terms`,
-      lastModified: new Date("2026-04-15"),
-      changeFrequency: "yearly" as const,
-      priority: 0.3,
-    },
-  ]);
+  const lastSetlistAt = new Map(
+    setlistActivity.map((g) => [String(g.eventId), g._max.createdAt]),
+  );
 
-  const events = await prisma.event.findMany({
-    where: { isDeleted: false },
-    orderBy: { date: "desc" },
+  return buildSitemap({
+    events: events.map((e) => {
+      const setlistAt = lastSetlistAt.get(String(e.id));
+      return {
+        id: e.id,
+        slug: e.slug,
+        lastModified:
+          setlistAt && setlistAt > e.createdAt ? setlistAt : e.createdAt,
+      };
+    }),
+    series: series.map(toEntity),
+    artists: artists.map(toEntity),
+    songs: songs.map(toEntity),
+    albums: albums.map(toEntity),
+    members: members.map(toEntity),
   });
-
-  const eventPages: MetadataRoute.Sitemap = events.map((event) => ({
-    url: `${BASE_URL}/ko/events/${event.id}/${event.slug}`,
-    lastModified: event.createdAt,
-    changeFrequency: "weekly" as const,
-    priority: 0.9,
-  }));
-
-  const series = await prisma.eventSeries.findMany({
-    where: { isDeleted: false },
-  });
-
-  const seriesPages: MetadataRoute.Sitemap = series.map((s) => ({
-    url: `${BASE_URL}/ko/series/${s.id}/${s.slug}`,
-    lastModified: s.createdAt,
-    changeFrequency: "weekly" as const,
-    priority: 0.8,
-  }));
-
-  const artists = await prisma.artist.findMany({
-    where: { isDeleted: false },
-  });
-
-  const artistPages: MetadataRoute.Sitemap = artists.map((artist) => ({
-    url: `${BASE_URL}/ko/artists/${artist.id}/${artist.slug}`,
-    lastModified: artist.createdAt,
-    changeFrequency: "weekly" as const,
-    priority: 0.7,
-  }));
-
-  const songs = await prisma.song.findMany({
-    where: { isDeleted: false },
-  });
-
-  const songPages: MetadataRoute.Sitemap = songs.map((song) => ({
-    url: `${BASE_URL}/ko/songs/${song.id}/${song.slug}`,
-    lastModified: song.createdAt,
-    changeFrequency: "monthly" as const,
-    priority: 0.6,
-  }));
-
-  return [
-    ...staticPages,
-    ...eventPages,
-    ...seriesPages,
-    ...artistPages,
-    ...songPages,
-  ];
 }

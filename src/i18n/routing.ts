@@ -3,7 +3,15 @@ import { defineRouting } from "next-intl/routing";
 export const locales = ["ko", "ja", "en"] as const;
 export type Locale = (typeof locales)[number];
 
-export const defaultLocale: Locale = "ko";
+/**
+ * Locale for unprefixed URLs when the client sends no usable
+ * `Accept-Language` — which is every search/social crawler (Googlebot,
+ * X, Discord). Those bots see the Japanese page, and hreflang
+ * `x-default` points at it (`src/lib/seo/entityUrl.ts`). JP is the
+ * primary audience; Korean browsers still land on `/ko` through
+ * `localeDetection` below.
+ */
+export const defaultLocale: Locale = "ja";
 
 /**
  * Translation-row IN-filter fallback locale.
@@ -28,4 +36,11 @@ export const routing = defineRouting({
   locales,
   defaultLocale,
   localeDetection: true,
+  // next-intl's middleware would otherwise emit an hreflang `Link`
+  // response header that mirrors whatever path was requested (including
+  // non-canonical slug variants) and points x-default at the
+  // redirecting unprefixed path. Page metadata owns hreflang instead
+  // (`entityAlternates` / `staticAlternates`), so there is exactly one
+  // hreflang set per page and it always agrees with the canonical.
+  alternateLinks: false,
 });

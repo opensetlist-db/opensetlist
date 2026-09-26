@@ -11,6 +11,7 @@ import { getTranslations } from "next-intl/server";
 import { Link as IntlLink } from "@/i18n/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
 import {
   serializeBigInt,
@@ -48,7 +49,7 @@ import {
 import { colors, gradients, layout, radius, shadows } from "@/styles/tokens";
 
 type Props = {
-  params: Promise<{ locale: string; id: string }>;
+  params: Promise<{ locale: string; id: string; slug?: string[] }>;
   searchParams: Promise<{ tab?: string | string[] }>;
 };
 
@@ -236,9 +237,23 @@ export async function generateMetadata({
     "description",
     "originalDescription",
   );
+  const title = seriesName
+    ? metaT("seriesTitle", { name: seriesName })
+    : "OpenSetlist";
+  const alternates = entityAlternates("series", locale, id, series.slug);
   return {
-    title: seriesName ? `${seriesName} | OpenSetlist` : "OpenSetlist",
-    description: description ?? undefined,
+    title,
+    description:
+      description ??
+      (seriesName ? metaT("seriesDescription", { name: seriesName }) : undefined),
+    alternates,
+    openGraph: {
+      title,
+      url: alternates.canonical,
+      siteName: "OpenSetlist",
+      locale,
+      type: "website",
+    },
   };
 }
 
@@ -246,7 +261,7 @@ export default async function EventSeriesPage({
   params,
   searchParams,
 }: Props) {
-  const { locale, id } = await params;
+  const { locale, id, slug } = await params;
   const sp = await searchParams;
   const activeTab = resolveTab(sp.tab);
 
@@ -254,6 +269,7 @@ export default async function EventSeriesPage({
   const seriesId = BigInt(id);
   const series = await getEventSeries(seriesId);
   if (!series) notFound();
+  enforceCanonicalSlug("series", locale, id, series.slug, slug, sp);
 
   const t = await getTranslations("EventSeries");
   const ct = await getTranslations("Common");
@@ -406,7 +422,7 @@ export default async function EventSeriesPage({
         // BigInt)` is precision-safe; `eventHref` accepts the raw
         // BigInt directly so href construction stays exact.
         id: String(ev.id),
-        href: eventHref(locale, ev.id, evName),
+        href: eventHref(locale, ev.id, ev.slug),
         status,
         formattedDate: formatDate(ev.date ?? ev.startTime, locale, HISTORY_ROW_DATE_FORMAT),
         name: evName,
@@ -446,16 +462,7 @@ export default async function EventSeriesPage({
   );
   const firstOngoing = ongoingEvents.length > 0 ? ongoingEvents[0] : null;
   const liveBannerHref = firstOngoing
-    ? eventHref(
-        locale,
-        firstOngoing.id,
-        displayNameWithFallback(
-          firstOngoing,
-          firstOngoing.translations,
-          locale,
-          "short",
-        ) || "",
-      )
+    ? eventHref(locale, firstOngoing.id, firstOngoing.slug)
     : null;
 
   // ── Tour progress percentage ─────────────────────────────

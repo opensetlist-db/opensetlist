@@ -94,18 +94,23 @@ jobs:
       # app sees. Read-only in practice: the event detail page is
       # server-rendered SELECTs only, no mutations.
       DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
-      # Event IDs to sample. Currently:
+      # Events to sample, as `{id}/{db-slug}` — the canonical URL
+      # form. Bare `/events/{id}` 308s to the slug URL (see
+      # `enforceCanonicalSlug` in src/lib/seo/entityUrl.ts), and curl
+      # without -L would record every sample as a non-200. Following
+      # the redirect instead would bill the redirect hop to the PR
+      # side only, so the paths carry the slug directly. Currently:
       #   1 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 1"
       #   2 = "Love Live! Hasunosora 6th Live Dream ~Bloom Garden Party~ Day 2"
       # Both are completed events with full setlists / reactions /
       # impressions populated, so every helper exercised by the page
-      # returns non-empty data. If those rows ever get soft-deleted
-      # or re-numbered in the dev DB, this list MUST be updated —
-      # otherwise every measurement silently records 404s and the
-      # delta becomes meaningless (the per-sample HTTP-200 filter
+      # returns non-empty data. If those rows ever get soft-deleted,
+      # re-numbered or re-slugged in the dev DB, this list MUST be
+      # updated — otherwise every measurement records 404s/308s and
+      # the delta becomes meaningless (the per-sample HTTP-200 filter
       # below at least surfaces this loudly rather than averaging
-      # the 404s in).
-      PERF_EVENT_IDS: "1 2"
+      # them in).
+      PERF_EVENT_IDS: "1/hasunosora-6th-fukuoka-day1 2/hasunosora-6th-fukuoka-day2"
     steps:
       # Two checkouts to separate paths. `refs/pull/N/merge` is
       # GitHub's auto-generated merge commit — base + PR's commits,

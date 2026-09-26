@@ -1,12 +1,14 @@
-import { slugify } from "@/lib/utils";
+import { entityPath, type EntityId } from "@/lib/seo/entityUrl";
 
 /**
  * Build the canonical event URL for the given locale.
  *
- * `slugSource` is typically the localized event name. It may be
- * all-punctuation (`!!!`, `***`); `slugify` strips those down to an
- * empty string and we'd otherwise emit `/events/{id}/`. Branch on the
- * post-slugify result so the trailing slash never appears.
+ * `slug` is the event's DB `slug` column — never a slugified display
+ * name. Slugifying the localized name at link time used to mint a
+ * different URL per locale (and CJK slugs when a translation fell
+ * back), all of which served 200 and showed up in Search Console as
+ * duplicates. The event page now 308s every non-canonical slug, so a
+ * display-name slug here would cost every click a redirect hop.
  */
 export function eventHref(
   locale: string,
@@ -15,11 +17,8 @@ export function eventHref(
   // `string` is the precision-safe form used when an autoincrement
   // ID exceeds 2^53. Template-literal interpolation produces the
   // exact digit string in all three cases.
-  id: number | bigint | string,
-  slugSource: string | null,
+  id: EntityId,
+  slug: string,
 ): string {
-  const slug = slugSource ? slugify(slugSource) : "";
-  return slug
-    ? `/${locale}/events/${id}/${slug}`
-    : `/${locale}/events/${id}`;
+  return entityPath("events", locale, id, slug);
 }
