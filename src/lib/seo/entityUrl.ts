@@ -54,7 +54,13 @@ export function entityPath(
   id: EntityId,
   slug: string,
 ): string {
-  return `/${locale}/${kind}/${id}/${slug}`;
+  // The schema doesn't forbid `slug = ""`. Emitting `/…/{id}/` for it
+  // would be normalized to `/…/{id}` by Next (trailing slash stripped),
+  // which `enforceCanonicalSlug` would then redirect straight back to
+  // itself — an infinite 308 loop. For an empty slug the id-only URL is
+  // the canonical.
+  const base = `/${locale}/${kind}/${id}`;
+  return slug ? `${base}/${slug}` : base;
 }
 
 export function absoluteUrl(path: string): string {
@@ -125,7 +131,10 @@ export function enforceCanonicalSlug(
 ): void {
   // Next hands dynamic segments over URL-decoded, and DB slugs are
   // ASCII-only (`generateSlug`), so a plain string compare is exact.
-  if (incoming && incoming.length === 1 && incoming[0] === slug) return;
+  const isCanonical = slug
+    ? incoming?.length === 1 && incoming[0] === slug
+    : !incoming || incoming.length === 0;
+  if (isCanonical) return;
   permanentRedirect(
     entityPath(kind, locale, id, slug) + toQueryString(searchParams),
   );

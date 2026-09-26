@@ -88,6 +88,16 @@ describe("enforceCanonicalSlug", () => {
     ).toThrow("REDIRECT:/ja/events/8/good");
   });
 
+  it("treats the id-only URL as canonical when the DB slug is empty (no self-redirect loop)", () => {
+    expect(entityPath("events", "ja", "8", "")).toBe("/ja/events/8");
+    expect(() =>
+      enforceCanonicalSlug("events", "ja", "8", "", undefined),
+    ).not.toThrow();
+    expect(() =>
+      enforceCanonicalSlug("events", "ja", "8", "", ["stale"]),
+    ).toThrow("REDIRECT:/ja/events/8");
+  });
+
   it("carries the query string across the redirect", () => {
     expect(() =>
       enforceCanonicalSlug("songs", "ko", "17", "deepness", undefined, {
