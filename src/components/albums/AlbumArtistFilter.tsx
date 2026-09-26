@@ -37,7 +37,21 @@ export async function AlbumArtistFilter({ active, options }: Props) {
       key={key}
       href={href}
       aria-current={isActive ? "page" : undefined}
+      // Full name on hover / long-press when the label is truncated.
+      title={label}
       style={{
+        // Cap + ellipsis so one long label can't claim a whole row on
+        // mobile. The label is the artist's *short* name, but it falls
+        // back to the full translated name when a locale has no
+        // `shortName` (e.g. 蓮ノ空女学院スクールアイドルクラブ ≈ 250px),
+        // which pushed the next chip onto its own line. 200px fits
+        // ~12 CJK chars at 13px — every real short name — and keeps
+        // two chips per row at 390px. Inline-block is required for
+        // max-width / overflow to apply to the inline <a>.
+        display: "inline-block",
+        maxWidth: 200,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
         padding: "6px 14px",
         borderRadius: radius.button,
         fontSize: 13,
