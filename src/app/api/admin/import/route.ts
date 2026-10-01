@@ -17,6 +17,7 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -1650,6 +1651,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Unknown type: ${type}` }, { status: 400 });
     }
 
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(result));
   } catch (err) {
     console.error("Import error:", err);

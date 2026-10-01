@@ -25,6 +25,7 @@ import {
   validateEventTranslations,
   validatePerformerGuestIds,
 } from "./_validate";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 export async function GET() {
   const events = await prisma.event.findMany({
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
       return created;
     });
 
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(event), { status: 201 });
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {

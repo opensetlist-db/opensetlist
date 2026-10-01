@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
+import { revalidateEventData } from "@/lib/dataCache";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -102,14 +103,17 @@ export async function PUT(request: NextRequest, { params }: Props) {
       },
     },
   });
+  revalidateEventData(item.eventId);
   return NextResponse.json(serializeBigInt(item));
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
   const { id } = await params;
-  await prisma.setlistItem.update({
+  const deleted = await prisma.setlistItem.update({
     where: { id: BigInt(id) },
     data: { isDeleted: true, deletedAt: new Date() },
+    select: { eventId: true },
   });
+  revalidateEventData(deleted.eventId);
   return NextResponse.json({ success: true });
 }

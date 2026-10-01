@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -27,6 +28,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     },
     include: { translations: true },
   });
+  revalidatePublicData();
   return NextResponse.json(serializeBigInt(si));
 }
 
@@ -41,5 +43,6 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
     prisma.stageIdentity.delete({ where: { id } }),
   ]);
 
+  revalidatePublicData();
   return NextResponse.json({ ok: true });
 }

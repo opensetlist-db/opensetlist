@@ -15,6 +15,7 @@ import {
   parseLocalizedTranslations,
   requireString,
 } from "@/lib/admin-input";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 export async function GET() {
   const series = await prisma.eventSeries.findMany({
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
       },
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(series), { status: 201 });
   } catch (e) {
     if (

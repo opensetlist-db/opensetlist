@@ -8,6 +8,7 @@ import {
   ADMIN_WRITABLE_LISTING_STATUSES,
   parseListingTranslations,
 } from "@/lib/adminParsers";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type CreateBody = {
   albumId?: unknown;
@@ -109,6 +110,7 @@ export async function POST(request: NextRequest) {
       },
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(created), { status: 201 });
   } catch (e) {
     if (

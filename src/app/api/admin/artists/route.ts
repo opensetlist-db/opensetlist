@@ -21,6 +21,7 @@ import {
   parseArtistTranslations,
   parseStageIdentities,
 } from "./_validate";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -192,6 +193,7 @@ export async function POST(request: NextRequest) {
       },
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(artist), { status: 201 });
   } catch (e) {
     // P2002 here covers many unique constraints, not just slug: the

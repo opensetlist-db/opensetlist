@@ -15,6 +15,7 @@ import {
   requireString,
 } from "@/lib/admin-input";
 import { parseArtistTranslations } from "../_validate";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -123,6 +124,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
       include: { translations: true },
     });
   });
+  revalidatePublicData();
   return NextResponse.json(serializeBigInt(artist));
 }
 
@@ -132,5 +134,6 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
     where: { id: BigInt(id) },
     data: { isDeleted: true, deletedAt: new Date() },
   });
+  revalidatePublicData();
   return NextResponse.json({ success: true });
 }

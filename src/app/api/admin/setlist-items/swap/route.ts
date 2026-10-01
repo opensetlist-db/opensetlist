@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateEventData } from "@/lib/dataCache";
 
 export async function POST(request: NextRequest) {
   const { itemIdA, itemIdB } = await request.json();
@@ -61,5 +62,6 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
+  revalidateEventData(itemA.eventId);
   return NextResponse.json({ success: true });
 }

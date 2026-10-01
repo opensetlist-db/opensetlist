@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { CONFLICT_CONFIRMATION_THRESHOLD } from "@/lib/config";
+import { revalidateEventData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -218,6 +219,9 @@ export async function POST(_req: Request, { params }: RouteProps) {
           }),
         ]);
 
+        // Promotion changes what the event page renders (rumoured →
+        // confirmed); expire its cached SSR read.
+        revalidateEventData(item.eventId);
         return NextResponse.json(
           { ok: true, promoted: true },
           { headers: { "Cache-Control": "private, no-store" } },
