@@ -1,10 +1,37 @@
 import createMiddleware from "next-intl/middleware";
+import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
+import { COOKIE_NAME, isValidAdminSession } from "./lib/admin-session";
 
-export default createMiddleware(routing);
+const intlMiddleware = createMiddleware(routing);
+
+// Only the login endpoint may be called without an admin session.
+const ADMIN_API_PUBLIC = new Set(["/api/admin/login"]);
+
+export default async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Gate every `/api/admin/*` request in one place. Until this existed, the
+  // admin API relied on each route calling verifyAdminAPI() itself, and 19
+  // routes (including the CSV importer) never did — they were writable
+  // without logging in. Route handlers still call verifyAdminAPI() as a
+  // second layer (Next.js recommends not relying on the proxy alone).
+  if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
+    if (ADMIN_API_PUBLIC.has(pathname)) return NextResponse.next();
+    if (!(await isValidAdminSession(request.cookies.get(COOKIE_NAME)?.value))) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  return intlMiddleware(request);
+}
 
 export const config = {
   matcher: [
+    // Admin API gate (see above). Listed separately because the i18n
+    // matcher below deliberately excludes every `/api` path.
+    "/api/admin/:path*",
     // Match all pathnames except for internal Next.js paths and static files.
     //
     // Excluded paths:

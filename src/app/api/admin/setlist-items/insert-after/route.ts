@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { revalidateEventData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { eventId, afterPosition } = await request.json();
 
   if (!eventId) {

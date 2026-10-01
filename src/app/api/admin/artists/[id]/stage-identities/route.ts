@@ -16,10 +16,14 @@ import {
   parseStageIdentityTranslations,
 } from "../../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const artistId = BigInt(id);
   const parsed = await parseJsonBody(request);
@@ -124,6 +128,9 @@ export async function POST(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const artistId = BigInt(id);
   const parsed = await parseJsonBody(request);

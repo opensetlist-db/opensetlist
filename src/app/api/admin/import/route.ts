@@ -18,6 +18,7 @@ import {
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -1602,6 +1603,9 @@ async function importSetlistItems(rows: Record<string, string>[]) {
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   let body: unknown;
   try {
     body = await request.json();

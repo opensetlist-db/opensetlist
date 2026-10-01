@@ -14,10 +14,14 @@ import {
   requireString,
 } from "@/lib/admin-input";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
@@ -89,6 +93,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   await prisma.groupTranslation.deleteMany({ where: { groupId: id } });
   await prisma.artistGroup.deleteMany({ where: { groupId: id } });
