@@ -8,6 +8,7 @@ import {
   ADMIN_WRITABLE_LISTING_STATUSES,
   parseListingTranslations,
 } from "@/lib/adminParsers";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -140,6 +141,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 404 },
       );
     }
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {
@@ -180,6 +182,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
 
   try {
     await prisma.albumStoreListing.delete({ where: { id } });
+    revalidatePublicData();
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (

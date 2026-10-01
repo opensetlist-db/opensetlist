@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
@@ -65,5 +66,6 @@ export async function POST(request: NextRequest) {
     }),
   ]);
 
+  revalidateEventData(itemA.eventId);
   return NextResponse.json({ success: true });
 }

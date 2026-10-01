@@ -15,6 +15,7 @@ import {
   parseLocalizedTranslations,
   requireString,
 } from "@/lib/admin-input";
+import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function GET() {
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
       },
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(series), { status: 201 });
   } catch (e) {
     if (

@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Metadata } from "next";
@@ -81,7 +82,7 @@ const ALBUM_PAGE_MAX_WIDTH = 1280;
  *     `songId = NULL`); display helpers must null-check before
  *     reaching for `song.translations`.
  */
-const getAlbum = cache(async (id: bigint, locale: string) => {
+async function fetchAlbum(id: bigint, locale: string) {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const album = await prisma.album.findUnique({
     where: { id },
@@ -127,7 +128,11 @@ const getAlbum = cache(async (id: bigint, locale: string) => {
   // identically for string / number / bigint) so the runtime swap
   // from number-ids to string-ids is transparent to the consumer.
   return serializeBigIntAsString(album);
-});
+}
+
+const getAlbum = cache(
+  cachedQuery("album-detail", fetchAlbum, { revalidate: CACHE_TTL.entity }),
+);
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;

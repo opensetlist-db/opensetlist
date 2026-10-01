@@ -7,6 +7,7 @@ import {
   isSlugUniqueViolation,
   validateCanonicalSlug,
 } from "@/lib/slug";
+import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function GET(request: NextRequest) {
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
         },
         include: { translations: true },
       });
+      revalidatePublicData();
       return NextResponse.json(serializeBigInt(song), { status: 201 });
     } catch (e) {
       if (

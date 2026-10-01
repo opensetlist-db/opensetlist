@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
@@ -103,5 +104,6 @@ export async function POST(request: NextRequest) {
     });
   });
 
+  revalidateEventData(eid);
   return NextResponse.json(serializeBigInt(item));
 }

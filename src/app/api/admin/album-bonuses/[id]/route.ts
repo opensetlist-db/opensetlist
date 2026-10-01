@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseBonusTranslations } from "@/lib/adminParsers";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -115,6 +116,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 404 },
       );
     }
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
     // Race window: in-tx findUnique passed but a concurrent DELETE
@@ -148,6 +150,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteProps) {
 
   try {
     await prisma.albumStoreBonus.delete({ where: { id } });
+    revalidatePublicData();
     return NextResponse.json({ ok: true });
   } catch (e) {
     if (

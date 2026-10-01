@@ -7,6 +7,7 @@ import { validateCanonicalSlug } from "@/lib/slug";
 import { ALBUM_TYPE_SET } from "@/lib/albumConstants";
 import { parseBigInt } from "@/lib/adminParsers";
 import type { AlbumType } from "@/generated/prisma/enums";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -288,6 +289,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
         { status: 404 },
       );
     }
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(updated));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError) {

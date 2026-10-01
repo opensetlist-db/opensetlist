@@ -15,6 +15,7 @@ import {
   parseRealPerson,
   parseStageIdentityTranslations,
 } from "../../_validate";
+import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         artistId,
       },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(link), { status: 201 });
   }
 
@@ -121,6 +123,7 @@ export async function POST(request: NextRequest, { params }: Props) {
     },
   });
 
+  revalidatePublicData();
   return NextResponse.json(serializeBigInt(stageIdentity), { status: 201 });
 }
 
@@ -139,5 +142,6 @@ export async function DELETE(request: NextRequest, { params }: Props) {
     where: { stageIdentityId: stageIdentityId.value, artistId },
   });
 
+  revalidatePublicData();
   return NextResponse.json({ ok: true });
 }

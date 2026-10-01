@@ -12,6 +12,7 @@ import {
   reconcile,
   type ExistingListingRow,
 } from "@/lib/album-bonus-import";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ jobId: string }> };
 
@@ -347,5 +348,6 @@ export async function POST(_request: NextRequest, { params }: RouteProps) {
     );
   }
 
+  revalidatePublicData();
   return NextResponse.json({ applied: serializeBigInt(result) });
 }

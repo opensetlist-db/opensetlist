@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -65,7 +66,7 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // (e.g. /en/artists/3/dollchestra) the OG palette derivation in
 // generateMetadata ran additional parent-chain `findUnique` queries
 // on top, tripping Sentry's N+1 detector (issue 7501503230).
-const getArtist = cache(async (id: bigint) => {
+async function fetchArtist(id: bigint) {
   const artist = await prisma.artist.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -155,7 +156,11 @@ const getArtist = cache(async (id: bigint) => {
   });
   if (!artist) return null;
   return serializeBigInt(artist);
-});
+}
+
+const getArtist = cache(
+  cachedQuery("artist-detail", fetchArtist, { revalidate: CACHE_TTL.entity }),
+);
 
 /**
  * Events attributable to this artist via either of two paths:
@@ -175,7 +180,7 @@ const getArtist = cache(async (id: bigint) => {
  * post-serialize hydrate then groups events by their EventSeries
  * for the History tab. Soft-deleted events and series are excluded.
  */
-async function getArtistEvents(artistId: bigint) {
+async function fetchArtistEvents(artistId: bigint) {
   const events = await prisma.event.findMany({
     where: {
       isDeleted: false,
@@ -212,6 +217,10 @@ async function getArtistEvents(artistId: bigint) {
   // matches.
   return serializeBigInt(events) as unknown as ArtistEvent[];
 }
+
+const getArtistEvents = cachedQuery("artist-events", fetchArtistEvents, {
+  revalidate: CACHE_TTL.entity,
+});
 
 type ArtistEvent = {
   id: number;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
+import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function POST(request: NextRequest) {
@@ -88,5 +89,6 @@ export async function POST(request: NextRequest) {
       },
     },
   });
+  revalidateEventData(item.eventId);
   return NextResponse.json(serializeBigInt(item), { status: 201 });
 }

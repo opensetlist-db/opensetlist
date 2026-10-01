@@ -5,6 +5,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { getEventStatus } from "@/lib/eventStatus";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
+import { revalidateEventData } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -555,6 +556,10 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         );
       }
       const { _count, ...mergedRest } = merged;
+      // The event page's SSR read is cached for non-live events (a
+      // post-show fill-in lands here too); expire it so the next
+      // render includes this row. Live events bypass that cache.
+      revalidateEventData(eventId);
       return NextResponse.json(
         {
           ok: true,
@@ -638,6 +643,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       });
 
       const { _count, ...createdRest } = created;
+      revalidateEventData(eventId);
       return NextResponse.json(
         {
           ok: true,

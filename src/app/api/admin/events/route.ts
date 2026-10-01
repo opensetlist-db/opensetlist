@@ -25,6 +25,7 @@ import {
   validateEventTranslations,
   validatePerformerGuestIds,
 } from "./_validate";
+import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function GET() {
@@ -157,6 +158,7 @@ export async function POST(request: NextRequest) {
       return created;
     });
 
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(event), { status: 201 });
   } catch (err) {
     if (err instanceof StageIdentityNotFoundError) {

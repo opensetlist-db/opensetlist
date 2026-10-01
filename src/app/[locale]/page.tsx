@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt, nonBlank, formatDate } from "@/lib/utils";
+import { CACHE_TTL, cachedQuery, timeBucket } from "@/lib/dataCache";
 import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { eventHref } from "@/lib/eventHref";
 import { LiveHeroCard } from "@/components/home/LiveHeroCard";
@@ -183,6 +184,48 @@ async function getSongCountByEvent(
   return result;
 }
 
+// The home page's whole DB footprint, cached as one unit per 5-minute
+// bucket. Home is the most-hit route (uptime probe, every crawler's
+// entry point, every fan opening the site at show time), and every
+// list on it is "relative to now" — so the key is the bucket start,
+// not `now` itself (a raw timestamp would make every request a miss).
+// The bucket instant is also the reference time for the queries, so
+// sections stay mutually consistent: an event moves from upcoming to
+// ongoing at the first bucket boundary at/after its startTime, i.e.
+// up to `CACHE_TTL.home` late. The event page itself resolves status
+// with the real clock.
+//
+// Locale-independent (every include pulls all translations), so one
+// entry serves ko/ja/en. The song-count Map becomes a plain record
+// because the cache stores JSON.
+const getHomeData = cachedQuery(
+  "home-events",
+  async (bucketMs: number) => {
+    const now = new Date(bucketMs);
+    const [ongoingEvents, upcomingEvents, recentEvents] = await Promise.all([
+      getOngoingEvents(now),
+      getUpcomingEvents(now),
+      getRecentEvents(now),
+    ]);
+    // One batched aggregate across both buckets that need a song count.
+    // `serializeBigInt` already turned `e.id` into a string, so we
+    // convert back to bigint here for the FK predicate. See
+    // `getSongCountByEvent` above for why this lives outside the
+    // findMany `_count` include.
+    const songCountByEvent = await getSongCountByEvent([
+      ...ongoingEvents.map((e) => BigInt(e.id)),
+      ...recentEvents.map((e) => BigInt(e.id)),
+    ]);
+    return {
+      ongoingEvents,
+      upcomingEvents,
+      recentEvents,
+      songCountByEvent: Object.fromEntries(songCountByEvent),
+    };
+  },
+  { revalidate: CACHE_TTL.home },
+);
+
 type OngoingEvent = Awaited<ReturnType<typeof getOngoingEvents>>[number];
 type UpcomingEvent = Awaited<ReturnType<typeof getUpcomingEvents>>[number];
 type RecentEvent = Awaited<ReturnType<typeof getRecentEvents>>[number];
@@ -297,25 +340,17 @@ export default async function HomePage({
   const t = await getTranslations("Home");
   const evT = await getTranslations("Event");
 
-  // Single `now` shared across all three queries so an event near a
-  // bucket boundary can't get classified inconsistently between sections.
-  const now = new Date();
+  // Single `now` shared across all three queries and the view
+  // projection below so an event near a boundary can't get classified
+  // inconsistently between sections. It's the cache bucket's start, not
+  // the wall clock — the lists were computed against that instant (see
+  // `getHomeData`), so D-day labels and wish badges must use it too.
+  const bucketMs = timeBucket(new Date(), CACHE_TTL.home);
+  const now = new Date(bucketMs);
 
-  const [ongoingEvents, upcomingEvents, recentEvents] = await Promise.all([
-    getOngoingEvents(now),
-    getUpcomingEvents(now),
-    getRecentEvents(now),
-  ]);
-
-  // One batched aggregate across both buckets that need a song count.
-  // `serializeBigInt` already turned `e.id` into a string, so we
-  // convert back to bigint here for the FK predicate. See
-  // `getSongCountByEvent` above for why this lives outside the
-  // findMany `_count` include.
-  const songCountByEvent = await getSongCountByEvent([
-    ...ongoingEvents.map((e) => BigInt(e.id)),
-    ...recentEvents.map((e) => BigInt(e.id)),
-  ]);
+  const home = await getHomeData(bucketMs);
+  const { ongoingEvents, upcomingEvents, recentEvents } = home;
+  const songCountByEvent = new Map(Object.entries(home.songCountByEvent));
 
   // Prisma's runtime row has `startTime: Date`, but `serializeBigInt`
   // round-trips through JSON so values arrive here as strings. TS still
