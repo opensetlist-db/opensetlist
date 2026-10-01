@@ -47,7 +47,13 @@ describe("admin session token", () => {
 
   it("safeEqual compares exactly", () => {
     expect(safeEqual("abc", "abc")).toBe(true);
+    expect(safeEqual("", "")).toBe(true);
     expect(safeEqual("abc", "abd")).toBe(false);
     expect(safeEqual("abc", "abcd")).toBe(false);
+    expect(safeEqual("abcd", "abc")).toBe(false);
+    expect(safeEqual("", "a")).toBe(false);
+    // A prefix must not match even when the extra chars are code point 0
+    // (the out-of-range charCodeAt → 0 normalisation must not mask length).
+    expect(safeEqual("ab", "ab\u0000")).toBe(false);
   });
 });

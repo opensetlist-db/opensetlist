@@ -41,11 +41,21 @@ export async function adminSessionToken(): Promise<string | null> {
   return Array.from(new Uint8Array(sig), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Constant-time string comparison (avoids leaking the token via timing). */
+/**
+ * Comparison whose loop doesn't stop early on the first mismatch *or* on a
+ * length mismatch. It is also used for the login password, so an early
+ * `a.length !== b.length` return would leak the password's length through
+ * timing (review F3 on #531). Instead it always walks the longer input and
+ * folds the length difference into the result. (Total runtime still grows
+ * with input length; what it no longer does is branch on where or whether
+ * the inputs differ.)
+ */
 export function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  // charCodeAt past the end is NaN; `| 0` turns it into 0 so the loop body
+  // is identical for every index.
+  for (let i = 0; i < len; i++) diff |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0);
   return diff === 0;
 }
 
