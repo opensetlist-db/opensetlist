@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 // Two `Link` imports for two purposes:
@@ -13,6 +14,12 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
+import {
+  CACHE_TTL,
+  cachedQuery,
+  joinIdKey,
+  splitIdKey,
+} from "@/lib/dataCache";
 import {
   serializeBigInt,
   formatDate,
@@ -61,7 +68,7 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "schedule";
 }
 
-async function getEventSeries(id: bigint) {
+async function fetchEventSeries(id: bigint) {
   const series = await prisma.eventSeries.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -92,6 +99,15 @@ async function getEventSeries(id: bigint) {
   return series;
 }
 
+// The raw-BigInt return survives the data cache unchanged — the cache
+// codec revives bigint and Date values (see `encodeCacheValue`).
+// `react.cache` dedups the metadata + page calls within a request.
+const getEventSeries = cache(
+  cachedQuery("series-detail", fetchEventSeries, {
+    revalidate: CACHE_TTL.entity,
+  }),
+);
+
 /**
  * Aggregate song appearance counts across the series's completed
  * events. Two queries: groupBy gets the (songId, count) tuples, then a
@@ -99,7 +115,7 @@ async function getEventSeries(id: bigint) {
  * artist) for the rows the page actually renders. Phase 1A scale
  * (~60 events) — profile before optimizing.
  */
-async function getSongAppearances(completedEventIds: bigint[]) {
+async function fetchSongAppearances(completedEventIds: bigint[]) {
   if (completedEventIds.length === 0)
     return [] as Array<{
       songId: string;
@@ -193,7 +209,7 @@ type SongRowHydrated = {
  * `Artist.type === "unit"`. Maps to the mockup's "참여 유닛" list —
  * units actually surface once their first set appears.
  */
-async function getSeriesUnits(allEventIds: bigint[]) {
+async function fetchSeriesUnits(allEventIds: bigint[]) {
   if (allEventIds.length === 0) return [];
   const links = await prisma.setlistItemArtist.findMany({
     where: {
@@ -215,6 +231,46 @@ async function getSeriesUnits(allEventIds: bigint[]) {
   // raw-row return policy of `getEventSeries`.
   return units;
 }
+
+// Cached per event-id set (joined into the key — see `joinIdKey`).
+// The sets are derived from the cached series row + the request clock,
+// so the key changes exactly when an event completes or the series'
+// event list changes.
+const getSongAppearancesCached = cachedQuery(
+  "series-song-appearances",
+  (completedEventIdsKey: string) =>
+    fetchSongAppearances(splitIdKey(completedEventIdsKey)),
+  { revalidate: CACHE_TTL.entity },
+);
+
+const getSeriesUnitsCached = cachedQuery(
+  "series-units",
+  (allEventIdsKey: string) => fetchSeriesUnits(splitIdKey(allEventIdsKey)),
+  { revalidate: CACHE_TTL.entity },
+);
+
+// Schedule-tab label count: distinct visible songs across the
+// completed events. Same filter as `fetchSongAppearances`' groupBy.
+const getScheduleSongCountCached = cachedQuery(
+  "series-schedule-song-count",
+  (completedEventIdsKey: string) =>
+    prisma.setlistItemSong
+      .groupBy({
+        by: ["songId"],
+        // Only count songs that are still visible: a soft-deleted
+        // song (`song.isDeleted = true`) wouldn't render in the
+        // songs tab, so it shouldn't inflate the tab-label count.
+        where: {
+          setlistItem: {
+            eventId: { in: splitIdKey(completedEventIdsKey) },
+            isDeleted: false,
+          },
+          song: { isDeleted: false },
+        },
+      })
+      .then((rows) => rows.length),
+  { revalidate: CACHE_TTL.entity },
+);
 
 export async function generateMetadata({
   params,
@@ -351,7 +407,7 @@ export default async function EventSeriesPage({
   // `getSeriesUnits` instead of serially after the await.
   const [songAppearances, units, scheduleSongCount] = await Promise.all([
     activeTab === "songs"
-      ? getSongAppearances(completedEventIds)
+      ? getSongAppearancesCached(joinIdKey(completedEventIds))
       : Promise.resolve(
           [] as Array<{
             songId: string;
@@ -359,24 +415,10 @@ export default async function EventSeriesPage({
             song: SongRowHydrated | null;
           }>,
         ),
-    getSeriesUnits(allEventIds),
+    getSeriesUnitsCached(joinIdKey(allEventIds)),
     activeTab === "songs"
       ? Promise.resolve(0)
-      : prisma.setlistItemSong
-          .groupBy({
-            by: ["songId"],
-            // Only count songs that are still visible: a soft-deleted
-            // song (`song.isDeleted = true`) wouldn't render in the
-            // songs tab, so it shouldn't inflate the tab-label count.
-            where: {
-              setlistItem: {
-                eventId: { in: completedEventIds },
-                isDeleted: false,
-              },
-              song: { isDeleted: false },
-            },
-          })
-          .then((rows) => rows.length),
+      : getScheduleSongCountCached(joinIdKey(completedEventIds)),
   ]);
 
   // Drop rows whose song was soft-deleted between the groupBy and the

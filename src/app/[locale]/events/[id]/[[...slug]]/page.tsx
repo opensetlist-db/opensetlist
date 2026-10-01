@@ -9,7 +9,11 @@ import {
   displayOriginalTitle,
   resolveLocalizedField,
 } from "@/lib/display";
-import { getEventStatus } from "@/lib/eventStatus";
+import {
+  getEventStatus,
+  type ResolvedEventStatus,
+} from "@/lib/eventStatus";
+import { CACHE_TTL, cachedQuery, eventTag } from "@/lib/dataCache";
 import { isWishPredictOpen } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
@@ -41,10 +45,8 @@ type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
 };
 
-// Wrapped in `react.cache()` so the duplicate call across
-// `generateMetadata` and `EventPage` collapses to one DB fetch per
-// request. Cache is per-request, scoped by RSC's request memoization
-// — no cross-request leakage.
+// The wide event read. Called through `getEvent` below, which decides
+// per request whether it may come from the cross-request data cache.
 //
 // Translation locale filter: every nested `translations` block filters
 // to `[locale, "ja"]` rather than fetching all locales. Background:
@@ -59,7 +61,7 @@ type Props = {
 // `resolveLocalizedField`) still cascade through the parent's
 // `originalName` / `originalShortName` columns when neither row
 // matches, so a missing translation never renders blank.
-const getEvent = cache(async (id: bigint, locale: string) => {
+async function fetchEvent(id: bigint, locale: string) {
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
   const event = await prisma.event.findFirst({
     where: { id, isDeleted: false },
@@ -271,6 +273,55 @@ const getEvent = cache(async (id: bigint, locale: string) => {
   });
   if (!event) return null;
   return serializeBigInt(event);
+}
+
+// Narrow status read — the only thing `getEvent` needs to decide
+// cached vs. live. Two columns, so a cache miss here costs bytes, not
+// the 50–500 KB of the wide read.
+const getEventStatusRow = cachedQuery(
+  "event-status",
+  (id: bigint) =>
+    prisma.event.findFirst({
+      where: { id, isDeleted: false },
+      select: { status: true, startTime: true },
+    }),
+  { revalidate: CACHE_TTL.eventStatus, tags: (id) => [eventTag(id)] },
+);
+
+// `status` is part of the key, not just an input to the bypass
+// decision: `unstable_cache` serves a stale entry once (of any age)
+// while it refreshes in the background, so without it the first
+// visitor after a show ends would get the pre-show snapshot cached
+// under the same key. Keying on the resolved status makes the
+// upcoming → completed transition a fresh miss instead.
+const getEventCached = cachedQuery(
+  "event-detail",
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- key-only arg (see above)
+  (id: bigint, locale: string, _status: ResolvedEventStatus) =>
+    fetchEvent(id, locale),
+  { revalidate: CACHE_TTL.event, tags: (id) => [eventTag(id)] },
+);
+
+// Wrapped in `react.cache()` so the duplicate call across
+// `generateMetadata` and `EventPage` collapses to one fetch per
+// request; `cachedQuery` underneath dedups across requests.
+//
+// Live shows bypass the data cache: the page seeds reactions,
+// impressions and the setlist that the realtime/polling layer then
+// keeps current, and that SSR seed must not be up to a TTL behind
+// while an operator is entering songs. Everything else (upcoming and
+// completed events — i.e. almost every crawler hit) is served from the
+// cache. The status is resolved from the cheap cached row with the
+// request's clock, so the upcoming → ongoing flip at `startTime` takes
+// effect immediately even though the stored `status` is still
+// "scheduled".
+const getEvent = cache(async (id: bigint, locale: string) => {
+  const statusRow = await getEventStatusRow(id);
+  if (!statusRow) return null;
+  const status = getEventStatus(statusRow);
+  return status === "ongoing"
+    ? fetchEvent(id, locale)
+    : getEventCached(id, locale, status);
 });
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -575,6 +626,16 @@ async function getAvailableSongs(
   return out;
 }
 
+// The picker catalog depends only on (primary artist, locale), not on
+// the event, so every upcoming event of the same artist shares one
+// cache entry — it's the second-widest read on an upcoming event page.
+const getAvailableSongsCached = cachedQuery(
+  "predict-available-songs",
+  (primaryArtistId: bigint, locale: string) =>
+    getAvailableSongs(primaryArtistId, locale),
+  { revalidate: CACHE_TTL.entity },
+);
+
 async function getReactionCounts(eventId: bigint) {
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId", "reactionType"],
@@ -856,7 +917,7 @@ export default async function EventPage({ params }: Props) {
   let unitFilters: ReturnType<typeof deriveUnitFilters> = [];
   if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
     const [songs, predictPickerTrans] = await Promise.all([
-      getAvailableSongs(seriesPrimaryArtist.id, locale),
+      getAvailableSongsCached(BigInt(seriesPrimaryArtist.id), locale),
       getTranslations("Predict.picker"),
     ]);
     availableSongs = songs;

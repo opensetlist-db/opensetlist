@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { albumCardInclude } from "@/lib/albumHighlights";
 import { AlbumCard } from "@/components/AlbumCard";
@@ -40,6 +41,30 @@ const cardSectionStyle = {
   boxShadow: shadows.card,
 } as const;
 
+// The overview tab (the default) renders the preview, so this runs on
+// every artist page view — cached like the rest of the artist page.
+const getArtistAlbums = cachedQuery(
+  "artist-albums",
+  async (artistId: bigint, locale: string, take: number) => {
+    const albums = await prisma.album.findMany({
+      where: { artists: { some: { artistId } } },
+      // Newest first; NULL releaseDate sorts last so un-dated rows never
+      // masquerade as the latest album.
+      orderBy: [
+        { releaseDate: { sort: "desc", nulls: "last" } },
+        { id: "desc" },
+      ],
+      take,
+      include: albumCardInclude(locale),
+    });
+    // serializeBigInt narrows ids → Number; AlbumCard reads ids only via
+    // template literals + keys (coercion-tolerant) and still sees
+    // `listings` for the bonus count (no shape-erasing cast).
+    return serializeBigInt(albums);
+  },
+  { revalidate: CACHE_TTL.entity },
+);
+
 export async function ArtistAlbumsSection({
   artistId,
   artistSlug,
@@ -55,21 +80,10 @@ export async function ArtistAlbumsSection({
   // worth showing (more albums exist than the preview shows) without a
   // separate count query.
   const take = mode === "preview" ? PREVIEW_LIMIT + 1 : DISCOGRAPHY_LIMIT;
-  const albums = await prisma.album.findMany({
-    where: { artists: { some: { artistId } } },
-    // Newest first; NULL releaseDate sorts last so un-dated rows never
-    // masquerade as the latest album.
-    orderBy: [{ releaseDate: { sort: "desc", nulls: "last" } }, { id: "desc" }],
-    take,
-    include: albumCardInclude(locale),
-  });
+  const serialized = await getArtistAlbums(artistId, locale, take);
 
-  if (albums.length === 0) return null;
+  if (serialized.length === 0) return null;
 
-  // serializeBigInt narrows ids → Number; AlbumCard reads ids only via
-  // template literals + keys (coercion-tolerant) and still sees
-  // `listings` for the bonus count (no shape-erasing cast).
-  const serialized = serializeBigInt(albums);
   const t = await getTranslations({ locale, namespace: "Artist" });
 
   const hasMore = mode === "preview" && serialized.length > PREVIEW_LIMIT;

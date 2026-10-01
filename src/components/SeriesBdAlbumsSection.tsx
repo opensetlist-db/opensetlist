@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { AlbumType } from "@/generated/prisma/enums";
 import { countActiveBonuses } from "@/lib/albumBonusDisplay";
 import { albumCardInclude, collectBdAlbumIds } from "@/lib/albumHighlights";
@@ -29,6 +30,43 @@ import { colors, radius, shadows } from "@/styles/tokens";
  * Returns null when the series has no BD albums, so the caller mounts
  * it unconditionally.
  */
+// Three sequential reads on every series page view (the section mounts
+// unconditionally) — cached as one unit per (series, locale).
+const getSeriesBdAlbums = cachedQuery(
+  "series-bd-albums",
+  async (seriesId: bigint, locale: string) => {
+    // Direct child series (e.g. per-city legs under a tour). One level
+    // deep — see the header note.
+    const childSeries = await prisma.eventSeries.findMany({
+      where: { parentSeriesId: seriesId, isDeleted: false },
+      select: { id: true },
+    });
+    const seriesIds = [seriesId, ...childSeries.map((c) => c.id)];
+
+    const events = await prisma.event.findMany({
+      where: {
+        eventSeriesId: { in: seriesIds },
+        isDeleted: false,
+        bdAlbumId: { not: null },
+      },
+      select: { bdAlbumId: true },
+    });
+
+    const bdAlbumIds = collectBdAlbumIds(events);
+    if (bdAlbumIds.length === 0) return [];
+
+    const albums = await prisma.album.findMany({
+      where: { id: { in: bdAlbumIds }, type: AlbumType.live_album },
+      // Ascending (oldest → newest) so the catalog reads chronologically
+      // 1st live → latest, matching how a fan walks a tour history.
+      orderBy: [{ releaseDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      include: albumCardInclude(locale),
+    });
+    return serializeBigInt(albums);
+  },
+  { revalidate: CACHE_TTL.entity },
+);
+
 export async function SeriesBdAlbumsSection({
   seriesId,
   locale,
@@ -36,37 +74,9 @@ export async function SeriesBdAlbumsSection({
   seriesId: bigint;
   locale: string;
 }) {
-  // Direct child series (e.g. per-city legs under a tour). One level
-  // deep — see the header note.
-  const childSeries = await prisma.eventSeries.findMany({
-    where: { parentSeriesId: seriesId, isDeleted: false },
-    select: { id: true },
-  });
-  const seriesIds = [seriesId, ...childSeries.map((c) => c.id)];
+  const serialized = await getSeriesBdAlbums(seriesId, locale);
+  if (serialized.length === 0) return null;
 
-  const events = await prisma.event.findMany({
-    where: {
-      eventSeriesId: { in: seriesIds },
-      isDeleted: false,
-      bdAlbumId: { not: null },
-    },
-    select: { bdAlbumId: true },
-  });
-
-  const bdAlbumIds = collectBdAlbumIds(events);
-  if (bdAlbumIds.length === 0) return null;
-
-  const albums = await prisma.album.findMany({
-    where: { id: { in: bdAlbumIds }, type: AlbumType.live_album },
-    // Ascending (oldest → newest) so the catalog reads chronologically
-    // 1st live → latest, matching how a fan walks a tour history.
-    orderBy: [{ releaseDate: { sort: "asc", nulls: "last" } }, { id: "asc" }],
-    include: albumCardInclude(locale),
-  });
-
-  if (albums.length === 0) return null;
-
-  const serialized = serializeBigInt(albums);
   const t = await getTranslations({ locale, namespace: "EventSeries" });
 
   return (
