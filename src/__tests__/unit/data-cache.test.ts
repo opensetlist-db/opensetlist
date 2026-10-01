@@ -52,17 +52,17 @@ beforeEach(() => {
 describe("cache codec", () => {
   it("round-trips bigint and Date values exactly", () => {
     const value = {
-      id: 42n,
-      big: 9007199254740993n, // > 2^53 — would round as a number
+      id: BigInt("42"),
+      big: BigInt("9007199254740993"), // > 2^53 — would round as a number
       startTime: new Date("2026-11-07T09:00:00.000Z"),
-      nested: [{ id: 7n, at: new Date("2026-01-01T00:00:00.000Z") }],
+      nested: [{ id: BigInt("7"), at: new Date("2026-01-01T00:00:00.000Z") }],
       name: "蓮ノ空",
       nothing: null,
     };
     const decoded = decodeCacheValue<typeof value>(encodeCacheValue(value));
     expect(decoded).toEqual(value);
     expect(typeof decoded.id).toBe("bigint");
-    expect(decoded.big).toBe(9007199254740993n);
+    expect(decoded.big).toBe(BigInt("9007199254740993"));
     expect(decoded.startTime).toBeInstanceOf(Date);
     expect(decoded.nested[0].at).toBeInstanceOf(Date);
   });
@@ -81,7 +81,7 @@ describe("cache codec", () => {
   });
 
   it("handles top-level primitives and null", () => {
-    expect(decodeCacheValue(encodeCacheValue(5n))).toBe(5n);
+    expect(decodeCacheValue(encodeCacheValue(BigInt("5")))).toBe(BigInt("5"));
     expect(decodeCacheValue(encodeCacheValue(null))).toBeNull();
   });
 });
@@ -94,12 +94,12 @@ describe("cachedQuery", () => {
     }));
     const get = cachedQuery("test-rows", fn, { revalidate: 60 });
 
-    const miss = await get(1n);
-    const hit = await get(1n);
+    const miss = await get(BigInt("1"));
+    const hit = await get(BigInt("1"));
 
     expect(fn).toHaveBeenCalledTimes(1);
     expect(miss).toEqual(hit);
-    expect(hit.id).toBe(1n);
+    expect(hit.id).toBe(BigInt("1"));
     expect(hit.at).toBeInstanceOf(Date);
   });
 
@@ -107,10 +107,10 @@ describe("cachedQuery", () => {
     const fn = vi.fn(async (id: bigint, locale: string) => `${id}-${locale}`);
     const get = cachedQuery("test-keys", fn, { revalidate: 60 });
 
-    await get(1n, "ja");
-    await get(1n, "ko");
-    await get(2n, "ja");
-    await get(1n, "ja");
+    await get(BigInt("1"), "ja");
+    await get(BigInt("1"), "ko");
+    await get(BigInt("2"), "ja");
+    await get(BigInt("1"), "ja");
 
     expect(fn).toHaveBeenCalledTimes(3);
     expect(unstableCacheCalls[0].keyParts[0]).toBe("test-keys");
@@ -122,7 +122,7 @@ describe("cachedQuery", () => {
       revalidate: 30,
       tags: (id) => [eventTag(id)],
     });
-    await get(9n);
+    await get(BigInt("9"));
     expect(unstableCacheCalls[0].options).toEqual({
       revalidate: 30,
       tags: [PUBLIC_DATA_TAG, "event:9"],
@@ -143,10 +143,10 @@ describe("timeBucket", () => {
 
 describe("id-list keys", () => {
   it("round-trips id lists, including the empty list", () => {
-    expect(splitIdKey(joinIdKey([3n, 1n, 9007199254740993n]))).toEqual([
-      3n,
-      1n,
-      9007199254740993n,
+    expect(splitIdKey(joinIdKey([BigInt("3"), BigInt("1"), BigInt("9007199254740993")]))).toEqual([
+      BigInt("3"),
+      BigInt("1"),
+      BigInt("9007199254740993"),
     ]);
     expect(joinIdKey([])).toBe("");
     expect(splitIdKey("")).toEqual([]);
@@ -156,7 +156,7 @@ describe("id-list keys", () => {
 describe("revalidation helpers", () => {
   it("expires immediately rather than stale-while-revalidate", () => {
     revalidatePublicData();
-    revalidateEventData(12n);
+    revalidateEventData(BigInt("12"));
     expect(revalidateTagMock).toHaveBeenNthCalledWith(1, PUBLIC_DATA_TAG, {
       expire: 0,
     });
