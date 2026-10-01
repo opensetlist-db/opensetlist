@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const songId = BigInt(id);
   const body = await request.json();
@@ -56,6 +60,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   await prisma.song.update({
     where: { id: BigInt(id) },

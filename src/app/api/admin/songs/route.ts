@@ -7,8 +7,12 @@ import {
   isSlugUniqueViolation,
   validateCanonicalSlug,
 } from "@/lib/slug";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function GET(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
 
@@ -35,6 +39,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const body = await request.json();
   const {
     originalTitle,
