@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseBonusTranslations } from "@/lib/adminParsers";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type CreateBody = {
   listingId?: unknown;
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
       },
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(created), { status: 201 });
   } catch (e) {
     if (

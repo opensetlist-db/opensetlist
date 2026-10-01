@@ -1,9 +1,11 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import {
   serializeBigInt,
   formatDate,
@@ -55,7 +57,7 @@ function resolveTab(value: string | string[] | undefined): TabKey {
   return TABS.includes(v as TabKey) ? (v as TabKey) : "overview";
 }
 
-async function getMember(id: string) {
+async function fetchMember(id: string) {
   // StageIdentity has no `isDeleted` column (per schema.prisma:277-293) —
   // the model is a soft reference target; deletes happen at the parent
   // (Artist) level. So a plain findFirst by id is the right call.
@@ -197,6 +199,12 @@ async function getMember(id: string) {
   if (!member) return null;
   return serializeBigInt(member);
 }
+
+// `generateMetadata` and the page body both call this; `react.cache`
+// collapses them within a request, `cachedQuery` across requests.
+const getMember = cache(
+  cachedQuery("member-detail", fetchMember, { revalidate: CACHE_TTL.entity }),
+);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;

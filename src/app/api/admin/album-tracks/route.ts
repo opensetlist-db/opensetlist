@@ -12,6 +12,7 @@ import {
   parsePositiveInt,
   parsePattern3TrackTranslations,
 } from "@/lib/adminParsers";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type CreateBody = {
   albumId?: unknown;
@@ -156,6 +157,7 @@ export async function POST(request: NextRequest) {
       data,
       include: { translations: true },
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(created), { status: 201 });
   } catch (e) {
     if (

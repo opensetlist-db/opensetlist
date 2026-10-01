@@ -4,6 +4,12 @@ import { serializeBigIntAsString, type BigIntStringified } from "@/lib/utils";
 import { AlbumType, SetlistItemStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
+import {
+  CACHE_TTL,
+  cachedQuery,
+  joinIdKey,
+  splitIdKey,
+} from "@/lib/dataCache";
 
 /*
  * Type-aware "related events" fetch for the Album page's events tab
@@ -103,131 +109,164 @@ export type RelatedEvent = BigIntStringified<
  * locale argument here because the count is locale-invariant; the
  * full fetch needs it for the translations filter inside the include.
  */
-export const getAlbumRelatedEventsCount = cache(
-  async (
-    albumId: bigint,
-    albumType: AlbumType,
-    pattern1SongIds: bigint[],
-  ): Promise<number> => {
-    if (albumType === AlbumType.live_album) {
-      return prisma.event.count({
-        where: {
-          bdAlbumId: albumId,
-          isDeleted: false,
-          ...EVENT_SERIES_FILTER,
-        },
-      });
-    }
-
-    if (pattern1SongIds.length === 0) return 0;
-
+async function countAlbumRelatedEvents(
+  albumId: bigint,
+  albumType: AlbumType,
+  pattern1SongIds: bigint[],
+): Promise<number> {
+  if (albumType === AlbumType.live_album) {
     return prisma.event.count({
       where: {
+        bdAlbumId: albumId,
         isDeleted: false,
         ...EVENT_SERIES_FILTER,
-        setlistItems: {
-          some: {
-            isDeleted: false,
-            status: {
-              in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
-            },
-            songs: { some: { songId: { in: pattern1SongIds } } },
+      },
+    });
+  }
+
+  if (pattern1SongIds.length === 0) return 0;
+
+  return prisma.event.count({
+    where: {
+      isDeleted: false,
+      ...EVENT_SERIES_FILTER,
+      setlistItems: {
+        some: {
+          isDeleted: false,
+          status: {
+            in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
+          },
+          songs: { some: { songId: { in: pattern1SongIds } } },
+        },
+      },
+    },
+  });
+}
+
+async function fetchAlbumRelatedEvents(
+  albumId: bigint,
+  albumType: AlbumType,
+  locale: string,
+  pattern1SongIds: bigint[],
+): Promise<RelatedEvent[]> {
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
+  const include = {
+    translations: { where: localeFilter },
+    eventSeries: {
+      include: {
+        translations: { where: localeFilter },
+      },
+    },
+  };
+
+  // Both query paths filter out soft-deleted EventSeries via the
+  // outer where (Prisma doesn't support `where` on a to-one
+  // `include`, and Event.eventSeries is to-one). The OR clause
+  // keeps standalone events (eventSeriesId IS NULL) while
+  // excluding events whose series has been soft-deleted by the
+  // operator — without this, a deleted series would still surface
+  // its translated label in the bucket header. Lifted to a
+  // module-level `EVENT_SERIES_FILTER` const so the count helper
+  // above + this full-fetch helper stay in lockstep.
+
+  if (albumType === AlbumType.live_album) {
+    const rows = await prisma.event.findMany({
+      where: {
+        bdAlbumId: albumId,
+        isDeleted: false,
+        ...EVENT_SERIES_FILTER,
+      },
+      include,
+      // Event.startTime is NOT NULL in prisma/schema.prisma, so a
+      // single-column desc sort is safe — no NULLS-LAST drift
+      // to worry about. Event.date IS nullable and intentionally
+      // not part of the sort key.
+      orderBy: { startTime: "desc" },
+      take: MAX_RELATED_EVENTS,
+    });
+    // String-coerce ids over the JSON boundary — the consumer
+    // composes event hrefs and series-bucket keys off these values,
+    // and ids past 2^53 - 1 would silently round through the
+    // Number-targeted serializer.
+    return serializeBigIntAsString(rows);
+  }
+
+  // Non-live_album path needs the album's Pattern 1 vocal song ids
+  // to walk SetlistItemSong. Caller-provided to dedupe across the
+  // count + full-fetch helpers — both `getAlbumRelatedEventsCount`
+  // and this helper take the same argument so the page derives the
+  // ids once (from the already-loaded album.tracks) and forwards
+  // them, avoiding a duplicate `prisma.albumTrack.findMany` per
+  // events-tab render. Empty Pattern 1 set short-circuits to no
+  // related events without a DB hit (all-drama/bgm release, or an
+  // empty album row pre-import).
+  if (pattern1SongIds.length === 0) return [];
+
+  const rows = await prisma.event.findMany({
+    where: {
+      isDeleted: false,
+      ...EVENT_SERIES_FILTER,
+      setlistItems: {
+        some: {
+          isDeleted: false,
+          status: {
+            in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
+          },
+          songs: {
+            some: { songId: { in: pattern1SongIds } },
           },
         },
       },
-    });
-  },
+    },
+    include,
+    // `distinct` on the relation-walked findMany guards against a
+    // single Event surfacing once per match (would happen if an
+    // event's setlist plays multiple tracks from this album — common
+    // for any Hasunosora full-album set list). The `some` predicate
+    // above already short-circuits at "any match," so distinct is
+    // belt-and-suspenders without changing semantics.
+    distinct: ["id"],
+    // Event.startTime is NOT NULL per schema (see live_album branch
+    // above for the same rationale).
+    orderBy: { startTime: "desc" },
+    take: MAX_RELATED_EVENTS,
+  });
+  return serializeBigIntAsString(rows);
+}
+
+// Cross-request cache layer; the song-id list rides in the key as a
+// joined string (see `joinIdKey`).
+
+const countAlbumRelatedEventsCached = cachedQuery(
+  "album-related-events-count",
+  (albumId: bigint, albumType: AlbumType, songIdsKey: string) =>
+    countAlbumRelatedEvents(albumId, albumType, splitIdKey(songIdsKey)),
+  { revalidate: CACHE_TTL.entity },
+);
+
+const fetchAlbumRelatedEventsCached = cachedQuery(
+  "album-related-events",
+  (albumId: bigint, albumType: AlbumType, locale: string, songIdsKey: string) =>
+    fetchAlbumRelatedEvents(albumId, albumType, locale, splitIdKey(songIdsKey)),
+  { revalidate: CACHE_TTL.entity },
+);
+
+export const getAlbumRelatedEventsCount = cache(
+  (albumId: bigint, albumType: AlbumType, pattern1SongIds: bigint[]) =>
+    countAlbumRelatedEventsCached(albumId, albumType, joinIdKey(pattern1SongIds)),
 );
 
 export const getAlbumRelatedEvents = cache(
-  async (
+  (
     albumId: bigint,
     albumType: AlbumType,
     locale: string,
     pattern1SongIds: bigint[],
-  ): Promise<RelatedEvent[]> => {
-    const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
-    const include = {
-      translations: { where: localeFilter },
-      eventSeries: {
-        include: {
-          translations: { where: localeFilter },
-        },
-      },
-    };
-
-    // Both query paths filter out soft-deleted EventSeries via the
-    // outer where (Prisma doesn't support `where` on a to-one
-    // `include`, and Event.eventSeries is to-one). The OR clause
-    // keeps standalone events (eventSeriesId IS NULL) while
-    // excluding events whose series has been soft-deleted by the
-    // operator — without this, a deleted series would still surface
-    // its translated label in the bucket header. Lifted to a
-    // module-level `EVENT_SERIES_FILTER` const so the count helper
-    // above + this full-fetch helper stay in lockstep.
-
-    if (albumType === AlbumType.live_album) {
-      const rows = await prisma.event.findMany({
-        where: {
-          bdAlbumId: albumId,
-          isDeleted: false,
-          ...EVENT_SERIES_FILTER,
-        },
-        include,
-        // Event.startTime is NOT NULL in prisma/schema.prisma, so a
-        // single-column desc sort is safe — no NULLS-LAST drift
-        // to worry about. Event.date IS nullable and intentionally
-        // not part of the sort key.
-        orderBy: { startTime: "desc" },
-        take: MAX_RELATED_EVENTS,
-      });
-      // String-coerce ids over the JSON boundary — the consumer
-      // composes event hrefs and series-bucket keys off these values,
-      // and ids past 2^53 - 1 would silently round through the
-      // Number-targeted serializer.
-      return serializeBigIntAsString(rows);
-    }
-
-    // Non-live_album path needs the album's Pattern 1 vocal song ids
-    // to walk SetlistItemSong. Caller-provided to dedupe across the
-    // count + full-fetch helpers — both `getAlbumRelatedEventsCount`
-    // and this helper take the same argument so the page derives the
-    // ids once (from the already-loaded album.tracks) and forwards
-    // them, avoiding a duplicate `prisma.albumTrack.findMany` per
-    // events-tab render. Empty Pattern 1 set short-circuits to no
-    // related events without a DB hit (all-drama/bgm release, or an
-    // empty album row pre-import).
-    if (pattern1SongIds.length === 0) return [];
-
-    const rows = await prisma.event.findMany({
-      where: {
-        isDeleted: false,
-        ...EVENT_SERIES_FILTER,
-        setlistItems: {
-          some: {
-            isDeleted: false,
-            status: {
-              in: [SetlistItemStatus.confirmed, SetlistItemStatus.rumoured],
-            },
-            songs: {
-              some: { songId: { in: pattern1SongIds } },
-            },
-          },
-        },
-      },
-      include,
-      // `distinct` on the relation-walked findMany guards against a
-      // single Event surfacing once per match (would happen if an
-      // event's setlist plays multiple tracks from this album — common
-      // for any Hasunosora full-album set list). The `some` predicate
-      // above already short-circuits at "any match," so distinct is
-      // belt-and-suspenders without changing semantics.
-      distinct: ["id"],
-      // Event.startTime is NOT NULL per schema (see live_album branch
-      // above for the same rationale).
-      orderBy: { startTime: "desc" },
-      take: MAX_RELATED_EVENTS,
-    });
-    return serializeBigIntAsString(rows);
-  },
+  ) =>
+    fetchAlbumRelatedEventsCached(
+      albumId,
+      albumType,
+      locale,
+      joinIdKey(pattern1SongIds),
+    ),
 );

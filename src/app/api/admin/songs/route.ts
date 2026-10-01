@@ -7,6 +7,7 @@ import {
   isSlugUniqueViolation,
   validateCanonicalSlug,
 } from "@/lib/slug";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
         },
         include: { translations: true },
       });
+      revalidatePublicData();
       return NextResponse.json(serializeBigInt(song), { status: 201 });
     } catch (e) {
       if (

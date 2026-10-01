@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -109,7 +110,7 @@ function resolveTab(value: string | string[] | undefined): TabKey {
 // prior `getPerformanceCount` filter exactly (`SetlistItem.isDeleted
 // = false AND Event.isDeleted = false`) so the sidebar's "total
 // performances" number is identical pre/post-fold.
-const getSong = cache(async (id: bigint) => {
+async function fetchSong(id: bigint) {
   const song = await prisma.song.findFirst({
     where: { id, isDeleted: false },
     include: {
@@ -193,7 +194,11 @@ const getSong = cache(async (id: bigint) => {
   });
   if (!song) return null;
   return serializeBigInt(song);
-});
+}
+
+const getSong = cache(
+  cachedQuery("song-detail", fetchSong, { revalidate: CACHE_TTL.entity }),
+);
 
 // Wrapped in `react.cache()` for the same reason as `getSong` above:
 // `generateMetadata` now consumes the performance list to derive the
@@ -219,7 +224,7 @@ const getSong = cache(async (id: bigint) => {
 // threshold — the palette will shift slightly toward whichever units
 // have been performing the song recently. The operator accepted this
 // trade-off when scoping the fix.
-const getSongPerformances = cache(async (songId: bigint) => {
+async function fetchSongPerformances(songId: bigint) {
   // Limit to 50 for now — Phase 1A songs don't exceed that yet.
   // The total count is fetched separately so the sidebar number is
   // accurate even if the list is truncated.
@@ -256,7 +261,11 @@ const getSongPerformances = cache(async (songId: bigint) => {
     take: 50,
   });
   return serializeBigInt(performances);
-});
+}
+
+const getSongPerformances = cache(
+  cachedQuery("song-performances", fetchSongPerformances, { revalidate: CACHE_TTL.entity }),
+);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;

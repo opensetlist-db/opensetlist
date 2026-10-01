@@ -13,6 +13,7 @@ import {
   parseLocalizedTranslations,
   requireString,
 } from "@/lib/admin-input";
+import { revalidatePublicData } from "@/lib/dataCache";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -71,6 +72,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
         include: { translations: true },
       });
     });
+    revalidatePublicData();
     return NextResponse.json(serializeBigInt(group));
   } catch (e) {
     if (
@@ -91,5 +93,6 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
   await prisma.groupTranslation.deleteMany({ where: { groupId: id } });
   await prisma.artistGroup.deleteMany({ where: { groupId: id } });
   await prisma.group.delete({ where: { id } });
+  revalidatePublicData();
   return NextResponse.json({ success: true });
 }

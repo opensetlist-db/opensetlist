@@ -1,5 +1,7 @@
 import { MetadataRoute } from "next";
+import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CACHE_TTL, cachedQuery } from "@/lib/dataCache";
 import { buildSitemap, type SitemapEntity } from "@/lib/seo/sitemap";
 
 // Sitemap is computed on demand, not statically prerendered at build
@@ -12,16 +14,18 @@ import { buildSitemap, type SitemapEntity } from "@/lib/seo/sitemap";
 // schema-migration workflow is still queued). Result: build fails
 // with P2022 ColumnNotFound, Vercel keeps serving the previous tag.
 //
-// `force-dynamic` decouples the sitemap from build-time DB state — it
-// renders at request time, by which point the migration has long
-// since landed. The runtime cost is negligible (sitemap is requested
-// at low frequency by crawlers, not by users) and Next.js still
-// caches via the standard HTTP layer.
+// Rendering at request time decouples the sitemap from build-time DB
+// state — by then the migration has long since landed. This used to be
+// `export const dynamic = "force-dynamic"`, but that also sets
+// `fetchCache = "force-no-store"`, which makes `unstable_cache` bypass
+// the data cache — so every crawler fetch ran all seven queries.
+// `await connection()` gives the same "don't prerender at build" opt-out
+// without disabling the data cache, so the rows below are read from
+// Postgres at most once per `CACHE_TTL.sitemap`.
 //
 // This guard doesn't cover every page that touches the DB at build
 // time. If a future schema release breaks another statically-rendered
-// route the right fix is the same `force-dynamic` opt-out there.
-export const dynamic = "force-dynamic";
+// route the right fix is the same request-time opt-out there.
 
 // Egress: this runs on every /sitemap.xml fetch against the pooler, so
 // every query selects only the three columns the sitemap needs — the
@@ -37,9 +41,12 @@ const toEntity = (r: Row): SitemapEntity => ({
   lastModified: r.createdAt,
 });
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [events, setlistActivity, series, artists, songs, albums, members] =
-    await Promise.all([
+// The seven reads are cached as one unit: they're only ever used
+// together, and one key means one cache round-trip per sitemap fetch.
+const getSitemapRows = cachedQuery(
+  "sitemap-rows",
+  () =>
+    Promise.all([
       prisma.event.findMany({
         where: { isDeleted: false },
         select: ENTITY_SELECT,
@@ -65,7 +72,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // Album and StageIdentity have no soft-delete column.
       prisma.album.findMany({ select: ENTITY_SELECT }),
       prisma.stageIdentity.findMany({ select: ENTITY_SELECT }),
-    ]);
+    ]),
+  { revalidate: CACHE_TTL.sitemap },
+);
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  await connection();
+  const [events, setlistActivity, series, artists, songs, albums, members] =
+    await getSitemapRows();
 
   const lastSetlistAt = new Map(
     setlistActivity.map((g) => [String(g.eventId), g._max.createdAt]),

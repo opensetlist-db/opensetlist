@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { revalidateEventData } from "@/lib/dataCache";
 
 export async function POST(request: NextRequest) {
   const { eventId, afterPosition } = await request.json();
@@ -99,5 +100,6 @@ export async function POST(request: NextRequest) {
     });
   });
 
+  revalidateEventData(eid);
   return NextResponse.json(serializeBigInt(item));
 }
