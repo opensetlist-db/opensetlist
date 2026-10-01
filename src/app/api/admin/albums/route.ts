@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 /**
  * GET /api/admin/albums
@@ -24,16 +25,19 @@ import { serializeBigInt } from "@/lib/utils";
  * releases the operator is looking for. Same direction the public
  * album list page sorts.
  *
- * Auth: admin GET endpoints on this project don't run an explicit
- * `verifyAdminAPI` check (see e.g. `/api/admin/event-series`); the
- * `/api/admin/*` paths are server-rendered surfaces accessed only
- * from inside the admin panel, and the cookie/middleware policy
- * protects them at the route boundary. Mirror that convention here.
+ * Auth: every `/api/admin/*` handler calls `verifyAdminAPI()` first, and
+ * `src/proxy.ts` gates the whole prefix as well. (An earlier version of
+ * this comment claimed a cookie/middleware policy already protected the
+ * route boundary — it did not; the proxy excluded `/api` entirely and
+ * several admin routes, including the CSV importer, were open.)
  *
  * No POST exposed — Album rows come from CSV import, not admin form
  * creation. See the comment on `/api/admin/albums/[id]/route.ts`.
  */
 export async function GET() {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   // Wrap the query so a DB connection error returns a structured JSON
   // 500 rather than an unstructured framework error page. The EventForm
   // BD-picker reads this via `.then(r => r.json())`; a non-JSON body

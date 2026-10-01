@@ -25,10 +25,14 @@ import {
   validatePerformerGuestIds,
 } from "../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const event = await prisma.event.findFirst({
     where: { id: BigInt(id), isDeleted: false },
@@ -89,6 +93,9 @@ function validateOptionalIdArray(
 }
 
 export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const eventId = BigInt(id);
   const parsed = await parseJsonBody(request);
@@ -223,6 +230,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   await prisma.event.update({
     where: { id: BigInt(id) },

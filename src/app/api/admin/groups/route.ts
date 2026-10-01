@@ -14,8 +14,12 @@ import {
   requireString,
 } from "@/lib/admin-input";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 export async function GET() {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const groups = await prisma.group.findMany({
     include: { translations: true },
     orderBy: { createdAt: "desc" },
@@ -24,6 +28,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const parsed = await parseJsonBody(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.body;
