@@ -16,10 +16,14 @@ import {
 } from "@/lib/admin-input";
 import { parseArtistTranslations } from "../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const artist = await prisma.artist.findFirst({
     where: { id: BigInt(id), isDeleted: false },
@@ -52,6 +56,9 @@ export async function GET(_request: NextRequest, { params }: Props) {
 }
 
 export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const artistId = BigInt(id);
   const parsed = await parseJsonBody(request);
@@ -129,6 +136,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   await prisma.artist.update({
     where: { id: BigInt(id) },
