@@ -1655,6 +1655,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(serializeBigInt(result));
   } catch (err) {
     console.error("Import error:", err);
+    // Imports are row-by-row (only the per-event setlist replace is
+    // atomic), so a failure mid-file can leave earlier rows committed.
+    // Expire the public cache on the failure path too — an unnecessary
+    // expiry (e.g. a validation error before any write) only costs one
+    // re-read per page, while a missed one serves stale pages for a TTL.
+    revalidatePublicData();
     if (err instanceof ImportValidationError) {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }

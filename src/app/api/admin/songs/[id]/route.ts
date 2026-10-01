@@ -20,39 +20,45 @@ export async function PUT(request: NextRequest, { params }: Props) {
     artistCredits,
   } = body;
 
-  await prisma.songTranslation.deleteMany({ where: { songId } });
-  await prisma.songArtist.deleteMany({ where: { songId } });
-
-  const song = await prisma.song.update({
-    where: { id: songId },
-    data: {
-      originalTitle,
-      originalLanguage: originalLanguage || undefined,
-      variantLabel: variantLabel || null,
-      sourceNote: sourceNote || null,
-      releaseDate: releaseDate ? new Date(releaseDate) : null,
-      baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
-      translations: {
-        create: translations.map(
-          (t: { locale: string; title: string }) => ({
-            locale: t.locale,
-            title: t.title,
-          })
-        ),
+  // One transaction for the delete-and-recreate: if the update fails
+  // after the deletes ran, the song would be left with no translations
+  // or credits — and the cache would never be told, since the
+  // revalidate below only runs on success. Batch form is fine here (3
+  // statements, well inside the client-level timeout).
+  const [, , song] = await prisma.$transaction([
+    prisma.songTranslation.deleteMany({ where: { songId } }),
+    prisma.songArtist.deleteMany({ where: { songId } }),
+    prisma.song.update({
+      where: { id: songId },
+      data: {
+        originalTitle,
+        originalLanguage: originalLanguage || undefined,
+        variantLabel: variantLabel || null,
+        sourceNote: sourceNote || null,
+        releaseDate: releaseDate ? new Date(releaseDate) : null,
+        baseVersionId: baseVersionId ? BigInt(baseVersionId) : null,
+        translations: {
+          create: translations.map(
+            (t: { locale: string; title: string }) => ({
+              locale: t.locale,
+              title: t.title,
+            })
+          ),
+        },
+        artists: artistCredits?.length
+          ? {
+              create: artistCredits.map(
+                (ac: { artistId: number; role: string }) => ({
+                  artistId: BigInt(ac.artistId),
+                  role: ac.role,
+                })
+              ),
+            }
+          : undefined,
       },
-      artists: artistCredits?.length
-        ? {
-            create: artistCredits.map(
-              (ac: { artistId: number; role: string }) => ({
-                artistId: BigInt(ac.artistId),
-                role: ac.role,
-              })
-            ),
-          }
-        : undefined,
-    },
-    include: { translations: true },
-  });
+      include: { translations: true },
+    }),
+  ]);
   revalidatePublicData();
   return NextResponse.json(serializeBigInt(song));
 }

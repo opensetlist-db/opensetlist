@@ -43,66 +43,70 @@ export async function PUT(request: NextRequest, { params }: Props) {
     }
   }
 
-  // Clear existing links
-  await prisma.setlistItemSong.deleteMany({ where: { setlistItemId: itemId } });
-  await prisma.setlistItemMember.deleteMany({
-    where: { setlistItemId: itemId },
-  });
-  await prisma.setlistItemArtist.deleteMany({
-    where: { setlistItemId: itemId },
-  });
-
-  const item = await prisma.setlistItem.update({
-    where: { id: itemId },
-    data: {
-      position,
-      isEncore: isEncore ?? false,
-      stageType: stageType ?? "full_group",
-      unitName: unitName || null,
-      note: note || null,
-      status: status ?? "confirmed",
-      performanceType: performanceType ?? "live_performance",
-      type: type ?? "song",
-      songs: songIds?.length
-        ? {
-            create: songIds.map((songId: number, i: number) => ({
-              songId: BigInt(songId),
-              order: i,
-            })),
-          }
-        : undefined,
-      performers: performerIds?.length
-        ? {
-            create: performerIds.map((siId: string) => ({
-              stageIdentityId: siId,
-            })),
-          }
-        : undefined,
-      artists: artistIds?.length
-        ? {
-            create: artistIds.map((artistId: number) => ({
-              artistId: BigInt(artistId),
-            })),
-          }
-        : undefined,
-    },
-    include: {
-      songs: {
-        include: { song: { include: { translations: true } } },
-        orderBy: { order: "asc" },
+  // Clear existing links and rewrite the item in one transaction: a
+  // failed update after the deletes would otherwise leave the item with
+  // no songs/performers, and skip the event-cache expiry below (which
+  // only runs once the transaction has committed).
+  const [, , , item] = await prisma.$transaction([
+    prisma.setlistItemSong.deleteMany({ where: { setlistItemId: itemId } }),
+    prisma.setlistItemMember.deleteMany({
+      where: { setlistItemId: itemId },
+    }),
+    prisma.setlistItemArtist.deleteMany({
+      where: { setlistItemId: itemId },
+    }),
+    prisma.setlistItem.update({
+      where: { id: itemId },
+      data: {
+        position,
+        isEncore: isEncore ?? false,
+        stageType: stageType ?? "full_group",
+        unitName: unitName || null,
+        note: note || null,
+        status: status ?? "confirmed",
+        performanceType: performanceType ?? "live_performance",
+        type: type ?? "song",
+        songs: songIds?.length
+          ? {
+              create: songIds.map((songId: number, i: number) => ({
+                songId: BigInt(songId),
+                order: i,
+              })),
+            }
+          : undefined,
+        performers: performerIds?.length
+          ? {
+              create: performerIds.map((siId: string) => ({
+                stageIdentityId: siId,
+              })),
+            }
+          : undefined,
+        artists: artistIds?.length
+          ? {
+              create: artistIds.map((artistId: number) => ({
+                artistId: BigInt(artistId),
+              })),
+            }
+          : undefined,
       },
-      performers: {
-        include: {
-          stageIdentity: { include: { translations: true } },
+      include: {
+        songs: {
+          include: { song: { include: { translations: true } } },
+          orderBy: { order: "asc" },
+        },
+        performers: {
+          include: {
+            stageIdentity: { include: { translations: true } },
+          },
+        },
+        artists: {
+          include: {
+            artist: { include: { translations: true } },
+          },
         },
       },
-      artists: {
-        include: {
-          artist: { include: { translations: true } },
-        },
-      },
-    },
-  });
+    }),
+  ]);
   revalidateEventData(item.eventId);
   return NextResponse.json(serializeBigInt(item));
 }
