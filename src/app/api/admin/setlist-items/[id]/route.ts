@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const itemId = BigInt(id);
   const body = await request.json();
@@ -106,6 +110,9 @@ export async function PUT(request: NextRequest, { params }: Props) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   await prisma.setlistItem.update({
     where: { id: BigInt(id) },

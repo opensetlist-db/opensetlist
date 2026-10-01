@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deriveSlug } from "@/lib/slug";
+import { verifyAdminAPI } from "@/lib/admin-auth";
 
 // Preview endpoint for the admin Slug 생성기 page. Batches a list of
 // names through the same deriveSlug pipeline that every admin POST
@@ -10,6 +11,9 @@ import { deriveSlug } from "@/lib/slug";
 // transliteration produced nothing (e.g. all-symbol input). Korean
 // fallback string per CLAUDE.md admin-route exemption.
 export async function POST(request: NextRequest) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+
   const { names, prefix } = (await request.json()) as {
     names: string[];
     prefix?: string;
