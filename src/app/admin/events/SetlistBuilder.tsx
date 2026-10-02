@@ -38,11 +38,14 @@ type StageIdentityOption = {
 
 type ArtistOption = {
   id: number;
-  // `/api/admin/artists` returns every Artist scalar, so `type` is on
-  // search results. Optional because the chips rebuilt from an
-  // existing row in `startEdit` come from the event include, which
-  // doesn't guarantee it. Read by `selectArtist` to default
-  // stageType=full_group when a group-type Artist is picked.
+  // Every source of these chips returns all Artist scalars, so `type`
+  // is present at runtime: `/api/admin/artists` search results, and the
+  // `artists: { include: { artist } }` Prisma includes behind
+  // `startEdit` (edit page `initialItems`, `reloadItems`, the
+  // insert-after response). Read by `selectArtist` (group → full_group,
+  // drop unit/solo credits) and `handleStageTypeChange` (full_group →
+  // drop unit/solo credits). Typed optional only as a defensive
+  // default — an untyped chip is left alone rather than guessed at.
   type?: string;
   translations: { locale: string; name: string }[];
 };
@@ -83,10 +86,18 @@ type SetlistItemData = {
   artists: {
     artist: {
       id: number;
+      // Artist scalar carried by the Prisma include — see ArtistOption.
+      type?: string;
       translations: { locale: string; name: string }[];
     };
   }[];
 };
+
+// Unit/solo credits don't belong on a whole-group stage. Shared by the
+// two transitions into full_group (group picked / stage type flipped).
+function isUnitOrSoloCredit(a: ArtistOption): boolean {
+  return a.type === "unit" || a.type === "solo";
+}
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
@@ -377,15 +388,13 @@ export default function SetlistBuilder({
   // with the unit name (full_group rows get a badge whenever the credit
   // differs from the event artist) and narrow the roster to the unit's
   // members. Group credits are kept — that's the festival block case.
-  // Credits whose `type` is unknown (chips rebuilt by startEdit) are
-  // kept too; the operator removes them by hand if needed.
+  // This applies equally when editing an existing unit row: the chips
+  // startEdit rebuilds carry `type` (see ArtistOption).
   function handleStageTypeChange(newStageType: string) {
     setFormStageType(newStageType);
     let nextArtists = selectedArtists;
     if (newStageType === "full_group") {
-      nextArtists = selectedArtists.filter(
-        (a) => a.type !== "unit" && a.type !== "solo",
-      );
+      nextArtists = selectedArtists.filter((a) => !isUnitOrSoloCredit(a));
       if (nextArtists.length !== selectedArtists.length) {
         setSelectedArtists(nextArtists);
         setFormArtistIds(nextArtists.map((a) => a.id));
@@ -404,17 +413,26 @@ export default function SetlistBuilder({
       setArtistSearchResults([]);
       return;
     }
-    const nextArtistIds = [...formArtistIds, artist.id];
-    setFormArtistIds(nextArtistIds);
-    setSelectedArtists((prev) => [...prev, artist]);
-    setArtistSearch("");
-    setArtistSearchResults([]);
     // A group-type credit is almost always a whole-group stage (the
     // festival case: an "Aqours" block) — default the stage type so
-    // the operator doesn't have to flip it by hand. Unit/solo credits
-    // leave the current stage type alone.
-    const nextStageType =
-      artist.type === "group" ? "full_group" : formStageType;
+    // the operator doesn't have to flip it by hand, and drop any
+    // unit/solo credit already on the form (typically the sticky unit
+    // from the previous row) so the row isn't saved double-credited
+    // and the roster isn't the union of both credits' members.
+    // Unit/solo picks leave the stage type and other credits alone.
+    const isGroup = artist.type === "group";
+    const nextArtists = [
+      ...(isGroup
+        ? selectedArtists.filter((a) => !isUnitOrSoloCredit(a))
+        : selectedArtists),
+      artist,
+    ];
+    const nextArtistIds = nextArtists.map((a) => a.id);
+    setFormArtistIds(nextArtistIds);
+    setSelectedArtists(nextArtists);
+    setArtistSearch("");
+    setArtistSearchResults([]);
+    const nextStageType = isGroup ? "full_group" : formStageType;
     if (nextStageType !== formStageType) setFormStageType(nextStageType);
     // Always re-derive on artist add (type≠song → no-op; otherwise a
     // member-narrow — see deriveDefaultPerformerIds). Pass the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickRowArtistBadge } from "@/lib/setlistRowBadge";
+import { groupBadgeLabel, pickRowArtistBadge } from "@/lib/setlistRowBadge";
 import type { ArtistRef } from "@/lib/types/setlist";
 
 function artist(id: number, type: string, slug = `a-${id}`): ArtistRef {
@@ -45,5 +45,36 @@ describe("pickRowArtistBadge", () => {
     expect(pickRowArtistBadge(row(stageType, credit), eventArtistId)).toBe(
       expected,
     );
+  });
+});
+
+describe("groupBadgeLabel", () => {
+  const niji = {
+    originalName: "虹ヶ咲学園スクールアイドル同好会",
+    originalShortName: "虹ヶ咲",
+    translations: [
+      // ko row has only the long name — the case the generic
+      // `displayNameWithFallback(..., "short")` cascade gets wrong.
+      { locale: "ko", name: "니지가사키 학원 스쿨 아이돌 동호회", shortName: null },
+      { locale: "en", name: "Nijigasaki High School Idol Club", shortName: "Nijigasaki" },
+    ],
+  };
+
+  it("prefers the locale shortName", () => {
+    expect(groupBadgeLabel(niji, "en")).toBe("Nijigasaki");
+  });
+
+  it("locale has a long name but no shortName → originalShortName, not the long name", () => {
+    expect(groupBadgeLabel(niji, "ko")).toBe("虹ヶ咲");
+  });
+
+  it("no translation for the locale → originalShortName", () => {
+    expect(groupBadgeLabel(niji, "zh-CN")).toBe("虹ヶ咲");
+  });
+
+  it("no short form anywhere → locale name, then originalName", () => {
+    const noShort = { ...niji, originalShortName: null };
+    expect(groupBadgeLabel(noShort, "ko")).toBe("니지가사키 학원 스쿨 아이돌 동호회");
+    expect(groupBadgeLabel(noShort, "ja")).toBe("虹ヶ咲学園スクールアイドル同好会");
   });
 });

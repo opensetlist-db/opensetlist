@@ -307,6 +307,29 @@ describe("SetlistRow", () => {
       expect(screen.queryByText("虹ヶ咲学園スクールアイドル同好会")).toBeNull();
     });
 
+    it("locale with a long name but no shortName still gets the short badge", () => {
+      const nijiLongKo = {
+        artist: {
+          ...niji.artist,
+          translations: [
+            { locale: "ko", name: "니지가사키 학원 스쿨 아이돌 동호회", shortName: null },
+          ],
+        },
+      };
+      render(
+        <SetlistRow
+          item={makeItem({ stageType: "full_group", artists: [nijiLongKo] })}
+          index={0}
+          reactionCounts={{}}
+          locale="ko"
+          eventId="42"
+          eventArtistId={null}
+        />,
+      );
+      expect(screen.getByText("虹ヶ咲")).toBeInTheDocument();
+      expect(screen.queryByText("니지가사키 학원 스쿨 아이돌 동호회")).toBeNull();
+    });
+
     it("single-artist event: full_group row credited to the event artist stays badge-free", () => {
       render(
         <SetlistRow

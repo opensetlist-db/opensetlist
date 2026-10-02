@@ -19,7 +19,7 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
-import { pickRowArtistBadge } from "@/lib/setlistRowBadge";
+import { groupBadgeLabel, pickRowArtistBadge } from "@/lib/setlistRowBadge";
 import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
@@ -220,15 +220,19 @@ export function SetlistRow({
   // row. Group-type credits (the festival case: 「Aqours」「虹ヶ咲」
   // 「蓮ノ空」) use the SHORT form instead — group full names
   // ("虹ヶ咲学園スクールアイドル同好会") would eat the whole badge
-  // and the short form is how fans name them anyway.
-  const unitArtistName = unitArtist
-    ? displayNameWithFallback(
-        unitArtist,
-        unitArtist.translations,
-        locale,
-        unitArtist.type === "group" ? "short" : "full",
-      )
-    : "";
+  // and the short form is how fans name them anyway. `groupBadgeLabel`
+  // prefers `originalShortName` over a long localized name (see its
+  // doc for why the generic short cascade isn't enough).
+  const unitArtistName = !unitArtist
+    ? ""
+    : unitArtist.type === "group"
+      ? groupBadgeLabel(unitArtist, locale)
+      : displayNameWithFallback(
+          unitArtist,
+          unitArtist.translations,
+          locale,
+          "full",
+        );
 
   const isNonSong = NON_SONG_TYPES.has(item.type);
   // "Unknown song" row: a song-typed item with no `SetlistItemSong`

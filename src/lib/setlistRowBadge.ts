@@ -35,6 +35,35 @@ import type { ArtistRef, LiveSetlistItem } from "@/lib/types/setlist";
  *     guessing, so a caller that forgets to thread the prop degrades to
  *     "fewer badges", never to "every Hasunosora row says 蓮ノ空".
  */
+/**
+ * Label for a group-type row badge. Groups need a guaranteed SHORT
+ * form (「蓮ノ空」, 「虹ヶ咲」) — the badge sits in a narrow column and
+ * a full group name ("虹ヶ咲学園スクールアイドル同好会") clips.
+ * `displayNameWithFallback(..., "short")` falls back from the locale's
+ * missing `shortName` to the locale's long `name` before it ever
+ * reaches `originalShortName`, so a group with only a long ko
+ * translation would render long. Here the original short name wins
+ * over any long name: a short original-script label is still the
+ * name fans use for the group, while a long localized one defeats the
+ * badge's purpose.
+ *
+ * Cascade: locale shortName → originalShortName → locale name →
+ * originalName → "".
+ */
+export function groupBadgeLabel(
+  artist: Pick<ArtistRef, "originalName" | "originalShortName" | "translations">,
+  locale: string,
+): string {
+  const t = artist.translations.find((tr) => tr.locale === locale);
+  return (
+    t?.shortName ||
+    artist.originalShortName ||
+    t?.name ||
+    artist.originalName ||
+    ""
+  );
+}
+
 export function pickRowArtistBadge(
   item: Pick<LiveSetlistItem, "stageType" | "artists">,
   eventArtistId: string | null | undefined,

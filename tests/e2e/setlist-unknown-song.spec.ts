@@ -78,10 +78,20 @@ test.describe("unknown-song setlist row (n05)", () => {
     const last = eventData.setlistItems.at(-1);
     const position = (last?.position ?? 0) + 1;
 
-    const unknownCountBefore = await (async () => {
-      await page.goto(`/ko/events/${eventId}`);
-      return page.getByText(UNKNOWN_LABEL, { exact: true }).count();
-    })();
+    // Links to the fill-in song, matched exactly — `/ko/songs/12` must
+    // not also match `/ko/songs/123`. The song may already appear on
+    // the event, so the assertions below compare COUNTS before vs after
+    // instead of "some link exists": only the row this spec created can
+    // account for the +1.
+    const fillSongLinks = page.locator(
+      `a[href="/ko/songs/${fillSongId}"], a[href^="/ko/songs/${fillSongId}/"]`,
+    );
+
+    await page.goto(`/ko/events/${eventId}`);
+    const unknownCountBefore = await page
+      .getByText(UNKNOWN_LABEL, { exact: true })
+      .count();
+    const fillSongLinkCountBefore = await fillSongLinks.count();
 
     const created = await request.post("/api/admin/setlist-items", {
       data: {
@@ -141,11 +151,14 @@ test.describe("unknown-song setlist row (n05)", () => {
       await expect(page.getByText(UNKNOWN_LABEL, { exact: true })).toHaveCount(
         unknownCountBefore,
       );
-      await expect(
-        page.locator(`a[href^="/ko/songs/${fillSongId}"]`).first(),
-      ).toBeVisible();
+      await expect(fillSongLinks).toHaveCount(fillSongLinkCountBefore + 1);
     } finally {
-      await request.delete(`/api/admin/setlist-items/${itemId}`);
+      // Assert the cleanup too — a rejected delete would otherwise leave
+      // the throwaway row on the dev DB behind a green run.
+      const deleted = await request.delete(
+        `/api/admin/setlist-items/${itemId}`,
+      );
+      expect(deleted.ok(), "soft-delete the throwaway row").toBeTruthy();
     }
   });
 });
