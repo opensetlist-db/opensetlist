@@ -35,6 +35,18 @@ import type { ArtistRef, LiveSetlistItem } from "@/lib/types/setlist";
  *     guessing, so a caller that forgets to thread the prop degrades to
  *     "fewer badges", never to "every Hasunosora row says 蓮ノ空".
  */
+export function pickRowArtistBadge(
+  item: Pick<LiveSetlistItem, "stageType" | "artists">,
+  eventArtistId: string | null | undefined,
+): ArtistRef | null {
+  const firstArtist = item.artists?.[0]?.artist ?? null;
+  if (!firstArtist) return null;
+  if (firstArtist.type === "solo" && item.stageType !== "solo") return null;
+  if (item.stageType !== "full_group") return firstArtist;
+  if (eventArtistId === undefined) return null;
+  return String(firstArtist.id) !== eventArtistId ? firstArtist : null;
+}
+
 /**
  * Label for a group-type row badge. Groups need a guaranteed SHORT
  * form (「蓮ノ空」, 「虹ヶ咲」) — the badge sits in a narrow column and
@@ -62,16 +74,4 @@ export function groupBadgeLabel(
     artist.originalName ||
     ""
   );
-}
-
-export function pickRowArtistBadge(
-  item: Pick<LiveSetlistItem, "stageType" | "artists">,
-  eventArtistId: string | null | undefined,
-): ArtistRef | null {
-  const firstArtist = item.artists?.[0]?.artist ?? null;
-  if (!firstArtist) return null;
-  if (firstArtist.type === "solo" && item.stageType !== "solo") return null;
-  if (item.stageType !== "full_group") return firstArtist;
-  if (eventArtistId === undefined) return null;
-  return String(firstArtist.id) !== eventArtistId ? firstArtist : null;
 }
