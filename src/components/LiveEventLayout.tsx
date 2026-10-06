@@ -393,6 +393,14 @@ export function LiveEventLayout({
           dateLine=""
           availableSongs={availableSongs}
           unitFilters={unitFilters}
+          // `artist` is the series primary artist the page already
+          // resolved for `<EventHeader>` (soft-deleted → null). On a
+          // multi-group event it's the `lovelive-series` umbrella, so
+          // no row credit matches it and every row gets its group
+          // badge; on a single-artist event full_group rows match and
+          // stay badge-free. Static per event — not part of the
+          // polling payload.
+          eventArtistId={artist?.id ?? null}
         />
 
         {/* BD section slot — rendered server-side in `page.tsx` and

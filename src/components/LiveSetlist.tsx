@@ -28,6 +28,12 @@ export type {
 
 interface Props {
   eventId: string;
+  /**
+   * Event primary artist id (stringified BigInt) or null. Forwarded to
+   * `<SetlistRow>` for the multi-group-event badge rule — see
+   * `pickRowArtistBadge`.
+   */
+  eventArtistId?: string | null;
   // Polled state — owned by the parent `LiveEventLayout` so a single
   // `useSetlistPolling` call drives both columns. Before the lift,
   // this component owned its own polling subscription via
@@ -118,6 +124,7 @@ export function LiveSetlist({
   dateLine,
   availableSongs,
   unitFilters,
+  eventArtistId,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -314,6 +321,7 @@ export function LiveSetlist({
         }
         availableSongs={availableSongs}
         unitFilters={unitFilters}
+        eventArtistId={eventArtistId}
       />
     </section>
     </>
