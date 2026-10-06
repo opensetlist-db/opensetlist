@@ -5,7 +5,11 @@ import { BASE_URL } from "@/lib/config";
 // low-value commercial crawlers. Every page they fetch is a server
 // render (and, before the data cache, a full pooler read), so they cost
 // egress without sending anyone back. Amazonbot alone was ~1,100 SSR
-// renders/day in the September 2026 firewall logs.
+// renders/day in the September 2026 firewall logs; after it was listed
+// here, Amazon's search crawler reappeared as `Amzn-SearchBot/0.1`
+// (1,700/day on 2026-10-06) — a different token, so list both.
+// SemrushBot (SEO-tool crawler, ~150/day) is in the same no-referral
+// class.
 //
 // Deliberately NOT listed: Googlebot, Bingbot, Applebot (Siri/Spotlight
 // search — distinct from Applebot-Extended, which is training-only),
@@ -25,6 +29,8 @@ const NO_USER_CRAWLERS = [
   "Bytespider",
   "PetalBot",
   "Amazonbot",
+  "Amzn-SearchBot",
+  "SemrushBot",
   "meta-externalagent",
   "Applebot-Extended",
   "Google-Extended",
