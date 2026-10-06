@@ -288,7 +288,6 @@
     },
     "setlist": "セットリスト",
     "noSetlist": "セットリストが登録されていません。",
-    "noSongAssigned": "楽曲未指定",
     "unknownEvent": "不明なイベント",
     "live": "LIVE",
     "unknownPerformer": "不明",
@@ -393,7 +392,8 @@
     "tabActual": "実際のセットリスト",
     "tabPredicted": "予想セットリスト",
     "tablistAriaLabel": "セットリスト表示",
-    "predictedComingSoon": "予想セットリスト — 近日公開"
+    "predictedComingSoon": "予想セットリスト — 近日公開",
+    "unknownSong": "曲名確認中"
   },
   "Predict": {
     "add": "+ 曲を追加",

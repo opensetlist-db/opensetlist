@@ -16,6 +16,12 @@ import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
 interface Props {
   eventId: string;
+  /**
+   * Event primary artist id (stringified BigInt) or null. Forwarded to
+   * `<SetlistRow>` for the multi-group-event badge rule — see
+   * `pickRowArtistBadge`.
+   */
+  eventArtistId?: string | null;
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
   locale: string;
@@ -111,6 +117,7 @@ export function SetlistSection({
   emptyFallback,
   availableSongs,
   unitFilters,
+  eventArtistId,
 }: Props) {
   const t = useTranslations("Setlist");
   const mounted = useMounted();
@@ -253,6 +260,7 @@ export function SetlistSection({
         locale={locale}
         eventId={eventId}
         status={status}
+        eventArtistId={eventArtistId}
       />
     ) : (
       // `key={eventId}` forces a remount on event navigation so

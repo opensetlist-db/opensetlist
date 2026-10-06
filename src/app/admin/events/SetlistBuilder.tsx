@@ -38,7 +38,26 @@ type StageIdentityOption = {
 
 type ArtistOption = {
   id: number;
+  // Every source of these chips returns all Artist scalars, so `type`
+  // is present at runtime: `/api/admin/artists` search results, and the
+  // `artists: { include: { artist } }` Prisma includes behind
+  // `startEdit` (edit page `initialItems`, `reloadItems`, the
+  // insert-after response). Read by `selectArtist` (group → full_group,
+  // drop unit/solo credits) and `handleStageTypeChange` (full_group →
+  // drop unit/solo credits). Typed optional only as a defensive
+  // default — an untyped chip is left alone rather than guessed at.
+  type?: string;
   translations: { locale: string; name: string }[];
+};
+
+// Last-used row credit, carried into the next "새 항목" form so a
+// run of rows for the same group (a festival block is typically 4-6
+// songs by one group) doesn't need the artist re-picked every time.
+// Only song-type saves of NEW rows update it — editing an old row or
+// saving an MC/interval must not clobber the running block's credit.
+type StickyRowCredit = {
+  stageType: string;
+  artists: ArtistOption[];
 };
 
 type SetlistItemData = {
@@ -67,10 +86,18 @@ type SetlistItemData = {
   artists: {
     artist: {
       id: number;
+      // Artist scalar carried by the Prisma include — see ArtistOption.
+      type?: string;
       translations: { locale: string; name: string }[];
     };
   }[];
 };
+
+// Unit/solo credits don't belong on a whole-group stage. Shared by the
+// two transitions into full_group (group picked / stage type flipped).
+function isUnitOrSoloCredit(a: ArtistOption): boolean {
+  return a.type === "unit" || a.type === "solo";
+}
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
@@ -89,10 +116,22 @@ const ITEM_TYPES = ["song", "mc", "video", "interval"];
  * Rules:
  *   1. type ∈ {mc, video, interval}            → []  (no performer)
  *   2. type=song + stageType=full_group        → every non-guest
- *                                                 event performer
+ *                                                 event performer —
+ *                                                 or, when Artist(s)
+ *                                                 are credited, only
+ *                                                 their linked members
  *   3. type=song + stageType ∈ {unit, solo,    → members of the
  *                                special}        picked Artist(s)
  *                                                 ∩ event performers
+ *
+ * Rule (2)'s narrowing is for multi-group events (LL Fes): the
+ * roster holds every cast member of six groups, so "all performers"
+ * would pre-check ~60 chips on an Aqours row. With a group credited,
+ * members linked to that group are the right default. If the credit
+ * matches NOBODY (e.g. a Hasunosora row credited to 蓮ノ空 where the
+ * member StageIdentities only link to their sub-units), fall back to
+ * the full roster — the pre-festival behavior — rather than an empty
+ * lineup.
  *
  * `selectedUnitArtistIds.length === 0` under rule (3) returns [] —
  * the operator hasn't picked a unit yet, so we can't infer members.
@@ -108,21 +147,21 @@ const ITEM_TYPES = ["song", "mc", "video", "interval"];
  * helpers in this file for unit-testability and so the rule lives next
  * to its only caller's data shapes.
  */
-function deriveDefaultPerformerIds(
+export function deriveDefaultPerformerIds(
   type: string,
   stageType: string,
   selectedUnitArtistIds: readonly number[],
-  eventPerformers: readonly StageIdentityOption[],
+  eventPerformers: readonly Pick<StageIdentityOption, "id" | "artistLinks">[],
 ): string[] {
   if (type !== "song") return [];
-  if (stageType === "full_group") {
-    return eventPerformers.map((p) => p.id);
-  }
-  if (selectedUnitArtistIds.length === 0) return [];
   const unitSet = new Set(selectedUnitArtistIds);
-  return eventPerformers
+  const linked = eventPerformers
     .filter((p) => p.artistLinks.some((l) => unitSet.has(l.artist.id)))
     .map((p) => p.id);
+  if (stageType === "full_group") {
+    return linked.length > 0 ? linked : eventPerformers.map((p) => p.id);
+  }
+  return linked;
 }
 
 function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
@@ -210,6 +249,16 @@ export default function SetlistBuilder({
   const [artistSearchLoading, setArtistSearchLoading] = useState(false);
   const [artistDropdownOpen, setArtistDropdownOpen] = useState(false);
   const [selectedArtists, setSelectedArtists] = useState<ArtistOption[]>([]);
+  const [stickyCredit, setStickyCredit] = useState<StickyRowCredit | null>(null);
+  // Id of a row just created by "+ 여기에 삽입" and opened for editing.
+  // That row is a NEW row as far as the operator is concerned (the
+  // insert-after endpoint only pre-creates a blank song/full_group
+  // placeholder so the positions shift server-side), so it gets the same
+  // sticky-credit treatment as the "새 항목" form: pre-filled on open,
+  // 📌 고정 해제 visible, and its save updates the sticky credit. Editing
+  // any already-existing row keeps editingId !== freshInsertId and leaves
+  // the sticky credit alone.
+  const [freshInsertId, setFreshInsertId] = useState<number | null>(null);
   const artistSearchRef = useRef<HTMLDivElement>(null);
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -340,9 +389,31 @@ export default function SetlistBuilder({
   // unit/solo/special branch falls through to artistIds — empty
   // artistIds in those branches yields [] so the operator's next
   // selectArtist call seeds the roster.
+  //
+  // Switching TO full_group drops unit/solo credits. With the sticky
+  // credit, the form after a unit row opens pre-filled with that unit
+  // (e.g. Cerise Bouquet); if the operator flips the stage to
+  // full_group, a leftover unit credit would now badge the public row
+  // with the unit name (full_group rows get a badge whenever the credit
+  // differs from the event artist) and narrow the roster to the unit's
+  // members. Group credits are kept — that's the festival block case.
+  // This applies equally when editing an existing unit row: the chips
+  // startEdit rebuilds carry `type` (see ArtistOption).
   function handleStageTypeChange(newStageType: string) {
     setFormStageType(newStageType);
-    applyDerivedPerformers(formType, newStageType, formArtistIds);
+    let nextArtists = selectedArtists;
+    if (newStageType === "full_group") {
+      nextArtists = selectedArtists.filter((a) => !isUnitOrSoloCredit(a));
+      if (nextArtists.length !== selectedArtists.length) {
+        setSelectedArtists(nextArtists);
+        setFormArtistIds(nextArtists.map((a) => a.id));
+      }
+    }
+    applyDerivedPerformers(
+      formType,
+      newStageType,
+      nextArtists.map((a) => a.id),
+    );
   }
 
   function selectArtist(artist: ArtistOption) {
@@ -351,17 +422,32 @@ export default function SetlistBuilder({
       setArtistSearchResults([]);
       return;
     }
-    const nextArtistIds = [...formArtistIds, artist.id];
+    // A group-type credit is almost always a whole-group stage (the
+    // festival case: an "Aqours" block) — default the stage type so
+    // the operator doesn't have to flip it by hand, and drop any
+    // unit/solo credit already on the form (typically the sticky unit
+    // from the previous row) so the row isn't saved double-credited
+    // and the roster isn't the union of both credits' members.
+    // Unit/solo picks leave the stage type and other credits alone.
+    const isGroup = artist.type === "group";
+    const nextArtists = [
+      ...(isGroup
+        ? selectedArtists.filter((a) => !isUnitOrSoloCredit(a))
+        : selectedArtists),
+      artist,
+    ];
+    const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
-    setSelectedArtists((prev) => [...prev, artist]);
+    setSelectedArtists(nextArtists);
     setArtistSearch("");
     setArtistSearchResults([]);
-    // Always re-derive on artist add; the helper internally ignores
-    // artistIds when stageType=full_group or type≠song, so this is a
-    // no-op for those branches and a member-narrow for unit/solo/
-    // special. Pass the post-change list explicitly (see comment on
-    // handleTypeChange for the batched-state rationale).
-    applyDerivedPerformers(formType, formStageType, nextArtistIds);
+    const nextStageType = isGroup ? "full_group" : formStageType;
+    if (nextStageType !== formStageType) setFormStageType(nextStageType);
+    // Always re-derive on artist add (type≠song → no-op; otherwise a
+    // member-narrow — see deriveDefaultPerformerIds). Pass the
+    // post-change values explicitly (see comment on handleTypeChange
+    // for the batched-state rationale).
+    applyDerivedPerformers(formType, nextStageType, nextArtistIds);
   }
 
   function removeArtist(artistId: number) {
@@ -371,11 +457,18 @@ export default function SetlistBuilder({
     applyDerivedPerformers(formType, formStageType, nextArtistIds);
   }
 
-  function resetForm() {
+  // `sticky` defaults to the current state; handleSave passes the
+  // freshly computed credit explicitly because the setStickyCredit it
+  // just queued hasn't landed yet.
+  function resetForm(sticky: StickyRowCredit | null = stickyCredit) {
+    const seedStageType = sticky?.stageType ?? "full_group";
+    const seedArtists = sticky?.artists ?? [];
+    const seedArtistIds = seedArtists.map((a) => a.id);
     setEditingId(null);
+    setFreshInsertId(null);
     setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
-    setFormStageType("full_group");
+    setFormStageType(seedStageType);
     setFormUnitName("");
     setFormNote("");
     setFormStatus("confirmed");
@@ -384,18 +477,30 @@ export default function SetlistBuilder({
     setFormSongIds([]);
     setSelectedSongs([]);
     setPerformerSearch("");
-    setFormArtistIds([]);
+    setFormArtistIds(seedArtistIds);
     setArtistSearch("");
     setArtistSearchResults([]);
-    setSelectedArtists([]);
+    setSelectedArtists(seedArtists);
     // Seed performers via the same derivation the trigger handlers
     // use — for the default (type=song, stageType=full_group,
     // artistIds=[]) this collapses to "every non-guest event
     // performer", matching the pre-derive behavior of this function.
     // startEdit() intentionally bypasses this path so opening an
     // existing item doesn't clobber the saved performer set; only
-    // subsequent stageType/type/artist edits re-derive.
-    applyDerivedPerformers("song", "full_group", []);
+    // subsequent stageType/type/artist edits re-derive. With a
+    // sticky credit the roster follows it (e.g. the Aqours members).
+    applyDerivedPerformers("song", seedStageType, seedArtistIds);
+  }
+
+  // "고정 해제" — drop the sticky credit and reset the open form's
+  // credit fields back to the defaults, leaving the song/note/position
+  // the operator may already have typed untouched.
+  function clearStickyCredit() {
+    setStickyCredit(null);
+    setFormStageType("full_group");
+    setFormArtistIds([]);
+    setSelectedArtists([]);
+    applyDerivedPerformers(formType, "full_group", []);
   }
 
   async function reloadItems() {
@@ -461,7 +566,13 @@ export default function SetlistBuilder({
     });
 
     if (res.ok) {
-      resetForm();
+      const isNewRow = !editingId || editingId === freshInsertId;
+      const nextSticky =
+        isNewRow && formType === "song"
+          ? { stageType: formStageType, artists: selectedArtists }
+          : stickyCredit;
+      setStickyCredit(nextSticky);
+      resetForm(nextSticky);
       setShowForm(false);
       router.refresh();
       await reloadItems();
@@ -520,6 +631,18 @@ export default function SetlistBuilder({
         const newItem = await res.json();
         await reloadItems();
         startEdit(newItem);
+        setFreshInsertId(newItem.id);
+        // startEdit restored the placeholder's own (empty) credit; seed
+        // the sticky one instead, exactly as resetForm does for 새 항목.
+        // The placeholder is always type=song, so derive the roster for
+        // a song row.
+        if (stickyCredit && stickyCredit.artists.length > 0) {
+          const ids = stickyCredit.artists.map((a) => a.id);
+          setFormStageType(stickyCredit.stageType);
+          setFormArtistIds(ids);
+          setSelectedArtists(stickyCredit.artists);
+          applyDerivedPerformers("song", stickyCredit.stageType, ids);
+        }
       } else {
         const err = await res.json().catch(() => null);
         alert(err?.error || "삽입에 실패했습니다.");
@@ -528,6 +651,8 @@ export default function SetlistBuilder({
       setReorderLoading(false);
     }
   }
+
+  const isUnknownSongForm = formType === "song" && formSongIds.length === 0;
 
   return (
     <div>
@@ -582,6 +707,15 @@ export default function SetlistBuilder({
                     ))}
                     {item.songs.length === 0 && (!item.type || item.type === "song") && (
                       <span className="text-zinc-400">곡 미지정</span>
+                    )}
+                    {/* Unknown-song row: the note is what the operator
+                        heard (lyric fragment, "Liella! 신곡?") — the
+                        clue for filling the title in later. Admin-only;
+                        the public row shows "곡 확인 중" instead. */}
+                    {item.songs.length === 0 && (!item.type || item.type === "song") && item.note && (
+                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-sm text-amber-800">
+                        {item.note}
+                      </span>
                     )}
                     {item.songs.length === 0 && item.type && item.type !== "song" && item.note && (
                       <span className="text-zinc-500">{item.note}</span>
@@ -776,23 +910,54 @@ export default function SetlistBuilder({
               />
             </div>
             <div>
+              {/* Song row with no song picked = "unknown song" row: it
+                  saves as-is and holds the slot; the note becomes the
+                  identification clue, so it's highlighted and its
+                  placeholder says what to write. */}
               <label className="mb-1 block text-xs font-medium">
-                메모 (선택)
+                {isUnknownSongForm ? "메모 — 곡 미상 행" : "메모 (선택)"}
               </label>
               <input
-                placeholder="게스트 출연"
+                placeholder={
+                  isUnknownSongForm ? "곡 미상 — 들린 것 메모" : "게스트 출연"
+                }
                 value={formNote}
                 onChange={(e) => setFormNote(e.target.value)}
-                className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+                className={`w-full rounded border px-2 py-1 text-sm ${
+                  isUnknownSongForm
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-zinc-300"
+                }`}
               />
+              {isUnknownSongForm && (
+                <p className="mt-1 text-xs text-amber-700">
+                  곡을 선택하지 않으면 공개 페이지에 「곡 확인 중」으로
+                  표시됩니다. 나중에 편집해서 곡을 지정하면 순서는 그대로
+                  유지됩니다.
+                </p>
+              )}
             </div>
           </div>
 
           {/* Artist selector */}
           <div ref={artistSearchRef}>
-            <label className="mb-1 block text-xs font-medium">
-              아티스트 (유닛/솔로)
-            </label>
+            <div className="mb-1 flex items-center gap-2">
+              <label className="block text-xs font-medium">
+                아티스트 (그룹/유닛/솔로)
+              </label>
+              {stickyCredit &&
+                stickyCredit.artists.length > 0 &&
+                (!editingId || editingId === freshInsertId) && (
+                <button
+                  type="button"
+                  onClick={clearStickyCredit}
+                  className="text-xs text-zinc-500 hover:text-red-600 hover:underline"
+                  title="직전 항목의 아티스트/스테이지 타입 자동 입력 해제"
+                >
+                  📌 고정 해제
+                </button>
+              )}
+            </div>
             {selectedArtists.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {selectedArtists.map((artist) => (
