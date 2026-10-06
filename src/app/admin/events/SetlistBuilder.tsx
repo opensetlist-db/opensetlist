@@ -250,6 +250,15 @@ export default function SetlistBuilder({
   const [artistDropdownOpen, setArtistDropdownOpen] = useState(false);
   const [selectedArtists, setSelectedArtists] = useState<ArtistOption[]>([]);
   const [stickyCredit, setStickyCredit] = useState<StickyRowCredit | null>(null);
+  // Id of a row just created by "+ 여기에 삽입" and opened for editing.
+  // That row is a NEW row as far as the operator is concerned (the
+  // insert-after endpoint only pre-creates a blank song/full_group
+  // placeholder so the positions shift server-side), so it gets the same
+  // sticky-credit treatment as the "새 항목" form: pre-filled on open,
+  // 📌 고정 해제 visible, and its save updates the sticky credit. Editing
+  // any already-existing row keeps editingId !== freshInsertId and leaves
+  // the sticky credit alone.
+  const [freshInsertId, setFreshInsertId] = useState<number | null>(null);
   const artistSearchRef = useRef<HTMLDivElement>(null);
   const artistSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -456,6 +465,7 @@ export default function SetlistBuilder({
     const seedArtists = sticky?.artists ?? [];
     const seedArtistIds = seedArtists.map((a) => a.id);
     setEditingId(null);
+    setFreshInsertId(null);
     setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
     setFormStageType(seedStageType);
@@ -556,8 +566,9 @@ export default function SetlistBuilder({
     });
 
     if (res.ok) {
+      const isNewRow = !editingId || editingId === freshInsertId;
       const nextSticky =
-        !editingId && formType === "song"
+        isNewRow && formType === "song"
           ? { stageType: formStageType, artists: selectedArtists }
           : stickyCredit;
       setStickyCredit(nextSticky);
@@ -620,6 +631,18 @@ export default function SetlistBuilder({
         const newItem = await res.json();
         await reloadItems();
         startEdit(newItem);
+        setFreshInsertId(newItem.id);
+        // startEdit restored the placeholder's own (empty) credit; seed
+        // the sticky one instead, exactly as resetForm does for 새 항목.
+        // The placeholder is always type=song, so derive the roster for
+        // a song row.
+        if (stickyCredit && stickyCredit.artists.length > 0) {
+          const ids = stickyCredit.artists.map((a) => a.id);
+          setFormStageType(stickyCredit.stageType);
+          setFormArtistIds(ids);
+          setSelectedArtists(stickyCredit.artists);
+          applyDerivedPerformers("song", stickyCredit.stageType, ids);
+        }
       } else {
         const err = await res.json().catch(() => null);
         alert(err?.error || "삽입에 실패했습니다.");
@@ -922,7 +945,9 @@ export default function SetlistBuilder({
               <label className="block text-xs font-medium">
                 아티스트 (그룹/유닛/솔로)
               </label>
-              {stickyCredit && stickyCredit.artists.length > 0 && !editingId && (
+              {stickyCredit &&
+                stickyCredit.artists.length > 0 &&
+                (!editingId || editingId === freshInsertId) && (
                 <button
                   type="button"
                   onClick={clearStickyCredit}
