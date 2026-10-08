@@ -30,11 +30,12 @@ export default async function EditEventSeriesPage({ params }: Props) {
           originalShortName: data.originalShortName ?? "",
           originalDescription: data.originalDescription ?? "",
           originalLanguage: data.originalLanguage ?? "ja",
-          translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; description?: string | null }) => ({
+          translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; description?: string | null; organizerName?: string | null }) => ({
             locale: t.locale,
             name: t.name,
             shortName: t.shortName ?? "",
             description: t.description ?? "",
+            organizerName: t.organizerName ?? "",
           })),
         }}
       />

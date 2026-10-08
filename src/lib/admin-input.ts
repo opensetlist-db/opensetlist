@@ -258,6 +258,37 @@ export function parseLocalizedTranslations(
   });
 }
 
+export type EventSeriesTranslationInput = LocalizedTranslation & {
+  organizerName: string | null;
+};
+
+/**
+ * EventSeriesTranslation rows: the shared localized shape plus the
+ * per-locale organizer label (主催). Kept separate from
+ * `parseLocalizedTranslations` because Group translations share that
+ * parser and have no organizerName column — passing the extra key to
+ * `groupTranslation.create` would be rejected by Prisma.
+ */
+export function parseEventSeriesTranslations(
+  raw: unknown
+): AdminFieldResult<EventSeriesTranslationInput[]> {
+  const base = parseLocalizedTranslations(raw);
+  if (!base.ok) return base;
+  // parseLocalizedTranslations already proved `raw` is an array of
+  // objects of the same length/order, so index i lines up.
+  const items = raw as Record<string, unknown>[];
+  const out: EventSeriesTranslationInput[] = [];
+  for (let i = 0; i < base.value.length; i++) {
+    const organizerName = nullableString(
+      items[i].organizerName,
+      `translations[${i}].organizerName`
+    );
+    if (!organizerName.ok) return organizerName;
+    out.push({ ...base.value[i], organizerName: organizerName.value });
+  }
+  return { ok: true, value: out };
+}
+
 // Full ISO-8601 date-time with an explicit zone: `Z` or `±HH:MM`.
 const ISO_INSTANT_RE =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-](\d{2}):(\d{2}))$/;

@@ -450,6 +450,8 @@ model EventSeries {
   artistId            BigInt?
   parentSeriesId      BigInt?
   type                EventSeriesType
+  // Original-language organizer label (主催) for multi-artist series.
+  // Localized variants live on EventSeriesTranslation.organizerName.
   organizerName       String?
   hasBoard            Boolean         @default(false)
   imageUrl            String?
@@ -479,6 +481,11 @@ model EventSeriesTranslation {
   name          String
   shortName     String?
   description   String?
+  // Localized organizer label (主催) for multi-artist series. Resolved
+  // viewer locale → ja row → EventSeries.organizerName, same as every
+  // other translated field. The parent column keeps the original-
+  // language value.
+  organizerName String?
 
   eventSeries EventSeries @relation(fields: [eventSeriesId], references: [id])
 
@@ -515,6 +522,8 @@ model Event {
   // that isn't part of a multi-artist EventSeries. Standalone
   // multi-artist events with organizerName set get their own group
   // on the events list page rather than landing in the catchall.
+  // This is the original-language value (the `original*` role);
+  // localized variants live on EventTranslation.organizerName.
   organizerName     String?
   // Optional link to the live BD Album that releases footage of this
   // event. Many-to-one — multi-day shows commonly share one Memorial
@@ -569,13 +578,16 @@ model Event {
 }
 
 model EventTranslation {
-  id        String  @id @default(uuid())
-  eventId   BigInt
-  locale    String
-  name      String
-  shortName String?
-  city      String?
-  venue     String?
+  id            String  @id @default(uuid())
+  eventId       BigInt
+  locale        String
+  name          String
+  shortName     String?
+  city          String?
+  venue         String?
+  // Localized organizer label; parent Event.organizerName holds the
+  // original-language value. See EventSeriesTranslation.organizerName.
+  organizerName String?
 
   event Event @relation(fields: [eventId], references: [id])
 

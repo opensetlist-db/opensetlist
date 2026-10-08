@@ -62,7 +62,7 @@ interface PreparedGroup {
   // Pre-resolved title for the section header. Kind-specific:
   //   - series    → series's locale-resolved name
   //   - artist    → "{artist} — 단독 공연" (i18n template)
-  //   - organizer → organizerName as stored
+  //   - organizer → locale-resolved organizerName
   //   - ungrouped → locale "기타 이벤트"
   // Always non-empty (falls back to unknownArtist / ungrouped labels).
   groupTitle: string;
@@ -189,10 +189,10 @@ export default async function EventsPage({
         // returned empty for the locale + original chain.
         return t("standaloneTitle", { artist: g.title ?? unknownArtistName });
       case "organizer":
-        // organizerName is operator-entered free text; no translation
-        // table exists. Empty-string organizerName is filtered out at
-        // the lib layer (falls through to ungrouped), so a non-null
-        // title here is always a meaningful display value.
+        // Locale-resolved at the lib layer (EventTranslation.
+        // organizerName → original). Empty-string organizerName is
+        // filtered out there (falls through to ungrouped), so a
+        // non-null title here is always a meaningful display value.
         return g.title ?? ungroupedName;
       case "ungrouped":
         return ungroupedName;
