@@ -85,7 +85,10 @@ describe("LiveSetlist empty state", () => {
 
   it("hides the zero items/songs subtitle and tap hint", () => {
     renderEmpty("upcoming", { start: START });
-    expect(screen.queryByText("itemsLabel")).toBeNull();
+    // The mock renders interpolated keys as `itemsLabel:0`, so match the
+    // prefix — a bare-key lookup would pass even with the count shown.
+    expect(screen.queryByText(/^itemsLabel:/)).toBeNull();
+    expect(screen.queryByText(/songsValue:/)).toBeNull();
     expect(screen.queryByText("tapToAddReaction")).toBeNull();
   });
 });
