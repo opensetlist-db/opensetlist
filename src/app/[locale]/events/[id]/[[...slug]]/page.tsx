@@ -873,13 +873,18 @@ export default async function EventPage({ params }: Props) {
   const referenceNow = new Date();
   const resolvedStatus = getEventStatus(event, referenceNow);
   const isOngoing = resolvedStatus === "ongoing";
-  // D-7 gate (Wishlist + Predicted Setlist visibility). Snap-frozen
+  // Wishlist + Predicted Setlist visibility gate (D-7 default, or the
+  // per-event `engagementOpensAt` override). Snap-frozen
   // at SSR with the same `referenceNow` that drives the rest of this
   // page — see `src/lib/eventTiming.ts#isWishPredictOpen` for why
   // we don't tick this client-side. Threaded through
   // `<LiveEventLayout>` → `<LiveSetlist>` → both child surfaces.
   const wishPredictOpen = isWishPredictOpen(
-    { startTime: event.startTime, status: resolvedStatus },
+    {
+      startTime: event.startTime,
+      status: resolvedStatus,
+      engagementOpensAt: event.engagementOpensAt,
+    },
     referenceNow,
   );
   const {

@@ -33,9 +33,10 @@ interface Props {
   formattedDate: string;
   dDayLabel: string;
   /**
-   * D-7 open-window indicator: caller computes via
-   * `shouldShowWishBadge(start, now)`, which mirrors
-   * `isWishPredictOpen`'s strict 168h-before-startTime comparison.
+   * Wish/predict open-window indicator: caller computes via
+   * `shouldShowWishBadge(start, now, engagementOpensAt)`, which
+   * mirrors `isWishPredictOpen` (D-7 default, or the event's
+   * per-event opens-at override).
    * When true the card grows a `🌸 세트리스트 예상 가능` badge next to
    * the D-day chip and swaps the resting border to
    * `colors.wishlistBorder` to draw the eye toward events the user

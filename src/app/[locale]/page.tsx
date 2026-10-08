@@ -249,7 +249,8 @@ interface UpcomingView {
   formattedDate: string;
   dDayLabel: string;
   /**
-   * D-7 open-window indicator: `daysUntil > 0 && daysUntil <= 7`.
+   * Wish/predict open-window indicator — same rule as the event-page
+   * gate (D-7 default, or the event's `engagementOpensAt` override).
    * Drives the ListChecks-icon `세트리스트 예상 가능` badge + emphasized
    * border on the card. Computed server-side from the same `now`
    * that drove `dDayLabel` so both badges agree exactly — see
@@ -392,7 +393,7 @@ export default async function HomePage({
         venue: projectVenue(e, locale),
         formattedDate: formatDate(start, locale, UPCOMING_DATE_FORMAT),
         dDayLabel: t("dDay", { days }),
-        showWishBadge: shouldShowWishBadge(start, now),
+        showWishBadge: shouldShowWishBadge(start, now, e.engagementOpensAt),
       };
     }
   );
