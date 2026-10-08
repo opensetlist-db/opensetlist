@@ -1155,13 +1155,23 @@ async function importEvents(rows: Record<string, string>[]) {
   // Upsert series first (dedup by series_slug)
   const seriesSlugs = new Set(rows.map((r) => r.series_slug).filter(Boolean));
   for (const slug of seriesSlugs) {
-    const row = rows.find((r) => r.series_slug === slug)!;
+    const seriesRows = rows.filter((r) => r.series_slug === slug);
+    const row = seriesRows[0];
 
     // series_{locale}_organizerName (主催 label for multi-artist series)
     // is preserve-on-blank: an empty / missing cell becomes `undefined`,
     // which Prisma drops from the upsert `update`, so re-importing a CSV
     // that predates the column never wipes an admin-set translation.
-    // The row itself still requires series_{locale}_name (NOT NULL).
+    // Unlike the series name columns (read from the first row only), the
+    // organizer is taken from the first row of the series that fills it:
+    // multi-day CSVs often carry the series columns on just one day.
+    function seriesOrganizer(locale: "ja" | "ko" | "en") {
+      for (const r of seriesRows) {
+        const v = r[`series_${locale}_organizerName`]?.trim();
+        if (v) return v;
+      }
+      return undefined;
+    }
     function buildSeriesTranslation(locale: "ja" | "ko" | "en") {
       const name = row[`series_${locale}_name`];
       if (!name) return null;
@@ -1169,12 +1179,19 @@ async function importEvents(rows: Record<string, string>[]) {
         locale,
         name,
         shortName: row[`series_${locale}_shortName`] || null,
-        organizerName: row[`series_${locale}_organizerName`]?.trim() || undefined,
+        organizerName: seriesOrganizer(locale),
       };
     }
     const translations = (["ja", "ko", "en"] as const)
       .map(buildSeriesTranslation)
       .filter((t) => t !== null);
+    // Locales that supply an organizer but no series name. The name is
+    // NOT NULL, so these can't create a translation row — they only
+    // patch an existing one (handled below; WARNed when there is none).
+    const organizerOnly = (["ja", "ko", "en"] as const)
+      .filter((l) => !row[`series_${l}_name`])
+      .map((l) => ({ locale: l, organizerName: seriesOrganizer(l) }))
+      .filter((t): t is { locale: "ja" | "ko" | "en"; organizerName: string } => !!t.organizerName);
 
     const artistId = row.artist_slug
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
@@ -1206,6 +1223,15 @@ async function importEvents(rows: Record<string, string>[]) {
           update: { name: t.name, shortName: t.shortName, organizerName: t.organizerName },
         });
       }
+      for (const t of organizerOnly) {
+        const { count } = await prisma.eventSeriesTranslation.updateMany({
+          where: { eventSeriesId: existing.id, locale: t.locale },
+          data: { organizerName: t.organizerName },
+        });
+        if (count === 0) {
+          results.push(`WARN: Series ${slug} series_${t.locale}_organizerName ignored — no ${t.locale} translation row; supply series_${t.locale}_name`);
+        }
+      }
       results.push(`UPDATED Series: ${slug} → ${existing.id}`);
     } else {
       const originalName = ensureOriginalName(seriesOriginals, slug, "EventSeries", seriesOriginalLanguage);
@@ -1220,6 +1246,9 @@ async function importEvents(rows: Record<string, string>[]) {
           translations: translations.length ? { create: translations } : undefined,
         },
       });
+      for (const t of organizerOnly) {
+        results.push(`WARN: Series ${slug} series_${t.locale}_organizerName ignored — no ${t.locale} translation row; supply series_${t.locale}_name`);
+      }
       results.push(`CREATED Series: ${slug} → ${series.id}`);
     }
   }
@@ -1289,6 +1318,13 @@ async function importEvents(rows: Record<string, string>[]) {
     const koTranslation = buildEventTranslation("ko");
     const enTranslation = buildEventTranslation("en");
     const translations = [jaTranslation, koTranslation, enTranslation].filter((t) => t !== null);
+    // The name fallback in buildEventTranslation exists only to satisfy
+    // NOT NULL on a NEW row. On re-import, a row that carries only
+    // city / venue / organizer for a locale must not overwrite the
+    // existing translated name with originalName / ja_name (or "").
+    const explicitNameLocales = new Set(
+      (["ja", "ko", "en"] as const).filter((l) => row[`${l}_name`])
+    );
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
@@ -1379,7 +1415,13 @@ async function importEvents(rows: Record<string, string>[]) {
         await prisma.eventTranslation.upsert({
           where: { eventId_locale: { eventId: existing.id, locale: t.locale } },
           create: { eventId: existing.id, ...t },
-          update: { name: t.name, shortName: t.shortName, city: t.city, venue: t.venue, organizerName: t.organizerName },
+          update: {
+            ...(explicitNameLocales.has(t.locale) ? { name: t.name } : {}),
+            shortName: t.shortName,
+            city: t.city,
+            venue: t.venue,
+            organizerName: t.organizerName,
+          },
         });
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);

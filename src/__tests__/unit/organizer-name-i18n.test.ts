@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     eventSeries: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
-    eventSeriesTranslation: { upsert: vi.fn() },
+    eventSeriesTranslation: { upsert: vi.fn(), updateMany: vi.fn() },
     eventTranslation: { upsert: vi.fn() },
     artist: { findMany: vi.fn(), findUnique: vi.fn() },
     album: { findMany: vi.fn() },
@@ -222,5 +222,61 @@ describe("events.csv import — *_organizerName columns", () => {
     expect(seriesKo.update.organizerName).toBeUndefined();
     const eventKo = mocked.eventTranslation.upsert.mock.calls[0][0];
     expect(eventKo.update.organizerName).toBeUndefined();
+  });
+
+  it("takes the series organizer from any row of the series, not just the first", async () => {
+    const res = await importCsv(
+      [
+        "series_slug,series_ko_name,series_ko_organizerName,event_slug,ko_name",
+        "lovelive-15th-fes,러브라이브! 페스,,lovelive-15th-fes-day1,1일차",
+        "lovelive-15th-fes,,러브라이브! 시리즈,lovelive-15th-fes-day2,2일차",
+      ].join("\n")
+    );
+    expect(res.status).toBe(200);
+    const koSeries = mocked.eventSeriesTranslation.upsert.mock.calls[0][0];
+    expect(koSeries.update.organizerName).toBe("러브라이브! 시리즈");
+  });
+
+  it("patches an existing series row when only the organizer is supplied", async () => {
+    mocked.eventSeriesTranslation.updateMany.mockResolvedValue({ count: 1 });
+    const res = await importCsv(
+      [
+        "series_slug,series_ko_name,series_en_organizerName,event_slug,ko_name",
+        "lovelive-15th-fes,러브라이브! 페스,Love Live! Series,lovelive-15th-fes-day1,1일차",
+      ].join("\n")
+    );
+    expect(res.status).toBe(200);
+    expect(mocked.eventSeriesTranslation.updateMany).toHaveBeenCalledWith({
+      where: { eventSeriesId: BigInt(26), locale: "en" },
+      data: { organizerName: "Love Live! Series" },
+    });
+  });
+
+  it("WARNs when an organizer-only locale has no series translation row", async () => {
+    mocked.eventSeriesTranslation.updateMany.mockResolvedValue({ count: 0 });
+    const res = await importCsv(
+      [
+        "series_slug,series_ko_name,series_en_organizerName,event_slug,ko_name",
+        "lovelive-15th-fes,러브라이브! 페스,Love Live! Series,lovelive-15th-fes-day1,1일차",
+      ].join("\n")
+    );
+    const body = await res.json();
+    expect(body.log.some((l: string) => l.startsWith("WARN: Series lovelive-15th-fes series_en_organizerName"))).toBe(true);
+  });
+
+  it("does not overwrite an existing event name from an organizer-only row", async () => {
+    const res = await importCsv(
+      [
+        "event_slug,ko_name,en_organizerName",
+        "lovelive-15th-fes-day1,1일차,Love Live! Series",
+      ].join("\n")
+    );
+    expect(res.status).toBe(200);
+    const upserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
+    const en = upserts.find((u) => u.create.locale === "en");
+    expect(en.update).not.toHaveProperty("name");
+    expect(en.update.organizerName).toBe("Love Live! Series");
+    const ko = upserts.find((u) => u.create.locale === "ko");
+    expect(ko.update.name).toBe("1일차");
   });
 });
