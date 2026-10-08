@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { displayNameWithFallback } from "@/lib/display";
+import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import { getEventStatus } from "@/lib/eventStatus";
 import { SONG_COUNT_WHERE } from "@/lib/setlistCounts";
 
@@ -47,6 +47,7 @@ type EventTranslation = {
   shortName: string | null;
   city: string | null;
   venue: string | null;
+  organizerName: string | null;
 };
 
 export type EventForList = {
@@ -61,7 +62,9 @@ export type EventForList = {
   // Ignored when eventSeriesId is set (series grouping wins).
   artistId: number | null;
   // Display name for multi-artist standalone events. Only consulted
-  // when eventSeriesId AND artistId are both null.
+  // when eventSeriesId AND artistId are both null. Original-language
+  // value — the group KEY is derived from it (stable across locales);
+  // the group TITLE resolves through `translations[].organizerName`.
   organizerName: string | null;
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
   date: string | null;
@@ -102,7 +105,9 @@ export type EventsListGroup = {
    *   - kind=series    → root series's name (locale-resolved)
    *   - kind=artist    → artist's name (locale-resolved). The page wraps
    *                      this in a "{artist} — 단독 공연" template.
-   *   - kind=organizer → organizerName as stored (no translation table)
+   *   - kind=organizer → organizerName, locale-resolved from the first
+   *                      event's translation row (falls back to the
+   *                      stored original-language value)
    *   - kind=ungrouped → null (page renders the locale "기타 이벤트")
    */
   title: string | null;
@@ -219,6 +224,7 @@ export async function getEventsListGrouped(
             shortName: true,
             city: true,
             venue: true,
+            organizerName: true,
           },
         },
         // See `src/lib/setlistCounts.ts` for what `SONG_COUNT_WHERE`
@@ -336,7 +342,19 @@ export async function getEventsListGrouped(
       title = a ? displayNameWithFallback(a, a.translations, locale) || null : null;
       // No parallel pill for artist groups — the title is the artist.
     } else if (kind === "organizer" && ref != null) {
-      title = ref;
+      // Key stays on the original-language value so the bucket is the
+      // same in every locale; only the label is localized. Taken from
+      // the group's first event — events sharing an organizer share its
+      // translations in well-curated data, and a missing locale row
+      // falls back to the trimmed original (`ref`).
+      title =
+        resolveLocalizedField(
+          ev,
+          ev.translations,
+          locale,
+          "organizerName",
+          "organizerName",
+        )?.trim() || ref;
     }
 
     groupsMap.set(key, {

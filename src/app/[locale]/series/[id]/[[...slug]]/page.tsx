@@ -357,6 +357,16 @@ export default async function EventSeriesPage({
         locale,
       )
     : null;
+  // Multi-artist series (artistId null) show the organizer instead.
+  // Localized like `description`: viewer-locale row, else the parent's
+  // original-language `organizerName`.
+  const organizerName = resolveLocalizedField(
+    series,
+    series.translations,
+    locale,
+    "organizerName",
+    "organizerName",
+  );
   // Breadcrumb parent + leaf use short variants (project rule);
   // `seriesMain` keeps the full form for the page H1 below.
   const parentName = series.parentSeries
@@ -572,7 +582,7 @@ export default async function EventSeriesPage({
               >
                 {t(`type.${series.type}`)}
               </span>
-              {(artistName || series.organizerName) && (
+              {(artistName || organizerName) && (
                 <div
                   style={{
                     fontSize: 12,
@@ -581,7 +591,7 @@ export default async function EventSeriesPage({
                     marginBottom: 6,
                   }}
                 >
-                  {artistName ?? series.organizerName}
+                  {artistName ?? organizerName}
                 </div>
               )}
               <h1

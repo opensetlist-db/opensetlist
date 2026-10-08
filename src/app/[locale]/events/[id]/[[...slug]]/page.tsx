@@ -1111,10 +1111,29 @@ export default async function EventPage({ params }: Props) {
           ) || aT("unknown"),
       }
     : null;
-  const headerOrganizerName =
-    !headerArtist && event.eventSeries?.organizerName
-      ? event.eventSeries.organizerName
-      : null;
+  // Organizer (主催) labels resolve like city/venue: the viewer-locale
+  // translation row, else the parent's original-language column. The
+  // event-level value wins over the series one for JSON-LD (a
+  // standalone multi-artist event carries its own organizer); the
+  // header keeps reading the series value only, matching the series
+  // page header it mirrors.
+  const seriesOrganizerName = event.eventSeries
+    ? resolveLocalizedField(
+        event.eventSeries,
+        event.eventSeries.translations,
+        locale,
+        "organizerName",
+        "organizerName"
+      )
+    : null;
+  const eventOrganizerName = resolveLocalizedField(
+    event,
+    event.translations,
+    locale,
+    "organizerName",
+    "organizerName"
+  );
+  const headerOrganizerName = !headerArtist ? seriesOrganizerName : null;
   const venue = resolveLocalizedField(
     event,
     event.translations,
@@ -1273,8 +1292,7 @@ export default async function EventPage({ params }: Props) {
     venue,
     city: cityBase,
     performers: jsonLdPerformers,
-    organizerName:
-      event.organizerName ?? event.eventSeries?.organizerName ?? null,
+    organizerName: eventOrganizerName ?? seriesOrganizerName,
     canonicalUrl: absoluteUrl(entityPath("events", locale, id, event.slug)),
     locale,
   });
