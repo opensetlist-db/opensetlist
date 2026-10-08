@@ -1116,7 +1116,9 @@ export default async function EventPage({ params }: Props) {
   // event-level value wins over the series one for JSON-LD (a
   // standalone multi-artist event carries its own organizer); the
   // header keeps reading the series value only, matching the series
-  // page header it mirrors.
+  // page header it mirrors. Both `translations` relations in
+  // `fetchEvent` are `include`d (where-filtered, not `select`-narrowed),
+  // so the `organizerName` column arrives with every row.
   const seriesOrganizerName = event.eventSeries
     ? resolveLocalizedField(
         event.eventSeries,
