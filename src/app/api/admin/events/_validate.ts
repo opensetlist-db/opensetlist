@@ -225,6 +225,37 @@ export function validateDateInput(
   return { ok: true, value: parsed };
 }
 
+/**
+ * `Event.engagementOpensAt` — optional per-event override for when the
+ * Wishlist / Predicted Setlist surfaces open (null = D-7 default, see
+ * `src/lib/eventTiming.ts#isWishPredictOpen`). Must be strictly before
+ * `startTime`: an opens-at at/after the show would make the surfaces
+ * silently never appear, which is never what the operator meant —
+ * reject it so the typo surfaces in the form instead of on show day.
+ */
+export function validateEngagementOpensAt(
+  value: unknown,
+  startTime: Date
+):
+  | { ok: true; value: Date | null }
+  | { ok: false; response: NextResponse } {
+  const check = validateDateInput(value, "engagementOpensAt", false);
+  if (!check.ok) return check;
+  if (check.value && check.value.getTime() >= startTime.getTime()) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "engagementOpensAt: 희망곡/예상곡 오픈 시각은 시작 시각보다 앞서야 합니다.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+  return check;
+}
+
 export type EventTranslationInput = {
   locale: string;
   name: string;

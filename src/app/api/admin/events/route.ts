@@ -20,6 +20,7 @@ import {
   validateArtistId,
   validateBdAlbumId,
   validateDateInput,
+  validateEngagementOpensAt,
   validateEventOriginals,
   validateEventSeriesId,
   validateEventTranslations,
@@ -67,6 +68,10 @@ export async function POST(request: NextRequest) {
   const startTimeCheck = validateDateInput(body.startTime, "startTime", true);
   if (!startTimeCheck.ok) return startTimeCheck.response;
   const startTime = startTimeCheck.value!;
+
+  const opensAtCheck = validateEngagementOpensAt(body.engagementOpensAt, startTime);
+  if (!opensAtCheck.ok) return opensAtCheck.response;
+  const engagementOpensAt = opensAtCheck.value;
 
   const dateCheck = validateDateInput(body.date, "date", false);
   if (!dateCheck.ok) return dateCheck.response;
@@ -128,6 +133,7 @@ export async function POST(request: NextRequest) {
           organizerName: organizerName.value,
           date,
           startTime,
+          engagementOpensAt,
           country: country.value,
           posterUrl: posterUrl.value,
           ...originals,
