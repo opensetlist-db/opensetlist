@@ -13,7 +13,7 @@ import {
   getEventStatus,
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
-import { CACHE_TTL, cachedQuery, eventTag } from "@/lib/dataCache";
+import { CACHE_TTL, cachedQuery, eventTag, joinIdKey } from "@/lib/dataCache";
 import { isWishPredictOpen, wishPredictOpensAt } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
@@ -23,9 +23,20 @@ import type { Impression } from "@/components/EventImpressions";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { LiveEventLayout } from "@/components/LiveEventLayout";
 import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
-import { resolveUnitColor } from "@/lib/artistColor";
-import { deriveUnitFilters } from "@/lib/predict/unitFilters";
-import type { AvailableSong } from "@/lib/types/predict";
+import {
+  deriveFestivalFilters,
+  deriveUnitFilters,
+} from "@/lib/predict/unitFilters";
+import {
+  getAvailableSongsCached,
+  getFestivalGroupArtistsCached,
+} from "@/lib/predict/availableSongs";
+import {
+  mergeFestivalCatalog,
+  resolveFestivalGroups,
+} from "@/lib/predict/festivalCatalog";
+import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
+import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
   deriveLineupFromRoster,
   deriveSidebarUnitsAndPerformers,
@@ -530,199 +541,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-/**
- * Server-side fetch for the Predicted Setlist song picker (v0.13.14+
- * — `task-song-picker-predict-mode.md`). Returns every non-deleted
- * song whose `SongArtist.artist` is either the event's primary
- * artist OR a sub-unit of it (`artist.parentArtistId === primary`).
- *
- * `safeBigIntToNumber` (`src/lib/copyPastSetlist.ts`) guards the
- * BigInt → JS-number conversion at the response boundary — same
- * outbound contract as the past-setlists route. Unsafe ids
- * (> 2^53-1) are dropped rather than truncated; at Phase 1
- * autoincrement scale this is belt-and-suspenders.
- *
- * Unit identity routing: a song credited to both the group and a
- * sub-unit picks the sub-unit row for filter routing (sub-unit
- * wins). This keeps section-header grouping organised by the
- * smaller scope under composite `all` / `sub` filters.
- *
- * Locale filter mirrors `getEvent`'s `[locale, "ja"]` policy.
- */
-async function getAvailableSongs(
-  // Accept `bigint | number` because the call site reads
-  // `event.eventSeries.artist.id` from a `serializeBigInt`-processed
-  // cached event — TypeScript still thinks it's bigint, but
-  // serializeBigInt's JSON-roundtrip converted every BigInt scalar to
-  // a JS number at runtime. Without the BigInt(...) normalization
-  // below, the post-fetch `a.parentArtistId === primaryArtistId`
-  // comparison (Prisma returns parentArtistId as bigint) silently
-  // fails — `1n === 1` is `false` in strict equality even when
-  // numerically equal. That bug discards every matched row and the
-  // picker shows zero songs (caught on dev preview, 2026-05-19).
-  primaryArtistId: bigint | number,
-  locale: string,
-): Promise<AvailableSong[]> {
-  const primaryAsBigInt = BigInt(primaryArtistId);
-  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
-  const rows = await prisma.song.findMany({
-    where: {
-      isDeleted: false,
-      // Variants hidden — the picker only surfaces canonical (base)
-      // songs. A song with `baseVersionId !== null` is a variant
-      // ("Dream Believers (SAKURA Ver.)"); only the base row is
-      // pickable. `isSongMatched` already handles variant↔base
-      // equivalence at score time so predicting the base also
-      // matches a variant performance.
-      baseVersionId: null,
-      artists: {
-        some: {
-          artist: {
-            OR: [
-              { id: primaryAsBigInt },
-              { parentArtistId: primaryAsBigInt },
-            ],
-            isDeleted: false,
-          },
-        },
-      },
-    },
-    select: {
-      id: true,
-      originalTitle: true,
-      originalLanguage: true,
-      variantLabel: true,
-      baseVersionId: true,
-      translations: {
-        where: localeFilter,
-        select: { locale: true, title: true, variantLabel: true },
-      },
-      artists: {
-        select: {
-          artist: {
-            select: {
-              id: true,
-              slug: true,
-              color: true,
-              parentArtistId: true,
-              isMainUnit: true,
-              originalName: true,
-              originalShortName: true,
-              originalLanguage: true,
-              isDeleted: true,
-              translations: {
-                where: localeFilter,
-                select: { locale: true, name: true, shortName: true },
-              },
-            },
-          },
-        },
-      },
-    },
-    orderBy: { originalTitle: "asc" },
-  });
-
-  const out: AvailableSong[] = [];
-  for (const row of rows) {
-    const songId = safeBigIntToNumber(row.id);
-    if (songId === null) continue;
-    const baseVersionId =
-      row.baseVersionId === null ? null : safeBigIntToNumber(row.baseVersionId);
-    const aliveArtists = row.artists
-      .map((sa) => sa.artist)
-      .filter((a) => !a.isDeleted);
-    const subUnits = aliveArtists.filter(
-      (a) => a.parentArtistId === primaryAsBigInt,
-    );
-    const groupArtist = aliveArtists.find((a) => a.id === primaryAsBigInt);
-
-    // Routing preference (matches the docstring on
-    // `AvailableSong.unit`):
-    //   - 0 sub-units → group fallback
-    //   - 1 sub-unit  → that sub-unit (main or non-main)
-    //   - ≥2 sub-units with a main unit → main unit wins
-    //   - ≥2 sub-units, all non-main → multi-solo collab, mark
-    //     `isMultiArtist` so the picker routes it to `others`
-    //     only. `unit` still points at the first sub-unit row for
-    //     fallback display (the in-row badge).
-    let unitArtist: (typeof subUnits)[number] | typeof groupArtist | undefined;
-    let isMultiArtist = false;
-    if (subUnits.length === 0) {
-      unitArtist = groupArtist;
-    } else if (subUnits.length === 1) {
-      unitArtist = subUnits[0];
-    } else {
-      const mainSubUnit = subUnits.find((a) => a.isMainUnit);
-      if (mainSubUnit) {
-        unitArtist = mainSubUnit;
-      } else {
-        unitArtist = subUnits[0];
-        isMultiArtist = true;
-      }
-    }
-    if (!unitArtist) continue;
-    const unitArtistId = safeBigIntToNumber(unitArtist.id);
-    if (unitArtistId === null) continue;
-
-    // Collect ALL credited unit artistIds (group + sub-units), not
-    // just the canonical `unit.artistId`. Lets the picker show a
-    // multi-unit collab song (e.g. Cerise + DOLLCHESTRA + Mira-Cra
-    // Park!) under EVERY credited unit's chip rather than only the
-    // canonical one. The filter is identical to the canonical-unit
-    // selection above: keep the primary group itself + any artist
-    // whose `parentArtistId === primaryAsBigInt` (sub-unit / solo of
-    // the group). Cover artists, guests, and unrelated featured
-    // artists are excluded — same scope the canonical `unit` uses.
-    // Dedup via Set since a single song row could have duplicate
-    // SongArtist entries in malformed data.
-    const creditedSet = new Set<number>();
-    for (const a of aliveArtists) {
-      const isGroupCredit = a.id === primaryAsBigInt;
-      const isSubUnitCredit = a.parentArtistId === primaryAsBigInt;
-      if (!isGroupCredit && !isSubUnitCredit) continue;
-      const aid = safeBigIntToNumber(a.id);
-      if (aid === null) continue;
-      creditedSet.add(aid);
-    }
-    const creditedArtistIds = [...creditedSet];
-
-    out.push({
-      songId,
-      originalTitle: row.originalTitle,
-      originalLanguage: row.originalLanguage,
-      variantLabel: row.variantLabel,
-      baseVersionId,
-      translations: row.translations,
-      unit: {
-        artistId: unitArtistId,
-        slug: unitArtist.slug,
-        label: displayNameWithFallback(
-          unitArtist,
-          unitArtist.translations,
-          locale,
-          "short",
-        ),
-        color: resolveUnitColor(unitArtist),
-        isSubUnit: unitArtist.parentArtistId !== null,
-        isMainUnit: unitArtist.isMainUnit,
-      },
-      isMultiArtist,
-      creditedArtistIds,
-    });
-  }
-  return out;
-}
-
-// The picker catalog depends only on (primary artist, locale), not on
-// the event, so every upcoming event of the same artist shares one
-// cache entry — it's the second-widest read on an upcoming event page.
-const getAvailableSongsCached = cachedQuery(
-  "predict-available-songs",
-  (primaryArtistId: bigint, locale: string) =>
-    getAvailableSongs(primaryArtistId, locale),
-  { revalidate: CACHE_TTL.entity },
-);
-
 async function getReactionCounts(eventId: bigint) {
   const groups = await prisma.setlistItemReaction.groupBy({
     by: ["setlistItemId", "reactionType"],
@@ -998,25 +816,27 @@ export default async function EventPage({ params }: Props) {
     ? []
     : await getTrendingSongs(eventId, locale, st("unknown"));
 
-  // Predicted-setlist song-picker catalog (v0.13.14+). Gated:
-  //   - `resolvedStatus === "upcoming"` — past-lock the picker UI
-  //     is hidden anyway; running the query would be dead weight.
-  //   - `eventSeries.artist` non-deleted and non-null — multi-artist
-  //     festivals have no defensible "primary artist" scope, so the
-  //     picker hides and the surface degrades to copy-from-past +
-  //     share CTA only.
+  // Predicted-setlist song-picker catalog (v0.13.14+). Only loaded
+  // while `resolvedStatus === "upcoming"` — past-lock the picker UI is
+  // hidden anyway; running the query would be dead weight. Two scopes:
   //
-  // The `unitFilters` chip set is derived from the loaded catalog
-  // (a sub-unit with zero songs produces no chip). Composite
-  // chips ("all" + "sub") use the corresponding `Predict.picker`
-  // translations; "group" / individual labels come from the
-  // artist's localized name via `displayNameWithFallback`.
+  //   - Single-artist path (`eventSeries.artist` set + alive): the
+  //     artist and all its descendants; chips from `deriveUnitFilters`
+  //     (a sub-unit with zero songs produces no chip). Composite chips
+  //     ("all" / "others") use `Predict.picker` translations; group /
+  //     individual labels come from the artist's localized name.
+  //   - Festival path (no series artist — the Fes, n10): one catalog
+  //     per root group reached from the roster, merged and deduped,
+  //     with one chip per group (see `src/lib/predict/festivalCatalog.ts`).
+  //     Only an upcoming multi-artist event with NO roster still has
+  //     no defensible scope; there the picker hides and the surface
+  //     degrades to copy-from-past + share CTA.
   const seriesPrimaryArtist =
     event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
       ? event.eventSeries.artist
       : null;
   let availableSongs: AvailableSong[] = [];
-  let unitFilters: ReturnType<typeof deriveUnitFilters> = [];
+  let unitFilters: UnitFilter[] = [];
   if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
     const [songs, predictPickerTrans] = await Promise.all([
       getAvailableSongsCached(BigInt(seriesPrimaryArtist.id), locale),
@@ -1038,6 +858,62 @@ export default async function EventPage({ params }: Props) {
       predictPickerTrans("filterOthers"),
       colors.primary,
     );
+  } else if (resolvedStatus === "upcoming" && roster.length > 0) {
+    const hierarchy = await getArtistHierarchyCached();
+    const groupRefs = resolveFestivalGroups(roster, hierarchy);
+    if (groupRefs.length > 0) {
+      // Sorted id key so the display-row cache entry is independent of
+      // roster order (the chip ORDER still comes from `groupRefs`).
+      const idKey = joinIdKey(
+        groupRefs.map((g) => g.rootId).sort((a, b) => Number(a) - Number(b)),
+      );
+      const [groupArtists, perGroup, predictPickerTrans] = await Promise.all([
+        getFestivalGroupArtistsCached(idKey, locale),
+        Promise.all(
+          groupRefs.map((g) => getAvailableSongsCached(BigInt(g.rootId), locale)),
+        ),
+        getTranslations("Predict.picker"),
+      ]);
+      const artistById = new Map(groupArtists.map((a) => [String(a.id), a]));
+      // A root that came back missing (soft-deleted between the
+      // hierarchy read and this one) or whose id isn't JS-safe drops
+      // out together with its catalog, keeping the two arrays aligned.
+      const groups: Array<{
+        artistId: number;
+        slug: string;
+        label: string;
+        color: string | null;
+      }> = [];
+      const groupCatalogs: AvailableSong[][] = [];
+      groupRefs.forEach((ref, i) => {
+        const artist = artistById.get(ref.rootId);
+        const artistId = artist ? safeBigIntToNumber(artist.id) : null;
+        if (!artist || artistId === null) return;
+        groups.push({
+          artistId,
+          slug: artist.slug,
+          label: displayNameWithFallback(
+            artist,
+            artist.translations,
+            locale,
+            "short",
+          ),
+          color: artist.color,
+        });
+        groupCatalogs.push(perGroup[i]);
+      });
+      availableSongs = mergeFestivalCatalog(
+        groups.map((g) => g.artistId),
+        groupCatalogs,
+      );
+      unitFilters = deriveFestivalFilters(
+        groups,
+        availableSongs,
+        predictPickerTrans("filterAll"),
+        predictPickerTrans("filterOthers"),
+        colors.primary,
+      );
+    }
   }
 
   const eventFullName = displayNameWithFallback(
