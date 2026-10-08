@@ -30,6 +30,18 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.18.0 (2026-10-09)
+- **Organizer (主催) label is now localized (n09).** Minor bump for the **additive schema change**: new nullable columns `EventTranslation.organizerName` and `EventSeriesTranslation.organizerName`. `migrate-prod.yml` adds them on the v0.18.0 tag. The parent `Event.organizerName` / `EventSeries.organizerName` keep the original-language value, so pages are unchanged until a translation is entered. No env vars, no new deps.
+- **#548 — organizerName via the translation tables.** The ko/en Fes pages showed 「ラブライブ！シリーズ」 because the organizer was the only operator-entered display field without a translation column.
+  - Event header, `MusicEvent` JSON-LD `organizer.name`, the series page header and the events-list organizer group title resolve the viewer-locale translation, else the original-language value (same helper as city/venue). The events-list group key stays on the original value, so grouping is identical in every locale.
+  - Admin event and series forms: an organizer field in each locale's translation block. The top-level field stays the original-language value.
+  - `events.csv`: optional `{ja,ko,en}_organizerName` and `series_{ja,ko,en}_organizerName`. Blank cells keep the stored value. The series value is read from any row of that series. A locale with an organizer but no `series_{locale}_name` updates an existing translation row, or WARNs when there is none.
+  - Importer fix: a re-import row that only carries city / venue / organizer for a locale no longer overwrites that locale's existing event name with `originalName`.
+- **Verified on the dev Preview (series 27 / event 109 = Fes on dev):** event header + JSON-LD and the series header show 러브라이브! 시리즈 / Love Live! Series / ラブライブ！シリーズ on ko / en / ja.
+- **Post-deploy (prod):**
+  - (a) Admin → series 26 `lovelive-15th-fes`: organizer translation ja ラブライブ！シリーズ, ko 러브라이브! 시리즈, en Love Live! Series. Events 107/108 stay empty (they inherit the series value).
+  - (b) `/ko/events/107/…` and `/en/events/107/…` show the localized 主催 in the header and in the JSON-LD `organizer`.
+
 ### v0.17.0 (2026-10-09)
 - **Fes readiness: per-event Wishlist/Prediction window (n07) and indexable pre-show event pages (n08).** Minor bump for the **additive schema change**: new nullable column `Event.engagementOpensAt`. `migrate-prod.yml` adds it on the v0.17.0 tag. Existing rows stay `null`, so behaviour is unchanged until an operator sets a value. No env vars, no new deps.
 - **#543 — per-event open window (n07).** The Wishlist / Predicted Setlist gate is now `opensAt = engagementOpensAt ?? startTime − 168h`, open while `opensAt <= now < startTime`.
