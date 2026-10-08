@@ -1157,10 +1157,24 @@ async function importEvents(rows: Record<string, string>[]) {
   for (const slug of seriesSlugs) {
     const row = rows.find((r) => r.series_slug === slug)!;
 
-    const jaTranslation = row.series_ja_name ? { locale: "ja", name: row.series_ja_name, shortName: row.series_ja_shortName || null } : null;
-    const koTranslation = row.series_ko_name ? { locale: "ko", name: row.series_ko_name, shortName: row.series_ko_shortName || null } : null;
-    const enTranslation = row.series_en_name ? { locale: "en", name: row.series_en_name, shortName: row.series_en_shortName || null } : null;
-    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null }[];
+    // series_{locale}_organizerName (主催 label for multi-artist series)
+    // is preserve-on-blank: an empty / missing cell becomes `undefined`,
+    // which Prisma drops from the upsert `update`, so re-importing a CSV
+    // that predates the column never wipes an admin-set translation.
+    // The row itself still requires series_{locale}_name (NOT NULL).
+    function buildSeriesTranslation(locale: "ja" | "ko" | "en") {
+      const name = row[`series_${locale}_name`];
+      if (!name) return null;
+      return {
+        locale,
+        name,
+        shortName: row[`series_${locale}_shortName`] || null,
+        organizerName: row[`series_${locale}_organizerName`]?.trim() || undefined,
+      };
+    }
+    const translations = (["ja", "ko", "en"] as const)
+      .map(buildSeriesTranslation)
+      .filter((t) => t !== null);
 
     const artistId = row.artist_slug
       ? (await prisma.artist.findUnique({ where: { slug: row.artist_slug } }))?.id ?? null
@@ -1189,7 +1203,7 @@ async function importEvents(rows: Record<string, string>[]) {
         await prisma.eventSeriesTranslation.upsert({
           where: { eventSeriesId_locale: { eventSeriesId: existing.id, locale: t.locale } },
           create: { eventSeriesId: existing.id, ...t },
-          update: { name: t.name, shortName: t.shortName },
+          update: { name: t.name, shortName: t.shortName, organizerName: t.organizerName },
         });
       }
       results.push(`UPDATED Series: ${slug} → ${existing.id}`);
@@ -1251,7 +1265,8 @@ async function importEvents(rows: Record<string, string>[]) {
       const shortName = row[`${locale}_shortName`];
       const city = row[`${locale}_city`];
       const venue = row[`${locale}_venue`];
-      if (!name && !shortName && !city && !venue) return null;
+      const organizerName = row[`${locale}_organizerName`]?.trim();
+      if (!name && !shortName && !city && !venue && !organizerName) return null;
       return {
         locale,
         // Name fallback hierarchy: locale-specific → originalName → ja_name.
@@ -1263,12 +1278,17 @@ async function importEvents(rows: Record<string, string>[]) {
         shortName: shortName || null,
         city: city || null,
         venue: venue || null,
+        // Preserve-on-blank (undefined → Prisma skips the column on
+        // update), unlike city/venue: organizer translations are mostly
+        // set in the admin form, and older events.csv files don't carry
+        // the column at all.
+        organizerName: organizerName || undefined,
       };
     }
     const jaTranslation = buildEventTranslation("ja");
     const koTranslation = buildEventTranslation("ko");
     const enTranslation = buildEventTranslation("en");
-    const translations = [jaTranslation, koTranslation, enTranslation].filter(Boolean) as { locale: string; name: string; shortName: string | null; city: string | null; venue: string | null }[];
+    const translations = [jaTranslation, koTranslation, enTranslation].filter((t) => t !== null);
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
@@ -1359,7 +1379,7 @@ async function importEvents(rows: Record<string, string>[]) {
         await prisma.eventTranslation.upsert({
           where: { eventId_locale: { eventId: existing.id, locale: t.locale } },
           create: { eventId: existing.id, ...t },
-          update: { name: t.name, shortName: t.shortName, city: t.city, venue: t.venue },
+          update: { name: t.name, shortName: t.shortName, city: t.city, venue: t.venue, organizerName: t.organizerName },
         });
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);

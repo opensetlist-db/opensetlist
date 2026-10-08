@@ -3,7 +3,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-type Translation = { locale: string; name: string; shortName: string; description: string };
+type Translation = {
+  locale: string;
+  name: string;
+  shortName: string;
+  description: string;
+  organizerName: string;
+};
 
 type EventSeriesFormProps = {
   initialData?: {
@@ -56,7 +62,15 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
   const [translations, setTranslations] = useState<Translation[]>(
     initialData?.translations.length
       ? initialData.translations
-      : [{ locale: "ko", name: "", shortName: "", description: "" }]
+      : [
+          {
+            locale: "ko",
+            name: "",
+            shortName: "",
+            description: "",
+            organizerName: "",
+          },
+        ]
   );
 
   const [artists, setArtists] = useState<
@@ -91,7 +105,13 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
     if (next) {
       setTranslations((prev) => [
         ...prev,
-        { locale: next, name: "", shortName: "", description: "" },
+        {
+          locale: next,
+          name: "",
+          shortName: "",
+          description: "",
+          organizerName: "",
+        },
       ]);
     }
   }
@@ -118,7 +138,13 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
       originalLanguage,
       translations: translations
         .filter((t) => t.name.trim())
-        .map((t) => ({ locale: t.locale, name: t.name, shortName: t.shortName || null, description: t.description || null })),
+        .map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          shortName: t.shortName || null,
+          description: t.description || null,
+          organizerName: t.organizerName.trim() || null,
+        })),
     };
 
     const url = initialData
@@ -216,7 +242,7 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
 
       <div>
         <label className="mb-1 block text-sm font-medium">
-          주최 (아티스트 없는 경우)
+          주최 (원어, 아티스트 없는 경우 — 번역은 아래 번역 블록에)
         </label>
         <input
           placeholder="Bandai Namco / Lantis"
@@ -344,6 +370,14 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
                   updateTranslation(i, "description", e.target.value)
                 }
                 rows={2}
+                className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="주최 번역 (비우면 원어 주최 표시)"
+                value={tr.organizerName}
+                onChange={(e) =>
+                  updateTranslation(i, "organizerName", e.target.value)
+                }
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
             </div>

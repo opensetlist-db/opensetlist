@@ -28,6 +28,7 @@ type Translation = {
   shortName: string;
   city: string;
   venue: string;
+  organizerName: string;
 };
 
 type StageIdentityOption = {
@@ -91,7 +92,14 @@ const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
 function emptyTranslation(locale: string): Translation {
-  return { locale, name: "", shortName: "", city: "", venue: "" };
+  return {
+    locale,
+    name: "",
+    shortName: "",
+    city: "",
+    venue: "",
+    organizerName: "",
+  };
 }
 
 function getSIName(si: StageIdentityOption) {
@@ -310,6 +318,7 @@ export default function EventForm({ initialData }: EventFormProps) {
           shortName: t.shortName || null,
           city: t.city || null,
           venue: t.venue || null,
+          organizerName: t.organizerName.trim() || null,
         })),
       performerIds: selectedPerformers.map((p) => p.id),
       guestIds: selectedGuests.map((g) => g.id),
@@ -528,7 +537,7 @@ export default function EventForm({ initialData }: EventFormProps) {
         </div>
         <div>
           <label className="mb-1 block text-xs text-zinc-600">
-            주최자명 (멀티-아티스트 단독 공연용)
+            주최자명 (원어, 멀티-아티스트 단독 공연용)
           </label>
           <input
             placeholder="예: Bandai Namco / Lantis"
@@ -767,6 +776,14 @@ export default function EventForm({ initialData }: EventFormProps) {
                   className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
                 />
               </div>
+              <input
+                placeholder="주최자명 번역 (비우면 원어 주최자명 표시)"
+                value={tr.organizerName}
+                onChange={(e) =>
+                  updateTranslation(i, "organizerName", e.target.value)
+                }
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
             </div>
           ))}
         </div>
