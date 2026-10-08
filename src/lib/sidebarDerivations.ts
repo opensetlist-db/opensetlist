@@ -6,6 +6,8 @@ import type {
   UnitsCardItem,
   PerformersCardItem,
   EventPerformerSummary,
+  EventRosterEntry,
+  RosterArtist,
 } from "@/lib/types/setlist";
 
 // Re-export so import sites that already use this module's name for
@@ -210,6 +212,213 @@ export function deriveSidebarUnitsAndPerformers(
   return { units: sortedUnits, performers: sortedPerformers };
 }
 
+/** A top-level group in the pre-show lineup (also feeds JSON-LD `performer`). */
+export interface LineupGroup {
+  id: string;
+  slug: string;
+  name: string;
+  isGuest: boolean;
+}
+
+export interface Lineup {
+  units: UnitsCardItem[];
+  performers: PerformersCardItem[];
+  groups: LineupGroup[];
+}
+
+/**
+ * Pre-show sidebar lineup, built from the event's own roster
+ * (`EventPerformer` + each stage identity's `artistLinks`) instead of
+ * from setlist items. Upcoming pages have no items, so the item-derived
+ * sidebar is empty — which (together with the zero counters) is what
+ * made Google classify them as Soft 404. Once the first item lands the
+ * caller switches back to `deriveSidebarUnitsAndPerformers`, so the
+ * live/post-show sidebar keeps reflecting who actually performed.
+ *
+ * Grouping rules — tuned against the real Fes roster, whose links are
+ * noisier than a single-group event suggests:
+ *
+ *   - **Section group** per performer = their top-level (no parent,
+ *     non-unit, non-solo) group with the MOST roster members.
+ *     Cross-group collab groups (AiScReam: one member each from four
+ *     groups; GKSS) also sit at the top level, so "first group link"
+ *     would misfile anyone in one; the headcount makes the home group
+ *     win.
+ *   - **Units** = `type === "unit"` links whose parent is the
+ *     performer's section group. When any of a group's roster units is
+ *     `isMainUnit`, only main units are shown (蓮ノ空 → Cerise /
+ *     DOLLCHESTRA / Mira-Cra / Edel Note, not derivative pairs like
+ *     かほめぐ♡じぇらーと); a group with no main unit flagged
+ *     (いきづらい部！ today) shows all of its units rather than none.
+ *     Solo "artists" never show.
+ *   - Guests mirror the live sidebar (D10a/D9): a pill with the guest
+ *     suffix, never counted into a group/unit member list; a group or
+ *     unit with no host member is itself marked guest and sorts last.
+ *
+ * Order follows the roster's input order (first appearance). The page
+ * fetches the roster by stage-identity creation order — seed order —
+ * so groups and members read in their canonical sequence.
+ */
+export function deriveLineupFromRoster(
+  roster: EventRosterEntry[],
+  locale: string,
+  unknownArtistLabel: string,
+  unknownPerformerLabel: string,
+): Lineup {
+  const isTopLevelGroup = (a: RosterArtist) =>
+    a.type === "group" && a.parentArtistId === null;
+  const liveLinks = (e: EventRosterEntry) =>
+    e.stageIdentity.artistLinks
+      .map((l) => l.artist)
+      .filter((a) => !a.isDeleted);
+
+  // Roster headcount per top-level group — the tiebreaker that keeps a
+  // collab group from stealing anyone's section.
+  const groupHeadcount = new Map<number, number>();
+  for (const e of roster) {
+    for (const a of liveLinks(e)) {
+      if (!isTopLevelGroup(a)) continue;
+      groupHeadcount.set(a.id, (groupHeadcount.get(a.id) ?? 0) + 1);
+    }
+  }
+  const sectionGroupOf = (e: EventRosterEntry): RosterArtist | null => {
+    let best: RosterArtist | null = null;
+    for (const a of liveLinks(e)) {
+      if (!isTopLevelGroup(a)) continue;
+      // Strict `>` keeps the first-listed group on a tie.
+      if (!best || groupHeadcount.get(a.id)! > groupHeadcount.get(best.id)!) {
+        best = a;
+      }
+    }
+    return best;
+  };
+
+  const performerName = (e: EventRosterEntry) =>
+    displayNameWithFallback(
+      e.stageIdentity,
+      e.stageIdentity.translations,
+      locale,
+      "full",
+    ) || unknownPerformerLabel;
+  const artistName = (a: RosterArtist) =>
+    displayNameWithFallback(a, a.translations, locale, "full") ||
+    unknownArtistLabel;
+
+  type Bucket = {
+    artist: RosterArtist;
+    members: string[];
+    memberIds: Set<string>;
+    hasHost: boolean;
+  };
+  type GroupBucket = Bucket & { units: Map<number, Bucket> };
+  const newBucket = (artist: RosterArtist): Bucket => ({
+    artist,
+    members: [],
+    memberIds: new Set(),
+    hasHost: false,
+  });
+  const addMember = (b: Bucket, e: EventRosterEntry) => {
+    if (e.isGuest) return;
+    b.hasHost = true;
+    if (b.memberIds.has(e.stageIdentity.id)) return;
+    b.memberIds.add(e.stageIdentity.id);
+    b.members.push(performerName(e));
+  };
+
+  const groups = new Map<number, GroupBucket>();
+  const sectionOf = new Map<string, RosterArtist | null>();
+  for (const e of roster) {
+    const section = sectionGroupOf(e);
+    sectionOf.set(e.stageIdentity.id, section);
+    if (!section) continue;
+    let g = groups.get(section.id);
+    if (!g) {
+      g = { ...newBucket(section), units: new Map() };
+      groups.set(section.id, g);
+    }
+    addMember(g, e);
+    for (const a of liveLinks(e)) {
+      if (a.type !== "unit" || a.parentArtistId !== section.id) continue;
+      let u = g.units.get(a.id);
+      if (!u) {
+        u = newBucket(a);
+        g.units.set(a.id, u);
+      }
+      addMember(u, e);
+    }
+  }
+
+  const hostsFirst = <T extends { isGuest?: boolean }>(xs: T[]): T[] => [
+    ...xs.filter((x) => !x.isGuest),
+    ...xs.filter((x) => x.isGuest),
+  ];
+  const toRow = (b: Bucket, kind: "group" | "unit"): UnitsCardItem => ({
+    id: String(b.artist.id),
+    slug: b.artist.slug,
+    name: artistName(b.artist),
+    color: b.artist.color ?? null,
+    members: b.members,
+    isGuest: !b.hasHost,
+    kind,
+  });
+
+  const orderedGroups = hostsFirst(
+    [...groups.values()].map((g) => ({ g, isGuest: !g.hasHost })),
+  ).map(({ g }) => g);
+
+  // Units actually shown per group (main-unit filter applied). Kept for
+  // the pill-tint lookup below so a pill is never tinted by a unit the
+  // card doesn't list.
+  const shownUnitIdsByGroup = new Map<number, Set<number>>();
+  const units: UnitsCardItem[] = [];
+  for (const g of orderedGroups) {
+    const all = [...g.units.values()];
+    const shown = all.some((u) => u.artist.isMainUnit)
+      ? all.filter((u) => u.artist.isMainUnit)
+      : all;
+    shownUnitIdsByGroup.set(
+      g.artist.id,
+      new Set(shown.map((u) => u.artist.id)),
+    );
+    units.push(toRow(g, "group"));
+    units.push(...hostsFirst(shown.map((u) => toRow(u, "unit"))));
+  }
+
+  // Pills: section order first, roster order within a section; a
+  // performer with no section group (data gap) goes after every section.
+  const sectionRank = new Map(orderedGroups.map((g, i) => [g.artist.id, i]));
+  const performerRows = roster.map((e, inputIdx) => {
+    const section = sectionOf.get(e.stageIdentity.id) ?? null;
+    const shownIds = section ? shownUnitIdsByGroup.get(section.id) : undefined;
+    const primaryUnit = shownIds
+      ? liveLinks(e).find((a) => shownIds.has(a.id))
+      : undefined;
+    const item: PerformersCardItem = {
+      id: e.stageIdentity.id,
+      slug: e.stageIdentity.slug,
+      name: performerName(e),
+      color: resolveUnitColor(primaryUnit ?? section ?? { color: null }),
+      isGuest: e.isGuest,
+    };
+    const rank = section
+      ? (sectionRank.get(section.id) ?? Number.MAX_SAFE_INTEGER)
+      : Number.MAX_SAFE_INTEGER;
+    return { item, rank, inputIdx };
+  });
+  performerRows.sort((a, b) => a.rank - b.rank || a.inputIdx - b.inputIdx);
+
+  return {
+    units,
+    performers: hostsFirst(performerRows.map((r) => r.item)),
+    groups: orderedGroups.map((g) => ({
+      id: String(g.artist.id),
+      slug: g.artist.slug,
+      name: artistName(g.artist),
+      isGuest: !g.hasHost,
+    })),
+  };
+}
+
 /**
  * Total song-typed setlist items (excludes mc/video/interval, plus
  * placeholder song-typed items with no song row attached yet). The
@@ -225,7 +434,10 @@ export function deriveSongsCount(items: LiveSetlistItem[]): number {
 
 /**
  * Pre-formatted reaction count string (e.g. `"1.2K"` / `"1.2천"`) for
- * the EventHeader card. Sums every reaction across every setlist item
+ * the EventHeader card, or `null` when there are no reactions at all —
+ * the card hides the row then. A row of zero-stats on an otherwise
+ * empty pre-show page is half of what Google reads as Soft 404, and
+ * "💬 0" tells a human nothing either. Sums every reaction across every setlist item
  * and runs the result through `Intl.NumberFormat(locale, { notation:
  * "compact", maximumFractionDigits: 1 })` — passing a string instead
  * of a raw number to the card avoids any SSR-vs-client `Intl`
@@ -235,12 +447,13 @@ export function deriveSongsCount(items: LiveSetlistItem[]): number {
 export function deriveReactionsValue(
   reactionCounts: ReactionCountsMap,
   locale: string,
-): string {
+): string | null {
   const total = Object.values(reactionCounts).reduce(
     (sum, perItem) =>
       sum + Object.values(perItem).reduce((s, n) => s + n, 0),
     0,
   );
+  if (total === 0) return null;
   return new Intl.NumberFormat(locale, {
     notation: "compact",
     maximumFractionDigits: 1,

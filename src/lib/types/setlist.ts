@@ -186,6 +186,13 @@ export interface UnitsCardItem {
    * treated as `false` when missing.
    */
   isGuest?: boolean;
+  /**
+   * Row kind. Only the pre-show lineup (`deriveLineupFromRoster`)
+   * emits `"group"` rows — a section header for a top-level group
+   * (蓮ノ空 / μ's / …) followed by that group's `"unit"` rows. The
+   * setlist-derived sidebar never sets it; missing means `"unit"`.
+   */
+  kind?: "group" | "unit";
 }
 
 /**
@@ -213,6 +220,12 @@ export interface PerformersCardItem {
    * backward-compat — treated as `false` when missing.
    */
   isGuest?: boolean;
+  /**
+   * `StageIdentity.slug`. When set, the pill links to the member page.
+   * Only the pre-show lineup sets it today (the setlist-derived pills
+   * stay plain text — the live sidebar is deliberately untouched).
+   */
+  slug?: string;
 }
 
 /**
@@ -225,4 +238,49 @@ export interface PerformersCardItem {
 export interface EventPerformerSummary {
   stageIdentityId: string;
   isGuest: boolean;
+}
+
+/**
+ * Translation row shape shared by the roster's artist + stage-identity
+ * nodes — the `[locale, "ja"]`-filtered slice `displayNameWithFallback`
+ * cascades through.
+ */
+interface RosterTranslation {
+  locale: string;
+  name: string;
+  shortName: string | null;
+}
+
+/** Artist node reached through `EventPerformer → StageIdentity → artistLinks`. */
+export interface RosterArtist {
+  id: number;
+  slug: string;
+  type: "solo" | "group" | "unit";
+  color: string | null;
+  parentArtistId: number | null;
+  isMainUnit: boolean;
+  isDeleted: boolean;
+  originalName: string;
+  originalShortName: string | null;
+  originalLanguage: string;
+  translations: RosterTranslation[];
+}
+
+/**
+ * One `EventPerformer` row with enough of its stage identity + artist
+ * memberships to build the pre-show lineup (`deriveLineupFromRoster`)
+ * and the `MusicEvent` JSON-LD performer list. Post-`serializeBigInt`
+ * shape (artist ids are numbers).
+ */
+export interface EventRosterEntry {
+  isGuest: boolean;
+  stageIdentity: {
+    id: string;
+    slug: string;
+    originalName: string;
+    originalShortName: string | null;
+    originalLanguage: string;
+    translations: RosterTranslation[];
+    artistLinks: Array<{ artist: RosterArtist }>;
+  };
 }

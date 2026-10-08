@@ -14,7 +14,7 @@ import {
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
 import { CACHE_TTL, cachedQuery, eventTag } from "@/lib/dataCache";
-import { isWishPredictOpen } from "@/lib/eventTiming";
+import { isWishPredictOpen, OPEN_WINDOW_MS } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
@@ -27,11 +27,16 @@ import { resolveUnitColor } from "@/lib/artistColor";
 import { deriveUnitFilters } from "@/lib/predict/unitFilters";
 import type { AvailableSong } from "@/lib/types/predict";
 import {
+  deriveLineupFromRoster,
   deriveSidebarUnitsAndPerformers,
   deriveSongsCount,
   deriveReactionsValue,
   type EventPerformerSummary,
+  type Lineup,
 } from "@/lib/sidebarDerivations";
+import type { EventRosterEntry } from "@/lib/types/setlist";
+import { formatVenueStart } from "@/lib/venueTime";
+import { buildEventJsonLd, serializeJsonLd } from "@/lib/seo/eventJsonLd";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
 import { EventBdSection } from "@/components/EventBdSection";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
@@ -39,7 +44,12 @@ import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
 import type { Metadata } from "next";
-import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
+import {
+  absoluteUrl,
+  entityAlternates,
+  entityPath,
+  enforceCanonicalSlug,
+} from "@/lib/seo/entityUrl";
 
 type Props = {
   params: Promise<{ locale: string; id: string; slug?: string[] }>;
@@ -323,6 +333,83 @@ const getEvent = cache(async (id: bigint, locale: string) => {
     ? fetchEvent(id, locale)
     : getEventCached(id, locale, status);
 });
+
+// Event roster with each stage identity's artist memberships — the
+// input for the pre-show lineup (`deriveLineupFromRoster`) and the
+// JSON-LD `performer` groups. Kept OUT of the wide `fetchEvent` read on
+// purpose: that query is `relationJoins`-aggregated, so nesting
+// `artistLinks.artist` (+ translations) under every performer there
+// would inline each artist once per member link on every event fetch,
+// including the uncached live path. A separate narrow, cached read
+// costs one extra round-trip per TTL instead.
+//
+// Order: stage-identity creation order (= seed order, i.e. canonical
+// member order), id as the deterministic tiebreak. `artistLinks` by
+// artist id so a member's home group (created before later collab
+// groups) is listed first — only a tiebreak; the lineup picks the home
+// group by roster headcount.
+async function fetchEventRoster(
+  id: bigint,
+  locale: string,
+): Promise<EventRosterEntry[]> {
+  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
+  const translationSelect = {
+    where: localeFilter,
+    select: { locale: true, name: true, shortName: true },
+  } as const;
+  const rows = await prisma.eventPerformer.findMany({
+    where: { eventId: id },
+    orderBy: [
+      { stageIdentity: { createdAt: "asc" } },
+      { stageIdentityId: "asc" },
+    ],
+    select: {
+      isGuest: true,
+      stageIdentity: {
+        select: {
+          id: true,
+          slug: true,
+          originalName: true,
+          originalShortName: true,
+          originalLanguage: true,
+          translations: translationSelect,
+          artistLinks: {
+            orderBy: { artistId: "asc" },
+            select: {
+              artist: {
+                select: {
+                  id: true,
+                  slug: true,
+                  type: true,
+                  color: true,
+                  parentArtistId: true,
+                  isMainUnit: true,
+                  isDeleted: true,
+                  originalName: true,
+                  originalShortName: true,
+                  originalLanguage: true,
+                  translations: translationSelect,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  // serializeBigInt keeps the input's TS types while turning BigInt ids
+  // into numbers at runtime; `EventRosterEntry` describes the runtime
+  // (number) shape — same boundary cast as `LiveSetlistItem` below.
+  return serializeBigInt(rows) as unknown as EventRosterEntry[];
+}
+
+// Operators fill the roster well before a show and don't touch it
+// during one, so even the live path takes the cached copy.
+const getEventRoster = cachedQuery(
+  "event-roster",
+  (id: bigint, locale: string) => fetchEventRoster(id, locale),
+  { revalidate: CACHE_TTL.event, tags: (id) => [eventTag(id)] },
+);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, id } = await params;
@@ -839,8 +926,17 @@ export default async function EventPage({ params }: Props) {
   // waste during live shows that the existing skip avoids — see
   // `LiveSetlist.tsx:62-64` for the client-side re-derivation that
   // makes the SSR fetch dead weight when ongoing.
-  const [event, t, ct, st, aT, reactionCounts, impressionsResult, fanTop3] =
-    await Promise.all([
+  const [
+    event,
+    t,
+    ct,
+    st,
+    aT,
+    reactionCounts,
+    impressionsResult,
+    fanTop3,
+    roster,
+  ] = await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
       getTranslations("Common"),
@@ -854,6 +950,7 @@ export default async function EventPage({ params }: Props) {
       // Cheap bounded query; safe on completed events (returns the
       // historical aggregate).
       fetchEventWishlistTop3(eventId, locale),
+      getEventRoster(eventId, locale),
     ]);
   if (!event) notFound();
   // Bare id / wrong or legacy localized slug → 308 to the canonical
@@ -1104,6 +1201,71 @@ export default async function EventPage({ params }: Props) {
   const songsCount = deriveSongsCount(setlistItemsForDerivation);
   const reactionsValue = deriveReactionsValue(reactionCounts, locale);
 
+  // Roster-derived lineup. Computed for every status because its
+  // `groups` also feed the JSON-LD performers, but handed to the
+  // sidebar only for upcoming events — completed-with-empty-setlist
+  // and the live sidebar keep their item-derived behavior.
+  const rosterLineup: Lineup | null =
+    roster.length > 0
+      ? deriveLineupFromRoster(
+          roster,
+          locale,
+          aT("unknown"),
+          t("unknownPerformer"),
+        )
+      : null;
+  const sidebarLineup =
+    resolvedStatus === "upcoming" && rosterLineup
+      ? { units: rosterLineup.units, performers: rosterLineup.performers }
+      : null;
+
+  // Pre-show empty-state copy pieces, venue-local and server-formatted
+  // (hydration-stable). The predict-opens line shows only while the
+  // D-7 window is still ahead — once open, the predict surface itself
+  // is on the page.
+  const setlistStartLabel =
+    resolvedStatus === "upcoming"
+      ? formatVenueStart(event.startTime, event.country, locale)
+      : null;
+  const predictOpensLabel =
+    resolvedStatus === "upcoming" && !wishPredictOpen
+      ? formatVenueStart(
+          new Date(new Date(event.startTime).getTime() - OPEN_WINDOW_MS),
+          event.country,
+          locale,
+        )
+      : null;
+
+  // schema.org MusicEvent. Name mirrors the <title> composition (series
+  // short + event full) so a per-day name like "Day.1" isn't ambiguous
+  // on its own. Performers: the lineup's host groups, else the series
+  // artist (single-artist events without a roster).
+  const jsonLdName =
+    [seriesShortName || seriesFullName, eventFullName]
+      .filter(Boolean)
+      .join(" ") || headerTitle;
+  const rosterHostGroups =
+    rosterLineup?.groups.filter((g) => !g.isGuest) ?? [];
+  const jsonLdPerformers =
+    rosterHostGroups.length > 0
+      ? rosterHostGroups
+      : headerArtist
+        ? [headerArtist]
+        : [];
+  const eventJsonLd = buildEventJsonLd({
+    name: jsonLdName,
+    startTime: event.startTime,
+    country: event.country,
+    status: resolvedStatus,
+    venue,
+    city: cityBase,
+    performers: jsonLdPerformers,
+    organizerName:
+      event.organizerName ?? event.eventSeries?.organizerName ?? null,
+    canonicalUrl: absoluteUrl(entityPath("events", locale, id, event.slug)),
+    locale,
+  });
+
   // Breadcrumb: always [Home › seriesShort › eventShort] when a series
   // exists; falls back to [Home › eventShort] otherwise. Operator
   // confirmed "Home › series › event" as the canonical shape (mockup
@@ -1136,6 +1298,12 @@ export default async function EventPage({ params }: Props) {
       // the sticky desktop sidebar reads as "missing".
       style={{ background: colors.bgPage }}
     >
+      {/* Next's metadata API has no JSON-LD slot; an inline script in
+          the body is Google's documented equivalent. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(eventJsonLd) }}
+      />
       <Breadcrumb ariaLabel={ct("breadcrumb")} items={breadcrumbItems} />
 
       {/*
@@ -1257,6 +1425,9 @@ export default async function EventPage({ params }: Props) {
         initialReactionCounts={reactionCounts}
         initialSidebarUnits={sidebarUnits}
         initialSidebarPerformers={sidebarPerformers}
+        lineup={sidebarLineup}
+        setlistStartLabel={setlistStartLabel}
+        predictOpensLabel={predictOpensLabel}
         initialSongsCount={songsCount}
         initialReactionsValue={reactionsValue}
         initialTrendingSongs={trendingSongs}

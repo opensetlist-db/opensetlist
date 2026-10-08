@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { colors, radius, shadows } from "@/styles/tokens";
 // Type lives in `src/lib/types/setlist.ts` so pure helpers under
 // `src/lib/` (`deriveSidebarUnitsAndPerformers`) can produce
@@ -12,7 +14,13 @@ import type { PerformersCardItem } from "@/lib/types/setlist";
 export type { PerformersCardItem };
 
 interface Props {
+  locale: string;
   performers: PerformersCardItem[];
+  /**
+   * Pre-show lineup mode (roster-derived, nobody has performed yet):
+   * swaps the heading to 「出演予定」 / 「출연 예정」 / "Lineup".
+   */
+  isLineup?: boolean;
 }
 
 /**
@@ -29,7 +37,11 @@ interface Props {
  * (~7% alpha) for the pill background — matched here via an 8-digit
  * hex append.
  */
-export function PerformersCard({ performers }: Props) {
+export function PerformersCard({
+  locale,
+  performers,
+  isLineup = false,
+}: Props) {
   const t = useTranslations("Event");
   if (performers.length === 0) return null;
 
@@ -76,7 +88,19 @@ export function PerformersCard({ performers }: Props) {
           color: p.color,
         }}
       >
-        {p.name}
+        {p.slug ? (
+          // Lineup pills link to the member page (the setlist-derived
+          // pills carry no slug and stay plain text).
+          <Link
+            href={entityPath("members", locale, p.id, p.slug)}
+            className="hover:underline"
+            style={{ color: "inherit", textDecoration: "none" }}
+          >
+            {p.name}
+          </Link>
+        ) : (
+          p.name
+        )}
         {opts?.suffix && (
           <span
             style={{
@@ -111,7 +135,7 @@ export function PerformersCard({ performers }: Props) {
           marginBottom: 14,
         }}
       >
-        {t("performersLabel")}
+        {isLineup ? t("lineupPerformersLabel") : t("performersLabel")}
       </div>
       <ul
         style={{
