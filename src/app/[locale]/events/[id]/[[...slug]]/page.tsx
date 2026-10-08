@@ -14,7 +14,7 @@ import {
   type ResolvedEventStatus,
 } from "@/lib/eventStatus";
 import { CACHE_TTL, cachedQuery, eventTag } from "@/lib/dataCache";
-import { isWishPredictOpen, OPEN_WINDOW_MS } from "@/lib/eventTiming";
+import { isWishPredictOpen, wishPredictOpensAt } from "@/lib/eventTiming";
 import { deriveOgPaletteFromCachedEvent } from "@/lib/ogPalette";
 import { normalizeOgLocale } from "@/lib/ogLabels";
 import type { TrendingSong } from "@/components/TrendingSongs";
@@ -1226,8 +1226,10 @@ export default async function EventPage({ params }: Props) {
 
   // Pre-show empty-state copy pieces, venue-local and server-formatted
   // (hydration-stable). The predict-opens line shows only while the
-  // D-7 window is still ahead — once open, the predict surface itself
-  // is on the page.
+  // window is still ahead — once open, the predict surface itself is
+  // on the page. The date comes from `wishPredictOpensAt`, the same
+  // instant the gate uses, so a per-event `engagementOpensAt` override
+  // is announced correctly instead of the D-7 default.
   const setlistStartLabel =
     resolvedStatus === "upcoming"
       ? formatVenueStart(event.startTime, event.country, locale)
@@ -1238,7 +1240,10 @@ export default async function EventPage({ params }: Props) {
   const predictOpensLabel =
     resolvedStatus === "upcoming" && !wishPredictOpen && event.startTime
       ? formatVenueStart(
-          new Date(new Date(event.startTime).getTime() - OPEN_WINDOW_MS),
+          wishPredictOpensAt(
+            new Date(event.startTime),
+            event.engagementOpensAt,
+          ),
           event.country,
           locale,
         )
