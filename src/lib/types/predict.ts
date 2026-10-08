@@ -77,6 +77,14 @@ export interface AvailableSong {
    *  solo collabs (no main unit winner) route to `others` only
    *  regardless of `creditedArtistIds`. */
   creditedArtistIds: number[];
+  /** Festival path only (n10): the root group ids whose catalog scope
+   *  credited this song — one per festival group chip it should appear
+   *  under. A crossover song credited to two groups carries both ids
+   *  but stays ONE row (one selectable prediction), merged by `songId`
+   *  in `mergeFestivalCatalog`. Always `[]` on the single-artist path,
+   *  where the `group` / `individual` chips route via
+   *  `creditedArtistIds` instead. */
+  festivalGroupIds: number[];
 }
 
 export interface AvailableSongUnit {
@@ -109,6 +117,9 @@ export interface AvailableSongUnit {
  *   - `others`      → none of `song.creditedArtistIds` is covered by
  *                     any `group` or `individual` chip in the same
  *                     `UnitFilter[]` (composite catch-all)
+ *   - `festivalGroup` → `song.festivalGroupIds.includes(filter.artistId)`
+ *                     (multi-artist events only — one chip per root
+ *                     group on the roster; see `deriveFestivalFilters`)
  *
  * `creditedArtistIds` carries every credited group / sub-unit / solo
  * artistId from the server, so a multi-main-unit collab routes under
@@ -123,7 +134,12 @@ export interface AvailableSongUnit {
  * name) and so the picker can prefer the group chip for routing
  * preference when both exist.
  */
-export type UnitFilterKind = "all" | "group" | "individual" | "others";
+export type UnitFilterKind =
+  | "all"
+  | "group"
+  | "individual"
+  | "others"
+  | "festivalGroup";
 
 export interface UnitFilter {
   /** Stable React key + active-filter state value. `all` / `others`
@@ -134,7 +150,8 @@ export interface UnitFilter {
    *  filter (active state falls back to the neutral primary). */
   color: string | null;
   kind: UnitFilterKind;
-  /** Filled for `kind: "group"` + `"individual"`. Null for the
-   *  composite `"all"` + `"others"` filters. */
+  /** Filled for `kind: "group"`, `"individual"` and
+   *  `"festivalGroup"` (the root group id). Null for the composite
+   *  `"all"` + `"others"` filters. */
   artistId: number | null;
 }

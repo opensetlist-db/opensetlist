@@ -60,6 +60,7 @@ function song(
     // songs. Tests that need multi-credit routing pass an explicit
     // array (e.g. [2, 3, 4] for a Cerise + DOLL + MCP collab).
     creditedArtistIds: creditedArtistIds ?? [unit.artistId],
+    festivalGroupIds: [],
   };
 }
 
@@ -195,6 +196,7 @@ describe("<SongPickerContent>", () => {
       },
       isMultiArtist: false,
       creditedArtistIds: [99],
+      festivalGroupIds: [],
     };
     render(
       <SongPickerContent
@@ -678,5 +680,111 @@ describe("<SongPickerContent>", () => {
     fireEvent.click(screen.getByLabelText("picker.searchClearAria"));
     expect(input.value).toBe("");
     expect(screen.getByText("Dream Believers")).toBeTruthy();
+  });
+});
+
+// Festival chip set (multi-artist events) — one chip per root group,
+// routed by `festivalGroupIds` rather than `creditedArtistIds`.
+describe("SongPickerContent — festival chips", () => {
+  const LIELLA = {
+    artistId: 50,
+    slug: "liella",
+    label: "Liella!",
+    color: "#aa00ff",
+    isSubUnit: false,
+    isMainUnit: false,
+  };
+  const KOZUE_SOLO = {
+    artistId: 7,
+    slug: "kozue",
+    label: "Kozue",
+    color: "#ff8800",
+    isSubUnit: true,
+    isMainUnit: false,
+  };
+  const fes = (s: AvailableSong, festivalGroupIds: number[]): AvailableSong => ({
+    ...s,
+    festivalGroupIds,
+  });
+
+  const FES_SONGS: AvailableSong[] = [
+    fes(song(10, "Dream Believers", HASUNOSORA), [1]),
+    fes(song(20, "Aoku Haruka", CERISE), [1]),
+    // 5-solo 103期 song: multi-artist relative to the group, which the
+    // single-artist chips would only ever show under `others`.
+    fes(song(40, "Solo Medley Song", KOZUE_SOLO, [], null, true, [7, 8, 9]), [1]),
+    fes(song(50, "Starlight Prologue", LIELLA), [50]),
+    // Crossover credited to both roots — one row, both chips.
+    fes(song(60, "Crossover Anthem", HASUNOSORA), [1, 50]),
+  ];
+  const FES_FILTERS: UnitFilter[] = [
+    { key: "all", label: "All", color: null, kind: "all", artistId: null },
+    {
+      key: "festival:hasunosora",
+      label: "蓮ノ空",
+      color: "#0277BD",
+      kind: "festivalGroup",
+      artistId: 1,
+    },
+    {
+      key: "festival:liella",
+      label: "Liella!",
+      color: "#aa00ff",
+      kind: "festivalGroup",
+      artistId: 50,
+    },
+  ];
+  const renderFes = (songs = FES_SONGS, filters = FES_FILTERS) =>
+    render(
+      <SongPickerContent
+        songs={songs}
+        selectedIds={[]}
+        unitFilters={filters}
+        onToggle={() => {}}
+        locale="ja"
+      />,
+    );
+
+  it("group chip shows its sub-unit songs and multi-solo songs", () => {
+    renderFes();
+    fireEvent.click(screen.getByText("蓮ノ空"));
+    expect(screen.getByText("Dream Believers")).toBeTruthy();
+    expect(screen.getByText("Aoku Haruka")).toBeTruthy();
+    expect(screen.getByText("Solo Medley Song")).toBeTruthy();
+    expect(screen.getByText("Crossover Anthem")).toBeTruthy();
+    expect(screen.queryByText("Starlight Prologue")).toBeNull();
+  });
+
+  it("crossover song appears under every credited group's chip", () => {
+    renderFes();
+    fireEvent.click(screen.getAllByText("Liella!")[0]);
+    expect(screen.getByText("Starlight Prologue")).toBeTruthy();
+    expect(screen.getByText("Crossover Anthem")).toBeTruthy();
+    expect(screen.queryByText("Dream Believers")).toBeNull();
+  });
+
+  it("`others` holds only songs with no festival group", () => {
+    const homeless = fes(song(99, "Homeless Song", LIELLA), []);
+    renderFes(
+      [...FES_SONGS, homeless],
+      [
+        ...FES_FILTERS,
+        { key: "others", label: "Others", color: "#000", kind: "others", artistId: null },
+      ],
+    );
+    fireEvent.click(screen.getByText("Others"));
+    expect(screen.getByText("Homeless Song")).toBeTruthy();
+    expect(screen.queryByText("Dream Believers")).toBeNull();
+    expect(screen.queryByText("Solo Medley Song")).toBeNull();
+  });
+
+  it("search still filters within a group chip", () => {
+    renderFes();
+    fireEvent.click(screen.getByText("蓮ノ空"));
+    fireEvent.change(screen.getByPlaceholderText("picker.searchPlaceholder"), {
+      target: { value: "Aoku" },
+    });
+    expect(screen.getByText("Aoku Haruka")).toBeTruthy();
+    expect(screen.queryByText("Dream Believers")).toBeNull();
   });
 });

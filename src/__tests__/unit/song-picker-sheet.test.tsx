@@ -53,6 +53,7 @@ const SONGS: AvailableSong[] = [
     },
     isMultiArtist: false,
     creditedArtistIds: [1],
+    festivalGroupIds: [],
   },
 ];
 
