@@ -1227,8 +1227,11 @@ export default async function EventPage({ params }: Props) {
     resolvedStatus === "upcoming"
       ? formatVenueStart(event.startTime, event.country, locale)
       : null;
+  // `startTime` is non-null in the schema; the truthiness guard is
+  // belt-and-braces so a bad row can never turn `new Date(null)` into
+  // an epoch-1970 "opens" date.
   const predictOpensLabel =
-    resolvedStatus === "upcoming" && !wishPredictOpen
+    resolvedStatus === "upcoming" && !wishPredictOpen && event.startTime
       ? formatVenueStart(
           new Date(new Date(event.startTime).getTime() - OPEN_WINDOW_MS),
           event.country,
