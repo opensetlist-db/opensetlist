@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { deriveDefaultPerformerIds } from "@/app/admin/events/SetlistBuilder";
+import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
 
 // Minimal performer shape: id + the Artist ids the StageIdentity links to.
 function si(id: string, ...artistIds: number[]) {
@@ -45,12 +46,53 @@ describe("deriveDefaultPerformerIds", () => {
     ).toEqual(["chika", "riko"]);
   });
 
-  it("full_group credited to an artist nobody links to → falls back to full roster", () => {
-    // e.g. a Hasunosora row credited to 蓮ノ空 where members only link
-    // to their sub-units — never collapse to an empty lineup.
+  it("full_group credited to an artist nobody links to → [] (no roster fallback)", () => {
+    // The old fallback pre-checked the whole multi-group Fes roster.
     expect(
       deriveDefaultPerformerIds("song", "full_group", [999], roster),
-    ).toHaveLength(roster.length);
+    ).toEqual([]);
+  });
+
+  describe("with the artist hierarchy", () => {
+    const HASUNOSORA = 1;
+    const MUSICAL = 50;
+    const hierarchy = buildArtistHierarchy([
+      { id: HASUNOSORA, parentArtistId: null },
+      { id: CERISE, parentArtistId: HASUNOSORA },
+      { id: AQOURS, parentArtistId: null },
+      { id: NIJI, parentArtistId: null },
+      { id: MUSICAL, parentArtistId: null },
+    ]);
+
+    it("group credit matches members linked only to its sub-units", () => {
+      expect(
+        deriveDefaultPerformerIds("song", "full_group", [HASUNOSORA], roster, hierarchy),
+      ).toEqual(["kaho"]);
+    });
+
+    it("credit with no member rows (Musical) → []", () => {
+      expect(
+        deriveDefaultPerformerIds("song", "full_group", [MUSICAL], roster, hierarchy),
+      ).toEqual([]);
+    });
+
+    it("direct group links are unchanged", () => {
+      expect(
+        deriveDefaultPerformerIds("song", "full_group", [AQOURS], roster, hierarchy),
+      ).toEqual(["chika", "riko"]);
+    });
+
+    it("unit credit does not widen to the parent group", () => {
+      expect(
+        deriveDefaultPerformerIds("song", "unit", [CERISE], roster, hierarchy),
+      ).toEqual(["kaho"]);
+    });
+
+    it("no credit on full_group still seeds the whole roster", () => {
+      expect(
+        deriveDefaultPerformerIds("song", "full_group", [], roster, hierarchy),
+      ).toHaveLength(roster.length);
+    });
   });
 
   it("unit row → members of the credited unit", () => {

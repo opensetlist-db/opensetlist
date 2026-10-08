@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 import { nextSetlistPosition } from "@/lib/setlist-position";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
+import {
+  buildArtistHierarchy,
+  descendantsOf,
+  type ArtistHierarchy,
+} from "@/lib/artistHierarchyTree";
 
 type SongOption = {
   id: number;
@@ -127,11 +132,24 @@ const ITEM_TYPES = ["song", "mc", "video", "interval"];
  * Rule (2)'s narrowing is for multi-group events (LL Fes): the
  * roster holds every cast member of six groups, so "all performers"
  * would pre-check ~60 chips on an Aqours row. With a group credited,
- * members linked to that group are the right default. If the credit
- * matches NOBODY (e.g. a Hasunosora row credited to 蓮ノ空 where the
- * member StageIdentities only link to their sub-units), fall back to
- * the full roster — the pre-festival behavior — rather than an empty
- * lineup.
+ * members linked to that group are the right default.
+ *
+ * Matching goes through the artist hierarchy: each credited id is
+ * expanded to itself + all its descendants (`descendantsOf`), so a
+ * 蓮ノ空 credit matches members whose StageIdentities link only to
+ * their sub-units (Cerise Bouquet / DOLLCHESTRA / …) — the normal
+ * Hasunosora data shape. Without a hierarchy (prop missing) matching
+ * is direct-link only.
+ *
+ * A credit that still matches NOBODY yields [] for every stage type.
+ * The old fallback to the full roster turned an unmatched credit into
+ * "all ~54 Fes performers pre-checked", which is worse than an empty
+ * checklist: the operator has to uncheck 50 chips instead of checking
+ * 4, and a hurried save credits the whole festival. An empty list is
+ * also the right answer for credits with no member rows at all (the
+ * School Idol Musical). Only the NO-credit full_group case keeps the
+ * whole-roster default — that's the single-artist tour, where every
+ * performer really is on stage.
  *
  * `selectedUnitArtistIds.length === 0` under rule (3) returns [] —
  * the operator hasn't picked a unit yet, so we can't infer members.
@@ -152,16 +170,25 @@ export function deriveDefaultPerformerIds(
   stageType: string,
   selectedUnitArtistIds: readonly number[],
   eventPerformers: readonly Pick<StageIdentityOption, "id" | "artistLinks">[],
+  hierarchy?: ArtistHierarchy,
 ): string[] {
   if (type !== "song") return [];
-  const unitSet = new Set(selectedUnitArtistIds);
-  const linked = eventPerformers
-    .filter((p) => p.artistLinks.some((l) => unitSet.has(l.artist.id)))
-    .map((p) => p.id);
-  if (stageType === "full_group") {
-    return linked.length > 0 ? linked : eventPerformers.map((p) => p.id);
+  if (stageType === "full_group" && selectedUnitArtistIds.length === 0) {
+    return eventPerformers.map((p) => p.id);
   }
-  return linked;
+  // String keys: hierarchy ids are strings, artistLinks ids are
+  // numbers (see the artistHierarchy docstring on `1n === 1`).
+  const creditSet = new Set<string>();
+  for (const id of selectedUnitArtistIds) {
+    if (hierarchy) {
+      for (const d of descendantsOf(hierarchy, id)) creditSet.add(d);
+    } else {
+      creditSet.add(String(id));
+    }
+  }
+  return eventPerformers
+    .filter((p) => p.artistLinks.some((l) => creditSet.has(String(l.artist.id))))
+    .map((p) => p.id);
 }
 
 function getSongName(song: SongOption | SetlistItemData["songs"][0]["song"]) {
@@ -194,14 +221,32 @@ export default function SetlistBuilder({
   eventId,
   initialItems,
   eventPerformers,
+  artistParents,
 }: {
   eventId: number;
   initialItems: SetlistItemData[];
   // Non-guest performers from EventPerformer; pre-selected on every
   // fresh new-item form so operators deselect rather than add.
   eventPerformers: StageIdentityOption[];
+  // Artist id → parent id (null for roots) for every non-deleted
+  // artist. Lets deriveDefaultPerformerIds match a group credit to
+  // members linked only to its units/solos. A few hundred entries;
+  // optional so a caller without it degrades to direct-link matching.
+  artistParents?: Record<string, string | null>;
 }) {
   const router = useRouter();
+  const hierarchy = useMemo(
+    () =>
+      artistParents
+        ? buildArtistHierarchy(
+            Object.entries(artistParents).map(([id, parentArtistId]) => ({
+              id,
+              parentArtistId,
+            })),
+          )
+        : undefined,
+    [artistParents],
+  );
   const [items, setItems] = useState<SetlistItemData[]>(initialItems);
   const [stageIdentities, setStageIdentities] = useState<
     StageIdentityOption[]
@@ -369,6 +414,7 @@ export default function SetlistBuilder({
       stageType,
       artistIds,
       eventPerformers,
+      hierarchy,
     );
     setFormPerformerIds(ids);
     setSelectedPerformers(eventPerformers.filter((p) => ids.includes(p.id)));

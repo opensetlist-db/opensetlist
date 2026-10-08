@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
 
@@ -49,6 +50,13 @@ export default async function EditEventPage({ params }: Props) {
   if (!event) notFound();
 
   const data = serializeBigInt(event);
+
+  // Artist tree for SetlistBuilder's default-performer matching (a
+  // group credit must match members linked only to its units/solos).
+  // Flattened to a plain object because Maps don't cross the RSC
+  // boundary; the builder rebuilds the lookup client-side.
+  const hierarchy = await getArtistHierarchyCached();
+  const artistParents = Object.fromEntries(hierarchy.parentOf);
 
   return (
     <div className="space-y-10">
@@ -125,16 +133,18 @@ export default async function EditEventPage({ params }: Props) {
         <SetlistBuilder
           eventId={Number(data.id)}
           initialItems={data.setlistItems as any}
+          artistParents={artistParents}
           // Non-guest event performers — drives the new-item form's
           // default-performer derivation in SetlistBuilder. The rule
           // (deriveDefaultPerformerIds) collapses Hasunosora's three
           // repeating patterns to a deterministic auto-fill from
           // (type, stageType, formArtistIds):
           //   • mc/video/interval                → []
-          //   • song + full_group                → this whole prop
-          //   • song + unit/solo/special + unit  → this prop filtered
+          //   • song + full_group, no credit     → this whole prop
+          //   • song + any stage + credit        → this prop filtered
           //     to stage identities whose artistLinks include the
-          //     picked Artist id
+          //     credited Artist or any of its descendants
+          //     (`artistParents`); no match → []
           // Guests stay explicit-only per the EventPerformer schema
           // comment; they never seed any derived row.
           eventPerformers={(data.performers ?? [])
