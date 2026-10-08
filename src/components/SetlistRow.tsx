@@ -19,7 +19,11 @@ import type { LiveSetlistItem } from "@/components/LiveSetlist";
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { colors } from "@/styles/tokens";
 import { resolveUnitColor } from "@/lib/artistColor";
-import { groupBadgeLabel, pickRowArtistBadge } from "@/lib/setlistRowBadge";
+import {
+  groupBadgeLabel,
+  MAX_ROW_BADGES,
+  pickRowArtistBadges,
+} from "@/lib/setlistRowBadge";
 import {
   SETLIST_DESKTOP_GRID_COLS,
   SETLIST_DESKTOP_GRID_GAP,
@@ -45,7 +49,7 @@ interface Props {
    * The event's primary artist id (stringified BigInt), `null` when
    * the event has none, or `undefined` when the caller has no event
    * context. Decides whether `full_group` rows get a group badge —
-   * see `pickRowArtistBadge` for the rule. Multi-group events (LL
+   * see `pickRowArtistBadges` for the rule. Multi-group events (LL
    * 15th Fes under the `lovelive-series` umbrella) badge every row;
    * single-artist events keep badges on unit/solo/special rows only.
    */
@@ -212,8 +216,12 @@ export function SetlistRow({
   //
   // On multi-group events (LL Fes) the same helper also badges
   // `full_group` rows whose credit differs from the event's primary
-  // artist — see `pickRowArtistBadge` for the full rule table.
-  const unitArtist = pickRowArtistBadge(item, eventArtistId);
+  // artist — see `pickRowArtistBadges` for the full rule table.
+  //
+  // Multi-credit rows (a genuine multi-group collab) get up to
+  // MAX_ROW_BADGES chips in credit order, then a `+N` chip whose
+  // title lists the rest.
+  const badgeArtists = pickRowArtistBadges(item, eventArtistId);
   // Full unit name on setlist rows — operator preference. UnitBadge
   // already constrains horizontal width via the row's grid column,
   // so a longer label clips with ellipsis rather than reflowing the
@@ -223,16 +231,25 @@ export function SetlistRow({
   // and the short form is how fans name them anyway. `groupBadgeLabel`
   // prefers `originalShortName` over a long localized name (see its
   // doc for why the generic short cascade isn't enough).
-  const unitArtistName = !unitArtist
-    ? ""
-    : unitArtist.type === "group"
-      ? groupBadgeLabel(unitArtist, locale)
-      : displayNameWithFallback(
-          unitArtist,
-          unitArtist.translations,
-          locale,
-          "full",
-        );
+  //
+  // Credits with no resolvable name are dropped from the chip list;
+  // if that leaves nothing, the row shows the stageType fallback.
+  const namedBadges = badgeArtists
+    .map((artist) => ({
+      artist,
+      label:
+        artist.type === "group"
+          ? groupBadgeLabel(artist, locale)
+          : displayNameWithFallback(
+              artist,
+              artist.translations,
+              locale,
+              "full",
+            ),
+    }))
+    .filter((b) => b.label);
+  const shownBadges = namedBadges.slice(0, MAX_ROW_BADGES);
+  const hiddenBadges = namedBadges.slice(MAX_ROW_BADGES);
 
   const isNonSong = NON_SONG_TYPES.has(item.type);
   // "Unknown song" row: a song-typed item with no `SetlistItemSong`
@@ -350,20 +367,32 @@ export function SetlistRow({
           t={t}
           unknownSongLabel={setlistT("unknownSong")}
         />
-        {!isNonSong && unitArtist && unitArtistName && (
-          <UnitBadge
-            artistColor={unitArtist.color}
-            locale={locale}
-            artistId={unitArtist.id}
-            artistSlug={unitArtist.slug}
-            label={unitArtistName}
-          />
+        {!isNonSong &&
+          shownBadges.map(({ artist, label }, i) => (
+            <UnitBadge
+              key={artist.id}
+              artistColor={artist.color}
+              locale={locale}
+              artistId={artist.id}
+              artistSlug={artist.slug}
+              label={label}
+              spaced={i > 0}
+            />
+          ))}
+        {!isNonSong && hiddenBadges.length > 0 && (
+          <span
+            className="ml-1 mt-1 inline-block rounded px-1.5 py-0.5 text-xs"
+            style={{ background: colors.border, color: colors.textSecondary }}
+            title={hiddenBadges.map((b) => b.label).join(", ")}
+          >
+            +{hiddenBadges.length}
+          </span>
         )}
         {/* Backed unit credited but no resolvable name (rare — Artist
             with empty translations + null originalName). Falls back
             to the i18n stageType label so the row still reads as
             "this is a unit-stage performance". */}
-        {!isNonSong && unitArtist && !unitArtistName && (
+        {!isNonSong && badgeArtists.length > 0 && namedBadges.length === 0 && (
           <FallbackUnitBadge
             label={t(
               `stageType.${item.stageType}` as Parameters<typeof t>[0],
@@ -380,8 +409,8 @@ export function SetlistRow({
             "this is a unit-stage performance" without leaking
             unlocalized operator text. Replaces the previously
             unreachable `?? stageType.{x}` fallback that lived inside
-            the unitArtist-required branch above. */}
-        {!isNonSong && !unitArtist && item.stageType !== "full_group" && (
+            the badge-required branch above. */}
+        {!isNonSong && badgeArtists.length === 0 && item.stageType !== "full_group" && (
           <FallbackUnitBadge
             label={t(
               `stageType.${item.stageType}` as Parameters<typeof t>[0],
@@ -530,12 +559,15 @@ function UnitBadge({
   artistId,
   artistSlug,
   label,
+  spaced = false,
 }: {
   artistColor: string | null;
   locale: string;
   artistId: number;
   artistSlug: string;
   label: string;
+  // Left gap when this chip follows another on a multi-credit row.
+  spaced?: boolean;
 }) {
   // Mockup `event-page-desktop-mockup-v2.jsx:204-212`: bg uses an
   // 8-digit hex with 18 alpha (~9%); text uses the unit color at full
@@ -556,7 +588,7 @@ function UnitBadge({
   return (
     <Link
       href={`/${locale}/artists/${artistId}/${artistSlug}`}
-      className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline"
+      className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium hover:underline${spaced ? " ml-1" : ""}`}
       style={styled}
     >
       {label}
