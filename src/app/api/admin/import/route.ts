@@ -19,6 +19,7 @@ import {
 } from "@/lib/albumTrackVariants";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { parseIsoInstant } from "@/lib/admin-input";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -1297,24 +1298,40 @@ async function importEvents(rows: Record<string, string>[]) {
     // Wishlist / Predicted Setlist open window. Same preserve-on-blank
     // contract as bdAlbum_slug — an empty / missing column keeps the
     // existing DB value so re-importing a stale CSV can't wipe an
-    // opens-at the operator set in the admin form. An unparseable value
-    // or one at/after the (effective) startTime is WARNed and ignored
-    // rather than failing the whole import, mirroring the admin API's
-    // `< startTime` rule (`validateEngagementOpensAt`).
-    let engagementOpensAt: Date | null = null;
+    // opens-at the operator set in the admin form. Values must be a
+    // real calendar date-time with an explicit zone (`parseIsoInstant`)
+    // and before the effective startTime, mirroring the admin API's
+    // `validateEngagementOpensAt`; anything else is WARNed and ignored
+    // rather than failing the whole import.
+    const effectiveStart = row.startTime
+      ? new Date(row.startTime)
+      : existing?.startTime ?? null;
+    // `undefined` = leave the column alone; `null` = clear it.
+    let engagementOpensAt: Date | null | undefined = undefined;
     const opensAtRaw = (row.engagementOpensAt ?? "").trim();
     if (opensAtRaw) {
-      const parsed = new Date(opensAtRaw);
-      const effectiveStart = row.startTime
-        ? new Date(row.startTime)
-        : existing?.startTime ?? null;
-      if (Number.isNaN(parsed.getTime())) {
-        results.push(`WARN: ${slug} engagementOpensAt is not a valid date (${opensAtRaw}) — ignored`);
+      const parsed = parseIsoInstant(opensAtRaw);
+      if (!parsed) {
+        results.push(`WARN: ${slug} engagementOpensAt must be ISO with Z/offset and a real date (${opensAtRaw}) — ignored`);
       } else if (effectiveStart && parsed.getTime() >= effectiveStart.getTime()) {
         results.push(`WARN: ${slug} engagementOpensAt must be before startTime — ignored`);
       } else {
         engagementOpensAt = parsed;
       }
+    }
+    // Retained-value conflict: the row keeps the stored opens-at but
+    // moves startTime to (or before) it. The CSV startTime is the
+    // factual schedule, so it wins; the stale override is cleared back
+    // to the D-7 default (a window that opens after the show would
+    // never open at all) and WARNed so the operator can set a new one.
+    if (
+      engagementOpensAt === undefined &&
+      existing?.engagementOpensAt &&
+      effectiveStart &&
+      existing.engagementOpensAt.getTime() >= effectiveStart.getTime()
+    ) {
+      engagementOpensAt = null;
+      results.push(`WARN: ${slug} startTime moved to/before the stored engagementOpensAt — override cleared (D-7 default)`);
     }
 
     if (existing) {
@@ -1334,7 +1351,7 @@ async function importEvents(rows: Record<string, string>[]) {
           // slug both preserve the existing DB value so admin-UI edits
           // survive re-imports of stale scrape output.
           ...(bdAlbumIdResolved !== null ? { bdAlbumId: bdAlbumIdResolved } : {}),
-          ...(engagementOpensAt !== null ? { engagementOpensAt } : {}),
+          ...(engagementOpensAt !== undefined ? { engagementOpensAt } : {}),
           ...eventOriginals,
         },
       });
@@ -1361,7 +1378,7 @@ async function importEvents(rows: Record<string, string>[]) {
           bdAlbumId: bdAlbumIdResolved,
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
-          engagementOpensAt,
+          engagementOpensAt: engagementOpensAt ?? null,
           country: row.country || null,
           ...eventOriginals,
           originalName,

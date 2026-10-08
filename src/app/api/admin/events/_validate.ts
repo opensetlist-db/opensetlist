@@ -4,6 +4,7 @@ import {
   badRequest,
   nullableString as parseNullableString,
   originalLanguage as parseOriginalLanguage,
+  parseIsoInstant,
   requireString,
 } from "@/lib/admin-input";
 
@@ -239,9 +240,47 @@ export function validateEngagementOpensAt(
 ):
   | { ok: true; value: Date | null }
   | { ok: false; response: NextResponse } {
-  const check = validateDateInput(value, "engagementOpensAt", false);
-  if (!check.ok) return check;
-  if (check.value && check.value.getTime() >= startTime.getTime()) {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  // Strict, unlike `validateDateInput`: the value is compared against
+  // a stored UTC instant, so a zone-less string (read in the server's
+  // local TZ) or a rolled-over calendar date must 400, not be stored.
+  const parsed =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? null
+        : value
+      : typeof value === "string"
+        ? parseIsoInstant(value)
+        : null;
+  if (!parsed) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "engagementOpensAt: 시간대(Z 또는 ±HH:MM)가 포함된 올바른 ISO 날짜·시각이어야 합니다.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+  return checkOpensAtBeforeStart(parsed, startTime);
+}
+
+/**
+ * The `< startTime` half of `validateEngagementOpensAt`, split out so
+ * the PUT route can re-check a STORED opens-at against a moved
+ * startTime when the payload omits the field.
+ */
+export function checkOpensAtBeforeStart(
+  opensAt: Date | null,
+  startTime: Date
+):
+  | { ok: true; value: Date | null }
+  | { ok: false; response: NextResponse } {
+  if (opensAt && opensAt.getTime() >= startTime.getTime()) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -253,7 +292,7 @@ export function validateEngagementOpensAt(
       ),
     };
   }
-  return check;
+  return { ok: true, value: opensAt };
 }
 
 export type EventTranslationInput = {

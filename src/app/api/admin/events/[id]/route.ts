@@ -20,6 +20,7 @@ import {
   validateBdAlbumId,
   validateDateInput,
   validateEngagementOpensAt,
+  checkOpensAtBeforeStart,
   validateEventOriginals,
   validateEventSeriesId,
   validateEventTranslations,
@@ -122,6 +123,22 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const opensAtCheck = validateEngagementOpensAt(body.engagementOpensAt, startTime);
   if (!opensAtCheck.ok) return opensAtCheck.response;
   const engagementOpensAt = opensAtCheck.value;
+  // A payload without the key keeps the stored opens-at (see the
+  // conditional write below) — but it may carry a moved startTime, so
+  // re-check the stored value against it. Otherwise moving the show
+  // earlier than an existing opens-at would persist a window that
+  // never opens.
+  if (!("engagementOpensAt" in body)) {
+    const stored = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { engagementOpensAt: true },
+    });
+    const storedCheck = checkOpensAtBeforeStart(
+      stored?.engagementOpensAt ?? null,
+      startTime
+    );
+    if (!storedCheck.ok) return storedCheck.response;
+  }
 
   const dateCheck = validateDateInput(body.date, "date", false);
   if (!dateCheck.ok) return dateCheck.response;
