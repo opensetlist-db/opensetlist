@@ -526,6 +526,15 @@ model Event {
   status            EventStatus @default(scheduled)
   date              DateTime?   @db.Date
   startTime         DateTime // UTC; used as lock time for wishlist
+  // UTC instant at which the Wishlist / Predicted Setlist surfaces
+  // open. Null = the default window (startTime − 168h, see
+  // `src/lib/eventTiming.ts#isWishPredictOpen`). Set per event when
+  // the default is wrong for the show: tour legs in quick succession
+  // keep D-7 so windows don't overlap the previous stop; standalone
+  // shows and festivals open earlier (~D-30) so word-of-mouth has time
+  // to build. Must be < startTime (enforced by the admin API + import).
+  // Closing is still startTime (status flip), so there is no closes-at.
+  engagementOpensAt DateTime?
   country           String? // ISO 3166 e.g. "KR" "JP" "US"
   posterUrl         String?
   originalName      String

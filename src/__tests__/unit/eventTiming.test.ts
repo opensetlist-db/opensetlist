@@ -9,6 +9,7 @@ import {
   shouldShowWishBadge,
   utcDayOffset,
   utcDayStart,
+  wishPredictOpensAt,
 } from "@/lib/eventTiming";
 
 const NOW = new Date("2026-05-15T03:00:00.000Z"); // mid-morning KST, mid-evening US East
@@ -267,5 +268,73 @@ describe("shouldShowWishBadge", () => {
       ),
     ).toBe(false);
     expect(shouldShowWishBadge(justOutside, NOW)).toBe(false);
+  });
+});
+
+// Per-event `engagementOpensAt` override. The null row must reproduce
+// the legacy 168h rule exactly; every row asserts badge == gate so the
+// home card and the detail page can't drift once overrides exist.
+describe("engagementOpensAt override", () => {
+  const H = 60 * 60 * 1000;
+  const at = (deltaMs: number) => new Date(NOW.getTime() + deltaMs);
+
+  const cases: {
+    name: string;
+    startIn: number;
+    opensAt: Date | string | null;
+    open: boolean;
+  }[] = [
+    { name: "null, 168h out → legacy open (inclusive)", startIn: OPEN_WINDOW_MS, opensAt: null, open: true },
+    { name: "null, 168h+1m out → legacy closed", startIn: OPEN_WINDOW_MS + 60 * 1000, opensAt: null, open: false },
+    { name: "override earlier than D-7, already passed → open 35d out", startIn: 35 * MS_PER_DAY, opensAt: at(-H), open: true },
+    { name: "override exactly now → open (inclusive)", startIn: 35 * MS_PER_DAY, opensAt: NOW, open: true },
+    { name: "override earlier than D-7, not yet reached → closed", startIn: 35 * MS_PER_DAY, opensAt: at(H), open: false },
+    { name: "override later than D-7, not yet reached → closed inside 168h", startIn: 3 * MS_PER_DAY, opensAt: at(H), open: false },
+    { name: "override later than D-7, passed → open", startIn: 3 * MS_PER_DAY, opensAt: at(-H), open: true },
+    { name: "override == startTime → never opens", startIn: H, opensAt: at(H), open: false },
+    { name: "override after startTime → never opens", startIn: H, opensAt: at(2 * H), open: false },
+    { name: "override passed but show started → closed", startIn: 0, opensAt: at(-MS_PER_DAY), open: false },
+    { name: "ISO string override (serializeBigInt shape)", startIn: 35 * MS_PER_DAY, opensAt: at(-H).toISOString(), open: true },
+    { name: "malformed override falls back to legacy (closed 35d out)", startIn: 35 * MS_PER_DAY, opensAt: "not-a-date", open: false },
+    { name: "malformed override falls back to legacy (open 3d out)", startIn: 3 * MS_PER_DAY, opensAt: "not-a-date", open: true },
+  ];
+
+  it.each(cases)("$name", ({ startIn, opensAt, open }) => {
+    const start = at(startIn);
+    expect(
+      isWishPredictOpen(
+        { startTime: start, status: "upcoming", engagementOpensAt: opensAt },
+        NOW,
+      ),
+    ).toBe(open);
+    expect(shouldShowWishBadge(start, NOW, opensAt)).toBe(open);
+  });
+
+  it("an override never opens a non-upcoming event", () => {
+    const start = at(35 * MS_PER_DAY);
+    for (const status of ["ongoing", "completed", "cancelled"] as const) {
+      expect(
+        isWishPredictOpen(
+          { startTime: start, status, engagementOpensAt: at(-H) },
+          NOW,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("wishPredictOpensAt", () => {
+  it("defaults to startTime − 168h", () => {
+    const start = new Date("2026-11-14T07:30:00.000Z");
+    expect(wishPredictOpensAt(start, null).toISOString()).toBe(
+      "2026-11-07T07:30:00.000Z",
+    );
+  });
+
+  it("returns the override when set", () => {
+    const start = new Date("2026-11-14T07:30:00.000Z");
+    expect(
+      wishPredictOpensAt(start, "2026-10-10T00:00:00.000Z").toISOString(),
+    ).toBe("2026-10-10T00:00:00.000Z");
   });
 });

@@ -10,8 +10,12 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * than weeks of empty-list-staring (reduces "I'll do it later"
  * deferral psychology).
  *
- * Per-event override is a Phase 2+ concern — single global constant
- * for now.
+ * This is the DEFAULT window. A per-event override lives on
+ * `Event.engagementOpensAt` (see `isWishPredictOpen`): tour legs in
+ * quick succession keep the default so one stop's window doesn't
+ * overlap the previous show, while standalone shows and festivals set
+ * an earlier opens-at (~D-30) because a 7-day window was too short for
+ * word-of-mouth to reach anyone (Kobe, zero organic adoption).
  */
 export const WISH_PREDICT_OPEN_DAYS = 7;
 
@@ -71,14 +75,62 @@ export function daysUntilUTC(target: Date, now: Date): number {
   return Math.round(diff / MS_PER_DAY);
 }
 
+type DateInput = Date | string | null | undefined;
+
+function toValidDate(v: DateInput): Date | null {
+  if (v === null || v === undefined) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /**
- * D-7 visibility gate for wishlist + predicted-setlist surfaces.
+ * Effective opening instant for an event's wish/predict window:
+ * the per-event override when set (and parseable), else
+ * `start − OPEN_WINDOW_MS`. Exported so UI copy ("open until
+ * showtime", "opens on {date}") reads the same instant the gate does.
+ */
+export function wishPredictOpensAt(
+  start: Date,
+  engagementOpensAt?: DateInput,
+): Date {
+  return (
+    toValidDate(engagementOpensAt) ??
+    new Date(start.getTime() - OPEN_WINDOW_MS)
+  );
+}
+
+// Shared by isWishPredictOpen + shouldShowWishBadge so the gate and
+// the home-card badge can't drift on the opens-at boundary check.
+// Strict-future check doubles as the "gate closes at startTime"
+// upper bound (CR #282: a stale `status: "upcoming"` row with a
+// past startTime caught by the auto-status-flip ticker lag still
+// reads as closed here).
+function isWithinWishOpenWindow(
+  start: Date,
+  engagementOpensAt: DateInput,
+  now: Date,
+): boolean {
+  if (start.getTime() - now.getTime() <= 0) return false;
+  return wishPredictOpensAt(start, engagementOpensAt).getTime() <= now.getTime();
+}
+
+/**
+ * Visibility gate for wishlist + predicted-setlist surfaces.
  *
  * Returns true iff:
  *   - the event is `upcoming` (DB `scheduled` AND `now < startTime`,
  *     resolved by `getEventStatus`), AND
- *   - the start is within `WISH_PREDICT_OPEN_DAYS × 24h`
- *     (exactly 168 hours) from `now`.
+ *   - `opensAt <= now < startTime`, where
+ *     `opensAt = engagementOpensAt ?? startTime − 168h`.
+ *
+ * `engagementOpensAt` null (every event unless the operator set one)
+ * reproduces the legacy fixed D-7 rule exactly, including the
+ * inclusive boundary at precisely 168h out. An override at or after
+ * `startTime` would never open — the admin API rejects that input,
+ * and the strict-future upper bound keeps it closed here regardless.
+ * An unparseable override string falls back to the default rather
+ * than closing the gate: a bad optional column shouldn't hide the
+ * surfaces on show week.
  *
  * Comparison is in absolute milliseconds, NOT UTC-day-boundary days.
  * The earlier UTC-day-distance implementation opened the gate at UTC
@@ -95,39 +147,29 @@ export function daysUntilUTC(target: Date, now: Date): number {
  *
  * Snap-frozen at SSR by design: computed once with the server's
  * `now` and threaded as a boolean prop. A page kept open across the
- * 168h-mark boundary won't auto-unlock — refresh does.
+ * opens-at boundary won't auto-unlock — refresh does.
  */
-// Shared by isWishPredictOpen + shouldShowWishBadge so the gate and
-// the home-card badge can't drift on the 168h boundary check.
-// Strict-future check doubles as the "gate closes at startTime"
-// upper bound (CR #282: a stale `status: "upcoming"` row with a
-// past startTime caught by the auto-status-flip ticker lag still
-// reads as closed here).
-function isWithinWishOpenWindow(start: Date, now: Date): boolean {
-  const msUntilStart = start.getTime() - now.getTime();
-  if (msUntilStart <= 0) return false;
-  return msUntilStart <= OPEN_WINDOW_MS;
-}
-
 export function isWishPredictOpen(
-  event: { startTime: Date | string | null; status: ResolvedEventStatus },
+  event: {
+    startTime: Date | string | null;
+    status: ResolvedEventStatus;
+    engagementOpensAt?: DateInput;
+  },
   now: Date = new Date(),
 ): boolean {
   if (event.status !== "upcoming") return false;
-  if (!event.startTime) return false;
-  const start =
-    event.startTime instanceof Date
-      ? event.startTime
-      : new Date(event.startTime);
-  if (Number.isNaN(start.getTime())) return false;
-  return isWithinWishOpenWindow(start, now);
+  const start = toValidDate(event.startTime);
+  if (!start) return false;
+  return isWithinWishOpenWindow(start, event.engagementOpensAt, now);
 }
 
 /**
  * Home-page Upcoming-card badge condition. Mirrors the gate exactly so
  * the badge can never appear on a card whose detail-page gate is
  * closed (and vice versa). Operator-confusing drift between the two
- * surfaces was the original bug that prompted this rewrite.
+ * surfaces was the original bug that prompted this rewrite — which is
+ * why the per-event `engagementOpensAt` override must be passed here
+ * too, not just to `isWishPredictOpen`.
  *
  * Takes `start` + `now` (not pre-computed `daysUntil`) because the
  * gate is millisecond-precise — calendar-day distance would
@@ -138,6 +180,10 @@ export function isWishPredictOpen(
  * `startTime: { gt: now }`, so past-start events can't reach this
  * helper — the strict-future check is belt-and-suspenders.
  */
-export function shouldShowWishBadge(start: Date, now: Date): boolean {
-  return isWithinWishOpenWindow(start, now);
+export function shouldShowWishBadge(
+  start: Date,
+  now: Date,
+  engagementOpensAt: DateInput = null,
+): boolean {
+  return isWithinWishOpenWindow(start, engagementOpensAt, now);
 }

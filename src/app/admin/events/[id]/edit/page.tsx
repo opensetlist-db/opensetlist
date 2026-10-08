@@ -83,6 +83,9 @@ export default async function EditEventPage({ params }: Props) {
             country: data.country,
             posterUrl: data.posterUrl,
             startTime: new Date(data.startTime).toISOString().slice(0, 16),
+            engagementOpensAt: data.engagementOpensAt
+              ? new Date(data.engagementOpensAt).toISOString().slice(0, 16)
+              : "",
             originalName: data.originalName ?? "",
             originalShortName: data.originalShortName ?? "",
             originalCity: data.originalCity ?? "",

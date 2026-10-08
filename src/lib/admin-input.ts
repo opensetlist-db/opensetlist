@@ -257,3 +257,41 @@ export function parseLocalizedTranslations(
     };
   });
 }
+
+// Full ISO-8601 date-time with an explicit zone: `Z` or `±HH:MM`.
+const ISO_INSTANT_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(Z|[+-](\d{2}):(\d{2}))$/;
+
+/**
+ * Strict parse of an absolute instant for admin inputs that are
+ * compared against stored UTC timestamps (e.g. `Event.engagementOpensAt`
+ * vs `startTime`). `new Date(str)` alone is too lenient for that:
+ *   - a zone-less "2026-10-10T00:00" is read in the SERVER's local
+ *     timezone, so the stored instant drifts with the deploy region;
+ *   - "2026-02-30T00:00:00Z" is silently normalized to March 2nd.
+ * Returns null for anything that isn't a real calendar date-time with
+ * an explicit zone, so callers can 400 / WARN instead of storing a
+ * shifted instant.
+ */
+export function parseIsoInstant(raw: string): Date | null {
+  const m = ISO_INSTANT_RE.exec(raw.trim());
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s, , oh, om] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  if (Number(h) > 23 || Number(mi) > 59 || Number(s ?? 0) > 59) return null;
+  if (oh !== undefined && (Number(oh) > 23 || Number(om) > 59)) return null;
+  // Round-trip the calendar part through Date.UTC: an out-of-range day
+  // (Feb 30, Apr 31) rolls over into the next month and won't match.
+  const cal = new Date(Date.UTC(year, month - 1, day));
+  if (
+    cal.getUTCFullYear() !== year ||
+    cal.getUTCMonth() !== month - 1 ||
+    cal.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const parsed = new Date(raw.trim());
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
