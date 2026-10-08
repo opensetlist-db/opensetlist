@@ -6,6 +6,7 @@ import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 import { nextSetlistPosition } from "@/lib/setlist-position";
 import { SongSearch, type SongSearchResult } from "@/components/SongSearch";
+import { saveSetlistRow } from "./setlistSave";
 
 type SongOption = {
   id: number;
@@ -207,6 +208,14 @@ export default function SetlistBuilder({
     StageIdentityOption[]
   >([]);
   const [loading, setLoading] = useState(false);
+  // Inline save feedback (replaces the old alert). `saveError` keeps
+  // the form open with the server's message or the "outcome unknown"
+  // notice; `reconciling` is the window where we reload to find out
+  // whether a lost-response POST actually landed (see setlistSave.ts).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+  // Row saved but the follow-up list reload failed → stale list banner.
+  const [listStale, setListStale] = useState(false);
   const [reorderLoading, setReorderLoading] = useState(false);
 
   // New item form state
@@ -466,6 +475,7 @@ export default function SetlistBuilder({
     const seedArtistIds = seedArtists.map((a) => a.id);
     setEditingId(null);
     setFreshInsertId(null);
+    setSaveError(null);
     setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
     setFormStageType(seedStageType);
@@ -503,17 +513,27 @@ export default function SetlistBuilder({
     applyDerivedPerformers(formType, "full_group", []);
   }
 
-  async function reloadItems() {
-    const eventRes = await fetch(`/api/admin/events/${eventId}`);
-    if (!eventRes.ok) return;
-    const eventData = await eventRes.json();
-    if (Array.isArray(eventData.setlistItems)) {
+  // Returns the fresh list (also pushed into state), or null on any
+  // failure — never throws, so callers in a save/insert flow can't be
+  // knocked off their cleanup path by a flaky reload. A successful
+  // reload clears the stale-list banner.
+  async function reloadItems(): Promise<SetlistItemData[] | null> {
+    try {
+      const eventRes = await fetch(`/api/admin/events/${eventId}`);
+      if (!eventRes.ok) return null;
+      const eventData = await eventRes.json();
+      if (!Array.isArray(eventData.setlistItems)) return null;
       setItems(eventData.setlistItems);
+      setListStale(false);
+      return eventData.setlistItems;
+    } catch {
+      return null;
     }
   }
 
   function startEdit(item: SetlistItemData) {
     setEditingId(item.id);
+    setSaveError(null);
     setFormPosition(item.position);
     setFormIsEncore(item.isEncore);
     setFormStageType(item.stageType);
@@ -539,6 +559,7 @@ export default function SetlistBuilder({
 
   async function handleSave() {
     setLoading(true);
+    setSaveError(null);
     const payload = {
       eventId,
       position: formPosition,
@@ -559,13 +580,30 @@ export default function SetlistBuilder({
       : "/api/admin/setlist-items";
     const method = editingId ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const outcome = await saveSetlistRow<SetlistItemData>({
+        url,
+        method,
+        payload,
+        knownIds: new Set(items.map((i) => i.id)),
+        reload: reloadItems,
+        onReconcileStart: () => setReconciling(true),
+      });
 
-    if (res.ok) {
+      if (outcome.kind === "rejected") {
+        setSaveError(outcome.message);
+        return;
+      }
+      if (outcome.kind === "unknown") {
+        setSaveError(
+          method === "POST"
+            ? "저장 결과를 확인하지 못했습니다 (네트워크 오류). 목록에 이 항목이 없으니 다시 시도해도 중복되지 않습니다."
+            : "저장 결과를 확인하지 못했습니다 (네트워크 오류). 다시 시도해 주세요.",
+        );
+        if (!outcome.items) setListStale(true);
+        return;
+      }
+
       const isNewRow = !editingId || editingId === freshInsertId;
       const nextSticky =
         isNewRow && formType === "song"
@@ -574,22 +612,38 @@ export default function SetlistBuilder({
       setStickyCredit(nextSticky);
       resetForm(nextSticky);
       setShowForm(false);
+      if (!outcome.items) setListStale(true);
       router.refresh();
-      await reloadItems();
-    } else {
-      const errData = await res.json().catch(() => null);
-      alert(errData?.error || "저장에 실패했습니다.");
+    } catch (e) {
+      // saveSetlistRow handles its own network errors; anything here is
+      // a bug in the flow — still surface it and release the button.
+      setSaveError(`저장 중 오류가 발생했습니다: ${String(e)}`);
+    } finally {
+      setReconciling(false);
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function handleDelete(itemId: number) {
     if (!confirm("삭제하시겠습니까? (소프트 삭제 — 복구 가능)")) return;
-    const res = await fetch(`/api/admin/setlist-items/${itemId}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      setItems((prev) => prev.filter((i) => i.id !== itemId));
+    setReorderLoading(true);
+    try {
+      const res = await fetch(`/api/admin/setlist-items/${itemId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "삭제에 실패했습니다.");
+      }
+    } catch {
+      // Soft delete is idempotent, so a lost response is harmless to
+      // retry; reload so the list shows whether it actually went.
+      alert("삭제 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
+    } finally {
+      setReorderLoading(false);
     }
   }
 
@@ -614,6 +668,9 @@ export default function SetlistBuilder({
         const err = await res.json().catch(() => null);
         alert(err?.error || "순서 변경에 실패했습니다.");
       }
+    } catch {
+      alert("순서 변경 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
     } finally {
       setReorderLoading(false);
     }
@@ -647,6 +704,9 @@ export default function SetlistBuilder({
         const err = await res.json().catch(() => null);
         alert(err?.error || "삽입에 실패했습니다.");
       }
+    } catch {
+      alert("삽입 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
     } finally {
       setReorderLoading(false);
     }
@@ -656,6 +716,20 @@ export default function SetlistBuilder({
 
   return (
     <div>
+      {listStale && (
+        <div className="mb-3 flex items-center justify-between rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span>목록을 불러오지 못했습니다 — 화면의 목록이 최신이 아닐 수 있습니다.</span>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!(await reloadItems())) setListStale(true);
+            }}
+            className="rounded border border-amber-400 px-2 py-0.5 hover:bg-amber-100"
+          >
+            목록 새로고침
+          </button>
+        </div>
+      )}
       {/* Existing items */}
       {items.length > 0 && (
         <ol className="mb-6 space-y-1">
@@ -1146,13 +1220,27 @@ export default function SetlistBuilder({
             </div>
           </div>
 
+          {reconciling && (
+            <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+              저장 결과를 확인하는 중…
+            </div>
+          )}
+          {saveError && !reconciling && (
+            <div
+              role="alert"
+              className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+            >
+              {saveError}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
               onClick={handleSave}
               disabled={loading}
               className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "저장 중..." : "저장"}
+              {loading ? "저장 중..." : saveError ? "다시 시도" : "저장"}
             </button>
             <button
               onClick={() => {
