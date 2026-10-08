@@ -1293,6 +1293,30 @@ async function importEvents(rows: Record<string, string>[]) {
 
     const existing = await prisma.event.findUnique({ where: { slug } });
 
+    // engagementOpensAt (ISO UTC, optional): per-event override for the
+    // Wishlist / Predicted Setlist open window. Same preserve-on-blank
+    // contract as bdAlbum_slug — an empty / missing column keeps the
+    // existing DB value so re-importing a stale CSV can't wipe an
+    // opens-at the operator set in the admin form. An unparseable value
+    // or one at/after the (effective) startTime is WARNed and ignored
+    // rather than failing the whole import, mirroring the admin API's
+    // `< startTime` rule (`validateEngagementOpensAt`).
+    let engagementOpensAt: Date | null = null;
+    const opensAtRaw = (row.engagementOpensAt ?? "").trim();
+    if (opensAtRaw) {
+      const parsed = new Date(opensAtRaw);
+      const effectiveStart = row.startTime
+        ? new Date(row.startTime)
+        : existing?.startTime ?? null;
+      if (Number.isNaN(parsed.getTime())) {
+        results.push(`WARN: ${slug} engagementOpensAt is not a valid date (${opensAtRaw}) — ignored`);
+      } else if (effectiveStart && parsed.getTime() >= effectiveStart.getTime()) {
+        results.push(`WARN: ${slug} engagementOpensAt must be before startTime — ignored`);
+      } else {
+        engagementOpensAt = parsed;
+      }
+    }
+
     if (existing) {
       await prisma.event.update({
         where: { slug },
@@ -1310,6 +1334,7 @@ async function importEvents(rows: Record<string, string>[]) {
           // slug both preserve the existing DB value so admin-UI edits
           // survive re-imports of stale scrape output.
           ...(bdAlbumIdResolved !== null ? { bdAlbumId: bdAlbumIdResolved } : {}),
+          ...(engagementOpensAt !== null ? { engagementOpensAt } : {}),
           ...eventOriginals,
         },
       });
@@ -1336,6 +1361,7 @@ async function importEvents(rows: Record<string, string>[]) {
           bdAlbumId: bdAlbumIdResolved,
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
+          engagementOpensAt,
           country: row.country || null,
           ...eventOriginals,
           originalName,
