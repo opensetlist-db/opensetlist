@@ -694,10 +694,16 @@ export function EventImpressions({
             header would say "200 impressions" while the "see older"
             button below says "1,034 more" — confusing and dishonest.
             Both surfaces now pull from the same authoritative number,
-            refreshed on every polling tick + load-more response. */}
-        <span className="text-xs" style={{ color: colors.textMuted }}>
-          {t("count", { count: totalCount })}
-        </span>
+            refreshed on every polling tick + load-more response.
+
+            Hidden at 0: the empty list below already says "be the
+            first", and a 「한줄감상 없음」 badge is one more zero-stat
+            on pre-show pages (the Soft 404 pattern). */}
+        {totalCount > 0 && (
+          <span className="text-xs" style={{ color: colors.textMuted }}>
+            {t("count", { count: totalCount })}
+          </span>
+        )}
       </div>
 
       {/*

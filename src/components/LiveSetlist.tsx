@@ -20,6 +20,13 @@ import { EventWishSection } from "@/components/EventWishSection";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
+/** Venue-local start pieces from `formatVenueStart` (server-formatted). */
+export interface VenueStartLabel {
+  date: string;
+  time: string;
+  zone: string;
+}
+
 export type {
   ArtistRef,
   StageIdentityRef,
@@ -105,6 +112,14 @@ interface Props {
    */
   availableSongs: AvailableSong[];
   unitFilters: UnitFilter[];
+  /**
+   * Venue-local start (「11月14日 16:30 JST」 pieces), formatted on the
+   * server so SSR and hydration render identical text. Drives the
+   * upcoming empty-state copy. Null → generic fallback.
+   */
+  setlistStartLabel?: VenueStartLabel | null;
+  /** When the predict/wish window opens; null once open or n/a. */
+  predictOpensLabel?: VenueStartLabel | null;
 }
 
 export function LiveSetlist({
@@ -125,6 +140,8 @@ export function LiveSetlist({
   availableSongs,
   unitFilters,
   eventArtistId,
+  setlistStartLabel = null,
+  predictOpensLabel = null,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -143,6 +160,23 @@ export function LiveSetlist({
   // the two surfaces can't drift.
   const itemCount = items.length;
   const songCount = deriveSongsCount(items);
+
+  // Status-aware empty state. The old single 「세트리스트가 등록되지
+  // 않았습니다」 read like a missing resource — on a pre-show page that,
+  // plus the zero counters, is the Soft 404 pattern Google flagged.
+  // Upcoming says *when* the setlist will appear; completed keeps
+  // "not yet"; ongoing/cancelled keep the original wording.
+  const emptyMessages: string[] =
+    status === "upcoming" && setlistStartLabel
+      ? [
+          t("setlistUpcoming", { ...setlistStartLabel }),
+          ...(predictOpensLabel
+            ? [t("predictOpensAt", { ...predictOpensLabel })]
+            : []),
+        ]
+      : status === "completed"
+        ? [t("setlistNotRecorded")]
+        : [t("noSetlist")];
 
   return (
     <>
@@ -273,21 +307,28 @@ export function LiveSetlist({
             </span>
           )}
         </div>
-        {/* Right-side meta: desktop count subtitle. */}
-        <span
-          className="hidden lg:inline"
-          style={{ fontSize: 12, color: colors.textMuted }}
-        >
-          {t("itemsLabel", { count: itemCount })} ·{" "}
-          {t("songsValue", { count: songCount })}
-        </span>
-        {/* Right-side meta: mobile tap hint. */}
-        <span
-          className="lg:hidden"
-          style={{ fontSize: 11, color: colors.textMuted }}
-        >
-          {t("tapToAddReaction")}
-        </span>
+        {/* Right-side meta — only once there are items: "0 items · 0
+            songs" and a tap-to-react hint with nothing to tap are noise
+            (and zero-stats feed the Soft 404 read). */}
+        {itemCount > 0 && (
+          <>
+            {/* Desktop count subtitle. */}
+            <span
+              className="hidden lg:inline"
+              style={{ fontSize: 12, color: colors.textMuted }}
+            >
+              {t("itemsLabel", { count: itemCount })} ·{" "}
+              {t("songsValue", { count: songCount })}
+            </span>
+            {/* Mobile tap hint. */}
+            <span
+              className="lg:hidden"
+              style={{ fontSize: 11, color: colors.textMuted }}
+            >
+              {t("tapToAddReaction")}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Tab-aware body. When `predict-{eventId}` is in localStorage,
@@ -315,9 +356,13 @@ export function LiveSetlist({
         dateLine={dateLine}
         isWishPredictOpen={isWishPredictOpen}
         emptyFallback={
-          <p style={{ padding: "24px 20px", color: colors.textMuted }}>
-            {t("noSetlist")}
-          </p>
+          <div style={{ padding: "24px 20px", color: colors.textMuted }}>
+            {emptyMessages.map((msg, i) => (
+              <p key={i} style={{ margin: i === 0 ? 0 : "8px 0 0" }}>
+                {msg}
+              </p>
+            ))}
+          </div>
         }
         availableSongs={availableSongs}
         unitFilters={unitFilters}
