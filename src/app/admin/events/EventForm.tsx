@@ -56,6 +56,8 @@ type EventFormProps = {
     country: string | null;
     posterUrl: string | null;
     startTime: string;
+    // `datetime-local` value (UTC, no zone suffix) or "" for the D-7 default.
+    engagementOpensAt: string;
     originalName: string;
     originalShortName: string;
     originalCity: string;
@@ -129,6 +131,11 @@ export default function EventForm({ initialData }: EventFormProps) {
   const [country, setCountry] = useState(initialData?.country ?? "");
   const [posterUrl, setPosterUrl] = useState(initialData?.posterUrl ?? "");
   const [startTime, setStartTime] = useState(initialData?.startTime ?? "");
+  // 희망곡/예상곡 오픈 시각 — 비우면 시작 시각 168시간 전(D-7) 기본값.
+  // 연속 투어 공연은 비워두고, 단독 공연·페스는 ~D-30으로 지정한다.
+  const [engagementOpensAt, setEngagementOpensAt] = useState(
+    initialData?.engagementOpensAt ?? ""
+  );
   const [originalLanguage, setOriginalLanguage] = useState(
     initialData?.originalLanguage ?? "ja"
   );
@@ -264,6 +271,13 @@ export default function EventForm({ initialData }: EventFormProps) {
       return;
     }
 
+    // Both are `datetime-local` strings in the same UTC frame, so a
+    // lexicographic compare is a chronological one. The API re-checks.
+    if (engagementOpensAt && engagementOpensAt >= startTime) {
+      alert("희망곡/예상곡 오픈 시각은 시작 시각보다 앞서야 합니다.");
+      return;
+    }
+
     if (!originalName.trim()) {
       alert("원본 이름(originalName)은 필수입니다.");
       return;
@@ -282,6 +296,7 @@ export default function EventForm({ initialData }: EventFormProps) {
       country: country || null,
       posterUrl: posterUrl || null,
       startTime: `${startTime}Z`,
+      engagementOpensAt: engagementOpensAt ? `${engagementOpensAt}Z` : null,
       originalName: originalName.trim(),
       originalShortName: originalShortName.trim() || null,
       originalCity: originalCity.trim() || null,
@@ -568,7 +583,7 @@ export default function EventForm({ initialData }: EventFormProps) {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="mb-1 block text-sm font-medium">날짜</label>
           <input
@@ -587,6 +602,20 @@ export default function EventForm({ initialData }: EventFormProps) {
             required
             className="w-full rounded border border-zinc-300 px-3 py-2"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">
+            희망곡/예상곡 오픈 시각 (UTC, 비우면 D-7)
+          </label>
+          <input
+            type="datetime-local"
+            value={engagementOpensAt}
+            onChange={(e) => setEngagementOpensAt(e.target.value)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+          />
+          <p className="mt-1 text-xs text-zinc-500">
+            연속 투어 공연은 비워두고, 단독 공연·페스는 ~D-30으로 지정
+          </p>
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">국가 코드</label>

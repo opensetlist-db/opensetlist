@@ -27,6 +27,7 @@ import {
 import type { TrendingSong } from "@/components/TrendingSongs";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
+import type { VenueStartLabel } from "@/components/LiveSetlist";
 
 interface Props {
   // ───── Event-level static (forwarded to children unchanged) ─────
@@ -98,8 +99,24 @@ interface Props {
   initialReactionCounts: ReactionCountsMap;
   initialSidebarUnits: UnitsCardItem[];
   initialSidebarPerformers: PerformersCardItem[];
+  /**
+   * Pre-show lineup built from the event roster
+   * (`deriveLineupFromRoster`). Non-null only for upcoming events with
+   * an `EventPerformer` roster. While the setlist is still empty the
+   * sidebar shows this instead of the (empty) item-derived cards; the
+   * moment the first item arrives — SSR or via realtime — the
+   * item-derived cards take over unchanged.
+   */
+  lineup: { units: UnitsCardItem[]; performers: PerformersCardItem[] } | null;
+  /** Venue-local start, for the pre-show empty-setlist copy. */
+  setlistStartLabel: VenueStartLabel | null;
+  /**
+   * Venue-local moment the predict/wish window opens. Set only while
+   * the event is upcoming and the window is not open yet.
+   */
+  predictOpensLabel: VenueStartLabel | null;
   initialSongsCount: number;
-  initialReactionsValue: string;
+  initialReactionsValue: string | null;
   initialTrendingSongs: TrendingSong[];
   // Wishlist (Phase 1B) seed. SSR-rendered fan TOP-3 so first paint
   // shows real data, then polling refreshes the same shape via the
@@ -183,6 +200,9 @@ export function LiveEventLayout({
   initialReactionCounts,
   initialSidebarUnits,
   initialSidebarPerformers,
+  lineup,
+  setlistStartLabel,
+  predictOpensLabel,
   initialSongsCount,
   initialReactionsValue,
   initialTrendingSongs,
@@ -323,6 +343,13 @@ export function LiveEventLayout({
       initialReactionsValue,
     ]);
 
+  // Lineup swap: same `items` the setlist column renders, so the
+  // sidebar and the setlist agree on "has the show produced data yet".
+  // Pre-first-poll `items` is the SSR seed, so first paint matches SSR.
+  const showLineup = lineup !== null && items.length === 0;
+  const unitsForCard = showLineup ? lineup.units : sidebarUnits;
+  const performersForCard = showLineup ? lineup.performers : sidebarPerformers;
+
   return (
     /*
       Mobile: single column (header on top, setlist + impressions below).
@@ -334,7 +361,13 @@ export function LiveEventLayout({
       {/* sticky offset = Nav.tsx desktop height (56px) + 16px breathing room.
           Three sidebar cards stacked with consistent gap; flex column wraps
           the stack so sticky positioning still applies to the topmost edge. */}
-      <aside className="flex flex-col gap-4 lg:sticky lg:top-[72px]">
+      {/* Not sticky in lineup mode: a festival roster (dozens of rows +
+          pills) is taller than the viewport, and a sticky element that
+          tall hides its own bottom until the grid ends. Pre-show the
+          main column is short anyway, so normal flow loses nothing. */}
+      <aside
+        className={`flex flex-col gap-4 ${showLineup ? "" : "lg:sticky lg:top-[72px]"}`}
+      >
         <EventHeader
           status={status}
           statusLabel={statusLabel}
@@ -350,8 +383,8 @@ export function LiveEventLayout({
           venue={venue}
           city={city}
         />
-        <UnitsCard locale={locale} units={sidebarUnits} />
-        <PerformersCard performers={sidebarPerformers} />
+        <UnitsCard locale={locale} units={unitsForCard} isLineup={showLineup} />
+        <PerformersCard locale={locale} performers={performersForCard} isLineup={showLineup} />
       </aside>
 
       <div className="mt-6 lg:mt-0 min-w-0">
@@ -393,6 +426,8 @@ export function LiveEventLayout({
           dateLine=""
           availableSongs={availableSongs}
           unitFilters={unitFilters}
+          setlistStartLabel={setlistStartLabel}
+          predictOpensLabel={predictOpensLabel}
           // `artist` is the series primary artist the page already
           // resolved for `<EventHeader>` (soft-deleted → null). On a
           // multi-group event it's the `lovelive-series` umbrella, so

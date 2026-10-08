@@ -19,6 +19,8 @@ import {
   validateArtistId,
   validateBdAlbumId,
   validateDateInput,
+  validateEngagementOpensAt,
+  checkOpensAtBeforeStart,
   validateEventOriginals,
   validateEventSeriesId,
   validateEventTranslations,
@@ -118,6 +120,26 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (!startTimeCheck.ok) return startTimeCheck.response;
   const startTime = startTimeCheck.value!;
 
+  const opensAtCheck = validateEngagementOpensAt(body.engagementOpensAt, startTime);
+  if (!opensAtCheck.ok) return opensAtCheck.response;
+  const engagementOpensAt = opensAtCheck.value;
+  // A payload without the key keeps the stored opens-at (see the
+  // conditional write below) — but it may carry a moved startTime, so
+  // re-check the stored value against it. Otherwise moving the show
+  // earlier than an existing opens-at would persist a window that
+  // never opens.
+  if (!("engagementOpensAt" in body)) {
+    const stored = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { engagementOpensAt: true },
+    });
+    const storedCheck = checkOpensAtBeforeStart(
+      stored?.engagementOpensAt ?? null,
+      startTime
+    );
+    if (!storedCheck.ok) return storedCheck.response;
+  }
+
   const dateCheck = validateDateInput(body.date, "date", false);
   if (!dateCheck.ok) return dateCheck.response;
   const date = dateCheck.value;
@@ -178,6 +200,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
           organizerName: organizerName.value,
           date,
           startTime,
+          // Only touch the override when the payload carries the key, so
+          // a caller that doesn't know about it can't wipe an operator's
+          // opens-at. The admin form always sends it (null = clear).
+          ...("engagementOpensAt" in body ? { engagementOpensAt } : {}),
           country: country.value,
           posterUrl: posterUrl.value,
           ...originals,

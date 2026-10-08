@@ -50,7 +50,10 @@ interface Props {
   title: string;
   venue: string | null;
   city: string | null;
-  /** Total number of song-typed setlist items (excludes mc/video/interval). */
+  /**
+   * Total number of song-typed setlist items (excludes mc/video/interval).
+   * The row is hidden at 0 — see `reactionsValue`.
+   */
   songsCount: number;
   /**
    * Pre-formatted reaction count string (e.g. `"1.2K"` / `"1.2천"`).
@@ -59,8 +62,12 @@ interface Props {
    * suffix is rendered server-side — passing a string instead of a
    * raw number avoids any SSR-vs-client `Intl` divergence (different
    * ICU versions could produce slightly different output).
+   *
+   * `null` (no reactions yet) hides the row. Zero-stat rows on a
+   * pre-show page were half of Google's Soft 404 signal, so both
+   * counters only appear once there's something to count.
    */
-  reactionsValue: string;
+  reactionsValue: string | null;
 }
 
 // Card-styled event detail header per
@@ -118,7 +125,7 @@ export function EventHeader({
     {
       icon: "🎵",
       labelKey: "iconLabelSongs",
-      value: t("songsValue", { count: songsCount }),
+      value: songsCount > 0 ? t("songsValue", { count: songsCount }) : null,
     },
     {
       icon: "💬",

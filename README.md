@@ -30,6 +30,29 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.17.0 (2026-10-09)
+- **Fes readiness: per-event Wishlist/Prediction window (n07) and indexable pre-show event pages (n08).** Minor bump for the **additive schema change**: new nullable column `Event.engagementOpensAt`. `migrate-prod.yml` adds it on the v0.17.0 tag. Existing rows stay `null`, so behaviour is unchanged until an operator sets a value. No env vars, no new deps.
+- **#543 — per-event open window (n07).** The Wishlist / Predicted Setlist gate is now `opensAt = engagementOpensAt ?? startTime − 168h`, open while `opensAt <= now < startTime`.
+  - The event-page gate (`isWishPredictOpen`) and the home-card badge (`shouldShowWishBadge`) share one helper in `src/lib/eventTiming.ts`, so the two can't disagree.
+  - Admin event form: new field 「희망곡/예상곡 오픈 시각 (UTC, 비우면 D-7)」. POST/PUT require a real ISO date-time with `Z`/offset, earlier than `startTime` (400 otherwise). A PUT that omits the field re-checks the stored value against a moved `startTime`.
+  - `events.csv`: optional `engagementOpensAt` column. A blank value keeps the stored one; invalid values are WARNed and ignored. If `startTime` moves to or before the stored opens-at, the override is cleared to the D-7 default with a WARN.
+  - Rule of thumb: tour legs in quick succession keep D-7 (null); standalone shows and festivals open around D-30.
+- **#544 — pre-show event page content (n08).** Search Console classified the Fes page as a Soft 404 (~400 visible chars).
+  - Upcoming events with an empty setlist now show the roster as a lineup (group → units → member links).
+  - Status-aware empty-state copy gives the venue-local start time and 「예상 세트리스트는 {date}부터」. Zero counters are hidden.
+  - Every event page carries `MusicEvent` JSON-LD with `startDate` in the venue's UTC offset.
+- **#545 — n07 × n08 follow-up.** The pre-show "predict opens on {date}" line now reads the per-event override (`wishPredictOpensAt`) instead of always printing the D-7 date.
+- **Verified on the dev Preview (event 109 = Fes Day1 on dev):**
+  - Before setting an override, Wishlist/Prediction is closed. With an opens-at in the past it opens immediately on ko/ja, while event 110 stays closed.
+  - An opens-at at or after start is refused by the form guard and by the server (400). A zone-less value is refused (400).
+  - Clearing the field closes the window again.
+- **Post-deploy (prod):**
+  - (a) In the admin form set Fes 107/108 → `2026-10-10T00:00`, 石川 105/106 → `2026-10-29T00:00` (prod IDs).
+  - (b) After 10/10 00:00 UTC, `/ko/events/107/…` shows Wishlist + Predicted Setlist. Before 10/29, 石川 shows 「…10월 29일…부터」.
+  - (c) Rich Results Test on `/ja/events/107/…` shows a valid `MusicEvent`.
+  - (d) Search Console live test, then Request indexing for 107/108.
+  - Home Upcoming lists only events within 30 days, so the Fes card and its badge appear on home from ~10/15.
+
 ### v0.16.5 (2026-10-06)
 - **Crawl-budget follow-up + SetlistBuilder sticky-credit fix.** Two small PRs on top of v0.16.4; patch bump. **Code-only — no schema migration**, no env vars, no new deps. `migrate-prod.yml` no-ops on the v0.16.5 tag.
 - **#540 — robots.txt: disallow `Amzn-SearchBot` and `SemrushBot`.** After `Amazonbot` was listed in v0.16.3, Amazon's search crawler reappeared as `Amzn-SearchBot/0.1` — a different token — and was the top UA in the 2026-10-06 Vercel Firewall log (1,700 of 4.1k requests/day); Supabase egress rose from 22.6 MB (10/5) to 61 MB (10/6). Even with the data cache a full crawl pass costs one miss per entity per TTL. `SemrushBot` (~150/day, SEO-tool crawler) is in the same no-referral class. robots.txt is advisory and takes effect when the bot re-reads it; the operator-side Firewall rule (UA contains `Amzn` → Deny) is the immediate stop.

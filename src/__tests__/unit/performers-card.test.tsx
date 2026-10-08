@@ -18,12 +18,12 @@ describe("PerformersCard", () => {
   ];
 
   it("renders nothing when performers is empty", () => {
-    const { container } = render(<PerformersCard performers={[]} />);
+    const { container } = render(<PerformersCard locale="ko" performers={[]} />);
     expect(container.firstChild).toBeNull();
   });
 
   it("renders one pill per performer with the supplied color", () => {
-    render(<PerformersCard performers={sample} />);
+    render(<PerformersCard locale="ko" performers={sample} />);
     const hanaho = screen.getByText("花帆");
     expect(hanaho.style.color).toBe(hexToRgbString("#e91e8c"));
 
@@ -44,7 +44,7 @@ describe("PerformersCard", () => {
         isGuest: true,
       },
     ];
-    render(<PerformersCard performers={withGuest} />);
+    render(<PerformersCard locale="ko" performers={withGuest} />);
     expect(screen.getByText(/·\s*guestLabel/)).toBeInTheDocument();
     // Host pill has no suffix.
     expect(screen.getByText("花帆")).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("PerformersCard", () => {
       { id: "si-2", name: "梢", color: "#7B1FA2" },
       { id: "si-9", name: "ゲスト太郎", color: "#3949AB", isGuest: true },
     ];
-    const { container } = render(<PerformersCard performers={mixed} />);
+    const { container } = render(<PerformersCard locale="ko" performers={mixed} />);
     const items = container.querySelectorAll("li");
     expect(items.length).toBe(4); // 2 hosts + 1 divider + 1 guest
   });
@@ -69,7 +69,7 @@ describe("PerformersCard", () => {
       { id: "si-1", name: "花帆", color: "#e91e8c" },
       { id: "si-2", name: "梢", color: "#7B1FA2" },
     ];
-    const { container } = render(<PerformersCard performers={hostsOnly} />);
+    const { container } = render(<PerformersCard locale="ko" performers={hostsOnly} />);
     const items = container.querySelectorAll("li");
     expect(items.length).toBe(2); // 2 hosts, no divider, no guests
   });
@@ -78,7 +78,7 @@ describe("PerformersCard", () => {
     const guestsOnly = [
       { id: "si-9", name: "ゲスト太郎", color: "#3949AB", isGuest: true },
     ];
-    const { container } = render(<PerformersCard performers={guestsOnly} />);
+    const { container } = render(<PerformersCard locale="ko" performers={guestsOnly} />);
     const items = container.querySelectorAll("li");
     expect(items.length).toBe(1); // 1 guest, no divider
   });

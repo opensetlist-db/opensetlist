@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { resolveUnitColor } from "@/lib/artistColor";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { colors, radius, shadows } from "@/styles/tokens";
 // Type lives in `src/lib/types/setlist.ts` so pure helpers under
 // `src/lib/` (`deriveSidebarUnitsAndPerformers`) can produce
@@ -16,6 +17,14 @@ export type { UnitsCardItem };
 interface Props {
   locale: string;
   units: UnitsCardItem[];
+  /**
+   * Pre-show lineup mode: rows come from the event roster
+   * (`deriveLineupFromRoster`), not from performed songs, so the
+   * heading says "scheduled" instead of implying these units already
+   * performed. Lineup rows include `kind: "group"` section headers;
+   * the `"unit"` rows under a group are indented beneath it.
+   */
+  isLineup?: boolean;
 }
 
 /**
@@ -35,7 +44,7 @@ interface Props {
  * renders whatever the caller passes; an empty array
  * short-circuits the sublist render so the row stays compact.
  */
-export function UnitsCard({ locale, units }: Props) {
+export function UnitsCard({ locale, units, isLineup = false }: Props) {
   const t = useTranslations("Event");
   if (units.length === 0) return null;
   return (
@@ -57,10 +66,10 @@ export function UnitsCard({ locale, units }: Props) {
           marginBottom: 14,
         }}
       >
-        {t("unitsLabel")}
+        {isLineup ? t("lineupUnitsLabel") : t("unitsLabel")}
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-        {units.map((unit) => {
+        {units.map((unit, idx) => {
           // Resolve once per row — `resolveUnitColor` returns the
           // unit's `Artist.color` when set, else a deterministic
           // pick from `unitFallbackPalette` keyed on the slug (so
@@ -68,6 +77,12 @@ export function UnitsCard({ locale, units }: Props) {
           // distinguishable hues, and the same unit's color matches
           // its setlist-row pill and its artist-page card).
           const accent = resolveUnitColor(unit);
+          const isGroupRow = unit.kind === "group";
+          // A unit row is nested when some group header precedes it —
+          // only lineup data has group rows, so the live sidebar (no
+          // `kind`) renders exactly as before.
+          const isNested =
+            !isGroupRow && units.slice(0, idx).some((u) => u.kind === "group");
           return (
             <li
               key={unit.id}
@@ -76,6 +91,10 @@ export function UnitsCard({ locale, units }: Props) {
                 alignItems: "center",
                 gap: 10,
                 marginBottom: 10,
+                // Breathing room above every section header but the
+                // first, so each group reads as its own block.
+                marginTop: isGroupRow && idx > 0 ? 14 : 0,
+                paddingLeft: isNested ? 12 : 0,
               }}
             >
               <span
@@ -93,15 +112,15 @@ export function UnitsCard({ locale, units }: Props) {
               />
               <div style={{ minWidth: 0, flex: 1 }}>
                 <Link
-                  href={`/${locale}/artists/${unit.id}/${unit.slug}`}
+                  href={entityPath("artists", locale, unit.id, unit.slug)}
                   className="hover:underline"
                   // Same `accent` token as the color bar so the
                   // unit name and its bar share one tint — including
                   // the brand-fallback color when `Artist.color`
                   // hasn't been backfilled.
                   style={{
-                    fontSize: 13,
-                    fontWeight: 700,
+                    fontSize: isGroupRow ? 14 : 13,
+                    fontWeight: isGroupRow ? 800 : 700,
                     color: accent,
                     textDecoration: "none",
                   }}

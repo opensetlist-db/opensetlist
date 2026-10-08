@@ -4,6 +4,7 @@ import {
   badRequest,
   nullableString as parseNullableString,
   originalLanguage as parseOriginalLanguage,
+  parseIsoInstant,
   requireString,
 } from "@/lib/admin-input";
 
@@ -223,6 +224,75 @@ export function validateDateInput(
     };
   }
   return { ok: true, value: parsed };
+}
+
+/**
+ * `Event.engagementOpensAt` — optional per-event override for when the
+ * Wishlist / Predicted Setlist surfaces open (null = D-7 default, see
+ * `src/lib/eventTiming.ts#isWishPredictOpen`). Must be strictly before
+ * `startTime`: an opens-at at/after the show would make the surfaces
+ * silently never appear, which is never what the operator meant —
+ * reject it so the typo surfaces in the form instead of on show day.
+ */
+export function validateEngagementOpensAt(
+  value: unknown,
+  startTime: Date
+):
+  | { ok: true; value: Date | null }
+  | { ok: false; response: NextResponse } {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  // Strict, unlike `validateDateInput`: the value is compared against
+  // a stored UTC instant, so a zone-less string (read in the server's
+  // local TZ) or a rolled-over calendar date must 400, not be stored.
+  const parsed =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? null
+        : value
+      : typeof value === "string"
+        ? parseIsoInstant(value)
+        : null;
+  if (!parsed) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "engagementOpensAt: 시간대(Z 또는 ±HH:MM)가 포함된 올바른 ISO 날짜·시각이어야 합니다.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+  return checkOpensAtBeforeStart(parsed, startTime);
+}
+
+/**
+ * The `< startTime` half of `validateEngagementOpensAt`, split out so
+ * the PUT route can re-check a STORED opens-at against a moved
+ * startTime when the payload omits the field.
+ */
+export function checkOpensAtBeforeStart(
+  opensAt: Date | null,
+  startTime: Date
+):
+  | { ok: true; value: Date | null }
+  | { ok: false; response: NextResponse } {
+  if (opensAt && opensAt.getTime() >= startTime.getTime()) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            "engagementOpensAt: 희망곡/예상곡 오픈 시각은 시작 시각보다 앞서야 합니다.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+  return { ok: true, value: opensAt };
 }
 
 export type EventTranslationInput = {
