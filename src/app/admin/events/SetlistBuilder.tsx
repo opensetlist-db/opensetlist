@@ -214,7 +214,8 @@ export default function SetlistBuilder({
   // whether a lost-response POST actually landed (see setlistSave.ts).
   const [saveError, setSaveError] = useState<string | null>(null);
   const [reconciling, setReconciling] = useState(false);
-  // Row saved but the follow-up list reload failed → stale list banner.
+  // The list on screen may not reflect the server: a reload failed, or
+  // a timed-out POST may still commit after our reconcile reload.
   const [listStale, setListStale] = useState(false);
   const [reorderLoading, setReorderLoading] = useState(false);
 
@@ -595,11 +596,18 @@ export default function SetlistBuilder({
         return;
       }
       if (outcome.kind === "unknown") {
-        // Three distinct messages: only when the reload SUCCEEDED and
-        // the row is absent can we promise a POST retry won't
-        // duplicate. If the reload failed too, the write may well have
-        // landed — the operator must refresh the list and check first.
-        if (!outcome.items) {
+        // Only when the reload SUCCEEDED, the row is absent, and the
+        // request wasn't our timeout abort can we promise a POST retry
+        // won't duplicate. If the reload failed, the write may well
+        // have landed; if we aborted, the server may still commit it
+        // after the reload (see setlistSave.ts). Either way the
+        // operator must refresh and check first.
+        if (method === "POST" && outcome.items && outcome.aborted) {
+          setSaveError(
+            "응답이 10초 안에 오지 않았습니다. 서버에서 아직 저장 중일 수 있으니 잠시 후 「목록 새로고침」으로 확인한 뒤, 항목이 없을 때만 다시 시도하세요.",
+          );
+          setListStale(true);
+        } else if (!outcome.items) {
           setListStale(true);
           setSaveError(
             method === "POST"
@@ -730,7 +738,7 @@ export default function SetlistBuilder({
     <div>
       {listStale && (
         <div className="mb-3 flex items-center justify-between rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <span>목록을 불러오지 못했습니다 — 화면의 목록이 최신이 아닐 수 있습니다.</span>
+          <span>화면의 목록이 최신이 아닐 수 있습니다 — 새로고침해서 확인하세요.</span>
           <button
             type="button"
             onClick={async () => {

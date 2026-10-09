@@ -83,7 +83,7 @@ describe("saveSetlistRow", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     const reload = vi.fn().mockResolvedValue(before);
     const out = await saveSetlistRow({ ...base, method: "POST", reload, fetchImpl });
-    expect(out).toEqual({ kind: "unknown", items: before });
+    expect(out).toEqual({ kind: "unknown", items: before, aborted: false });
   });
 
   it("PUT that throws is never reconciled", async () => {
@@ -117,7 +117,7 @@ describe("saveSetlistRow", () => {
     const out = await saveSetlistRow({
       ...base, method: "POST", reload, fetchImpl, timeoutMs: 20,
     });
-    expect(out.kind).toBe("unknown");
+    expect(out).toEqual({ kind: "unknown", items: before, aborted: true });
     expect(reload).toHaveBeenCalledTimes(1);
   });
 });

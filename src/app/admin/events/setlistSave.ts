@@ -45,7 +45,9 @@ export type SaveOutcome<T> =
   // `items` null = write OK but the reload failed (case 3).
   | { kind: "saved"; items: T[] | null; reconciled: boolean }
   | { kind: "rejected"; message: string }
-  | { kind: "unknown"; items: T[] | null };
+  // `aborted` = our own timeout fired. See the catch block for why a
+  // "row absent" reconcile result then proves nothing.
+  | { kind: "unknown"; items: T[] | null; aborted: boolean };
 
 /**
  * A row in `items` that wasn't in `knownIds` before the save and
@@ -102,13 +104,23 @@ export async function saveSetlistRow<T extends ReconcilableRow>(opts: {
       signal: controller.signal,
     });
   } catch {
+    // Aborting only cancels the CLIENT side of the request; a POST the
+    // server already received keeps running and may commit after our
+    // reload. So on a timeout, "row absent" doesn't mean "not saved" —
+    // the caller must not promise a duplicate-safe retry. A plain
+    // network failure ("Failed to fetch") is different: either the
+    // request never reached the server, or it was answered and the
+    // commit is already visible to the reload.
+    // Read the signal rather than the error: DOMException isn't an
+    // Error subclass in every runtime, and only OUR abort matters.
+    const aborted = controller.signal.aborted;
     opts.onReconcileStart?.();
     const items = await opts.reload();
     if (opts.method === "POST" && items) {
       const hit = findReconciledRow(items, opts.payload, opts.knownIds);
       if (hit) return { kind: "saved", items, reconciled: true };
     }
-    return { kind: "unknown", items };
+    return { kind: "unknown", items, aborted };
   } finally {
     clearTimeout(timer);
   }
