@@ -114,6 +114,12 @@ export function getSnapshot({ forceBody = false, tags = {} } = {}) {
   return body;
 }
 
+// Shape = the `NextResponse.json({ items, reactionCounts, top3Wishes,
+// status, updatedAt })` at the end of src/app/api/setlist/route.ts —
+// all five keys are always present (reactionCounts may be `{}`,
+// top3Wishes may be `[]`, status may be null). If that route's shape
+// changes, update this check with it, or every sampled body counts as
+// an error and the ramp aborts on the 2 % gate.
 export function validateSnapshotBody(body) {
   if (!body || !Array.isArray(body.items) || !("status" in body)) return false;
   if (typeof body.reactionCounts !== "object" || !Array.isArray(body.top3Wishes)) return false;
