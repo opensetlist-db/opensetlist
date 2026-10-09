@@ -30,6 +30,25 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.18.1 (2026-10-09)
+- **Fes readiness: festival prediction catalog (n10), lock-timer fix, and SetlistBuilder hardening for multi-group nights (n11).** Patch bump: **no schema change**, no env vars, no new deps.
+- **#549 — Predicted Setlist picker on multi-artist events (n10).** The picker loaded songs only from `eventSeries.artist`, which is null on the Fes, so the picker was hidden.
+  - New `src/lib/artistHierarchy.ts`: cached whole-tree read of `Artist.parentArtistId` with `rootOf` / `descendantsOf`.
+  - Picker scope is now the root + all descendants (was depth 1). Same song lists for single-artist events (dev audit: all 8 groups identical).
+  - Festival path: roster → root groups → one cached catalog per group, merged, with one `festivalGroup` chip per group.
+- **#558 — wishlist / prediction no longer lock on mount for shows more than 24.8 days out.** `setTimeout(lock, start − now)` overflowed past 2³¹ ms, so with a D-35 `engagementOpensAt` both sections locked immediately. New `src/lib/timeoutAt.ts` `setTimeoutAt`. This bug is in prod v0.18.0.
+- **#552 / #553 / #554 / #555 — SetlistBuilder hardening (n11).**
+  - **B1 #552:** picking a group replaces the row credit instead of stacking it (sticky μ's → pick Aqours no longer saves μ's + Aqours). Unit/solo picks stay additive. A 「+ 그룹 추가」 button in the artist dropdown covers genuine multi-group collabs.
+  - **B3 #553:** save failures no longer leave the button stuck. New `src/app/admin/events/setlistSave.ts` with a 10 s timeout. A rejected write keeps the form with an inline error. A lost response triggers a reload that recognizes the row if it landed (no duplicate on retry). A save that succeeded but whose reload failed shows a 「목록 새로고침」 banner. A timed-out POST never promises a duplicate-safe retry, because the server may still commit it. Delete / swap / insert-after also recover from network errors.
+  - **B4 #554:** the public row badge shows up to two credits plus a `+N` chip. The solo-misfire guard applies per credit. Single-credit rows are unchanged.
+  - **B2 #555:** default performers resolve credits through the artist hierarchy (a 蓮ノ空 credit matches members linked only to its units). A credit that matches nobody (e.g. the Musical) now pre-checks nobody instead of the whole Fes roster. The pure tree helpers moved to `src/lib/artistHierarchyTree.ts` so the client builder can import them.
+- **#556 — admin series list shows the ko organizer translation.** Admin only.
+- **#557 — n12 k6 capacity harness** under `tests/load/`. Test code only.
+- **Verified on the dev Preview:** n10 + #558 on event 109 (desktop + 400 px mobile): 9 chips, 蓮ノ空 155 songs including Cerise and multi-solo songs, predictions persisted, share card OK. n11: unit tests only so far. The operator rehearsal gate (2020 Fes Day.1 on dev) runs before 11/7.
+- **Post-deploy (prod):**
+  - (a) `/ko/events/107/…` after the 10/10 00:00 UTC window opens: the predict picker shows group chips and the Wishlist is open (not locked).
+  - (b) Admin builder on any event: picking a group after a different sticky group leaves one credit.
+
 ### v0.18.0 (2026-10-09)
 - **Organizer (主催) label is now localized (n09).** Minor bump for the **additive schema change**: new nullable columns `EventTranslation.organizerName` and `EventSeriesTranslation.organizerName`. `migrate-prod.yml` adds them on the v0.18.0 tag. The parent `Event.organizerName` / `EventSeries.organizerName` keep the original-language value, so pages are unchanged until a translation is entered. No env vars, no new deps.
 - **#548 — organizerName via the translation tables.** The ko/en Fes pages showed 「ラブライブ！シリーズ」 because the organizer was the only operator-entered display field without a translation column.
