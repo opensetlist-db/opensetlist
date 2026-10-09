@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-import { deriveDefaultPerformerIds } from "@/app/admin/events/SetlistBuilder";
+import {
+  deriveDefaultPerformerIds,
+  performerSourceIds,
+} from "@/app/admin/events/SetlistBuilder";
 import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
 
 // Minimal performer shape: id + the Artist ids the StageIdentity links to.
@@ -103,5 +106,41 @@ describe("deriveDefaultPerformerIds", () => {
 
   it("unit row without a credit → empty until the unit is picked", () => {
     expect(deriveDefaultPerformerIds("song", "unit", [], roster)).toEqual([]);
+  });
+});
+
+describe("performerSourceIds (group credited alongside a unit/solo)", () => {
+  const NIJI_GROUP = { id: NIJI, type: "group" };
+  const AYUMU_SOLO = { id: 21, type: "solo" };
+  const nijiRoster = [si("ayumu", AYUMU_SOLO.id), si("setsuna", 22), si("chika", AQOURS)];
+  const hierarchy = buildArtistHierarchy([
+    { id: NIJI, parentArtistId: null },
+    { id: AYUMU_SOLO.id, parentArtistId: NIJI },
+    { id: 22, parentArtistId: NIJI },
+    { id: AQOURS, parentArtistId: null },
+  ]);
+
+  it("solo stage drops the group credit", () => {
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "solo")).toEqual([AYUMU_SOLO.id]);
+  });
+
+  it("unit stage with only a group credited keeps the group", () => {
+    expect(performerSourceIds([NIJI_GROUP], "unit")).toEqual([NIJI]);
+  });
+
+  it("full_group and special keep every credit", () => {
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "full_group")).toEqual([NIJI, AYUMU_SOLO.id]);
+    expect(performerSourceIds([NIJI_GROUP, AYUMU_SOLO], "special")).toEqual([NIJI, AYUMU_SOLO.id]);
+  });
+
+  it("虹ヶ咲 + 歩夢 on a solo stage pre-checks only 歩夢, not the whole group", () => {
+    const credits = [NIJI_GROUP, AYUMU_SOLO];
+    expect(
+      deriveDefaultPerformerIds("song", "solo", performerSourceIds(credits, "solo"), nijiRoster, hierarchy),
+    ).toEqual(["ayumu"]);
+    // what the unfiltered ids would have produced
+    expect(
+      deriveDefaultPerformerIds("song", "solo", credits.map((a) => a.id), nijiRoster, hierarchy),
+    ).toEqual(["ayumu", "setsuna"]);
   });
 });

@@ -179,6 +179,33 @@ export function stageTypeForCredit(
   return credits.every((a) => a.type === "group") ? "full_group" : current;
 }
 
+/**
+ * Which credited artists the default performer roster is derived from.
+ *
+ * On a unit / solo stage the roster is the unit's or soloist's members,
+ * even when the parent group is credited alongside (「虹ヶ咲 + 歩夢」,
+ * 「Aqours + CYaRon!」 — the normal way a unit row inside a group block
+ * is credited). Passing the group id too would make
+ * deriveDefaultPerformerIds expand it through the hierarchy and
+ * pre-check the whole group (11 Nijigasaki members on a solo row).
+ * So unit/solo stages drop group credits — unless only groups are
+ * credited (e.g. the operator flipped the select by hand), in which
+ * case the groups are all we have. full_group and special use every
+ * credit as before.
+ *
+ * Pure — exported for unit tests.
+ */
+export function performerSourceIds(
+  credits: readonly { id: number; type?: string }[],
+  stageType: string,
+): number[] {
+  if (stageType === "unit" || stageType === "solo") {
+    const nonGroup = credits.filter((a) => a.type !== "group");
+    if (nonGroup.length > 0) return nonGroup.map((a) => a.id);
+  }
+  return credits.map((a) => a.id);
+}
+
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
 const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"];
@@ -495,15 +522,17 @@ export default function SetlistBuilder({
   // here so every trigger (type change, stageType change, artist
   // add/remove, resetForm) goes through one code path and the two
   // states can't drift.
+  // Takes the credited artist OBJECTS (not ids): which of them feed
+  // the derivation depends on their type — see performerSourceIds.
   function applyDerivedPerformers(
     type: string,
     stageType: string,
-    artistIds: number[],
+    artists: readonly ArtistOption[],
   ) {
     const ids = deriveDefaultPerformerIds(
       type,
       stageType,
-      artistIds,
+      performerSourceIds(artists, stageType),
       eventPerformers,
       hierarchy,
     );
@@ -519,7 +548,7 @@ export default function SetlistBuilder({
   // post-change values explicitly.
   function handleTypeChange(newType: string) {
     setFormType(newType);
-    applyDerivedPerformers(newType, formStageType, formArtistIds);
+    applyDerivedPerformers(newType, formStageType, selectedArtists);
   }
 
   // Stage-type trigger. full_group → all event performers; the
@@ -546,11 +575,7 @@ export default function SetlistBuilder({
         setFormArtistIds(nextArtists.map((a) => a.id));
       }
     }
-    applyDerivedPerformers(
-      formType,
-      newStageType,
-      nextArtists.map((a) => a.id),
-    );
+    applyDerivedPerformers(formType, newStageType, nextArtists);
   }
 
   function selectArtist(
@@ -579,7 +604,7 @@ export default function SetlistBuilder({
     // member-narrow — see deriveDefaultPerformerIds). Pass the
     // post-change values explicitly (see comment on handleTypeChange
     // for the batched-state rationale).
-    applyDerivedPerformers(formType, nextStageType, nextArtistIds);
+    applyDerivedPerformers(formType, nextStageType, nextArtists);
   }
 
   function removeArtist(artistId: number) {
@@ -592,7 +617,7 @@ export default function SetlistBuilder({
     // pick does (no-op when the credit empties out).
     const nextStageType = stageTypeForCredit(nextArtists, formStageType);
     if (nextStageType !== formStageType) setFormStageType(nextStageType);
-    applyDerivedPerformers(formType, nextStageType, nextArtistIds);
+    applyDerivedPerformers(formType, nextStageType, nextArtists);
   }
 
   // `sticky` defaults to the current state; handleSave passes the
@@ -628,7 +653,7 @@ export default function SetlistBuilder({
     // existing item doesn't clobber the saved performer set; only
     // subsequent stageType/type/artist edits re-derive. With a
     // sticky credit the roster follows it (e.g. the Aqours members).
-    applyDerivedPerformers("song", seedStageType, seedArtistIds);
+    applyDerivedPerformers("song", seedStageType, seedArtists);
   }
 
   // "고정 해제" — drop the sticky credit and reset the open form's
@@ -846,7 +871,7 @@ export default function SetlistBuilder({
           setFormStageType(stickyCredit.stageType);
           setFormArtistIds(ids);
           setSelectedArtists(stickyCredit.artists);
-          applyDerivedPerformers("song", stickyCredit.stageType, ids);
+          applyDerivedPerformers("song", stickyCredit.stageType, stickyCredit.artists);
         }
       } else {
         const err = await res.json().catch(() => null);
