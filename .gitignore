@@ -53,3 +53,7 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# k6 load-test raw metric dumps (n12) — the per-run .md tables and
+# REPORT.md are committed, the multi-hundred-KB JSON is not.
+/tests/load/results/**/*.json

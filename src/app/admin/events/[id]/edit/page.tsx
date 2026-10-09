@@ -99,12 +99,13 @@ export default async function EditEventPage({ params }: Props) {
             originalCity: data.originalCity ?? "",
             originalVenue: data.originalVenue ?? "",
             originalLanguage: data.originalLanguage ?? "ja",
-            translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; city?: string | null; venue?: string | null }) => ({
+            translations: data.translations.map((t: { locale: string; name: string; shortName?: string | null; city?: string | null; venue?: string | null; organizerName?: string | null }) => ({
               locale: t.locale,
               name: t.name,
               shortName: t.shortName ?? "",
               city: t.city ?? "",
               venue: t.venue ?? "",
+              organizerName: t.organizerName ?? "",
             })),
             performers: (data.performers ?? []).map((p: {
               isGuest: boolean;

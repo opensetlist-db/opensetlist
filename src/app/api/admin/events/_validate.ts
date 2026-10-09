@@ -301,6 +301,7 @@ export type EventTranslationInput = {
   shortName: string | null;
   city: string | null;
   venue: string | null;
+  organizerName: string | null;
 };
 
 function nullableString(
@@ -349,12 +350,17 @@ export function validateEventTranslations(
     if (!city.ok) return reject(`translations[${i}].city must be string or null`);
     const venue = nullableString(t.venue);
     if (!venue.ok) return reject(`translations[${i}].venue must be string or null`);
+    const organizerName = nullableString(t.organizerName);
+    if (!organizerName.ok) {
+      return reject(`translations[${i}].organizerName must be string or null`);
+    }
     out.push({
       locale: t.locale,
       name: t.name,
       shortName: shortName.value,
       city: city.value,
       venue: venue.value,
+      organizerName: organizerName.value,
     });
   }
   return { ok: true, value: out };

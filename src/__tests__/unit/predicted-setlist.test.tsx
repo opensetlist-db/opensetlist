@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
@@ -318,5 +318,32 @@ describe("PredictedSetlist — match-highlight states", () => {
       />,
     );
     expect(screen.getByText(/dividerLabel:/)).toBeTruthy();
+  });
+});
+
+describe("PredictedSetlist — long pre-show window", () => {
+  it("does not lock on mount when the show is more than ~24.8 days away", async () => {
+    // Regression: `setTimeout(lock, startMs - now)` overflows past
+    // 2^31-1 ms and fires on the next tick (see src/lib/timeoutAt.ts).
+    const farFuture = new Date(Date.now() + 36 * 24 * 60 * 60 * 1000);
+    render(
+      <PredictedSetlist
+        eventId="1"
+        locale="ko"
+        startTime={farFuture}
+        status="upcoming"
+        actualSongs={[]}
+        seriesName="Test Series"
+        eventTitle="Test Event"
+        dateLine="2026-11-14"
+        availableSongs={SAMPLE_AVAILABLE}
+        unitFilters={SAMPLE_FILTERS}
+      />,
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.getByText("add")).toBeTruthy();
+    expect(screen.getByText(/preShowHint:/)).toBeTruthy();
   });
 });

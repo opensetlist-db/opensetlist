@@ -10,7 +10,7 @@ import {
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
-  parseLocalizedTranslations,
+  parseEventSeriesTranslations,
   requireString,
 } from "@/lib/admin-input";
 import { revalidatePublicData } from "@/lib/dataCache";
@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
-  const translations = parseLocalizedTranslations(body.translations);
+  const translations = parseEventSeriesTranslations(body.translations);
   if (!translations.ok) return badRequest(translations.message);
 
   // Atomic delete-then-update: a failed update would otherwise leave the series with no translation rows.

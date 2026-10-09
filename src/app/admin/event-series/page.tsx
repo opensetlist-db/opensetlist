@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
-import { displayNameWithFallback } from "@/lib/display";
+import { displayNameWithFallback, resolveLocalizedField } from "@/lib/display";
 import DeleteButton from "../DeleteButton";
 
 export default async function EventSeriesListPage() {
@@ -42,13 +42,23 @@ export default async function EventSeriesListPage() {
             const artistName = s.artist
               ? displayNameWithFallback(s.artist, s.artist.translations, "ko")
               : "";
+            // Multi-artist series show the organizer instead — in ko
+            // like the name / artist columns, falling back to the
+            // original-language EventSeries.organizerName.
+            const organizerName = resolveLocalizedField(
+              s,
+              s.translations,
+              "ko",
+              "organizerName",
+              "organizerName"
+            );
             return (
               <tr key={s.id} className="border-b border-zinc-100">
                 <td className="py-2 text-zinc-400">{s.id}</td>
                 <td className="py-2 font-medium">{name || "—"}</td>
                 <td className="py-2">{s.type}</td>
                 <td className="py-2 text-zinc-500">
-                  {artistName || s.organizerName || "—"}
+                  {artistName || organizerName || "—"}
                 </td>
                 <td className="py-2 space-x-2">
                   <Link

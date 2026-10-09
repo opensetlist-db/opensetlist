@@ -38,7 +38,7 @@ interface Props {
   /**
    * Event primary artist id (stringified BigInt) or null. Forwarded to
    * `<SetlistRow>` for the multi-group-event badge rule — see
-   * `pickRowArtistBadge`.
+   * `pickRowArtistBadges`.
    */
   eventArtistId?: string | null;
   // Polled state — owned by the parent `LiveEventLayout` so a single

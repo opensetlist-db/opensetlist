@@ -11,6 +11,7 @@ import {
   descendantsOf,
   type ArtistHierarchy,
 } from "@/lib/artistHierarchyTree";
+import { saveSetlistRow } from "./setlistSave";
 
 type SongOption = {
   id: number;
@@ -48,7 +49,7 @@ type ArtistOption = {
   // `artists: { include: { artist } }` Prisma includes behind
   // `startEdit` (edit page `initialItems`, `reloadItems`, the
   // insert-after response). Read by `selectArtist` (group → full_group,
-  // drop unit/solo credits) and `handleStageTypeChange` (full_group →
+  // replace the credit — see nextCreditOnPick) and `handleStageTypeChange` (full_group →
   // drop unit/solo credits). Typed optional only as a defensive
   // default — an untyped chip is left alone rather than guessed at.
   type?: string;
@@ -98,10 +99,48 @@ type SetlistItemData = {
   }[];
 };
 
-// Unit/solo credits don't belong on a whole-group stage. Shared by the
-// two transitions into full_group (group picked / stage type flipped).
+// Unit/solo credits don't belong on a whole-group stage. Used when the
+// stage type is flipped to full_group; a group PICK replaces the whole
+// credit instead (nextCreditOnPick).
 function isUnitOrSoloCredit(a: ArtistOption): boolean {
   return a.type === "unit" || a.type === "solo";
+}
+
+/**
+ * Credit list after the operator picks `artist` in the artist search.
+ *
+ * Group picks REPLACE the whole credit: on a multi-group night the
+ * sticky credit carries the previous block's group (μ's), and the
+ * operator starts the next block by picking the next group (Aqours).
+ * Appending would save the row credited μ's + Aqours, and the public
+ * badge — which reads the credits in order — would show μ's on an
+ * Aqours song. Unit/solo credits go too: they belong to whatever
+ * group the previous row was about, and a full_group stage doesn't
+ * carry them anyway (see handleStageTypeChange).
+ *
+ * Unit/solo picks stay additive: a two-unit collab or a unit + solo
+ * special stage is a legitimate multi-credit row, and the group credit
+ * (if any) stays alongside — that pairing is how a unit row inside a
+ * group block is normally credited.
+ *
+ * `addGroup` is the deliberate escape hatch for a genuine multi-group
+ * collab (an anniversary song sung by several groups): the 「+ 그룹
+ * 추가」 button in the dropdown passes it so the picked group is
+ * appended instead of replacing. Unit/solo credits are still dropped
+ * on that path, for the same reason as above.
+ *
+ * Pure — exported for unit tests.
+ */
+export function nextCreditOnPick<T extends { id: number; type?: string }>(
+  selected: readonly T[],
+  artist: T,
+  opts: { addGroup?: boolean } = {},
+): T[] {
+  if (artist.type !== "group") return [...selected, artist];
+  if (opts.addGroup) {
+    return [...selected.filter((a) => a.type === "group"), artist];
+  }
+  return [artist];
 }
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
@@ -252,6 +291,15 @@ export default function SetlistBuilder({
     StageIdentityOption[]
   >([]);
   const [loading, setLoading] = useState(false);
+  // Inline save feedback (replaces the old alert). `saveError` keeps
+  // the form open with the server's message or the "outcome unknown"
+  // notice; `reconciling` is the window where we reload to find out
+  // whether a lost-response POST actually landed (see setlistSave.ts).
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [reconciling, setReconciling] = useState(false);
+  // The list on screen may not reflect the server: a reload failed, or
+  // a timed-out POST may still commit after our reconcile reload.
+  const [listStale, setListStale] = useState(false);
   const [reorderLoading, setReorderLoading] = useState(false);
 
   // New item form state
@@ -462,7 +510,10 @@ export default function SetlistBuilder({
     );
   }
 
-  function selectArtist(artist: ArtistOption) {
+  function selectArtist(
+    artist: ArtistOption,
+    opts: { addGroup?: boolean } = {},
+  ) {
     if (formArtistIds.includes(artist.id)) {
       setArtistSearch("");
       setArtistSearchResults([]);
@@ -470,18 +521,12 @@ export default function SetlistBuilder({
     }
     // A group-type credit is almost always a whole-group stage (the
     // festival case: an "Aqours" block) — default the stage type so
-    // the operator doesn't have to flip it by hand, and drop any
-    // unit/solo credit already on the form (typically the sticky unit
-    // from the previous row) so the row isn't saved double-credited
-    // and the roster isn't the union of both credits' members.
-    // Unit/solo picks leave the stage type and other credits alone.
+    // the operator doesn't have to flip it by hand, and replace the
+    // credit list (see nextCreditOnPick for why groups never stack
+    // unless 「+ 그룹 추가」 asked for it). Unit/solo picks leave the
+    // stage type and other credits alone.
     const isGroup = artist.type === "group";
-    const nextArtists = [
-      ...(isGroup
-        ? selectedArtists.filter((a) => !isUnitOrSoloCredit(a))
-        : selectedArtists),
-      artist,
-    ];
+    const nextArtists = nextCreditOnPick(selectedArtists, artist, opts);
     const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
     setSelectedArtists(nextArtists);
@@ -512,6 +557,7 @@ export default function SetlistBuilder({
     const seedArtistIds = seedArtists.map((a) => a.id);
     setEditingId(null);
     setFreshInsertId(null);
+    setSaveError(null);
     setFormPosition(nextSetlistPosition(items));
     setFormIsEncore(false);
     setFormStageType(seedStageType);
@@ -549,17 +595,27 @@ export default function SetlistBuilder({
     applyDerivedPerformers(formType, "full_group", []);
   }
 
-  async function reloadItems() {
-    const eventRes = await fetch(`/api/admin/events/${eventId}`);
-    if (!eventRes.ok) return;
-    const eventData = await eventRes.json();
-    if (Array.isArray(eventData.setlistItems)) {
+  // Returns the fresh list (also pushed into state), or null on any
+  // failure — never throws, so callers in a save/insert flow can't be
+  // knocked off their cleanup path by a flaky reload. A successful
+  // reload clears the stale-list banner.
+  async function reloadItems(): Promise<SetlistItemData[] | null> {
+    try {
+      const eventRes = await fetch(`/api/admin/events/${eventId}`);
+      if (!eventRes.ok) return null;
+      const eventData = await eventRes.json();
+      if (!Array.isArray(eventData.setlistItems)) return null;
       setItems(eventData.setlistItems);
+      setListStale(false);
+      return eventData.setlistItems;
+    } catch {
+      return null;
     }
   }
 
   function startEdit(item: SetlistItemData) {
     setEditingId(item.id);
+    setSaveError(null);
     setFormPosition(item.position);
     setFormIsEncore(item.isEncore);
     setFormStageType(item.stageType);
@@ -585,6 +641,7 @@ export default function SetlistBuilder({
 
   async function handleSave() {
     setLoading(true);
+    setSaveError(null);
     const payload = {
       eventId,
       position: formPosition,
@@ -605,13 +662,49 @@ export default function SetlistBuilder({
       : "/api/admin/setlist-items";
     const method = editingId ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const outcome = await saveSetlistRow<SetlistItemData>({
+        url,
+        method,
+        payload,
+        knownIds: new Set(items.map((i) => i.id)),
+        reload: reloadItems,
+        onReconcileStart: () => setReconciling(true),
+      });
 
-    if (res.ok) {
+      if (outcome.kind === "rejected") {
+        setSaveError(outcome.message);
+        return;
+      }
+      if (outcome.kind === "unknown") {
+        // Only when the reload SUCCEEDED, the row is absent, and the
+        // request wasn't our timeout abort can we promise a POST retry
+        // won't duplicate. If the reload failed, the write may well
+        // have landed; if we aborted, the server may still commit it
+        // after the reload (see setlistSave.ts). Either way the
+        // operator must refresh and check first.
+        if (method === "POST" && outcome.items && outcome.aborted) {
+          setSaveError(
+            "응답이 10초 안에 오지 않았습니다. 서버에서 아직 저장 중일 수 있으니 잠시 후 「목록 새로고침」으로 확인한 뒤, 항목이 없을 때만 다시 시도하세요.",
+          );
+          setListStale(true);
+        } else if (!outcome.items) {
+          setListStale(true);
+          setSaveError(
+            method === "POST"
+              ? "저장 결과를 확인하지 못했고 목록도 불러오지 못했습니다. 이미 저장됐을 수 있으니 「목록 새로고침」으로 확인한 뒤, 항목이 없을 때만 다시 시도하세요."
+              : "저장 결과를 확인하지 못했고 목록도 불러오지 못했습니다. 다시 시도해 주세요.",
+          );
+        } else {
+          setSaveError(
+            method === "POST"
+              ? "저장 결과를 확인하지 못했습니다 (네트워크 오류). 목록에 이 항목이 없으니 다시 시도해도 중복되지 않습니다."
+              : "저장 결과를 확인하지 못했습니다 (네트워크 오류). 다시 시도해 주세요.",
+          );
+        }
+        return;
+      }
+
       const isNewRow = !editingId || editingId === freshInsertId;
       const nextSticky =
         isNewRow && formType === "song"
@@ -620,22 +713,38 @@ export default function SetlistBuilder({
       setStickyCredit(nextSticky);
       resetForm(nextSticky);
       setShowForm(false);
+      if (!outcome.items) setListStale(true);
       router.refresh();
-      await reloadItems();
-    } else {
-      const errData = await res.json().catch(() => null);
-      alert(errData?.error || "저장에 실패했습니다.");
+    } catch (e) {
+      // saveSetlistRow handles its own network errors; anything here is
+      // a bug in the flow — still surface it and release the button.
+      setSaveError(`저장 중 오류가 발생했습니다: ${String(e)}`);
+    } finally {
+      setReconciling(false);
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function handleDelete(itemId: number) {
     if (!confirm("삭제하시겠습니까? (소프트 삭제 — 복구 가능)")) return;
-    const res = await fetch(`/api/admin/setlist-items/${itemId}`, {
-      method: "DELETE",
-    });
-    if (res.ok) {
-      setItems((prev) => prev.filter((i) => i.id !== itemId));
+    setReorderLoading(true);
+    try {
+      const res = await fetch(`/api/admin/setlist-items/${itemId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== itemId));
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "삭제에 실패했습니다.");
+      }
+    } catch {
+      // Soft delete is idempotent, so a lost response is harmless to
+      // retry; reload so the list shows whether it actually went.
+      alert("삭제 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
+    } finally {
+      setReorderLoading(false);
     }
   }
 
@@ -660,6 +769,9 @@ export default function SetlistBuilder({
         const err = await res.json().catch(() => null);
         alert(err?.error || "순서 변경에 실패했습니다.");
       }
+    } catch {
+      alert("순서 변경 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
     } finally {
       setReorderLoading(false);
     }
@@ -693,6 +805,9 @@ export default function SetlistBuilder({
         const err = await res.json().catch(() => null);
         alert(err?.error || "삽입에 실패했습니다.");
       }
+    } catch {
+      alert("삽입 결과를 확인하지 못했습니다. 목록을 새로고침합니다.");
+      if (!(await reloadItems())) setListStale(true);
     } finally {
       setReorderLoading(false);
     }
@@ -702,6 +817,20 @@ export default function SetlistBuilder({
 
   return (
     <div>
+      {listStale && (
+        <div className="mb-3 flex items-center justify-between rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <span>화면의 목록이 최신이 아닐 수 있습니다 — 새로고침해서 확인하세요.</span>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!(await reloadItems())) setListStale(true);
+            }}
+            className="rounded border border-amber-400 px-2 py-0.5 hover:bg-amber-100"
+          >
+            목록 새로고침
+          </button>
+        </div>
+      )}
       {/* Existing items */}
       {items.length > 0 && (
         <ol className="mb-6 space-y-1">
@@ -1039,16 +1168,38 @@ export default function SetlistBuilder({
                 <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
                   {artistSearchResults.map((artist) => {
                     const isSelected = formArtistIds.includes(artist.id);
+                    // Offered only when picking this group would
+                    // otherwise REPLACE another group credit — i.e. the
+                    // multi-group-collab case. Plain click still
+                    // replaces (the common case: next festival block).
+                    const canAddGroup =
+                      !isSelected &&
+                      artist.type === "group" &&
+                      selectedArtists.some((a) => a.type === "group");
                     return (
-                      <button
+                      <div
                         key={artist.id}
-                        type="button"
-                        onClick={() => selectArtist(artist)}
-                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                        className={`flex items-center hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
                       >
-                        {isSelected && <span className="mr-1">✓</span>}
-                        {getArtistName(artist)}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => selectArtist(artist)}
+                          className="block flex-1 px-3 py-1.5 text-left text-sm"
+                        >
+                          {isSelected && <span className="mr-1">✓</span>}
+                          {getArtistName(artist)}
+                        </button>
+                        {canAddGroup && (
+                          <button
+                            type="button"
+                            onClick={() => selectArtist(artist, { addGroup: true })}
+                            className="mr-2 shrink-0 rounded px-1.5 py-0.5 text-xs text-purple-600 hover:bg-purple-100"
+                            title="기존 그룹 크레딧을 유지한 채 이 그룹을 추가 (합동 곡)"
+                          >
+                            + 그룹 추가
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                   {!artistSearchLoading && artistSearchResults.length === 0 && (
@@ -1192,13 +1343,27 @@ export default function SetlistBuilder({
             </div>
           </div>
 
+          {reconciling && (
+            <div className="rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+              저장 결과를 확인하는 중…
+            </div>
+          )}
+          {saveError && !reconciling && (
+            <div
+              role="alert"
+              className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+            >
+              {saveError}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <button
               onClick={handleSave}
               disabled={loading}
               className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "저장 중..." : "저장"}
+              {loading ? "저장 중..." : saveError ? "다시 시도" : "저장"}
             </button>
             <button
               onClick={() => {

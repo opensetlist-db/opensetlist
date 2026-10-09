@@ -7,6 +7,7 @@ import { SongMatchBadge } from "@/components/SongMatchBadge";
 import { SecondaryButton } from "@/components/ui/Button";
 import { displayOriginalTitle } from "@/lib/display";
 import { useMounted } from "@/hooks/useMounted";
+import { setTimeoutAt } from "@/lib/timeoutAt";
 import { readWishes, writeWishes, type WishEntry } from "@/lib/wishStorage";
 import { trackEvent } from "@/lib/analytics";
 import type { FanTop3Entry } from "@/lib/types/setlist";
@@ -95,8 +96,10 @@ export function EventWishSection({
     if (scheduledLocked) return;
     const remaining = startMs - Date.now();
     if (remaining <= 0) return; // lazy init already set true
-    const timer = setTimeout(() => setScheduledLocked(true), remaining);
-    return () => clearTimeout(timer);
+    // `setTimeoutAt`, not a bare `setTimeout`: a show more than
+    // ~24.8 days out overflows setTimeout's 32-bit delay and would
+    // lock on mount (see `src/lib/timeoutAt.ts`).
+    return setTimeoutAt(startMs, () => setScheduledLocked(true));
   }, [scheduledLocked, startMs]);
   // `react-hooks/purity` blocks `Date.now()` at render by default —
   // the rule guards against accidental impurity that would break
