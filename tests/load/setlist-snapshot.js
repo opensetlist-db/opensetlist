@@ -64,6 +64,9 @@ for (const s of stages) {
     `rate<=${GATES.passErrorRate}`,
     { threshold: `rate<${GATES.abortErrorRate}`, abortOnFail: true, delayAbortEval: "30s" },
   ];
+  // Data correctness over the sampled bodies — its own gate, see
+  // lib/config.js for why it isn't folded into snapshot_errors.
+  thresholds[`snapshot_bad_body{scenario:${s.scenario}}`] = [`rate<=${GATES.passBadBodyRate}`];
   // Placeholders so the per-stage submetrics exist in handleSummary.
   thresholds[`http_reqs{scenario:${s.scenario}}`] = ["count>=0"];
   thresholds[`dropped_iterations{scenario:${s.scenario}}`] = ["count>=0"];
@@ -87,7 +90,8 @@ export function handleSummary(data) {
     `BASE_URL=${__ENV.BASE_URL || "http://localhost:3000"} EVENT_ID=${__ENV.EVENT_ID} ` +
     `stage=${STAGE_SECONDS}s\n\n` +
     markdownTable(rows) +
-    "\nHighest passing rate → use as HOLD_RPS for the hold run.\n";
+    "\nHighest PASS stage → HOLD_RPS for the hold run. GEN-LIMIT stages never qualify:\n" +
+    "k6 dropped requests, so the offered load wasn't real — add VUs / a bigger generator and re-run.\n";
   const base = `${resultsDir()}/${stamp()}-ramp`;
   return {
     stdout: md,

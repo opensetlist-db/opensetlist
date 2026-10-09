@@ -90,12 +90,20 @@ and copy its summary row into the wiki page.
 ## Reading the result
 
 - **Achieved rps** must be ≥ 95 % of the target, or the stage doesn't
-  count. A non-zero **dropped** column means k6 ran out of VUs. That is
-  a generator limit (or a server so slow that every VU is waiting), not
-  a pass.
-- **Pass:** snapshot p95 ≤ 1 s and p99 ≤ 2 s, errors ≤ 0.1 %, admin
-  save+reload p95 ≤ 3 s with every write visible, and pooler client
-  peak ≤ 70 % of the configured limit. Read the pooler number off the
+  count. A non-zero **dropped** column means k6 ran out of VUs (or the
+  server was so slow that every VU was waiting). The stage is marked
+  **GEN-LIMIT**, not PASS, even when achieved rps still clears 95 %.
+  Never use it as `HOLD_RPS`. Add VUs or a bigger generator and re-run.
+- **Two error columns, two gates.** `http err %` counts non-200 and
+  transport errors over every request (gate ≤ 0.1 %). `bad bodies /
+  sampled` counts malformed JSON or a wrong row count over the sampled
+  bodies only (gate: 0). They are kept apart because dividing body
+  failures by all requests would dilute them by `BODY_SAMPLE_RATE`. A
+  stage with no sampled body can't pass. For the confirmation hold, use
+  `BODY_SAMPLE_RATE=1` when the generator keeps dropped at 0.
+- **Pass:** snapshot p95 ≤ 1 s and p99 ≤ 2 s, both error gates met,
+  dropped = 0, admin save+reload p95 ≤ 3 s with every write visible, and
+  pooler client peak ≤ 70 % of the configured limit. Read the pooler number off the
   dashboard. The CSV counts Postgres *backends*, which Supavisor
   multiplexes, so it understates client pressure.
 - **Abort** is approximated, because k6 thresholds are cumulative per

@@ -71,6 +71,7 @@ export const options = {
       `rate<=${GATES.passErrorRate}`,
       { threshold: `rate<${GATES.abortErrorRate}`, abortOnFail: true, delayAbortEval: "30s" },
     ],
+    "snapshot_bad_body{scenario:hold}": [`rate<=${GATES.passBadBodyRate}`],
     "http_reqs{scenario:hold}": ["count>=0"],
     "dropped_iterations{scenario:hold}": ["count>=0"],
     "http_req_duration{scenario:ssr}": [`p(95)<=${GATES.passP95 * 2}`],

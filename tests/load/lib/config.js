@@ -66,11 +66,18 @@ export function pickLocale() {
 }
 
 // ── Custom metrics ────────────────────────────────────────────────
-// `snapshot_errors` is the gate metric for "app/network error rate":
-// non-200, transport errors (status 0), and — for sampled bodies —
-// malformed JSON or a wrong row count. Kept separate from k6's
-// built-in http_req_failed so the burst and SSR scenarios don't blur
-// the snapshot number.
+// Two separate gates, because they have different denominators:
+//
+// - `snapshot_errors`: the "app/network error rate" gate. Non-200 and
+//   transport errors (status 0), counted over *every* request. Kept
+//   apart from k6's built-in http_req_failed so the burst and SSR
+//   scenarios don't blur the snapshot number.
+// - `snapshot_bad_body`: the "data correctness" gate. Malformed JSON or
+//   a wrong row count, counted over the *sampled* bodies only. Folding
+//   it into snapshot_errors would divide body failures by all requests
+//   and dilute them by BODY_SAMPLE_RATE (0.5 % bad bodies at a 10 %
+//   sample reads as 0.05 % and passes the 0.1 % gate), so it is gated
+//   on its own and must be 0.
 export const snapshotErrors = new Rate("snapshot_errors");
 export const snapshotBadBody = new Rate("snapshot_bad_body");
 export const snapshotRows = new Trend("snapshot_rows");
@@ -109,7 +116,7 @@ export function getSnapshot({ forceBody = false, tags = {} } = {}) {
     }
     snapshotBadBody.add(!bodyOk, tags);
   }
-  snapshotErrors.add(!ok || !bodyOk, tags);
+  snapshotErrors.add(!ok, tags);
   check(res, { "snapshot 200": (r) => r.status === 200 }, tags);
   return body;
 }
@@ -154,6 +161,9 @@ export const GATES = {
   passP95: 1000,
   passP99: 2000,
   passErrorRate: 0.001,
+  // Every sampled body must be valid (spec: "every sampled response
+  // valid JSON with the expected row count").
+  passBadBodyRate: 0,
   abortP95: 5000,
   abortErrorRate: 0.02,
   adminP95: 3000,

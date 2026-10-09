@@ -55,6 +55,7 @@ export function burstScenarios(stages) {
       `p(99)<=${GATES.passP99}`,
     ];
     thresholds[`snapshot_errors{scenario:${s.scenario}}`] = [`rate<=${GATES.passErrorRate}`];
+    thresholds[`snapshot_bad_body{scenario:${s.scenario}}`] = [`rate<=${GATES.passBadBodyRate}`];
     thresholds[`http_reqs{scenario:${s.scenario}}`] = ["count>=0"];
     thresholds[`dropped_iterations{scenario:${s.scenario}}`] = ["count>=0"];
   }
