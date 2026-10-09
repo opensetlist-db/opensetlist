@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useMounted } from "@/hooks/useMounted";
+import { setTimeoutAt } from "@/lib/timeoutAt";
 import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { PredictSongRow, type PredictRowState } from "@/components/PredictSongRow";
 import { ShareCardButton } from "@/components/ShareCardButton";
@@ -163,8 +164,10 @@ export function PredictedSetlist({
     if (startMs === null) return;
     const remaining = startMs - Date.now();
     if (remaining <= 0) return;
-    const timer = setTimeout(() => setScheduledLocked(true), remaining);
-    return () => clearTimeout(timer);
+    // `setTimeoutAt`, not a bare `setTimeout`: a show more than
+    // ~24.8 days out overflows setTimeout's 32-bit delay and would
+    // lock on mount (see `src/lib/timeoutAt.ts`).
+    return setTimeoutAt(startMs, () => setScheduledLocked(true));
   }, [scheduledLocked, startMs]);
   // Three-input lock — see `<EventWishSection>` for the full
   // rationale. The polled `status` (server-resolved via
