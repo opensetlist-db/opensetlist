@@ -195,3 +195,68 @@ export function deriveUnitFilters(
 
   return out;
 }
+
+/**
+ * Chip set for the festival path (multi-artist events, n10) — kept
+ * separate from `deriveUnitFilters` rather than overloading it, because
+ * the two routing models don't mix: here a chip is a whole ROOT group
+ * (`song.festivalGroupIds`), there a chip is the group or one of its
+ * sub-units (`song.creditedArtistIds`).
+ *
+ * Output: `all`, then one `festivalGroup` chip per group in the given
+ * (festival) order — skipping a group whose catalog came back empty so
+ * the row never offers a dead chip — then `others` only if some song
+ * has no group at all (can't happen via `mergeFestivalCatalog`; kept
+ * so the composite still catches anything a future caller feeds in).
+ *
+ * No per-unit chips in v1: six groups × their units would overflow the
+ * chip row on mobile, and the picker's text search reaches unit songs.
+ *
+ * `groups[].label` is the group's pre-localized SHORT name;
+ * `groups[].color` is `Artist.color` or null, falling back to
+ * `primaryColor` (passed in — this file stays free of `@/styles`).
+ */
+export function deriveFestivalFilters(
+  groups: ReadonlyArray<{
+    artistId: number;
+    slug: string;
+    label: string;
+    color: string | null;
+  }>,
+  songs: readonly AvailableSong[],
+  filterAllLabel: string,
+  filterOthersLabel: string,
+  primaryColor: string,
+): UnitFilter[] {
+  const out: UnitFilter[] = [
+    { key: "all", label: filterAllLabel, color: null, kind: "all", artistId: null },
+  ];
+  const groupsWithSongs = new Set<number>();
+  let homeless = 0;
+  for (const song of songs) {
+    if (song.festivalGroupIds.length === 0) homeless++;
+    for (const id of song.festivalGroupIds) groupsWithSongs.add(id);
+  }
+  for (const g of groups) {
+    if (!groupsWithSongs.has(g.artistId)) continue;
+    out.push({
+      // Prefixed so a slug can never collide with the `all` / `others`
+      // composite keys (the active-chip state is keyed on this).
+      key: `festival:${g.slug}`,
+      label: g.label,
+      color: g.color ?? primaryColor,
+      kind: "festivalGroup",
+      artistId: g.artistId,
+    });
+  }
+  if (homeless > 0) {
+    out.push({
+      key: "others",
+      label: filterOthersLabel,
+      color: primaryColor,
+      kind: "others",
+      artistId: null,
+    });
+  }
+  return out;
+}

@@ -85,6 +85,16 @@ export function SongPickerContent({
     return ids;
   }, [unitFilters]);
 
+  // Festival chip set (multi-artist events, `deriveFestivalFilters`).
+  // Changes what `others` means: there it catches songs with no
+  // festival group at all, not songs whose unit lacks a chip — there
+  // are no unit chips in that set, so the unit-coverage test would
+  // send every song to `others`.
+  const isFestivalChipSet = useMemo(
+    () => unitFilters.some((f) => f.kind === "festivalGroup"),
+    [unitFilters],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return songs.filter((song) => {
@@ -92,7 +102,17 @@ export function SongPickerContent({
       // artistId. The `all` case skips the predicate entirely.
       if (activeFilter) {
         const kind: UnitFilterKind = activeFilter.kind;
-        if (kind === "group" || kind === "individual") {
+        if (kind === "festivalGroup") {
+          // Whole-group chip on a festival. Deliberately NOT the
+          // `group` / `individual` predicate below: `creditedArtistIds`
+          // holds unit / solo ids (not the root), and the
+          // `isMultiArtist` exclusion would drop multi-solo songs
+          // (a 5-solo 103期 song) from every chip, since festival sets
+          // have no `others`-style home for them.
+          if (!song.festivalGroupIds.includes(activeFilter.artistId!)) {
+            return false;
+          }
+        } else if (kind === "group" || kind === "individual") {
           // Multi-solo collab songs (`isMultiArtist === true`) never
           // appear under a single artist's chip — they're routed to
           // `others` only. `unit.artistId` still points at the
@@ -124,7 +144,9 @@ export function SongPickerContent({
           // Critically, no `return true` short-circuit here — both
           // kinds still flow through the `q` filter below so the
           // search input is respected.
-          if (!song.isMultiArtist) {
+          if (isFestivalChipSet) {
+            if (song.festivalGroupIds.length > 0) return false;
+          } else if (!song.isMultiArtist) {
             const anyCovered = song.creditedArtistIds.some((id) =>
               coveredArtistIds.has(id),
             );
@@ -143,14 +165,16 @@ export function SongPickerContent({
       if (song.unit.label.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [songs, query, activeFilter, coveredArtistIds]);
+  }, [songs, query, activeFilter, coveredArtistIds, isFestivalChipSet]);
 
   // Section headers appear under composite filters (`all` + `others`)
-  // where the song list mixes multiple units. Under `group` /
-  // `individual` the section header would be redundant — every row
-  // belongs to the same unit.
+  // and under a festival group chip — all three mix multiple units in
+  // one list. Under `group` / `individual` the section header would be
+  // redundant — every row belongs to the same unit.
   const showSectionHeaders =
-    activeFilter?.kind === "all" || activeFilter?.kind === "others";
+    activeFilter?.kind === "all" ||
+    activeFilter?.kind === "others" ||
+    activeFilter?.kind === "festivalGroup";
 
   // Group the filtered list by unit when section headers are
   // active. Maps preserve insertion order; we walk filtered (which

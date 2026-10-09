@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { colors } from "@/styles/tokens";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
@@ -333,5 +333,28 @@ describe("EventWishSection — server-status lock (slow-client-clock fallback)",
     expect(screen.getByText(/^🌸 title$/)).toBeTruthy();
     expect(screen.queryByText(/lockedTitle/)).toBeNull();
     expect(screen.getByText("description")).toBeTruthy();
+  });
+});
+
+describe("EventWishSection — long pre-show window", () => {
+  it("does not lock on mount when the show is more than ~24.8 days away", async () => {
+    // A per-event `engagementOpensAt` can open the window ~D-35 (the
+    // Fes). A bare `setTimeout(lock, startMs - now)` overflows past
+    // 2^31-1 ms and fires on the next tick, hiding the editor.
+    const farFuture = new Date(Date.now() + 36 * 24 * 60 * 60 * 1000);
+    render(
+      <EventWishSection
+        eventId="1"
+        locale="ko"
+        startTime={farFuture}
+        status="upcoming"
+        setlistItems={[]}
+        top3Wishes={[]}
+      />,
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(screen.getByText("add")).toBeTruthy();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesSongSearch, matchesIdentitySearch } from "@/lib/search";
+import { matchesSongSearch, matchesIdentitySearch, normalizeArtistQuery } from "@/lib/search";
 
 describe("matchesSongSearch", () => {
   const song = {
@@ -63,5 +63,27 @@ describe("matchesIdentitySearch", () => {
 
   it("returns true on empty query", () => {
     expect(matchesIdentitySearch(si, "")).toBe(true);
+  });
+});
+
+describe("normalizeArtistQuery", () => {
+  const MU = "μ"; // GREEK SMALL LETTER MU — how μ's is stored
+
+  it("folds MICRO SIGN to Greek mu (NFKC)", () => {
+    expect(normalizeArtistQuery("µ's")).toBe(`${MU}'s`);
+  });
+
+  it("folds curly / full-width apostrophes to ASCII", () => {
+    expect(normalizeArtistQuery(`${MU}’s`)).toBe(`${MU}'s`);
+    expect(normalizeArtistQuery(`${MU}＇s`)).toBe(`${MU}'s`);
+  });
+
+  it("folds full-width Latin to ASCII and trims", () => {
+    expect(normalizeArtistQuery(" Ａqours ")).toBe("Aqours");
+  });
+
+  it("leaves Korean / Japanese names untouched", () => {
+    expect(normalizeArtistQuery("蓮ノ空")).toBe("蓮ノ空");
+    expect(normalizeArtistQuery("니지가사키")).toBe("니지가사키");
   });
 });

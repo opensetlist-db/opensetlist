@@ -136,6 +136,21 @@ describe("GET /api/songs/search — excludeIds", () => {
 });
 
 describe("GET /api/songs/search — result limit", () => {
+  it("orders base versions before variants, then newest first", async () => {
+    // Admin's flat list mixes variants in; sorted by createdAt alone the
+    // solo "Ver." rows (imported after their base) buried the original.
+    await GET(
+      makeRequest("q=love&includeVariants=true") as unknown as Parameters<
+        typeof GET
+      >[0]
+    );
+    const call = findMany.mock.calls[0][0];
+    expect(call.orderBy).toEqual([
+      { baseVersionId: { sort: "asc", nulls: "first" } },
+      { createdAt: "desc" },
+    ]);
+  });
+
   it("caps results at 20", async () => {
     await GET(makeRequest("q=dream") as unknown as Parameters<typeof GET>[0]);
 

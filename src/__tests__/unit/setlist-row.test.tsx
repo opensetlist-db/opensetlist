@@ -292,6 +292,54 @@ describe("SetlistRow", () => {
       );
     });
 
+    it("two-group collab → two chips, no `+N`", () => {
+      render(
+        <SetlistRow
+          item={makeItem({ stageType: "full_group", artists: [aqours, niji] })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId="99"
+        />,
+      );
+      expect(screen.getByText("Aqours")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
+      expect(screen.queryByText(/^\+\d+$/)).toBeNull();
+    });
+
+    it("three-group collab → first two chips + `+1` whose title lists the rest", () => {
+      const liella = {
+        artist: {
+          id: 30,
+          slug: "liella",
+          type: "group",
+          color: null,
+          originalName: "Liella!",
+          originalShortName: null,
+          originalLanguage: "ja",
+          translations: [],
+        },
+      };
+      render(
+        <SetlistRow
+          item={makeItem({
+            stageType: "full_group",
+            artists: [aqours, niji, liella],
+          })}
+          index={0}
+          reactionCounts={{}}
+          locale="en"
+          eventId="42"
+          eventArtistId="99"
+        />,
+      );
+      expect(screen.getByText("Aqours")).toBeTruthy();
+      expect(screen.getByText("虹ヶ咲")).toBeTruthy();
+      expect(screen.queryByText("Liella!")).toBeNull();
+      expect(screen.getByText("+1").getAttribute("title")).toBe("Liella!");
+    });
+
     it("group badge uses the SHORT name form", () => {
       render(
         <SetlistRow

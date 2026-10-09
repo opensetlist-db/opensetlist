@@ -31,6 +31,7 @@ function makeSong(
     // most cases don't need to override this — only routing-layer
     // tests in song-picker-content do.
     creditedArtistIds: [unit.artistId],
+    festivalGroupIds: [],
     ...songOver,
   };
 }
