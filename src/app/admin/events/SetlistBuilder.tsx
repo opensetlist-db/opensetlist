@@ -43,7 +43,7 @@ type ArtistOption = {
   // `artists: { include: { artist } }` Prisma includes behind
   // `startEdit` (edit page `initialItems`, `reloadItems`, the
   // insert-after response). Read by `selectArtist` (group → full_group,
-  // drop unit/solo credits) and `handleStageTypeChange` (full_group →
+  // replace the credit — see nextCreditOnPick) and `handleStageTypeChange` (full_group →
   // drop unit/solo credits). Typed optional only as a defensive
   // default — an untyped chip is left alone rather than guessed at.
   type?: string;
@@ -93,10 +93,48 @@ type SetlistItemData = {
   }[];
 };
 
-// Unit/solo credits don't belong on a whole-group stage. Shared by the
-// two transitions into full_group (group picked / stage type flipped).
+// Unit/solo credits don't belong on a whole-group stage. Used when the
+// stage type is flipped to full_group; a group PICK replaces the whole
+// credit instead (nextCreditOnPick).
 function isUnitOrSoloCredit(a: ArtistOption): boolean {
   return a.type === "unit" || a.type === "solo";
+}
+
+/**
+ * Credit list after the operator picks `artist` in the artist search.
+ *
+ * Group picks REPLACE the whole credit: on a multi-group night the
+ * sticky credit carries the previous block's group (μ's), and the
+ * operator starts the next block by picking the next group (Aqours).
+ * Appending would save the row credited μ's + Aqours, and the public
+ * badge — which reads the credits in order — would show μ's on an
+ * Aqours song. Unit/solo credits go too: they belong to whatever
+ * group the previous row was about, and a full_group stage doesn't
+ * carry them anyway (see handleStageTypeChange).
+ *
+ * Unit/solo picks stay additive: a two-unit collab or a unit + solo
+ * special stage is a legitimate multi-credit row, and the group credit
+ * (if any) stays alongside — that pairing is how a unit row inside a
+ * group block is normally credited.
+ *
+ * `addGroup` is the deliberate escape hatch for a genuine multi-group
+ * collab (an anniversary song sung by several groups): the 「+ 그룹
+ * 추가」 button in the dropdown passes it so the picked group is
+ * appended instead of replacing. Unit/solo credits are still dropped
+ * on that path, for the same reason as above.
+ *
+ * Pure — exported for unit tests.
+ */
+export function nextCreditOnPick<T extends { id: number; type?: string }>(
+  selected: readonly T[],
+  artist: T,
+  opts: { addGroup?: boolean } = {},
+): T[] {
+  if (artist.type !== "group") return [...selected, artist];
+  if (opts.addGroup) {
+    return [...selected.filter((a) => a.type === "group"), artist];
+  }
+  return [artist];
 }
 
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
@@ -416,7 +454,10 @@ export default function SetlistBuilder({
     );
   }
 
-  function selectArtist(artist: ArtistOption) {
+  function selectArtist(
+    artist: ArtistOption,
+    opts: { addGroup?: boolean } = {},
+  ) {
     if (formArtistIds.includes(artist.id)) {
       setArtistSearch("");
       setArtistSearchResults([]);
@@ -424,18 +465,12 @@ export default function SetlistBuilder({
     }
     // A group-type credit is almost always a whole-group stage (the
     // festival case: an "Aqours" block) — default the stage type so
-    // the operator doesn't have to flip it by hand, and drop any
-    // unit/solo credit already on the form (typically the sticky unit
-    // from the previous row) so the row isn't saved double-credited
-    // and the roster isn't the union of both credits' members.
-    // Unit/solo picks leave the stage type and other credits alone.
+    // the operator doesn't have to flip it by hand, and replace the
+    // credit list (see nextCreditOnPick for why groups never stack
+    // unless 「+ 그룹 추가」 asked for it). Unit/solo picks leave the
+    // stage type and other credits alone.
     const isGroup = artist.type === "group";
-    const nextArtists = [
-      ...(isGroup
-        ? selectedArtists.filter((a) => !isUnitOrSoloCredit(a))
-        : selectedArtists),
-      artist,
-    ];
+    const nextArtists = nextCreditOnPick(selectedArtists, artist, opts);
     const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
     setSelectedArtists(nextArtists);
@@ -993,16 +1028,38 @@ export default function SetlistBuilder({
                 <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-200 bg-white shadow-lg">
                   {artistSearchResults.map((artist) => {
                     const isSelected = formArtistIds.includes(artist.id);
+                    // Offered only when picking this group would
+                    // otherwise REPLACE another group credit — i.e. the
+                    // multi-group-collab case. Plain click still
+                    // replaces (the common case: next festival block).
+                    const canAddGroup =
+                      !isSelected &&
+                      artist.type === "group" &&
+                      selectedArtists.some((a) => a.type === "group");
                     return (
-                      <button
+                      <div
                         key={artist.id}
-                        type="button"
-                        onClick={() => selectArtist(artist)}
-                        className={`block w-full px-3 py-1.5 text-left text-sm hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
+                        className={`flex items-center hover:bg-purple-50 ${isSelected ? "bg-zinc-50 text-zinc-400" : ""}`}
                       >
-                        {isSelected && <span className="mr-1">✓</span>}
-                        {getArtistName(artist)}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => selectArtist(artist)}
+                          className="block flex-1 px-3 py-1.5 text-left text-sm"
+                        >
+                          {isSelected && <span className="mr-1">✓</span>}
+                          {getArtistName(artist)}
+                        </button>
+                        {canAddGroup && (
+                          <button
+                            type="button"
+                            onClick={() => selectArtist(artist, { addGroup: true })}
+                            className="mr-2 shrink-0 rounded px-1.5 py-0.5 text-xs text-purple-600 hover:bg-purple-100"
+                            title="기존 그룹 크레딧을 유지한 채 이 그룹을 추가 (합동 곡)"
+                          >
+                            + 그룹 추가
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                   {!artistSearchLoading && artistSearchResults.length === 0 && (
