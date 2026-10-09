@@ -325,6 +325,13 @@ export default function SetlistBuilder({
   // 할 때 잠시 켠다 — 상태는 row 닫혔다 열려도 유지(체크해두면
   // 같은 세션에서 여러 게스트 곡을 연속으로 추가하기 편함).
   const [includeAllIps, setIncludeAllIps] = useState(false);
+  // Default OFF: song search returns base versions only. With variants
+  // in the list, a title that has per-member solo versions ("Love U my
+  // friends" × 10) buries the group original — the one a live row
+  // almost always wants — under the variants. ON when the stage really
+  // was a specific version (e.g. "Dream Believers (SAKURA Ver.)");
+  // like includeAllIps it stays on across rows until unchecked.
+  const [includeVariantSongs, setIncludeVariantSongs] = useState(false);
 
   // Search-based selectors
   // Song search is owned by <SongSearch> — SetlistBuilder only keeps
@@ -1235,10 +1242,11 @@ export default function SetlistBuilder({
                 ))}
               </div>
             )}
-            {/* Shared search component. includeVariants=true preserves
-                the admin's pre-refactor ability to record a variant row
-                (e.g. "Dream Believers (SAKURA Ver.)") directly. Fan
-                pickers omit the prop and get base-only.
+            {/* Shared search component. includeVariants follows the
+                「버전 곡 포함」 toggle (default off = base only); on, it
+                lets the admin record a variant row (e.g. "Dream
+                Believers (SAKURA Ver.)") directly. Fan pickers omit the
+                prop and always get base-only.
                 scope: default `event` (이벤트 IP만) — 토글로 `all`
                 전환해서 게스트/콜라보 곡 후보 노출. 토글 설명은
                 위 `includeAllIps` 주석 참조. */}
@@ -1251,6 +1259,15 @@ export default function SetlistBuilder({
               />
               전체 카탈로그 검색 (게스트/콜라보 곡)
             </label>
+            <label className="mb-1 ml-3 inline-flex items-center gap-1.5 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                checked={includeVariantSongs}
+                onChange={(e) => setIncludeVariantSongs(e.target.checked)}
+                className="cursor-pointer"
+              />
+              버전 곡 포함 (솔로 Ver. 등)
+            </label>
             <SongSearch
               onSelect={selectSong}
               locale="ko"
@@ -1260,7 +1277,7 @@ export default function SetlistBuilder({
                 noResults: "일치하는 곡이 없습니다",
               }}
               excludeSongIds={formSongIds}
-              includeVariants
+              includeVariants={includeVariantSongs}
               scope={
                 includeAllIps
                   ? { kind: "all" }

@@ -316,10 +316,20 @@ export async function GET(request: NextRequest) {
       where.artists = { some: { artistId: { in: scopeArtistIds } } };
     }
 
+    // Base versions first, then newest. Only changes anything when
+    // variants are in the flat list (admin `includeVariants`): sorted by
+    // createdAt alone, the solo / "Ver." variants — imported after their
+    // base — pushed the group original to the bottom of the dropdown, or
+    // past RESULT_LIMIT entirely, on titles with many variants. For
+    // base-only callers every row has baseVersionId = null, so the
+    // first key is a tie and the order is the old createdAt desc.
     const songs = await prisma.song.findMany({
       where,
       select,
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { baseVersionId: { sort: "asc", nulls: "first" } },
+        { createdAt: "desc" },
+      ],
       take: RESULT_LIMIT,
     });
 

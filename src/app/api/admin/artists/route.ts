@@ -23,6 +23,7 @@ import {
 } from "./_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { normalizeArtistQuery } from "@/lib/search";
 
 export async function GET(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
@@ -31,9 +32,19 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
 
-  const where: Record<string, unknown> = { isDeleted: false };
-  if (q) {
-    where.translations = { some: { name: { contains: q, mode: "insensitive" } } };
+  const where: Prisma.ArtistWhereInput = { isDeleted: false };
+  const term = q ? normalizeArtistQuery(q) : "";
+  if (term) {
+    // Match every name an operator might type, not just the localized
+    // `name`: slug (ASCII — "muse" finds μ's), original name/short name
+    // (the ja spelling), and localized short names.
+    const like = { contains: term, mode: "insensitive" as const };
+    where.OR = [
+      { slug: like },
+      { originalName: like },
+      { originalShortName: like },
+      { translations: { some: { OR: [{ name: like }, { shortName: like }] } } },
+    ];
   }
 
   const artists = await prisma.artist.findMany({
