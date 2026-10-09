@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupBadgeLabel, pickRowArtistBadge } from "@/lib/setlistRowBadge";
+import { groupBadgeLabel, pickRowArtistBadges } from "@/lib/setlistRowBadge";
 import type { ArtistRef } from "@/lib/types/setlist";
 
 function artist(id: number, type: string, slug = `a-${id}`): ArtistRef {
@@ -26,7 +26,15 @@ function row(stageType: string, credit: ArtistRef | null) {
   return { stageType, artists: credit ? [{ artist: credit }] : [] };
 }
 
-describe("pickRowArtistBadge", () => {
+function rowMulti(stageType: string, credits: ArtistRef[]) {
+  return { stageType, artists: credits.map((artist) => ({ artist })) };
+}
+
+const NIJI = artist(20, "group", "nijigasaki");
+const LIELLA = artist(30, "group", "liella");
+const DOLLCHESTRA = artist(4, "unit", "dollchestra");
+
+describe("pickRowArtistBadges", () => {
   it.each([
     // [case, stageType, credit, eventArtistId, expected]
     ["single-artist event × full_group credited to the event artist → no badge", "full_group", HASUNOSORA, "1", null],
@@ -42,9 +50,42 @@ describe("pickRowArtistBadge", () => {
     ["F18 misfire on full_group of a multi-group event → still no badge", "full_group", KOZUE_SOLO, UMBRELLA_ID, null],
     ["unit row with no credit → no badge (caller shows stageType fallback)", "unit", null, "1", null],
   ] as const)("%s", (_label, stageType, credit, eventArtistId, expected) => {
-    expect(pickRowArtistBadge(row(stageType, credit), eventArtistId)).toBe(
-      expected,
+    expect(pickRowArtistBadges(row(stageType, credit), eventArtistId)).toEqual(
+      expected ? [expected] : [],
     );
+  });
+
+  it("multi-group event × 2 groups → both, in credit order", () => {
+    expect(
+      pickRowArtistBadges(rowMulti("full_group", [AQOURS, NIJI]), UMBRELLA_ID),
+    ).toEqual([AQOURS, NIJI]);
+  });
+
+  it("multi-group event × 3 groups → all three (row renders 2 + `+1`)", () => {
+    expect(
+      pickRowArtistBadges(
+        rowMulti("full_group", [AQOURS, NIJI, LIELLA]),
+        UMBRELLA_ID,
+      ),
+    ).toEqual([AQOURS, NIJI, LIELLA]);
+  });
+
+  it("single-artist event × collab with the event artist → badges both", () => {
+    expect(
+      pickRowArtistBadges(rowMulti("full_group", [HASUNOSORA, AQOURS]), "1"),
+    ).toEqual([HASUNOSORA, AQOURS]);
+  });
+
+  it("unit collab → both units", () => {
+    expect(
+      pickRowArtistBadges(rowMulti("unit", [CERISE, DOLLCHESTRA]), "1"),
+    ).toEqual([CERISE, DOLLCHESTRA]);
+  });
+
+  it("solo misfire guard is per credit: [unit, solo] on unit stage → unit only", () => {
+    expect(
+      pickRowArtistBadges(rowMulti("unit", [CERISE, KOZUE_SOLO]), "1"),
+    ).toEqual([CERISE]);
   });
 });
 
