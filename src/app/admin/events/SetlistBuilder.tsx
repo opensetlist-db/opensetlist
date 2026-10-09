@@ -143,6 +143,42 @@ export function nextCreditOnPick<T extends { id: number; type?: string }>(
   return [artist];
 }
 
+/**
+ * Stage type implied by a row's credit, applied whenever the operator
+ * adds or removes an artist chip. Before this, only a GROUP pick set
+ * the stage (→ full_group); a unit or solo pick left it alone, so on a
+ * live night every unit/solo row was saved as full_group unless the
+ * operator also flipped the select. That isn't cosmetic: the public
+ * badge hides solo credits on a non-solo stage (the F18 guard in
+ * `pickRowArtistBadges`), so those solo rows rendered with no badge at
+ * all (2020 Fes rehearsal, D1 #3–6).
+ *
+ *   - `special` is never overridden — it's always a deliberate choice
+ *     (medley-of-units, guest stage, …) the credit can't express.
+ *   - any unit credited            → unit   (group + unit, unit collab;
+ *                                            a solo alongside a unit
+ *                                            stays a unit stage)
+ *   - exactly one solo, no unit    → solo
+ *   - several solos, no unit       → unchanged (ad-hoc trio vs. solo
+ *                                            relay — can't tell)
+ *   - only groups                  → full_group (also covers removing
+ *                                            the last unit/solo chip)
+ *   - no credit / untyped chips    → unchanged
+ *
+ * Pure — exported for unit tests.
+ */
+export function stageTypeForCredit(
+  credits: readonly { type?: string }[],
+  current: string,
+): string {
+  if (current === "special" || credits.length === 0) return current;
+  if (credits.some((a) => a.type === "unit")) return "unit";
+  const solos = credits.filter((a) => a.type === "solo").length;
+  if (solos === 1) return "solo";
+  if (solos > 1) return current;
+  return credits.every((a) => a.type === "group") ? "full_group" : current;
+}
+
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
 const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"];
@@ -526,20 +562,18 @@ export default function SetlistBuilder({
       setArtistSearchResults([]);
       return;
     }
-    // A group-type credit is almost always a whole-group stage (the
-    // festival case: an "Aqours" block) — default the stage type so
-    // the operator doesn't have to flip it by hand, and replace the
-    // credit list (see nextCreditOnPick for why groups never stack
-    // unless 「+ 그룹 추가」 asked for it). Unit/solo picks leave the
-    // stage type and other credits alone.
-    const isGroup = artist.type === "group";
+    // Replace or extend the credit list (see nextCreditOnPick for why
+    // groups never stack unless 「+ 그룹 추가」 asked for it), then let
+    // the new credit pick the stage type (stageTypeForCredit): group →
+    // full_group, unit → unit, single solo → solo. Saves the operator
+    // the stage-type select on almost every row.
     const nextArtists = nextCreditOnPick(selectedArtists, artist, opts);
     const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
     setSelectedArtists(nextArtists);
     setArtistSearch("");
     setArtistSearchResults([]);
-    const nextStageType = isGroup ? "full_group" : formStageType;
+    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
     if (nextStageType !== formStageType) setFormStageType(nextStageType);
     // Always re-derive on artist add (type≠song → no-op; otherwise a
     // member-narrow — see deriveDefaultPerformerIds). Pass the
@@ -549,10 +583,16 @@ export default function SetlistBuilder({
   }
 
   function removeArtist(artistId: number) {
-    const nextArtistIds = formArtistIds.filter((id) => id !== artistId);
+    const nextArtists = selectedArtists.filter((a) => a.id !== artistId);
+    const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
-    setSelectedArtists((prev) => prev.filter((a) => a.id !== artistId));
-    applyDerivedPerformers(formType, formStageType, nextArtistIds);
+    setSelectedArtists(nextArtists);
+    // Removing the solo/unit chip from a "虹ヶ咲 + 歩夢" row means
+    // "back to the full group" — re-derive the stage the same way a
+    // pick does (no-op when the credit empties out).
+    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
+    if (nextStageType !== formStageType) setFormStageType(nextStageType);
+    applyDerivedPerformers(formType, nextStageType, nextArtistIds);
   }
 
   // `sticky` defaults to the current state; handleSave passes the
