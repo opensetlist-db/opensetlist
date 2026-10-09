@@ -143,6 +143,69 @@ export function nextCreditOnPick<T extends { id: number; type?: string }>(
   return [artist];
 }
 
+/**
+ * Stage type implied by a row's credit, applied whenever the operator
+ * adds or removes an artist chip. Before this, only a GROUP pick set
+ * the stage (→ full_group); a unit or solo pick left it alone, so on a
+ * live night every unit/solo row was saved as full_group unless the
+ * operator also flipped the select. That isn't cosmetic: the public
+ * badge hides solo credits on a non-solo stage (the F18 guard in
+ * `pickRowArtistBadges`), so those solo rows rendered with no badge at
+ * all (2020 Fes rehearsal, D1 #3–6).
+ *
+ *   - `special` is never overridden — it's always a deliberate choice
+ *     (medley-of-units, guest stage, …) the credit can't express.
+ *   - any unit credited            → unit   (group + unit, unit collab;
+ *                                            a solo alongside a unit
+ *                                            stays a unit stage)
+ *   - exactly one solo, no unit    → solo
+ *   - several solos, no unit       → unchanged (ad-hoc trio vs. solo
+ *                                            relay — can't tell)
+ *   - only groups                  → full_group (also covers removing
+ *                                            the last unit/solo chip)
+ *   - no credit / untyped chips    → unchanged
+ *
+ * Pure — exported for unit tests.
+ */
+export function stageTypeForCredit(
+  credits: readonly { type?: string }[],
+  current: string,
+): string {
+  if (current === "special" || credits.length === 0) return current;
+  if (credits.some((a) => a.type === "unit")) return "unit";
+  const solos = credits.filter((a) => a.type === "solo").length;
+  if (solos === 1) return "solo";
+  if (solos > 1) return current;
+  return credits.every((a) => a.type === "group") ? "full_group" : current;
+}
+
+/**
+ * Which credited artists the default performer roster is derived from.
+ *
+ * On a unit / solo stage the roster is the unit's or soloist's members,
+ * even when the parent group is credited alongside (「虹ヶ咲 + 歩夢」,
+ * 「Aqours + CYaRon!」 — the normal way a unit row inside a group block
+ * is credited). Passing the group id too would make
+ * deriveDefaultPerformerIds expand it through the hierarchy and
+ * pre-check the whole group (11 Nijigasaki members on a solo row).
+ * So unit/solo stages drop group credits — unless only groups are
+ * credited (e.g. the operator flipped the select by hand), in which
+ * case the groups are all we have. full_group and special use every
+ * credit as before.
+ *
+ * Pure — exported for unit tests.
+ */
+export function performerSourceIds(
+  credits: readonly { id: number; type?: string }[],
+  stageType: string,
+): number[] {
+  if (stageType === "unit" || stageType === "solo") {
+    const nonGroup = credits.filter((a) => a.type !== "group");
+    if (nonGroup.length > 0) return nonGroup.map((a) => a.id);
+  }
+  return credits.map((a) => a.id);
+}
+
 const STAGE_TYPES = ["full_group", "unit", "solo", "special"];
 const ITEM_STATUSES = ["confirmed", "live", "rumoured"];
 const PERFORMANCE_TYPES = ["live_performance", "virtual_live", "video_playback"];
@@ -325,6 +388,13 @@ export default function SetlistBuilder({
   // 할 때 잠시 켠다 — 상태는 row 닫혔다 열려도 유지(체크해두면
   // 같은 세션에서 여러 게스트 곡을 연속으로 추가하기 편함).
   const [includeAllIps, setIncludeAllIps] = useState(false);
+  // Default OFF: song search returns base versions only. With variants
+  // in the list, a title that has per-member solo versions ("Love U my
+  // friends" × 10) buries the group original — the one a live row
+  // almost always wants — under the variants. ON when the stage really
+  // was a specific version (e.g. "Dream Believers (SAKURA Ver.)");
+  // like includeAllIps it stays on across rows until unchecked.
+  const [includeVariantSongs, setIncludeVariantSongs] = useState(false);
 
   // Search-based selectors
   // Song search is owned by <SongSearch> — SetlistBuilder only keeps
@@ -452,15 +522,17 @@ export default function SetlistBuilder({
   // here so every trigger (type change, stageType change, artist
   // add/remove, resetForm) goes through one code path and the two
   // states can't drift.
+  // Takes the credited artist OBJECTS (not ids): which of them feed
+  // the derivation depends on their type — see performerSourceIds.
   function applyDerivedPerformers(
     type: string,
     stageType: string,
-    artistIds: number[],
+    artists: readonly ArtistOption[],
   ) {
     const ids = deriveDefaultPerformerIds(
       type,
       stageType,
-      artistIds,
+      performerSourceIds(artists, stageType),
       eventPerformers,
       hierarchy,
     );
@@ -476,7 +548,7 @@ export default function SetlistBuilder({
   // post-change values explicitly.
   function handleTypeChange(newType: string) {
     setFormType(newType);
-    applyDerivedPerformers(newType, formStageType, formArtistIds);
+    applyDerivedPerformers(newType, formStageType, selectedArtists);
   }
 
   // Stage-type trigger. full_group → all event performers; the
@@ -503,11 +575,7 @@ export default function SetlistBuilder({
         setFormArtistIds(nextArtists.map((a) => a.id));
       }
     }
-    applyDerivedPerformers(
-      formType,
-      newStageType,
-      nextArtists.map((a) => a.id),
-    );
+    applyDerivedPerformers(formType, newStageType, nextArtists);
   }
 
   function selectArtist(
@@ -519,33 +587,37 @@ export default function SetlistBuilder({
       setArtistSearchResults([]);
       return;
     }
-    // A group-type credit is almost always a whole-group stage (the
-    // festival case: an "Aqours" block) — default the stage type so
-    // the operator doesn't have to flip it by hand, and replace the
-    // credit list (see nextCreditOnPick for why groups never stack
-    // unless 「+ 그룹 추가」 asked for it). Unit/solo picks leave the
-    // stage type and other credits alone.
-    const isGroup = artist.type === "group";
+    // Replace or extend the credit list (see nextCreditOnPick for why
+    // groups never stack unless 「+ 그룹 추가」 asked for it), then let
+    // the new credit pick the stage type (stageTypeForCredit): group →
+    // full_group, unit → unit, single solo → solo. Saves the operator
+    // the stage-type select on almost every row.
     const nextArtists = nextCreditOnPick(selectedArtists, artist, opts);
     const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
     setSelectedArtists(nextArtists);
     setArtistSearch("");
     setArtistSearchResults([]);
-    const nextStageType = isGroup ? "full_group" : formStageType;
+    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
     if (nextStageType !== formStageType) setFormStageType(nextStageType);
     // Always re-derive on artist add (type≠song → no-op; otherwise a
     // member-narrow — see deriveDefaultPerformerIds). Pass the
     // post-change values explicitly (see comment on handleTypeChange
     // for the batched-state rationale).
-    applyDerivedPerformers(formType, nextStageType, nextArtistIds);
+    applyDerivedPerformers(formType, nextStageType, nextArtists);
   }
 
   function removeArtist(artistId: number) {
-    const nextArtistIds = formArtistIds.filter((id) => id !== artistId);
+    const nextArtists = selectedArtists.filter((a) => a.id !== artistId);
+    const nextArtistIds = nextArtists.map((a) => a.id);
     setFormArtistIds(nextArtistIds);
-    setSelectedArtists((prev) => prev.filter((a) => a.id !== artistId));
-    applyDerivedPerformers(formType, formStageType, nextArtistIds);
+    setSelectedArtists(nextArtists);
+    // Removing the solo/unit chip from a "虹ヶ咲 + 歩夢" row means
+    // "back to the full group" — re-derive the stage the same way a
+    // pick does (no-op when the credit empties out).
+    const nextStageType = stageTypeForCredit(nextArtists, formStageType);
+    if (nextStageType !== formStageType) setFormStageType(nextStageType);
+    applyDerivedPerformers(formType, nextStageType, nextArtists);
   }
 
   // `sticky` defaults to the current state; handleSave passes the
@@ -581,7 +653,7 @@ export default function SetlistBuilder({
     // existing item doesn't clobber the saved performer set; only
     // subsequent stageType/type/artist edits re-derive. With a
     // sticky credit the roster follows it (e.g. the Aqours members).
-    applyDerivedPerformers("song", seedStageType, seedArtistIds);
+    applyDerivedPerformers("song", seedStageType, seedArtists);
   }
 
   // "고정 해제" — drop the sticky credit and reset the open form's
@@ -799,7 +871,7 @@ export default function SetlistBuilder({
           setFormStageType(stickyCredit.stageType);
           setFormArtistIds(ids);
           setSelectedArtists(stickyCredit.artists);
-          applyDerivedPerformers("song", stickyCredit.stageType, ids);
+          applyDerivedPerformers("song", stickyCredit.stageType, stickyCredit.artists);
         }
       } else {
         const err = await res.json().catch(() => null);
@@ -1235,10 +1307,11 @@ export default function SetlistBuilder({
                 ))}
               </div>
             )}
-            {/* Shared search component. includeVariants=true preserves
-                the admin's pre-refactor ability to record a variant row
-                (e.g. "Dream Believers (SAKURA Ver.)") directly. Fan
-                pickers omit the prop and get base-only.
+            {/* Shared search component. includeVariants follows the
+                「버전 곡 포함」 toggle (default off = base only); on, it
+                lets the admin record a variant row (e.g. "Dream
+                Believers (SAKURA Ver.)") directly. Fan pickers omit the
+                prop and always get base-only.
                 scope: default `event` (이벤트 IP만) — 토글로 `all`
                 전환해서 게스트/콜라보 곡 후보 노출. 토글 설명은
                 위 `includeAllIps` 주석 참조. */}
@@ -1251,6 +1324,15 @@ export default function SetlistBuilder({
               />
               전체 카탈로그 검색 (게스트/콜라보 곡)
             </label>
+            <label className="mb-1 ml-3 inline-flex items-center gap-1.5 text-xs text-gray-700">
+              <input
+                type="checkbox"
+                checked={includeVariantSongs}
+                onChange={(e) => setIncludeVariantSongs(e.target.checked)}
+                className="cursor-pointer"
+              />
+              버전 곡 포함 (솔로 Ver. 등)
+            </label>
             <SongSearch
               onSelect={selectSong}
               locale="ko"
@@ -1260,7 +1342,7 @@ export default function SetlistBuilder({
                 noResults: "일치하는 곡이 없습니다",
               }}
               excludeSongIds={formSongIds}
-              includeVariants
+              includeVariants={includeVariantSongs}
               scope={
                 includeAllIps
                   ? { kind: "all" }
