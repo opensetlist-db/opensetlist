@@ -595,12 +595,24 @@ export default function SetlistBuilder({
         return;
       }
       if (outcome.kind === "unknown") {
-        setSaveError(
-          method === "POST"
-            ? "저장 결과를 확인하지 못했습니다 (네트워크 오류). 목록에 이 항목이 없으니 다시 시도해도 중복되지 않습니다."
-            : "저장 결과를 확인하지 못했습니다 (네트워크 오류). 다시 시도해 주세요.",
-        );
-        if (!outcome.items) setListStale(true);
+        // Three distinct messages: only when the reload SUCCEEDED and
+        // the row is absent can we promise a POST retry won't
+        // duplicate. If the reload failed too, the write may well have
+        // landed — the operator must refresh the list and check first.
+        if (!outcome.items) {
+          setListStale(true);
+          setSaveError(
+            method === "POST"
+              ? "저장 결과를 확인하지 못했고 목록도 불러오지 못했습니다. 이미 저장됐을 수 있으니 「목록 새로고침」으로 확인한 뒤, 항목이 없을 때만 다시 시도하세요."
+              : "저장 결과를 확인하지 못했고 목록도 불러오지 못했습니다. 다시 시도해 주세요.",
+          );
+        } else {
+          setSaveError(
+            method === "POST"
+              ? "저장 결과를 확인하지 못했습니다 (네트워크 오류). 목록에 이 항목이 없으니 다시 시도해도 중복되지 않습니다."
+              : "저장 결과를 확인하지 못했습니다 (네트워크 오류). 다시 시도해 주세요.",
+          );
+        }
         return;
       }
 
