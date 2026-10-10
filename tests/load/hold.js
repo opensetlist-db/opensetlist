@@ -35,7 +35,10 @@ const SNAP_RPS = HOLD_RPS - SSR_RPS;
 const bursts = burstStages(Math.max(0, HOLD_SECONDS - (BURST_SECONDS + 30) * 2));
 const burstCfg = burstScenarios(bursts);
 
-const holdStage = { scenario: "hold", targetRps: SNAP_RPS, seconds: HOLD_SECONDS };
+// startSeconds is explicit (not left to stageRows' default) because the
+// cut-short math in lib/report.js needs every stage's real start; the
+// ramp and burst stage builders set theirs the same way.
+const holdStage = { scenario: "hold", targetRps: SNAP_RPS, seconds: HOLD_SECONDS, startSeconds: 0 };
 
 export const options = {
   scenarios: {
