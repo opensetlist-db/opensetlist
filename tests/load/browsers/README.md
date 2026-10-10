@@ -30,6 +30,25 @@ The report also gives insert-start based numbers and the arrival of the
 R1 notification (postgres_changes UPDATE of the row) vs the R2 broadcast
 (`rev`) on the same clients.
 
+**The clock starts at the first attempt.** A failed save is retried once
+(insert-after only after checking that the failed attempt did not commit;
+the PUT is idempotent), but the latency of both saves is measured from
+the start of their FIRST attempt — the viewer's wait began at the first
+click. Edits that needed a retry (or adopted a committed-but-failed
+insert) get their own row in the gate table, with the latency from the
+successful attempt next to it (informational), and the per-edit table
+shows the attempt count.
+
+**Monotonic DOM (every run, gated).** No viewer may ever go back to an
+older version. SDK clients log every snapshot the real acceptance rule
+applied (`[t, rev, fetch reason]`); any decrease is a regression. Pages
+expose no applied rev, so the run keeps each page's full DOM log and
+derives the version shown = the highest rev among the marker songs on the
+page; a regression is that version going down, or a marker disappearing
+without a newer save replacing it (before the clean-up). Two rows in the
+gate table (pages / SDK), 0 regressions required; the JSON has every
+page's version history.
+
 All created rows are soft-deleted at the end, on error, and on Ctrl-C.
 
 ## Full-scale commands (run one at a time)
@@ -62,7 +81,36 @@ node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 -
 # --pause=40: R1 pages fall back to 5 s polling on the socket error and
 # only retry realtime after 30 s, so edit 3 then measures the recovered state.
 node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=40 --drill=reconnect --drill-edit=2 --label=run2-reconnect
+# The report adds "reconnect handoff: regressions after the drop": no page
+# or client may show an older version across the polling → realtime
+# handoff (an in-flight fallback poll landing after the catch-up).
+
+# Drill: double save (fast correction). On edit --drill-edit (default the
+# middle one) a second PUT with another marker hits the same row
+# --double-gap=300 ms after the first started, without waiting for it.
+# Both take the Event row lock, so the save with the higher rev is the
+# final state. Gate: every page shows the final marker (and not the
+# replaced one) and every SDK client applied ≥ the final rev by the end of
+# the edit window, with 0 monotonicity regressions. Latency of that edit =
+# final save start → final state, inside the primary gate.
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=double-save --label=run2b-double-save
+
+# Drill: lost final notification. The LAST edit's PUT notification is
+# dropped on every page (websocket proxy) and every SDK client (worker
+# drops its notifications) — after the insert's own notification was
+# delivered and its fetches settled (--lost-settle=2000 ms), so exactly the
+# last save is lost and nothing later can rescue it. Only the periodic
+# repair poll (20 s ± 4 s) can deliver it. Gate: max ≤ --lost-gate=26000 ms
+# (24 s + fetch/render), 0 missing. The report lists the repairing fetch
+# per page (a periodic poll sends the applied rev as minRev) and the fetch
+# reason that delivered the save to each SDK client (expect "periodic").
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=lost-final --label=run2b-lost-final
 ```
+
+`--drill` also accepts the camelCase names (`doubleSave`, `lostFinal`).
+Small smoke (used to check the harness, ~1 min each, 2 rows created and
+soft-deleted): `--pages=2 --subs=5 --edits=2 --pause=12 --drill=doubleSave`
+/ `--drill=lostFinal`; afterwards `restore.mjs --compact --yes`.
 
 Results: `tests/load/results/<UTC date>/<stamp>-browsers[-<drill>].md` (+ `.json`,
 gitignored, with per-page raw data). Exit code 0 = gates passed.
@@ -72,8 +120,10 @@ Other flags: `--event-id`, `--event-path`, `--after-row=2`, `--timeout=30`,
 run waits until every page/client has its postgres_changes registration,
 up to `--pg-ready-timeout=180` s, and reports how long that took),
 `--sub-workers=N` (default ⌈subs/120⌉), `--sub-batch=50` (SDK joins per
-second), `--page-concurrency=5`, `--drill-edit=k`, `--reconnect-lead=1000`,
-`--gate-p95=3000`, `--headed`.
+second), `--page-concurrency=5`, `--drill-edit=k` (ignored by lost-final:
+always the last edit), `--reconnect-lead=1000`, `--double-gap=300`,
+`--lost-gate=26000`, `--lost-settle=2000`, `--gate-p95=3000`, `--headed`.
+Exit code 1 also when a monotonicity regression was seen.
 
 ## Positions (read before running repeatedly)
 
