@@ -16,11 +16,16 @@ event loop), so treat their join times as an upper bound.
 ## Safety guard
 
 Every script calls `assertDev()` (in `lib.mjs`) before it opens a socket
-or a DB connection and **exits** unless both `NEXT_PUBLIC_SUPABASE_URL`
-and `DATABASE_URL_UNPOOLED` contain the dev project ref
-`nddawybyuedsrshhxikx`. `BASE_URL` (used for background HTTP load and
-admin saves) refuses the production hostnames. Never point these at
-prod, and do not use prod event ids.
+or a DB connection and **exits** unless `NEXT_PUBLIC_SUPABASE_URL` is
+`https://nddawybyuedsrshhxikx.supabase.co` and `DATABASE_URL_UNPOOLED`
+parses to that project (direct host `db.<ref>.supabase.co`, or a
+`*.pooler.supabase.com` host with username `postgres.<ref>`). Scripts
+that drive HTTP (`reconnect-storm.mjs` with `--load-rps` / `--admin`)
+additionally require `BASE_URL` to be `localhost`, `127.0.0.1`, or the
+dev-branch Vercel alias `opensetlist-git-dev-*.vercel.app`; anything
+else, including deployment-specific `*.vercel.app` URLs and
+opensetlist.com, is refused. Never point these at prod, and do not use
+prod event ids.
 
 ## Setup
 
@@ -41,7 +46,7 @@ own `node_modules` needs `npm ci` or a link to one.
 | Script | What it does |
 |---|---|
 | `inspect.mjs` | Read-only: RLS on `realtime.messages`, policies, `realtime.topic()`/`realtime.send()` signatures, grants. |
-| `policy.sql` | The receive-only Realtime Authorization policy for `event:*` topics (what R1 would ship in `prisma/post-deploy.sql`). |
+| `policy.sql` | The receive-only Realtime Authorization policy for `event:*` topics, for the private-channel probe variant. Not deployed: the probe ruled private channels out and R1 uses public channels. |
 | `apply-policy.mjs` | Applies `policy.sql` to dev (`--drop` removes it again, e.g. to re-run the "no policy → denied" control). |
 | `join-storm.mjs` | N clients join one channel in batches or all at once; per-client subscribe → `SUBSCRIBED` latency, `CHANNEL_ERROR`/`TIMED_OUT` counts and server error texts. `--send`: one `realtime.send` from Postgres, delivery at +1/+3/+10 s. `--neg`: forged sends must not reach private subscribers. `--spam-rps/--spam-secs`: sustained client-broadcast spam. |
 | `reconnect-storm.mjs` | Holds N subscribers, then all disconnect + rejoin within `--spread` ms, `--storms` times; resubscribe latency and post-storm delivery. Optional `--load-rps` (open-loop `GET /api/setlist`) and `--admin` (one create+delete per storm via `/api/admin/*`, `ADMIN_PASSWORD`). |

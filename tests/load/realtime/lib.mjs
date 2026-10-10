@@ -8,8 +8,13 @@
 //
 // Safety guard: every probe calls `assertDev()` before opening a socket
 // or a DB connection. Both the Supabase URL (websocket target) and
-// DATABASE_URL_UNPOOLED (where `realtime.send` / policy SQL runs) must
-// contain the dev project ref. A probe that opens 500 sockets or applies
+// DATABASE_URL_UNPOOLED (where `realtime.send` / policy SQL runs) are
+// parsed and the dev project ref is checked in the field where Supabase
+// puts it (hostname, or the pooler username) — not with `includes()`
+// over the whole string, which a password or query string containing
+// the ref could satisfy. Probes that also drive HTTP (`--admin` saves,
+// background GET load) pass `{ requireBase: true }` so BASE_URL must be
+// on the allow-list below. A probe that opens 500 sockets or applies
 // policy SQL must never be able to reach prod by a mis-set env var.
 import path from "node:path";
 import fs from "node:fs";
@@ -28,14 +33,47 @@ export function loadEnv() {
   }
 }
 
-export function assertDev() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const db = process.env.DATABASE_URL_UNPOOLED || "";
-  if (!url.includes(DEV_REF)) {
+function parseUrl(raw) {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+// Supabase connection string shapes (supabase.com/docs/guides/database/connecting-to-postgres):
+//   direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
+//   pooler:  postgresql://postgres.<ref>:<pw>@aws-<n>-<region>.pooler.supabase.com:{5432,6543}/postgres
+// The pooler hostname is shared by every project in the region, so only
+// the username identifies the project there.
+function isDevDatabaseUrl(raw) {
+  const u = parseUrl(raw);
+  if (!u) return false;
+  const direct = u.hostname === `db.${DEV_REF}.supabase.co`;
+  const pooler =
+    /^aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com$/.test(u.hostname) &&
+    decodeURIComponent(u.username) === `postgres.${DEV_REF}`;
+  return direct || pooler;
+}
+
+// HTTP targets the probes may hit: a local dev server or the dev-branch
+// Vercel alias of this project. Nothing else — a deployment-specific
+// `opensetlist-<hash>-....vercel.app` URL can be a production deploy, so
+// it is refused like opensetlist.com.
+function isAllowedBaseUrl(raw) {
+  const u = parseUrl(raw);
+  if (!u) return false;
+  if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
+  return u.protocol === "https:" && /^opensetlist-git-dev-[a-z0-9-]+\.vercel\.app$/.test(u.hostname);
+}
+
+export function assertDev({ requireBase = false } = {}) {
+  const url = parseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+  if (!url || url.protocol !== "https:" || url.hostname !== `${DEV_REF}.supabase.co`) {
     console.error(`refusing: NEXT_PUBLIC_SUPABASE_URL is not the dev project (${DEV_REF})`);
     process.exit(2);
   }
-  if (!db.includes(DEV_REF)) {
+  if (!isDevDatabaseUrl(process.env.DATABASE_URL_UNPOOLED || "")) {
     console.error(`refusing: DATABASE_URL_UNPOOLED is not the dev project (${DEV_REF})`);
     process.exit(2);
   }
@@ -43,12 +81,12 @@ export function assertDev() {
     console.error("missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
     process.exit(2);
   }
-  // BASE_URL is only used for background HTTP load / admin saves. Refuse
-  // the production hostnames explicitly; the dev preview and localhost are
-  // the only intended targets.
-  const base = process.env.BASE_URL || "";
-  if (/(^https?:\/\/)?(www\.)?opensetlist\.com/i.test(base) || /opensetlist\.vercel\.app/i.test(base)) {
-    console.error("refusing: BASE_URL points at production");
+  // BASE_URL is only used by probes that drive HTTP (background GET load,
+  // `--admin` create/delete saves). Those pass `requireBase: true` and
+  // get an allow-list check; DB-only probes never read BASE_URL, so an
+  // unset or odd value must not stop them.
+  if (requireBase && !isAllowedBaseUrl(process.env.BASE_URL || "")) {
+    console.error("refusing: BASE_URL is not localhost or the dev preview alias");
     process.exit(2);
   }
 }

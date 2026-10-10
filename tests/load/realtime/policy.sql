@@ -1,9 +1,13 @@
 -- Realtime Authorization for private broadcast channels `event:<id>`.
 --
--- This is the policy R1 (task n14) will ship in prisma/post-deploy.sql;
--- it lives here first so the admission probe can run against dev with
--- exactly the SQL that will later go to prod. Applied to dev with
--- `node tests/load/realtime/apply-policy.cjs` (dev-guarded).
+-- Used by the private-channel variant of the admission probe (n14). It
+-- was written as the policy R1 would have shipped in
+-- prisma/post-deploy.sql, but the probe showed private channels cannot
+-- admit a Fes-sized audience (Realtime Authorization runs on a pool of
+-- 2, ~0.85 s per join), so R1 uses PUBLIC channels and this policy is
+-- NOT deployed anywhere. Kept so the probe stays re-runnable. Applied to
+-- dev with `node tests/load/realtime/apply-policy.mjs` (dev-guarded) and
+-- removed with `--drop`.
 --
 -- How Realtime Authorization uses it (supabase.com/docs/guides/realtime/authorization):
 -- on a join with `config: { private: true }` the Realtime server checks

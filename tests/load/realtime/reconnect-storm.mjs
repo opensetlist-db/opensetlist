@@ -27,7 +27,7 @@ import { loadEnv, assertDev, parseArgs, dist, fmt, sleep, pgClient, startSnapsho
 
 loadEnv();
 process.env.BASE_URL = process.env.BASE_URL || "https://opensetlist-git-dev-opensetlist-projects.vercel.app";
-assertDev();
+assertDev({ requireBase: true });
 const args = parseArgs(process.argv.slice(2));
 const N = parseInt(args.n ?? "500", 10);
 const TOPIC = args.topic ?? "event:111";
