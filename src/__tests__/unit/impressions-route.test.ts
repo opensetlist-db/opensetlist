@@ -14,7 +14,27 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// The first-page GET is wrapped in `cachedQuery` (n14). Outside a Next
+// request there is no incremental cache, so pass the fetcher through
+// and record the call so tests can assert which pages are cached.
+const { cachedCalls } = vi.hoisted(() => ({
+  cachedCalls: [] as { name: string; args: unknown[] }[],
+}));
+vi.mock("@/lib/dataCache", () => ({
+  cachedQuery: vi.fn(
+    (name: string, fn: (...args: unknown[]) => Promise<unknown>) =>
+      (...args: unknown[]) => {
+        cachedCalls.push({ name, args });
+        return fn(...args);
+      },
+  ),
+  eventTag: (id: unknown) => `event:${String(id)}`,
+  eventImpressionsTag: (id: unknown) => `event:${String(id)}:impressions`,
+  revalidateEventImpressions: vi.fn(),
+}));
+
 import { GET, POST } from "@/app/api/impressions/route";
+import { revalidateEventImpressions } from "@/lib/dataCache";
 import { prisma } from "@/lib/prisma";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
@@ -415,5 +435,57 @@ describe("GET /api/impressions", () => {
     const res = await GET(makeGetRequest("eventId=1&before=not-a-cursor"));
     expect(res.status).toBe(400);
     expect(prisma.eventImpression.findMany).not.toHaveBeenCalled();
+  });
+
+  it("first page goes through the 5 s data cache keyed (eventId, includeTotal); public must-revalidate (n14)", async () => {
+    cachedCalls.length = 0;
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(makeRows(2));
+    const res = await GET(makeGetRequest("eventId=7"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(cachedCalls).toEqual([
+      { name: "event-impressions-page", args: ["7", false] },
+    ]);
+  });
+
+  it("cursor pages bypass the cache (a client value never becomes a key)", async () => {
+    cachedCalls.length = 0;
+    (
+      prisma.eventImpression.findMany as ReturnType<typeof vi.fn>
+    ).mockResolvedValueOnce(makeRows(1));
+    const cursor = encodeImpressionCursor(
+      new Date("2026-05-02T11:00:00.000Z"),
+      "00000000-0000-4000-8000-00000000abcd",
+    );
+    const res = await GET(
+      makeGetRequest(`eventId=7&before=${encodeURIComponent(cursor)}`),
+    );
+    expect(res.status).toBe(200);
+    expect(cachedCalls).toEqual([]);
+  });
+});
+
+describe("POST /api/impressions — cache invalidation (n14)", () => {
+  it("expires the event's impressions tag after a successful post", async () => {
+    vi.clearAllMocks();
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: BigInt(3),
+    });
+    (prisma.eventImpression.create as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({
+        ...data,
+        createdAt: new Date("2026-05-02T12:00:00.000Z"),
+      }),
+    );
+    const res = await POST(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      makeRequest({ eventId: "3", content: "hi", locale: "ko" }) as any,
+    );
+    expect(res.status).toBe(200);
+    expect(revalidateEventImpressions).toHaveBeenCalledWith(BigInt(3));
   });
 });

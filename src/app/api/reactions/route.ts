@@ -128,10 +128,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // The ack watermark is taken AFTER the write resolved (separate
+  // statement, see `readAckAt`), then the counts. Reactions never bump
+  // the setlist revision or expire the snapshot cache — the client
+  // holds its own acknowledged count until a snapshot captured after
+  // `ackAt` arrives.
+  const ackAt = await readAckAt();
   const counts = await getReactionCounts(siId);
   return NextResponse.json({
     reactionId: reaction.id,
     counts,
+    ackAt,
   });
 }
 
@@ -151,11 +158,41 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
+  // Resolve the reaction's item before deleting so the response can
+  // carry that item's post-delete counts (the client needs them to
+  // hold its acknowledged state, same as POST). A reaction that is
+  // already gone (double-tap, retry) still gets a watermark and, when
+  // the row was never found, empty counts — the client keeps its own
+  // state and the next snapshot settles it.
+  const existing = await prisma.setlistItemReaction.findUnique({
+    where: { id: reactionId },
+    select: { setlistItemId: true },
+  });
   await prisma.setlistItemReaction.deleteMany({
     where: { id: reactionId },
   });
 
-  return NextResponse.json({ ok: true });
+  const ackAt = await readAckAt();
+  const counts = existing ? await getReactionCounts(existing.setlistItemId) : {};
+  return NextResponse.json({ ok: true, counts, ackAt });
+}
+
+/**
+ * Reaction ack watermark (n14): `clock_timestamp()` read in its own
+ * statement AFTER the write's auto-commit returned — i.e. strictly
+ * after the commit, on the database's clock. A live snapshot whose
+ * `capturedAt` (its transaction's `now()`) is later than this instant
+ * started after the commit and therefore includes the write, so the
+ * client can release its held count for it. Not `now()`: inside an
+ * implicit single-statement transaction that is this statement's
+ * start, which is also fine, but `clock_timestamp()` states the intent
+ * and stays correct if this ever moves into a larger transaction.
+ */
+async function readAckAt(): Promise<string> {
+  const rows = await prisma.$queryRaw<{ ackAt: Date }[]>`
+    SELECT clock_timestamp() AS "ackAt"
+  `;
+  return rows[0].ackAt.toISOString();
 }
 
 async function getReactionCounts(setlistItemId: bigint) {

@@ -11,6 +11,14 @@ import {
   decodeImpressionCursor,
 } from "@/lib/impressionCursor";
 import { parseAnonId } from "@/lib/anonId";
+import {
+  cachedQuery,
+  eventImpressionsTag,
+  eventTag,
+  revalidateEventImpressions,
+} from "@/lib/dataCache";
+
+type ImpressionCursor = NonNullable<ReturnType<typeof decodeImpressionCursor>>;
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get("eventId");
@@ -41,6 +49,55 @@ export async function GET(req: NextRequest) {
   // user's own submit/report actions in between.
   const includeTotal = req.nextUrl.searchParams.get("includeTotal") === "1";
 
+  // n14: the first page (no cursor) is what every viewer's 30 s poll
+  // asks for, and it is identical for all of them — serve it from a
+  // 5 s data-cache entry keyed (eventId, includeTotal). Impression
+  // writes expire it via `revalidateEventImpressions`; the poller's own
+  // actions are merged client-side immediately, so 5 s only bounds how
+  // late OTHER viewers' posts appear. Cursor pages ("see older") are
+  // rare and keyed by an arbitrary client value, so they stay uncached
+  // (a client must not be able to mint cache keys).
+  const body = cursor
+    ? await fetchImpressionsPage(eid, cursor, includeTotal)
+    : await fetchFirstImpressionsPageCached(eid.toString(), includeTotal);
+
+  return NextResponse.json(body, {
+    headers: {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+    },
+  });
+}
+
+type ImpressionsPageBody = {
+  impressions: {
+    id: string;
+    rootImpressionId: string;
+    eventId: string;
+    content: string;
+    locale: string;
+    createdAt: string;
+  }[];
+  nextCursor: string | null;
+  totalCount?: number;
+};
+
+const IMPRESSIONS_PAGE_TTL_SECONDS = 5;
+
+const fetchFirstImpressionsPageCached = cachedQuery(
+  "event-impressions-page",
+  (eventIdKey: string, includeTotal: boolean) =>
+    fetchImpressionsPage(BigInt(eventIdKey), null, includeTotal),
+  {
+    revalidate: IMPRESSIONS_PAGE_TTL_SECONDS,
+    tags: (eventIdKey) => [eventTag(eventIdKey), eventImpressionsTag(eventIdKey)],
+  },
+);
+
+async function fetchImpressionsPage(
+  eid: bigint,
+  cursor: ImpressionCursor | null,
+  includeTotal: boolean,
+): Promise<ImpressionsPageBody> {
   const baseWhere = {
     eventId: eid,
     supersededAt: null,
@@ -121,20 +178,11 @@ export async function GET(req: NextRequest) {
   // the response shape mirrors the cost: a poll request gets back
   // exactly what the server computed, no `null` placeholder. Client
   // type is `totalCount?: number`.
-  const body: {
-    impressions: typeof impressions;
-    nextCursor: string | null;
-    totalCount?: number;
-  } = { impressions, nextCursor };
+  const body: ImpressionsPageBody = { impressions, nextCursor };
   if (totalCount !== undefined) {
     body.totalCount = totalCount;
   }
-
-  return NextResponse.json(body, {
-    headers: {
-      "Cache-Control": "private, no-store",
-    },
-  });
+  return body;
 }
 
 export async function POST(req: NextRequest) {
@@ -201,6 +249,9 @@ export async function POST(req: NextRequest) {
       anonId: dedupAnonId,
     },
   });
+  // Other viewers' cached first page (5 s) picks the post up on the
+  // next read instead of after the TTL.
+  revalidateEventImpressions(eid);
 
   return NextResponse.json({
     impression: {
