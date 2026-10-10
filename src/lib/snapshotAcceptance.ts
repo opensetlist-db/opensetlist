@@ -168,6 +168,38 @@ export class SnapshotAcceptance {
     return Math.max(this.wantedRev ?? 0, next);
   }
 
+  /**
+   * Adopt a version that ANOTHER live source of this page has already
+   * applied and shown (the realtime path handing over to the R3
+   * polling fallback). Raises the watermark — never lowers it — and
+   * counts the revision as server-observed, without starting a new
+   * generation (no in-flight response is invalidated). Invalid input
+   * is ignored.
+   */
+  adopt(seed?: SnapshotSeed): void {
+    if (!isValidRev(seed?.rev)) return;
+    const version: SnapshotVersion = {
+      rev: seed!.rev!,
+      capturedAt: parseCapturedAt(seed?.capturedAt),
+    };
+    this._serverRev =
+      this._serverRev === null ? version.rev : Math.max(this._serverRev, version.rev);
+    const applied = this._applied;
+    const newer =
+      applied.rev === null ||
+      version.rev > applied.rev ||
+      (version.rev === applied.rev &&
+        version.capturedAt !== null &&
+        (applied.capturedAt === null || version.capturedAt > applied.capturedAt));
+    if (newer) {
+      this._applied = {
+        rev: version.rev,
+        capturedAt:
+          version.capturedAt ??
+          (version.rev === applied.rev ? applied.capturedAt : null),
+      };
+    }
+  }
 
   /**
    * Start a new generation (event or locale changed, or first mount)

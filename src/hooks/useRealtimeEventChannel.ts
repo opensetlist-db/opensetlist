@@ -379,8 +379,12 @@ export function useRealtimeEventChannel<T>({
     initialTop3Wishes,
     locale,
     enabled: enabled && pollFallback,
-    initialRev,
-    initialCapturedAt,
+    // Seed the fallback with what realtime has actually applied (SSR
+    // values until the first fetch lands), not the SSR props: a stale
+    // cache answering the first poll must not roll the page back below
+    // what the viewer already saw. Polling adopts it on enable.
+    initialRev: snapshot.rev,
+    initialCapturedAt: snapshot.capturedAt,
   });
 
   // Once-per-session latch for the Sentry captureMessage. The

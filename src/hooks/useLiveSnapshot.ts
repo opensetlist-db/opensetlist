@@ -201,6 +201,21 @@ export function useLiveSnapshot<T>({
   }, []);
 
   /**
+   * Raise the acceptance watermark to the CURRENT `initialRev` /
+   * `initialCapturedAt` props (never lowers it, no new generation).
+   * The R3 polling fallback calls this when it is switched on: the
+   * realtime hook passes its latest applied version as those props, so
+   * the first polled response can't roll the page back below what the
+   * realtime path already showed.
+   */
+  const adoptSeed = useCallback(() => {
+    acceptanceRef.current?.adopt({
+      rev: seedRevRef.current,
+      capturedAt: seedCapturedAtRef.current,
+    });
+  }, []);
+
+  /**
    * Builds the runner for one session (one channel-effect run, one
    * polling-effect run). Captures eventId/locale/generation at call
    * time; responses that resolve after any of them changed — or after
@@ -383,5 +398,5 @@ export function useLiveSnapshot<T>({
     capturedAt,
   };
 
-  return { data, createRunner, resetFailures };
+  return { data, createRunner, resetFailures, adoptSeed };
 }

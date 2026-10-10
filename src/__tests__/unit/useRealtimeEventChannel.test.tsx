@@ -1569,6 +1569,42 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     }
   });
 
+  it("R3 fallback is seeded with realtime's applied version: an older polled rev is rejected", async () => {
+    const realtimeItems = [{ id: "rt-rev7" }];
+    const staleItems = [{ id: "stale-rev5" }];
+    const fetchMock = vi
+      .fn()
+      // Realtime seed: rev 7 (SSR said 3).
+      .mockResolvedValueOnce(revResponse(7, "2026-11-14T07:30:00.000Z", realtimeItems))
+      // Every polled response: a stale cache at rev 5.
+      .mockResolvedValue(revResponse(5, "2026-11-14T07:31:00.000Z", staleItems));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({
+      initialRev: 3,
+      initialCapturedAt: "2026-11-14T07:29:00.000Z",
+    });
+    await flushMicrotasks();
+    expect(result.current.rev).toBe(7);
+
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    await advance(2_500); // first poll (random phase at 0.5)
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Polling asks with realtime's revision, not the SSR one…
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=7",
+    );
+    // …and the rev-5 answer does not roll the page back.
+    expect(result.current.items).toBe(realtimeItems);
+    expect(result.current.rev).toBe(7);
+    expect(result.current.capturedAt).toBe("2026-11-14T07:30:00.000Z");
+
+    await advance(30_000);
+    expect(result.current.items).toBe(realtimeItems);
+    expect(result.current.rev).toBe(7);
+  });
+
   it("omits minRev when no revision is known yet", async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);

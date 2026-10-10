@@ -31,7 +31,12 @@ interface UseSetlistPollingOptions<T> {
   /** Mean poll interval; each gap is `intervalMs ± spreadMs`. */
   intervalMs?: number;
   spreadMs?: number;
-  /** SSR snapshot revision / capturedAt — seeds the acceptance watermark. */
+  /**
+   * Seed for the acceptance watermark: the SSR snapshot's revision /
+   * capturedAt, or — as the R3 fallback inside the realtime hook — the
+   * latest version the realtime path applied. Read again each time
+   * polling is enabled (it only ever raises the watermark).
+   */
   initialRev?: number | null;
   initialCapturedAt?: string | null;
 }
@@ -106,7 +111,7 @@ export function useSetlistPolling<T>({
   initialRev,
   initialCapturedAt,
 }: UseSetlistPollingOptions<T>): UseSetlistPollingResult<T> {
-  const { data, createRunner, resetFailures } = useLiveSnapshot<T>({
+  const { data, createRunner, resetFailures, adoptSeed } = useLiveSnapshot<T>({
     eventId,
     locale,
     initialItems,
@@ -119,6 +124,11 @@ export function useSetlistPolling<T>({
   useEffect(() => {
     if (!enabled) return;
     resetFailures();
+    // Hand-over from the realtime path: start from the newest version
+    // the page has already shown (the realtime hook passes it as
+    // `initialRev` / `initialCapturedAt`). Before `createRunner`, which
+    // captures the acceptance state for this session.
+    adoptSeed();
     const runner = createRunner();
     const scheduler = createLiveScheduler({
       runFetch: runner.runFetch,
@@ -132,7 +142,7 @@ export function useSetlistPolling<T>({
       scheduler.dispose();
       runner.abort();
     };
-  }, [enabled, intervalMs, spreadMs, createRunner, resetFailures]);
+  }, [enabled, intervalMs, spreadMs, createRunner, resetFailures, adoptSeed]);
 
   return data;
 }

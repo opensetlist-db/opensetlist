@@ -235,4 +235,31 @@ describe("SnapshotAcceptance", () => {
       expect(acc.notificationMinRev()).toBe(Number.MAX_SAFE_INTEGER);
     });
   });
+
+  describe("adopt — hand-over from another live source", () => {
+    it("raises the watermark without a new generation", () => {
+      const acc = new SnapshotAcceptance({ rev: 3, capturedAt: T0 });
+      const gen = acc.generation;
+      acc.adopt({ rev: 7, capturedAt: T1 });
+      expect(acc.generation).toBe(gen);
+      expect(acc.applied).toEqual({ rev: 7, capturedAt: ms(T1) });
+      expect(acc.minRevToSend()).toBe(7);
+      // An older response is now a server-proven gap.
+      expect(acc.evaluate(gen, { rev: 5, capturedAt: T2 })).toMatchObject({
+        apply: false,
+        serverGap: true,
+      });
+    });
+
+    it("never lowers the watermark; ignores invalid input", () => {
+      const acc = new SnapshotAcceptance({ rev: 9, capturedAt: T2 });
+      acc.adopt({ rev: 4, capturedAt: T0 });
+      acc.adopt({ rev: 9, capturedAt: T1 });
+      acc.adopt({ rev: -1, capturedAt: T2 });
+      acc.adopt({ rev: null, capturedAt: null });
+      acc.adopt(undefined);
+      expect(acc.applied).toEqual({ rev: 9, capturedAt: ms(T2) });
+    });
+  });
 });
+
