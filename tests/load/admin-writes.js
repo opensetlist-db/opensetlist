@@ -48,8 +48,17 @@ const CYCLES = parseInt(__ENV.ADMIN_CYCLES || "4", 10);
 // of landing in the first 30 s.
 const CYCLE_PAUSE = parseFloat(__ENV.ADMIN_CYCLE_PAUSE || "20");
 const NOTE = "n12-load-test";
+// Mirrors COOKIE_NAME in src/lib/admin-session.ts.
+const COOKIE_NAME = "admin_session";
 
-let loggedIn = false;
+// The admin session token, kept per VU across iterations. k6 empties a
+// VU's cookie jar at the start of every iteration, so logging in once
+// and relying on the jar left cycle 2+ without a cookie (→ 401 on the
+// first write of cycle 2). Re-logging in every cycle would instead
+// spend the Firewall's per-IP rate limit on POST /api/admin/login.
+// So: log in once, keep the token, put it back into the jar at the
+// start of each cycle.
+let sessionToken = null;
 
 // Stop the whole run (not just this iteration): after an uncertain
 // write the event's state is unknown and further load results would be
@@ -69,10 +78,17 @@ function login() {
     JSON.stringify({ password: requireEnv("ADMIN_PASSWORD") }),
     { headers: jsonHeaders(), tags: { name: "admin_login" } },
   );
-  // The session cookie lands in this VU's cookie jar and rides along
-  // on every later request automatically.
   if (res.status !== 200) stop(`admin login failed: HTTP ${res.status}`);
-  loggedIn = true;
+  const c = res.cookies[COOKIE_NAME];
+  if (!c || !c.length) stop(`admin login returned no ${COOKIE_NAME} cookie`);
+  sessionToken = c[0].value;
+}
+
+// Called at the top of every cycle: login on the first, then restore
+// the cookie the per-iteration jar reset removed.
+function ensureSession() {
+  if (!sessionToken) login();
+  http.cookieJar().set(BASE_URL, COOKIE_NAME, sessionToken);
 }
 
 // Always a full-body snapshot with a fixed locale: the visibility check
@@ -128,7 +144,7 @@ function songIdsOf(item) {
 }
 
 export function adminCycle() {
-  if (!loggedIn) login();
+  ensureSession();
 
   const { body: start } = readSnapshot();
   if (!start || start.items.length === 0) {
