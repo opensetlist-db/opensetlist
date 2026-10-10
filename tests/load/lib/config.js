@@ -29,7 +29,7 @@ export const EVENT_SLUG = __ENV.EVENT_SLUG || "";
 // Row-count correctness gate. EXPECTED_ROWS is the number of non-deleted
 // setlist items on the test event when the run starts. The admin-write
 // loop in the hold run temporarily adds up to 2 rows per cycle, so the
-// hold run passes ROW_SLACK=2 and a response is "correct" when its row
+// hold run passes ROW_SLACK=4 (see hold.js) and a response is "correct" when its row
 // count lies in [EXPECTED_ROWS, EXPECTED_ROWS + ROW_SLACK]. Unset →
 // only shape is checked (valid JSON, `items` array, `status` present).
 export const EXPECTED_ROWS = __ENV.EXPECTED_ROWS ? parseInt(__ENV.EXPECTED_ROWS, 10) : null;

@@ -54,7 +54,7 @@ the wiki page `output/task-n12-capacity-experiment`.
 | `EVENT_ID` | yes | test event id |
 | `EVENT_SLUG` | hold, ssr | the event's DB slug. Redirects are not followed, so a wrong slug shows up as a 308 error |
 | `EXPECTED_ROWS` | recommended | visible row count at start. Sampled bodies outside `[N, N+ROW_SLACK]` count as errors |
-| `ROW_SLACK` | hold: `2` | the admin loop adds up to 2 rows for a while |
+| `ROW_SLACK` | hold: `4` | each admin cycle adds up to 2 rows for a while, and under overload a burst-window cycle can still be running when the next one starts |
 | `VERCEL_BYPASS` | preview | protection bypass secret |
 | `ADMIN_PASSWORD` | hold, admin | logs in via `/api/admin/login` |
 | `HOLD_RPS` | hold | highest rate that passed the ramp |
@@ -77,7 +77,7 @@ node tests/load/pg-connections.mjs
 tests/load/run.sh setlist-snapshot.js
 
 # 2. hold at the highest PASS stage from the ramp table, plus admin + bursts
-HOLD_RPS=100 ROW_SLACK=2 tests/load/run.sh hold.js -e ADMIN_CYCLE_PAUSE=90
+HOLD_RPS=100 ROW_SLACK=4 tests/load/run.sh hold.js -e ADMIN_CYCLE_PAUSE=90
 ```
 
 Every run writes `results/<date>/<stamp>-<kind>.md` (the per-stage

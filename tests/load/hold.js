@@ -8,10 +8,11 @@
 //                      polling load, which is when a real save lands
 //
 //   k6 run -e BASE_URL=... -e EVENT_ID=... -e EVENT_SLUG=... \
-//          -e EXPECTED_ROWS=... -e ROW_SLACK=2 -e ADMIN_PASSWORD=... \
+//          -e EXPECTED_ROWS=... -e ROW_SLACK=4 -e ADMIN_PASSWORD=... \
 //          -e HOLD_RPS=100 -e HOLD_SECONDS=600 tests/load/hold.js
 //
-// ROW_SLACK=2 because the admin loop briefly adds up to two rows; see
+// ROW_SLACK=4: each admin cycle briefly adds up to two rows, and the two
+// burst-window cycles can overlap under overload; see
 // lib/config.js.
 
 import { getSnapshot, getEventPage, requireEnv, GATES } from "./lib/config.js";
