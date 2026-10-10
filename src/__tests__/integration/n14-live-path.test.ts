@@ -12,7 +12,9 @@ import { Client } from "pg";
 //   3. a failing `realtime.send` does not abort the save;
 //   4. two overlapping same-event saves serialize on the row lock;
 //   5. the snapshot builder is one consistent REPEATABLE READ snapshot;
-//   6. the reaction ack watermark orders correctly against snapshots.
+//   6. the reaction ack watermark orders correctly against snapshots;
+//   7. the repair check's revision read works through the pooler with
+//      its transaction-local statement_timeout.
 //
 // Everything runs on a throwaway Event created here (slug
 // `n14-itest-<ts>`) and hard-deleted in afterAll with all of its rows.
@@ -53,6 +55,7 @@ import {
 } from "@/lib/liveBroadcast";
 import {
   buildEventSnapshot,
+  readRevisionBounded,
   __setSnapshotEstablishedHookForTests,
 } from "@/lib/liveSnapshot";
 import { POST as ADMIN_CREATE } from "@/app/api/admin/setlist-items/route";
@@ -702,5 +705,27 @@ describe("6. reaction ack watermark vs snapshot capturedAt", () => {
     expect(delBody.counts.waiting ?? 0).toBe(counts.waiting - 1);
     const snap2 = await buildEventSnapshot(eventId, "ja");
     expect(snap2.capturedAt.getTime()).toBeGreaterThan(new Date(delBody.ackAt).getTime());
+  });
+});
+
+// ---------------------------------------------------------------------
+// 7. the repair check's bounded revision read
+// ---------------------------------------------------------------------
+
+describe("7. bounded revision read (repair check)", () => {
+  it("reads the event's revision through the pooler, null for a missing event", async () => {
+    expect(await readRevisionBounded(eventId)).toBe(BigInt(await currentRev()));
+    expect(await readRevisionBounded(BigInt("9007199254740991"))).toBeNull();
+  });
+
+  it("its statement_timeout is transaction-local and never leaks to the pooled connection", async () => {
+    await readRevisionBounded(eventId);
+    // Both of the instance's pool slots, concurrently.
+    const settings = await Promise.all(
+      [0, 1].map(() =>
+        prisma.$queryRaw<{ v: string }[]>`SELECT current_setting('statement_timeout') AS v`,
+      ),
+    );
+    for (const [row] of settings) expect(row.v).not.toBe("500ms");
   });
 });

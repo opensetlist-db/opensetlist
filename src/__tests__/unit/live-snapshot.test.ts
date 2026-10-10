@@ -16,12 +16,16 @@ const db = vi.hoisted(() => ({
   revReads: 0,
   // Lets a test hold a build open to prove coalescing.
   gate: null as Promise<void> | null,
+  // Make the next build / revision read throw this.
+  buildError: null as unknown,
+  revReadError: null as unknown,
 }));
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
     $queryRaw: vi.fn(async () => {
       db.builds += 1;
+      if (db.buildError) throw db.buildError;
       if (db.gate) await db.gate;
       return [
         {
@@ -37,15 +41,28 @@ vi.mock("@/lib/prisma", () => {
     setlistItem: { findMany: vi.fn(async () => []) },
     setlistItemReaction: { groupBy: vi.fn(async () => []) },
   };
+  // The repair path's bounded revision read: its own short transaction
+  // (`set_config('statement_timeout', …)` then the 1-row SELECT).
+  const revTx = {
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
+      if (strings.join("").includes("set_config")) return [{ set_config: "500" }];
+      db.revReads += 1;
+      if (db.revReadError) throw db.revReadError;
+      return [{ setlistRevision: db.rev }];
+    }),
+  };
   return {
     prisma: {
-      $transaction: vi.fn(async (cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
-      // The repair path's uncached `SELECT "setlistRevision"`.
-      $queryRaw: vi.fn(async () => {
-        db.revReads += 1;
-        return [{ setlistRevision: db.rev }];
-      }),
+      // The snapshot build is the REPEATABLE READ transaction; the
+      // revision read passes no isolation level.
+      $transaction: vi.fn(
+        async (
+          cb: (t: typeof tx | typeof revTx) => Promise<unknown>,
+          opts?: { isolationLevel?: string },
+        ) => cb(opts?.isolationLevel ? tx : revTx),
+      ),
     },
+    logPoolStats: vi.fn(),
   };
 });
 
@@ -78,9 +95,11 @@ import {
   parseMinRev,
   resolveSnapshotForResponse,
   __resetLiveSnapshotStateForTests,
+  logSnapshotFailure,
   type EventSnapshot,
 } from "@/lib/liveSnapshot";
 import { revalidateEventData } from "@/lib/dataCache";
+import { logPoolStats, prisma } from "@/lib/prisma";
 
 beforeEach(() => {
   cache.clear();
@@ -90,9 +109,17 @@ beforeEach(() => {
   db.builds = 0;
   db.revReads = 0;
   db.gate = null;
+  db.buildError = null;
+  db.revReadError = null;
   vi.clearAllMocks();
   vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
+
+// Lines the module wrote through console.log, for format assertions.
+function logLines(): string[] {
+  return vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -282,5 +309,106 @@ describe("getLiveSnapshot", () => {
     const r = await getLiveSnapshot(BigInt(1), "ja");
     expect(r.snapshot.rev).toBe(BigInt(5));
     expect(db.revReads).toBe(0);
+  });
+});
+
+describe("getLiveSnapshot — diagnostics and failure handling", () => {
+  it("a real build logs the build line followed by the pool stats", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    expect(logLines().some((l) => l.startsWith("[liveSnapshot] build event=1 locale=ja rev=5 "))).toBe(true);
+    expect(logPoolStats).toHaveBeenCalledTimes(1);
+    expect(logPoolStats).toHaveBeenCalledWith("build");
+    // A cache hit builds nothing and logs no pool stats.
+    await getLiveSnapshot(BigInt(1), "ja");
+    expect(logPoolStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs one coalesced line with the waiter count when a build is shared", async () => {
+    let release!: () => void;
+    db.gate = new Promise<void>((r) => (release = r));
+    const ps = [1, 2, 3].map(() => getLiveSnapshot(BigInt(1), "ja"));
+    release();
+    await Promise.all(ps);
+    const lines = logLines().filter((l) => l.startsWith("[liveSnapshot] coalesced "));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      /^\[liveSnapshot\] coalesced waiters=3 event=1 locale=ja instance=[0-9a-f]{8}$/,
+    );
+  });
+
+  it("a lone request logs no coalesced line", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    expect(logLines().some((l) => l.includes("coalesced"))).toBe(false);
+  });
+
+  it("a failed build rejects every waiter and logs build-failed once", async () => {
+    db.buildError = Object.assign(new Error("timeout exceeded when trying to connect"), {
+      clientVersion: "7.7.0",
+    });
+    const results = await Promise.allSettled([
+      getLiveSnapshot(BigInt(1), "ja"),
+      getLiveSnapshot(BigInt(1), "ja"),
+    ]);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    const failed = logLines().filter((l) => l.startsWith("[liveSnapshot] build-failed "));
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatch(
+      /^\[liveSnapshot\] build-failed event=1 locale=ja ms=\d+ err=Error:timeout exceeded when trying to connect instance=[0-9a-f]{8}$/,
+    );
+    // The route's own call for the same error object is a no-op.
+    logSnapshotFailure(BigInt(1), "ja", 99, (results[0] as PromiseRejectedResult).reason);
+    expect(logLines().filter((l) => l.startsWith("[liveSnapshot] build-failed "))).toHaveLength(1);
+  });
+
+  it("rev read runs as a bounded transaction and logs one rev-read line", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    await getLiveSnapshot(BigInt(1), "ja", 999); // forged hint → one read
+    expect(prisma.$transaction).toHaveBeenLastCalledWith(expect.any(Function), {
+      maxWait: 1_000,
+      timeout: 1_500,
+    });
+    const lines = logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read "));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ instance=[0-9a-f]{8}$/,
+    );
+  });
+
+  it("rev read that times out → cannot verify: serve the cached snapshot, no repair, remembered", async () => {
+    await getLiveSnapshot(BigInt(1), "ja"); // caches rev 5
+    db.rev = BigInt(6);
+    // Postgres cancelled the SELECT (statement_timeout), as Prisma
+    // surfaces it: P2010 with the adapter error under meta.
+    db.revReadError = Object.assign(new Error("Raw query failed. Code: `57014`."), {
+      code: "P2010",
+      meta: {
+        driverAdapterError: {
+          name: "DriverAdapterError",
+          cause: { kind: "postgres", code: "57014", message: "canceling statement due to statement timeout" },
+        },
+      },
+    });
+    const r = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(r.source).toBe("cache");
+    expect(r.snapshot.rev).toBe(BigInt(5));
+    expect(db.builds).toBe(1);
+    expect(revalidateEventData).not.toHaveBeenCalled();
+    expect(
+      logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
+    ).toEqual([expect.stringMatching(/ rev=timeout ms=\d+ instance=/)]);
+    // Within the memo window the failure is remembered: no second read.
+    db.revReadError = null;
+    await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(db.revReads).toBe(1);
+  });
+
+  it("rev read failing for another reason is labelled error, still serves the cache", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    db.revReadError = new Error("boom");
+    const r = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(r.source).toBe("cache");
+    expect(
+      logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
+    ).toEqual([expect.stringMatching(/ rev=error ms=\d+ instance=/)]);
   });
 });
