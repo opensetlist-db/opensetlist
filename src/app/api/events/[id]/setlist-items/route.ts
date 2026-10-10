@@ -6,6 +6,10 @@ import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { getEventStatus } from "@/lib/eventStatus";
 import { deriveStageType, type ItemType } from "@/lib/setlistStageType";
 import { revalidateEventData } from "@/lib/dataCache";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -483,9 +487,20 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       // submitted the same song" which is a strong signal but not
       // necessarily a user explicitly voting through the
       // ConfirmButton.
+      //
+      // n14: the confirm changes the merged row's `confirmCount`, which
+      // the live snapshot carries (it drives the conflict-group sort),
+      // so the write runs in the standard writer transaction — lock
+      // the event, write, bump the revision + broadcast — and the
+      // event cache is expired after commit (below).
+      const dupRowId = dupRow.id;
       try {
-        await prisma.setlistItemConfirm.create({
-          data: { setlistItemId: dupRow.id },
+        await prisma.$transaction(async (tx) => {
+          await lockEvent(tx, eventId);
+          await tx.setlistItemConfirm.create({
+            data: { setlistItemId: dupRowId },
+          });
+          await bumpSetlistRevisionAndBroadcast(tx, eventId);
         });
       } catch (err) {
         console.error(
@@ -587,8 +602,14 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < POSITION_RETRY_MAX; attempt++) {
     try {
+      // n14 writer transaction: lock → create → bump + broadcast. The
+      // gates above (occupant / dedup) still read outside the lock;
+      // they are advisory for this flag-gated user path (rumoured rows
+      // are not position-unique), and the lock's job here is only to
+      // serialize the revision with concurrent operator saves.
       const created = await prisma.$transaction(async (tx) => {
-        return tx.setlistItem.create({
+        await lockEvent(tx, eventId);
+        const row = await tx.setlistItem.create({
           data: {
             eventId,
             position,
@@ -640,6 +661,8 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
             },
           },
         });
+        await bumpSetlistRevisionAndBroadcast(tx, eventId);
+        return row;
       });
 
       const { _count, ...createdRest } = created;

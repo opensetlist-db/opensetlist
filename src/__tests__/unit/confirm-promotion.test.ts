@@ -21,8 +21,20 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// The writer-transaction helpers are mocked: these tests pin the
+// route's control flow (when it locks / bumps), the SQL itself is
+// covered by the dev-DB integration suite.
+vi.mock("@/lib/liveBroadcast", () => ({
+  lockEvent: vi.fn(),
+  bumpSetlistRevisionAndBroadcast: vi.fn(),
+}));
+
 import { POST } from "@/app/api/setlist-items/[id]/confirm/route";
 import { prisma } from "@/lib/prisma";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 
 const params42 = Promise.resolve({ id: "42" });
 
@@ -46,7 +58,16 @@ describe("POST /api/setlist-items/[id]/confirm — conflict-handling promotion",
     (prisma.setlistItem.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     (prisma.setlistItemConfirm.create as ReturnType<typeof vi.fn>).mockResolvedValue({});
     (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    // Interactive transaction (n14): run the callback against the same
+    // mock client so per-test assertions see one consistent state.
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
+      async (cb: (tx: typeof prisma) => Promise<unknown>) => cb(prisma),
+    );
+    (prisma.setlistItem.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 1,
+    });
+    vi.mocked(lockEvent).mockResolvedValue(true);
+    vi.mocked(bumpSetlistRevisionAndBroadcast).mockResolvedValue(BigInt(1));
   });
 
   it("threshold NOT reached + has siblings → just writes confirm row, no promotion", async () => {
@@ -111,14 +132,53 @@ describe("POST /api/setlist-items/[id]/confirm — conflict-handling promotion",
         return Promise.resolve({ count: 1 });
       },
     );
-    // $transaction(array) — replay each call sequentially so the
-    // mockImplementation above fires in order
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (ops: Promise<unknown>[]) => Promise.all(ops),
-    );
-
     await POST(postRequest(), { params: params42 });
     expect(calls).toEqual(["hide-siblings", "promote-winner"]);
+  });
+
+  it("promotion locks the event first and bumps the revision once (n14)", async () => {
+    (prisma.setlistItem.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: BigInt(43) },
+    ]);
+    (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    const order: string[] = [];
+    vi.mocked(lockEvent).mockImplementation(async () => {
+      order.push("lock");
+      return true;
+    });
+    (prisma.setlistItem.updateMany as ReturnType<typeof vi.fn>).mockImplementation(
+      async () => {
+        order.push("update");
+        return { count: 1 };
+      },
+    );
+    vi.mocked(bumpSetlistRevisionAndBroadcast).mockImplementation(async () => {
+      order.push("bump");
+      return BigInt(7);
+    });
+    await POST(postRequest(), { params: params42 });
+    expect(order).toEqual(["lock", "update", "update", "bump"]);
+    expect(lockEvent).toHaveBeenCalledWith(prisma, BigInt(1));
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledWith(prisma, BigInt(1));
+  });
+
+  it("a promotion that matched no rows (raced) does not bump", async () => {
+    (prisma.setlistItem.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: BigInt(43) },
+    ]);
+    (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    (prisma.setlistItem.updateMany as ReturnType<typeof vi.fn>).mockResolvedValue({
+      count: 0,
+    });
+    await POST(postRequest(), { params: params42 });
+    expect(bumpSetlistRevisionAndBroadcast).not.toHaveBeenCalled();
+  });
+
+  it("a plain confirm (no promotion) never bumps", async () => {
+    (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    await POST(postRequest(), { params: params42 });
+    expect(lockEvent).not.toHaveBeenCalled();
+    expect(bumpSetlistRevisionAndBroadcast).not.toHaveBeenCalled();
   });
 
   it("winner update uses `where: { status: 'rumoured' }` for idempotency", async () => {
@@ -133,9 +193,6 @@ describe("POST /api/setlist-items/[id]/confirm — conflict-handling promotion",
     (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
     const updateManySpy = prisma.setlistItem.updateMany as ReturnType<typeof vi.fn>;
     updateManySpy.mockResolvedValue({ count: 1 });
-    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
-      async (ops: Promise<unknown>[]) => Promise.all(ops),
-    );
     await POST(postRequest(), { params: params42 });
     // Find the call that's the winner-promote — its where should
     // include status='rumoured'.

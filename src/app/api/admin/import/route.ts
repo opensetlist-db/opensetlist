@@ -17,7 +17,11 @@ import {
   isPattern2AlbumTrackVariant,
   isPattern3AlbumTrackVariant,
 } from "@/lib/albumTrackVariants";
-import { revalidatePublicData } from "@/lib/dataCache";
+import { revalidateEventData, revalidatePublicData } from "@/lib/dataCache";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseIsoInstant } from "@/lib/admin-input";
 
@@ -1632,15 +1636,6 @@ async function importSetlistItems(rows: Record<string, string>[]) {
       })
       .filter((a): a is NonNullable<typeof a> => a !== null);
 
-    // The id read happens just outside the transaction (single-operator
-    // admin import — the TOCTOU window is irrelevant), matching the
-    // read-then-$transaction pattern in importArtists' third pass.
-    const existingItems = await prisma.setlistItem.findMany({
-      where: { eventId },
-      select: { id: true },
-    });
-    const itemIds = existingItems.map((i) => i.id);
-
     // Atomic per-event replace, as an INTERACTIVE transaction. Wrapping the
     // delete + recreate in ONE transaction is the #499 fix for the
     // (eventId, position) P2002 that broke the niji re-import (a partial,
@@ -1673,9 +1668,27 @@ async function importSetlistItems(rows: Record<string, string>[]) {
     // delete with a foreign-key violation. Clearing them is correct, not
     // damage control: the recreate assigns fresh autoincrement ids, so the
     // old child rows are orphaned regardless of whether we delete them.
+    //
+    // n14: the transaction now starts by locking the event row and reads
+    // the existing item ids AFTER the lock (they used to be read just
+    // outside the transaction). A live-show re-import can overlap an
+    // operator's insert-after on the same event; under the lock the
+    // replace sees every committed item, and the concurrent save waits
+    // for the replace instead of landing in the middle of it. The
+    // replace ends with ONE revision bump + broadcast for the whole
+    // event, and that event's cached reads are expired right after its
+    // commit — not only at the end of the whole import — so live
+    // viewers see each event as soon as it lands.
+    let itemIds: bigint[] = [];
     try {
       await prisma.$transaction(
         async (tx) => {
+          await lockEvent(tx, eventId);
+          const existingItems = await tx.setlistItem.findMany({
+            where: { eventId },
+            select: { id: true },
+          });
+          itemIds = existingItems.map((i) => i.id);
           if (itemIds.length > 0) {
             await tx.setlistItemSong.deleteMany({ where: { setlistItemId: { in: itemIds } } });
             await tx.setlistItemMember.deleteMany({ where: { setlistItemId: { in: itemIds } } });
@@ -1687,9 +1700,11 @@ async function importSetlistItems(rows: Record<string, string>[]) {
           for (const args of createArgs) {
             await tx.setlistItem.create(args);
           }
+          await bumpSetlistRevisionAndBroadcast(tx, eventId);
         },
         { timeout: 30_000, maxWait: 10_000 },
       );
+      revalidateEventData(eventId);
       if (itemIds.length > 0) {
         results.push(`CLEARED: ${eventSlug} — ${itemIds.length} existing items deleted`);
       }

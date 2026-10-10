@@ -12,6 +12,7 @@ vi.mock("@/lib/admin-auth", () => ({
 
 vi.mock("@/lib/dataCache", () => ({
   revalidatePublicData: vi.fn(),
+  revalidateEventData: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
