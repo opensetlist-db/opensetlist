@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useImpressionPolling } from "@/hooks/useImpressionPolling";
+import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
 describe("useImpressionPolling", () => {
+  // Math.random = 0.5 → first poll at half the interval (random phase),
+  // every later gap exactly the interval (± spread at the midpoint).
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -28,7 +32,7 @@ describe("useImpressionPolling", () => {
     vi.restoreAllMocks();
   });
 
-  it("polls at the default 30s cadence while enabled with cache: no-store", async () => {
+  it("polls at the default 30 s cadence (after a 15 s phase at random = 0.5) with cache: no-store", async () => {
     // No `intervalMs` override here — exercises the hook's default,
     // which is the load-bearing value in production. The default
     // dropped from 5s → 30s as part of the F14 launch-day-retro
@@ -162,5 +166,81 @@ describe("useImpressionPolling", () => {
     // run on every tick and re-introduce the perf concern this
     // separation is meant to prevent.
     expect(url).not.toContain("includeTotal");
+  });
+});
+
+describe("useImpressionPolling — n14 cadence + visibility", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ impressions: [], nextCursor: null }),
+      }) as unknown as typeof fetch,
+    );
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", { value: false, configurable: true });
+  });
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it("random initial phase U(0, 30 s), then gaps within 30 s ± 5 s", async () => {
+    // phase 0.2 → 6 s; gap draws 0 → 25 s, 0.9999 → ~35 s.
+    const draws = [0.2, 0, 0.9999, 0.5];
+    vi.spyOn(Math, "random").mockImplementation(() => draws.shift() ?? 0.5);
+    renderHook(() => useImpressionPolling({ eventId: "1", enabled: true }));
+
+    await advance(5_999);
+    expect(global.fetch).toHaveBeenCalledTimes(0);
+    await advance(1); // 6 s
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await advance(24_999);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await advance(1); // 31 s (gap 25 s)
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    await advance(34_998);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    await advance(2); // ~66 s (gap ≈ 35 s)
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not poll while the tab is hidden; resumes with one immediate catch-up", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    renderHook(() => useImpressionPolling({ eventId: "1", enabled: true }));
+    await advance(15_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await advance(10 * 60_000);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+    await advance(0);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    // Cadence restarts with a fresh random phase (15 s at 0.5).
+    await advance(15_000);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not fetch immediately on mount (the SSR seed is fresh)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    renderHook(() => useImpressionPolling({ eventId: "1", enabled: true }));
+    await advance(0);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
