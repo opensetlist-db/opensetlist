@@ -28,6 +28,12 @@
 // (postgres_changes) with the R2 transport (broadcast) on the same
 // population.
 //
+// Drills: `dropPg` (worker-wide) makes every client ignore its
+// scope-checked postgres_changes notifications — recorded in `notes` with
+// type "x" instead of the change type, never scheduled — so only the
+// periodic repair poll can bring the client forward (lost-notification
+// drill). The socket and the channel stay healthy.
+//
 // What is kept per client is deliberately tiny — timestamps and revs,
 // never response bodies — so a few hundred clients fit in one laptop
 // process. The population is split over several worker threads so the
@@ -65,6 +71,7 @@ const TOPIC = `event:${EVENT}`;
 const CANCELLED = { kind: "cancelled" };
 const OK = { kind: "ok" };
 const subs = [];
+let dropPg = false; // see "Drills" above
 
 function makeSub(idx) {
   const rec = {
@@ -76,6 +83,11 @@ function makeSub(idx) {
     errors: {},
     fallbacks: [], // [t, status]
     applied: [], // [t, rev] whenever the applied rev increases
+    // [t, rev, reason] for EVERY snapshot the acceptance rule applied, in
+    // order — not only increases — so the run can prove the applied rev
+    // never went backwards (e.g. across the polling → realtime handoff)
+    // and say which fetch reason delivered a revision.
+    appliedAll: [],
     notes: [], // [t, eventType initial, row id] (scope-checked notifications)
     bcasts: [], // [t, rev]
     fetches: {}, // reason → count
@@ -120,6 +132,7 @@ function makeSub(idx) {
       if (!body || !Array.isArray(body.items)) return fail(null);
       const v = acceptance.evaluate(generation, body);
       if (v.kind === "stale-generation") return CANCELLED;
+      if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason]);
       if (v.apply && v.version && (lastAppliedRev === null || v.version.rev > lastAppliedRev)) {
         lastAppliedRev = v.version.rev;
         rec.applied.push([Date.now(), v.version.rev]);
@@ -184,6 +197,10 @@ function makeSub(idx) {
         if (sess.disposed) return;
         const pushed = p.new?.eventId ?? p.old?.eventId;
         if (pushed != null && String(pushed) !== EVENT) return;
+        if (dropPg) {
+          rec.notes.push([Date.now(), "x", String(p.new?.id ?? p.old?.id ?? "")]);
+          return;
+        }
         rec.notes.push([Date.now(), (p.eventType || "?")[0], String(p.new?.id ?? p.old?.id ?? "")]);
         sess.scheduler.requestFetch("notification");
       })
@@ -255,6 +272,15 @@ parentPort.on("message", async (msg) => {
       if (a.length && a[a.length - 1][1] >= msg.rev) count++;
     }
     parentPort.postMessage({ type: "reached", count });
+  } else if (msg.cmd === "noted") {
+    // How many clients have received a (not dropped) notification of
+    // change type msg.ty ("I" / "U" / "D") for row msg.id.
+    let count = 0;
+    for (const s of subs) if (s.rec.notes.some(([, ty, id]) => ty === msg.ty && id === msg.id)) count++;
+    parentPort.postMessage({ type: "noted", count });
+  } else if (msg.cmd === "dropPg") {
+    dropPg = !!msg.on;
+    parentPort.postMessage({ type: "dropPgAck", on: dropPg });
   } else if (msg.cmd === "drop") {
     let ok = 0;
     for (const s of subs) if (s.dropSocket()) ok++;
