@@ -141,6 +141,35 @@ export class SnapshotAcceptance {
   }
 
   /**
+   * `?minRev=` for a NOTIFICATION-triggered request: one past the
+   * applied revision (or `wantedRev`, whichever is higher).
+   *
+   * Why: in R1 a notification (postgres_changes) carries no revision,
+   * but it does mean "a save just committed". The save purges the
+   * snapshot cache right after its commit, and the push + jitter can
+   * beat that purge to the client — with `minRev = appliedRev` the
+   * server would happily serve the still-cached old snapshot, and the
+   * page would wait for the next periodic poll (≤ 24 s). Asking for
+   * `appliedRev + 1` makes the server's repair path check the real DB
+   * revision and rebuild only if the DB is ahead; a wrong guess costs
+   * one coalesced 1-row read and never a rebuild.
+   *
+   * Single-use: the value is NOT stored. It never raises `wantedRev`,
+   * so a response that still comes back at `appliedRev` is a normal,
+   * healthy response — not a server gap, not a hint gap, no retry, no
+   * "delayed" indicator. Null when nothing is applied yet (no basis
+   * for a guess; fall back to `wantedRev`).
+   */
+  notificationMinRev(): number | null {
+    const applied = this._applied.rev;
+    if (applied === null) return this.wantedRev;
+    const next = applied + 1;
+    if (!isValidRev(next)) return this.wantedRev;
+    return Math.max(this.wantedRev ?? 0, next);
+  }
+
+
+  /**
    * Start a new generation (event or locale changed, or first mount)
    * seeded from SSR. SSR's revision counts as server-observed: the
    * first client fetch must not roll the server-rendered page back.

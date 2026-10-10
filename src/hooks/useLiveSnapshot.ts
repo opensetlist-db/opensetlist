@@ -296,12 +296,18 @@ export function useLiveSnapshot<T>({
               // revalidates every time anyway. `no-store` would only
               // forbid conditional requests the server may answer
               // cheaply later.
+              //
+              // `minRev`: a notification-triggered request asks for one
+              // past the applied revision as a single-use hint (see
+              // `notificationMinRev` — closes the push-beats-cache-purge
+              // window); everything else asks for the highest revision
+              // the server has shown us.
+              const minRev =
+                reason === "notification"
+                  ? acceptance.notificationMinRev()
+                  : acceptance.minRevToSend();
               const res = await fetch(
-                setlistSnapshotUrl(
-                  fetchEventId,
-                  fetchLocale,
-                  acceptance.minRevToSend(),
-                ),
+                setlistSnapshotUrl(fetchEventId, fetchLocale, minRev),
                 { signal: controller.signal },
               );
               if (settled) return;

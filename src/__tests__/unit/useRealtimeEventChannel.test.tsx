@@ -1506,6 +1506,69 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     );
   });
 
+  it("a notification request carries minRev = appliedRev + 1; periodic / catch-up carry the applied rev", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(revResponse(7, "2026-11-14T07:30:00.000Z"));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({ initialRev: 7, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
+    await flushMicrotasks();
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=7",
+    );
+
+    await act(async () => {
+      setlistHandler()({ new: { eventId: 1 } });
+    });
+    await advance(250);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=8",
+    );
+    // The server answered rev 7 (DB not ahead / purge not visible yet):
+    // a normal healthy response — no retry, nothing "delayed".
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.rev).toBe(7);
+    await advance(19_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The hint was single-use: periodic and catch-up go back to 7.
+    await advance(750); // periodic at 20 s
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=7",
+    );
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await flushMicrotasks();
+    expect(fetchMock.mock.calls[3][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=7",
+    );
+    expect(result.current.freshness.state).toBe("live");
+  });
+
+  it("repeated hint misses never escalate to retrying / delayed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(revResponse(3, "2026-11-14T07:30:00.000Z"));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({ initialRev: 3, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
+    await flushMicrotasks();
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        setlistHandler()({ new: { eventId: 1 } });
+      });
+      await advance(1_000);
+      expect(result.current.freshness.state).toBe("live");
+    }
+    // 1 seed + 5 notification requests, every one hinted at 4, no retries.
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const call of fetchMock.mock.calls.slice(1)) {
+      expect(call[0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+    }
+  });
+
   it("omits minRev when no revision is known yet", async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);

@@ -198,4 +198,41 @@ describe("SnapshotAcceptance", () => {
       expect(acc.minRevToSend()).toBe(2);
     });
   });
+
+  describe("notificationMinRev — single-use hint", () => {
+    it("asks for appliedRev + 1 without storing it", () => {
+      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
+      expect(acc.notificationMinRev()).toBe(8);
+      // Not stored: wantedRev / ordinary minRev are unchanged.
+      expect(acc.wantedRev).toBe(7);
+      expect(acc.minRevToSend()).toBe(7);
+    });
+
+    it("a response that still comes back at appliedRev is healthy (no gap of any kind)", () => {
+      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
+      acc.notificationMinRev();
+      expect(acc.evaluate(acc.generation, { rev: 7, capturedAt: T1 })).toMatchObject({
+        apply: true,
+        serverGap: false,
+        hintGap: false,
+      });
+      expect(acc.wantedRev).toBe(7);
+    });
+
+    it("never goes below wantedRev (an R2 hint already higher wins)", () => {
+      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
+      acc.noteHintRev(12);
+      expect(acc.notificationMinRev()).toBe(12);
+    });
+
+    it("falls back to wantedRev when nothing is applied", () => {
+      const acc = new SnapshotAcceptance();
+      expect(acc.notificationMinRev()).toBeNull();
+    });
+
+    it("does not overflow past MAX_SAFE_INTEGER", () => {
+      const acc = new SnapshotAcceptance({ rev: Number.MAX_SAFE_INTEGER, capturedAt: T0 });
+      expect(acc.notificationMinRev()).toBe(Number.MAX_SAFE_INTEGER);
+    });
+  });
 });
