@@ -159,12 +159,21 @@ if (!keyVar) {
       if (args.metrics) {
         metricNames = String(args.metrics).split(",").map((s) => s.trim()).filter((n) => all.includes(n));
       } else {
-        // Client gauges first, then backend/server gauges, plus Postgres'
-        // own backend count for cross-checking (b).
+        // The cap gauges first: Supavisor exports pgbouncer-compatible
+        // names, and the number that counts against the 200-client limit
+        // is `pgbouncer_used_clients` (every client socket, idle ones
+        // included) — `pgbouncer_pools_client_active_connections` only
+        // counts clients currently linked to a backend, so a burst's
+        // idle-but-open Prisma clients would be invisible to it.
+        // `free_clients` is the headroom, `login_clients` the handshakes
+        // in flight, `max_client_connections` the cap itself. Then the
+        // per-pool client/server gauges, then Postgres' own backend count
+        // for cross-checking (b).
         const pool = (n) => /supavisor|pooler|pgbouncer/i.test(n);
+        const cap = hits.filter((n) => pool(n) && /(used_clients|free_clients|login_clients|max_client_connections|client_maxwait)/i.test(n));
         const clients = hits.filter((n) => pool(n) && /client/i.test(n) && /conn/i.test(n));
         const servers = hits.filter((n) => pool(n) && /(server|backend|db)/i.test(n) && /conn/i.test(n));
-        metricNames = [...new Set([...clients, ...servers, ...all.filter((n) => n === "pg_stat_database_num_backends")])];
+        metricNames = [...new Set([...cap, ...clients, ...servers, ...all.filter((n) => n === "pg_stat_database_num_backends")])];
       }
       metricsNote = metricNames.length
         ? `ok: sampling ${metricNames.join(", ")} (all matching names in ${path.basename(namesFile)})`

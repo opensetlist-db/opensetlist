@@ -219,7 +219,12 @@ header says "unavailable" and the metric columns stay empty — the endpoint
 exists on dev (HTTP 401 without a key). With a key, every metric name
 matching supavisor / pooler / pgbouncer / client goes to
 `<stamp>-pooler-metrics.txt` and the client/backend connection gauges are
-sampled (`--metrics=a,b` to choose). (b) backends by state and
+sampled (`--metrics=a,b` to choose). Verified on dev 2026-10-10: Supavisor
+exports pgbouncer-compatible names; the gate reads
+**`pgbouncer_used_clients`** against `pgbouncer_config_max_client_connections`
+(= 200 on Micro) — `pgbouncer_pools_client_active_connections` only counts
+clients linked to a backend and misses idle-but-open Prisma clients.
+(b) backends by state and
 `application_name` (`Supavisor` rows are the pooler's server side). (c)
 `probe_result`: a fresh connection through the transaction pooler every
 2 s; `EMAXCONN` there means the 200-client cap was hit at that moment.
