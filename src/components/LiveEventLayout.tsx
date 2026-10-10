@@ -250,6 +250,7 @@ export function LiveEventLayout({
     top3Wishes,
     status: polledStatus,
     lastUpdated,
+    freshness,
   } = useRealtimeEventChannel<LiveSetlistItem>({
     eventId,
     initialItems,
@@ -399,6 +400,7 @@ export function LiveEventLayout({
           isOngoing={isOngoing}
           locale={locale}
           status={effectiveStatus}
+          freshness={freshness}
           isWishPredictOpen={isWishPredictOpen}
           // Share-card header pair. v0.11.6 added short-variant
           // preference (operator preference): the captured PNG is

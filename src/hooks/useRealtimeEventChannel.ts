@@ -23,6 +23,14 @@ import {
   getDocumentHiddenSnapshot,
   getDocumentHiddenServerSnapshot,
 } from "@/lib/realtimeRecovery";
+import {
+  INITIAL_FRESHNESS,
+  armSnapshotDeadline,
+  freshnessStateFor,
+  parseRetryAfterMs,
+  snapshotRetryDelayMs,
+  type Freshness,
+} from "@/lib/snapshotFreshness";
 
 export type { ReactionCountsMap };
 
@@ -76,6 +84,14 @@ interface UseRealtimeEventChannelResult<T> {
    */
   status: ResolvedEventStatus | null;
   lastUpdated: string | null;
+  /**
+   * Whether THIS browser is keeping up with the event: client time of
+   * the last successful snapshot plus live / retrying / delayed. Drives
+   * the 「最終同期 / 更新が遅れています」 indicator in `<LiveSetlist>`.
+   * Reflects sync success, not data age — a quiet MC with a healthy
+   * channel stays "live". See `src/lib/snapshotFreshness.ts`.
+   */
+  freshness: Freshness;
 }
 
 interface SetlistSnapshot<T> {
@@ -150,12 +166,14 @@ interface ReactionRowPayload {
  *     fallback path is wired and ready — flipping the flag hands
  *     the load over to the proven 5s polling path within one render.
  *
- *   - Reconnect refetch: if the channel briefly drops and reconnects
- *     before the retry budget is exhausted (supabase-js handles
- *     this internally), `SUBSCRIBED` fires again. The first
- *     `SUBSCRIBED` after mount is the normal initial join; every
- *     subsequent `SUBSCRIBED` is a recovery — refetch /api/setlist
- *     to fill any pushes that landed during the drop window.
+ *   - Refetch on every `SUBSCRIBED`: if the channel briefly drops and
+ *     reconnects before the retry budget is exhausted (supabase-js
+ *     handles this internally), `SUBSCRIBED` fires again and the
+ *     refetch fills any pushes that landed during the drop window.
+ *     The FIRST `SUBSCRIBED` refetches too (catch-up): the seed
+ *     fetch is issued before the channel is live, so a write landing
+ *     between the seed's DB read and subscription activation would
+ *     otherwise be invisible until the next unrelated push.
  *
  *   - Sentry observability: breadcrumb on every status transition
  *     (so post-show analysis can reconstruct what happened); a
@@ -215,6 +233,27 @@ interface ReactionRowPayload {
  *     pinned at 0 anyway (no setUser, sendDefaultPii false), so
  *     "Events" count IS the signal — 168/9d ≈ 19/day as the
  *     pre-R3.5 baseline; expect this to drop sharply.
+ *
+ * Snapshot freshness (bounded retries + indicator):
+ *
+ *   - Every snapshot request carries an 8 s deadline. A non-OK
+ *     response, a thrown network/JSON error, or a deadline expiry
+ *     schedules a retry on the 1/2/4/8/15/30 s (±20 %) schedule,
+ *     honouring `Retry-After`; after the 30 s step it keeps retrying
+ *     every ~30 s for as long as the channel effect is alive (i.e.
+ *     while the tab is visible — hiding tears the effect down and
+ *     with it the retry timer). Any newer fetch (a push, a
+ *     reconnect) supersedes a pending retry; success resets the
+ *     schedule.
+ *
+ *   - A snapshot failure does NOT flip `pollFallback`. If the DB is
+ *     what's struggling, switching every viewer to 5 s polling would
+ *     add load exactly when it hurts. R3 stays tied to channel-level
+ *     CHANNEL_ERROR / TIMED_OUT.
+ *
+ *   - `freshness` reports live → retrying (1–2 failures, silent) →
+ *     delayed (≥ 3 failures, or a channel fallback until polling has
+ *     produced a newer sync than realtime last did).
  */
 export function useRealtimeEventChannel<T>({
   eventId,
@@ -232,6 +271,13 @@ export function useRealtimeEventChannel<T>({
     useState<FanTop3Entry[]>(initialTop3Wishes);
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [freshness, setFreshness] = useState<Freshness>(INITIAL_FRESHNESS);
+
+  // Consecutive snapshot failures. Hook-scoped (not channel-effect
+  // scoped) so the count — and therefore the "delayed" indicator —
+  // survives the channel effect re-running on a visibility pause or a
+  // fallback recovery attempt; reset on success and on eventId change.
+  const snapshotFailuresRef = useRef(0);
 
   // R3: fallback gate. Flips to true on CHANNEL_ERROR / TIMED_OUT.
   // Adding it to the realtime effect's deps means the effect re-runs
@@ -280,19 +326,6 @@ export function useRealtimeEventChannel<T>({
     pollFallbackRef.current = pollFallback;
   }, [pollFallback]);
 
-  // R3.5: tracks whether the channel was torn down via the visibility
-  // hide path (vs eventId/locale/enabled change or pollFallback flip).
-  // Read inside the SUBSCRIBED handler — when the first SUBSCRIBED
-  // after a pause fires, we treat it as a reconnect and refetch the
-  // snapshot to gap-fill any pushes the user missed while away. The
-  // existing `hasSubscribedBeforeRef` is reset at the top of the
-  // channel-setup effect (intentional, per its own comment), so it
-  // would misread the post-resume SUBSCRIBED as an initial join.
-  // `wasPausedRef` survives the effect cleanup because it lives at
-  // hook scope and is only mutated from the visibility handler + the
-  // SUBSCRIBED handler that clears it.
-  const wasPausedRef = useRef(false);
-
   // R3.5: bounded auto-recovery state. `recoveryAttemptsRef` counts
   // attempts across the whole hook lifetime (or eventId change,
   // whichever comes first); `pendingRecoveryTimeoutRef` holds the
@@ -316,13 +349,6 @@ export function useRealtimeEventChannel<T>({
     locale,
     enabled: enabled && pollFallback,
   });
-
-  // First-SUBSCRIBED-vs-reconnect tracking. supabase-js auto-rejoins
-  // on socket-level transient drops; the channel re-fires SUBSCRIBED
-  // afterwards. The initial mount also fires SUBSCRIBED once. Use a
-  // ref so the discriminator survives re-renders without hitting the
-  // effect-deps array (which would re-trigger the channel setup).
-  const hasSubscribedBeforeRef = useRef(false);
 
   // Once-per-session latch for the Sentry captureMessage. The
   // breadcrumb stream still records every transition, but a sustained
@@ -360,6 +386,7 @@ export function useRealtimeEventChannel<T>({
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
     setLastUpdated(null);
+    setFreshness(INITIAL_FRESHNESS);
     // The fallback gate stays sticky — if we fell back on event A,
     // navigating to event B gets a fresh attempt at realtime. This
     // matches "user refresh = fresh retry" semantics. Matching ref
@@ -387,7 +414,7 @@ export function useRealtimeEventChannel<T>({
   // channel-setup effect so cleanup runs first in declaration order
   // and the channel-setup effect sees refs at their reset values.
   useEffect(() => {
-    wasPausedRef.current = false;
+    snapshotFailuresRef.current = 0;
     recoveryAttemptsRef.current = 0;
     if (pendingRecoveryTimeoutRef.current !== null) {
       clearTimeout(pendingRecoveryTimeoutRef.current);
@@ -407,10 +434,11 @@ export function useRealtimeEventChannel<T>({
   // dep on `paused`); this effect runs ONLY for the cross-cutting
   // bookkeeping that those transitions trigger:
   //
-  //   - On hide (paused: false → true): mark `wasPausedRef` so the
-  //     eventual SUBSCRIBED-after-resume is treated as a reconnect
-  //     (gap-fill refetch), and cancel any pending recovery timer
-  //     (no point spinning up a channel we're about to tear down).
+  //   - On hide (paused: false → true): cancel any pending recovery
+  //     timer (no point spinning up a channel we're about to tear
+  //     down). The gap-fill on resume needs no bookkeeping: the
+  //     re-run channel effect seeds a snapshot and every SUBSCRIBED
+  //     refetches.
   //
   //   - On resume (paused: true → false): if we'd already fallen
   //     back to polling while hidden, give realtime a fresh shot.
@@ -430,7 +458,6 @@ export function useRealtimeEventChannel<T>({
     const wasPrev = prevPausedRef.current;
     prevPausedRef.current = paused;
     if (!wasPrev && paused) {
-      wasPausedRef.current = true;
       if (pendingRecoveryTimeoutRef.current !== null) {
         clearTimeout(pendingRecoveryTimeoutRef.current);
         pendingRecoveryTimeoutRef.current = null;
@@ -468,30 +495,32 @@ export function useRealtimeEventChannel<T>({
     // pauses — same shape, same early return, same cleanup chain.
     if (paused) return;
 
-    // Reset the channel-bound SUBSCRIBED tracker at the top of every
-    // channel setup. It tracks state of the CURRENT channel —
-    // initial-vs-reconnect for THIS channel's transitions — so
-    // resetting only on eventId change (in a sibling useEffect)
-    // would leak old-channel state into the new channel when locale
-    // changes (the channel-setup effect re-runs but the sibling does
-    // not, so the new channel's first SUBSCRIBED would be misread as
-    // a reconnect and trigger a redundant /api/setlist refetch).
-    //
-    // `hasReportedFallbackRef` is NOT reset here, in contrast — it's
-    // a per-session latch (eventId-scoped, see the eventId-change
-    // block above). With R3.5 auto-recovery the effect re-runs on
-    // every retry attempt; resetting the latch here would re-fire
-    // the captureMessage on every recovery cycle's failure, defeating
-    // the "one capture per session" invariant the operator relies on.
-    hasSubscribedBeforeRef.current = false;
+    // `hasReportedFallbackRef` is deliberately NOT reset per channel
+    // setup — it's a per-session latch (eventId-scoped, see the
+    // eventId-change block above). With R3.5 auto-recovery the effect
+    // re-runs on every retry attempt; resetting the latch here would
+    // re-fire the captureMessage on every recovery cycle's failure,
+    // defeating the "one capture per session" invariant the operator
+    // relies on.
 
     // ──── Snapshot fetch ────
-    // Used both for the initial mount seed AND as the Path B refetch
-    // triggered by SetlistItem / SongWish pushes AND as the gap-fill
-    // refetch when the channel reconnects after a drop. Same
-    // endpoint, same response shape — the polling and realtime paths
-    // reconcile against identical data.
+    // Used for the initial mount seed, the Path B refetch triggered by
+    // SetlistItem / SongWish pushes, the catch-up / gap-fill refetch
+    // on every SUBSCRIBED, the status-boundary timer, and the retry
+    // schedule below. Same endpoint, same response shape — the
+    // polling and realtime paths reconcile against identical data.
+    //
+    // Pending retry for the most recent failed snapshot. Effect-local
+    // like `boundaryTimer`: the cleanup clears it, so a hidden tab
+    // (paused), a fallback flip, or an eventId change stops retrying.
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const fetchSnapshot = async () => {
+      // A fresh fetch supersedes any scheduled retry — it IS the retry.
+      // If it fails too, it schedules the next step itself.
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       // Cancel any prior in-flight fetch so a rapid burst of pushes
       // (e.g., admin paste-importing a setlist, multiple wishes
       // landing within the same animation frame) collapses to a
@@ -501,8 +530,39 @@ export function useRealtimeEventChannel<T>({
       }
       const controller = new AbortController();
       abortRef.current = controller;
+      const deadline = armSnapshotDeadline(controller);
       const fetchEventId = eventId;
       const fetchLocale = locale;
+      // Failure bookkeeping for a request that is still current: bump
+      // the consecutive-failure count, surface it as freshness, and
+      // schedule the next attempt on the bounded backoff.
+      const recordFailure = (retryAfterMs: number | null) => {
+        snapshotFailuresRef.current += 1;
+        const failures = snapshotFailuresRef.current;
+        setFreshness((prev) => ({
+          lastSyncAt: prev.lastSyncAt,
+          state: freshnessStateFor(failures),
+        }));
+        const delayMs = snapshotRetryDelayMs(failures, retryAfterMs);
+        Sentry.addBreadcrumb({
+          category: "realtime",
+          message: `event:${fetchEventId} snapshot failed (${failures} consecutive), retry in ${delayMs}ms`,
+          level: "warning",
+          data: { eventId: fetchEventId, failures, delayMs },
+        });
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          void fetchSnapshot();
+        }, delayMs);
+      };
+      // "Still current" = not superseded/cleaned up and the page still
+      // shows the same event+locale. A deadline abort also sets
+      // `signal.aborted`, so it's excluded via `timedOut()` — a
+      // timed-out request is a failure, not a cancellation.
+      const isCurrent = () =>
+        (!controller.signal.aborted || deadline.timedOut()) &&
+        eventIdRef.current === fetchEventId &&
+        localeRef.current === fetchLocale;
       try {
         const res = await fetch(
           `/api/setlist?eventId=${encodeURIComponent(fetchEventId)}&locale=${encodeURIComponent(fetchLocale)}`,
@@ -515,7 +575,10 @@ export function useRealtimeEventChannel<T>({
         ) {
           return;
         }
-        if (!res.ok) return;
+        if (!res.ok) {
+          recordFailure(parseRetryAfterMs(res.headers?.get("Retry-After")));
+          return;
+        }
         const data = (await res.json()) as SetlistSnapshot<T>;
         if (
           controller.signal.aborted ||
@@ -536,13 +599,16 @@ export function useRealtimeEventChannel<T>({
           setStatus(data.status ?? null);
         }
         setLastUpdated(data.updatedAt);
-      } catch (err) {
-        // AbortError from cleanup or supersede — silent.
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        // Network/JSON failure — also silent. The pollFallback path
-        // catches *channel* errors; one-off /api/setlist hiccups
-        // recover on the next push or reconnect refetch.
+        snapshotFailuresRef.current = 0;
+        setFreshness({ lastSyncAt: new Date(), state: "live" });
+      } catch {
+        // Cancellation (cleanup / supersede / event change) is silent.
+        // Network / JSON failures and deadline expiry retry on the
+        // bounded schedule — NOT via pollFallback, which stays
+        // reserved for channel-level errors (see the hook docblock).
+        if (isCurrent()) recordFailure(null);
       } finally {
+        deadline.clear();
         if (abortRef.current === controller) {
           abortRef.current = null;
         }
@@ -812,37 +878,22 @@ export function useRealtimeEventChannel<T>({
         });
 
         if (channelStatus === "SUBSCRIBED") {
-          // R3.5: visibility-resume gap-fill. `wasPausedRef` is set by
-          // the visibility handler when the tab goes hidden; the FIRST
-          // SUBSCRIBED after a resume is functionally a reconnect (we
-          // may have missed pushes during the away window) and
-          // deserves a refetch. The `hasSubscribedBeforeRef` reset at
-          // the top of this effect would otherwise misclassify it as
-          // an initial join. Clear `wasPausedRef` after consuming so
-          // subsequent reconnects-within-this-channel-lifecycle fall
-          // through to the normal `hasSubscribedBeforeRef` path.
-          if (wasPausedRef.current) {
-            // Resume from a visibility pause. The mount-seed
-            // `void fetchSnapshot()` at the top of this effect re-run
-            // already fired the gap-fill (the effect re-runs when
-            // `paused` flips back to false, going through the same
-            // code path as an initial mount). Just clear the latch
-            // and seed `hasSubscribedBeforeRef` so any subsequent
-            // SUBSCRIBEDs within this channel lifetime (supabase-js
-            // mid-session reconnects) are still treated as reconnects.
-            wasPausedRef.current = false;
-            hasSubscribedBeforeRef.current = true;
-            return;
-          }
-          if (hasSubscribedBeforeRef.current) {
-            // Reconnect after a transient drop — supabase-js
-            // re-subscribed inside its retry budget. We may have
-            // missed pushes during the gap; refetch the snapshot
-            // to converge.
-            void fetchSnapshot();
-          } else {
-            hasSubscribedBeforeRef.current = true;
-          }
+          // Refetch on EVERY SUBSCRIBED — initial join, supabase-js
+          // reconnect after a transient drop, and the re-subscribe
+          // after a visibility resume all need it:
+          //
+          //   - Initial join (catch-up): the seed `fetchSnapshot()`
+          //     above runs BEFORE the channel is live. A write that
+          //     commits between the seed's DB read and this moment is
+          //     in neither the seed nor any push, so without this
+          //     refetch it stays invisible until some unrelated push
+          //     arrives — during a quiet MC that can be minutes. If the
+          //     seed is still in flight, the supersede abort in
+          //     `fetchSnapshot` collapses the two into one request
+          //     whose read starts after subscription activation.
+          //   - Reconnect / resume (gap-fill): pushes that landed while
+          //     the socket was down are lost; the snapshot converges.
+          void fetchSnapshot();
           return;
         }
 
@@ -944,6 +995,10 @@ export function useRealtimeEventChannel<T>({
       if (boundaryTimer !== null) {
         clearTimeout(boundaryTimer);
       }
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       // `removeChannel` both unsubscribes and removes the channel
       // from the supabase-js internal registry. If we only called
       // `channel.unsubscribe()`, the registry would leak the
@@ -967,8 +1022,28 @@ export function useRealtimeEventChannel<T>({
       top3Wishes: polled.lastUpdated ? polled.top3Wishes : top3Wishes,
       status: polled.status ?? status,
       lastUpdated: polled.lastUpdated ?? lastUpdated,
+      freshness: fallbackFreshness(freshness, polled.freshness),
     };
   }
 
-  return { items, reactionCounts, top3Wishes, status, lastUpdated };
+  return { items, reactionCounts, top3Wishes, status, lastUpdated, freshness };
+}
+
+/**
+ * Freshness while R3 polling owns the page. Realtime's own snapshots
+ * stop the moment `pollFallback` flips (the channel effect early-
+ * returns), so its `lastSyncAt` is frozen at the hand-off. Polling is
+ * "driving" only once it has synced MORE RECENTLY than that — its
+ * state can carry over from an earlier fallback stint in the same
+ * session, so `lastSyncAt !== null` alone would misreport. Until then
+ * the page is not updating and says so ("delayed"); after, polling's
+ * own live / retrying / delayed applies — a healthy 5 s poll is an
+ * honest "last sync" clock, not a warning.
+ */
+function fallbackFreshness(realtime: Freshness, polled: Freshness): Freshness {
+  const realtimeAt = realtime.lastSyncAt?.getTime() ?? -Infinity;
+  if (polled.lastSyncAt && polled.lastSyncAt.getTime() > realtimeAt) {
+    return polled;
+  }
+  return { lastSyncAt: realtime.lastSyncAt, state: "delayed" };
 }

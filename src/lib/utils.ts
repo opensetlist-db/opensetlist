@@ -190,22 +190,45 @@ export function formatDate(
 ): string {
   if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
-  const localeMap: Record<string, string> = {
-    ko: "ko-KR",
-    ja: "ja-JP",
-    en: "en-US",
-    "zh-CN": "zh-CN",
-  };
   // Defense in depth: a request whose locale segment bypasses the
   // [locale] page guards (e.g. scanner traffic to /.env, /.git) can
   // reach here with an arbitrary string. Intl.DateTimeFormat throws
   // RangeError on unknown locale tags, so try the resolved locale and
   // fall back to en-US on any rejection rather than 500ing the page.
-  const resolved = localeMap[locale] ?? locale;
+  const resolved = INTL_LOCALE_MAP[locale] ?? locale;
   try {
     return d.toLocaleDateString(resolved, options);
   } catch {
     return d.toLocaleDateString("en-US", options);
+  }
+}
+
+const INTL_LOCALE_MAP: Record<string, string> = {
+  ko: "ko-KR",
+  ja: "ja-JP",
+  en: "en-US",
+  "zh-CN": "zh-CN",
+};
+
+/**
+ * Time-of-day counterpart to `formatDate` — same locale resolution and
+ * en-US fallback, but via `toLocaleTimeString` so no date part is
+ * prepended (`toLocaleDateString` always includes the date, even when
+ * only time fields are requested). Display layer only: renders in the
+ * viewer's timezone.
+ */
+export function formatTime(
+  date: Date | string | null | undefined,
+  locale: string,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  const resolved = INTL_LOCALE_MAP[locale] ?? locale;
+  try {
+    return d.toLocaleTimeString(resolved, options);
+  } catch {
+    return d.toLocaleTimeString("en-US", options);
   }
 }
 

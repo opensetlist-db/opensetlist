@@ -13,6 +13,14 @@ import {
 // `import { ReactionCountsMap } from "@/hooks/useSetlistPolling"`.
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import {
+  INITIAL_FRESHNESS,
+  armSnapshotDeadline,
+  freshnessStateFor,
+  parseRetryAfterMs,
+  snapshotRetryDelayMs,
+  type Freshness,
+} from "@/lib/snapshotFreshness";
 
 export type { ReactionCountsMap };
 
@@ -45,6 +53,13 @@ interface UseSetlistPollingResult<T> {
    */
   status: ResolvedEventStatus | null;
   lastUpdated: string | null;
+  /**
+   * Whether THIS browser is keeping up — last successful poll time
+   * plus live / retrying / delayed. Reflects sync success, not data
+   * age: a quiet MC with healthy polls stays "live". See
+   * `src/lib/snapshotFreshness.ts`.
+   */
+  freshness: Freshness;
 }
 
 export function useSetlistPolling<T>({
@@ -63,7 +78,16 @@ export function useSetlistPolling<T>({
     useState<FanTop3Entry[]>(initialTop3Wishes);
   const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [freshness, setFreshness] = useState<Freshness>(INITIAL_FRESHNESS);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Backoff state. The interval itself is the retry loop here, so
+  // backoff is expressed as "skip ticks until `nextAttemptAtRef`"
+  // rather than extra timers: the 1/2/4 s steps are shorter than the
+  // 5 s cadence and change nothing, while the 8/15/30 s tail spaces a
+  // struggling server's load out instead of hammering it every 5 s.
+  // Reset when the polling effect (re)starts.
+  const failuresRef = useRef(0);
+  const nextAttemptAtRef = useRef(0);
   // AbortController for the currently in-flight fetch. Used for two
   // distinct purposes:
   //   - Cleanup-time abort on eventId/locale change or unmount.
@@ -115,6 +139,7 @@ export function useSetlistPolling<T>({
     setTop3Wishes(initialTop3Wishes);
     setStatus(null);
     setLastUpdated(null);
+    setFreshness(INITIAL_FRESHNESS);
     // The in-flight fetch (if any) is aborted in the polling
     // useEffect's cleanup below — that's the safe place to mutate
     // the ref. The post-await `signal.aborted` checks inside
@@ -129,7 +154,16 @@ export function useSetlistPolling<T>({
     // cancellation loop on slow networks (response time > intervalMs
     // → every tick cancels the previous one → no setState ever fires).
     // CR #298 round 3.
+    //
+    // The guard can no longer wedge: every request carries the
+    // SNAPSHOT_FETCH_TIMEOUT_MS deadline, and the deadline releases
+    // the guard synchronously (see `onTimeout` below) so a hung
+    // request costs at most one deadline's worth of skipped ticks.
     if (abortRef.current) return;
+    // Backoff: after a failure, skip ticks until the retry delay has
+    // elapsed. `Date.now()` is fine here — it's a relative wait, not
+    // a comparison against stored dates.
+    if (Date.now() < nextAttemptAtRef.current) return;
     // Capture the eventId/locale at fetch start. The OLD fetchSetlist
     // (defined when eventId was "A") has these in its closure as "A";
     // a NEW render with eventId="B" recreates fetchSetlist with "B".
@@ -141,6 +175,24 @@ export function useSetlistPolling<T>({
     const fetchLocale = locale;
     const controller = new AbortController();
     abortRef.current = controller;
+    const deadline = armSnapshotDeadline(controller, () => {
+      if (abortRef.current === controller) abortRef.current = null;
+    });
+    // Records one failure and pushes the next allowed attempt out by
+    // the backoff delay. Only called for requests that are still
+    // current (not cancelled by cleanup / an eventId change).
+    const recordFailure = (retryAfterMs: number | null) => {
+      failuresRef.current += 1;
+      const failures = failuresRef.current;
+      nextAttemptAtRef.current =
+        Date.now() + snapshotRetryDelayMs(failures, retryAfterMs);
+      setFreshness((prev) => ({
+        lastSyncAt: prev.lastSyncAt,
+        state: freshnessStateFor(failures),
+      }));
+    };
+    const isCurrent = () =>
+      eventIdRef.current === fetchEventId && localeRef.current === fetchLocale;
     try {
       const res = await fetch(
         `/api/setlist?eventId=${encodeURIComponent(fetchEventId)}&locale=${encodeURIComponent(fetchLocale)}`,
@@ -159,7 +211,10 @@ export function useSetlistPolling<T>({
       ) {
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) {
+        recordFailure(parseRetryAfterMs(res.headers?.get("Retry-After")));
+        return;
+      }
       const data = (await res.json()) as {
         items: T[];
         reactionCounts?: ReactionCountsMap;
@@ -199,11 +254,22 @@ export function useSetlistPolling<T>({
         setStatus(data.status ?? null);
       }
       setLastUpdated(data.updatedAt);
-    } catch (err) {
-      // AbortError from the cleanup path — silent.
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      // Network/JSON parse failure — also silent; next tick retries.
+      failuresRef.current = 0;
+      nextAttemptAtRef.current = 0;
+      setFreshness({ lastSyncAt: new Date(), state: "live" });
+    } catch {
+      // Deadline expiry is a failure even though it surfaces as an
+      // abort; an abort from cleanup / eventId change is silent.
+      if (deadline.timedOut()) {
+        if (isCurrent()) recordFailure(null);
+        return;
+      }
+      if (controller.signal.aborted) return;
+      // Network / JSON parse failure — counts toward backoff and the
+      // freshness indicator; the next eligible tick retries.
+      if (isCurrent()) recordFailure(null);
     } finally {
+      deadline.clear();
       // Clear abortRef so the next tick is allowed to fire — but
       // ONLY if THIS controller is still the one stored. If the
       // useEffect cleanup already aborted us and reset the ref to
@@ -217,6 +283,11 @@ export function useSetlistPolling<T>({
 
   useEffect(() => {
     if (!enabled) return;
+    // Fresh backoff budget per polling session (enable, eventId /
+    // locale change). A previous session's failures say nothing about
+    // the endpoint's health now.
+    failuresRef.current = 0;
+    nextAttemptAtRef.current = 0;
     intervalRef.current = setInterval(fetchSetlist, intervalMs);
     return () => {
       if (intervalRef.current) {
@@ -238,5 +309,5 @@ export function useSetlistPolling<T>({
     };
   }, [enabled, intervalMs, fetchSetlist]);
 
-  return { items, reactionCounts, top3Wishes, status, lastUpdated };
+  return { items, reactionCounts, top3Wishes, status, lastUpdated, freshness };
 }
