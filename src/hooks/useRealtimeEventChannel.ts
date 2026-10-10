@@ -28,6 +28,7 @@ import {
   HEALTHY_PERIODIC_MS,
   HEALTHY_PERIODIC_SPREAD_MS,
   createLiveScheduler,
+  type LiveFetchReason,
 } from "@/lib/liveScheduler";
 
 export type { ReactionCountsMap };
@@ -397,6 +398,12 @@ export function useRealtimeEventChannel<T>({
   // endpoint, not a property of one event.
   const retryFloorRef = useRef<number | null>(null);
 
+  // `eventId\0locale` of the last channel session that seeded. A
+  // session whose key matches is a re-run (visibility resume, …) and
+  // seeds with the jittered "resume"; a new key is a page load or an
+  // event switch and seeds immediately ("initial").
+  const seededKeyRef = useRef<string | null>(null);
+
   // Once-per-session latch for the Sentry captureMessage. The
   // breadcrumb stream still records every transition, but a sustained
   // outage shouldn't generate one captureMessage per status flip —
@@ -553,12 +560,20 @@ export function useRealtimeEventChannel<T>({
     });
     scheduler.start();
 
-    // Seed: initial mount, and the re-run after a visibility resume or
-    // a fallback recovery (gap-fill for the away window).
-    scheduler.requestFetch("catchup");
+    // Seed. The first session of this event/locale on this page is the
+    // page load ("initial": immediate — page loads are spread by the
+    // viewers themselves). Any later session is a re-run after a
+    // visibility resume (gap-fill for the away window), jittered like
+    // every other trigger that can hit many viewers at once.
+    const sessionKey = `${eventId}\u0000${locale}`;
+    const seedReason: LiveFetchReason =
+      seededKeyRef.current === sessionKey ? "resume" : "initial";
+    seededKeyRef.current = sessionKey;
+    scheduler.requestFetch(seedReason);
 
     // Network came back: whatever was pushed meanwhile is lost, and a
-    // pending retry may be up to 30 s out — fetch now.
+    // pending retry may be up to 30 s out — fetch soon. Jittered: an
+    // `online` event fires for a whole venue's Wi-Fi at once.
     const handleOnline = () => scheduler.requestFetch("resume");
     window.addEventListener("online", handleOnline);
 
@@ -587,7 +602,9 @@ export function useRealtimeEventChannel<T>({
       const delayMs = nextEventStatusBoundaryDelay(startTime);
       if (delayMs === null) return;
       boundaryTimer = setTimeout(() => {
-        scheduler.requestFetch("manual");
+        // Every viewer's timer fires at the same startTime — jittered
+        // by the scheduler like the other correlated triggers.
+        scheduler.requestFetch("boundary");
         scheduleNextStatusBoundary();
       }, delayMs);
     };

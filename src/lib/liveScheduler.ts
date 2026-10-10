@@ -23,19 +23,33 @@
 //     follow-up is needed because the in-flight request may have read
 //     the database before the change the trigger is announcing.
 //
-//   - Jitter on notifications only. A notification reaches every viewer
-//     at the same instant, so each client waits `U(0, jitterMs)` before
-//     fetching to spread the burst. Other triggers (resume, SUBSCRIBED
-//     catch-up, status boundary, retry, periodic) are not synchronized
-//     across viewers, or are already spread by their own randomness,
-//     and run immediately.
+//   - Jitter on every trigger that can be synchronized across viewers.
+//     A notification reaches every viewer at the same instant, so each
+//     client waits `U(0, jitterMs)` before fetching to spread the burst.
+//     The same holds for less obvious triggers: a Realtime node restart
+//     or a venue-wide network blip drops every socket at once, and
+//     realtime-js reconnects them on a FIXED schedule (1/2/5/10 s, no
+//     jitter), so the `SUBSCRIBED` catch-ups land together; an `online`
+//     event fires for a whole venue Wi-Fi at once; every viewer's status
+//     boundary timer fires at the same `startTime`. Those triggers
+//     ("catchup", "resume", "boundary") wait `U(0, catchupJitterMs)`.
+//     The page already shows SSR or last-applied data, so the jitter
+//     only delays a refresh, never the first paint. Triggers that are
+//     not correlated run immediately: the first seed of a page
+//     ("initial" — page loads are spread by the viewers themselves),
+//     the retry (spread by n13's ±20 % or by the server's Retry-After),
+//     and periodic ticks (spread by their own ± spread and random
+//     phase).
 //
-//   - Per-client notification cooldown. At most one notification-
-//     triggered request starts per `cooldownMs`. A notification inside
-//     the window is never dropped: it is scheduled at
-//     `max(nextEligibleAt, now + jitter)`, or — if a request is in
-//     flight — becomes the dirty follow-up, which waits for
-//     `max(nextEligibleAt, now)`.
+//   - Per-client cooldown on those spread triggers. At most one
+//     notification / catch-up / resume / boundary request starts per
+//     `cooldownMs`. A trigger inside the window is never dropped: it is
+//     scheduled at `max(nextEligibleAt, now + jitter)`, or — if a
+//     request is in flight — becomes the dirty follow-up, which waits
+//     for `max(nextEligibleAt, now)` (no second jitter: the client
+//     already sat one out, and the in-flight request's settle time is
+//     itself random). So a reconnect that brings `SUBSCRIBED` and
+//     `online` together costs one request, not two.
 //
 //   - Periodic repair poll. While the hook keeps the scheduler alive
 //     (the realtime hook disposes it when the tab hides), a periodic
@@ -81,14 +95,42 @@
 // randomness. All values are relative waits — no stored-date
 // comparisons — so the UTC rule does not apply here.
 
-/** Why a snapshot request is being asked for. */
+/**
+ * Why a snapshot request is being asked for.
+ *
+ *   - `initial`: the first seed of a page (mount). Immediate.
+ *   - `notification`: a push said the setlist changed. Jittered by
+ *     `jitterMs`, cooldown.
+ *   - `catchup`: `SUBSCRIBED` (initial join or a rejoin after a gap).
+ *   - `resume`: the tab became visible again, or the browser went back
+ *     `online`.
+ *   - `boundary`: an event-status boundary (startTime, completed flip).
+ *     `catchup` / `resume` / `boundary` are jittered by
+ *     `catchupJitterMs`, cooldown.
+ *   - `periodic`: the repair / fallback poll tick.
+ *   - `retry`: internal — the scheduler's own retry after a failure.
+ */
 export type LiveFetchReason =
+  | "initial"
   | "notification"
   | "periodic"
   | "catchup"
   | "resume"
-  | "retry"
-  | "manual";
+  | "boundary"
+  | "retry";
+
+/**
+ * Triggers that can fire on many viewers at the same instant, and are
+ * therefore jittered and share the per-client cooldown (header).
+ */
+function isSpreadReason(reason: LiveFetchReason): boolean {
+  return (
+    reason === "notification" ||
+    reason === "catchup" ||
+    reason === "resume" ||
+    reason === "boundary"
+  );
+}
 
 /**
  * Result of one `runFetch` call.
@@ -122,9 +164,24 @@ export interface SchedulerClock {
   now(): number;
 }
 
-/** R1 default notification jitter (spec: run #2 measures 250 vs 750). */
+/**
+ * Notification jitter. Stays 500 ms: a wider window only adds its own
+ * p95 to save → visible, and run #2 put the capacity wall elsewhere
+ * (pooler clients), so a wider spread is reserved for evidence.
+ */
 export const NOTIFICATION_JITTER_MS = 500;
-/** At most one notification-triggered request per client per second. */
+/**
+ * Jitter for the other correlated triggers (SUBSCRIBED catch-up,
+ * visibility resume / `online`, status boundary). Same magnitude as the
+ * notification jitter: a mass reconnect is the same 500-viewer burst
+ * shape as a save, and 500 ms is well inside what a refresh of
+ * already-rendered data can absorb.
+ */
+export const CATCHUP_JITTER_MS = 500;
+/**
+ * At most one spread-trigger request (notification, catch-up, resume,
+ * boundary) per client per second.
+ */
 export const NOTIFICATION_COOLDOWN_MS = 1_000;
 /** Healthy-path repair poll: 20 s ± 4 s while the page is visible. */
 export const HEALTHY_PERIODIC_MS = 20_000;
@@ -149,7 +206,14 @@ export interface PeriodicConfig {
 
 export interface LiveSchedulerOptions {
   runFetch: (reason: LiveFetchReason) => Promise<LiveFetchOutcome>;
+  /** Notification jitter bound (default `NOTIFICATION_JITTER_MS`). */
   jitterMs?: number;
+  /**
+   * Jitter bound for catch-up / resume / boundary (default
+   * `CATCHUP_JITTER_MS`). Also the floor jitter for the triggers that
+   * have none of their own (initial, periodic).
+   */
+  catchupJitterMs?: number;
   cooldownMs?: number;
   periodic?: PeriodicConfig | null;
   /**
@@ -199,6 +263,7 @@ export function createLiveScheduler(
   const {
     runFetch,
     jitterMs = NOTIFICATION_JITTER_MS,
+    catchupJitterMs = CATCHUP_JITTER_MS,
     cooldownMs = NOTIFICATION_COOLDOWN_MS,
     periodic = null,
     initialNotBeforeAt = null,
@@ -206,14 +271,24 @@ export function createLiveScheduler(
     clock = defaultClock,
   } = options;
 
+  // Jitter bound of a trigger; also the jitter added on top of an
+  // active server floor. Triggers without a jitter of their own
+  // (initial, periodic, a non-spread follow-up) use the catch-up bound
+  // there, so nothing wakes exactly on the shared floor edge.
+  const jitterFor = (reason: LiveFetchReason): number =>
+    reason === "notification" ? jitterMs : catchupJitterMs;
+
   let disposed = false;
   let started = false;
   let inFlight = false;
-  // Reason that marked us dirty while in flight; null = clean. A
-  // non-notification reason wins over "notification" because it must
-  // not wait out the notification cooldown (a SUBSCRIBED catch-up or a
-  // status boundary is not part of the synchronized burst the cooldown
-  // exists to thin out).
+  // Reason that marked us dirty while in flight; null = clean.
+  // "notification" wins over the others, for the same reason a covered
+  // notification upgrades a scheduled request (see `scheduleAt`): the
+  // follow-up should carry the `appliedRev + 1` hint a real push
+  // justifies. Every spread reason waits out the same cooldown, so the
+  // choice changes nothing else; a catch-up's plain `minRev` is only
+  // kept when no push arrived (a mass reconnect must not turn into 500
+  // revision reads for nothing).
   let dirtyReason: LiveFetchReason | null = null;
   // The ONE deferred request — a jittered notification, a request held
   // back by the floor, or the retry after a failure. Keeping the retry
@@ -223,15 +298,16 @@ export function createLiveScheduler(
   let scheduled: { handle: unknown; dueAt: number; reason: LiveFetchReason } | null =
     null;
   let periodicHandle: unknown = null;
-  // Start time of the last notification-triggered request; the cooldown
-  // window is measured from here.
-  let lastNotificationStartAt = Number.NEGATIVE_INFINITY;
+  // Start time of the last spread-trigger request (notification,
+  // catch-up, resume, boundary); the cooldown window is measured from
+  // here.
+  let lastSpreadStartAt = Number.NEGATIVE_INFINITY;
   let notBeforeAt =
     initialNotBeforeAt === null || !Number.isFinite(initialNotBeforeAt)
       ? Number.NEGATIVE_INFINITY
       : initialNotBeforeAt;
 
-  const nextEligibleAt = () => lastNotificationStartAt + cooldownMs;
+  const nextEligibleAt = () => lastSpreadStartAt + cooldownMs;
 
   const clearScheduled = () => {
     if (scheduled) {
@@ -251,15 +327,29 @@ export function createLiveScheduler(
   // Schedule a request at `dueAt` unless one is already scheduled no
   // later than that — the earlier request starts after this trigger
   // arrived, so its read already covers it.
+  //
+  // A covered NOTIFICATION upgrades the covering request's reason to
+  // "notification": the request then carries the single-use
+  // `appliedRev + 1` hint (see `notificationMinRev`) that a real push
+  // justifies, instead of a catch-up's or retry's plain `minRev`, which
+  // a not-yet-purged cache entry could satisfy with the old snapshot.
   const scheduleAt = (dueAt: number, reason: LiveFetchReason) => {
-    if (scheduled && scheduled.dueAt <= dueAt) return;
+    if (scheduled && scheduled.dueAt <= dueAt) {
+      if (reason === "notification") scheduled.reason = "notification";
+      return;
+    }
     clearScheduled();
     const delay = Math.max(0, dueAt - clock.now());
-    const handle = clock.setTimeout(() => {
+    const entry: { handle: unknown; dueAt: number; reason: LiveFetchReason } = {
+      handle: null,
+      dueAt,
+      reason,
+    };
+    entry.handle = clock.setTimeout(() => {
       scheduled = null;
-      void run(reason);
+      void run(entry.reason);
     }, delay);
-    scheduled = { handle, dueAt, reason };
+    scheduled = entry;
   };
 
   // Start now if nothing holds the request back, else defer it.
@@ -276,7 +366,7 @@ export function createLiveScheduler(
     clearScheduled();
     inFlight = true;
     dirtyReason = null;
-    if (reason === "notification") lastNotificationStartAt = clock.now();
+    if (isSpreadReason(reason)) lastSpreadStartAt = clock.now();
 
     let outcome: LiveFetchOutcome;
     try {
@@ -312,15 +402,17 @@ export function createLiveScheduler(
     if (outcome.kind === "cancelled" || followUp === null) return;
 
     const now = clock.now();
-    if (followUp === "notification") {
-      // No new jitter: this client already sat out one jitter window,
-      // and the in-flight request's settle time is itself random.
+    if (isSpreadReason(followUp)) {
+      // No new jitter: this client already sat out one jitter window
+      // (or its trigger arrived at a random point of an in-flight
+      // request whose settle time is itself random). The cooldown
+      // still applies.
       scheduleAt(
-        applyFloor(Math.max(nextEligibleAt(), now), now, jitterMs),
-        "notification",
+        applyFloor(Math.max(nextEligibleAt(), now), now, jitterFor(followUp)),
+        followUp,
       );
     } else {
-      startOrSchedule(applyFloor(now, now, jitterMs), followUp);
+      startOrSchedule(applyFloor(now, now, jitterFor(followUp)), followUp);
     }
   };
 
@@ -331,28 +423,33 @@ export function createLiveScheduler(
     if (reason === "periodic") {
       // `scheduled` includes a pending retry: the backoff holds.
       if (inFlight || scheduled) return;
-      startOrSchedule(applyFloor(now, now, jitterMs), "periodic");
+      startOrSchedule(applyFloor(now, now, jitterFor("periodic")), "periodic");
       return;
     }
 
     if (inFlight) {
-      if (dirtyReason === null || dirtyReason === "notification") {
+      if (dirtyReason === null || reason === "notification") {
         dirtyReason = reason;
       }
       return;
     }
 
-    if (reason === "notification") {
-      const dueAt = Math.max(now + random() * jitterMs, nextEligibleAt());
+    if (isSpreadReason(reason)) {
+      const jitter = jitterFor(reason);
+      const dueAt = Math.max(now + random() * jitter, nextEligibleAt());
       // Always through a timer (even at zero jitter), so a burst of
-      // pushes in one task collapses into the one scheduled request.
-      scheduleAt(applyFloor(dueAt, now, jitterMs), "notification");
+      // triggers in one task collapses into the one scheduled request.
+      // An already-scheduled request due no later (a pending retry, an
+      // earlier notification) covers this trigger; a later one is
+      // replaced by it.
+      scheduleAt(applyFloor(dueAt, now, jitter), reason);
       return;
     }
 
-    // Replaces a later-due scheduled request (including a pending
+    // Not correlated across viewers (the first seed): start now, which
+    // replaces a later-due scheduled request (including a pending
     // retry) — it IS that request — unless the floor holds it back.
-    startOrSchedule(applyFloor(now, now, jitterMs), reason);
+    startOrSchedule(applyFloor(now, now, jitterFor(reason)), reason);
   };
 
   const schedulePeriodic = (first: boolean) => {

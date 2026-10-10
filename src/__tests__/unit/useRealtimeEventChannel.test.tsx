@@ -69,6 +69,10 @@ import {
   MAX_RECOVERY_ATTEMPTS,
 } from "@/lib/realtimeRecovery";
 import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
+import {
+  CATCHUP_JITTER_MS,
+  NOTIFICATION_COOLDOWN_MS,
+} from "@/lib/liveScheduler";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
@@ -390,26 +394,37 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     );
 
     // Mount-time fetch was kicked off inside the useEffect; flush
-    // microtasks to let the Promise chain settle.
+    // microtasks to let the Promise chain settle. The page-load seed is
+    // immediate (not a correlated trigger).
     await flushMicrotasks();
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // First SUBSCRIBED — the initial channel join. Exactly ONE
     // catch-up fetch: the seed ran before the channel was live, so a
-    // write committed in between would otherwise be missed.
+    // write committed in between would otherwise be missed. Jittered
+    // by U(0, CATCHUP_JITTER_MS): a mass rejoin lands together.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CATCHUP_JITTER_MS);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     // Second SUBSCRIBED — supabase-js auto-rejoined after a transient
-    // socket drop. We may have missed pushes during the gap; refetch.
+    // socket drop. We may have missed pushes during the gap; refetch
+    // (after the 1 s per-client cooldown at the latest).
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        NOTIFICATION_COOLDOWN_MS + CATCHUP_JITTER_MS,
+      );
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -528,8 +543,14 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
       await vi.advanceTimersByTimeAsync(31_900);
     });
     expect(fetchMock).toHaveBeenCalledTimes(2); // + periodic @ 20 s
+    // Boundary at 32 s; every viewer's timer fires together, so the
+    // request is jittered like a catch-up (U(0, 500) = 250 here).
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(349);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
     });
     // Boundary timer fired → snapshot requested.
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -563,8 +584,9 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     const before = fetchMock.mock.calls.length;
     // seed + one periodic per 20 s + the first boundary.
     expect(before).toBe(1 + Math.floor((second - 100) / 20_000) + 1);
+    // + 250 ms boundary jitter (Math.random = 0.5).
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(400);
     });
     expect(fetchMock).toHaveBeenCalledTimes(before + 1);
   });
@@ -711,6 +733,8 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
   });
 
   it("triggers a snapshot refetch after visibility resume (gap-fill missed pushes)", async () => {
+    // 250 ms catch-up / resume jitter.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -730,12 +754,12 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     // First SUBSCRIBED — initial join catch-up.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
+      await vi.advanceTimersByTimeAsync(250);
     });
-    await flushMicrotasks();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     // Hide + show — fresh channel set up; the re-run effect seeds a
-    // snapshot immediately (gap-fill for the away window).
+    // snapshot (gap-fill for the away window) after the resume jitter.
     await act(async () => {
       setDocumentHidden(true);
     });
@@ -743,14 +767,25 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
       setDocumentHidden(false);
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     // Post-resume SUBSCRIBED — same catch-up as an initial join
-    // (closes the resume-seed → subscribe window).
+    // (closes the resume-seed → subscribe window); it waits for the
+    // 1 s per-client cooldown measured from the resume seed.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
@@ -1500,17 +1535,19 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(120_000);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    // Resume: immediate gap-fill, then the cadence restarts.
+    // Resume: jittered gap-fill (250 ms here), then the cadence restarts.
     await act(async () => {
       setDocumentHidden(false);
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    await advance(20_000);
+    await advance(19_750);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
-  it("an `online` event fetches immediately", async () => {
+  it("an `online` event fetches after the catch-up jitter (a venue's Wi-Fi comes back at once)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
@@ -1519,7 +1556,9 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await act(async () => {
       window.dispatchEvent(new Event("online"));
     });
-    await flushMicrotasks();
+    await advance(249);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -1580,7 +1619,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await advance(250); // catch-up jitter
     expect(fetchMock.mock.calls[3][0]).toBe(
       "/api/setlist?eventId=1&locale=ko&minRev=7",
     );
