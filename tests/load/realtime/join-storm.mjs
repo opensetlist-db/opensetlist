@@ -127,11 +127,13 @@ function delivery(k) {
 
 async function dbSend(k, priv, topic = TOPIC) {
   const pg = pgClient();
-  await pg.connect();
   sentAt[k] = Date.now();
   let sqlMs = null;
   let error = null;
   try {
+    // connect() inside the try so a failed connection still reaches
+    // `finally { pg.end() }` and never leaks a client.
+    await pg.connect();
     await pg.query("select realtime.send($1::jsonb, 'rev', $2, $3)", [JSON.stringify({ k, rev: k, kind: "setlist", probe: true }), topic, priv]);
     sqlMs = Date.now() - sentAt[k];
   } catch (e) {

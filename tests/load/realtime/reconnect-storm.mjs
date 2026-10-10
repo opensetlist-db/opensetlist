@@ -98,11 +98,13 @@ async function waitJoined(gen, timeout, t0) {
 
 async function dbSendDelivery(k) {
   const pg = pgClient();
-  await pg.connect();
   sentAt[k] = Date.now();
   let sqlMs = null;
   let error = null;
   try {
+    // connect() inside the try so a failed connection still reaches
+    // `finally { pg.end() }` and never leaks a client.
+    await pg.connect();
     await pg.query("select realtime.send($1::jsonb, 'rev', $2, $3)", [JSON.stringify({ k, rev: k, kind: "setlist", probe: true }), TOPIC, PRIVATE]);
     sqlMs = Date.now() - sentAt[k];
   } catch (e) {
@@ -129,8 +131,11 @@ async function dbSendDelivery(k) {
   return out;
 }
 
+let disconnectFailures = 0;
+
 async function storm(gen) {
   const t0 = Date.now();
+  const failuresBefore = disconnectFailures;
   await Promise.all(subs.map(async (s, i) => {
     await sleep(Math.random() * SPREAD);
     const trigger = Date.now();
@@ -139,11 +144,26 @@ async function storm(gen) {
     // Leave + close the socket; don't wait for the leave reply before the
     // reconnect (a dropped tab wouldn't), but do let the socket close.
     s.c.removeChannel(old).catch(() => {});
-    await s.c.realtime.disconnect().catch(() => {});
+    // `SupabaseClient.realtime` (RealtimeClient) and its `disconnect()`
+    // are public API (supabase-js 2.x: `realtime: RealtimeClient`,
+    // `disconnect(code?, reason?): Promise<"ok" | "timeout">`). If the
+    // socket does not actually close, the "reconnect" below is a no-op
+    // and the storm would report success for nothing — so a missing
+    // method is fatal and a failed disconnect is counted, not swallowed.
+    if (typeof s.c.realtime?.disconnect !== "function") {
+      throw new Error("supabase-js: client.realtime.disconnect() is not available; the storm cannot drop sockets");
+    }
+    try {
+      const res = await s.c.realtime.disconnect();
+      if (res !== "ok") disconnectFailures++;
+    } catch {
+      disconnectFailures++;
+    }
     join(i, gen, trigger);
   }));
-  console.log(`  storm ${gen}: all ${N} disconnect+rejoin triggered within ${((Date.now() - t0) / 1000).toFixed(2)} s`);
-  return t0;
+  const failed = disconnectFailures - failuresBefore;
+  console.log(`  storm ${gen}: all ${N} disconnect+rejoin triggered within ${((Date.now() - t0) / 1000).toFixed(2)} s${failed ? `  (${failed} disconnects did not return "ok")` : ""}`);
+  return { t0, disconnectFailed: failed };
 }
 
 (async () => {
@@ -171,13 +191,13 @@ async function storm(gen) {
 
   for (let gen = 1; gen <= STORMS; gen++) {
     const adminP = args.admin ? adminCreateDelete({ base: BASE, eventId: EVENT_ID, note: `rt-reconnect-storm-${gen}` }).catch((e) => ({ error: e.message })) : null;
-    const t0 = await storm(gen);
+    const { t0, disconnectFailed } = await storm(gen);
     const g = await waitJoined(gen, WINDOW, t0);
     console.log(`storm ${gen}: ${g.joined}/${N} back; resubscribe ${fmt(g.latency)}`);
     const admin = adminP ? await adminP : null;
     if (admin) console.log(`  admin save during storm: ${JSON.stringify(admin)}`);
     const delivery = await dbSendDelivery(gen);
-    summary.storms.push({ gen, rejoin: g, admin, delivery });
+    summary.storms.push({ gen, disconnectFailed, rejoin: g, admin, delivery });
     if (gen < STORMS) await sleep(PAUSE);
   }
 
