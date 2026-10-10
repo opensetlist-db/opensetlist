@@ -123,6 +123,15 @@ interface Props {
   // /api/setlist channel. Empty array when no fans have wished yet.
   initialFanTop3: FanTop3Entry[];
   /**
+   * n14: revision + capture instant of the snapshot the SSR seed came
+   * from (`page.tsx#getLiveSeed`; ongoing events only, null otherwise).
+   * Forwarded to `useRealtimeEventChannel` as the initially-applied
+   * state so a first fetch that is older than the SSR seed is not
+   * applied over it.
+   */
+  initialRev?: number | null;
+  initialCapturedAt?: string | null;
+  /**
    * Predicted-setlist song picker catalog + chip set. Server-fetched
    * in `page.tsx` (gated on `status === "upcoming"` + non-null
    * primary artist). Forwarded through `<LiveSetlist>` →
@@ -207,6 +216,8 @@ export function LiveEventLayout({
   initialReactionsValue,
   initialTrendingSongs,
   initialFanTop3,
+  initialRev,
+  initialCapturedAt,
   availableSongs,
   unitFilters,
   bdSection,
@@ -259,6 +270,8 @@ export function LiveEventLayout({
     locale,
     enabled: isActive,
     startTime: startTimeIso,
+    initialRev,
+    initialCapturedAt,
   });
   // Effective status: prefer the polled value when present, fall
   // back to the SSR-initial `status` prop. Both paths refresh

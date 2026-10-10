@@ -69,6 +69,13 @@ interface UseRealtimeEventChannelOptions<T> {
    * window.
    */
   startTime: string | null;
+  /**
+   * n14: `rev` / `capturedAt` (ISO) of the snapshot the SSR seed was
+   * built from — the initially-applied state for the snapshot
+   * acceptance rule. Null/absent when the page had no live seed.
+   */
+  initialRev?: number | null;
+  initialCapturedAt?: string | null;
 }
 
 interface UseRealtimeEventChannelResult<T> {
