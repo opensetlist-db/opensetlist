@@ -9,7 +9,7 @@ the wiki page `output/task-n12-capacity-experiment`.
 | Script | What it offers | Used in |
 |---|---|---|
 | `setlist-snapshot.js` | open-model ramp on `GET /api/setlist`, 20 → 50 → 100 → 200 rps, 2 min per stage, 70/20/10 ja/ko/en | run 1 (ramp) |
-| `hold.js` | 90 % snapshot + 10 % SSR at `HOLD_RPS` for 5–10 min, the admin loop running at the same time, edit bursts in the last ~70 s | run 2 (hold) |
+| `hold.js` | 90 % snapshot + 10 % SSR at `HOLD_RPS` for 5–10 min, the admin loop running at the same time, edit bursts in the last ~70 s, plus **one admin cycle inside each burst** (judged separately as `admin_burst500` / `admin_burst2000`) | run 2 (hold) |
 | `edit-burst.js` | 500 then 2,000 snapshot requests, each spread over 5 s (Realtime Path B refetch after one save) | inside hold, or standalone |
 | `admin-writes.js` | 1 operator, 4 cycles × 6 timed saves (create, update, insert-after, swap, delete ×2), each checked in the next snapshot | inside hold, or standalone |
 | `ssr-mix.js` | `GET /ja/events/<id>/<slug>` alone, to size the page path | standalone |
@@ -54,7 +54,7 @@ the wiki page `output/task-n12-capacity-experiment`.
 | `EVENT_ID` | yes | test event id |
 | `EVENT_SLUG` | hold, ssr | the event's DB slug. Redirects are not followed, so a wrong slug shows up as a 308 error |
 | `EXPECTED_ROWS` | recommended | visible row count at start. Sampled bodies outside `[N, N+ROW_SLACK]` count as errors |
-| `ROW_SLACK` | hold: `2` | the admin loop adds up to 2 rows for a while |
+| `ROW_SLACK` | hold: `4` | each admin cycle adds up to 2 rows for a while, and under overload a burst-window cycle can still be running when the next one starts |
 | `VERCEL_BYPASS` | preview | protection bypass secret |
 | `ADMIN_PASSWORD` | hold, admin | logs in via `/api/admin/login` |
 | `HOLD_RPS` | hold | highest rate that passed the ramp |
@@ -77,7 +77,7 @@ node tests/load/pg-connections.mjs
 tests/load/run.sh setlist-snapshot.js
 
 # 2. hold at the highest PASS stage from the ramp table, plus admin + bursts
-HOLD_RPS=100 ROW_SLACK=2 tests/load/run.sh hold.js -e ADMIN_CYCLE_PAUSE=90
+HOLD_RPS=100 ROW_SLACK=4 tests/load/run.sh hold.js -e ADMIN_CYCLE_PAUSE=90
 ```
 
 Every run writes `results/<date>/<stamp>-<kind>.md` (the per-stage

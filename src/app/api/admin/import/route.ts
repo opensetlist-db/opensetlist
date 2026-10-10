@@ -1329,6 +1329,18 @@ async function importEvents(rows: Record<string, string>[]) {
     const explicitNameLocales = new Set(
       (["ja", "ko", "en"] as const).filter((l) => row[`${l}_name`])
     );
+    // Locales where the row carries any of the clobber-on-blank fields
+    // (name / shortName / city / venue). Before organizerName existed,
+    // a locale with none of them produced no translation at all, so a
+    // re-import never touched that locale's shortName / city / venue.
+    // An organizer-only locale must keep that behaviour: it patches
+    // organizerName and nothing else, instead of writing null over the
+    // existing shortName / city / venue.
+    const clobberFieldLocales = new Set(
+      (["ja", "ko", "en"] as const).filter(
+        (l) => row[`${l}_name`] || row[`${l}_shortName`] || row[`${l}_city`] || row[`${l}_venue`]
+      )
+    );
 
     const seriesId = row.series_slug
       ? (await prisma.eventSeries.findUnique({ where: { slug: row.series_slug } }))?.id ?? null
@@ -1421,9 +1433,9 @@ async function importEvents(rows: Record<string, string>[]) {
           create: { eventId: existing.id, ...t },
           update: {
             ...(explicitNameLocales.has(t.locale) ? { name: t.name } : {}),
-            shortName: t.shortName,
-            city: t.city,
-            venue: t.venue,
+            ...(clobberFieldLocales.has(t.locale)
+              ? { shortName: t.shortName, city: t.city, venue: t.venue }
+              : {}),
             organizerName: t.organizerName,
           },
         });
