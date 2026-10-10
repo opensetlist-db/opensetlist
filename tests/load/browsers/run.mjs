@@ -730,6 +730,8 @@ function report(state, fin) {
   const fetchReasons = {};
   const sources = {};
   let fallbacks = 0;
+  let recreates = 0;
+  let retryAfter = 0;
   let fetchFailures = 0;
   for (const r of subRecs) {
     for (const [k, v] of Object.entries(r.statuses)) statusTotals[k] = (statusTotals[k] || 0) + v;
@@ -737,6 +739,8 @@ function report(state, fin) {
     for (const [k, v] of Object.entries(r.fetches)) fetchReasons[k] = (fetchReasons[k] || 0) + v;
     for (const [k, v] of Object.entries(r.sources)) sources[k] = (sources[k] || 0) + v;
     fallbacks += r.fallbacks.length;
+    recreates += r.recreates?.length ?? 0;
+    retryAfter += r.retryAfter ?? 0;
     fetchFailures += r.failures;
   }
   const pageFetches = pageRecs.reduce((a, r) => a + r.fetches.length, 0);
@@ -753,6 +757,7 @@ function report(state, fin) {
         pages: dist(pageRecs.map((r) => r.joinAt.find((x) => x > t)).filter((x) => x != null).map((x) => x - t)),
         subs: dist(subRecs.map((r) => r.subscribedAt.find((x) => x > t)).filter((x) => x != null).map((x) => x - t)),
         subsFallbacksAfterDrop: subRecs.filter((r) => r.fallbacks.some(([x]) => x > t)).length,
+        subsRecreatesAfterDrop: subRecs.reduce((a, r) => a + (r.recreates || []).filter(([x]) => x > t).length, 0),
       };
     }
   }
@@ -823,13 +828,13 @@ function report(state, fin) {
   lines.push(`  - /api/setlist responses seen: ${pageFetches} (${JSON.stringify(pageSources)}); page errors: ${pageRecs.reduce((a, r) => a + r.errors.length, 0)}; ws opens ${pageRecs.reduce((a, r) => a + r.wsOpens, 0)}, closes ${pageRecs.reduce((a, r) => a + r.wsCloses, 0)}, dropped pg frames ${pageRecs.reduce((a, r) => a + r.droppedFrames, 0)}, blocked attempts ${pageRecs.reduce((a, r) => a + r.blockedAttempts, 0)}`);
   lines.push(`- SDK: ${subRecs.filter((r) => r.subscribedAt.length).length}/${M} joined; pg_changes registered ${subRecs.filter((r) => r.pgReadyAt.length).length}; all joined after ${popSummary.allJoinedSec ?? "—"} s, all registered after ${popSummary.allPgReadySec ?? "—"} s (from population start)`);
   lines.push(`  - subscribe → SUBSCRIBED ms: n=${subJoin.n} p50=${ms(subJoin.p50)} p95=${ms(subJoin.p95)} max=${ms(subJoin.max)}; subscribe → pg_changes ready: n=${subPg.n} p50=${ms(subPg.p50)} p95=${ms(subPg.p95)} max=${ms(subPg.max)}`);
-  lines.push(`  - statuses ${JSON.stringify(statusTotals)}; R3 fallbacks ${fallbacks}; fetch failures ${fetchFailures}; fetches by reason ${JSON.stringify(fetchReasons)}; X-Snapshot-Source ${JSON.stringify(sources)}`);
+  lines.push(`  - statuses ${JSON.stringify(statusTotals)}; disconnected episodes (polling while realtime-js rejoins) ${fallbacks}; channel re-creations ${recreates}; fetch failures ${fetchFailures} (with Retry-After ${retryAfter}); fetches by reason ${JSON.stringify(fetchReasons)}; X-Snapshot-Source ${JSON.stringify(sources)}`);
   if (Object.keys(errTotals).length) lines.push(`  - channel errors: ${JSON.stringify(errTotals)}`);
   if (rejoin) {
     lines.push("");
     lines.push("## Reconnect drill");
     lines.push("");
-    lines.push(`- Rejoin after force-close: pages n=${rejoin.pages.n} p50=${ms(rejoin.pages.p50)} p95=${ms(rejoin.pages.p95)} max=${ms(rejoin.pages.max)}; SDK n=${rejoin.subs.n} p50=${ms(rejoin.subs.p50)} p95=${ms(rejoin.subs.p95)} max=${ms(rejoin.subs.max)}; SDK clients that went to the R3 polling fallback: ${rejoin.subsFallbacksAfterDrop}`);
+    lines.push(`- Rejoin after force-close: pages n=${rejoin.pages.n} p50=${ms(rejoin.pages.p50)} p95=${ms(rejoin.pages.p95)} max=${ms(rejoin.pages.max)}; SDK n=${rejoin.subs.n} p50=${ms(rejoin.subs.p50)} p95=${ms(rejoin.subs.p95)} max=${ms(rejoin.subs.max)}; SDK clients that entered the disconnected (polling) state: ${rejoin.subsFallbacksAfterDrop}; channel re-creations after the drop: ${rejoin.subsRecreatesAfterDrop} (0 expected: realtime-js rejoins within the 60 s grace)`);
   }
   if (doubleSave) {
     lines.push("");
