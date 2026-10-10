@@ -554,6 +554,19 @@ model Event {
   isDeleted         Boolean     @default(false)
   deletedAt         DateTime?
   createdAt         DateTime    @default(now())
+  // Monotonic counter of setlist-affecting saves (n14). Every writer
+  // that changes what the live snapshot (`/api/setlist`) carries —
+  // setlist items, their order/status/links, and the event's own
+  // status/startTime — increments it inside the same transaction that
+  // holds `SELECT … FOR UPDATE` on this row, then broadcasts the new
+  // value via `realtime.send` (see `src/lib/liveBroadcast.ts`). The
+  // snapshot builder reads it in the same REPEATABLE READ transaction
+  // as the items, so a client can order snapshots by `rev` and repair
+  // a stale cache with `?minRev=`. Reactions and wishes do NOT bump
+  // it (high-frequency, low-value; the periodic poll refreshes them).
+  // BigInt so the counter can never wrap; serialized to the wire as a
+  // JSON number after a safe-integer assertion.
+  setlistRevision   BigInt      @default(0)
 
   eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
   artist       Artist?               @relation(fields: [artistId], references: [id])

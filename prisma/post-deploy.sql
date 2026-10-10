@@ -349,6 +349,59 @@ ALTER TABLE "EventImpression" REPLICA IDENTITY FULL;
 ALTER TABLE "SongWish" REPLICA IDENTITY FULL;
 
 -- ─────────────────────────────────────────────────────────────────────
+-- n14: receive-only Realtime Authorization for the live-event broadcast.
+--
+-- Setlist writers call `realtime.send(payload, 'rev', 'event:<id>',
+-- private => true)` inside their transaction (src/lib/liveBroadcast.ts).
+-- A *private* broadcast channel is only joinable by a client whose role
+-- passes an RLS policy on `realtime.messages` (Supabase Realtime
+-- Authorization checks SELECT for receive, INSERT for send). Without a
+-- SELECT policy every private join is rejected, so this block is what
+-- lets the guest page (`anon`) and signed-in users (`authenticated`)
+-- receive the `rev` notifications.
+--
+-- Why private at all: a public channel lets anyone with the anon key
+-- publish arbitrary messages to `event:<id>` and make 500 viewers
+-- refetch on every spoofed message. With a private channel and NO
+-- INSERT policy, clients can only listen; the only publisher is
+-- Postgres itself (`realtime.send` runs as the table owner and is not
+-- subject to these policies).
+--
+-- Scope of the predicate:
+--   * `realtime.topic() LIKE 'event:%'` — only the live-event topics.
+--     The impressions topic `event:<id>:impressions` is a
+--     postgres_changes channel, not broadcast, so the `extension` check
+--     below already excludes it; the LIKE keeps any future private
+--     topic family from being opened by accident.
+--   * `extension = 'broadcast'` — presence is not granted.
+--
+-- Idempotent: guarded by pg_policies so replaying this file (both
+-- migrate workflows do on every deploy) is a no-op once present. The
+-- outer guard skips non-Supabase databases where the `realtime` schema
+-- does not exist (local scratch DBs, CI containers).
+DO $$
+BEGIN
+  IF to_regclass('realtime.messages') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_policies
+       WHERE schemaname = 'realtime'
+         AND tablename = 'messages'
+         AND policyname = 'event_broadcast_receive'
+     ) THEN
+    EXECUTE $policy$
+      CREATE POLICY "event_broadcast_receive"
+        ON realtime.messages
+        FOR SELECT
+        TO anon, authenticated
+        USING (
+          realtime.topic() LIKE 'event:%'
+          AND extension = 'broadcast'
+        )
+    $policy$;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────
 -- Song variant invariants — orphan + duplicate prevention.
 --
 -- Two structural failure modes were observed during CSV-import passes
