@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+  revToNumber,
+} from "@/lib/liveBroadcast";
 
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
@@ -28,44 +33,57 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const [itemA, itemB] = await Promise.all([
-    prisma.setlistItem.findUnique({
-      where: { id: idA },
-      select: { id: true, eventId: true, position: true },
-    }),
-    prisma.setlistItem.findUnique({
-      where: { id: idB },
-      select: { id: true, eventId: true, position: true },
-    }),
-  ]);
+  // Event membership only — `eventId` is immutable on a SetlistItem, so
+  // it is safe to read before the transaction and is what tells us
+  // which event row to lock. Positions are NOT read here: they change
+  // with every save, so they are re-read inside the transaction after
+  // the lock (reading them outside, as this route used to, let a
+  // concurrent insert-after shift the rows between the read and the
+  // swap and write stale positions back).
+  const owners = await prisma.setlistItem.findMany({
+    where: { id: { in: [idA, idB] } },
+    select: { id: true, eventId: true },
+  });
+  const ownerA = owners.find((o) => o.id === idA);
+  const ownerB = owners.find((o) => o.id === idB);
 
-  if (!itemA || !itemB) {
+  if (!ownerA || !ownerB) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
-  if (itemA.eventId !== itemB.eventId) {
+  if (ownerA.eventId !== ownerB.eventId) {
     return NextResponse.json(
       { error: "Items must belong to the same event" },
       { status: 400 }
     );
   }
+  const eventId = ownerA.eventId;
 
-  // Swap positions using temp value to avoid unique constraint conflicts
-  await prisma.$transaction([
-    prisma.setlistItem.update({
+  const rev = await prisma.$transaction(async (tx) => {
+    await lockEvent(tx, eventId);
+    const rows = await tx.setlistItem.findMany({
+      where: { id: { in: [idA, idB] } },
+      select: { id: true, position: true },
+    });
+    const itemA = rows.find((r) => r.id === idA)!;
+    const itemB = rows.find((r) => r.id === idB)!;
+
+    // Swap positions using temp value to avoid unique constraint conflicts
+    await tx.setlistItem.update({
       where: { id: itemA.id },
       data: { position: -1 },
-    }),
-    prisma.setlistItem.update({
+    });
+    await tx.setlistItem.update({
       where: { id: itemB.id },
       data: { position: itemA.position },
-    }),
-    prisma.setlistItem.update({
+    });
+    await tx.setlistItem.update({
       where: { id: itemA.id },
       data: { position: itemB.position },
-    }),
-  ]);
+    });
+    return bumpSetlistRevisionAndBroadcast(tx, eventId);
+  });
 
-  revalidateEventData(itemA.eventId);
-  return NextResponse.json({ success: true });
+  revalidateEventData(eventId);
+  return NextResponse.json({ success: true, rev: revToNumber(rev) });
 }

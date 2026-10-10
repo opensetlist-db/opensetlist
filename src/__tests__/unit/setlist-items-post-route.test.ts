@@ -39,8 +39,20 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// n14 writer-transaction helpers: mocked so the route's control flow
+// is tested without raw SQL; the SQL is covered by the dev-DB
+// integration suite (src/__tests__/integration/n14-live-path.test.ts).
+vi.mock("@/lib/liveBroadcast", () => ({
+  lockEvent: vi.fn(async () => true),
+  bumpSetlistRevisionAndBroadcast: vi.fn(async () => BigInt(1)),
+}));
+
 import { POST } from "@/app/api/events/[id]/setlist-items/route";
 import { prisma } from "@/lib/prisma";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -565,6 +577,10 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
       data: { setlistItemId: BigInt(888) },
     });
     expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+    // n14: the merge confirm changes confirmCount (snapshot data) → it
+    // runs in the writer transaction and bumps exactly once.
+    expect(lockEvent).toHaveBeenCalledWith(prisma, BigInt(1));
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
   });
 
   it("same-position different-song → INSERTs as rumoured sibling (no merge)", async () => {
@@ -586,6 +602,8 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
     expect(res.status).toBe(201);
     expect(prisma.setlistItem.create).toHaveBeenCalledTimes(1);
     expect(prisma.setlistItemConfirm.create).not.toHaveBeenCalled();
+    expect(lockEvent).toHaveBeenCalledWith(prisma, BigInt(1));
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
   });
 
   it("returns 400 when position is missing", async () => {
