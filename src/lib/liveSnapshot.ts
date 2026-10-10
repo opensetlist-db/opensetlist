@@ -7,6 +7,7 @@ import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { cachedQuery, eventTag, revalidateEventData } from "@/lib/dataCache";
 import { revToNumber } from "@/lib/liveBroadcast";
+import { INSTANCE_ID } from "@/lib/instanceId";
 import { FALLBACK_LOCALE, type Locale } from "@/i18n/routing";
 import type { FanTop3Entry, LiveSetlistItem } from "@/lib/types/setlist";
 
@@ -60,10 +61,6 @@ export type EventSnapshot = {
 };
 
 export type SnapshotSource = "build" | "cache" | "repair";
-
-// Per-process id, so the build log lines can be grouped by instance
-// when counting builds per save from Vercel logs.
-const INSTANCE_ID = randomUUID().slice(0, 8);
 
 // ---------------------------------------------------------------------
 // Test-only hook: pause the builder right after the snapshot-defining
