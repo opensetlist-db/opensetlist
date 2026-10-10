@@ -1927,7 +1927,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     }
   });
 
-  it("R3 fallback is seeded with realtime's applied version: an older polled rev is rejected", async () => {
+  it("polling while disconnected shares realtime's applied version: an older polled rev is rejected", async () => {
     const realtimeItems = [{ id: "rt-rev7" }];
     const staleItems = [{ id: "stale-rev5" }];
     const fetchMock = vi
@@ -1961,6 +1961,126 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(30_000);
     expect(result.current.items).toBe(realtimeItems);
     expect(result.current.rev).toBe(7);
+  });
+
+  // ── Monotonic DOM across the polling ↔ realtime hand-over ──
+  //
+  // Both directions of the hand-over go through ONE acceptance
+  // watermark (one useLiveSnapshot, one scheduler), so the rendered
+  // `rev` is non-decreasing over every render — not just at the end.
+  // `renders` records what each render actually returned.
+
+  function mountRecording(extra: { initialRev?: number; initialCapturedAt?: string }) {
+    const renders: Array<{ rev: number | null; items: unknown[] }> = [];
+    const hook = renderHook(() => {
+      const value = useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+        ...extra,
+      });
+      renders.push({ rev: value.rev, items: value.items });
+      return value;
+    });
+    return { ...hook, renders };
+  }
+
+  function expectMonotonic(renders: Array<{ rev: number | null }>) {
+    let max = -Infinity;
+    for (const { rev } of renders) {
+      if (rev === null) continue;
+      expect(rev).toBeGreaterThanOrEqual(max);
+      max = Math.max(max, rev);
+    }
+  }
+
+  it("hand-over polling → realtime: polling reached rev 12, the rejoin catch-up answers rev 10 → rev 10 is never rendered", async () => {
+    const rev10 = [{ id: "rev10" }];
+    const rev12 = [{ id: "rev12" }];
+    // Responses by phase: realtime holds 10; polling (fallback) gets 12;
+    // after the rejoin a stale cache instance answers 10 again.
+    let phase: "realtime" | "polling" | "rejoined" = "realtime";
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        phase === "polling"
+          ? revResponse(12, "2026-11-14T07:31:00.000Z", rev12)
+          : revResponse(10, "2026-11-14T07:30:00.000Z", rev10),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result, renders } = mountRecording({
+      initialRev: 9,
+      initialCapturedAt: "2026-11-14T07:29:00.000Z",
+    });
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(250);
+    expect(result.current.rev).toBe(10);
+
+    phase = "polling";
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    await advance(2_500); // first disconnected poll
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+
+    phase = "rejoined";
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(1_000); // jittered catch-up lands with rev 10
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(4);
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    await advance(25_000); // a healthy repair poll, still rev 10
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+
+    expectMonotonic(renders);
+    expect(renders.some((r) => r.rev === 12)).toBe(true);
+    const firstAt12 = renders.findIndex((r) => r.rev === 12);
+    expect(renders.slice(firstAt12).every((r) => r.items === rev12)).toBe(true);
+  });
+
+  it("hand-over realtime → polling: realtime shows rev 12, the first poll answers rev 11 → 11 is rejected", async () => {
+    const rev12 = [{ id: "rev12" }];
+    const rev11 = [{ id: "rev11" }];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(revResponse(12, "2026-11-14T07:31:00.000Z", rev12))
+      .mockResolvedValue(revResponse(11, "2026-11-14T07:32:00.000Z", rev11));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result, renders } = mountRecording({
+      initialRev: 10,
+      initialCapturedAt: "2026-11-14T07:29:00.000Z",
+    });
+    await flushMicrotasks();
+    expect(result.current.rev).toBe(12);
+
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    await advance(2_500); // first disconnected poll → rev 11
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=12",
+    );
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    // Older than a revision the server already showed → server gap →
+    // retry path, never applied.
+    await advance(10_000);
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    expectMonotonic(renders);
+    expect(renders.every((r) => r.items !== rev11)).toBe(true);
   });
 
   it("omits minRev when no revision is known yet", async () => {

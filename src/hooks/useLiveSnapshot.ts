@@ -31,6 +31,13 @@ import type { LiveFetchOutcome, LiveFetchReason } from "@/lib/liveScheduler";
 // copies would have been two chances to diverge. The hooks keep what
 // actually differs: WHEN to fetch (their scheduler configuration and
 // triggers) and channel lifecycle.
+//
+// One instance = one data source = one acceptance watermark. The
+// realtime hook therefore runs its "polling while disconnected" mode on
+// its own instance (a different scheduler cadence, same runner) rather
+// than on a second polling hook: everything the page renders passes the
+// same `(rev, capturedAt)` gate, so a hand-over in either direction can
+// never show a lower revision than one already shown.
 
 interface UseLiveSnapshotOptions<T> {
   eventId: string;
@@ -52,7 +59,7 @@ export interface LiveSnapshotData<T> {
   /**
    * Non-null once a snapshot has been applied in this browser. Callers
    * use it as "client data is now authoritative" (LiveEventLayout's
-   * sidebar gate, the R3 fallback hand-over). Value: the response's
+   * sidebar gate). Value: the response's
    * `servedAt` (or legacy `updatedAt`), else the client receipt time —
    * never a freshness signal (see `freshness` for that).
    */
@@ -138,9 +145,9 @@ export function useLiveSnapshot<T>({
 
   // Consecutive snapshot failures. Hook-scoped (not session-scoped) so
   // the count — and therefore the "delayed" indicator — survives the
-  // realtime channel effect re-running on a visibility pause or a
-  // fallback recovery attempt; reset on success and on event change.
-  // Polling additionally resets it per polling session.
+  // realtime channel effect re-running on a visibility pause; reset on
+  // success and on event change. Polling additionally resets it per
+  // polling session.
   const failuresRef = useRef(0);
 
   // Acceptance state, created + re-seeded in the layout effect below.
@@ -209,10 +216,9 @@ export function useLiveSnapshot<T>({
   /**
    * Raise the acceptance watermark to the CURRENT `initialRev` /
    * `initialCapturedAt` props (never lowers it, no new generation).
-   * The R3 polling fallback calls this when it is switched on: the
-   * realtime hook passes its latest applied version as those props, so
-   * the first polled response can't roll the page back below what the
-   * realtime path already showed.
+   * `useSetlistPolling` calls this when it is switched on, so a caller
+   * that passes the newest version it has already shown as those props
+   * can't be rolled back by the first polled response.
    */
   const adoptSeed = useCallback(() => {
     acceptanceRef.current?.adopt({

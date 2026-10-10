@@ -170,8 +170,9 @@ export class SnapshotAcceptance {
 
   /**
    * Adopt a version that ANOTHER live source of this page has already
-   * applied and shown (the realtime path handing over to the R3
-   * polling fallback). Raises the watermark — never lowers it — and
+   * applied and shown (used by `useSetlistPolling` when it is enabled;
+   * the realtime hook's own disconnected polling needs no hand-over —
+   * it shares this instance). Raises the watermark — never lowers it — and
    * counts the revision as server-observed, without starting a new
    * generation (no in-flight response is invalidated). Invalid input
    * is ignored.
