@@ -7,6 +7,20 @@ import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
 } from "@/lib/liveBroadcast";
+import {
+  liveWriterBusyResponse,
+  liveWriterTransaction,
+} from "@/lib/liveWriterTx";
+
+// A failed lookup / confirm write answers 500 — or 503 `db_busy` +
+// Retry-After when the database could not be reached at all (nothing
+// ran, so the tap may be repeated). Public route: stable code only.
+function confirmFailure(err: unknown): NextResponse {
+  return (
+    liveWriterBusyResponse(err, "public") ??
+    NextResponse.json({ error: "internal_error" }, { status: 500 })
+  );
+}
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -97,10 +111,7 @@ export async function POST(_req: Request, { params }: RouteProps) {
     });
   } catch (err) {
     console.error("[POST /confirm] item lookup failed", err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return confirmFailure(err);
   }
   if (!item) {
     return NextResponse.json(
@@ -116,10 +127,7 @@ export async function POST(_req: Request, { params }: RouteProps) {
     });
   } catch (err) {
     console.error("[POST /confirm] confirm row write failed", err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return confirmFailure(err);
   }
 
   // Conflict-handling promotion path. Only applies when:
@@ -205,7 +213,13 @@ export async function POST(_req: Request, { params }: RouteProps) {
         const eventId = item.eventId;
         const itemId = item.id;
         const position = item.position;
-        await prisma.$transaction(async (tx) => {
+        // Live-writer limits + timing. A busy database here is NOT
+        // turned into a 503: the confirm row above is already
+        // committed, so the request as a whole succeeded, and a 503
+        // would invite the client to send the tap again and write a
+        // second confirm. It falls into the catch below like any other
+        // promotion failure (the next tap retries the promotion).
+        await liveWriterTransaction("public-confirm-promote", async (tx) => {
           await lockEvent(tx, eventId);
           const hidden = await tx.setlistItem.updateMany({
             where: {
@@ -234,9 +248,9 @@ export async function POST(_req: Request, { params }: RouteProps) {
             },
             data: { status: "confirmed" },
           });
-          if (hidden.count + promoted.count > 0) {
-            await bumpSetlistRevisionAndBroadcast(tx, eventId);
-          }
+          return hidden.count + promoted.count > 0
+            ? bumpSetlistRevisionAndBroadcast(tx, eventId)
+            : null;
         });
 
         // Promotion changes what the event page renders (rumoured →

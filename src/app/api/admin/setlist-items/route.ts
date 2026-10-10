@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
@@ -13,7 +16,12 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // A save the database could not even start answers 503 + Retry-After
+  // (see `withAdminLiveWriterBusy`); every other outcome is unchanged.
+  return withAdminLiveWriterBusy(() => createItem(request));
+}
 
+async function createItem(request: NextRequest) {
   const body = await request.json();
   const {
     eventId,
@@ -38,7 +46,8 @@ export async function POST(request: NextRequest) {
   // any transaction, so two concurrent saves could each pass it against
   // a state the other was about to change; under the lock the second
   // save validates against the first one's committed rows.
-  const result = await prisma.$transaction(async (tx) => {
+  // `liveWriterTransaction`: explicit live-path limits + timing log.
+  const result = await liveWriterTransaction("admin-create", async (tx) => {
     if (!(await lockEvent(tx, eid))) {
       return { kind: "not_found" as const };
     }
@@ -111,7 +120,7 @@ export async function POST(request: NextRequest) {
     });
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
     return { kind: "ok" as const, item, rev };
-  });
+  }, (r) => (r.kind === "ok" ? r.rev : null));
 
   if (result.kind === "not_found") {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });

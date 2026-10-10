@@ -254,3 +254,76 @@ describe("admin setlist writers — transaction shape (n14)", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe("admin setlist writers — busy database (503, nothing written, no retry)", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  const KOREAN = "데이터베이스 연결이 혼잡합니다. 잠시 후 다시 저장해 주세요.";
+
+  it("passes the live-writer limits explicitly", async () => {
+    await CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }));
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 2_000,
+      timeout: 8_000,
+    });
+  });
+
+  it("pooler cap before the transaction started → 503 with the operator message", async () => {
+    vi.mocked(prisma.$transaction).mockImplementationOnce((async () => {
+      throw Object.assign(
+        new Error("(EMAXCONN) max client connections reached, limit: 200"),
+        {
+          name: "DriverAdapterError",
+          cause: {
+            kind: "postgres",
+            code: "XX000",
+            severity: "FATAL",
+            message: "(EMAXCONN) max client connections reached, limit: 200",
+          },
+        },
+      );
+    }) as never);
+    const res = await CREATE(
+      req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ error: KOREAN, code: "db_busy" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(log).not.toContain("create");
+    expect(log).not.toContain("revalidate");
+  });
+
+  it("pool exhausted on the pre-transaction item lookup → 503 (PUT and DELETE)", async () => {
+    const timeout = () =>
+      Object.assign(new Error("timeout exceeded when trying to connect"), {
+        clientVersion: "test",
+      });
+    vi.mocked(prisma.setlistItem.findUnique)
+      .mockRejectedValueOnce(timeout())
+      .mockRejectedValueOnce(timeout());
+    const put = await PUT(
+      req("http://x/api/admin/setlist-items/900", { position: 1 }, "PUT"),
+      params("900"),
+    );
+    const del = await DELETE(
+      req("http://x/api/admin/setlist-items/900", {}, "DELETE"),
+      params("900"),
+    );
+    for (const res of [put, del]) {
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toBe(KOREAN);
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("any other failure still propagates (not a 503)", async () => {
+    vi.mocked(prisma.$transaction).mockImplementationOnce((async () => {
+      throw new Error("boom");
+    }) as never);
+    await expect(
+      CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 })),
+    ).rejects.toThrow("boom");
+  });
+});

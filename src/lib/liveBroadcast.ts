@@ -4,7 +4,8 @@ import type { Prisma } from "@/generated/prisma/client";
  * n14 live path — transactional "setlist changed" notification.
  *
  * Contract: every setlist-affecting save runs in ONE interactive
- * transaction that
+ * transaction (live writers: `liveWriterTransaction` in
+ * `src/lib/liveWriterTx.ts`, which adds explicit limits and timing) that
  *
  *   1. locks the Event row (`lockEvent`) before reading anything it
  *      will base a write on (positions, existing rows, encore order),

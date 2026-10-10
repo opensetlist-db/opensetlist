@@ -656,3 +656,61 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ───── Busy database: 503 only when nothing was written ─────
+
+describe("POST /api/events/[id]/setlist-items — busy database", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+    mutableFlags.addItemEnabled = true;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  const body = {
+    itemType: "song",
+    songId: 42,
+    performerIds: ["si-host-1"],
+    isEncore: false,
+  };
+  const acquireTimeout = () =>
+    Object.assign(new Error("timeout exceeded when trying to connect"), {
+      clientVersion: "test",
+    });
+
+  it("pool exhausted on the first lookup → 503 db_busy, Retry-After 2, no i18n text", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockRejectedValue(acquireTimeout());
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ ok: false, error: "db_busy" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("create transaction never started (maxWait) → 503, attempted once (no retry)", async () => {
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "Transaction API error: Unable to start a transaction in the given time.",
+        { code: "P2028", clientVersion: "test" },
+      ),
+    );
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: "db_busy" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+  });
+
+  it("a failure inside the started transaction stays a 500", async () => {
+    (prisma.setlistItem.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "Transaction API error: A query cannot be executed on an expired transaction.",
+        { code: "P2028", clientVersion: "test" },
+      ),
+    );
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: "internal_error" });
+  });
+});
