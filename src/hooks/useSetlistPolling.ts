@@ -33,9 +33,9 @@ interface UseSetlistPollingOptions<T> {
   spreadMs?: number;
   /**
    * Seed for the acceptance watermark: the SSR snapshot's revision /
-   * capturedAt, or — as the R3 fallback inside the realtime hook — the
-   * latest version the realtime path applied. Read again each time
-   * polling is enabled (it only ever raises the watermark).
+   * capturedAt, or the latest version another live source of the page
+   * already showed. Read again each time polling is enabled (it only
+   * ever raises the watermark).
    */
   initialRev?: number | null;
   initialCapturedAt?: string | null;
@@ -70,8 +70,14 @@ interface UseSetlistPollingResult<T> {
 }
 
 /**
- * Polling path for the live snapshot — the R3 fallback inside
- * `useRealtimeEventChannel` (and usable standalone).
+ * Standalone polling path for the live snapshot. `useRealtimeEventChannel`
+ * no longer embeds it: its "polling while disconnected" mode runs on the
+ * realtime hook's OWN runner and scheduler (`setPeriodic` to this same
+ * 5 s ± 1 s cadence), so the page keeps a single acceptance watermark
+ * across the hand-over in both directions — a second instance with its
+ * own state could render an older `rev` than the other had shown.
+ * This hook stays for a polling-only page (and as the reference for the
+ * cadence rules below).
  *
  * Cadence: `intervalMs ± spreadMs` (default 5 s ± 1 s) with a random
  * initial phase, via the shared live scheduler. A fixed `setInterval`
@@ -92,12 +98,12 @@ interface UseSetlistPollingResult<T> {
  * change) — a previous session's failures say nothing about the
  * endpoint's health now.
  *
- * Acceptance + `?minRev=`: shared with the realtime path through
- * `useLiveSnapshot` — an older response never rolls the page back.
+ * Acceptance + `?minRev=`: the same rules as the realtime path (both
+ * build on `useLiveSnapshot`) — an older response never rolls the page
+ * back.
  *
  * Not visibility-gated (unchanged): the browser throttles background
- * timers on its own, and the fallback must keep converging for a tab
- * that is visible but whose channel is dead.
+ * timers on its own.
  */
 export function useSetlistPolling<T>({
   eventId,

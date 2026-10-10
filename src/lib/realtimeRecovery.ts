@@ -1,53 +1,94 @@
-// R3.5 — bounded time-based auto-recovery constants for the Realtime
-// hook (`useRealtimeEventChannel`; `useRealtimeImpressions` shared them
-// until n14 removed it), plus the `document.hidden` store also used by
-// `useImpressionPolling`.
+// Realtime channel recovery constants for `useRealtimeEventChannel`,
+// plus the `document.hidden` store also used by `useImpressionPolling`.
 //
-// 30s delay: long enough that we're not flapping against a server
-// that just rejected a subscription (give the underlying socket and
-// the Supabase cluster breathing room), short enough that a user who
-// experienced one drop gets realtime back inside a typical wish-song
-// burst window during a live show.
+// The recovery model is OWNERSHIP, not a hold-off. realtime-js 2.105
+// (via @supabase/phoenix) already recovers a dropped socket on its own:
+// an unclean close reconnects the socket on a fixed 1 / 2 / 5 / 10 s
+// (then every 10 s) schedule, and every errored channel rejoins as soon
+// as the socket is open again (then on 1 / 2 / 5 / 10 s rejoin backoff).
+// `CHANNEL_ERROR` / `TIMED_OUT` are reported along the way and are NOT
+// terminal. Removing the channel on the first error — what this hook
+// used to do — cancels exactly that rejoin, which is why a forced
+// reconnect took a 30 s hold-off plus a fresh join to recover (p95
+// 12.8 s in the 2026-10-10 reconnect drill) instead of the ~1–3 s
+// realtime-js needs.
 //
-// 3 attempts: covers the realistic transient-cause distribution (one
-// network blip, one WiFi handoff, one server hiccup) without letting
-// a pathologically flapping network pin us in an indefinite retry
-// loop. After the budget exhausts both hooks stay on polling for the
-// rest of the page lifetime — matching the original "no auto-recovery"
-// semantics once the budget is gone.
-//
-// Both hooks share these constants because they govern the same UX
-// trade-off (retry quickly enough to feel transparent, give up before
-// they become a CPU/breadcrumb-noise drain), and because both share
-// the underlying WebSocket and the dominant failure modes hit them
-// together. A change to either constant should land in both call
-// sites in lock-step; centralizing the source of truth here makes
-// that automatic instead of a discipline-dependent two-edit ritual.
-//
-// Tests import these too — `RECOVERY_DELAY_MS` is what
-// `vi.advanceTimersByTimeAsync(...)` advances by, so test expectations
-// stay synced to whatever the production delay is.
-export const RECOVERY_DELAY_MS = 30_000;
-export const MAX_RECOVERY_ATTEMPTS = 3;
+// So the hook keeps the channel object through errors, polls at the
+// fallback cadence while it is disconnected, and only re-creates the
+// channel itself when realtime-js has demonstrably not managed to
+// rejoin for a long time. The numbers below bound that last resort.
 
-// SSR-safe "is the tab currently hidden" check. Used by both Realtime
-// hooks for: (a) lazy-initializing the `paused` state on mount so a
-// page that opens in an already-backgrounded tab doesn't open a
-// channel just to immediately throttle it, (b) resetting `paused`
-// on eventId change to match the actual current visibility (not a
-// hardcoded `false`), and (c) early-returning at the top of the
-// CHANNEL_ERROR/TIMED_OUT handler so a stale subscribe callback
-// firing AFTER a visibility-driven channel teardown can't sneak a
-// captureMessage out of a tab the user can't see — the
-// "visibility-driven teardown is silent" contract must hold across
-// every reachable path, not just the one the hide handler walks
-// synchronously. SSR-safe via the `typeof document` check (this
-// module is imported by `"use client"` hooks but the bundle is also
-// parsed server-side during Next.js build).
-//
-// CodeRabbit feedback on PR #452 (release PR for v0.13.23) caught
-// all three sites; centralizing the check here keeps them in
-// lock-step.
+/**
+ * No `SUBSCRIBED` within this long after a channel's first error (or
+ * after a re-creation) = "sustained failure": the hook stops trusting
+ * realtime-js's own rejoin and re-creates the channel.
+ *
+ * Why 60 s: it must comfortably exceed what realtime-js needs for a
+ * recoverable outage. Its socket retries land at 1, 3, 8, 18, 28, 38,
+ * 48, 58 s after a drop (10 s ceiling), an errored channel rejoins on
+ * socket open, and a join that gets no reply waits the 10 s push
+ * timeout before the next rejoin (1 / 2 / 5 s). A ~30 s network outage
+ * therefore recovers by ≈ 30 + 10 (next socket retry) + 10 (one lost
+ * join) + 1 s ≈ 51 s on its own. 60 s is 4× the 10 s + 5 s backoff
+ * ceilings and leaves that case alone. Waiting long is cheap: the page
+ * polls every 5 s ± 1 s meanwhile, so the cost is push latency, not
+ * correctness — while re-creating early is expensive (a fresh join per
+ * tab against Realtime's admission, the n12 lesson).
+ */
+export const REJOIN_GRACE_MS = 60_000;
+
+/**
+ * Randomized backoff added after the grace window before each
+ * re-creation: attempt n waits `U(base_n, 3·base_n)` with
+ * `base_n = min(5 s · 2^(n−1), 20 s)` → 5–15 s, 10–30 s, 20–60 s.
+ * A Realtime outage hits every viewer at the same instant, so their
+ * grace windows end together; the random 10 s+ spread is what keeps 500
+ * tabs from re-joining in the same second.
+ */
+export const RECREATE_BACKOFF_BASE_MS = 5_000;
+export const RECREATE_BACKOFF_MAX_BASE_MS = 20_000;
+
+/**
+ * Re-creations per budget window. Exhausting the budget does NOT mean
+ * "polling forever": the last channel is kept, realtime-js keeps
+ * rejoining it on its own, and a later `SUBSCRIBED` still returns the
+ * page to the healthy path. It only stops the hook from adding joins.
+ */
+export const MAX_RECREATE_ATTEMPTS = 3;
+
+/**
+ * Continuous `SUBSCRIBED` for this long refunds the re-creation budget.
+ * The old budget was spent once per page lifetime, so a viewer who
+ * dropped three times early in a 3-hour show had no automatic recovery
+ * left for the rest of it; five healthy minutes is long enough that a
+ * flapping network cannot reset the budget between its own flaps.
+ */
+export const HEALTHY_BUDGET_RESET_MS = 5 * 60_000;
+
+/**
+ * Backoff before re-creation attempt `attempt` (1-based), on top of
+ * `REJOIN_GRACE_MS`. `random` is injectable for tests.
+ */
+export function recreateBackoffMs(
+  attempt: number,
+  random: () => number = Math.random,
+): number {
+  const base = Math.min(
+    RECREATE_BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1),
+    RECREATE_BACKOFF_MAX_BASE_MS,
+  );
+  return Math.round(base * (1 + 2 * random()));
+}
+
+// SSR-safe "is the tab currently hidden" check. Used by the Realtime
+// hook to early-return at the top of the CHANNEL_ERROR / TIMED_OUT
+// handler, so a status callback that fires after a visibility-driven
+// teardown (or between the hide event and React committing it) can't
+// send a captureMessage or flip the page into polling for a tab the
+// user can't see — "visibility-driven teardown is silent" must hold
+// across every reachable path. SSR-safe via the `typeof document`
+// check (this module is imported by `"use client"` hooks but the bundle
+// is also parsed server-side during Next.js build).
 export function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.hidden;
 }
@@ -71,7 +112,7 @@ export function isDocumentHidden(): boolean {
 // (React then updates the state via the store on the next tick).
 //
 // Returned by `useSyncExternalStore` as a boolean usable directly
-// as the `paused` derivation in both Realtime hooks.
+// as the `paused` / `hidden` derivation in the live hooks.
 export function subscribeToDocumentHidden(callback: () => void): () => void {
   if (typeof document === "undefined") return () => {};
   document.addEventListener("visibilitychange", callback);
@@ -80,11 +121,8 @@ export function subscribeToDocumentHidden(callback: () => void): () => void {
 
 export function getDocumentHiddenSnapshot(): boolean {
   // Delegates to `isDocumentHidden` so the implementation lives in
-  // exactly one place — push-review CR caught the byte-for-byte
-  // duplicate body that would have let the two predicates drift
-  // independently. `useSyncExternalStore` calls this on every render
-  // to read the current value; the wrapper is virtually free vs the
-  // safety win.
+  // exactly one place. `useSyncExternalStore` calls this on every
+  // render to read the current value; the wrapper is virtually free.
   return isDocumentHidden();
 }
 

@@ -65,10 +65,16 @@ vi.mock("@/lib/supabaseClient", () => ({
 // modules at load time.
 import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
 import {
-  RECOVERY_DELAY_MS,
-  MAX_RECOVERY_ATTEMPTS,
+  HEALTHY_BUDGET_RESET_MS,
+  MAX_RECREATE_ATTEMPTS,
+  REJOIN_GRACE_MS,
+  recreateBackoffMs,
 } from "@/lib/realtimeRecovery";
 import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
+import {
+  CATCHUP_JITTER_MS,
+  NOTIFICATION_COOLDOWN_MS,
+} from "@/lib/liveScheduler";
 import type { FanTop3Entry } from "@/lib/types/setlist";
 import { setDocumentHidden } from "@/__tests__/helpers/testVisibility";
 
@@ -135,7 +141,12 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     });
   });
 
-  it("flips to polling fallback on CHANNEL_ERROR", async () => {
+  // Recovery ownership: a CHANNEL_ERROR / TIMED_OUT is realtime-js
+  // telling us it is reconnecting, not that the channel is dead. The
+  // hook keeps the channel (removing it would cancel the rejoin) and
+  // polls at the fallback cadence until SUBSCRIBED comes back.
+  it("on CHANNEL_ERROR keeps the channel and polls at the 5 s fallback cadence", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     const { result } = renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -151,39 +162,42 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         startTime: null,
       }),
     );
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledTimes(1); // seed
 
     // Channel was set up; subscribe callback captured.
     expect(capturedSubscribeCallback).not.toBeNull();
     expect(channelMock).toHaveBeenCalledWith("event:1");
 
-    // Simulate the supabase channel hitting CHANNEL_ERROR after the
-    // server-side handshake / RLS check fails or the WS errors out.
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
 
-    // Polling fallback now drives the page; useSetlistPolling started
-    // its 5s interval. Advance one tick and the polling fetch fires.
+    // The channel is NOT torn down — realtime-js's own rejoin owns it.
+    expect(removeChannelMock).not.toHaveBeenCalled();
+    expect(channelMock).toHaveBeenCalledTimes(1);
+
+    // Polling while disconnected: first tick at a random phase
+    // (U(0, 5 s) = 2.5 s here), then every 5 s ± 1 s (exact 5 s here).
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(2_499);
     });
-
-    // The realtime channel was torn down (effect cleanup ran when
-    // pollFallback flipped, removing the dead channel from the
-    // supabase-js registry).
-    expect(removeChannelMock).toHaveBeenCalledTimes(1);
-
-    // Polling continues — the snapshot is fetched on the polling
-    // cadence. The initial mount fetch + at least one polling fetch
-    // both ran against /api/setlist.
-    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
-    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
-
-    // The hook is still mounted; its return shape is the polled state.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(result.current.lastUpdated).toBeTruthy();
+    expect(removeChannelMock).not.toHaveBeenCalled();
   });
 
-  it("flips to polling fallback on TIMED_OUT", async () => {
+  it("on TIMED_OUT keeps the channel and polls too", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -192,21 +206,97 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         initialTop3Wishes,
         locale: "ko",
         enabled: true,
-        // null startTime so the boundary timer is a no-op for the
-        // fallback / Sentry / reconnect tests below — those don't
-        // exercise boundary behavior. Boundary-specific tests at
-        // the bottom of this file pass concrete ISO strings.
         startTime: null,
       }),
     );
-
-    expect(capturedSubscribeCallback).not.toBeNull();
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
 
     await act(async () => {
       capturedSubscribeCallback!("TIMED_OUT");
+      await vi.advanceTimersByTimeAsync(2_500);
     });
+    expect(removeChannelMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
-    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+  it("SUBSCRIBED after a gap → one jittered catch-up, then back to the 20 s cadence", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // Socket drops; realtime-js rejoins after ~1 s (its first backoff
+    // step). One fallback poll may or may not land in the gap.
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    const beforeRejoin = fetchMock.mock.calls.length;
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    // Catch-up is jittered (250 ms here), not immediate.
+    expect(fetchMock).toHaveBeenCalledTimes(beforeRejoin);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(beforeRejoin + 1);
+
+    // Healthy again: no 5 s polls, the next request is the 20 s tick.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(19_749);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(beforeRejoin + 1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(beforeRejoin + 2);
+    // The same channel object recovered — nothing was removed or re-made.
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    expect(removeChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("repeated realtime-js retries while disconnected add no breadcrumbs (one per transition)", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      // realtime-js reports each failed rejoin again.
+      capturedSubscribeCallback!("TIMED_OUT");
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      capturedSubscribeCallback!("TIMED_OUT");
+    });
+    const statusCrumbs = addBreadcrumbMock.mock.calls
+      .map(([arg]) => arg.message as string)
+      .filter((m) => m.includes("channel status →"));
+    expect(statusCrumbs).toHaveLength(2); // → SUBSCRIBED, → CHANNEL_ERROR
   });
 
   it("scopes notifications to this event — cross-event pushes don't refetch", async () => {
@@ -390,26 +480,37 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     );
 
     // Mount-time fetch was kicked off inside the useEffect; flush
-    // microtasks to let the Promise chain settle.
+    // microtasks to let the Promise chain settle. The page-load seed is
+    // immediate (not a correlated trigger).
     await flushMicrotasks();
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // First SUBSCRIBED — the initial channel join. Exactly ONE
     // catch-up fetch: the seed ran before the channel was live, so a
-    // write committed in between would otherwise be missed.
+    // write committed in between would otherwise be missed. Jittered
+    // by U(0, CATCHUP_JITTER_MS): a mass rejoin lands together.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CATCHUP_JITTER_MS);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     // Second SUBSCRIBED — supabase-js auto-rejoined after a transient
-    // socket drop. We may have missed pushes during the gap; refetch.
+    // socket drop. We may have missed pushes during the gap; refetch
+    // (after the 1 s per-client cooldown at the latest).
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        NOTIFICATION_COOLDOWN_MS + CATCHUP_JITTER_MS,
+      );
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -528,8 +629,14 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
       await vi.advanceTimersByTimeAsync(31_900);
     });
     expect(fetchMock).toHaveBeenCalledTimes(2); // + periodic @ 20 s
+    // Boundary at 32 s; every viewer's timer fires together, so the
+    // request is jittered like a catch-up (U(0, 500) = 250 here).
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(349);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
     });
     // Boundary timer fired → snapshot requested.
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -563,8 +670,9 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     const before = fetchMock.mock.calls.length;
     // seed + one periodic per 20 s + the first boundary.
     expect(before).toBe(1 + Math.floor((second - 100) / 20_000) + 1);
+    // + 250 ms boundary jitter (Math.random = 0.5).
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.advanceTimersByTimeAsync(400);
     });
     expect(fetchMock).toHaveBeenCalledTimes(before + 1);
   });
@@ -711,6 +819,8 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
   });
 
   it("triggers a snapshot refetch after visibility resume (gap-fill missed pushes)", async () => {
+    // 250 ms catch-up / resume jitter.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -730,12 +840,12 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     // First SUBSCRIBED — initial join catch-up.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
+      await vi.advanceTimersByTimeAsync(250);
     });
-    await flushMicrotasks();
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     // Hide + show — fresh channel set up; the re-run effect seeds a
-    // snapshot immediately (gap-fill for the away window).
+    // snapshot (gap-fill for the away window) after the resume jitter.
     await act(async () => {
       setDocumentHidden(true);
     });
@@ -743,14 +853,25 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
       setDocumentHidden(false);
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
     // Post-resume SUBSCRIBED — same catch-up as an initial join
-    // (closes the resume-seed → subscribe window).
+    // (closes the resume-seed → subscribe window); it waits for the
+    // 1 s per-client cooldown measured from the resume seed.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
@@ -781,7 +902,11 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(captureMessageMock).not.toHaveBeenCalled();
   });
 
-  it("schedules auto-recovery after CHANNEL_ERROR while tab is visible", async () => {
+  // Re-creation is the last resort for SUSTAINED failure: no
+  // SUBSCRIBED within REJOIN_GRACE_MS + a randomized backoff
+  // (Math.random = 0.5 → attempt 1 backoff = 10 s).
+  it("re-creates the channel only after sustained failure (grace + randomized backoff)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -798,12 +923,119 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
-    expect(removeChannelMock).toHaveBeenCalledTimes(1);
-
-    // After RECOVERY_DELAY_MS, setPollFallback(false) fires → effect
-    // re-runs → channel re-subscribes.
+    const backoff1 = recreateBackoffMs(1, () => 0.5);
+    expect(backoff1).toBe(10_000);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + backoff1 - 1);
+    });
+    expect(removeChannelMock).not.toHaveBeenCalled();
+    expect(channelMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flushMicrotasks();
+    // Old channel removed (stops its rejoin), a new one subscribed.
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+    expect(channelMock).toHaveBeenCalledTimes(2);
+    expect(fakeChannel.subscribe).toHaveBeenCalledTimes(2);
+    expect(addBreadcrumbMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("re-creating channel (attempt 1/"),
+      }),
+    );
+  });
+
+  it("a rejoin inside the grace window cancels re-creation", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    });
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    expect(removeChannelMock).not.toHaveBeenCalled();
+  });
+
+  it("a late status from a removed (re-created) channel is ignored", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    const oldCallback = capturedSubscribeCallback!;
+    await act(async () => {
+      oldCallback("CHANNEL_ERROR");
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 10_000);
+    });
+    await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(2);
+    const newCallback = capturedSubscribeCallback!;
+    expect(newCallback).not.toBe(oldCallback);
+
+    // The new channel joins; then the OLD one reports CLOSED (its leave
+    // completing) and a stale CHANNEL_ERROR. Neither may knock the
+    // healthy new channel back into polling.
+    await act(async () => {
+      newCallback("SUBSCRIBED");
+      oldCallback("CLOSED");
+      oldCallback("CHANNEL_ERROR");
+    });
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const before = fetchMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    // Healthy cadence: only the jittered catch-up, no 5 s polls.
+    expect(fetchMock.mock.calls.length - before).toBe(1);
+  });
+
+  it("an unexpected CLOSED on the current channel is treated as a failure", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      capturedSubscribeCallback!("CLOSED"); // server closed it
+    });
+    // realtime-js never rejoins a closed channel → the hook re-creates
+    // it after the grace window.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 10_000);
     });
     await flushMicrotasks();
     expect(channelMock).toHaveBeenCalledTimes(2);
@@ -832,12 +1064,12 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
 
     const channelCallsBefore = channelMock.mock.calls.length;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS * 2);
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS * 3);
     });
     expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
   });
 
-  it("exhausts the recovery budget after MAX_RECOVERY_ATTEMPTS", async () => {
+  it("stops re-creating after MAX_RECREATE_ATTEMPTS but keeps polling and the last channel", async () => {
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -851,25 +1083,85 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     );
     await flushMicrotasks();
 
-    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
-      await act(async () => {
-        capturedSubscribeCallback!("CHANNEL_ERROR");
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
-      });
-      await flushMicrotasks();
-    }
-
-    // One more CHANNEL_ERROR — budget gone, no further re-subscribe.
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
-    const channelCallsBefore = channelMock.mock.calls.length;
+    // Never SUBSCRIBED again: each window is ≤ grace + 60 s.
+    for (let i = 0; i < MAX_RECREATE_ATTEMPTS + 2; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 60_000);
+      });
+      await flushMicrotasks();
+    }
+    expect(channelMock).toHaveBeenCalledTimes(1 + MAX_RECREATE_ATTEMPTS);
+    expect(removeChannelMock).toHaveBeenCalledTimes(MAX_RECREATE_ATTEMPTS);
+    const exhausted = addBreadcrumbMock.mock.calls.filter(([arg]) =>
+      String(arg.message).includes("budget exhausted"),
+    );
+    expect(exhausted).toHaveLength(1);
+
+    // Still polling at the fallback cadence (≥ 1 request per 6 s).
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const before = fetchMock.mock.calls.length;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS * 2);
+      await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(channelMock.mock.calls.length).toBe(channelCallsBefore);
+    expect(fetchMock.mock.calls.length - before).toBeGreaterThanOrEqual(10);
+
+    // …and the kept channel can still come back on its own.
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    const afterRejoin = fetchMock.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(fetchMock.mock.calls.length - afterRejoin).toBe(1); // catch-up only
+  });
+
+  it("the re-creation budget is refunded after HEALTHY_BUDGET_RESET_MS of continuous health", async () => {
+    renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+
+    const burnBudget = async () => {
+      await act(async () => {
+        capturedSubscribeCallback!("CHANNEL_ERROR");
+      });
+      for (let i = 0; i < MAX_RECREATE_ATTEMPTS + 1; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 60_000);
+        });
+        await flushMicrotasks();
+      }
+    };
+    await burnBudget();
+    expect(channelMock).toHaveBeenCalledTimes(1 + MAX_RECREATE_ATTEMPTS);
+
+    // Healthy, but not for long enough: no refund.
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      await vi.advanceTimersByTimeAsync(HEALTHY_BUDGET_RESET_MS - 1_000);
+    });
+    await burnBudget();
+    expect(channelMock).toHaveBeenCalledTimes(1 + MAX_RECREATE_ATTEMPTS);
+
+    // Five healthy minutes: the budget is back.
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+      await vi.advanceTimersByTimeAsync(HEALTHY_BUDGET_RESET_MS);
+    });
+    await burnBudget();
+    expect(channelMock).toHaveBeenCalledTimes(1 + 2 * MAX_RECREATE_ATTEMPTS);
   });
 
   it("does not subscribe a channel on mount when document is already hidden (CR — useSyncExternalStore)", async () => {
@@ -935,7 +1227,8 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not schedule a duplicate recovery timer when CHANNEL_ERROR fires twice in a row (CR guard)", async () => {
+  it("CHANNEL_ERROR twice in a row arms ONE recovery timer", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -949,26 +1242,25 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     );
     await flushMicrotasks();
 
-    // Two CHANNEL_ERRORs in rapid succession — without the
-    // `pendingRecoveryTimeoutRef.current === null` guard the second
-    // would have scheduled a second timer (CodeRabbit feedback on
-    // PR #450).
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
-
+    // Attempt 1 fires at grace + 10 s; attempt 2 is armed only after
+    // it (grace + 20 s later at random = 0.5), so within this window a
+    // duplicate timer is the only way to see a third channel.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 10_000);
     });
     await flushMicrotasks();
-
-    // Channel re-subscribed exactly once (initial + one recovery
-    // attempt). A duplicate timer would have produced 3+ calls.
+    expect(channelMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS);
+    });
     expect(channelMock).toHaveBeenCalledTimes(2);
   });
 
-  it("visibility resume from pollFallback=true resets the budget and re-attempts realtime", async () => {
+  it("visibility resume starts a fresh session (fresh budget, new channel)", async () => {
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -983,21 +1275,19 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     await flushMicrotasks();
 
     // Burn the full budget while visible.
-    for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
-      await act(async () => {
-        capturedSubscribeCallback!("CHANNEL_ERROR");
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(RECOVERY_DELAY_MS);
-      });
-      await flushMicrotasks();
-    }
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
+    for (let i = 0; i < MAX_RECREATE_ATTEMPTS + 1; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 60_000);
+      });
+      await flushMicrotasks();
+    }
     const channelCallsAfterBudgetGone = channelMock.mock.calls.length;
+    expect(channelCallsAfterBudgetGone).toBe(1 + MAX_RECREATE_ATTEMPTS);
 
-    // Hide + show — budget reset, fallback cleared, channel re-subscribes.
+    // Hide + show — the session restarts with a new channel…
     await act(async () => {
       setDocumentHidden(true);
     });
@@ -1005,10 +1295,15 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
       setDocumentHidden(false);
     });
     await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(channelCallsAfterBudgetGone + 1);
 
-    expect(channelMock.mock.calls.length).toBeGreaterThan(
-      channelCallsAfterBudgetGone,
-    );
+    // …and a fresh re-creation budget.
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+      await vi.advanceTimersByTimeAsync(REJOIN_GRACE_MS + 60_000);
+    });
+    await flushMicrotasks();
+    expect(channelMock).toHaveBeenCalledTimes(channelCallsAfterBudgetGone + 2);
   });
 });
 
@@ -1202,6 +1497,45 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     expect(result.current.freshness.state).toBe("live");
   });
 
+  it("a 503 Retry-After is a floor: pushes inside the window do not fetch before it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeErrorResponse(503, "3"))
+      .mockResolvedValue(makeFetchResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A 503 counts toward the delayed indicator like any failure.
+    expect(result.current.freshness.state).toBe("retrying");
+
+    const push = capturedPostgresHandlers.find(
+      (h) => h.config.table === "SetlistItem",
+    )!.handler;
+    await advance(500);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(1_000);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+    });
+    await advance(1_499); // t = 2999
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1); // t = 3000: one request covers every trigger
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.freshness.state).toBe("live");
+
+    // Floor expired → normal notification cadence (250 ms jitter here).
+    await advance(2_000);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+    });
+    await advance(250);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("aborts a hung snapshot at the 8 s deadline and retries", async () => {
     const fetchMock = vi
       .fn()
@@ -1249,7 +1583,12 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("channel fallback reports delayed until polling syncs, then polling's freshness", async () => {
+  // Before the recovery rewrite the page switched to a SECOND data
+  // source on CHANNEL_ERROR and showed "delayed" until that source had
+  // synced. Now the same runner keeps syncing through the disconnect,
+  // so a socket blip that realtime-js heals in a second no longer
+  // flashes a warning at the whole audience; failures still do.
+  it("a channel disconnect alone does not flag delayed — polling keeps the sync clock moving", async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     const { result } = mount();
@@ -1260,14 +1599,29 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     await act(async () => {
       capturedSubscribeCallback!("CHANNEL_ERROR");
     });
-    expect(result.current.freshness.state).toBe("delayed");
-    // Last good realtime sync stays visible underneath the warning.
+    expect(result.current.freshness.state).toBe("live");
     expect(result.current.freshness.lastSyncAt).toBe(realtimeSync);
 
-    // First 5 s poll lands → polling is driving, honestly "live".
-    await advance(5_000);
+    // First disconnected poll (random phase 2.5 s at 0.5) lands.
+    await advance(2_500);
     expect(result.current.freshness.state).toBe("live");
     expect(result.current.freshness.lastSyncAt).not.toBe(realtimeSync);
+  });
+
+  it("failures while disconnected still walk the indicator to delayed", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse())
+      .mockResolvedValue(makeErrorResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    // poll @2.5 s fails → retry 1 s → retry 2 s → 3rd failure.
+    await advance(2_500 + 1_000 + 2_000);
+    expect(result.current.freshness.state).toBe("delayed");
   });
 });
 
@@ -1461,17 +1815,19 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(120_000);
     expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    // Resume: immediate gap-fill, then the cadence restarts.
+    // Resume: jittered gap-fill (250 ms here), then the cadence restarts.
     await act(async () => {
       setDocumentHidden(false);
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    await advance(20_000);
+    await advance(19_750);
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
-  it("an `online` event fetches immediately", async () => {
+  it("an `online` event fetches after the catch-up jitter (a venue's Wi-Fi comes back at once)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
@@ -1480,7 +1836,9 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await act(async () => {
       window.dispatchEvent(new Event("online"));
     });
-    await flushMicrotasks();
+    await advance(249);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -1541,7 +1899,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
-    await flushMicrotasks();
+    await advance(250); // catch-up jitter
     expect(fetchMock.mock.calls[3][0]).toBe(
       "/api/setlist?eventId=1&locale=ko&minRev=7",
     );
@@ -1569,7 +1927,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     }
   });
 
-  it("R3 fallback is seeded with realtime's applied version: an older polled rev is rejected", async () => {
+  it("polling while disconnected shares realtime's applied version: an older polled rev is rejected", async () => {
     const realtimeItems = [{ id: "rt-rev7" }];
     const staleItems = [{ id: "stale-rev5" }];
     const fetchMock = vi
@@ -1603,6 +1961,126 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(30_000);
     expect(result.current.items).toBe(realtimeItems);
     expect(result.current.rev).toBe(7);
+  });
+
+  // ── Monotonic DOM across the polling ↔ realtime hand-over ──
+  //
+  // Both directions of the hand-over go through ONE acceptance
+  // watermark (one useLiveSnapshot, one scheduler), so the rendered
+  // `rev` is non-decreasing over every render — not just at the end.
+  // `renders` records what each render actually returned.
+
+  function mountRecording(extra: { initialRev?: number; initialCapturedAt?: string }) {
+    const renders: Array<{ rev: number | null; items: unknown[] }> = [];
+    const hook = renderHook(() => {
+      const value = useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+        ...extra,
+      });
+      renders.push({ rev: value.rev, items: value.items });
+      return value;
+    });
+    return { ...hook, renders };
+  }
+
+  function expectMonotonic(renders: Array<{ rev: number | null }>) {
+    let max = -Infinity;
+    for (const { rev } of renders) {
+      if (rev === null) continue;
+      expect(rev).toBeGreaterThanOrEqual(max);
+      max = Math.max(max, rev);
+    }
+  }
+
+  it("hand-over polling → realtime: polling reached rev 12, the rejoin catch-up answers rev 10 → rev 10 is never rendered", async () => {
+    const rev10 = [{ id: "rev10" }];
+    const rev12 = [{ id: "rev12" }];
+    // Responses by phase: realtime holds 10; polling (fallback) gets 12;
+    // after the rejoin a stale cache instance answers 10 again.
+    let phase: "realtime" | "polling" | "rejoined" = "realtime";
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        phase === "polling"
+          ? revResponse(12, "2026-11-14T07:31:00.000Z", rev12)
+          : revResponse(10, "2026-11-14T07:30:00.000Z", rev10),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result, renders } = mountRecording({
+      initialRev: 9,
+      initialCapturedAt: "2026-11-14T07:29:00.000Z",
+    });
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(250);
+    expect(result.current.rev).toBe(10);
+
+    phase = "polling";
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    await advance(2_500); // first disconnected poll
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+
+    phase = "rejoined";
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(1_000); // jittered catch-up lands with rev 10
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(4);
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    await advance(25_000); // a healthy repair poll, still rev 10
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+
+    expectMonotonic(renders);
+    expect(renders.some((r) => r.rev === 12)).toBe(true);
+    const firstAt12 = renders.findIndex((r) => r.rev === 12);
+    expect(renders.slice(firstAt12).every((r) => r.items === rev12)).toBe(true);
+  });
+
+  it("hand-over realtime → polling: realtime shows rev 12, the first poll answers rev 11 → 11 is rejected", async () => {
+    const rev12 = [{ id: "rev12" }];
+    const rev11 = [{ id: "rev11" }];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(revResponse(12, "2026-11-14T07:31:00.000Z", rev12))
+      .mockResolvedValue(revResponse(11, "2026-11-14T07:32:00.000Z", rev11));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result, renders } = mountRecording({
+      initialRev: 10,
+      initialCapturedAt: "2026-11-14T07:29:00.000Z",
+    });
+    await flushMicrotasks();
+    expect(result.current.rev).toBe(12);
+
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    await advance(2_500); // first disconnected poll → rev 11
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/setlist?eventId=1&locale=ko&minRev=12",
+    );
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    // Older than a revision the server already showed → server gap →
+    // retry path, never applied.
+    await advance(10_000);
+    expect(result.current.rev).toBe(12);
+    expect(result.current.items).toBe(rev12);
+    expectMonotonic(renders);
+    expect(renders.every((r) => r.items !== rev11)).toBe(true);
   });
 
   it("omits minRev when no revision is known yet", async () => {
