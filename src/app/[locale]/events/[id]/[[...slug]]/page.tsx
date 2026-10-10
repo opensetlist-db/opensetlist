@@ -366,6 +366,18 @@ const getEvent = cache(async (id: bigint, locale: string) => {
 // Null for every non-ongoing event: those keep the cached wide read
 // (`getEventCached`) and their own reaction / TOP-3 queries, and the
 // client starts with no applied revision.
+//
+// Null ALSO when the snapshot build itself fails. The build needs a
+// pooler client, and under an audience burst the pooler's client cap is
+// the first thing that gives out (EMAXCONN) — `/api/setlist` answers
+// that with a 503 + Retry-After the client scheduler honours, but an
+// uncaught throw here would turn the whole page into a 500 for a viewer
+// who is just arriving. Degrading to the non-live seed keeps the page
+// up: the wide read is usually still in the data cache (longer TTL),
+// and with no applied revision the client accepts its first successful
+// `/api/setlist` fetch, so nothing can roll back. The builder has
+// already logged the failure (`[liveSnapshot] build-failed`), so this
+// only records that SSR took the degraded path.
 const getLiveSeed = cache(
   async (id: bigint, locale: string): Promise<EventSnapshot | null> => {
     const statusRow = await getEventStatusRow(id);
@@ -373,8 +385,16 @@ const getLiveSeed = cache(
     const snapshotLocale: Locale = locales.includes(locale as Locale)
       ? (locale as Locale)
       : defaultLocale;
-    const { snapshot } = await getLiveSnapshot(id, snapshotLocale);
-    return snapshot.found && !snapshot.isDeleted ? snapshot : null;
+    try {
+      const { snapshot } = await getLiveSnapshot(id, snapshotLocale);
+      return snapshot.found && !snapshot.isDeleted ? snapshot : null;
+    } catch (err) {
+      console.warn(
+        `[eventPage] live seed unavailable event=${id} locale=${snapshotLocale} ` +
+          `err=${err instanceof Error ? `${err.name}:${err.message.slice(0, 120)}` : String(err)}`,
+      );
+      return null;
+    }
   },
 );
 

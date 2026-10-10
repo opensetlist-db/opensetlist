@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-// useSetlistPolling type re-export kept; the hook itself is no
-// longer called here (lives inside useRealtimeEventChannel as the
-// R3 fallback path that takes over on CHANNEL_ERROR / TIMED_OUT).
+// `useSetlistPolling` is only a type source here. The hook itself has
+// no runtime caller any more: `useRealtimeEventChannel` owns the single
+// snapshot scheduler and runs the "polling while disconnected" cadence
+// on that same runner, so there is no second polling hook to hand over
+// to on CHANNEL_ERROR / TIMED_OUT.
 import type { ReactionCountsMap } from "@/hooks/useSetlistPolling";
 import { useRealtimeEventChannel } from "@/hooks/useRealtimeEventChannel";
 import type { FanTop3Entry } from "@/lib/types/setlist";
@@ -154,12 +156,14 @@ interface Props {
 }
 
 /**
- * Client wrapper that owns the live event page's sole
- * `useSetlistPolling` subscription and re-derives every sidebar value
- * from the same poll cycle that drives the right column.
+ * Client wrapper that owns the live event page's sole live-snapshot
+ * subscription (`useRealtimeEventChannel`: Realtime notifications plus
+ * the one scheduler that polls, catches up and backs off) and re-derives
+ * every sidebar value from the same snapshot that drives the right
+ * column.
  *
  * Why this layer exists:
- *   - Before this component, `useSetlistPolling` lived inside
+ *   - Before this component, the polling hook lived inside
  *     `LiveSetlist` and never propagated upward — the sidebar cards
  *     (`EventHeader`, `UnitsCard`, `PerformersCard`) rendered once
  *     server-side and stayed frozen for the rest of the session, so

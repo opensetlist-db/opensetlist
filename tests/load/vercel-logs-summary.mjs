@@ -123,9 +123,19 @@ export function parseLog(text) {
     // Order matters: `build-failed` before `build`.
     if (/\[liveSnapshot\] build-failed\b/.test(line)) kind = "buildFailed";
     else if (/\[liveSnapshot\] build\s/.test(line)) kind = "build";
+    // `rev-read-error` is the console.error companion of a `rev=error`
+    // line (same read, logged twice) — keep it out of the rev-read
+    // count or every error would count as two reads.
+    else if (/\[liveSnapshot\] rev-read-error\b/.test(line)) kind = "revReadError";
     else if (/\[liveSnapshot\] rev-read\b/.test(line)) kind = "revRead";
-    else if (/\[liveSnapshot\] coalesced\b/.test(line)) kind = "coalesced";
+    // `coalesced` (first read) and `coalesced-repair` (rev-keyed rebuild)
+    // both carry `waiters=N`; one request can appear in each, so they
+    // are summed as "coalesce events", not as requests.
+    else if (/\[liveSnapshot\] coalesced(-repair)?\b/.test(line)) kind = "coalesced";
     else if (/\[prisma\] pool\b/.test(line)) kind = "pool";
+    // `[liveWriter] failed route=… kind=…` has no acquire/exec fields;
+    // it is the pre-execution failure companion of an `ok=false` line.
+    else if (/\[liveWriter\] failed\b/.test(line)) kind = "writerFailed";
     else if (/\[liveWriter\]/.test(line)) kind = "writer";
     else if (/\[setlist\] slow-hit\b/.test(line)) kind = "slowHit";
     else if (/EMAXCONN/.test(line)) kind = "emaxconn";
@@ -211,11 +221,23 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     if (e != null) g.exec.push(e);
     if (r.f.ok === "false") g.failed++;
   }
+  // Pre-execution failure kinds (pool_acquire_timeout / pooler_cap /
+  // tx_max_wait / other) per route, from the `[liveWriter] failed` lines.
+  const writerFailedKinds = new Map();
+  for (const r of by("writerFailed")) {
+    const route = r.f.route ?? "?";
+    const kinds = writerFailedKinds.get(route) ?? new Map();
+    kinds.set(r.f.kind ?? "?", (kinds.get(r.f.kind ?? "?") || 0) + 1);
+    writerFailedKinds.set(route, kinds);
+    if (!writerRoutes.has(route)) writerRoutes.set(route, { route, n: 0, acquire: [], exec: [], failed: 0 });
+  }
   const writers = [...writerRoutes.values()].map((g) => ({
     route: g.route, n: g.n, failed: g.failed,
+    failedKinds: [...(writerFailedKinds.get(g.route) ?? new Map()).entries()].map(([k, v]) => `${k} ${v}`).join(", "),
     acquireP50: pct(g.acquire, 0.5), acquireP95: pct(g.acquire, 0.95),
     execP50: pct(g.exec, 0.5), execP95: pct(g.exec, 0.95),
   }));
+  const revReadErrors = by("revReadError").length;
 
   const slow = by("slowHit").map((r) => num(r.f.ms)).filter((v) => v != null);
 
@@ -278,7 +300,7 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     },
     builds, buildTotal: by("build").length,
     buildFailed: { total: by("buildFailed").length, byErr: failedByErr },
-    revRead: { total: revReads.length, timeouts: revReadTimeouts, p50: pct(revReadMs, 0.5), max: revReadMs.length ? Math.max(...revReadMs) : null },
+    revRead: { total: revReads.length, timeouts: revReadTimeouts, errors: revReadErrors, p50: pct(revReadMs, 0.5), max: revReadMs.length ? Math.max(...revReadMs) : null },
     coalesced: { lines: coalesced.length, waitersSum: waiters.reduce((a, b) => a + b, 0), waitersMax: waiters.length ? Math.max(...waiters) : null },
     emaxconn, writers,
     slowHit: { total: slow.length, maxMs: slow.length ? Math.max(...slow) : null },
@@ -319,16 +341,16 @@ export function toMarkdown(s, { addHours = 0, bucketS = 5, carryS = 5, source = 
   L.push("|---|---|---|");
   L.push(`| EMAXCONN (pooler client cap) | ${s.emaxconn.total} | API ${s.emaxconn.api}, SSR ${s.emaxconn.ssr}${s.emaxconn.inTypedLines ? ` (${s.emaxconn.inTypedLines} inside build-failed / writer lines)` : ""} |`);
   L.push(`| \`[liveSnapshot] build-failed\` | ${s.buildFailed.total} | ${Object.entries(s.buildFailed.byErr).map(([k, v]) => `${k} ${v}`).join(", ") || "—"} |`);
-  L.push(`| \`[liveSnapshot] rev-read\` (repair revision read) | ${s.revRead.total} | rev=timeout ${s.revRead.timeouts}; ms p50 ${d(s.revRead.p50)} / max ${d(s.revRead.max)} |`);
+  L.push(`| \`[liveSnapshot] rev-read\` (repair revision read) | ${s.revRead.total} | rev=timeout ${s.revRead.timeouts}, rev=error ${s.revRead.errors}; ms p50 ${d(s.revRead.p50)} / max ${d(s.revRead.max)} |`);
   L.push(`| \`[liveSnapshot] coalesced\` | ${s.coalesced.lines} | waiters sum ${s.coalesced.waitersSum}, max ${d(s.coalesced.waitersMax)} |`);
   L.push(`| \`[setlist] slow-hit\` | ${s.slowHit.total} | max ${d(s.slowHit.maxMs)} ms |`);
   L.push("");
   if (s.writers.length) {
     L.push("### Admin writes (`[liveWriter]`)");
     L.push("");
-    L.push("| route | saves | acquire ms p50 / p95 | exec ms p50 / p95 | ok=false |");
-    L.push("|---|---|---|---|---|");
-    for (const w of s.writers) L.push(`| ${w.route} | ${w.n} | ${d(w.acquireP50)} / ${d(w.acquireP95)} | ${d(w.execP50)} / ${d(w.execP95)} | ${w.failed} |`);
+    L.push("| route | saves | acquire ms p50 / p95 | exec ms p50 / p95 | ok=false | failed kinds |");
+    L.push("|---|---|---|---|---|---|");
+    for (const w of s.writers) L.push(`| ${w.route} | ${w.n} | ${d(w.acquireP50)} / ${d(w.acquireP95)} | ${d(w.execP50)} / ${d(w.execP95)} | ${w.failed} | ${w.failedKinds || "—"} |`);
     L.push("");
   }
   L.push("### Per minute");
