@@ -1,26 +1,19 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect } from "react";
 // Type lives in `src/lib/types/setlist.ts` so pure helpers under
 // `src/lib/` can use it without crossing the lib→hooks layer
 // boundary. Re-exported below for back-compat with existing
 // `import { ReactionCountsMap } from "@/hooks/useSetlistPolling"`.
 import type { FanTop3Entry, ReactionCountsMap } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { Freshness } from "@/lib/snapshotFreshness";
 import {
-  INITIAL_FRESHNESS,
-  armSnapshotDeadline,
-  freshnessStateFor,
-  parseRetryAfterMs,
-  snapshotRetryDelayMs,
-  type Freshness,
-} from "@/lib/snapshotFreshness";
+  FALLBACK_POLL_MS,
+  FALLBACK_POLL_SPREAD_MS,
+  createLiveScheduler,
+} from "@/lib/liveScheduler";
+import { useLiveSnapshot } from "@/hooks/useLiveSnapshot";
 
 export type { ReactionCountsMap };
 
@@ -35,7 +28,12 @@ interface UseSetlistPollingOptions<T> {
   // reactionCounts) are locale-independent.
   locale: string;
   enabled: boolean;
+  /** Mean poll interval; each gap is `intervalMs ± spreadMs`. */
   intervalMs?: number;
+  spreadMs?: number;
+  /** SSR snapshot revision / capturedAt — seeds the acceptance watermark. */
+  initialRev?: number | null;
+  initialCapturedAt?: string | null;
 }
 
 interface UseSetlistPollingResult<T> {
@@ -60,8 +58,42 @@ interface UseSetlistPollingResult<T> {
    * `src/lib/snapshotFreshness.ts`.
    */
   freshness: Freshness;
+  /** Applied snapshot revision (see `useLiveSnapshot`). */
+  rev: number | null;
+  /** Applied snapshot `capturedAt` ISO (see `useLiveSnapshot`). */
+  capturedAt: string | null;
 }
 
+/**
+ * Polling path for the live snapshot — the R3 fallback inside
+ * `useRealtimeEventChannel` (and usable standalone).
+ *
+ * Cadence: `intervalMs ± spreadMs` (default 5 s ± 1 s) with a random
+ * initial phase, via the shared live scheduler. A fixed `setInterval`
+ * started at enable time would keep every viewer that fell back at the
+ * same moment — a Realtime outage hits the whole audience together —
+ * polling in lock-step for the rest of the show; the random phase plus
+ * per-gap spread de-correlates them within a few cycles.
+ *
+ * Single-flight: a tick while a request is in flight is skipped (the
+ * in-flight request IS this period's poll), so a slow network can't
+ * stack requests or cancel each other (CR #298). Every request carries
+ * the 8 s deadline, which settles it as a failure and frees the guard.
+ *
+ * Failures: n13's bounded schedule (1/2/4/8/15/30 s ± 20 %, honouring
+ * `Retry-After`) arms a retry, and ticks are skipped while it is
+ * pending, so a struggling server sees the backoff rather than the 5 s
+ * cadence. Fresh budget per polling session (enable, event/locale
+ * change) — a previous session's failures say nothing about the
+ * endpoint's health now.
+ *
+ * Acceptance + `?minRev=`: shared with the realtime path through
+ * `useLiveSnapshot` — an older response never rolls the page back.
+ *
+ * Not visibility-gated (unchanged): the browser throttles background
+ * timers on its own, and the fallback must keep converging for a tab
+ * that is visible but whose channel is dead.
+ */
 export function useSetlistPolling<T>({
   eventId,
   initialItems,
@@ -69,245 +101,38 @@ export function useSetlistPolling<T>({
   initialTop3Wishes,
   locale,
   enabled,
-  intervalMs = 5000,
+  intervalMs = FALLBACK_POLL_MS,
+  spreadMs = FALLBACK_POLL_SPREAD_MS,
+  initialRev,
+  initialCapturedAt,
 }: UseSetlistPollingOptions<T>): UseSetlistPollingResult<T> {
-  const [items, setItems] = useState<T[]>(initialItems);
-  const [reactionCounts, setReactionCounts] =
-    useState<ReactionCountsMap>(initialReactionCounts);
-  const [top3Wishes, setTop3Wishes] =
-    useState<FanTop3Entry[]>(initialTop3Wishes);
-  const [status, setStatus] = useState<ResolvedEventStatus | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [freshness, setFreshness] = useState<Freshness>(INITIAL_FRESHNESS);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Backoff state. The interval itself is the retry loop here, so
-  // backoff is expressed as "skip ticks until `nextAttemptAtRef`"
-  // rather than extra timers: the 1/2/4 s steps are shorter than the
-  // 5 s cadence and change nothing, while the 8/15/30 s tail spaces a
-  // struggling server's load out instead of hammering it every 5 s.
-  // Reset when the polling effect (re)starts.
-  const failuresRef = useRef(0);
-  const nextAttemptAtRef = useRef(0);
-  // AbortController for the currently in-flight fetch. Used for two
-  // distinct purposes:
-  //   - Cleanup-time abort on eventId/locale change or unmount.
-  //   - In-flight detection at the top of fetchSetlist so a slow
-  //     network (response time > intervalMs) doesn't have every
-  //     tick cancel the prior tick — the new tick simply skips and
-  //     the in-flight fetch is allowed to complete.
-  // The post-await `eventIdRef`/`localeRef` checks below are the
-  // belt-and-braces guard against the render-commit→cleanup race
-  // window (where the abort hasn't fired yet but eventId already
-  // changed). CR #298 rounds 2 + 3.
-  const abortRef = useRef<AbortController | null>(null);
-
-  // Latest-value refs synced via useLayoutEffect so the OLD
-  // fetchSetlist's closure can compare its captured eventId/locale
-  // against the current value at resolution time. useLayoutEffect
-  // (not useEffect) so the sync runs in the same synchronous frame
-  // as the commit — no microtask gap during which a stale fetch
-  // resolution could see a not-yet-updated ref. This is the
-  // synchronous freshness check the AbortController alone can't
-  // provide (abort() only fires in cleanup, which runs in the
-  // next microtask after commit).
-  const eventIdRef = useRef(eventId);
-  const localeRef = useRef(locale);
-  useLayoutEffect(() => {
-    eventIdRef.current = eventId;
-    localeRef.current = locale;
-  }, [eventId, locale]);
-
-  // Re-sync from props only when eventId actually changes — not on every
-  // parent re-render. Without this guard, callers passing fresh array refs
-  // (like LiveSetlist) would re-trigger setState on every paint and thrash
-  // the polling state. The useState-pair "track previous prop" idiom
-  // (React docs: "Storing information from previous renders") avoids
-  // both react-hooks/set-state-in-effect AND react-hooks/refs.
-  //
-  // Trade-off: if a caller updates initialItems / initialReactionCounts
-  // WITHOUT changing eventId (e.g., a future router.refresh delivering a
-  // fresh SSR seed for the same event), the hook keeps the prior state.
-  // Acceptable for Phase 1A — the seed only changes when eventId changes
-  // (page navigation forces a remount with new useState initial values).
-  // Revisit by accepting an explicit `seedVersion` prop if a router.refresh
-  // path ever delivers fresh seed for the same event.
-  const [prevEventId, setPrevEventId] = useState(eventId);
-  if (prevEventId !== eventId) {
-    setPrevEventId(eventId);
-    setItems(initialItems);
-    setReactionCounts(initialReactionCounts);
-    setTop3Wishes(initialTop3Wishes);
-    setStatus(null);
-    setLastUpdated(null);
-    setFreshness(INITIAL_FRESHNESS);
-    // The in-flight fetch (if any) is aborted in the polling
-    // useEffect's cleanup below — that's the safe place to mutate
-    // the ref. The post-await `signal.aborted` checks inside
-    // fetchSetlist provide the synchronous catch for any fetch
-    // that resolves between commit and cleanup.
-  }
-
-  const fetchSetlist = useCallback(async () => {
-    // Concurrency guard: if a prior fetch is still in flight for the
-    // SAME eventId/locale cycle, skip this tick and let the in-flight
-    // request complete. Aborting it instead would cause a perma-
-    // cancellation loop on slow networks (response time > intervalMs
-    // → every tick cancels the previous one → no setState ever fires).
-    // CR #298 round 3.
-    //
-    // The guard can no longer wedge: every request carries the
-    // SNAPSHOT_FETCH_TIMEOUT_MS deadline, and the deadline releases
-    // the guard synchronously (see `onTimeout` below) so a hung
-    // request costs at most one deadline's worth of skipped ticks.
-    if (abortRef.current) return;
-    // Backoff: after a failure, skip ticks until the retry delay has
-    // elapsed. `Date.now()` is fine here — it's a relative wait, not
-    // a comparison against stored dates.
-    if (Date.now() < nextAttemptAtRef.current) return;
-    // Capture the eventId/locale at fetch start. The OLD fetchSetlist
-    // (defined when eventId was "A") has these in its closure as "A";
-    // a NEW render with eventId="B" recreates fetchSetlist with "B".
-    // On resolution, we compare these captured values against the
-    // latest-value refs (eventIdRef.current, localeRef.current) which
-    // useLayoutEffect updated synchronously at the commit boundary.
-    // Mismatch = stale → bail before setState.
-    const fetchEventId = eventId;
-    const fetchLocale = locale;
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const deadline = armSnapshotDeadline(controller, () => {
-      if (abortRef.current === controller) abortRef.current = null;
-    });
-    // Records one failure and pushes the next allowed attempt out by
-    // the backoff delay. Only called for requests that are still
-    // current (not cancelled by cleanup / an eventId change).
-    const recordFailure = (retryAfterMs: number | null) => {
-      failuresRef.current += 1;
-      const failures = failuresRef.current;
-      nextAttemptAtRef.current =
-        Date.now() + snapshotRetryDelayMs(failures, retryAfterMs);
-      setFreshness((prev) => ({
-        lastSyncAt: prev.lastSyncAt,
-        state: freshnessStateFor(failures),
-      }));
-    };
-    const isCurrent = () =>
-      eventIdRef.current === fetchEventId && localeRef.current === fetchLocale;
-    try {
-      const res = await fetch(
-        `/api/setlist?eventId=${encodeURIComponent(fetchEventId)}&locale=${encodeURIComponent(fetchLocale)}`,
-        { cache: "no-store", signal: controller.signal },
-      );
-      // Two-check freshness guard, see ref docstring above:
-      //   - signal.aborted catches the case where the cleanup ran
-      //     and called abort() on this controller.
-      //   - eventIdRef/localeRef mismatch catches the render-commit
-      //     →cleanup gap window where eventId already changed but
-      //     the cleanup hasn't fired abort() yet.
-      if (
-        controller.signal.aborted ||
-        eventIdRef.current !== fetchEventId ||
-        localeRef.current !== fetchLocale
-      ) {
-        return;
-      }
-      if (!res.ok) {
-        recordFailure(parseRetryAfterMs(res.headers?.get("Retry-After")));
-        return;
-      }
-      const data = (await res.json()) as {
-        items: T[];
-        reactionCounts?: ReactionCountsMap;
-        top3Wishes?: FanTop3Entry[];
-        status?: ResolvedEventStatus | null;
-        updatedAt: string;
-      };
-      // Second post-await freshness check — the json parse may have
-      // resolved across an event-change boundary even after the
-      // first check passed.
-      if (
-        controller.signal.aborted ||
-        eventIdRef.current !== fetchEventId ||
-        localeRef.current !== fetchLocale
-      ) {
-        return;
-      }
-      setItems(data.items);
-      setReactionCounts(data.reactionCounts ?? {});
-      // `?? []` when a polled response omits `top3Wishes` (older API
-      // shape, transient server bug, etc.) — reset to empty so the
-      // initial seed doesn't persist stale data indefinitely once
-      // polling is the authoritative source. Asserted by
-      // useSetlistPolling.test.tsx "falls back to []" case.
-      setTop3Wishes(data.top3Wishes ?? []);
-      // Only update `status` when the field is actually present in
-      // the response. The earlier `data.status ?? null` would CLEAR
-      // a valid prior status whenever the server omits the field
-      // (forward-compat shape, transient response gap, partial
-      // hot-path response) — and because `status` drives the
-      // wishlist + predicted-setlist client lock, a transient null
-      // would silently re-unlock both editors mid-show. Prefer a
-      // stale-but-correct status over an unintended unlock. The
-      // SSR-initial status the caller passed in remains in effect
-      // when the server omits the field. CR #297.
-      if ("status" in data) {
-        setStatus(data.status ?? null);
-      }
-      setLastUpdated(data.updatedAt);
-      failuresRef.current = 0;
-      nextAttemptAtRef.current = 0;
-      setFreshness({ lastSyncAt: new Date(), state: "live" });
-    } catch {
-      // Deadline expiry is a failure even though it surfaces as an
-      // abort; an abort from cleanup / eventId change is silent.
-      if (deadline.timedOut()) {
-        if (isCurrent()) recordFailure(null);
-        return;
-      }
-      if (controller.signal.aborted) return;
-      // Network / JSON parse failure — counts toward backoff and the
-      // freshness indicator; the next eligible tick retries.
-      if (isCurrent()) recordFailure(null);
-    } finally {
-      deadline.clear();
-      // Clear abortRef so the next tick is allowed to fire — but
-      // ONLY if THIS controller is still the one stored. If the
-      // useEffect cleanup already aborted us and reset the ref to
-      // null (or a brand-new controller for the next eventId is
-      // already there), don't clobber. CR #298 round 3.
-      if (abortRef.current === controller) {
-        abortRef.current = null;
-      }
-    }
-  }, [eventId, locale]);
+  const { data, createRunner, resetFailures } = useLiveSnapshot<T>({
+    eventId,
+    locale,
+    initialItems,
+    initialReactionCounts,
+    initialTop3Wishes,
+    initialRev,
+    initialCapturedAt,
+  });
 
   useEffect(() => {
     if (!enabled) return;
-    // Fresh backoff budget per polling session (enable, eventId /
-    // locale change). A previous session's failures say nothing about
-    // the endpoint's health now.
-    failuresRef.current = 0;
-    nextAttemptAtRef.current = 0;
-    intervalRef.current = setInterval(fetchSetlist, intervalMs);
+    resetFailures();
+    const runner = createRunner();
+    const scheduler = createLiveScheduler({
+      runFetch: runner.runFetch,
+      periodic: { intervalMs, spreadMs, firstTick: "random-phase" },
+    });
+    scheduler.start();
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      // Cancel the in-flight fetch when fetchSetlist's identity
-      // changes (eventId/locale change) or the hook unmounts. The
-      // abort() call mutates `signal.aborted` synchronously, so the
-      // post-await checks inside fetchSetlist see it immediately
-      // even if the fetch resolves in the same microtask cycle.
-      // Combined with the supersede-time abort at the top of
-      // fetchSetlist, this fully closes the cross-event clobber
-      // window CR #297 round 2 flagged.
-      if (abortRef.current) {
-        abortRef.current.abort();
-        abortRef.current = null;
-      }
+      // Dispose first so a request settling during the abort can't arm
+      // a retry; the abort then resolves every in-flight request as
+      // cancelled (never a failure).
+      scheduler.dispose();
+      runner.abort();
     };
-  }, [enabled, intervalMs, fetchSetlist]);
+  }, [enabled, intervalMs, spreadMs, createRunner, resetFailures]);
 
-  return { items, reactionCounts, top3Wishes, status, lastUpdated, freshness };
+  return data;
 }
