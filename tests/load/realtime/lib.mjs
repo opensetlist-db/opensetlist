@@ -46,7 +46,7 @@ function parseUrl(raw) {
 //   pooler:  postgresql://postgres.<ref>:<pw>@aws-<n>-<region>.pooler.supabase.com:{5432,6543}/postgres
 // The pooler hostname is shared by every project in the region, so only
 // the username identifies the project there.
-function isDevDatabaseUrl(raw) {
+export function isDevDatabaseUrl(raw) {
   const u = parseUrl(raw);
   if (!u) return false;
   const direct = u.hostname === `db.${DEV_REF}.supabase.co`;
