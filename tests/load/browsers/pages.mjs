@@ -11,6 +11,12 @@
 // The page clock and the Node clock are the same OS clock, so these
 // timestamps compare directly with the admin driver's save timestamps
 // (the binding call itself is async, but it carries the page-side time).
+// Besides the first-seen / first-gone time per song (`seen` / `gone`),
+// every report is kept in order in `dom` ([t, added[], removed[]]): the
+// page exposes no "applied rev", so the run derives the version the DOM
+// shows from which marker songs are on it, and checks that it never goes
+// backwards (a stale snapshot applied after a newer one would remove a
+// newer marker or bring back a replaced one).
 //
 // Diagnostics per page (cheap, from CDP events — no app changes):
 //   - websocket frames: postgres_changes notifications (with the row id
@@ -114,7 +120,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       url: `${base}/${locale}${eventPath}`,
       openedAt: Date.now(), loadedAt: null, visibility: null,
       joinAt: [], pgReadyAt: [], wsOpens: 0, wsCloses: 0,
-      seen: {}, gone: {}, notes: [], fetches: [], errors: [],
+      seen: {}, gone: {}, dom: [], notes: [], fetches: [], errors: [],
       dropPg: false, droppedFrames: 0, blockedAttempts: 0,
     };
     const context = await browser.newContext({ viewport: { width: 800, height: 900 }, locale: locale === "ko" ? "ko-KR" : locale === "en" ? "en-US" : "ja-JP" });
@@ -133,6 +139,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     await page.exposeFunction("__oslReport", ({ t, added, removed }) => {
       for (const id of added) if (!(id in rec.seen)) rec.seen[id] = t;
       for (const id of removed) if (!(id in rec.gone)) rec.gone[id] = t;
+      rec.dom.push([t, added, removed]);
     });
     await page.addInitScript(INIT_SCRIPT);
     page.on("pageerror", (e) => { if (rec.errors.length < 20) rec.errors.push(String(e.message).slice(0, 200)); });
