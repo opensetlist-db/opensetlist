@@ -378,7 +378,7 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     );
   });
 
-  it("refetches the snapshot on reconnect SUBSCRIBED (not on the initial one)", async () => {
+  it("refetches the snapshot on every SUBSCRIBED — initial catch-up and reconnect", async () => {
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "1",
@@ -401,13 +401,14 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // First SUBSCRIBED — the initial channel join. Should NOT trigger
-    // a refetch (the mount-time fetch already seeded state).
+    // First SUBSCRIBED — the initial channel join. Exactly ONE
+    // catch-up fetch: the seed ran before the channel was live, so a
+    // write committed in between would otherwise be missed.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     // Second SUBSCRIBED — supabase-js auto-rejoined after a transient
     // socket drop. We may have missed pushes during the gap; refetch.
@@ -415,6 +416,53 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("catch-up on first SUBSCRIBED supersedes a still-in-flight seed (one effective request)", async () => {
+    // Seed never resolves on its own; it only settles (rejects) when
+    // aborted — the shape of a slow request overtaken by the catch-up.
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (fetchMock.mock.calls.length === 1) {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(makeFetchResponse());
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const { result } = renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+      }),
+    );
+    await flushMicrotasks();
+    const seedSignal = fetchMock.mock.calls[0][1]?.signal as AbortSignal;
+    expect(seedSignal.aborted).toBe(false);
+
+    await act(async () => {
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await flushMicrotasks();
+
+    expect(seedSignal.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The superseded seed is a cancellation, not a failure.
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.freshness.lastSyncAt).not.toBeNull();
+    // …and it schedules no retry.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -683,29 +731,31 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     // Mount-time seed fetch.
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // First SUBSCRIBED — initial join. No refetch.
+    // First SUBSCRIBED — initial join catch-up.
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    // Hide + show — fresh channel set up.
+    // Hide + show — fresh channel set up; the re-run effect seeds a
+    // snapshot immediately (gap-fill for the away window).
     await act(async () => {
       setDocumentHidden(true);
     });
     await act(async () => {
       setDocumentHidden(false);
     });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    // Post-resume SUBSCRIBED — `wasPausedRef` was set on hide, so the
-    // SUBSCRIBED handler treats this as a reconnect and calls
-    // fetchSnapshot.
+    // Post-resume SUBSCRIBED — same catch-up as an initial join
+    // (closes the resume-seed → subscribe window).
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await flushMicrotasks();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("does NOT emit captureMessage when channel tear-down is visibility-driven", async () => {
@@ -963,5 +1013,262 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     expect(channelMock.mock.calls.length).toBeGreaterThan(
       channelCallsAfterBudgetGone,
     );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// Snapshot freshness — bounded retries, fetch deadline, indicator state
+//
+// Before: `if (!res.ok) return;` and a silent catch, so one failed
+// snapshot during a quiet stretch left the page stale until some
+// unrelated push. Now failures retry on 1/2/4/8/15/30 s (±20 %),
+// honour Retry-After, never flip to R3 polling, and surface as
+// `freshness` (live → retrying → delayed → live).
+//
+// Math.random is pinned to 0.5 (zero jitter) so retry instants are
+// exact; the jitter bounds themselves are covered in
+// snapshotFreshness.test.ts.
+// ────────────────────────────────────────────────────────────────────
+
+function makeErrorResponse(status = 503, retryAfter?: string) {
+  return {
+    ok: false,
+    status,
+    headers: new Headers(retryAfter ? { "Retry-After": retryAfter } : {}),
+    json: async () => ({}),
+  };
+}
+
+// A fetch that never settles on its own — only rejects when its signal
+// aborts (supersede, cleanup, or the 8 s deadline), like a hung socket.
+function hangingFetch(_url: string, init?: RequestInit) {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener("abort", () =>
+      reject(new DOMException("aborted", "AbortError")),
+    );
+  });
+}
+
+describe("useRealtimeEventChannel — snapshot freshness", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    capturedSubscribeCallback = null;
+    addBreadcrumbMock.mockClear();
+    captureMessageMock.mockClear();
+    channelMock.mockClear();
+    removeChannelMock.mockClear();
+    fakeChannel.on.mockClear();
+    fakeChannel.subscribe.mockClear();
+    capturedPostgresHandlers.length = 0;
+    fakeChannel.on.mockImplementation(
+      (
+        _event: string,
+        config: { table?: string; event?: string },
+        handler: (payload: unknown) => void,
+      ) => {
+        capturedPostgresHandlers.push({ config, handler });
+        return fakeChannel;
+      },
+    );
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  function mount(eventId = "1") {
+    return renderHook(
+      ({ id }: { id: string }) =>
+        useRealtimeEventChannel({
+          eventId: id,
+          initialItems,
+          initialReactionCounts,
+          initialTop3Wishes,
+          locale: "ko",
+          enabled: true,
+          startTime: null,
+        }),
+      { initialProps: { id: eventId } },
+    );
+  }
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it("retries a failing snapshot at 1/2/4/8/15/30 s, then every 30 s", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeErrorResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    mount();
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1); // seed
+
+    const steps = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000, 30_000, 30_000];
+    for (const [i, step] of steps.entries()) {
+      await advance(step - 1);
+      expect(fetchMock).toHaveBeenCalledTimes(i + 1);
+      await advance(1);
+      expect(fetchMock).toHaveBeenCalledTimes(i + 2);
+    }
+  });
+
+  it("does NOT flip to R3 polling on snapshot failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(makeErrorResponse()) as unknown as typeof fetch,
+    );
+    mount();
+    await flushMicrotasks();
+    await advance(60_000);
+    // Channel never torn down → pollFallback never flipped.
+    expect(removeChannelMock).not.toHaveBeenCalled();
+    expect(captureMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("walks freshness live → retrying → delayed → live, and success resets the schedule", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeFetchResponse()) // seed OK
+      .mockResolvedValueOnce(makeErrorResponse()) // push refetch fails
+      .mockResolvedValueOnce(makeErrorResponse()) // +1 s
+      .mockResolvedValueOnce(makeErrorResponse()) // +2 s
+      .mockResolvedValueOnce(makeFetchResponse()) // +4 s recovers
+      .mockResolvedValue(makeErrorResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+
+    expect(result.current.freshness.state).toBe("live");
+    const firstSync = result.current.freshness.lastSyncAt;
+    expect(firstSync).toBeInstanceOf(Date);
+
+    // A SetlistItem push for this event triggers a refetch that fails.
+    const setlistHandler = capturedPostgresHandlers.find(
+      (h) => h.config.table === "SetlistItem",
+    )!.handler;
+    await act(async () => {
+      setlistHandler({ new: { eventId: 1 } });
+    });
+    await flushMicrotasks();
+    expect(result.current.freshness.state).toBe("retrying");
+    // A failure keeps the last good sync time on display.
+    expect(result.current.freshness.lastSyncAt).toBe(firstSync);
+
+    await advance(1_000);
+    expect(result.current.freshness.state).toBe("retrying");
+    await advance(2_000);
+    expect(result.current.freshness.state).toBe("delayed");
+
+    await advance(4_000);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.freshness.lastSyncAt).not.toBe(firstSync);
+
+    // Next failure starts the schedule over at 1 s, not 8 s.
+    await act(async () => {
+      setlistHandler({ new: { eventId: 1 } });
+    });
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(result.current.freshness.state).toBe("retrying");
+    await advance(1_000);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+  });
+
+  it("honours Retry-After over the schedule", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeErrorResponse(503, "5"))
+      .mockResolvedValue(makeFetchResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+
+    await advance(4_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.freshness.state).toBe("live");
+  });
+
+  it("aborts a hung snapshot at the 8 s deadline and retries", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(hangingFetch)
+      .mockResolvedValue(makeFetchResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+
+    await advance(7_999);
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.freshness.lastSyncAt).toBeNull();
+    await advance(1);
+    const seedSignal = fetchMock.mock.calls[0][1]?.signal as AbortSignal;
+    expect(seedSignal.aborted).toBe(true);
+    expect(result.current.freshness.state).toBe("retrying");
+
+    await advance(1_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.freshness.lastSyncAt).toBeInstanceOf(Date);
+  });
+
+  it("an abort from unmount never schedules a retry", async () => {
+    const fetchMock = vi.fn(hangingFetch);
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { unmount } = mount();
+    await flushMicrotasks();
+    unmount();
+    await advance(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending retry is cancelled when the tab hides (no retries while hidden)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeErrorResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    mount();
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await advance(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("channel fallback reports delayed until polling syncs, then polling's freshness", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+    expect(result.current.freshness.state).toBe("live");
+    const realtimeSync = result.current.freshness.lastSyncAt;
+
+    await act(async () => {
+      capturedSubscribeCallback!("CHANNEL_ERROR");
+    });
+    expect(result.current.freshness.state).toBe("delayed");
+    // Last good realtime sync stays visible underneath the warning.
+    expect(result.current.freshness.lastSyncAt).toBe(realtimeSync);
+
+    // First 5 s poll lands → polling is driving, honestly "live".
+    await advance(5_000);
+    expect(result.current.freshness.state).toBe("live");
+    expect(result.current.freshness.lastSyncAt).not.toBe(realtimeSync);
   });
 });
