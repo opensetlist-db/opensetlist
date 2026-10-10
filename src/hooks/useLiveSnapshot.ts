@@ -179,13 +179,18 @@ export function useLiveSnapshot<T>({
     }
   }, [eventId, locale]);
 
-  // Re-sync from props only when eventId actually changes — the "track
-  // previous prop" idiom (React docs: "Storing information from previous
-  // renders"). Callers pass fresh array refs every render; syncing on
-  // those would thrash state.
-  const [prevEventId, setPrevEventId] = useState(eventId);
-  if (prevEventId !== eventId) {
-    setPrevEventId(eventId);
+  // Re-sync from props only when the event or the locale actually
+  // changes — the "track previous prop" idiom (React docs: "Storing
+  // information from previous renders"). Callers pass fresh array refs
+  // every render; syncing on those would thrash state. Locale is part
+  // of the key because the displayed items/wishes carry translations:
+  // keeping the old locale's data on screen until the next fetch would
+  // show mixed-language content if the same mounted hook ever switched
+  // locale (the acceptance generation already resets on both).
+  const snapshotKey = `${eventId}\u0000${locale}`;
+  const [prevSnapshotKey, setPrevSnapshotKey] = useState(snapshotKey);
+  if (prevSnapshotKey !== snapshotKey) {
+    setPrevSnapshotKey(snapshotKey);
     setItems(initialItems);
     setReactionCounts(initialReactionCounts);
     setTop3Wishes(initialTop3Wishes);
