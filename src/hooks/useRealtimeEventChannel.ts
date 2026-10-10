@@ -614,6 +614,13 @@ export function useRealtimeEventChannel<T>({
         // list, so opening before the leave completes would reuse the
         // dead one. On a dropped socket the leave completes at once; on
         // a live one it waits for the ack (bounded by the push timeout).
+        // The result value does not matter: phoenix's `leave()` fires
+        // the channel's close on BOTH the "ok" ack and the timeout, and
+        // close is what deregisters the topic from the socket — only
+        // `teardown()` (timer cleanup) is skipped on a timeout, and
+        // `leave()` already reset the rejoin timer. Should a stale
+        // channel ever be handed back anyway, `openChannel`'s catch and
+        // the re-armed recovery timer are the retry.
         channelSeq += 1;
         const old = channel;
         channel = null;
