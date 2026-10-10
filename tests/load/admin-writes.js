@@ -36,6 +36,7 @@ import { Trend, Rate, Counter } from "k6/metrics";
 import exec from "k6/execution";
 import { BASE_URL, EVENT_ID, baseHeaders, snapshotUrl, requireEnv, GATES } from "./lib/config.js";
 import { adminSection, resultsDir, stamp } from "./lib/report.js";
+import { ADMIN_COOKIE_NAME as COOKIE_NAME } from "./lib/constants.js";
 
 export const adminSaveReload = new Trend("admin_save_reload", true);
 export const adminWriteLatency = new Trend("admin_write_latency", true);
@@ -49,7 +50,6 @@ const CYCLES = parseInt(__ENV.ADMIN_CYCLES || "4", 10);
 const CYCLE_PAUSE = parseFloat(__ENV.ADMIN_CYCLE_PAUSE || "20");
 const NOTE = "n12-load-test";
 // Mirrors COOKIE_NAME in src/lib/admin-session.ts.
-const COOKIE_NAME = "admin_session";
 
 // The admin session token, kept per VU across iterations. k6 empties a
 // VU's cookie jar at the start of every iteration, so logging in once

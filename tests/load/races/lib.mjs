@@ -19,6 +19,7 @@
 
 import pg from "pg";
 import { loadEnv, assertDev, DEV_REF, sleep } from "../realtime/lib.mjs";
+import { ADMIN_COOKIE_NAME as COOKIE_NAME } from "../lib/constants.js";
 
 export { loadEnv, sleep, DEV_REF };
 
@@ -38,7 +39,6 @@ export const EVENT_ID = 111;
 export const NOTE = "n14-races";
 // Visible rows event 111 must have before and after a run.
 export const EXPECTED_BASE_ROWS = 23;
-const COOKIE_NAME = "admin_session"; // mirrors src/lib/admin-session.ts
 
 export function setup() {
   loadEnv();

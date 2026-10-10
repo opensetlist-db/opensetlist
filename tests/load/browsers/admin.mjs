@@ -48,8 +48,8 @@
 // purges the snapshot cache (`revalidateEventData`) — so no viewer or
 // cache keeps the shifted positions.
 import { sleep } from "../realtime/lib.mjs";
+import { ADMIN_COOKIE_NAME as COOKIE_NAME } from "../lib/constants.js";
 
-const COOKIE_NAME = "admin_session";
 
 export async function adminLogin(base) {
   const pw = process.env.ADMIN_PASSWORD;
@@ -104,7 +104,9 @@ export async function putSong({ base, cookie, id, position, songId }) {
   const r = await timedJson("put", `${base}/api/admin/setlist-items/${id}`, {
     method: "PUT",
     headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ position, isEncore: false, type: "song", status: "confirmed", songIds: [Number(songId)] }),
+    // Song.id is a BigInt column; the route does BigInt(songId), so pass the
+    // id as the string it came in as instead of narrowing it to a Number.
+    body: JSON.stringify({ position, isEncore: false, type: "song", status: "confirmed", songIds: [String(songId)] }),
   });
   return { startedAt: r.startedAt, ms: r.ms, rev: r.body.rev ?? null };
 }
