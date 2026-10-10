@@ -1,0 +1,9 @@
+time="2026-10-10T12:03:18-07:00" level=info msg="[burst b00] create appliedRev=230 n=614 errors=0 p95=2426ms max=2739ms" source=console
+time="2026-10-10T12:03:19-07:00" level=info msg="[admin] cold start done at 6.0s" source=console
+time="2026-10-10T12:03:53-07:00" level=info msg="[admin] cycle 1 (burst) at 40.0s" source=console
+time="2026-10-10T12:03:54-07:00" level=warning msg="[error] burst b01: HTTP 500  " source=console
+time="2026-10-10T12:03:54-07:00" level=warning msg="[error] burst b01: HTTP 500  " source=console
+time="2026-10-10T12:03:54-07:00" level=warning msg="[error] burst b01: HTTP 500  " source=console
+time="2026-10-10T12:03:54-07:00" level=warning msg="[error] poll: HTTP 500  " source=console
+time="2026-10-10T12:03:55-07:00" level=info msg="[burst b01] create appliedRev=232 n=586 errors=38 p95=614ms max=797ms" source=console
+time="2026-10-10T12:03:56-07:00" level=error msg="test aborted: burst b01 over the abort gate (errors 38/586, p95 614 ms) — stopping before the pooler melts — stop and reconcile the event at cleanupAndAbort (file:///F:/work/ClaudeCode/opensetlist4/tests/load/viewers.js:651:18(62))"

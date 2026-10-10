@@ -13,6 +13,8 @@ the wiki page `output/task-n12-capacity-experiment`.
 | `edit-burst.js` | 500 then 2,000 snapshot requests, each spread over 5 s (Realtime Path B refetch after one save) | inside hold, or standalone |
 | `admin-writes.js` | 1 operator, 4 cycles × 6 timed saves (create, update, insert-after, swap, delete ×2), each checked in the next snapshot | inside hold, or standalone |
 | `ssr-mix.js` | `GET /ja/events/<id>/<slug>` alone, to size the page path | standalone |
+| `viewers.js` | n14 run #2 **500-viewer model** on the R1 live path: cold-cache start, 25 rps periodic poll (`?minRev`) + 10 % SSR, admin cycles with a 500-request notification burst (`?minRev=appliedRev+1`, U(0, 500 ms) jitter, 20 % old-build tabs ×2) after every save, a 500-tap reaction POST/DELETE burst. Per-burst `x-snapshot-source` counts, PASS/FAIL per gate | n14 run #2 |
+| `viewers-check.mjs` | Node, dev DB only: after a `viewers.js` run, lists leftover `n14run2-` reactions (`--delete` removes exactly those) and live rows carrying its note | after `viewers.js` |
 | `pg-connections.mjs` | Node side-car: samples `pg_stat_activity` every 5 s into a CSV | second terminal during runs |
 | `run.sh` | wrapper: creates `results/<UTC date>/`, passes the common env vars | every run |
 
@@ -86,6 +88,87 @@ table) and, for the ramp and hold runs, a `.json` with the raw metrics
 Functions and Sentry during each run, and save screenshots into the
 same `results/<date>/` folder. Then write `results/<date>/REPORT.md`
 and copy its summary row into the wiki page.
+
+## n14 run #2 — the 500-viewer model (`viewers.js`)
+
+One ~11-minute run against the R1 preview, all on event 111
+(`rehearsal-lovelive-fes-2020-day1`, `ongoing`, 23 rows). Timeline
+with the defaults:
+
+| t | what |
+|---|---|
+| 0 s | **cold start**: one admin save (append) → burst `b00` right after it returns, on the cache the save just purged; the row is deleted again (untimed, verified) |
+| 15 s → 615 s | **steady**: `GET /api/setlist` at `POLL_RPS`=25 (70/20/10 ja/ko/en, each VU sending `?minRev=<highest rev it has seen>` like the client's periodic fetch) + the ongoing event page at `SSR_RPS`=2.5 |
+| 40 s + k·70 s | **admin cycles** (8): 6 "burst" cycles — admin-writes.js's six saves `SAVE_GAP`=4 s apart, each followed by a burst — and 2 "quiet" cycles (no bursts) that give the steady-window admin number. 1 + 36 = **37 bursts** |
+| 440 s | **reactions**: 500 POST `/api/reactions` + the matching DELETE in 10 s, anonId `n14run2-…`, random existing row + type |
+
+A **burst** = `BURST_SIZE`=500 snapshot requests, each at U(0, `JITTER_MS`=500 ms)
+after the save returned, with `?minRev=<appliedRev+1>` (what
+`notificationMinRev()` sends; appliedRev = the rev the admin VU saw before
+the save). `OLD_SHARE`=20 % of them are pre-R1 tabs: no `minRev`, and one
+more request (`OLD_REPEATS`=1) `OLD_REPEAT_MS`=1000 ms later. The admin
+VU fires the burst itself with async requests (k6 VUs share no state, so
+"right after the save" can only be known there) — it comes from one
+process over multiplexed HTTP/2, not 500 browsers.
+
+Per burst the report has p50/p95/max, errors, the `x-snapshot-source`
+split (build / cache / repair) and the share of R1 requests that got
+`rev ≥ minRev`. **Builds per save** is the build + repair count per burst:
+a header-based **lower bound** (no Vercel log access; background
+revalidation builds and builds whose response went to someone else are
+invisible). Count `[liveSnapshot] build` log lines when logs are
+available.
+
+Gates (PASS/FAIL table at the top of the report; k6 also exits 99 when a
+gate threshold fails): snapshot p95 ≤ 1 s and errors ≤ 0.1 % over **all**
+viewer snapshot requests (polls + bursts); every sampled body valid;
+worst burst p95 ≤ 3 s; admin save+reload p95 ≤ 3 s in the steady
+(quiet-cycle) and the burst windows, judged separately; every write
+visible and the event back at `EXPECTED_ROWS`; reaction errors ≤ 0.1 %,
+`ackAt` present and ≥ request start (clock offset estimated in setup from
+`servedAt`, tolerance ±RTT/2); generator achieved ≥ 95 % with 0 dropped.
+The pooler-client row (≤ 140 of 200) is a placeholder for the dashboard
+reading.
+
+Safety: no threshold aborts (a threshold abort would kill the admin VU
+mid-cycle and leave rows behind). The admin VU itself aborts, after
+soft-deleting its rows, on a failed / never-visible write or when one
+burst exceeds `ABORT_ERR_RATE` (2 %) errors or `ABORT_P95_MS` (5 s) p95.
+Setup refuses to start unless the event is `ongoing` with exactly
+`EXPECTED_ROWS` rows. Run it alone: another writer on the same event
+shifts positions under the admin loop and its rows count as bad bodies.
+
+```bash
+export BASE_URL=https://opensetlist-git-dev-opensetlist-projects.vercel.app \
+       EVENT_ID=111 EVENT_SLUG=rehearsal-lovelive-fes-2020-day1 \
+       EXPECTED_ROWS=23 ROW_SLACK=2
+export ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2- | tr -d '\r' | sed -E 's/^"(.*)"$/\1/')"
+
+# terminal 2, started first and stopped (Ctrl+C) after the run; .env must point at dev
+node tests/load/pg-connections.mjs
+
+# terminal 1 — full scale, every knob at its default (K6=<path> if k6 is not on PATH)
+tests/load/run.sh viewers.js
+
+# afterwards: no n14run2 reactions, no live rows with the run's note, 23 rows
+node tests/load/viewers-check.mjs
+```
+
+Writes `results/<UTC date>/<stamp>-viewers.md` (+ `.json`). Every knob
+is an env var / `-e`: `POLL_RPS`, `SSR_RPS`, `STEADY_START`,
+`STEADY_SECONDS`, `ADMIN_CYCLES`, `QUIET_CYCLES`, `ADMIN_FIRST`,
+`ADMIN_SPACING`, `SAVE_GAP`, `BURST_SIZE`, `JITTER_MS`, `OLD_SHARE`,
+`OLD_REPEATS`, `OLD_REPEAT_MS`, `COLD_START` (0 = off), `REACTIONS`,
+`REACTION_SECONDS`, `REACTION_AT`, `ABORT_ERR_RATE`, `ABORT_P95_MS`,
+`BURST_GATE_P95`, `ACCEPT_ENCODING` (default `gzip, deflate, br`, like a
+browser; a raw snapshot is ~47 KB), `BODY_SAMPLE_RATE`. The smoke used:
+
+```bash
+tests/load/run.sh viewers.js -e POLL_RPS=1 -e SSR_RPS=0.2 -e STEADY_START=8 \
+  -e STEADY_SECONDS=60 -e ADMIN_CYCLES=1 -e QUIET_CYCLES=1 -e ADMIN_FIRST=15 \
+  -e ADMIN_SPACING=30 -e SAVE_GAP=1 -e BURST_SIZE=5 -e OLD_SHARE=0.4 \
+  -e REACTIONS=5 -e REACTION_SECONDS=5 -e REACTION_AT=40 -e BODY_SAMPLE_RATE=1
+```
 
 ## Reading the result
 
