@@ -54,7 +54,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { loadEnv, assertDev, isDevDatabaseUrl, parseArgs, pgClient, DEV_REF } from "./realtime/lib.mjs";
+import { loadEnv, assertDev, isDevDatabaseUrl, parseArgs, DEV_REF } from "./realtime/lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_NAME = "n14-pooler-sampler";
