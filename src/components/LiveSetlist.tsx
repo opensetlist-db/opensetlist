@@ -17,6 +17,8 @@ import type {
   ReactionCountsMap,
 } from "@/lib/types/setlist";
 import { EventWishSection } from "@/components/EventWishSection";
+import { LiveSyncIndicator } from "@/components/LiveSyncIndicator";
+import type { Freshness } from "@/lib/snapshotFreshness";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 
@@ -120,6 +122,12 @@ interface Props {
   setlistStartLabel?: VenueStartLabel | null;
   /** When the predict/wish window opens; null once open or n/a. */
   predictOpensLabel?: VenueStartLabel | null;
+  /**
+   * Sync health of this browser's live data (from
+   * `useRealtimeEventChannel`). Rendered beside the LIVE pill on
+   * ongoing events only. Optional so non-live callers/tests can omit.
+   */
+  freshness?: Freshness;
 }
 
 export function LiveSetlist({
@@ -142,6 +150,7 @@ export function LiveSetlist({
   eventArtistId,
   setlistStartLabel = null,
   predictOpensLabel = null,
+  freshness,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -270,7 +279,10 @@ export function LiveSetlist({
           borderBottom: `1px solid ${colors.borderLight}`,
         }}
       >
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap` + `min-w-0`: on a narrow phone the sync
+            indicator drops under the title instead of squeezing the
+            right-side hint or overflowing the card. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <h2
             // `text-transform: uppercase` is locale-safe — CJK
             // characters pass through unchanged ("セットリスト",
@@ -305,6 +317,9 @@ export function LiveSetlist({
               />
               {t("live")}
             </span>
+          )}
+          {isOngoing && freshness && (
+            <LiveSyncIndicator freshness={freshness} locale={locale} />
           )}
         </div>
         {/* Right-side meta — only once there are items: "0 items · 0

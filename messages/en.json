@@ -398,7 +398,9 @@
     "tabPredicted": "Predicted setlist",
     "tablistAriaLabel": "Setlist views",
     "predictedComingSoon": "Predicted setlist — coming soon",
-    "unknownSong": "Song TBC"
+    "unknownSong": "Song TBC",
+    "lastSync": "Last sync {time}",
+    "updatesDelayed": "Updates delayed"
   },
   "Predict": {
     "add": "+ Add a song",
