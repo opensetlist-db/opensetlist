@@ -18,21 +18,22 @@ import { borderWidth, colors, motion, radius, shadows } from "@/styles/tokens";
 // sites elsewhere — useImpressionPolling and ImpressionCell currently
 // rely on this re-export.
 import type { Impression } from "@/lib/types/impression";
+import { mergePolledImpressions } from "@/lib/impressionsMerge";
 
 export type { Impression };
 
 /**
- * Merge a fresh page of impressions into the accumulated list,
- * deduping by id and re-sorting newest-first. Used in two paths:
+ * Merge an OLDER page of impressions into the accumulated list,
+ * deduping by id and re-sorting newest-first. Used by the "load more"
+ * click — `incoming` is the next older page (cursor = oldest currently
+ * loaded item). Strictly disjoint from the existing list under normal
+ * flow, but the dedupe protects against any race where polling and
+ * pagination overlap on a boundary item.
  *
- *   1. Polling tick — `incoming` is the newest page (no cursor).
- *      Items the user has already loaded into older pages stay put;
- *      genuinely new impressions slide in at the top.
- *   2. "Load more" click — `incoming` is the next older page (cursor
- *      = oldest currently loaded item). Strictly disjoint from the
- *      existing list under normal flow, but the dedupe protects
- *      against any race where polling and pagination overlap on a
- *      boundary item.
+ * Polling ticks do NOT use this: they go through
+ * `mergePolledImpressions` (src/lib/impressionsMerge.ts), which also
+ * collapses edited chains and prunes rows hidden or deleted by other
+ * users — things an id-based merge cannot see.
  *
  * Sort: createdAt desc, id desc as tiebreaker — must match the
  * server's ORDER BY in `/api/impressions` so cursor-based pagination
@@ -256,13 +257,19 @@ export function EventImpressions({
   // registration, the measured bottleneck of our Realtime setup (n12),
   // and a comment thread does not need sub-second delivery. The
   // viewer's own submit/edit/report still merge synchronously from the
-  // POST responses below. `mergeImpressions` dedupes by id, so a poll
-  // that returns rows this viewer already merged is a no-op replace.
+  // POST responses below. The poll is now also the only way this viewer
+  // learns that someone ELSE edited (new row, same chain), hid, or
+  // deleted an impression, so it merges with `mergePolledImpressions`,
+  // which collapses chains to their newest version and prunes rows that
+  // dropped out of the polled window — the work the removed
+  // `onUpsert` / `onRemove` callbacks used to do.
   useImpressionPolling({
     eventId,
     enabled: isOngoing,
-    onUpdate: ({ impressions: polled }) => {
-      applyImpressionsUpdate((prev) => mergeImpressions(prev, polled));
+    onUpdate: ({ impressions: polled, nextCursor }) => {
+      applyImpressionsUpdate((prev) =>
+        mergePolledImpressions(prev, polled, nextCursor),
+      );
     },
   });
 

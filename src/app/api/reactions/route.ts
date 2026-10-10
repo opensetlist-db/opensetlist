@@ -128,13 +128,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // The ack watermark is taken AFTER the write resolved (separate
-  // statement, see `readAckAt`), then the counts. Reactions never bump
-  // the setlist revision or expire the snapshot cache — the client
-  // holds its own acknowledged count until a snapshot captured after
-  // `ackAt` arrives.
-  const ackAt = await readAckAt();
+  // Counts first, THEN the ack watermark (separate statement, see
+  // `readAckAt`). The client holds the `counts` we return until a
+  // snapshot captured after `ackAt` arrives, so `ackAt` must be later
+  // than every write those counts already include. If the watermark
+  // were read before the counts, another user's reaction committed in
+  // between would be in `counts` but could be missing from a snapshot
+  // captured just after `ackAt`, and the client would briefly step the
+  // count back by one when it adopted that snapshot. Reactions never
+  // bump the setlist revision or expire the snapshot cache.
   const counts = await getReactionCounts(siId);
+  const ackAt = await readAckAt();
   return NextResponse.json({
     reactionId: reaction.id,
     counts,
@@ -172,18 +176,20 @@ export async function DELETE(req: NextRequest) {
     where: { id: reactionId },
   });
 
-  const ackAt = await readAckAt();
+  // Same order as POST: counts, then the watermark that covers them.
   const counts = existing ? await getReactionCounts(existing.setlistItemId) : {};
+  const ackAt = await readAckAt();
   return NextResponse.json({ ok: true, counts, ackAt });
 }
 
 /**
  * Reaction ack watermark (n14): `clock_timestamp()` read in its own
- * statement AFTER the write's auto-commit returned — i.e. strictly
- * after the commit, on the database's clock. A live snapshot whose
- * `capturedAt` (its transaction's `now()`) is later than this instant
- * started after the commit and therefore includes the write, so the
- * client can release its held count for it. Not `now()`: inside an
+ * statement AFTER the write's auto-commit returned AND after the
+ * counts query — i.e. strictly after every write the returned counts
+ * reflect, on the database's clock. A live snapshot whose `capturedAt`
+ * (its transaction's `now()`) is later than this instant started after
+ * those commits and therefore includes them, so the client can release
+ * its held count for it. Not `now()`: inside an
  * implicit single-statement transaction that is this statement's
  * start, which is also fine, but `clock_timestamp()` states the intent
  * and stays correct if this ever moves into a larger transaction.
