@@ -307,7 +307,7 @@ export function createLiveScheduler(
   // in this slot (instead of a timer of its own) is what makes "an
   // earlier trigger replaces it, a later one is covered by it" fall out
   // of `scheduleAt`'s single comparison.
-  let scheduled: { handle: unknown; dueAt: number; reason: LiveFetchReason } | null =
+  let scheduled: { handle: unknown; dueAt: number; reason: LiveFetchReason; isRetry: boolean } | null =
     null;
   let periodicHandle: unknown = null;
   // Start time of the last spread-trigger request (notification,
@@ -345,17 +345,23 @@ export function createLiveScheduler(
   // `appliedRev + 1` hint (see `notificationMinRev`) that a real push
   // justifies, instead of a catch-up's or retry's plain `minRev`, which
   // a not-yet-purged cache entry could satisfy with the old snapshot.
-  const scheduleAt = (dueAt: number, reason: LiveFetchReason) => {
+  //
+  // `isRetry` records that the request stands in for a failed one (it
+  // is what `retryPending` reports), independently of the reason it
+  // runs with — a retry that covers a push runs as "notification".
+  const scheduleAt = (dueAt: number, reason: LiveFetchReason, isRetry = false) => {
     if (scheduled && scheduled.dueAt <= dueAt) {
       if (reason === "notification") scheduled.reason = "notification";
+      if (isRetry) scheduled.isRetry = true;
       return;
     }
     clearScheduled();
     const delay = Math.max(0, dueAt - clock.now());
-    const entry: { handle: unknown; dueAt: number; reason: LiveFetchReason } = {
+    const entry: { handle: unknown; dueAt: number; reason: LiveFetchReason; isRetry: boolean } = {
       handle: null,
       dueAt,
       reason,
+      isRetry,
     };
     entry.handle = clock.setTimeout(() => {
       scheduled = null;
@@ -405,9 +411,19 @@ export function createLiveScheduler(
       // marked us dirty, and it respects the backoff a struggling
       // server needs. An earlier-due explicit trigger still replaces
       // it, but never below the floor.
+      //
+      // A push that arrived while the failed request was in flight is
+      // still a real push: the retry that covers it carries the
+      // "notification" reason, so it sends the single-use
+      // `appliedRev + 1` hint instead of a plain `minRev` that a
+      // not-yet-purged cache entry could satisfy with the old snapshot
+      // — otherwise the edit would wait for the next periodic poll.
+      // Under overload (503s right after a save) this is the common
+      // case, not a corner.
       scheduleAt(
         Math.max(now + Math.max(0, outcome.retryInMs), notBeforeAt),
-        "retry",
+        followUp === "notification" ? "notification" : "retry",
+        true,
       );
       return;
     }
@@ -507,7 +523,7 @@ export function createLiveScheduler(
         inFlight,
         dirty: dirtyReason !== null,
         scheduledAt: scheduled?.dueAt ?? null,
-        retryPending: scheduled?.reason === "retry",
+        retryPending: scheduled?.isRetry === true,
         notBeforeAt: Number.isFinite(notBeforeAt) ? notBeforeAt : null,
         disposed,
       };

@@ -300,7 +300,10 @@ describe("liveScheduler — failures defer to the provided retry delay", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    // The dirty trigger was a push, so the retry that covers it carries
+    // the notification hint (see the failure-floor tests for the plain
+    // retry case).
+    expect(runFetch).toHaveBeenLastCalledWith("notification");
   });
 
   it("an explicit trigger supersedes a pending retry", async () => {
@@ -396,6 +399,18 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
+    // The push that arrived during the failed request is what the retry
+    // covers, so it must carry the notification hint, not a plain retry.
+    expect(runFetch).toHaveBeenLastCalledWith("notification");
+  });
+
+  it("a retry after a failure with no push in between stays a plain retry", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0 });
+    scheduler.requestFetch("initial");
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000 });
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(runFetch).toHaveBeenLastCalledWith("retry");
   });
 
   it("the floor expires: afterwards triggers follow the normal cadence again", async () => {

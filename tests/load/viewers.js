@@ -721,8 +721,13 @@ async function cleanupAndAbort(e) {
     const r = await adminDel(`/api/admin/setlist-items/${id}`, "admin_cleanup");
     if (r.status !== 200) leftover.push(id);
   }
+  // The abort ends the k6 run at once, so there is no in-run drain; the
+  // side-car samplers keep recording, which is why the operator must not
+  // create the STOP file before DRAIN_S has passed.
   exec.test.abort(
-    `${e.message} — stop and reconcile the event` + (leftover.length ? ` (rows NOT cleaned up: ${leftover.join(", ")})` : ""),
+    `${e.message} — stop and reconcile the event` +
+      (leftover.length ? ` (rows NOT cleaned up: ${leftover.join(", ")})` : "") +
+      ` — wait ${DRAIN_S}s before creating the STOP file so the samplers record the drain`,
   );
 }
 
