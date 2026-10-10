@@ -1,5 +1,7 @@
-// R3.5 — bounded time-based auto-recovery constants shared by the two
-// Realtime hooks (`useRealtimeEventChannel`, `useRealtimeImpressions`).
+// R3.5 — bounded time-based auto-recovery constants for the Realtime
+// hook (`useRealtimeEventChannel`; `useRealtimeImpressions` shared them
+// until n14 removed it), plus the `document.hidden` store also used by
+// `useImpressionPolling`.
 //
 // 30s delay: long enough that we're not flapping against a server
 // that just rejected a subscription (give the underlying socket and
