@@ -145,7 +145,13 @@ export async function adminCreateDelete({ base, eventId, note = "rt-probe" }) {
   });
   const cookie = (login.headers.get("set-cookie") || "").split(";")[0];
   if (!cookie) return { error: `login HTTP ${login.status}` };
-  const snap = await (await fetch(`${base}/api/setlist?eventId=${eventId}&locale=ja`)).json();
+  // The snapshot can fail under load (e.g. a 500 with an empty body when
+  // the pooler is out of client connections); report that as a result
+  // instead of throwing, like every other failure path here.
+  const snapRes = await fetch(`${base}/api/setlist?eventId=${eventId}&locale=ja`);
+  let snap = null;
+  try { snap = await snapRes.json(); } catch { /* empty or non-JSON body */ }
+  if (!Array.isArray(snap?.items)) return { error: `snapshot HTTP ${snapRes.status}, unexpected body` };
   const last = snap.items[snap.items.length - 1];
   const songId = last?.songs?.[0]?.song?.id;
   const t = Date.now();

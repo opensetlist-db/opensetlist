@@ -42,7 +42,7 @@ const PAUSE = parseInt(args.pause ?? "5000", 10);
 const LOAD_RPS = parseFloat(args["load-rps"] ?? "0");
 const EVENT_ID = args["event-id"] ?? "111";
 const BASE = process.env.BASE_URL;
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 const errorMessages = {};
@@ -51,7 +51,7 @@ const sentAt = {};
 const subs = []; // { c, ch, gen, joinedAt: {gen → ms}, startedAt: {gen → t} }
 
 function makeClient() {
-  return createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  return createClient(SUPABASE_URL, KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 
 // Join (or re-join) subscriber i as generation `gen`. The latency recorded

@@ -49,7 +49,7 @@ const PRIVATE = !!args.private;
 const BATCH = parseInt(args.batch ?? "100", 10);
 const EVERY = parseInt(args.every ?? "2000", 10);
 const WINDOW = parseInt(args.window ?? "20000", 10);
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Server-side failure signals worth counting even when the client later
@@ -70,7 +70,7 @@ function noteSignal(msg) {
 }
 
 function makeClient() {
-  return createClient(URL, KEY, {
+  return createClient(SUPABASE_URL, KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     realtime: {
       // Only server replies/errors are interesting; realtime-js logs every
