@@ -6,6 +6,7 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import {
   INITIAL_FRESHNESS,
   armSnapshotDeadline,
+  clampRetryAfterMs,
   freshnessStateFor,
   parseRetryAfterMs,
   snapshotRetryDelayMs,
@@ -284,6 +285,14 @@ export function useLiveSnapshot<T>({
           // n13 failure bookkeeping for a request that is still
           // current: bump the consecutive count, surface it as
           // freshness, and hand the scheduler the next retry delay.
+          //
+          // A `Retry-After` (the route's 503 under overload) is ALSO
+          // handed over as `notBeforeMs` — the scheduler's floor that
+          // holds back every trigger, not just this retry (see
+          // liveScheduler.ts). One parse, one clamp: the retry delay
+          // and the floor are the same number. The failure still
+          // counts toward SNAPSHOT_DELAYED_AFTER_FAILURES like any
+          // other non-OK response.
           const fail = (retryAfterMs: number | null) => {
             if (settled) return;
             if (!isLive()) {
@@ -298,7 +307,12 @@ export function useLiveSnapshot<T>({
             }));
             const delayMs = snapshotRetryDelayMs(failures, retryAfterMs);
             onFailure?.({ failures, delayMs, reason });
-            finish({ kind: "failed", retryInMs: delayMs });
+            finish({
+              kind: "failed",
+              retryInMs: delayMs,
+              notBeforeMs:
+                retryAfterMs === null ? null : clampRetryAfterMs(retryAfterMs),
+            });
           };
 
           const controller = new AbortController();

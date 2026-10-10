@@ -212,6 +212,105 @@ describe("liveScheduler — failures defer to the provided retry delay", () => {
   });
 });
 
+describe("liveScheduler — server-directed floor (Retry-After)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("a notification inside the Retry-After window does not fetch before the floor", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0.5 });
+    scheduler.requestFetch("catchup");
+    await settle(calls[0], { kind: "failed", retryInMs: 2_000, notBeforeMs: 2_000 });
+    expect(scheduler.getState().notBeforeAt).toBe(Date.now() + 2_000);
+
+    await advance(100);
+    // A burst of pushes during the window — the old rule ("an explicit
+    // trigger supersedes the retry") would have fetched at +250.
+    scheduler.requestFetch("notification");
+    scheduler.requestFetch("notification");
+    await advance(1_899); // t = 1999
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1); // t = 2000: the retry (earlier than floor + jitter) covers them
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    await settle(calls[1]);
+    await advance(5_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("an explicit trigger still replaces a LONGER retry, but lands at floor + jitter", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0.5, jitterMs: 500 });
+    scheduler.requestFetch("catchup");
+    // Schedule-derived retry far out, short server floor.
+    await settle(calls[0], { kind: "failed", retryInMs: 10_000, notBeforeMs: 2_000 });
+    scheduler.requestFetch("resume");
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    // floor (2000) + U(0, 500) at random = 0.5 → 2250.
+    await advance(2_249);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(runFetch).toHaveBeenLastCalledWith("resume");
+    expect(scheduler.getState().retryPending).toBe(false);
+  });
+
+  it("periodic ticks and immediate triggers honour an inherited floor", async () => {
+    const { runFetch, scheduler } = harness({
+      random: () => 0,
+      periodic: { intervalMs: 1_000, spreadMs: 0, firstTick: "interval" },
+      initialNotBeforeAt: Date.now() + 5_000,
+    });
+    scheduler.start();
+    scheduler.requestFetch("catchup");
+    await advance(4_999); // the 1 s ticks are covered by the held request
+    expect(runFetch).not.toHaveBeenCalled();
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(runFetch).toHaveBeenCalledWith("catchup");
+  });
+
+  it("a dirty follow-up after a failed request waits for the floor too", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0 });
+    scheduler.requestFetch("catchup");
+    scheduler.requestFetch("notification"); // dirty while in flight
+    await settle(calls[0], { kind: "failed", retryInMs: 3_000, notBeforeMs: 3_000 });
+    await advance(2_999);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("the floor expires: afterwards triggers follow the normal cadence again", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0 });
+    scheduler.requestFetch("catchup");
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000, notBeforeMs: 1_000 });
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    await settle(calls[1]); // recovered
+
+    await advance(1_000);
+    scheduler.requestFetch("resume");
+    expect(runFetch).toHaveBeenCalledTimes(3); // immediate again
+    await settle(calls[2]);
+    await advance(2_000); // clear the notification cooldown
+    scheduler.requestFetch("notification");
+    await advance(0);
+    expect(runFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("a failure without Retry-After sets no floor (n13 schedule only)", async () => {
+    const { calls, runFetch, scheduler } = harness();
+    scheduler.requestFetch("catchup");
+    await settle(calls[0], { kind: "failed", retryInMs: 30_000 });
+    expect(scheduler.getState().notBeforeAt).toBeNull();
+    scheduler.requestFetch("resume");
+    expect(runFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("liveScheduler — periodic", () => {
   beforeEach(() => {
     vi.useFakeTimers();

@@ -273,7 +273,10 @@ interface UseRealtimeEventChannelResult<T> {
  *     while the tab is visible — hiding tears the effect down and
  *     with it the retry timer). Any newer explicit trigger (a push, a
  *     reconnect) supersedes a pending retry; periodic ticks wait for
- *     it; success resets the schedule.
+ *     it; success resets the schedule. A `Retry-After` is also a
+ *     floor for EVERY trigger (the scheduler's `notBeforeAt`): a burst
+ *     of pushes during a 503 window waits it out instead of
+ *     superseding the retry.
  *
  *   - A snapshot failure does NOT flip `pollFallback`. If the DB is
  *     what's struggling, switching every viewer to 5 s polling would
@@ -386,6 +389,13 @@ export function useRealtimeEventChannel<T>({
     initialRev: snapshot.rev,
     initialCapturedAt: snapshot.capturedAt,
   });
+
+  // Server-directed `Retry-After` floor (clock ms) carried from one
+  // channel session's scheduler to the next — see
+  // `LiveSchedulerOptions.initialNotBeforeAt`. Not reset on event
+  // change: the floor is back-pressure from the shared snapshot
+  // endpoint, not a property of one event.
+  const retryFloorRef = useRef<number | null>(null);
 
   // Once-per-session latch for the Sentry captureMessage. The
   // breadcrumb stream still records every transition, but a sustained
@@ -537,6 +547,9 @@ export function useRealtimeEventChannel<T>({
         // The seed below covers t = 0.
         firstTick: "interval",
       },
+      // A Retry-After window opened by the previous session (e.g. a
+      // tab re-shown inside it) still holds for this one.
+      initialNotBeforeAt: retryFloorRef.current,
     });
     scheduler.start();
 
@@ -804,6 +817,7 @@ export function useRealtimeEventChannel<T>({
       // resolves every in-flight request as cancelled (never a
       // failure). Unlike pre-n14, an abort only ever happens here —
       // nothing supersedes an in-flight request any more.
+      retryFloorRef.current = scheduler.getState().notBeforeAt;
       scheduler.dispose();
       runner.abort();
       if (boundaryTimer !== null) {

@@ -46,13 +46,35 @@
 //     tick is a no-op while a request is in flight, scheduled, or a
 //     retry is pending: that request already covers this period.
 //
-//   - Failure path = n13's retry schedule, unchanged. `runFetch` owns
-//     the consecutive-failure count and computes the delay with
+//   - Failure path = n13's retry schedule. `runFetch` owns the
+//     consecutive-failure count and computes the delay with
 //     `snapshotRetryDelayMs` (1/2/4/8/15/30 s ± 20 %, Retry-After);
-//     the scheduler only arms the timer it asked for. Any explicit
-//     trigger (notification, catch-up, resume, boundary) supersedes a
-//     pending retry — the same "a newer fetch IS the retry" rule n13
-//     had. Periodic ticks do not (they would defeat the backoff).
+//     the scheduler only arms the timer it asked for. The retry lives
+//     in the same single "scheduled" slot as every other deferred
+//     request, so an explicit trigger that is due EARLIER replaces it
+//     — the "a newer fetch IS the retry" rule n13 had — and one due
+//     later is covered by it (the retry starts after the trigger
+//     arrived, so its read sees whatever the trigger announced).
+//     Periodic ticks never replace it (they would defeat the backoff).
+//
+//   - Server-directed floor (`notBeforeAt`). A failed outcome may carry
+//     `notBeforeMs`: the server's own `Retry-After` (the snapshot route
+//     answers 503 + `Retry-After` when a build fails under overload).
+//     That is not advice for one retry — it is the server shedding
+//     load, so it must hold against every path that can start a
+//     request. Without it, "an explicit trigger supersedes a retry" let
+//     a burst of notifications (exactly what an overloaded save
+//     produces) fire straight through the Retry-After window. Every
+//     path — notification, catch-up, resume, boundary, periodic, dirty
+//     follow-up — computes its usual due time and then takes
+//     `max(due, notBeforeAt + U(0, jitter))`. The jitter on top of the
+//     floor matters: every viewer that got a 503 in the same burst would
+//     otherwise wake at nearly the same floor edge. The retry itself is
+//     the one exception — it is due at `max(now + retryInMs,
+//     notBeforeAt)` with no extra jitter, because `retryInMs` already IS
+//     the clamped Retry-After (n13: "the server asked for that exact
+//     spacing"). The floor only moves forward and simply expires; a
+//     success does not need to clear it.
 //
 // Everything time-related goes through the injectable `clock` and
 // `random` so the unit tests can drive it with fake timers and pinned
@@ -74,13 +96,24 @@ export type LiveFetchReason =
  *   - `ok`: the request completed (applied or not — a response that is
  *     merely not newer than what is shown is still a healthy sync).
  *   - `failed`: count it as a failure; retry after `retryInMs`, which the
- *     caller computed from n13's schedule.
+ *     caller computed from n13's schedule. `notBeforeMs` (optional) is
+ *     the server-directed floor described in the header.
  *   - `cancelled`: the request no longer matters (the hook tore the
  *     channel down, or the event/locale changed). Nothing follows.
  */
 export type LiveFetchOutcome =
   | { kind: "ok" }
-  | { kind: "failed"; retryInMs: number }
+  | {
+      kind: "failed";
+      retryInMs: number;
+      /**
+       * The response's `Retry-After`, already clamped
+       * (`clampRetryAfterMs`). No request of any kind starts before
+       * `now + notBeforeMs`. Absent / null = no floor (a network error,
+       * a deadline, a 5xx without the header).
+       */
+      notBeforeMs?: number | null;
+    }
   | { kind: "cancelled" };
 
 export interface SchedulerClock {
@@ -119,6 +152,14 @@ export interface LiveSchedulerOptions {
   jitterMs?: number;
   cooldownMs?: number;
   periodic?: PeriodicConfig | null;
+  /**
+   * A server-directed floor (clock ms) inherited from a previous
+   * scheduler of the same page. The realtime hook builds one scheduler
+   * per channel session (a visibility resume starts a new one) and
+   * hands the old one's `getState().notBeforeAt` over, so re-showing a
+   * tab inside a `Retry-After` window does not reset the window.
+   */
+  initialNotBeforeAt?: number | null;
   random?: () => number;
   clock?: SchedulerClock;
 }
@@ -129,6 +170,11 @@ export interface LiveSchedulerState {
   /** Due time (clock ms) of a scheduled-but-not-started request. */
   scheduledAt: number | null;
   retryPending: boolean;
+  /**
+   * Server-directed floor (clock ms) from the last `Retry-After`; null
+   * when none was ever set. May lie in the past (an expired floor).
+   */
+  notBeforeAt: number | null;
   disposed: boolean;
 }
 
@@ -155,6 +201,7 @@ export function createLiveScheduler(
     jitterMs = NOTIFICATION_JITTER_MS,
     cooldownMs = NOTIFICATION_COOLDOWN_MS,
     periodic = null,
+    initialNotBeforeAt = null,
     random = Math.random,
     clock = defaultClock,
   } = options;
@@ -168,13 +215,21 @@ export function createLiveScheduler(
   // status boundary is not part of the synchronized burst the cooldown
   // exists to thin out).
   let dirtyReason: LiveFetchReason | null = null;
+  // The ONE deferred request — a jittered notification, a request held
+  // back by the floor, or the retry after a failure. Keeping the retry
+  // in this slot (instead of a timer of its own) is what makes "an
+  // earlier trigger replaces it, a later one is covered by it" fall out
+  // of `scheduleAt`'s single comparison.
   let scheduled: { handle: unknown; dueAt: number; reason: LiveFetchReason } | null =
     null;
-  let retryHandle: unknown = null;
   let periodicHandle: unknown = null;
   // Start time of the last notification-triggered request; the cooldown
   // window is measured from here.
   let lastNotificationStartAt = Number.NEGATIVE_INFINITY;
+  let notBeforeAt =
+    initialNotBeforeAt === null || !Number.isFinite(initialNotBeforeAt)
+      ? Number.NEGATIVE_INFINITY
+      : initialNotBeforeAt;
 
   const nextEligibleAt = () => lastNotificationStartAt + cooldownMs;
 
@@ -185,11 +240,12 @@ export function createLiveScheduler(
     }
   };
 
-  const clearRetry = () => {
-    if (retryHandle !== null) {
-      clock.clearTimeout(retryHandle);
-      retryHandle = null;
-    }
+  // Lift `dueAt` above an active server floor, adding `U(0, floorJitter)`
+  // so the population that shares the floor does not wake together.
+  // An expired floor (≤ now) changes nothing.
+  const applyFloor = (dueAt: number, now: number, floorJitterMs: number) => {
+    if (notBeforeAt <= now) return dueAt;
+    return Math.max(dueAt, notBeforeAt + random() * floorJitterMs);
   };
 
   // Schedule a request at `dueAt` unless one is already scheduled no
@@ -206,10 +262,18 @@ export function createLiveScheduler(
     scheduled = { handle, dueAt, reason };
   };
 
+  // Start now if nothing holds the request back, else defer it.
+  const startOrSchedule = (dueAt: number, reason: LiveFetchReason) => {
+    if (dueAt <= clock.now()) {
+      void run(reason);
+      return;
+    }
+    scheduleAt(dueAt, reason);
+  };
+
   const run = async (reason: LiveFetchReason): Promise<void> => {
     if (disposed) return;
     clearScheduled();
-    clearRetry();
     inFlight = true;
     dirtyReason = null;
     if (reason === "notification") lastNotificationStartAt = clock.now();
@@ -230,32 +294,44 @@ export function createLiveScheduler(
     dirtyReason = null;
 
     if (outcome.kind === "failed") {
+      const now = clock.now();
+      const floorMs = outcome.notBeforeMs;
+      if (typeof floorMs === "number" && Number.isFinite(floorMs)) {
+        notBeforeAt = Math.max(notBeforeAt, now + Math.max(0, floorMs));
+      }
       // The retry is the follow-up: it starts after every trigger that
       // marked us dirty, and it respects the backoff a struggling
-      // server needs. A fresh explicit trigger still supersedes it.
-      retryHandle = clock.setTimeout(() => {
-        retryHandle = null;
-        void run("retry");
-      }, Math.max(0, outcome.retryInMs));
+      // server needs. An earlier-due explicit trigger still replaces
+      // it, but never below the floor.
+      scheduleAt(
+        Math.max(now + Math.max(0, outcome.retryInMs), notBeforeAt),
+        "retry",
+      );
       return;
     }
     if (outcome.kind === "cancelled" || followUp === null) return;
 
+    const now = clock.now();
     if (followUp === "notification") {
       // No new jitter: this client already sat out one jitter window,
       // and the in-flight request's settle time is itself random.
-      scheduleAt(Math.max(nextEligibleAt(), clock.now()), "notification");
+      scheduleAt(
+        applyFloor(Math.max(nextEligibleAt(), now), now, jitterMs),
+        "notification",
+      );
     } else {
-      void run(followUp);
+      startOrSchedule(applyFloor(now, now, jitterMs), followUp);
     }
   };
 
   const requestFetch = (reason: LiveFetchReason) => {
     if (disposed) return;
+    const now = clock.now();
 
     if (reason === "periodic") {
-      if (inFlight || scheduled || retryHandle !== null) return;
-      void run("periodic");
+      // `scheduled` includes a pending retry: the backoff holds.
+      if (inFlight || scheduled) return;
+      startOrSchedule(applyFloor(now, now, jitterMs), "periodic");
       return;
     }
 
@@ -266,17 +342,17 @@ export function createLiveScheduler(
       return;
     }
 
-    // Any explicit trigger supersedes a pending retry — it IS the retry.
-    clearRetry();
-
     if (reason === "notification") {
-      const now = clock.now();
       const dueAt = Math.max(now + random() * jitterMs, nextEligibleAt());
-      scheduleAt(dueAt, "notification");
+      // Always through a timer (even at zero jitter), so a burst of
+      // pushes in one task collapses into the one scheduled request.
+      scheduleAt(applyFloor(dueAt, now, jitterMs), "notification");
       return;
     }
 
-    void run(reason);
+    // Replaces a later-due scheduled request (including a pending
+    // retry) — it IS that request — unless the floor holds it back.
+    startOrSchedule(applyFloor(now, now, jitterMs), reason);
   };
 
   const schedulePeriodic = (first: boolean) => {
@@ -302,7 +378,6 @@ export function createLiveScheduler(
     dispose() {
       disposed = true;
       clearScheduled();
-      clearRetry();
       if (periodicHandle !== null) {
         clock.clearTimeout(periodicHandle);
         periodicHandle = null;
@@ -313,7 +388,8 @@ export function createLiveScheduler(
         inFlight,
         dirty: dirtyReason !== null,
         scheduledAt: scheduled?.dueAt ?? null,
-        retryPending: retryHandle !== null,
+        retryPending: scheduled?.reason === "retry",
+        notBeforeAt: Number.isFinite(notBeforeAt) ? notBeforeAt : null,
         disposed,
       };
     },

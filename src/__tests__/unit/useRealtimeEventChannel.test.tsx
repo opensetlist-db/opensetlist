@@ -1202,6 +1202,45 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     expect(result.current.freshness.state).toBe("live");
   });
 
+  it("a 503 Retry-After is a floor: pushes inside the window do not fetch before it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeErrorResponse(503, "3"))
+      .mockResolvedValue(makeFetchResponse());
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount();
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A 503 counts toward the delayed indicator like any failure.
+    expect(result.current.freshness.state).toBe("retrying");
+
+    const push = capturedPostgresHandlers.find(
+      (h) => h.config.table === "SetlistItem",
+    )!.handler;
+    await advance(500);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+      capturedSubscribeCallback!("SUBSCRIBED");
+    });
+    await advance(1_000);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+    });
+    await advance(1_499); // t = 2999
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await advance(1); // t = 3000: one request covers every trigger
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.freshness.state).toBe("live");
+
+    // Floor expired → normal notification cadence (250 ms jitter here).
+    await advance(2_000);
+    await act(async () => {
+      push({ new: { eventId: 1 } });
+    });
+    await advance(250);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("aborts a hung snapshot at the 8 s deadline and retries", async () => {
     const fetchMock = vi
       .fn()
