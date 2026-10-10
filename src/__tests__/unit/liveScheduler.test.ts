@@ -521,6 +521,47 @@ describe("liveScheduler — periodic", () => {
     expect(runFetch).toHaveBeenLastCalledWith("retry");
   });
 
+  it("setPeriodic swaps the cadence on the same scheduler (healthy ↔ disconnected)", async () => {
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      periodic: healthy,
+    });
+    scheduler.start();
+    await advance(1_000);
+    // Disconnected: 5 s ± 1 s with a random first tick (2.5 s here).
+    scheduler.setPeriodic({ intervalMs: 5_000, spreadMs: 1_000, firstTick: "random-phase" });
+    await advance(2_499);
+    expect(runFetch).not.toHaveBeenCalled();
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await settle(calls[0]);
+    await advance(5_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    await settle(calls[1]);
+
+    // Back to healthy: the next tick is a full 20 s away.
+    scheduler.setPeriodic(healthy);
+    await advance(19_999);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("setPeriodic does not disturb a pending retry", async () => {
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      periodic: healthy,
+    });
+    scheduler.start();
+    scheduler.requestFetch("initial");
+    await settle(calls[0], { kind: "failed", retryInMs: 8_000 });
+    scheduler.setPeriodic({ intervalMs: 5_000, spreadMs: 1_000, firstTick: "random-phase" });
+    await advance(7_999); // fallback ticks are skipped while the retry is pending
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(runFetch).toHaveBeenLastCalledWith("retry");
+  });
+
   it("start() is idempotent", async () => {
     const { runFetch, scheduler } = harness({
       random: () => 0.5,

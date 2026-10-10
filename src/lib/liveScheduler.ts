@@ -1,8 +1,10 @@
 // Fetch scheduler for the live event page's `/api/setlist` snapshot.
 //
-// Shared by `useRealtimeEventChannel` (healthy path: notifications +
-// a slow periodic repair poll) and `useSetlistPolling` (R3 fallback:
-// a 5 s ± 1 s poll). It decides WHEN a snapshot request runs; the hook
+// Used by `useRealtimeEventChannel` (healthy: notifications + a slow
+// periodic repair poll; while the channel is disconnected the same
+// scheduler switches to the 5 s ± 1 s fallback cadence via
+// `setPeriodic`), by the standalone `useSetlistPolling`, and by
+// `useImpressionPolling`. It decides WHEN a snapshot request runs; the hook
 // supplies `runFetch`, which decides WHAT a request does (URL, `minRev`,
 // deadline, acceptance, freshness bookkeeping) and reports back how it
 // went.
@@ -246,6 +248,16 @@ export interface LiveScheduler {
   requestFetch(reason: LiveFetchReason): void;
   /** Arms the periodic timer (if configured). Idempotent. */
   start(): void;
+  /**
+   * Swap the periodic cadence — the realtime hook switches between the
+   * healthy repair poll (20 s ± 4 s) and the "polling while
+   * disconnected" cadence (5 s ± 1 s) on the SAME scheduler, so the
+   * hand-over keeps one single-flight guard, one retry/floor state and
+   * one acceptance watermark. Re-arms the timer from now with the new
+   * config's `firstTick` rule; in-flight / scheduled / retry work is
+   * untouched. `null` stops periodic ticks.
+   */
+  setPeriodic(config: PeriodicConfig | null): void;
   dispose(): void;
   getState(): LiveSchedulerState;
 }
@@ -265,7 +277,6 @@ export function createLiveScheduler(
     jitterMs = NOTIFICATION_JITTER_MS,
     catchupJitterMs = CATCHUP_JITTER_MS,
     cooldownMs = NOTIFICATION_COOLDOWN_MS,
-    periodic = null,
     initialNotBeforeAt = null,
     random = Math.random,
     clock = defaultClock,
@@ -278,6 +289,7 @@ export function createLiveScheduler(
   const jitterFor = (reason: LiveFetchReason): number =>
     reason === "notification" ? jitterMs : catchupJitterMs;
 
+  let periodic: PeriodicConfig | null = options.periodic ?? null;
   let disposed = false;
   let started = false;
   let inFlight = false;
@@ -452,6 +464,13 @@ export function createLiveScheduler(
     startOrSchedule(applyFloor(now, now, jitterFor(reason)), reason);
   };
 
+  const clearPeriodic = () => {
+    if (periodicHandle !== null) {
+      clock.clearTimeout(periodicHandle);
+      periodicHandle = null;
+    }
+  };
+
   const schedulePeriodic = (first: boolean) => {
     if (!periodic || disposed) return;
     const delay =
@@ -472,13 +491,16 @@ export function createLiveScheduler(
       started = true;
       schedulePeriodic(true);
     },
+    setPeriodic(config) {
+      if (disposed) return;
+      periodic = config;
+      clearPeriodic();
+      if (started) schedulePeriodic(true);
+    },
     dispose() {
       disposed = true;
       clearScheduled();
-      if (periodicHandle !== null) {
-        clock.clearTimeout(periodicHandle);
-        periodicHandle = null;
-      }
+      clearPeriodic();
     },
     getState() {
       return {
