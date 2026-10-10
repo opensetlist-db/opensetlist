@@ -36,17 +36,24 @@ import type { Prisma } from "@/generated/prisma/client";
 
 /**
  * Whether the broadcast goes to a PRIVATE channel (Realtime
- * Authorization via the `event_broadcast_receive` RLS policy in
- * prisma/post-deploy.sql) or a public one.
+ * Authorization) or a PUBLIC one. PUBLIC, decided by the admission probe
+ * (wiki task n14, `## Results` — private join cost): Realtime
+ * Authorization runs one DB transaction per private join on a 2-connection
+ * pool in another region (~0.85 s per join, ~3 joins/s), so a 500-viewer
+ * join storm mostly TIMED_OUT, while public channels admitted 500 joins
+ * in 10 s (p95 617 ms) and `realtime.send(..., false)` reached 500/500.
  *
- * Pending the private-channel admission probe (task n14, "Private-channel
- * admission probe"): `true` is the intended mode; if the probe shows the
- * Realtime Authorization pool cannot admit ~500 joins in time, this
- * flips to `false` BEFORE R1 ships. It must not change between R1 and
- * R2 — R2 clients subscribe in this same mode, and an R2→R1 rollback
- * with a different mode would leave R2 tabs deaf.
+ * Consequence of a public channel: anyone with the anon key can publish
+ * to `event:<id>`. The client (R2) therefore treats a broadcast payload
+ * as an untrusted hint — it only schedules a jittered, cooldown-limited
+ * snapshot fetch with `?minRev=`, and the server's repair path verifies
+ * the revision against the database before doing any work (see
+ * `getLiveSnapshot`). No RLS policy on `realtime.messages` is needed.
+ *
+ * Must not change between R1 and R2: R2 clients subscribe in this mode,
+ * and an R2→R1 rollback with a different mode would leave R2 tabs deaf.
  */
-export const LIVE_BROADCAST_PRIVATE = true;
+export const LIVE_BROADCAST_PRIVATE = false;
 
 /** Broadcast topic for one event. The client channel name must match. */
 export const liveTopic = (eventId: bigint | number | string): string =>

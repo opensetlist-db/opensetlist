@@ -378,14 +378,54 @@ async function readThroughCache(
   };
 }
 
-/** Uncached, coalesced `SELECT "setlistRevision"` for the repair check. */
-function readCurrentRevision(eventId: bigint): Promise<bigint | null> {
-  return coalesce(inFlightRevRead, eventId.toString(), async () => {
+// Last revision this instance read from the database, per event. The
+// revision only ever grows, so a remembered value is always a valid
+// LOWER bound of the current one.
+const revMemo = new Map<string, { rev: bigint | null; readAt: number }>();
+// How long a completed read refutes hints above it. Bounds the repair
+// check to one 1-row read per instance per burst: the pooler is the
+// scarce resource (an uncached-read burst exhausted the dev pooler's
+// client connections in the n14 probe), and with a public broadcast
+// channel the hint is untrusted. Cost: a save that commits within this
+// window after a read can have its repair delayed by up to this long —
+// the client's retry schedule (1 s, 2 s, …) covers it.
+const REV_MEMO_MS = 1_000;
+
+/**
+ * Database revision for the repair check: a remembered value when it
+ * already satisfies the hint (`rev >= minRev`) or is younger than
+ * `REV_MEMO_MS`, otherwise ONE uncached `SELECT "setlistRevision"`,
+ * coalesced across concurrent requests on this instance.
+ */
+async function verifiedRevision(
+  eventId: bigint,
+  minRev: number,
+): Promise<bigint | null> {
+  const key = eventId.toString();
+  const memo = revMemo.get(key);
+  if (
+    memo &&
+    ((memo.rev !== null && memo.rev >= BigInt(minRev)) ||
+      Date.now() - memo.readAt < REV_MEMO_MS)
+  ) {
+    return memo.rev;
+  }
+  return coalesce(inFlightRevRead, key, async () => {
     const rows = await prisma.$queryRaw<{ setlistRevision: bigint }[]>`
       SELECT "setlistRevision" FROM "Event" WHERE id = ${eventId}
     `;
-    return rows.length > 0 ? BigInt(rows[0].setlistRevision) : null;
+    const rev = rows.length > 0 ? BigInt(rows[0].setlistRevision) : null;
+    revMemo.set(key, { rev, readAt: Date.now() });
+    return rev;
   });
+}
+
+/** Test-only: forget per-instance coalescing and revision memo state. */
+export function __resetLiveSnapshotStateForTests(): void {
+  inFlight.clear();
+  inFlightRepair.clear();
+  inFlightRevRead.clear();
+  revMemo.clear();
 }
 
 /**
@@ -406,14 +446,20 @@ export function parseMinRev(raw: string | null): number | null {
  * Repair path (`minRev`): the client passes the highest revision it has
  * seen (from a broadcast or an earlier snapshot). When the cached
  * snapshot is older, ONE uncached 1-row revision read (coalesced per
- * instance) decides whether the cache is really behind the database:
+ * instance, and remembered for `REV_MEMO_MS` — see `verifiedRevision`)
+ * decides whether the cache is really behind the database:
  *   - DB revision > cached revision → expire the event tag (applies
  *     after this request) and serve a snapshot built now under a
  *     server-read-revision key (`source: "repair"`);
  *   - otherwise the client's hint is ahead of the database (forged, or
  *     from a rolled-back world) → serve the cache unchanged.
- * A forged `minRev` therefore costs at most one primary-key read per
- * instance per burst and can never trigger a build or mint a cache key.
+ * A forged `minRev` (the broadcast channel is public, so hints are
+ * untrusted) therefore costs at most one primary-key read per instance
+ * per `REV_MEMO_MS` and can never trigger a build or mint a cache key.
+ *
+ * This is the only database read on the hot path outside the cached
+ * builder; a cache hit with no (or a satisfied) `minRev` touches the
+ * database not at all.
  */
 export async function getLiveSnapshot(
   eventId: bigint,
@@ -427,7 +473,7 @@ export async function getLiveSnapshot(
   );
   if (minRev === null || first.snapshot.rev >= BigInt(minRev)) return first;
 
-  const dbRev = await readCurrentRevision(eventId);
+  const dbRev = await verifiedRevision(eventId, minRev);
   if (dbRev === null || dbRev <= first.snapshot.rev) return first;
 
   revalidateEventData(eventId);
