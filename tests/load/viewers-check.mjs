@@ -17,6 +17,9 @@
 // Usage: node tests/load/viewers-check.mjs [--delete] [--event=111]
 // (ENV_DIR=<checkout with .env> when this worktree has no .env.)
 import { loadEnv, assertDev, pgClient, parseArgs } from "./realtime/lib.mjs";
+import { NOTE, ANON_PREFIX } from "./lib/constants.js";
+
+const ANON_LIKE = `${ANON_PREFIX}%`;
 
 loadEnv();
 assertDev();
@@ -33,13 +36,14 @@ await c.connect();
 try {
   const rx = await c.query(
     `select id, "setlistItemId"::text as item, "reactionType", "anonId", "createdAt"
-       from "SetlistItemReaction" where "anonId" like 'n14run2-%' order by "createdAt"`,
+       from "SetlistItemReaction" where "anonId" like $1 order by "createdAt"`,
+    [ANON_LIKE],
   );
-  console.log(`n14run2 reactions still present: ${rx.rows.length}`);
+  console.log(`${ANON_PREFIX} reactions still present: ${rx.rows.length}`);
   if (rx.rows.length) {
     console.table(rx.rows.slice(0, 20));
     if (args.delete) {
-      const d = await c.query(`delete from "SetlistItemReaction" where "anonId" like 'n14run2-%'`);
+      const d = await c.query(`delete from "SetlistItemReaction" where "anonId" like $1`, [ANON_LIKE]);
       console.log(`deleted ${d.rowCount} n14run2 reactions`);
     } else {
       console.log("re-run with --delete to remove them");
@@ -48,8 +52,8 @@ try {
 
   const si = await c.query(
     `select id::text, position, "isDeleted" from "SetlistItem"
-      where "eventId" = $1 and note = 'n14-run2-load-test' and "isDeleted" = false`,
-    [eventId],
+      where "eventId" = $1 and note = $2 and "isDeleted" = false`,
+    [eventId, NOTE],
   );
   console.log(`live viewers.js setlist rows on event ${eventId}: ${si.rows.length}`);
   if (si.rows.length) console.table(si.rows);

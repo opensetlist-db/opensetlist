@@ -938,6 +938,8 @@ async function main() {
   let interrupted = false;
   const finish = async () => {
     for (const f of ctx.cleanups.splice(0)) await f().catch((e) => console.error("cleanup:", e.message));
+    // `close()` always resolves to the array of ids it could not soft-delete
+    // (empty on success), which is what `cleanupFailures` below expects.
     return ctx.admin.close();
   };
   process.on("SIGINT", async () => {

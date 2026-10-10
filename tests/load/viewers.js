@@ -92,6 +92,7 @@ import {
   GATES,
 } from "./lib/config.js";
 import { resultsDir, stamp } from "./lib/report.js";
+import { NOTE, ANON_PREFIX } from "./lib/constants.js";
 import {
   adminSaveReload,
   adminWriteLatency,
@@ -139,9 +140,7 @@ if (EXPECTED_ROWS != null && ROW_SLACK < 2) {
   throw new Error("viewers.js adds up to 2 rows at a time: set ROW_SLACK=2 (or more) with EXPECTED_ROWS");
 }
 
-const NOTE = "n14-run2-load-test";
 const COOKIE_NAME = "admin_session"; // src/lib/admin-session.ts
-const ANON_PREFIX = "n14run2-";
 const REACTION_TYPES = ["waiting", "best", "surprise", "moved"]; // VALID_TYPES in the route
 const OPS = ["create", "update", "insert_after", "swap", "delete", "delete"];
 
