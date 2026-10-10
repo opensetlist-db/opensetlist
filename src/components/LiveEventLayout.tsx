@@ -151,16 +151,6 @@ interface Props {
    * null — that's fine, React renders nothing for it.
    */
   bdSection?: ReactNode;
-
-  /**
-   * SSR snapshot watermark — `Event.setlistRevision` and the snapshot
-   * transaction's `capturedAt` (ISO) at render time. Forwarded to
-   * `useRealtimeEventChannel` so the first client fetch can't roll the
-   * server-rendered setlist back to an older snapshot. Optional: absent
-   * → pre-n14 behaviour (first response applies unconditionally).
-   */
-  initialRev?: number | null;
-  initialCapturedAt?: string | null;
 }
 
 /**
@@ -231,8 +221,6 @@ export function LiveEventLayout({
   availableSongs,
   unitFilters,
   bdSection,
-  initialRev,
-  initialCapturedAt,
 }: Props) {
   // Stays enabled for ongoing AND upcoming events: the wishlist fan
   // TOP-3 needs to update pre-show as more fans submit wishes (per
