@@ -221,4 +221,34 @@ describe("POST /api/setlist-items/[id]/confirm — conflict-handling promotion",
     expect(prisma.setlistItem.findMany).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it("busy database on the confirm write → 503 db_busy (nothing written), no i18n text", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    (prisma.setlistItemConfirm.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("timeout exceeded when trying to connect"),
+    );
+    const res = await POST(postRequest(), { params: params42 });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ ok: false, error: "db_busy" });
+  });
+
+  it("busy database on the promotion → still 200: the confirm row is already committed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    (prisma.setlistItem.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: BigInt(43) },
+    ]);
+    (prisma.setlistItemConfirm.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(
+      Object.assign(
+        new Error("Transaction API error: Unable to start a transaction in the given time."),
+        { code: "P2028" },
+      ),
+    );
+    const res = await POST(postRequest(), { params: params42 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
 });

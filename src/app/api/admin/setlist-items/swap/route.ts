@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import {
@@ -11,7 +15,13 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // A save the database could not even start — including the
+  // pre-transaction owner lookup — answers 503 + Retry-After (see
+  // `withAdminLiveWriterBusy`); every other outcome is unchanged.
+  return withAdminLiveWriterBusy(() => swapItems(request));
+}
 
+async function swapItems(request: NextRequest) {
   const { itemIdA, itemIdB } = await request.json();
 
   if (!itemIdA || !itemIdB) {
@@ -59,7 +69,7 @@ export async function POST(request: NextRequest) {
   }
   const eventId = ownerA.eventId;
 
-  const rev = await prisma.$transaction(async (tx) => {
+  const rev = await liveWriterTransaction("admin-swap", async (tx) => {
     await lockEvent(tx, eventId);
     const rows = await tx.setlistItem.findMany({
       where: { id: { in: [idA, idB] } },

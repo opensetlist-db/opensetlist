@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import {
   badRequest,
@@ -99,10 +103,23 @@ function validateOptionalIdArray(
   return { ok: true, value: result.value };
 }
 
-export async function PUT(request: NextRequest, { params }: Props) {
+// The PUT / DELETE saves can bump the setlist revision, so they run as
+// live writers: a save the database could not even start answers 503 +
+// Retry-After (see `withAdminLiveWriterBusy`); every other outcome is
+// unchanged.
+export async function PUT(request: NextRequest, props: Props) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  return withAdminLiveWriterBusy(() => updateEvent(request, props));
+}
 
+export async function DELETE(_request: NextRequest, props: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+  return withAdminLiveWriterBusy(() => deleteEvent(props));
+}
+
+async function updateEvent(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
   const parsed = await parseJsonBody(request);
@@ -183,7 +200,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   if (dupErr) return dupErr;
 
   try {
-    const { updated: event, rev } = await prisma.$transaction(async (tx) => {
+    const { updated: event, rev } = await liveWriterTransaction("admin-event-update", async (tx) => {
       // n14: lock the event row and read the fields the live snapshot
       // carries BEFORE writing, so we can tell whether this edit
       // changes what `/api/setlist` serves. Most event edits (title,
@@ -262,7 +279,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
         : null;
 
       return { updated, rev };
-    });
+    }, (r) => r.rev);
 
     // `revalidatePublicData` already expires every cached public read
     // (the event tag included, since every entry also carries the
@@ -294,23 +311,20 @@ export async function PUT(request: NextRequest, { params }: Props) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: Props) {
-  const unauthorized = await verifyAdminAPI();
-  if (unauthorized) return unauthorized;
-
+async function deleteEvent({ params }: Props) {
   const { id } = await params;
   const eventId = BigInt(id);
   // The live snapshot carries `isDeleted` (a deleted event resolves to
   // `status: null`), so a soft-delete is a snapshot change like any
   // other: bump + broadcast in the same transaction (n14).
-  await prisma.$transaction(async (tx) => {
+  await liveWriterTransaction("admin-event-delete", async (tx) => {
     await lockEvent(tx, eventId);
     await tx.event.update({
       where: { id: eventId },
       data: { isDeleted: true, deletedAt: new Date() },
       select: { id: true },
     });
-    await bumpSetlistRevisionAndBroadcast(tx, eventId);
+    return bumpSetlistRevisionAndBroadcast(tx, eventId);
   });
   revalidatePublicData();
   return NextResponse.json({ success: true });

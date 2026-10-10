@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
@@ -12,7 +15,12 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // A save the database could not even start answers 503 + Retry-After
+  // (see `withAdminLiveWriterBusy`); every other outcome is unchanged.
+  return withAdminLiveWriterBusy(() => insertAfter(request));
+}
 
+async function insertAfter(request: NextRequest) {
   const { eventId, afterPosition } = await request.json();
 
   if (!eventId) {
@@ -40,7 +48,7 @@ export async function POST(request: NextRequest) {
   }
   const newPosition = afterPosition + 1;
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await liveWriterTransaction("admin-insert-after", async (tx) => {
     // n14: lock the event FIRST so the position read below sees every
     // previously committed save and no concurrent same-event save can
     // shift rows between our read and our updates (before the lock, two
@@ -119,7 +127,7 @@ export async function POST(request: NextRequest) {
     // rows were shifted above — clients refetch the snapshot once.
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
     return { item, rev };
-  });
+  }, (r) => r?.rev);
 
   if (!result) {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });

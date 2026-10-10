@@ -729,3 +729,50 @@ describe("7. bounded revision read (repair check)", () => {
     for (const [row] of settings) expect(row.v).not.toBe("500ms");
   });
 });
+
+// ---------------------------------------------------------------------
+// 8. live writer on an exhausted pool
+// ---------------------------------------------------------------------
+
+describe("8. a live writer that cannot get a connection answers 503 and writes nothing", () => {
+  it("both pool slots held → admin create fails after maxWait with the operator 503, revision unchanged", async () => {
+    const revBefore = await currentRev();
+    const release = barrier();
+    const held = [barrier(), barrier()];
+    // Occupy the instance's two pool connections with idle transactions.
+    const holders = held.map((h) =>
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1`;
+          h.open();
+          await release.opened;
+        },
+        { maxWait: 5_000, timeout: 30_000 },
+      ),
+    );
+    await Promise.all(held.map((h) => h.opened));
+
+    const started = Date.now();
+    const res = await ADMIN_CREATE(
+      req("http://x/api/admin/setlist-items", {
+        eventId: eventId.toString(),
+        position: 77,
+        type: "mc",
+      }),
+    );
+    const elapsed = Date.now() - started;
+    release.open();
+    await Promise.all(holders);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect((await res.json()).code).toBe("db_busy");
+    // maxWait (2 s) fired, well before the pool's own 5 s connect timeout.
+    expect(elapsed).toBeGreaterThanOrEqual(1_900);
+    expect(elapsed).toBeLessThan(4_500);
+    expect(await currentRev()).toBe(revBefore);
+    expect(
+      await prisma.setlistItem.count({ where: { eventId, position: 77 } }),
+    ).toBe(0);
+  });
+});
