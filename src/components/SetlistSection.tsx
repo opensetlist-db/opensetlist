@@ -24,6 +24,12 @@ interface Props {
   eventArtistId?: string | null;
   items: LiveSetlistItem[];
   reactionCounts: ReactionCountsMap;
+  /**
+   * `capturedAt` of the live snapshot `reactionCounts` came from —
+   * forwarded to `<ReactionButtons>` for the reaction ack hold.
+   * Optional; omitted → pre-n14 behaviour (no hold).
+   */
+  snapshotCapturedAt?: string | null;
   locale: string;
   /**
    * Stage C — props threaded through to `<PredictedSetlist>`.
@@ -107,6 +113,7 @@ export function SetlistSection({
   eventId,
   items,
   reactionCounts,
+  snapshotCapturedAt,
   locale,
   status,
   startTime,
@@ -257,6 +264,7 @@ export function SetlistSection({
       <ActualSetlist
         items={items}
         reactionCounts={reactionCounts}
+        snapshotCapturedAt={snapshotCapturedAt}
         locale={locale}
         eventId={eventId}
         status={status}

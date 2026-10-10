@@ -53,7 +53,14 @@ import { EventBdSection } from "@/components/EventBdSection";
 import { IMPRESSION_PAGE_SIZE } from "@/lib/config";
 import { encodeImpressionCursor } from "@/lib/impressionCursor";
 import { colors } from "@/styles/tokens";
-import { FALLBACK_LOCALE } from "@/i18n/routing";
+import {
+  FALLBACK_LOCALE,
+  defaultLocale,
+  locales,
+  type Locale,
+} from "@/i18n/routing";
+import { getLiveSnapshot, type EventSnapshot } from "@/lib/liveSnapshot";
+import { revToNumber } from "@/lib/liveBroadcast";
 import type { Metadata } from "next";
 import {
   absoluteUrl,
@@ -344,6 +351,32 @@ const getEvent = cache(async (id: bigint, locale: string) => {
     ? fetchEvent(id, locale)
     : getEventCached(id, locale, status);
 });
+
+// Live seed (n14): while the show is ongoing, the setlist, reaction
+// counts and wish TOP-3 the client starts from come from the SAME
+// snapshot `/api/setlist` serves (`src/lib/liveSnapshot.ts`), together
+// with that snapshot's `rev` / `capturedAt`. The client treats them as
+// its initially-applied state and only accepts a later fetch with a
+// higher revision (or the same revision captured no earlier), so the
+// first client fetch can never roll the SSR setlist back — which it
+// could when SSR read the items with a separate, later query than the
+// revision. The snapshot is the 2 s data-cache entry that every setlist
+// writer expires on commit, so the seed is as fresh as the API.
+//
+// Null for every non-ongoing event: those keep the cached wide read
+// (`getEventCached`) and their own reaction / TOP-3 queries, and the
+// client starts with no applied revision.
+const getLiveSeed = cache(
+  async (id: bigint, locale: string): Promise<EventSnapshot | null> => {
+    const statusRow = await getEventStatusRow(id);
+    if (!statusRow || getEventStatus(statusRow) !== "ongoing") return null;
+    const snapshotLocale: Locale = locales.includes(locale as Locale)
+      ? (locale as Locale)
+      : defaultLocale;
+    const { snapshot } = await getLiveSnapshot(id, snapshotLocale);
+    return snapshot.found && !snapshot.isDeleted ? snapshot : null;
+  },
+);
 
 // Event roster with each stage identity's artist memberships — the
 // input for the pre-show lineup (`deriveLineupFromRoster`) and the
@@ -744,6 +777,11 @@ export default async function EventPage({ params }: Props) {
   // waste during live shows that the existing skip avoids — see
   // `LiveSetlist.tsx:62-64` for the client-side re-derivation that
   // makes the SSR fetch dead weight when ongoing.
+  //
+  // The live seed is resolved once and shared: when present, its
+  // reaction counts and TOP-3 replace the standalone queries (same
+  // snapshot as the items — see `getLiveSeed`).
+  const liveSeedPromise = getLiveSeed(eventId, locale);
   const [
     event,
     t,
@@ -754,21 +792,27 @@ export default async function EventPage({ params }: Props) {
     impressionsResult,
     fanTop3,
     roster,
+    liveSeed,
   ] = await Promise.all([
       getEvent(eventId, locale),
       getTranslations("Event"),
       getTranslations("Common"),
       getTranslations("Song"),
       getTranslations("Artist"),
-      getReactionCounts(eventId),
+      liveSeedPromise.then(
+        (seed) => seed?.reactionCounts ?? getReactionCounts(eventId),
+      ),
       getEventImpressions(eventId),
       // Wishlist fan TOP-3 — shared loader in src/lib/wishes/top3.ts
       // so polled `/api/setlist` and this SSR seed always emit the
       // same shape (incl. soft-delete filter + deterministic ordering).
       // Cheap bounded query; safe on completed events (returns the
       // historical aggregate).
-      fetchEventWishlistTop3(eventId, locale),
+      liveSeedPromise.then(
+        (seed) => seed?.top3Wishes ?? fetchEventWishlistTop3(eventId, locale),
+      ),
       getEventRoster(eventId, locale),
+      liveSeedPromise,
     ]);
   if (!event) notFound();
   // Bare id / wrong or legacy localized slug → 308 to the canonical
@@ -1084,8 +1128,13 @@ export default async function EventPage({ params }: Props) {
   // preserves the input's TS types, so `event.setlistItems` reads as
   // bigint at the type level even though runtime values are numbers.
   // `LiveSetlistItem` mirrors the runtime (Number) shape.
-  const setlistItemsForDerivation =
-    event.setlistItems as unknown as LiveSetlistItem[];
+  //
+  // While ongoing, the live seed's items (already wire-shaped) are the
+  // source, so the sidebar, the counts and the client's initial items
+  // all describe the snapshot whose `rev` the client starts from.
+  const setlistItemsForDerivation: LiveSetlistItem[] = liveSeed
+    ? liveSeed.items
+    : (event.setlistItems as unknown as LiveSetlistItem[]);
   const eventPerformers: EventPerformerSummary[] = event.performers.map(
     (p) => ({
       stageIdentityId: p.stageIdentityId,
@@ -1341,6 +1390,8 @@ export default async function EventPage({ params }: Props) {
         initialReactionsValue={reactionsValue}
         initialTrendingSongs={trendingSongs}
         initialFanTop3={fanTop3}
+        initialRev={liveSeed ? revToNumber(liveSeed.rev) : null}
+        initialCapturedAt={liveSeed ? liveSeed.capturedAt.toISOString() : null}
         availableSongs={availableSongs}
         unitFilters={unitFilters}
       />

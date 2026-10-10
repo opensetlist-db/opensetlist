@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { CONFLICT_CONFIRMATION_THRESHOLD } from "@/lib/config";
 import { revalidateEventData } from "@/lib/dataCache";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -189,20 +193,33 @@ export async function POST(_req: Request, { params }: RouteProps) {
         // `confirmed` (or already soft-deleted by another racing
         // promotion against a different sibling) and updates zero
         // rows. updateMany doesn't throw on zero rows.
-        await prisma.$transaction([
-          prisma.setlistItem.updateMany({
+        //
+        // n14: interactive writer transaction — lock the event first,
+        // then the two updates, then bump the setlist revision +
+        // broadcast. Only the promotion bumps: a plain confirm tap
+        // changes nothing but a count (refreshed by the periodic
+        // snapshot poll), and broadcasting every tap would make each
+        // vote a 500-viewer refetch wave. The bump is skipped when the
+        // idempotency guard matched zero rows (a racing promotion
+        // already settled this group), so a no-op never notifies.
+        const eventId = item.eventId;
+        const itemId = item.id;
+        const position = item.position;
+        await prisma.$transaction(async (tx) => {
+          await lockEvent(tx, eventId);
+          const hidden = await tx.setlistItem.updateMany({
             where: {
-              eventId: item.eventId,
-              position: item.position,
-              id: { not: item.id },
+              eventId,
+              position,
+              id: { not: itemId },
               status: "rumoured",
               isDeleted: false,
             },
             data: { isDeleted: true, deletedAt: new Date() },
-          }),
-          prisma.setlistItem.updateMany({
+          });
+          const promoted = await tx.setlistItem.updateMany({
             where: {
-              id: item.id,
+              id: itemId,
               status: "rumoured",
               // `isDeleted: false` defends against the
               // racing-promotion scenario where a sibling
@@ -216,12 +233,15 @@ export async function POST(_req: Request, { params }: RouteProps) {
               isDeleted: false,
             },
             data: { status: "confirmed" },
-          }),
-        ]);
+          });
+          if (hidden.count + promoted.count > 0) {
+            await bumpSetlistRevisionAndBroadcast(tx, eventId);
+          }
+        });
 
         // Promotion changes what the event page renders (rumoured →
         // confirmed); expire its cached SSR read.
-        revalidateEventData(item.eventId);
+        revalidateEventData(eventId);
         return NextResponse.json(
           { ok: true, promoted: true },
           { headers: { "Cache-Control": "private, no-store" } },

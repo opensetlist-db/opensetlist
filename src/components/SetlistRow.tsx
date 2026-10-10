@@ -43,6 +43,12 @@ interface Props {
   item: LiveSetlistItem;
   index: number;
   reactionCounts: ReactionCountsMap;
+  /**
+   * `capturedAt` of the live snapshot `reactionCounts` came from —
+   * forwarded to `<ReactionButtons>` for the reaction ack hold.
+   * Optional; omitted → pre-n14 behaviour (no hold).
+   */
+  snapshotCapturedAt?: string | null;
   locale: string;
   eventId: string;
   /**
@@ -126,6 +132,7 @@ export function SetlistRow({
   item,
   index,
   reactionCounts,
+  snapshotCapturedAt,
   locale,
   eventId,
   eventArtistId,
@@ -269,6 +276,7 @@ export function SetlistRow({
       songId={String(item.songs[0].song.id)}
       eventId={eventId}
       initialCounts={reactionCounts[String(item.id)] ?? EMPTY_COUNTS}
+      snapshotCapturedAt={snapshotCapturedAt}
     />
   ) : null;
 

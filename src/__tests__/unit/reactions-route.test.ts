@@ -8,8 +8,12 @@ vi.mock("@/lib/prisma", () => ({
     setlistItemReaction: {
       create: vi.fn(),
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      deleteMany: vi.fn(),
       groupBy: vi.fn(),
     },
+    // `SELECT clock_timestamp()` — the n14 ack watermark.
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -64,6 +68,9 @@ describe("POST /api/reactions", () => {
     (
       prisma.setlistItemReaction.groupBy as ReturnType<typeof vi.fn>
     ).mockResolvedValue([{ reactionType: "best", _count: 1 }]);
+    (prisma.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ackAt: new Date("2026-10-10T12:00:00.123Z") },
+    ]);
   });
 
   // After each 400 we also assert no Prisma method ran — guards against a
@@ -147,6 +154,14 @@ describe("POST /api/reactions", () => {
     const body = await res.json();
     expect(body.reactionId).toBe("reaction-uuid-1");
     expect(body.counts).toEqual({ best: 1 });
+    // n14 ack watermark: ISO string from clock_timestamp(), read in its
+    // own statement after the create resolved.
+    expect(body.ackAt).toBe("2026-10-10T12:00:00.123Z");
+    const createOrder = vi.mocked(prisma.setlistItemReaction.create).mock
+      .invocationCallOrder[0];
+    const ackOrder = (prisma.$queryRaw as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    expect(ackOrder).toBeGreaterThan(createOrder);
     // Legacy path stores anonId as null so the partial unique skips this row.
     // R2: eventId is now denormalized from the parent SetlistItem (read
     // from the findFirst select above), and `select: { id: true }` narrows
@@ -302,5 +317,58 @@ describe("DELETE /api/reactions", () => {
       }) as unknown as Parameters<typeof DELETE>[0],
     );
     expect(res.status).toBe(400);
+  });
+
+  function deleteRequest(body: unknown) {
+    return new Request("http://localhost/api/reactions", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }) as unknown as Parameters<typeof DELETE>[0];
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (prisma.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ackAt: new Date("2026-10-10T12:00:01.000Z") },
+    ]);
+    vi.mocked(prisma.setlistItemReaction.deleteMany).mockResolvedValue({ count: 1 });
+    (
+      prisma.setlistItemReaction.groupBy as ReturnType<typeof vi.fn>
+    ).mockResolvedValue([{ reactionType: "moved", _count: 2 }]);
+  });
+
+  it("returns the item's post-delete counts + ackAt taken after the delete (n14)", async () => {
+    vi.mocked(prisma.setlistItemReaction.findUnique).mockResolvedValue({
+      setlistItemId: BigInt(10),
+    } as never);
+    const res = await DELETE(deleteRequest({ reactionId: "reaction-uuid-1" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      counts: { moved: 2 },
+      ackAt: "2026-10-10T12:00:01.000Z",
+    });
+    expect(prisma.setlistItemReaction.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { setlistItemId: BigInt(10) } }),
+    );
+    const deleteOrder = vi.mocked(prisma.setlistItemReaction.deleteMany).mock
+      .invocationCallOrder[0];
+    const ackOrder = (prisma.$queryRaw as unknown as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    expect(ackOrder).toBeGreaterThan(deleteOrder);
+  });
+
+  it("already-deleted reaction → ok with empty counts and a watermark", async () => {
+    vi.mocked(prisma.setlistItemReaction.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.setlistItemReaction.deleteMany).mockResolvedValue({ count: 0 });
+    const res = await DELETE(deleteRequest({ reactionId: "gone" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      counts: {},
+      ackAt: "2026-10-10T12:00:01.000Z",
+    });
+    expect(prisma.setlistItemReaction.groupBy).not.toHaveBeenCalled();
   });
 });

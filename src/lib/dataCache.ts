@@ -68,6 +68,20 @@ export function eventTag(eventId: bigint | number | string): string {
   return `event:${eventId.toString()}`;
 }
 
+/**
+ * Narrower tag for an event's cached impressions page (n14). Impression
+ * posts/edits/reports are fan-driven and can be frequent during a show;
+ * expiring the whole `event:<id>` tag on each one would also throw away
+ * the live setlist snapshot (`src/lib/liveSnapshot.ts`) and force a
+ * rebuild per post. The impressions entry carries BOTH tags, so setlist
+ * writes and public purges still expire it, while impression writes
+ * expire only this one. (Tags are exact strings — no prefix matching —
+ * so `event:1:impressions` never matches `event:1`.)
+ */
+export function eventImpressionsTag(eventId: bigint | number | string): string {
+  return `event:${eventId.toString()}:impressions`;
+}
+
 // Deployment discriminator for cache keys. The Vercel Data Cache
 // outlives deployments, and `unstable_cache` keys on our wrapper
 // closure's source (identical for every query) + keyParts + args — not
@@ -241,4 +255,9 @@ export function revalidatePublicData(): void {
  */
 export function revalidateEventData(eventId: bigint | number | string): void {
   expireTags([eventTag(eventId)]);
+}
+
+/** Expire only an event's cached impressions page (see `eventImpressionsTag`). */
+export function revalidateEventImpressions(eventId: bigint | number | string): void {
+  expireTags([eventImpressionsTag(eventId)]);
 }
