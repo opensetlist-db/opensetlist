@@ -128,6 +128,12 @@ interface Props {
    * ongoing events only. Optional so non-live callers/tests can omit.
    */
   freshness?: Freshness;
+  /**
+   * `capturedAt` of the live snapshot `reactionCounts` came from —
+   * forwarded to `<ReactionButtons>` for the reaction ack hold.
+   * Optional; omitted → pre-n14 behaviour (no hold).
+   */
+  snapshotCapturedAt?: string | null;
 }
 
 export function LiveSetlist({
@@ -151,6 +157,7 @@ export function LiveSetlist({
   setlistStartLabel = null,
   predictOpensLabel = null,
   freshness,
+  snapshotCapturedAt,
 }: Props) {
   const t = useTranslations("Event");
 
@@ -363,6 +370,7 @@ export function LiveSetlist({
         eventId={eventId}
         items={items}
         reactionCounts={reactionCounts}
+        snapshotCapturedAt={snapshotCapturedAt}
         locale={locale}
         status={status}
         startTime={startTime}

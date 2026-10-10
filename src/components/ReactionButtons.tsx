@@ -49,13 +49,32 @@ const COUNT_SLIDE_DURATION_MS = 220;
 const EMOJI_ANIM_RESET_MS =
   Math.max(EMOJI_ACTIVATE_DURATION_MS, EMOJI_DEACTIVATE_DURATION_MS) + 50;
 
+// Per-item reaction counts as the server returns them. Tighter than
+// `typeof n === "number"` — NaN, Infinity, negatives and decimals
+// shouldn't ever land in `setCounts(...)` and would produce corrupted
+// UI (negative count badges, NaN labels).
+function isCountsMap(value: unknown): value is Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return Object.values(value).every(
+    (n) =>
+      typeof n === "number" &&
+      Number.isFinite(n) &&
+      Number.isInteger(n) &&
+      n >= 0,
+  );
+}
+
 // Runtime guard for POST /api/reactions success responses. Server is
 // expected to return `{ reactionId: string; counts: Record<string,
-// number> }`. Used to fail closed (rollback) on any unexpected shape
-// rather than write garbage into local state.
+// number>; ackAt?: string }`. Used to fail closed (rollback) on any
+// unexpected shape rather than write garbage into local state.
+// `ackAt` is optional so a pre-n14 server (no watermark) still works —
+// the ack hold simply doesn't engage.
 function isReactionPostResponse(
   value: unknown,
-): value is { reactionId: string; counts: Record<string, number> } {
+): value is { reactionId: string; counts: Record<string, number>; ackAt?: unknown } {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
   // Reject empty strings too — `myReactions[type] = ""` would make
@@ -64,19 +83,17 @@ function isReactionPostResponse(
   if (typeof v.reactionId !== "string" || v.reactionId.length === 0) {
     return false;
   }
-  if (!v.counts || typeof v.counts !== "object" || Array.isArray(v.counts)) {
-    return false;
-  }
-  // Tighter than `typeof n === "number"` — NaN, Infinity, negatives and
-  // decimals shouldn't ever land in `setCounts(data.counts)` and would
-  // produce corrupted UI (negative count badges, NaN labels).
-  return Object.values(v.counts).every(
-    (n) =>
-      typeof n === "number" &&
-      Number.isFinite(n) &&
-      Number.isInteger(n) &&
-      n >= 0,
-  );
+  return isCountsMap(v.counts);
+}
+
+// ISO timestamp → epoch ms, or null when absent / unparseable. Used for
+// both the reaction `ackAt` and the snapshot `capturedAt` — both are
+// server (Postgres) clock values, so comparing them is meaningful; the
+// client clock never enters the comparison.
+function parseServerTime(value: unknown): number | null {
+  if (typeof value !== "string" || value === "") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function readMyReactions(setlistItemId: string): Record<string, string> {
@@ -105,6 +122,14 @@ interface Props {
   songId: string;
   eventId: string;
   initialCounts: Record<string, number>;
+  /**
+   * `capturedAt` (ISO) of the live snapshot `initialCounts` came from.
+   * Enables the ack hold (see the component body). `undefined` → the
+   * pre-n14 behaviour (no hold; every new `initialCounts` applies).
+   * `null` → a snapshot of unknown age (e.g. SSR without a watermark):
+   * it never releases a hold.
+   */
+  snapshotCapturedAt?: string | null;
 }
 
 export function ReactionButtons({
@@ -112,6 +137,7 @@ export function ReactionButtons({
   songId,
   eventId,
   initialCounts,
+  snapshotCapturedAt,
 }: Props) {
   const t = useTranslations("Reaction");
   const mounted = useMounted();
@@ -143,10 +169,48 @@ export function ReactionButtons({
   const [pendingPollCounts, setPendingPollCounts] = useState<
     Record<string, number> | null
   >(null);
+
+  // Ack hold (n14). Reaction counts no longer arrive by per-row
+  // Realtime; they come with the live snapshot, which is cached for
+  // 1–2 s and refreshed every ~20 s. So a snapshot that was read BEFORE
+  // this viewer's tap committed can land AFTER the tap's response and
+  // would visibly undo it (count drops back, then jumps up again on the
+  // next snapshot). The server stamps each POST/DELETE response with
+  // `ackAt` — `clock_timestamp()` taken after the write resolved — and
+  // each snapshot with `capturedAt` (its transaction's `now()`). A
+  // snapshot with `capturedAt > ackAt` started after the write
+  // committed, so it includes it; anything else may not. Until such a
+  // snapshot arrives we keep the acknowledged counts and ignore
+  // `initialCounts` updates for this item.
+  //
+  // Deliberately NOT `max(ack, snapshot)`: that would be wrong for a
+  // DELETE (the ack is lower) and would hide other viewers' removals.
+  // Equal timestamps keep holding — ms truncation can make a snapshot
+  // that started a hair before the ack look simultaneous; the next one
+  // releases.
+  const [ackHoldAtMs, setAckHoldAtMs] = useState<number | null>(null);
+  const [prevSnapshotCapturedAt, setPrevSnapshotCapturedAt] =
+    useState(snapshotCapturedAt);
   const [prevInitialCounts, setPrevInitialCounts] = useState(initialCounts);
-  if (prevInitialCounts !== initialCounts) {
+  // Re-evaluate on a new counts map OR a new snapshot watermark: an
+  // item whose counts drop to zero is passed the same stable
+  // EMPTY_COUNTS reference snapshot after snapshot, so the watermark is
+  // the only thing that changes when a hold should release.
+  if (
+    prevInitialCounts !== initialCounts ||
+    prevSnapshotCapturedAt !== snapshotCapturedAt
+  ) {
     setPrevInitialCounts(initialCounts);
-    if (loading === null) {
+    setPrevSnapshotCapturedAt(snapshotCapturedAt);
+    const snapshotAtMs = parseServerTime(snapshotCapturedAt);
+    const held =
+      ackHoldAtMs !== null &&
+      snapshotCapturedAt !== undefined &&
+      (snapshotAtMs === null || snapshotAtMs <= ackHoldAtMs);
+    if (held) {
+      // Keep the acknowledged counts; this snapshot may predate the tap.
+    } else if (loading === null) {
+      if (ackHoldAtMs !== null) setAckHoldAtMs(null);
       setCounts(initialCounts);
       // Clear any stash from a previous in-flight window so the
       // prev-loading transition block below — which can fire in the
@@ -158,6 +222,10 @@ export function ReactionButtons({
       // truth.
       setPendingPollCounts(null);
     } else {
+      // A newer-than-ack snapshot arriving mid-mutation releases the
+      // old hold; its counts wait in the stash like any other update.
+      // (If this mutation succeeds, its own ack replaces the stash.)
+      if (ackHoldAtMs !== null) setAckHoldAtMs(null);
       setPendingPollCounts(initialCounts);
     }
   }
@@ -199,6 +267,22 @@ export function ReactionButtons({
     },
     [setlistItemId]
   );
+
+  // Apply a mutation's acknowledged counts. The server's response is
+  // the authoritative count for this item at ack time — discard any
+  // snapshot stashed during the in-flight window (it is no fresher, or
+  // if it were it is indistinguishable here; the next snapshot after
+  // `ackAt` reconciles) so the prev-loading transition can't overwrite
+  // the ack. With a valid `ackAt`, hold these counts until a snapshot
+  // captured after it arrives (see the ack-hold block above).
+  const acknowledge = (ackCounts: Record<string, number>, ackAt: unknown) => {
+    setCounts(ackCounts);
+    setPendingPollCounts(null);
+    const ackAtMs = parseServerTime(ackAt);
+    if (ackAtMs !== null) {
+      setAckHoldAtMs((prev) => (prev === null ? ackAtMs : Math.max(prev, ackAtMs)));
+    }
+  };
 
   const handleToggle = async (reactionType: string) => {
     if (loading) return;
@@ -252,6 +336,26 @@ export function ReactionButtons({
           const next = { ...snapshotMyReactions };
           delete next[reactionType];
           persistReactions(next);
+          // n14: DELETE also answers `{ ok, counts, ackAt }`. The delete
+          // already happened server-side, so a body we can't read must
+          // NOT roll back — it just leaves the optimistic decrement on
+          // screen (pre-n14 behaviour: DELETE had no body we used).
+          let body: unknown = null;
+          try {
+            body = await res.json();
+          } catch {
+            body = null;
+          }
+          const ackCounts =
+            body && typeof body === "object"
+              ? (body as Record<string, unknown>).counts
+              : undefined;
+          if (isCountsMap(ackCounts)) {
+            acknowledge(
+              ackCounts,
+              (body as Record<string, unknown>).ackAt,
+            );
+          }
         } else {
           setMyReactions(snapshotMyReactions);
           setCounts(snapshotCounts);
@@ -292,13 +396,7 @@ export function ReactionButtons({
             };
             setMyReactions(finalReactions);
             persistReactions(finalReactions);
-            setCounts(data.counts);
-            // Server's response is the authoritative count for this
-            // setlist item — discard any polled value stashed during
-            // the in-flight window so the prev-loading transition
-            // doesn't overwrite this fresher state with a stale
-            // polling snapshot.
-            setPendingPollCounts(null);
+            acknowledge(data.counts, data.ackAt);
           }
         } else {
           setMyReactions(snapshotMyReactions);

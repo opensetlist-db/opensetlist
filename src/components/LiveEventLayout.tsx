@@ -142,6 +142,16 @@ interface Props {
    * null — that's fine, React renders nothing for it.
    */
   bdSection?: ReactNode;
+
+  /**
+   * SSR snapshot watermark — `Event.setlistRevision` and the snapshot
+   * transaction's `capturedAt` (ISO) at render time. Forwarded to
+   * `useRealtimeEventChannel` so the first client fetch can't roll the
+   * server-rendered setlist back to an older snapshot. Optional: absent
+   * → pre-n14 behaviour (first response applies unconditionally).
+   */
+  initialRev?: number | null;
+  initialCapturedAt?: string | null;
 }
 
 /**
@@ -210,13 +220,14 @@ export function LiveEventLayout({
   availableSongs,
   unitFilters,
   bdSection,
+  initialRev,
+  initialCapturedAt,
 }: Props) {
   // Stays enabled for ongoing AND upcoming events: the wishlist fan
   // TOP-3 needs to update pre-show as more fans submit wishes (per
-  // task spec). Setlist + reactions are stable pre-show (admins
-  // enter songs as the show runs), so the extra subscription on
-  // upcoming events fetches a duplicate seed snapshot — cheap, and
-  // the single-channel architecture is worth it. Stays off for
+  // task spec) — since n14 that refresh rides the 20 s ± 4 s repair
+  // poll (the SongWish push is gone). Setlist + reactions are stable
+  // pre-show (admins enter songs as the show runs). Stays off for
   // completed/cancelled events.
   const isActive = status === "ongoing" || status === "upcoming";
 
@@ -251,6 +262,7 @@ export function LiveEventLayout({
     status: polledStatus,
     lastUpdated,
     freshness,
+    capturedAt,
   } = useRealtimeEventChannel<LiveSetlistItem>({
     eventId,
     initialItems,
@@ -259,6 +271,8 @@ export function LiveEventLayout({
     locale,
     enabled: isActive,
     startTime: startTimeIso,
+    initialRev,
+    initialCapturedAt,
   });
   // Effective status: prefer the polled value when present, fall
   // back to the SSR-initial `status` prop. Both paths refresh
@@ -275,11 +289,10 @@ export function LiveEventLayout({
   //     ≤5s of the boundary.
   //   - Realtime (`useRealtimeEventChannel`): a boundary-scheduled
   //     setTimeout (see `nextEventStatusBoundaryDelay` and the
-  //     channel-setup effect) calls fetchSnapshot at startTime +
+  //     channel-setup effect) requests a snapshot at startTime +
   //     POST_BOUNDARY_BUFFER_MS, refreshing polledStatus. Without
-  //     this, Realtime would only refetch on push (Path B for
-  //     SetlistItem and SongWish), and a startTime crossing in a
-  //     no-activity window would leave polledStatus stale —
+  //     it, Realtime would refetch only on a push or the 20 s ± 4 s
+  //     repair poll, and for up to one poll period
   //     `polledStatus ?? status` would mask a fresh SSR status
   //     (refreshed by <EventStatusTicker>'s router.refresh at the
   //     same boundary) with the stale polled value.
@@ -401,6 +414,12 @@ export function LiveEventLayout({
           locale={locale}
           status={effectiveStatus}
           freshness={freshness}
+          // Reaction ack hold watermark. `null` (no snapshot watermark
+          // known — SSR or API without n14's `capturedAt`) is passed as
+          // `undefined` so `<ReactionButtons>` keeps its pre-n14
+          // behaviour instead of holding an ack that no snapshot could
+          // ever release.
+          snapshotCapturedAt={capturedAt ?? undefined}
           isWishPredictOpen={isWishPredictOpen}
           // Share-card header pair. v0.11.6 added short-variant
           // preference (operator preference): the captured PNG is
