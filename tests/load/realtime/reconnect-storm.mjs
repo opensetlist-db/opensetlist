@@ -101,13 +101,23 @@ async function dbSendDelivery(k) {
   await pg.connect();
   sentAt[k] = Date.now();
   let sqlMs = null;
+  let error = null;
   try {
     await pg.query("select realtime.send($1::jsonb, 'rev', $2, $3)", [JSON.stringify({ k, rev: k, kind: "setlist", probe: true }), TOPIC, PRIVATE]);
     sqlMs = Date.now() - sentAt[k];
+  } catch (e) {
+    // Same as join-storm's dbSend: a failed send (pooler hiccup, policy
+    // error, ...) is a data point for this generation, not a reason to
+    // abort the remaining storms with an incomplete summary.
+    error = e.message;
   } finally {
     await pg.end();
   }
-  const out = { sqlMs };
+  const out = { sqlMs, error };
+  if (error) {
+    console.log(`  msg#${k} send FAILED: ${error}`);
+    return out;
+  }
   let waited = 0;
   for (const t of [1000, 3000, 10000]) {
     await sleep(t - waited);
