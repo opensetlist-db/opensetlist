@@ -265,13 +265,15 @@ export function adminCycle() {
   }
 
   // Don't sleep after the final cycle — the run is over.
-  if (exec.scenario.iterationInTest < CYCLES - 1) sleep(CYCLE_PAUSE);
+  // Only the spread-out "admin" scenario paces itself; the single-cycle
+  // burst-window scenarios in hold.js must not sleep past their window.
+  if (exec.scenario.name === "admin" && exec.scenario.iterationInTest < CYCLES - 1) sleep(CYCLE_PAUSE);
 }
 
-export const adminScenario = (startTime = "0s") => ({
+export const adminScenario = (startTime = "0s", iterations = CYCLES) => ({
   executor: "shared-iterations",
   vus: 1,
-  iterations: CYCLES,
+  iterations,
   startTime,
   // 4 cycles × (6 writes + pauses) — generous so a slow server is
   // measured rather than cut off.

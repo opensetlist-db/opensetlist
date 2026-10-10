@@ -39,7 +39,7 @@ ceiling sits **between 100 and 200 rps** for both events.
 |---|---|
 | Snapshot hold (90 rps) | 89.3 rps achieved, **median 194 ms, p90 255 ms, p95 412 ms**, p99 5.9 s (the tail is the burst window). http err 0.062 %. 0 / 5,345 bad bodies. 430 dropped, all in the burst window |
 | SSR event page (10 rps) | 10.0 rps, p95 843 ms, p99 2.4 s, err 0.017 % |
-| Admin, 24 timed saves | **PASS**: save+reload p95 **775 ms**, 24/24 visible in the first snapshot, 0 lost |
+| Admin, 24 timed saves | **PASS in the steady window only**: save+reload p95 **775 ms**, 24/24 visible in the first snapshot, 0 lost. The cycles ran at ~30–300 s and the bursts at 530/565 s, so this says nothing about saving *during* an overload (Codex review). The harness now schedules one admin cycle inside each burst; that number comes in run #2 |
 | Burst 500 in 5 s (+100 rps on top) | p95 **2.5 s**, 0 errors → FAIL on latency |
 | Burst 2,000 in 5 s (+400 rps on top) | p95 **10.1 s**, **10.2 % errors**, 163 dropped → FAIL |
 
@@ -123,3 +123,29 @@ spec reserves (iii) for. Order, cheapest first:
 
 Re-run (run #2) after 1 + 2, then after 3: same hold, plus a burst
 shaped like the real fan-out (insert-after near the top).
+
+### What run #2 must measure differently (Codex adversarial review)
+
+- **Admin under overload.** One admin cycle now starts 1 s before each
+  burst (`admin_burst500`, `admin_burst2000`). Judge save latency,
+  first-snapshot visibility and the final state per window, not
+  blended with the steady cycles.
+- **Client changes need a changed arrival model.** A fixed-rate k6
+  burst can't show the effect of debounce + jitter, because those
+  change *when* and *how often* requests arrive, not the server. Two
+  options. (a) Re-shape the burst to match the new client: one request
+  per subscriber per save, spread uniformly over the jitter window,
+  and for the old client, *k*+1 requests per subscriber for a k-row
+  shift. (b) Drive real clients: a few hundred headless page loads
+  subscribed to Realtime while the admin loop writes. (a) is cheap and
+  goes first. (b) is the only test of the actual hook code. Run it at
+  small scale at least once before 11/7.
+- **Server cache, if built.** Prove the staleness sequence from the
+  spec (commit → push → client reads a stale cached snapshot → n13's
+  bounded follow-up fetch converges) for insert, fill-in, delete,
+  reorder and the reaction/wishlist slices. Run before/after with the
+  same harness.
+- **Pooler client connections** (the actual gate) were not measured:
+  the dashboard chart failed to load. Read it during run #2. Postgres
+  can't see Supavisor's client side, so if the chart stays broken the
+  gate needs another source (Supabase metrics endpoint or support).

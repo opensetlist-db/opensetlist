@@ -132,6 +132,36 @@ export function adminSection(data) {
   );
 }
 
+// Per-window admin verdicts: the steady `admin` scenario and each
+// burst-window cycle. A write that fails or never becomes visible
+// aborts the run, so a window that shows "not run" after an abort is
+// itself a finding — read the abort message.
+export function adminWindowTable(data, scenarios) {
+  const rows = scenarios.map((sc) => {
+    const lat = sub(data, "admin_save_reload", sc);
+    const vis = sub(data, "admin_visible_first", sc);
+    const lost = sub(data, "admin_lost_edit", sc);
+    const writes = sub(data, "admin_writes", sc);
+    const n = writes ? writes.values.count : 0;
+    if (!lat || n === 0) return `| ${sc} | 0 | — | — | — | not run |`;
+    const p95 = lat.values["p(95)"];
+    const visRate = vis ? vis.values.rate : null;
+    const lostRate = lost ? lost.values.rate : null;
+    const pass = p95 <= GATES.adminP95 && visRate === 1 && (lostRate == null || lostRate === 0);
+    return (
+      `| ${sc} | ${n} | ${fmtMs(p95)} | ${visRate == null ? "—" : (visRate * 100).toFixed(1) + " %"} | ` +
+      `${lostRate == null ? "—" : (lostRate * 100).toFixed(1) + " %"} | ${pass ? "PASS" : "FAIL"} |`
+    );
+  });
+  return (
+    "\n### Admin by window\n\n" +
+    "| Window | writes | save+reload p95 | visible first | lost | Verdict |\n" +
+    "|---|---|---|---|---|---|\n" +
+    rows.join("\n") +
+    "\n"
+  );
+}
+
 // `results/<YYYY-MM-DD>/` — operator copies dashboard screenshots
 // into the same folder, per the spec. Date is the run's UTC date.
 export function resultsDir() {

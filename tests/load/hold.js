@@ -15,7 +15,7 @@
 // lib/config.js.
 
 import { getSnapshot, getEventPage, requireEnv, GATES } from "./lib/config.js";
-import { stageRows, markdownTable, adminSection, resultsDir, stamp } from "./lib/report.js";
+import { stageRows, markdownTable, adminSection, adminWindowTable, resultsDir, stamp } from "./lib/report.js";
 import { adminCycle, adminScenario, adminThresholds } from "./admin-writes.js";
 import { burst, burstStages, burstScenarios, BURST_SECONDS } from "./edit-burst.js";
 
@@ -40,6 +40,25 @@ const burstCfg = burstScenarios(bursts);
 // ramp and burst stage builders set theirs the same way.
 const holdStage = { scenario: "hold", targetRps: SNAP_RPS, seconds: HOLD_SECONDS, startSeconds: 0 };
 
+// One admin cycle (6 timed saves) per burst, starting 1 s before the
+// burst so its writes and reloads land *inside* the overload. The
+// spread-out `admin` scenario finishes long before the bursts (last
+// cycle starts ~300 s in), so on its own it says nothing about whether
+// an operator save is safe while the pooler is saturated — the window
+// where it matters most. These run on their own VUs and are judged
+// separately in the report (`admin_<burst>` scenarios).
+const adminBurstScenarios = {};
+const adminBurstThresholds = {};
+for (const b of bursts) {
+  const name = `admin_${b.scenario}`;
+  adminBurstScenarios[name] = adminScenario(`${Math.max(0, b.startSeconds - 1)}s`, 1);
+  adminBurstThresholds[`admin_save_reload{scenario:${name}}`] = [`p(95)<=${GATES.adminP95}`];
+  adminBurstThresholds[`admin_lost_edit{scenario:${name}}`] = ["rate==0"];
+  adminBurstThresholds[`admin_visible_first{scenario:${name}}`] = ["rate==1"];
+  adminBurstThresholds[`admin_writes{scenario:${name}}`] = ["count>=0"];
+}
+const adminBurstNames = Object.keys(adminBurstScenarios);
+
 export const options = {
   scenarios: {
     hold: {
@@ -62,6 +81,7 @@ export const options = {
     },
     // 30 s in, so the first save lands on a warmed-up server.
     admin: adminScenario("30s"),
+    ...adminBurstScenarios,
     ...burstCfg.scenarios,
   },
   thresholds: {
@@ -81,6 +101,12 @@ export const options = {
     ssr_errors: [`rate<=${GATES.passErrorRate}`],
     "http_reqs{scenario:ssr}": ["count>=0"],
     ...adminThresholds,
+    // Steady-window admin verdict, separate from the burst windows.
+    "admin_save_reload{scenario:admin}": [`p(95)<=${GATES.adminP95}`],
+    "admin_lost_edit{scenario:admin}": ["rate==0"],
+    "admin_visible_first{scenario:admin}": ["rate==1"],
+    "admin_writes{scenario:admin}": ["count>=0"],
+    ...adminBurstThresholds,
     ...burstCfg.thresholds,
   },
   summaryTrendStats: ["avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
@@ -109,6 +135,7 @@ export function handleSummary(data) {
     `- p95 ${ssrDur ? Math.round(ssrDur.values["p(95)"]) : "—"} ms, p99 ${ssrDur ? Math.round(ssrDur.values["p(99)"]) : "—"} ms\n` +
     `- errors ${ssrErr ? (ssrErr.values.rate * 100).toFixed(3) : "—"} %\n` +
     adminSection(data) +
+    adminWindowTable(data, ["admin", ...adminBurstNames]) +
     "\nPooler peak / limit: read from the Supabase dashboard + pg-connections CSV (not visible to k6).\n";
   const base = `${resultsDir()}/${stamp()}-hold`;
   return {

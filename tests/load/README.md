@@ -9,7 +9,7 @@ the wiki page `output/task-n12-capacity-experiment`.
 | Script | What it offers | Used in |
 |---|---|---|
 | `setlist-snapshot.js` | open-model ramp on `GET /api/setlist`, 20 → 50 → 100 → 200 rps, 2 min per stage, 70/20/10 ja/ko/en | run 1 (ramp) |
-| `hold.js` | 90 % snapshot + 10 % SSR at `HOLD_RPS` for 5–10 min, the admin loop running at the same time, edit bursts in the last ~70 s | run 2 (hold) |
+| `hold.js` | 90 % snapshot + 10 % SSR at `HOLD_RPS` for 5–10 min, the admin loop running at the same time, edit bursts in the last ~70 s, plus **one admin cycle inside each burst** (judged separately as `admin_burst500` / `admin_burst2000`) | run 2 (hold) |
 | `edit-burst.js` | 500 then 2,000 snapshot requests, each spread over 5 s (Realtime Path B refetch after one save) | inside hold, or standalone |
 | `admin-writes.js` | 1 operator, 4 cycles × 6 timed saves (create, update, insert-after, swap, delete ×2), each checked in the next snapshot | inside hold, or standalone |
 | `ssr-mix.js` | `GET /ja/events/<id>/<slug>` alone, to size the page path | standalone |
