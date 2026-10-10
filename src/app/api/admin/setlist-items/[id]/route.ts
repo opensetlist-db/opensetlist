@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
@@ -29,10 +33,23 @@ async function findItemEventId(itemId: bigint): Promise<bigint | null> {
   return row?.eventId ?? null;
 }
 
-export async function PUT(request: NextRequest, { params }: Props) {
+// PUT / DELETE: a save the database could not even start — including
+// the pre-transaction `findItemEventId` lookup — answers 503 +
+// Retry-After (see `withAdminLiveWriterBusy`); every other outcome is
+// unchanged.
+export async function PUT(request: NextRequest, props: Props) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  return withAdminLiveWriterBusy(() => updateItem(request, props));
+}
 
+export async function DELETE(_request: NextRequest, props: Props) {
+  const unauthorized = await verifyAdminAPI();
+  if (unauthorized) return unauthorized;
+  return withAdminLiveWriterBusy(() => deleteItem(props));
+}
+
+async function updateItem(request: NextRequest, { params }: Props) {
   const { id } = await params;
   const itemId = BigInt(id);
   const body = await request.json();
@@ -61,7 +78,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   // whole save back — the item never ends up with its links deleted but
   // not rewritten, and no notification goes out for a save that didn't
   // happen. The event-cache expiry runs only after commit.
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await liveWriterTransaction("admin-update", async (tx) => {
     await lockEvent(tx, eventId);
 
     const existingItems = await tx.setlistItem.findMany({
@@ -132,7 +149,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
     });
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eventId);
     return { kind: "ok" as const, item, rev };
-  });
+  }, (r) => (r.kind === "ok" ? r.rev : null));
 
   if (result.kind === "invalid") {
     return NextResponse.json({ error: result.error }, { status: 400 });
@@ -144,10 +161,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   });
 }
 
-export async function DELETE(_request: NextRequest, { params }: Props) {
-  const unauthorized = await verifyAdminAPI();
-  if (unauthorized) return unauthorized;
-
+async function deleteItem({ params }: Props) {
   const { id } = await params;
   const itemId = BigInt(id);
   const eventId = await findItemEventId(itemId);
@@ -158,7 +172,7 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
   // Soft-delete + revision bump in one transaction (n14). Deleting an
   // already-deleted row still bumps: the request is a logical save from
   // the operator's point of view, and an extra refetch is harmless.
-  const rev = await prisma.$transaction(async (tx) => {
+  const rev = await liveWriterTransaction("admin-delete", async (tx) => {
     await lockEvent(tx, eventId);
     await tx.setlistItem.update({
       where: { id: itemId },

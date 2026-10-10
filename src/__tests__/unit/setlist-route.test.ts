@@ -112,3 +112,61 @@ describe("GET /api/setlist", () => {
     expect(body.startTime).toBeNull();
   });
 });
+
+describe("GET /api/setlist — failure and slow-hit diagnostics", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  const lines = () => vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
+
+  it("a failed build answers 503 snapshot_unavailable, no-store, randomized Retry-After 1..3", async () => {
+    const seen = new Set<string>();
+    for (const r of [0, 0.5, 0.99]) {
+      vi.spyOn(Math, "random").mockReturnValueOnce(r);
+      vi.mocked(getLiveSnapshot).mockRejectedValueOnce(
+        Object.assign(new Error("(EMAXCONN) max client connections reached, limit: 200"), {
+          cause: { code: "XX000", severity: "FATAL" },
+        }),
+      );
+      const res = await get("eventId=111&locale=ko");
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "snapshot_unavailable" });
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(res.headers.get("x-snapshot-source")).toBe("error");
+      seen.add(res.headers.get("Retry-After")!);
+    }
+    expect([...seen].sort()).toEqual(["1", "2", "3"]);
+    // Errors that did not come through the builder are logged here.
+    const failed = lines().filter((l) => l.startsWith("[liveSnapshot] build-failed "));
+    expect(failed).toHaveLength(3);
+    expect(failed[0]).toMatch(
+      /^\[liveSnapshot\] build-failed event=111 locale=ko ms=\d+ err=Error:\(EMAXCONN\) max client connections reached, limit: 200 instance=[0-9a-f]{8}$/,
+    );
+  });
+
+  it("logs slow-hit only for a cache-sourced response over 500 ms", async () => {
+    const at = (ms: number) =>
+      vi.mocked(getLiveSnapshot).mockImplementationOnce(async () => {
+        vi.setSystemTime(Date.now() + ms);
+        return { snapshot, source: "cache" };
+      });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(120);
+    await get("eventId=111&locale=en");
+    expect(lines().some((l) => l.startsWith("[setlist] slow-hit"))).toBe(false);
+    at(800);
+    await get("eventId=111&locale=en");
+    expect(lines().filter((l) => l.startsWith("[setlist] slow-hit"))).toEqual([
+      expect.stringMatching(
+        /^\[setlist\] slow-hit ms=800 event=111 locale=en instance=[0-9a-f]{8}$/,
+      ),
+    ]);
+    // A slow BUILD is expected and not a slow hit.
+    vi.mocked(getLiveSnapshot).mockImplementationOnce(async () => {
+      vi.setSystemTime(Date.now() + 900);
+      return { snapshot, source: "build" };
+    });
+    await get("eventId=111&locale=en");
+    expect(lines().filter((l) => l.startsWith("[setlist] slow-hit"))).toHaveLength(1);
+  });
+});

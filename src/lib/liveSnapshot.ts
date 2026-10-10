@@ -1,12 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { Prisma, type EventStatus } from "@/generated/prisma/client";
-import { prisma } from "@/lib/prisma";
+import { logPoolStats, prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { cachedQuery, eventTag, revalidateEventData } from "@/lib/dataCache";
 import { revToNumber } from "@/lib/liveBroadcast";
+import { INSTANCE_ID } from "@/lib/instanceId";
+import { describeError, isDbTimeout } from "@/lib/dbErrors";
 import { FALLBACK_LOCALE, type Locale } from "@/i18n/routing";
 import type { FanTop3Entry, LiveSetlistItem } from "@/lib/types/setlist";
 
@@ -60,10 +62,6 @@ export type EventSnapshot = {
 };
 
 export type SnapshotSource = "build" | "cache" | "repair";
-
-// Per-process id, so the build log lines can be grouped by instance
-// when counting builds per save from Vercel logs.
-const INSTANCE_ID = randomUUID().slice(0, 8);
 
 // ---------------------------------------------------------------------
 // Test-only hook: pause the builder right after the snapshot-defining
@@ -266,11 +264,19 @@ export async function buildEventSnapshot(
       // (pool starvation), and failing it lets the client retry
       // rather than pinning a pooler connection. `maxWait` above the
       // 2 s default because a burst of cold builds across locales can
-      // briefly queue on the 5-connection pool.
+      // briefly queue on the 2-connection pool; it equals the pool's
+      // own connect timeout (`src/lib/prisma.ts`), so whichever fires
+      // first, the wait is bounded at 5 s.
       maxWait: 5_000,
       timeout: 10_000,
     },
-  );
+  ).catch((err: unknown) => {
+    // Logged here, with the build's own duration, once per real
+    // build — coalesced waiters and the route share this error object
+    // and skip it (see `logSnapshotFailure`).
+    logSnapshotFailure(eventId, locale, Date.now() - started, err);
+    throw err;
+  });
 
   // Serialization happens after the transaction released its
   // connection.
@@ -310,7 +316,40 @@ export async function buildEventSnapshot(
     `[liveSnapshot] build event=${eventId} locale=${locale} rev=${snapshot.rev} ` +
       `items=${items.length} ms=${Date.now() - started} instance=${INSTANCE_ID}`,
   );
+  // Same instance, same moment: the summariser sums each building
+  // instance's pool `total` within a burst to estimate how many pooler
+  // clients the burst held (the pooler's own client count is not
+  // observable from here).
+  logPoolStats("build");
   return snapshot;
+}
+
+// Failures already logged, so one failure that propagates from the
+// builder through the data cache and the coalescing map to every
+// waiting request is logged once — by the builder, with the build's
+// own duration — instead of once per request.
+const loggedFailures = new WeakSet<object>();
+
+/**
+ * `[liveSnapshot] build-failed …`, one line per distinct failure. The
+ * builder logs its own; the route calls this again for whatever reached
+ * it, which is a no-op for an error the builder already logged and a
+ * line for a failure raised outside the builder (e.g. the cache layer).
+ */
+export function logSnapshotFailure(
+  eventId: bigint,
+  locale: Locale,
+  ms: number,
+  err: unknown,
+): void {
+  if (err !== null && typeof err === "object") {
+    if (loggedFailures.has(err)) return;
+    loggedFailures.add(err);
+  }
+  console.log(
+    `[liveSnapshot] build-failed event=${eventId} locale=${locale} ms=${ms} ` +
+      `err=${describeError(err)} instance=${INSTANCE_ID}`,
+  );
 }
 
 // The data-cache entries. Args are primitives (cachedQuery's key
@@ -348,22 +387,50 @@ type SnapshotResult = { snapshot: EventSnapshot; source: SnapshotSource };
 // within the jitter window; the ones landing on the same warm lambda
 // while a build is running share it instead of each opening a
 // REPEATABLE READ transaction. Entries are removed when they settle.
-const inFlight = new Map<string, Promise<SnapshotResult>>();
-const inFlightRepair = new Map<string, Promise<SnapshotResult>>();
-const inFlightRevRead = new Map<string, Promise<bigint | null>>();
+type InFlight<T> = { promise: Promise<T>; waiters: number };
+const inFlight = new Map<string, InFlight<SnapshotResult>>();
+const inFlightRepair = new Map<string, InFlight<SnapshotResult>>();
+const inFlightRevRead = new Map<string, InFlight<bigint | null>>();
 
+/**
+ * Run `run` once per key on this instance; concurrent callers share the
+ * result. `onShared(waiters)` fires when an entry settles that more than
+ * one caller waited on (first caller included) — diagnostics for how
+ * much per-instance coalescing absorbs a burst.
+ */
 function coalesce<T>(
-  map: Map<string, Promise<T>>,
+  map: Map<string, InFlight<T>>,
   key: string,
   run: () => Promise<T>,
+  onShared?: (waiters: number) => void,
 ): Promise<T> {
   const existing = map.get(key);
-  if (existing) return existing;
-  const p = run().finally(() => {
-    if (map.get(key) === p) map.delete(key);
+  if (existing) {
+    existing.waiters += 1;
+    return existing.promise;
+  }
+  const entry: InFlight<T> = { promise: undefined as never, waiters: 1 };
+  entry.promise = run().finally(() => {
+    if (map.get(key) === entry) map.delete(key);
+    if (entry.waiters > 1) onShared?.(entry.waiters);
   });
-  map.set(key, p);
-  return p;
+  map.set(key, entry);
+  return entry.promise;
+}
+
+function logCoalesced(
+  label: "coalesced" | "coalesced-repair",
+  eventId: bigint,
+  locale: Locale,
+): (waiters: number) => void {
+  // `coalesced` (first read) and `coalesced-repair` are separate
+  // prefixes on purpose: one request can wait on both maps, and a
+  // parser keyed on `[liveSnapshot] coalesced ` must not count it twice.
+  return (waiters) =>
+    console.log(
+      `[liveSnapshot] ${label} waiters=${waiters} event=${eventId} ` +
+        `locale=${locale} instance=${INSTANCE_ID}`,
+    );
 }
 
 async function readThroughCache(
@@ -391,11 +458,62 @@ const revMemo = new Map<string, { rev: bigint | null; readAt: number }>();
 // the client's retry schedule (1 s, 2 s, …) covers it.
 const REV_MEMO_MS = 1_000;
 
+// Bounds of the repair check's 1-row read, ≈ 1.5 s end to end. The
+// read only decides whether to repair; when it cannot answer in time the
+// caller serves the snapshot it already holds (the client's own retry
+// schedule repairs later), so waiting longer buys nothing and holds one
+// of this instance's two pool slots during exactly the overload that
+// made it slow.
+//
+// The bound is enforced on the DATABASE side, not with a
+// `Promise.race` around the query: a race only stops waiting — the
+// abandoned statement keeps running on its connection, keeps the pool
+// slot, and still costs the database the work. Instead the read runs in
+// a short transaction whose first statement sets a transaction-local
+// `statement_timeout`, so Postgres itself cancels the SELECT (SQLSTATE
+// 57014) and the connection is returned at once. `set_config(…, true)`
+// is `SET LOCAL` in function form: it ends with the transaction, so the
+// setting never leaks to the next user of the pooled connection (which
+// matters behind a transaction-mode pooler). Pool acquisition, which no
+// server setting can bound, is capped by `maxWait`; `timeout` is
+// Prisma's own backstop for the whole transaction. Cost: four round
+// trips (BEGIN, set_config, SELECT, COMMIT) instead of one, at most once
+// per instance per `REV_MEMO_MS`.
+const REV_READ_MAX_WAIT_MS = 1_000;
+const REV_READ_STATEMENT_TIMEOUT_MS = 500;
+const REV_READ_TX_TIMEOUT_MS = 1_500;
+
+/**
+ * One bounded `SELECT "setlistRevision"` (see the bounds above). Throws
+ * when the bound is hit. Exported for the dev-DB integration suite,
+ * which checks it against the real pooler; everything else goes
+ * through `verifiedRevision`.
+ */
+export async function readRevisionBounded(
+  eventId: bigint,
+): Promise<bigint | null> {
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`
+        SELECT set_config('statement_timeout', ${String(REV_READ_STATEMENT_TIMEOUT_MS)}, true)
+      `;
+      const rows = await tx.$queryRaw<{ setlistRevision: bigint }[]>`
+        SELECT "setlistRevision" FROM "Event" WHERE id = ${eventId}
+      `;
+      return rows.length > 0 ? BigInt(rows[0].setlistRevision) : null;
+    },
+    { maxWait: REV_READ_MAX_WAIT_MS, timeout: REV_READ_TX_TIMEOUT_MS },
+  );
+}
+
 /**
  * Database revision for the repair check: a remembered value when it
  * already satisfies the hint (`rev >= minRev`) or is younger than
- * `REV_MEMO_MS`, otherwise ONE uncached `SELECT "setlistRevision"`,
- * coalesced across concurrent requests on this instance.
+ * `REV_MEMO_MS`, otherwise ONE bounded, uncached
+ * `SELECT "setlistRevision"`, coalesced across concurrent requests on
+ * this instance. `null` means "cannot verify" — the event is missing,
+ * or the read failed / ran out of time — and the caller serves its
+ * cached snapshot.
  */
 async function verifiedRevision(
   eventId: bigint,
@@ -411,11 +529,32 @@ async function verifiedRevision(
     return memo.rev;
   }
   return coalesce(inFlightRevRead, key, async () => {
-    const rows = await prisma.$queryRaw<{ setlistRevision: bigint }[]>`
-      SELECT "setlistRevision" FROM "Event" WHERE id = ${eventId}
-    `;
-    const rev = rows.length > 0 ? BigInt(rows[0].setlistRevision) : null;
+    const started = Date.now();
+    let rev: bigint | null = null;
+    let outcome: string;
+    try {
+      rev = await readRevisionBounded(eventId);
+      outcome = rev === null ? "none" : rev.toString();
+    } catch (err) {
+      // Cannot verify. Remembered like a successful read (as `null`) so
+      // that during an overload this instance retries the read at most
+      // once per `REV_MEMO_MS` instead of on every hinted request.
+      outcome = isDbTimeout(err) ? "timeout" : "error";
+      if (outcome === "error") {
+        console.error(
+          // `rev-read-error`, not `rev-read …`: the summariser keys on
+          // the `[liveSnapshot] rev-read ` prefix for one line per read.
+          `[liveSnapshot] rev-read-error event=${eventId} err=${describeError(err)} ` +
+            `instance=${INSTANCE_ID}`,
+        );
+      }
+    }
     revMemo.set(key, { rev, readAt: Date.now() });
+    // One line per real database read (coalesced waiters share it).
+    console.log(
+      `[liveSnapshot] rev-read event=${eventId} rev=${outcome} ` +
+        `ms=${Date.now() - started} instance=${INSTANCE_ID}`,
+    );
     return rev;
   });
 }
@@ -452,7 +591,9 @@ export function parseMinRev(raw: string | null): number | null {
  *     after this request) and serve a snapshot built now under a
  *     server-read-revision key (`source: "repair"`);
  *   - otherwise the client's hint is ahead of the database (forged, or
- *     from a rolled-back world) → serve the cache unchanged.
+ *     from a rolled-back world) → serve the cache unchanged;
+ *   - the read could not answer within its ≈ 1.5 s bound (overload) →
+ *     also serve the cache unchanged; the client retries the hint.
  * A forged `minRev` (the broadcast channel is public, so hints are
  * untrusted) therefore costs at most one primary-key read per instance
  * per `REV_MEMO_MS` and can never trigger a build or mint a cache key.
@@ -468,8 +609,11 @@ export async function getLiveSnapshot(
 ): Promise<SnapshotResult> {
   const idKey = eventId.toString();
   const key = `${idKey}:${locale}`;
-  const first = await coalesce(inFlight, key, () =>
-    readThroughCache(() => cachedSnapshot(idKey, locale), "build"),
+  const first = await coalesce(
+    inFlight,
+    key,
+    () => readThroughCache(() => cachedSnapshot(idKey, locale), "build"),
+    logCoalesced("coalesced", eventId, locale),
   );
   if (minRev === null || first.snapshot.rev >= BigInt(minRev)) return first;
 
@@ -477,11 +621,15 @@ export async function getLiveSnapshot(
   if (dbRev === null || dbRev <= first.snapshot.rev) return first;
 
   revalidateEventData(eventId);
-  const repaired = await coalesce(inFlightRepair, `${key}:${dbRev}`, () =>
-    readThroughCache(
-      () => cachedSnapshotAtRev(idKey, locale, dbRev.toString()),
-      "repair",
-    ),
+  const repaired = await coalesce(
+    inFlightRepair,
+    `${key}:${dbRev}`,
+    () =>
+      readThroughCache(
+        () => cachedSnapshotAtRev(idKey, locale, dbRev.toString()),
+        "repair",
+      ),
+    logCoalesced("coalesced-repair", eventId, locale),
   );
   // A repair entry that is itself older than the first read (cannot
   // happen with a monotonic counter, but cheap to guard) never wins.

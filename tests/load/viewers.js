@@ -24,6 +24,21 @@
 //                  judges its admin windows.
 //   REACTION_AT    REACTIONS reaction taps in REACTION_SECONDS: POST,
 //                  then DELETE of the row it created.
+//   drain          DRAIN_S (default 90) seconds of NO traffic at the end:
+//                  it starts once the last admin cycle, the steady window
+//                  and the reaction window are all over, and the test
+//                  keeps running through it so the side-car samplers
+//                  (pooler-clients.mjs, the Vercel log capture) record
+//                  the pools draining after the last burst. Set
+//                  STEADY_SECONDS so the steady window ends near the last
+//                  cycle, or the drain only starts after it (the report
+//                  prints both times). DRAIN_S=0 ends right away.
+//
+// Cycle spacing: by default cycle k starts at ADMIN_FIRST + k*ADMIN_SPACING
+// (fixed slots). With BURST_GAP_S set, cycle 1 starts at ADMIN_FIRST and
+// every later cycle starts BURST_GAP_S seconds after the previous one
+// FINISHED — "nearby" repeated bursts that land while the previous
+// bursts' function instances (and their idle DB pools) are still warm.
 //
 // The notification burst (one per save in a burst cycle and at cold
 // start): BURST_SIZE requests, each fired at U(0, JITTER_MS) after the
@@ -33,7 +48,11 @@
 // value `SnapshotAcceptance.notificationMinRev()` sends. OLD_SHARE of
 // them model pre-R1 tabs still open from before the deploy: no
 // `minRev`, and OLD_REPEATS more requests OLD_REPEAT_MS apart (a v0.18
-// tab refetches once per change event: k+1 times).
+// tab refetches once per change event: k+1 times). Old tabs keep their
+// own timing whatever JITTER_MS says: their first request is at
+// U(0, 500 ms) (OLD_JITTER_MS, a constant) — they run the old build's
+// scheduler, so a JITTER_MS experiment must only move the R1 clients,
+// or a comparison between two runs would change two things at once.
 //
 // Why the admin loop and the bursts run on ONE VU with async requests:
 // k6 has no shared state between VUs, so a burst that must start "right
@@ -47,11 +66,20 @@
 // HTTP/2 connections, not 500 browsers; per-request server work is the
 // same, connection setup is not modelled.
 //
-// What "builds per save" means here: we have no Vercel log access, so
-// the `x-snapshot-source` header (build | cache | repair) is the proxy.
-// It is a LOWER bound: a background stale-while-revalidate rebuild is
-// never attributed to a response, and a build whose response went to a
-// request outside this run (another agent, a real browser) is not seen.
+// What "builds per save" means here: the `x-snapshot-source` header
+// (build | cache | repair) is only a rough proxy — coalesced waiters share
+// the first request's result object, header included, so it over-counts
+// builds, while background rebuilds are never attributed to a response.
+// The real count is the `[liveSnapshot] build` log lines: capture the
+// Vercel logs during the run (vercel-logs-capture.mjs) and run
+// vercel-logs-summary.mjs on them.
+//
+// Burst errors: k6's end-of-test data has no way to carry strings from a
+// VU to handleSummary except check names, so after each burst the admin
+// VU records its distinct error bodies (status + first 80 characters, at
+// most 5 per burst; the rest are lumped into "(other bodies)") as failed
+// checks named `burst-error <id> | <body>`, one failed check per
+// occurrence. handleSummary lists them per burst.
 //
 // Requests send `Accept-Encoding: gzip, deflate, br` (ACCEPT_ENCODING)
 // like a browser; k6 decodes the body. Without it each snapshot is
@@ -130,6 +158,15 @@ const ABORT_ERR_RATE = num("ABORT_ERR_RATE", GATES.abortErrorRate);
 const ABORT_P95_MS = num("ABORT_P95_MS", GATES.abortP95);
 const ACCEPT_ENCODING = __ENV.ACCEPT_ENCODING ?? "gzip, deflate, br";
 const BURST_GATE_P95 = num("BURST_GATE_P95", 3000);
+// Unset = fixed ADMIN_SPACING slots; set = this many seconds between the
+// end of one cycle and the start of the next (see the header).
+const BURST_GAP_S = __ENV.BURST_GAP_S != null && __ENV.BURST_GAP_S !== "" ? parseFloat(__ENV.BURST_GAP_S) : null;
+const DRAIN_S = num("DRAIN_S", 90);
+// Pinned, deliberately not a knob: see the header (old-build tabs).
+const OLD_JITTER_MS = 500;
+const ERROR_BODIES_PER_BURST = 5;
+const ERROR_BODY_CHARS = 80;
+const ERR_CHECK_PREFIX = "burst-error ";
 const POOLER_GATE = num("POOLER_GATE", 140);
 
 // Each admin cycle briefly adds two rows (cold start: one), and the
@@ -152,7 +189,9 @@ export const PLAN = { cycles: [], bursts: [] };
 if (COLD_START) PLAN.bursts.push({ id: "b00", label: "cold start · create" });
 for (let i = 0; i < TOTAL_CYCLES; i++) {
   const kind = quietIdx.has(i) ? "quiet" : "burst";
-  const c = { n: i + 1, kind, at: ADMIN_FIRST + i * ADMIN_SPACING, bursts: [] };
+  // `at` = null: starts BURST_GAP_S after the previous cycle ended.
+  const at = BURST_GAP_S == null ? ADMIN_FIRST + i * ADMIN_SPACING : i === 0 ? ADMIN_FIRST : null;
+  const c = { n: i + 1, kind, at, bursts: [] };
   if (kind === "burst") {
     for (const op of OPS) {
       const id = `b${String(PLAN.bursts.length + (COLD_START ? 0 : 1)).padStart(2, "0")}`;
@@ -192,6 +231,11 @@ const reactionLeftover = new Counter("reaction_leftover");
 // A Trend, not a Gauge: an empty Gauge reports 0, which would read as
 // "0 rows" after an abort instead of "not measured".
 const finalRows = new Trend("final_row_count");
+// Timeline markers (seconds since the test start), one sample each, so
+// the report can say when cycles ran and when the quiet drain began.
+const cycleStartS = new Trend("admin_cycle_start_s");
+const lastCycleEndS = new Trend("admin_last_cycle_end_s");
+const drainStartS = new Trend("drain_start_s");
 
 // ── options ─────────────────────────────────────────────────────
 const perMinute = (rps) => Math.max(1, Math.round(rps * 60));
@@ -290,10 +334,13 @@ const thresholds = {
   "burst_fresh{client:old,wave:1}": ["rate>=0"],
   "burst_fresh{client:old,wave:2}": ["rate>=0"],
   burst_rev_ok: ["rate>=0"],
+  admin_last_cycle_end_s: ["max>=0"],
+  drain_start_s: ["max>=0"],
 };
 for (const phase of ["poll", "burst"]) {
   for (const s of Object.keys(SRC)) thresholds[`snap_src_${s}{phase:${phase}}`] = ["count>=0"];
 }
+for (const c of PLAN.cycles) thresholds[`admin_cycle_start_s{cycle:c${c.n}}`] = ["max>=0"];
 for (const b of PLAN.bursts) {
   thresholds[`burst_latency{burst:${b.id}}`] = ["max>=0"];
   thresholds[`burst_errors{burst:${b.id}}`] = ["rate>=0"];
@@ -562,18 +609,42 @@ async function burstRequest(burstId, minRev, client, wave, appliedRev) {
   burstErrors.add(!r.ok, tags);
   if (r.ok && appliedRev != null) burstFresh.add(r.rev != null && r.rev > appliedRev, tags);
   if (r.ok && minRev != null) burstRevOk.add(r.rev != null && r.rev >= minRev, tags);
-  return { ok: r.ok, ms: res.timings.duration };
+  return { ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res) };
+}
+
+// "HTTP 500: <first 80 chars of the body, whitespace collapsed>", or the
+// transport error for status 0 — the key for counting distinct failures.
+function errorBody(res) {
+  const body = typeof res.body === "string" ? res.body.replace(/\s+/g, " ").trim().slice(0, ERROR_BODY_CHARS) : "";
+  const what = body || (res.error ? String(res.error).slice(0, ERROR_BODY_CHARS) : "(empty body)");
+  // `|` would break the markdown table the name ends up in.
+  return `HTTP ${res.status}: ${what}`.replace(/\|/g, "/");
+}
+
+// One failed check per occurrence, named after the body (see header).
+// Returns the distinct bodies with their counts, first ones first.
+function recordErrorBodies(burstId, errs) {
+  const counts = new Map();
+  for (const e of errs) counts.set(e, (counts.get(e) || 0) + 1);
+  let k = 0;
+  for (const [body, n] of counts) {
+    const name = `${ERR_CHECK_PREFIX}${burstId} | ${k < ERROR_BODIES_PER_BURST ? body : "(other bodies)"}`;
+    for (let i = 0; i < n; i++) check(null, { [name]: () => false });
+    k++;
+  }
+  return [...counts.entries()];
 }
 
 // Fires the whole burst and returns a promise of its summary. Request
-// i starts at U(0, JITTER_MS) after the call; old-build tabs repeat.
+// i starts at U(0, JITTER_MS) after the call — U(0, OLD_JITTER_MS) for an
+// old-build tab, which then repeats.
 function fireBurst(burstId, appliedRev) {
   burstsFired.add(1);
   const minRev = appliedRev == null ? null : appliedRev + 1;
   const all = [];
   for (let i = 0; i < BURST_SIZE; i++) {
-    const at = Math.random() * JITTER_MS;
     const old = Math.random() < OLD_SHARE;
+    const at = Math.random() * (old ? OLD_JITTER_MS : JITTER_MS);
     all.push(delay(at).then(() => burstRequest(burstId, old ? null : minRev, old ? "old" : "r1", 1, appliedRev)));
     if (old) {
       for (let k = 1; k <= OLD_REPEATS; k++) {
@@ -583,9 +654,10 @@ function fireBurst(burstId, appliedRev) {
   }
   return Promise.all(all).then((rs) => {
     const ms = rs.map((r) => r.ms).sort((a, b) => a - b);
-    const errors = rs.filter((r) => !r.ok).length;
+    const errs = rs.filter((r) => !r.ok).map((r) => r.err);
     const p95 = ms.length ? ms[Math.min(ms.length - 1, Math.ceil(0.95 * ms.length) - 1)] : 0;
-    return { n: rs.length, errors, p95, max: ms.length ? ms[ms.length - 1] : 0 };
+    const bodies = recordErrorBodies(burstId, errs);
+    return { n: rs.length, errors: errs.length, p95, max: ms.length ? ms[ms.length - 1] : 0, bodies };
   });
 }
 
@@ -627,7 +699,11 @@ async function timedSave(label, window, burstId, doWrite, isVisible, onAck) {
     if (burstP) {
       const b = await burstP;
       console.log(
-        `[burst ${burstId}] ${label} appliedRev=${appliedRev} n=${b.n} errors=${b.errors} p95=${Math.round(b.p95)}ms max=${Math.round(b.max)}ms`,
+        `[burst ${burstId}] ${label} appliedRev=${appliedRev} n=${b.n} errors=${b.errors} p95=${Math.round(b.p95)}ms max=${Math.round(b.max)}ms` +
+          (b.bodies.length
+            ? ` bodies=${JSON.stringify(b.bodies.slice(0, ERROR_BODIES_PER_BURST).map(([body, n]) => `${n}x ${body}`))}` +
+              (b.bodies.length > ERROR_BODIES_PER_BURST ? ` (+${b.bodies.length - ERROR_BODIES_PER_BURST} more distinct)` : "")
+            : ""),
       );
       if (b.errors / b.n > ABORT_ERR_RATE || b.p95 > ABORT_P95_MS) {
         throw new Error(
@@ -645,8 +721,13 @@ async function cleanupAndAbort(e) {
     const r = await adminDel(`/api/admin/setlist-items/${id}`, "admin_cleanup");
     if (r.status !== 200) leftover.push(id);
   }
+  // The abort ends the k6 run at once, so there is no in-run drain; the
+  // side-car samplers keep recording, which is why the operator must not
+  // create the STOP file before DRAIN_S has passed.
   exec.test.abort(
-    `${e.message} — stop and reconcile the event` + (leftover.length ? ` (rows NOT cleaned up: ${leftover.join(", ")})` : ""),
+    `${e.message} — stop and reconcile the event` +
+      (leftover.length ? ` (rows NOT cleaned up: ${leftover.join(", ")})` : "") +
+      ` — wait ${DRAIN_S}s before creating the STOP file so the samplers record the drain`,
   );
 }
 
@@ -814,20 +895,50 @@ export async function adminMain() {
       await coldStart();
       console.log(`[admin] cold start done at ${elapsedS().toFixed(1)}s`);
     }
+    let prevEnd = null;
     for (const c of PLAN.cycles) {
-      const wait = c.at - elapsedS();
+      const at = c.at != null ? c.at : prevEnd + BURST_GAP_S;
+      const wait = at - elapsedS();
       if (wait > 0) await delay(wait * 1000);
-      else console.warn(`[admin] cycle ${c.n} starts ${(-wait).toFixed(1)}s late (previous cycle overran its slot)`);
+      else if (c.at != null) console.warn(`[admin] cycle ${c.n} starts ${(-wait).toFixed(1)}s late (previous cycle overran its slot)`);
       console.log(`[admin] cycle ${c.n} (${c.kind}) at ${elapsedS().toFixed(1)}s`);
+      cycleStartS.add(elapsedS(), { cycle: `c${c.n}` });
       await cycle(c.kind === "burst" ? "burst" : "steady", c.kind === "burst" ? c.bursts : null);
+      prevEnd = elapsedS();
     }
+    lastCycleEndS.add(elapsedS());
     // Final reconciliation read: the event must be back at its baseline.
     await delay(3000);
     const { body } = await readSnapshot({ window: "cleanup" });
     if (body) finalRows.add(body.items.length);
   } catch (e) {
+    // No drain after an abort: exec.test.abort() ends the run at once.
+    // The side-car samplers are separate processes, so they still record
+    // the drain — wait DRAIN_S before touching the STOP file.
     await cleanupAndAbort(e);
+    return;
   }
+  await drain();
+}
+
+// Quiet tail: no request from any scenario. It starts when the last of
+// the traffic windows is over — this VU's cycles (now), the steady
+// streams, the reaction burst — and lasts DRAIN_S. Those other windows
+// are fixed in the options; they cannot be cut short from here (k6 VUs
+// share no state), which is why the steady window has to be sized to
+// the cycles for a drain right after the last burst.
+async function drain() {
+  if (DRAIN_S <= 0) return;
+  const steadyEnd = POLL_RPS > 0 || SSR_RPS > 0 ? STEADY_START + STEADY_SECONDS : 0;
+  const reactionEnd = REACTIONS > 0 ? REACTION_AT + REACTION_SECONDS : 0;
+  const start = Math.max(elapsedS(), steadyEnd, reactionEnd);
+  if (start > elapsedS() + 1) {
+    console.log(`[admin] cycles done at ${elapsedS().toFixed(1)}s; waiting for the steady/reaction windows to end at ${start.toFixed(0)}s`);
+    await delay((start - elapsedS()) * 1000);
+  }
+  drainStartS.add(elapsedS());
+  console.log(`[admin] drain: no requests from ${elapsedS().toFixed(1)}s for ${DRAIN_S}s`);
+  await delay(DRAIN_S * 1000);
 }
 
 // ── report ──────────────────────────────────────────────────────
@@ -847,6 +958,7 @@ const ms = (v) => (v == null ? "—" : `${Math.round(v)} ms`);
 const pct = (v, d = 2) => (v == null ? "—" : `${(v * 100).toFixed(d)} %`);
 const cnt = (data, key) => val(data, key, "count") ?? 0;
 const verdict = (ok) => (ok == null ? "n/a" : ok ? "**PASS**" : "**FAIL**");
+const fmtS = (v) => (v == null ? "—" : `${v.toFixed(1)}s`);
 
 function srcCells(data, sel) {
   const n = {};
@@ -871,6 +983,17 @@ export function handleSummary(data) {
   const bad = badM ? badM.values.passes : 0;
   const sampled = badM ? badM.values.passes + badM.values.fails : 0;
 
+  // Distinct error bodies per burst, from the `burst-error <id> | <body>`
+  // checks the admin VU records (see the header).
+  const errBodies = {};
+  for (const c of (data.root_group && data.root_group.checks) || []) {
+    if (!c.name.startsWith(ERR_CHECK_PREFIX)) continue;
+    const rest = c.name.slice(ERR_CHECK_PREFIX.length);
+    const cut = rest.indexOf(" | ");
+    const id = cut < 0 ? rest : rest.slice(0, cut);
+    (errBodies[id] ||= []).push({ body: cut < 0 ? "?" : rest.slice(cut + 3), n: c.fails });
+  }
+
   // bursts
   const rows = [];
   let worstP95 = null;
@@ -883,9 +1006,11 @@ export function handleSummary(data) {
       worstP95 = p95;
       worstId = b.id;
     }
+    const em = M(data, `burst_errors{burst:${b.id}}`);
+    const errN = em && em.values ? em.values.passes : 0;
     rows.push(
       `| ${b.id} | ${b.label} | ${n ?? 0} | ${ms(val(data, `burst_latency{burst:${b.id}}`, "med"))} / ${ms(p95)} / ` +
-        `${ms(val(data, `burst_latency{burst:${b.id}}`, "max"))} | ${pct(val(data, `burst_errors{burst:${b.id}}`, "rate"))} | ` +
+        `${ms(val(data, `burst_latency{burst:${b.id}}`, "max"))} | ${errN} (${pct(val(data, `burst_errors{burst:${b.id}}`, "rate"))}) | ` +
         `${s.build} / ${s.cache} / ${s.repair}${s.other ? ` (+${s.other} other)` : ""} | ${s.build + s.repair} | ` +
         `${pct(val(data, `burst_rev_ok{burst:${b.id}}`, "rate"), 1)} |`,
     );
@@ -937,14 +1062,17 @@ export function handleSummary(data) {
     g("reaction ackAt present and ≥ request start", pct(rxAck, 2), "100 %", rxAck == null ? null : rxAck === 1),
     g("reactions cleaned up", `${leftovers} possibly left (POST timeout / DELETE failed)`, "0 (check: node tests/load/viewers-check.mjs)", leftovers === 0),
     g("generator: poll achieved ≥ 95 %, dropped = 0", `${pollAchieved.toFixed(1)} of ${POLL_RPS} rps, dropped ${dropped}`, "≥ 95 %, 0", pollAchieved >= POLL_RPS * GATES.achievedRatio && dropped === 0),
-    `| pooler client peak (Supabase dashboard) | ___ / 200 | ≤ ${POOLER_GATE} | _orchestrator_ |`,
+    `| pooler client peak (pooler-clients.mjs metrics / probe; vercel-logs-summary.mjs pool sum) | ___ / 200 | ≤ ${POOLER_GATE}, 0 EMAXCONN | _orchestrator_ |`,
   ];
 
   const plan =
     `- cold start: ${COLD_START ? "1 save + burst b00 at t=0" : "off"}; steady ${STEADY_START}s → ${STEADY_START + STEADY_SECONDS}s ` +
     `(poll ${POLL_RPS} rps + SSR ${SSR_RPS} rps)\n` +
-    `- admin cycles (SAVE_GAP ${SAVE_GAP}s): ${PLAN.cycles.map((c) => `c${c.n} ${c.kind} @${c.at}s`).join(", ")}\n` +
-    `- bursts: ${BURST_SIZE} req over U(0, ${JITTER_MS} ms), old-build share ${OLD_SHARE * 100} % ×${OLD_REPEATS + 1} (repeat +${OLD_REPEAT_MS} ms)\n` +
+    `- admin cycles (SAVE_GAP ${SAVE_GAP}s${BURST_GAP_S != null ? `, BURST_GAP_S ${BURST_GAP_S}s after each cycle's end` : ""}): ` +
+    `${PLAN.cycles.map((c) => `c${c.n} ${c.kind} @${c.at != null ? c.at : "+gap"}s → ran @${fmtS(val(data, `admin_cycle_start_s{cycle:c${c.n}}`, "max"))}`).join(", ")}\n` +
+    `- bursts: ${BURST_SIZE} req; R1 tabs over U(0, ${JITTER_MS} ms), old-build share ${OLD_SHARE * 100} % over U(0, ${OLD_JITTER_MS} ms, pinned) ×${OLD_REPEATS + 1} (repeat +${OLD_REPEAT_MS} ms)\n` +
+    `- timeline: last cycle ended @${fmtS(val(data, "admin_last_cycle_end_s", "max"))}, steady window ended @${STEADY_START + STEADY_SECONDS}s, ` +
+    `quiet drain (no requests) from @${fmtS(val(data, "drain_start_s", "max"))} for ${DRAIN_S}s\n` +
     `- reactions: ${REACTIONS} POST+DELETE over ${REACTION_SECONDS}s @${REACTION_AT}s\n` +
     `- setup: start rev ${sd.startRev ?? "—"}, clock offset ${sd.clockOffsetMs != null ? Math.round(sd.clockOffsetMs) : "—"} ms ` +
     `(±${sd.clockErrMs != null ? Math.round(sd.clockErrMs) : "—"} ms), run ${runS != null ? Math.round(runS) : "—"}s\n`;
@@ -965,10 +1093,10 @@ export function handleSummary(data) {
     `p95 ${ms(val(data, "http_req_duration{scenario:ssr}", "p(95)"))} / p99 ${ms(val(data, "http_req_duration{scenario:ssr}", "p(99)"))}, ` +
     `errors ${pct(val(data, "ssr_errors", "rate"), 3)}\n` +
     "\n### Notification bursts\n\n" +
-    "`x-snapshot-source` is our proxy for builds per save (no Vercel log access). It is a **lower bound**: a background " +
-    "stale-while-revalidate rebuild is never attributed to a response, and builds whose response went to someone else are not seen. " +
-    "Count the `[liveSnapshot] build` log lines in Vercel for the real number when log access exists.\n\n" +
-    "| Burst | save | requests | p50 / p95 / max | err % | build / cache / repair | builds (build+repair) | rev ≥ minRev (R1 reqs) |\n" +
+    "`x-snapshot-source` is only a rough proxy for builds per save: coalesced waiters share the first request's result " +
+    "(header included), so it over-counts, and background rebuilds are never attributed. The real number is the " +
+    "`[liveSnapshot] build` log lines — run `node tests/load/vercel-logs-summary.mjs` on the run's Vercel log capture.\n\n" +
+    "| Burst | save | requests | p50 / p95 / max | errors (%) | build / cache / repair | builds (build+repair) | rev ≥ minRev (R1 reqs) |\n" +
     "|---|---|---|---|---|---|---|---|\n" +
     rows.join("\n") +
     "\n\n" +
@@ -978,6 +1106,13 @@ export function handleSummary(data) {
     `rev ≥ minRev ${pct(val(data, "burst_rev_ok", "rate"), 1)}\n` +
     `- old-build requests (no minRev): p95 ${ms(val(data, "burst_latency{client:old}", "p(95)"))}, errors ${pct(val(data, "burst_errors{client:old}", "rate"), 3)}, ` +
     `post-save rev on 1st request ${pct(val(data, "burst_fresh{client:old,wave:1}", "rate"), 1)}, on the repeat ${pct(val(data, "burst_fresh{client:old,wave:2}", "rate"), 1)}\n` +
+    "\n#### Burst error bodies (distinct, first " + ERROR_BODY_CHARS + " chars, ≤ " + ERROR_BODIES_PER_BURST + " per burst)\n\n" +
+    (Object.keys(errBodies).length
+      ? PLAN.bursts
+          .filter((b) => errBodies[b.id])
+          .map((b) => `- ${b.id} (${b.label}): ` + errBodies[b.id].map((e) => `${e.n}× \`${e.body.replace(/`/g, "'")}\``).join("; "))
+          .join("\n") + "\n"
+      : "none\n") +
     "\n### Admin by window\n\n| Window | writes | save+reload p95 | visible first | lost |\n|---|---|---|---|---|\n" +
     ["steady", "burst"]
       .map(
@@ -993,8 +1128,9 @@ export function handleSummary(data) {
     `max ${ms(val(data, "reaction_latency{op:delete}", "max"))}, errors ${pct(val(data, "reaction_errors{op:delete}", "rate"), 3)}\n` +
     `- ackAt − request start (server clock): min ${ms(val(data, "reaction_ack_lead", "min"))}, p50 ${ms(val(data, "reaction_ack_lead", "med"))}, ` +
     `max ${ms(val(data, "reaction_ack_lead", "max"))}\n` +
-    "\nPooler client peak: read it off the Supabase dashboard (Database → Connections / Reports) for the run window; " +
-    "the `pg-connections.mjs` CSV next to this file counts Postgres backends, which Supavisor multiplexes.\n";
+    "\nPooler client peak: from the `pooler-clients.mjs` CSV next to this file (Supabase metrics when the service-role key " +
+    "is set; its transaction-pooler probe records EMAXCONN either way) and the per-5 s pool sum in `vercel-logs-summary.mjs`. " +
+    "`pg_stat_activity` backends are Supavisor's server side, not the client count.\n";
 
   const base = `${resultsDir()}/${stamp()}-viewers`;
   return {

@@ -7,12 +7,21 @@
 // the 2nd row and fills in a never-used "marker" song, `--edits` times,
 // `--pause` seconds apart (admin.mjs). Measurement: PUT start → marker
 // link in each page's DOM, and PUT start → each SDK client applying a
-// snapshot with rev ≥ the PUT's rev. Missing within `--timeout` s =
-// failure. Gate: p95 ≤ 3 s, 0 missing (pairs a drill deliberately
-// degrades are judged by that drill's own gate instead).
+// snapshot with rev ≥ the PUT's rev. The clock starts at the FIRST
+// attempt of a save: a retried save keeps its original start, because
+// the operator's wait began at the first click (retried edits are also
+// listed separately). Missing within `--timeout` s = failure. Gate: p95
+// ≤ 3 s, 0 missing (pairs a drill deliberately degrades are judged by
+// that drill's own gate instead).
 //
-// Drills (one per run): `--drill=silent-loss | ws-blocked | reconnect`,
-// see the README and the per-drill comments below.
+// Monotonicity (every run): no viewer may ever go back to an older
+// version. SDK clients record every applied snapshot's rev; for pages the
+// version is derived from which marker songs the DOM shows (see
+// monotonicity() below). Any decrease is a failure.
+//
+// Drills (one per run): `--drill=silent-loss | ws-blocked | reconnect |
+// double-save | lost-final`, see the README and the per-drill comments
+// below.
 //
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
 // gitignored). All timestamps in the files are UTC ISO so the run can be
@@ -52,23 +61,40 @@ const SUB_BATCH = int("sub-batch", 50); // joins per second across all workers
 const PAGE_CONCURRENCY = int("page-concurrency", 5);
 const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position restore"
 const GATE_P95_MS = int("gate-p95", 3000);
-const DRILL = args.drill ?? null;
-if (DRILL && !["silent-loss", "ws-blocked", "reconnect"].includes(DRILL)) {
-  console.error(`unknown --drill=${DRILL}`);
+// camelCase spellings accepted too (doubleSave, lostFinal, …).
+const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
+if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final"].includes(DRILL)) {
+  console.error(`unknown --drill=${args.drill}`);
   process.exit(2);
 }
 // silent-loss: a subset of pages loses the notification for ONE edit.
 // ws-blocked: pages with the websocket blocked for the whole run.
 // reconnect: every socket (pages + SDK) is force-closed right before ONE edit.
+// double-save: ONE edit gets a second PUT on the same row ~300 ms after
+//   the first (an operator correcting a song right away); every client
+//   must converge to the save with the higher rev, never going back.
+// lost-final: the notification of the run's LAST save (the last edit's
+//   PUT) is dropped on every page and SDK client; only the periodic
+//   repair poll (20 s ± 4 s) can deliver it.
 const DRILL_PAGES = int("drill-pages", DRILL === "silent-loss" ? Math.max(1, Math.ceil(PAGES / 2)) : PAGES);
 // silent-loss drills the LAST edit by default: a later edit's notification
 // would otherwise repair the drilled pages before the periodic poll does.
-const DRILL_EDIT = int("drill-edit", DRILL === "silent-loss" ? EDITS : Math.max(1, Math.ceil(EDITS / 2)));
+// lost-final is the last edit by definition.
+const DRILL_EDIT = DRILL === "lost-final" ? EDITS : int("drill-edit", DRILL === "silent-loss" ? EDITS : Math.max(1, Math.ceil(EDITS / 2)));
 const RECONNECT_LEAD_MS = int("reconnect-lead", 1000);
 // Silent-loss repair gate (spec): periodic poll 20 s ± 4 s → ≤ 24 s incl. fetch/render.
 const SILENT_GATE_MS = int("silent-gate", 24000);
 // ws-blocked: fallback poll 5 s ± 1 s → expect ≤ ~7 s incl. fetch/render (informational).
 const BLOCKED_GATE_MS = int("blocked-gate", 7000);
+// lost-final: the periodic poll fires 20 s ± 4 s after the previous tick,
+// so the dropped save is picked up ≤ 24 s after it + one fetch + render.
+const LOST_GATE_MS = int("lost-gate", 26000);
+// lost-final: after the last edit's insert, wait until its notification
+// reached the population and the fetches it triggered are done before
+// the PUT, so the drop hits exactly the last save and nothing else.
+const LOST_SETTLE_MS = int("lost-settle", 2000);
+// double-save: start of the 2nd PUT after the start of the 1st.
+const DOUBLE_GAP_MS = int("double-gap", 300);
 
 const LOCALE_OF = ["ja", "ko", "ja", "en", "ja", "ja", "ko", "ja", "ja", "ja"]; // 70/20/10
 const iso = (t) => (t == null ? null : new Date(t).toISOString());
@@ -129,6 +155,17 @@ async function subsReached(rev) {
   return all.reduce((a, r) => a + r.count, 0);
 }
 
+// SDK clients that received a (not dropped) notification of change
+// type `ty` for row `id`.
+async function subsNoted(id, ty) {
+  const all = await Promise.all(workers.map((w) => w.ask("noted", "noted", { id, ty })));
+  return all.reduce((a, r) => a + r.count, 0);
+}
+
+async function subsDropPg(on) {
+  await Promise.all(workers.map((w) => w.ask("dropPg", "dropPgAck", { on })));
+}
+
 async function subsProgress() {
   const all = await Promise.all(workers.map((w) => w.ask("progress", "progress")));
   return all.reduce((a, p) => ({ joined: a.joined + p.joined, pgReady: a.pgReady + p.pgReady }), { joined: 0, pgReady: 0 });
@@ -155,7 +192,10 @@ function summarize(lat, missing) {
 }
 
 function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notesUntil }) {
+  // startedAt = first attempt (the gate's clock); successAt = the attempt
+  // that worked, reported next to it for retried edits only.
   const tPut = edit.put.startedAt;
+  const tPutOk = edit.put.successAt ?? tPut;
   const tIns = edit.ins.startedAt;
   const deadline = tPut + TIMEOUT_MS;
   // A notification only counts for this save if it arrives inside the
@@ -163,8 +203,8 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   // soft-delete of the same row is an UPDATE too.
   const noteEnd = Math.min(deadline, notesUntil);
   const out = {
-    pages: { lat: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [] },
-    subs: { lat: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], bcastIns: [] },
+    pages: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [] },
+    subs: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], bcastIns: [] },
   };
   for (const r of pageRecs) {
     const seen = r.seen[edit.song.id];
@@ -174,6 +214,7 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(seen - tPut);
       if (!drilled) bucket.latFromInsert.push(seen - tIns);
+      if (!drilled) bucket.latFromSuccess.push(seen - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const nu = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "U" && t >= tPut && t < noteEnd);
@@ -189,6 +230,7 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(a[0] - tPut);
       if (!drilled) bucket.latFromInsert.push(a[0] - tIns);
+      if (!drilled) bucket.latFromSuccess.push(a[0] - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const nu = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "U" && t >= tPut && t < noteEnd);
@@ -206,6 +248,74 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
 const ms = (v) => (v == null ? "—" : `${v}`);
 const dline = (d) => `${d.n} | ${ms(d.p50)} | ${ms(d.p95)} | ${ms(d.max)}`;
 
+// ─── monotonicity ───
+// Marker song → rev of the save that put it on its row, plus, for a
+// double save, which marker the final save replaced (removing that one is
+// the expected outcome, not a regression).
+function markerIndex(edits) {
+  const rev = new Map();
+  const replacedBy = new Map();
+  for (const e of edits) {
+    if (e.double) {
+      for (const x of [e.double.first, e.double.second]) if (x) rev.set(String(x.song.id), x.put.rev);
+      if (e.double.superseded) replacedBy.set(String(e.double.superseded.song.id), String(e.double.final.song.id));
+    } else {
+      rev.set(String(e.song.id), e.put.rev);
+    }
+  }
+  return { rev, replacedBy };
+}
+
+// A page exposes no "applied rev", so its version is derived from the
+// DOM: the highest rev among the marker songs it currently shows. Every
+// marker is added by one save and only goes away when its row is deleted
+// (the clean-up, after `until`) or when a later save on the same row
+// replaces it (double save). So, replaying the page's DOM log up to
+// `until`, a regression is either
+//   - the version going down (a newer marker vanished, or a replaced
+//     marker came back without the newer one), or
+//   - a marker disappearing that no newer marker replaced (an older
+//     snapshot applied over a newer one, even if a higher marker of
+//     another row keeps the max unchanged).
+// `versions` is the page's applied-version history, in order.
+function pageMonotonicity(r, idx, until) {
+  const present = new Set();
+  let maxV = -Infinity;
+  const versions = [];
+  const regressions = [];
+  for (const [t, added, removed] of r.dom || []) {
+    if (t >= until) break;
+    let touched = false;
+    for (const id of added) if (idx.rev.has(id)) { present.add(id); touched = true; }
+    for (const id of removed) {
+      if (!idx.rev.has(id)) continue;
+      present.delete(id);
+      touched = true;
+      const by = idx.replacedBy.get(id);
+      if (!(by && present.has(by))) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
+    }
+    if (!touched) continue;
+    let v = -Infinity;
+    for (const id of present) v = Math.max(v, idx.rev.get(id));
+    const shown = Number.isFinite(v) ? v : null;
+    if (!versions.length || versions[versions.length - 1][1] !== shown) versions.push([t, shown]);
+    if (v < maxV) regressions.push({ t, what: `version ${maxV} → ${shown ?? "none"}` });
+    maxV = Math.max(maxV, v);
+  }
+  return { versions, regressions, present };
+}
+
+// SDK clients log every applied snapshot ([t, rev, reason]).
+function subMonotonicity(r) {
+  let maxV = -Infinity;
+  const regressions = [];
+  for (const [t, rev, reason] of r.appliedAll || []) {
+    if (rev < maxV) regressions.push({ t, what: `applied rev ${rev} after ${maxV} (${reason})` });
+    maxV = Math.max(maxV, rev);
+  }
+  return { regressions };
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
@@ -218,7 +328,8 @@ async function main() {
   let startRev;
   try {
     original = await activeRows(pg, EVENT_ID);
-    songs = await pickMarkerSongs(pg, EDITS);
+    // double-save needs one more marker for its second PUT.
+    songs = await pickMarkerSongs(pg, EDITS + (DRILL === "double-save" ? 1 : 0));
     startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
   } finally {
     await pg.end();
@@ -235,6 +346,7 @@ async function main() {
     if (DRILL === "ws-blocked" && drillPageSet.has(idx)) return "blocked";
     if (DRILL === "silent-loss" && drillPageSet.has(idx)) return "proxy";
     if (DRILL === "reconnect") return "proxy";
+    if (DRILL === "lost-final" && drillPageSet.has(idx)) return "proxy";
     return "none";
   };
   if (SUBS > 0) startWorkers();
@@ -309,11 +421,20 @@ async function main() {
     // after the commit) — such a row is adopted instead, so no blank row
     // is ever left behind or inserted twice.
     // The PUT is idempotent (it rewrites the row's links from scratch),
-    // so it is simply retried once; the measured start is the retry's.
+    // so it is simply retried once.
+    //
+    // Clock: `startedAt` of both saves is the start of their FIRST
+    // attempt, whatever attempt succeeded (`successAt`). A retry costs the
+    // viewer the failed attempt plus the back-off, so the latency the
+    // gate judges must include it; `attempts` > 1 marks the edit as
+    // retried and the report also shows those edits on their own.
     let ins = null;
     let put = null;
+    const insFirst = Date.now();
+    let insAttempts = 0;
     for (let attempt = 1; attempt <= 2 && !ins; attempt++) {
       const tryStart = Date.now();
+      insAttempts = attempt;
       try {
         ins = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
         created.push(ins.id);
@@ -331,10 +452,59 @@ async function main() {
         }
       }
     }
-    if (ins) {
+    if (ins) Object.assign(ins, { successAt: ins.startedAt, startedAt: insFirst, attempts: insAttempts });
+
+    if (ins && DRILL === "lost-final" && drillThis) {
+      // Make the drop hit the PUT and nothing else: wait until the
+      // insert's own notification has reached the population (≤ 5 s) and
+      // the fetches it triggered are done, THEN drop, THEN save.
+      const until = Date.now() + 5000;
+      const realtimeIdx = [...drillPageSet].filter((i) => pagePop.pages[i] && pagePop.pages[i].rec.mode !== "blocked");
+      while (Date.now() < until) {
+        const pagesNoted = realtimeIdx.every((i) => pagePop.pages[i].rec.notes.some(([, ty, id]) => ty === "I" && id === ins.id));
+        const subsNotedN = SUBS > 0 ? await subsNoted(ins.id, "I") : 0;
+        if (pagesNoted && subsNotedN >= SUBS) break;
+        await sleep(200);
+      }
+      await sleep(LOST_SETTLE_MS);
+      pagePop.setDropPg(drillPageSet, true);
+      if (SUBS > 0) await subsDropPg(true);
+      drillEvents.push({ k, what: `drop postgres_changes on pages ${[...drillPageSet].join(",")} + all SDK clients (insert notification delivered first)`, at: iso(Date.now()) });
+    }
+
+    let double = null;
+    if (ins && DRILL === "double-save" && drillThis) {
+      // Two PUTs on the same row, the 2nd started DOUBLE_GAP_MS after the
+      // 1st without waiting for it. Both take the Event row lock, so they
+      // commit one after the other; which one commits last is decided by
+      // the lock, not by the start order, so the FINAL state is the save
+      // with the higher rev. No retries here: a retried 1st PUT landing
+      // after the 2nd would change which save is final mid-measurement.
+      const second = songs[EDITS];
+      const fire = (s, delayMs) => sleep(delayMs).then(() => {
+        const t = Date.now();
+        return putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: s.id })
+          .then((r) => ({ song: s, put: { ...r, successAt: r.startedAt, attempts: 1 } }))
+          .catch((e) => {
+            saveFailures.push({ k, op: `put (double-save ${s === song ? "1st" : "2nd"})`, attempt: 1, at: iso(t), error: e.message });
+            return null;
+          });
+      });
+      const [a, b] = await Promise.all([fire(song, 0), fire(second, DOUBLE_GAP_MS)]);
+      for (const x of [a, b]) if (x && x.put.rev == null) x.put.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
+      const ok = [a, b].filter(Boolean).sort((x, y) => x.put.rev - y.put.rev);
+      if (ok.length) {
+        const fin = ok[ok.length - 1];
+        double = { first: a, second: b, final: fin, superseded: ok.length === 2 ? ok[0] : null };
+        put = fin.put;
+        drillEvents.push({ k, what: `double save: song ${song.id} @${iso(a?.put.startedAt)} rev ${a?.put.rev ?? "failed"}, song ${second.id} @${iso(b?.put.startedAt)} rev ${b?.put.rev ?? "failed"} → final ${fin.song.id}`, at: iso(Date.now()) });
+      }
+    } else if (ins) {
+      const putFirst = Date.now();
       for (let attempt = 1; attempt <= 2 && !put; attempt++) {
         try {
           put = await putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: song.id });
+          Object.assign(put, { successAt: put.startedAt, startedAt: putFirst, attempts: attempt });
         } catch (e) {
           saveFailures.push({ k, op: "put", attempt, at: iso(Date.now()), error: e.message });
           log(`edit ${k}: PUT failed (${e.message})`);
@@ -342,32 +512,40 @@ async function main() {
         }
       }
     }
+    const lostFinalOn = DRILL === "lost-final" && drillThis;
     if (!ins || !put) {
       log(`edit ${k} SKIPPED (save failed twice) — continuing`);
-      if (DRILL === "silent-loss" && drillThis) pagePop.setDropPg(drillPageSet, false);
+      if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) pagePop.setDropPg(drillPageSet, false);
+      if (lostFinalOn && SUBS > 0) await subsDropPg(false);
       continue;
     }
     // A writer that doesn't return rev (older deployment): take it from
     // the next snapshot instead.
     if (put.rev == null) put.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
-    const edit = { k, id: ins.id, song, ins, put };
+    const finalSong = double ? double.final.song : song;
+    const edit = { k, id: ins.id, song: finalSong, ins, put, double };
     edits.push(edit);
-    log(`edit ${k}: row ${ins.id} @${ins.position} insert ${ins.ms} ms (rev ${ins.rev}) → song ${song.id} "${song.title}" put ${put.ms} ms (rev ${put.rev})`);
+    log(`edit ${k}: row ${ins.id} @${ins.position} insert ${ins.ms} ms (rev ${ins.rev}${ins.attempts > 1 ? `, ${ins.attempts} attempts` : ""}) → song ${finalSong.id} "${finalSong.title}" put ${put.ms} ms (rev ${put.rev}${put.attempts > 1 ? `, ${put.attempts} attempts` : ""})${double ? " [double save]" : ""}`);
 
-    if (DRILL === "silent-loss" && drillThis) {
-      // Keep swallowing notifications on the drilled pages until each of
-      // them shows the marker: ANY later notification (another save,
-      // another stream's test row) would otherwise trigger the repair
-      // and the drill would measure the push, not the periodic poll.
-      // Bounded by the timeout, and by the next edit's start when the
-      // drilled edit is not the last one (default: it is).
+    if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) {
+      // Keep swallowing notifications on the drilled pages (and, for
+      // lost-final, the SDK clients) until each of them shows the marker:
+      // ANY later notification (another save, another stream's test row)
+      // would otherwise trigger the repair and the drill would measure the
+      // push, not the periodic poll. Bounded by the timeout, and by the
+      // next edit's start when the drilled edit is not the last one
+      // (default for silent-loss, always for lost-final: it is).
       const nextDue = k < EDITS ? editsStart + k * PAUSE_MS : Infinity;
       const until = Math.min(put.startedAt + TIMEOUT_MS, nextDue);
-      while (Date.now() < until && [...drillPageSet].some((i) => pagePop.pages[i] && pagePop.pages[i].rec.seen[song.id] == null)) {
-        await sleep(100);
+      while (Date.now() < until) {
+        const pagesPending = [...drillPageSet].some((i) => pagePop.pages[i] && pagePop.pages[i].rec.seen[finalSong.id] == null);
+        const subsPending = lostFinalOn && SUBS > 0 && (await subsReached(put.rev)) < SUBS;
+        if (!pagesPending && !subsPending) break;
+        await sleep(lostFinalOn ? 250 : 100);
       }
       pagePop.setDropPg(drillPageSet, false);
-      drillEvents.push({ k, what: Date.now() >= nextDue ? "stop dropping (next edit due — later notifications may have repaired)" : "stop dropping (drilled pages repaired or timeout)", at: iso(Date.now()) });
+      if (lostFinalOn && SUBS > 0) await subsDropPg(false);
+      drillEvents.push({ k, what: Date.now() >= nextDue ? "stop dropping (next edit due — later notifications may have repaired)" : "stop dropping (drilled clients repaired or timeout)", at: iso(Date.now()) });
     }
   }
 
@@ -442,11 +620,12 @@ function report(state, fin) {
   const dropAt = DRILL === "reconnect" ? drillEvents.find((d) => d.atMs)?.atMs ?? null : null;
   const notRejoinedAt = (times, t) => dropAt != null && !times.some((x) => x > dropAt && x <= t);
   const isDrilledPage = (r, e) =>
-    (DRILL === "silent-loss" && e.k === drillK && drillPageSet.has(r.idx)) ||
+    ((DRILL === "silent-loss" || DRILL === "lost-final") && e.k === drillK && drillPageSet.has(r.idx)) ||
     (DRILL === "ws-blocked" && drillPageSet.has(r.idx)) ||
     (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.joinAt, e.put.startedAt))));
   const isDrilledSub = (r, e) =>
-    DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.subscribedAt, e.put.startedAt)));
+    (DRILL === "lost-final" && e.k === drillK) ||
+    (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.subscribedAt, e.put.startedAt))));
 
   const all = { pagesLat: [], subsLat: [], pagesMissing: 0, subsMissing: 0, drilledLat: [], drilledMissing: 0, pagesIns: [], subsIns: [], notifPagesPut: [], notifSubsPut: [], bcastPut: [], notifSubsCount: 0, bcastCount: 0 };
   const rows = [];
@@ -465,6 +644,48 @@ function report(state, fin) {
     all.bcastPut.push(...s.subs.bcastPut);
     rows.push({ e, s });
   }
+  // Edits where a save needed a second attempt (or an insert was adopted
+  // after a failed response): their latency already counts from the first
+  // attempt above; here they are also shown alone, with the successful
+  // attempt's clock next to it, so a retry storm can't hide in the p95.
+  const retried = rows.filter(({ e }) => e.put.attempts > 1 || e.ins.attempts > 1 || e.ins.adopted);
+  const retriedFirst = summarize(retried.flatMap(({ s }) => [...s.pages.lat, ...s.subs.lat]), retried.reduce((a, { s }) => a + s.pages.missing + s.subs.missing, 0));
+  const retriedOk = dist(retried.flatMap(({ s }) => [...s.pages.latFromSuccess, ...s.subs.latFromSuccess]));
+
+  // Monotonicity over the whole edit window (the clean-up's deletes come
+  // after editsEnd and legitimately remove every marker).
+  const idx = markerIndex(edits);
+  const pageMono = pageRecs.map((r) => ({ r, ...pageMonotonicity(r, idx, state.editsEnd) }));
+  const subMono = subRecs.map((r) => ({ r, ...subMonotonicity(r) }));
+  const monoPagesBad = pageMono.filter((m) => m.regressions.length);
+  const monoSubsBad = subMono.filter((m) => m.regressions.length);
+  const monoPagesN = pageMono.reduce((a, m) => a + m.regressions.length, 0);
+  const monoSubsN = subMono.reduce((a, m) => a + m.regressions.length, 0);
+  const pageVersions = pageMono.reduce((a, m) => a + m.versions.length, 0);
+  const subApplies = subRecs.reduce((a, r) => a + (r.appliedAll?.length ?? 0), 0);
+  // Reconnect drill: the same, only after the sockets were dropped — the
+  // polling → realtime handoff is where an older in-flight poll response
+  // could land after a newer catch-up.
+  const afterDrop = (list) => (dropAt == null ? 0 : list.reduce((a, m) => a + m.regressions.filter((x) => x.t > dropAt).length, 0));
+
+  // Double save: every client must end on the final save (final marker
+  // shown and the replaced one gone; SDK applied ≥ the final rev) by the
+  // end of the edit window.
+  let doubleSave = null;
+  const de = DRILL === "double-save" ? edits.find((e) => e.k === drillK && e.double) : null;
+  if (de) {
+    const fin = String(de.double.final.song.id);
+    const sup = de.double.superseded ? String(de.double.superseded.song.id) : null;
+    const pagesOk = pageMono.filter((m) => m.present.has(fin) && !(sup && m.present.has(sup))).length;
+    const subsOk = subRecs.filter((r) => {
+      const before = (r.appliedAll || []).filter(([t]) => t < state.editsEnd);
+      return before.length && Math.max(...before.map(([, rev]) => rev)) >= de.put.rev;
+    }).length;
+    const lat = rows.find(({ e }) => e === de).s;
+    const d = dist([...lat.pages.lat, ...lat.subs.lat]);
+    doubleSave = { finalSong: fin, supersededSong: sup, finalRev: de.put.rev, gapMs: de.double.second && de.double.first ? de.double.second.put.startedAt - de.double.first.put.startedAt : null, pagesOk, subsOk, pages: pageRecs.length, subs: subRecs.length, latency: d };
+  }
+
   const pagesD = summarize(all.pagesLat, all.pagesMissing);
   const subsD = summarize(all.subsLat, all.subsMissing);
   const combined = summarize([...all.pagesLat, ...all.subsLat], all.pagesMissing + all.subsMissing);
@@ -480,8 +701,22 @@ function report(state, fin) {
     pages: { ...pagesD, pass: pass(pagesD, GATE_P95_MS) },
     subs: { ...subsD, pass: SUBS === 0 ? null : pass(subsD, GATE_P95_MS) },
   };
-  if (DRILL) {
-    const gate = DRILL === "silent-loss" ? SILENT_GATE_MS : DRILL === "ws-blocked" ? BLOCKED_GATE_MS : null;
+  verdicts.monotonic = {
+    gate: "0 regressions (pages: DOM version; SDK: applied rev)",
+    pageRegressions: monoPagesN, pagesWithRegressions: monoPagesBad.length,
+    subRegressions: monoSubsN, subsWithRegressions: monoSubsBad.length,
+    pass: monoPagesN === 0 && monoSubsN === 0,
+  };
+  if (DRILL === "double-save") {
+    const conv = doubleSave ? doubleSave.pagesOk + doubleSave.subsOk : 0;
+    const total = doubleSave ? doubleSave.pages + doubleSave.subs : 0;
+    verdicts.drill = {
+      drill: DRILL, gate: "every client converges to the final save, 0 regressions",
+      ...(doubleSave ? doubleSave.latency : dist([])), missing: total - conv,
+      pass: doubleSave ? conv === total && verdicts.monotonic.pass : false,
+    };
+  } else if (DRILL) {
+    const gate = DRILL === "silent-loss" ? SILENT_GATE_MS : DRILL === "ws-blocked" ? BLOCKED_GATE_MS : DRILL === "lost-final" ? LOST_GATE_MS : null;
     verdicts.drill = { drill: DRILL, gate: gate == null ? "informational (catch-up after reconnect)" : `max ≤ ${gate} ms, 0 missing`, ...drilled, pass: gate == null ? null : drilled.n > 0 && drilled.missing === 0 && drilled.max <= gate };
   }
 
@@ -495,6 +730,8 @@ function report(state, fin) {
   const fetchReasons = {};
   const sources = {};
   let fallbacks = 0;
+  let recreates = 0;
+  let retryAfter = 0;
   let fetchFailures = 0;
   for (const r of subRecs) {
     for (const [k, v] of Object.entries(r.statuses)) statusTotals[k] = (statusTotals[k] || 0) + v;
@@ -502,6 +739,8 @@ function report(state, fin) {
     for (const [k, v] of Object.entries(r.fetches)) fetchReasons[k] = (fetchReasons[k] || 0) + v;
     for (const [k, v] of Object.entries(r.sources)) sources[k] = (sources[k] || 0) + v;
     fallbacks += r.fallbacks.length;
+    recreates += r.recreates?.length ?? 0;
+    retryAfter += r.retryAfter ?? 0;
     fetchFailures += r.failures;
   }
   const pageFetches = pageRecs.reduce((a, r) => a + r.fetches.length, 0);
@@ -518,6 +757,7 @@ function report(state, fin) {
         pages: dist(pageRecs.map((r) => r.joinAt.find((x) => x > t)).filter((x) => x != null).map((x) => x - t)),
         subs: dist(subRecs.map((r) => r.subscribedAt.find((x) => x > t)).filter((x) => x != null).map((x) => x - t)),
         subsFallbacksAfterDrop: subRecs.filter((r) => r.fallbacks.some(([x]) => x > t)).length,
+        subsRecreatesAfterDrop: subRecs.reduce((a, r) => a + (r.recreates || []).filter(([x]) => x > t).length, 0),
       };
     }
   }
@@ -536,14 +776,23 @@ function report(state, fin) {
   lines.push("");
   lines.push("## Gate verdicts");
   lines.push("");
-  lines.push("Latency = PUT (the save that makes the marker exist) request start → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout.");
+  lines.push("Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
   lines.push("");
   lines.push("| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |");
   lines.push("|---|---|---|---|---|---|---|---|");
   lines.push(`| all pairs (pages + SDK) | ${dline(combined)} | ${combined.missing} | p95 ≤ ${GATE_P95_MS}, 0 missing${skippedEdits ? `, **${skippedEdits} edit(s) not saved**` : ""} | ${v(verdicts.primary.pass)} |`);
   lines.push(`| edit × page | ${dline(pagesD)} | ${pagesD.missing} | same | ${v(verdicts.pages.pass)} |`);
   lines.push(`| edit × SDK client | ${dline(subsD)} | ${subsD.missing} | same | ${v(verdicts.subs.pass)} |`);
-  if (verdicts.drill) lines.push(`| drill ${DRILL} (drilled pairs) | ${dline(drilled)} | ${drilled.missing} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
+  if (DRILL === "double-save") {
+    const dd = verdicts.drill;
+    lines.push(`| drill double-save (edit ${drillK}: final save start → final state) | ${dline(dd)} | ${dd.missing} not converged | ${dd.gate} | ${v(dd.pass)} |`);
+  } else if (verdicts.drill) {
+    lines.push(`| drill ${DRILL} (drilled pairs) | ${dline(drilled)} | ${drilled.missing} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
+  }
+  lines.push(`| monotonic DOM (pages: version shown never decreases) | ${P} pages, ${pageVersions} versions | — | — | — | ${monoPagesN} regressions on ${monoPagesBad.length} page(s) | 0 | ${v(P ? monoPagesN === 0 : null)} |`);
+  lines.push(`| monotonic applied rev (SDK) | ${M} clients, ${subApplies} applies | — | — | — | ${monoSubsN} regressions on ${monoSubsBad.length} client(s) | 0 | ${v(M ? monoSubsN === 0 : null)} |`);
+  if (DRILL === "reconnect") lines.push(`| reconnect handoff: regressions after the drop (pages / SDK) | — | — | — | — | ${afterDrop(pageMono)} / ${afterDrop(subMono)} | 0 | ${v(afterDrop(pageMono) + afterDrop(subMono) === 0)} |`);
+  lines.push(`| edits with a retried save (clock from the 1st attempt) | ${dline(retriedFirst)} | ${retriedFirst.missing} | informational — ${retried.length} edit(s); from the successful attempt p50/p95/max ${ms(retriedOk.p50)}/${ms(retriedOk.p95)}/${ms(retriedOk.max)} | n/a |`);
   lines.push("");
   lines.push(`Insert-start based (insert-after request start → marker), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
   lines.push("");
@@ -568,7 +817,8 @@ function report(state, fin) {
     const bp = dist(s.subs.bcastPut);
     const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
     const mark = nDrilled ? ` (drill: ${nDrilled})` : "";
-    lines.push(`| ${e.k}${mark} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)}/${ms(pl.p95)}/${ms(pl.max)} | ${sl.n}/${M} | ${ms(sl.p50)}/${ms(sl.p95)}/${ms(sl.max)} | ${s.pages.notifPut.length}/${P} | ${s.subs.notifPut.length}/${M} | ${ms(bp.p50)}/${ms(bp.p95)} (${bp.n}) |`);
+    const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
+    lines.push(`| ${e.k}${mark}${e.double ? " (double save)" : ""} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)}/${ms(pl.p95)}/${ms(pl.max)} | ${sl.n}/${M} | ${ms(sl.p50)}/${ms(sl.p95)}/${ms(sl.max)} | ${s.pages.notifPut.length}/${P} | ${s.subs.notifPut.length}/${M} | ${ms(bp.p50)}/${ms(bp.p95)} (${bp.n}) |`);
   }
   lines.push("");
   lines.push("## Population");
@@ -578,13 +828,27 @@ function report(state, fin) {
   lines.push(`  - /api/setlist responses seen: ${pageFetches} (${JSON.stringify(pageSources)}); page errors: ${pageRecs.reduce((a, r) => a + r.errors.length, 0)}; ws opens ${pageRecs.reduce((a, r) => a + r.wsOpens, 0)}, closes ${pageRecs.reduce((a, r) => a + r.wsCloses, 0)}, dropped pg frames ${pageRecs.reduce((a, r) => a + r.droppedFrames, 0)}, blocked attempts ${pageRecs.reduce((a, r) => a + r.blockedAttempts, 0)}`);
   lines.push(`- SDK: ${subRecs.filter((r) => r.subscribedAt.length).length}/${M} joined; pg_changes registered ${subRecs.filter((r) => r.pgReadyAt.length).length}; all joined after ${popSummary.allJoinedSec ?? "—"} s, all registered after ${popSummary.allPgReadySec ?? "—"} s (from population start)`);
   lines.push(`  - subscribe → SUBSCRIBED ms: n=${subJoin.n} p50=${ms(subJoin.p50)} p95=${ms(subJoin.p95)} max=${ms(subJoin.max)}; subscribe → pg_changes ready: n=${subPg.n} p50=${ms(subPg.p50)} p95=${ms(subPg.p95)} max=${ms(subPg.max)}`);
-  lines.push(`  - statuses ${JSON.stringify(statusTotals)}; R3 fallbacks ${fallbacks}; fetch failures ${fetchFailures}; fetches by reason ${JSON.stringify(fetchReasons)}; X-Snapshot-Source ${JSON.stringify(sources)}`);
+  lines.push(`  - statuses ${JSON.stringify(statusTotals)}; disconnected episodes (polling while realtime-js rejoins) ${fallbacks}; channel re-creations ${recreates}; fetch failures ${fetchFailures} (with Retry-After ${retryAfter}); fetches by reason ${JSON.stringify(fetchReasons)}; X-Snapshot-Source ${JSON.stringify(sources)}`);
   if (Object.keys(errTotals).length) lines.push(`  - channel errors: ${JSON.stringify(errTotals)}`);
   if (rejoin) {
     lines.push("");
     lines.push("## Reconnect drill");
     lines.push("");
-    lines.push(`- Rejoin after force-close: pages n=${rejoin.pages.n} p50=${ms(rejoin.pages.p50)} p95=${ms(rejoin.pages.p95)} max=${ms(rejoin.pages.max)}; SDK n=${rejoin.subs.n} p50=${ms(rejoin.subs.p50)} p95=${ms(rejoin.subs.p95)} max=${ms(rejoin.subs.max)}; SDK clients that went to the R3 polling fallback: ${rejoin.subsFallbacksAfterDrop}`);
+    lines.push(`- Rejoin after force-close: pages n=${rejoin.pages.n} p50=${ms(rejoin.pages.p50)} p95=${ms(rejoin.pages.p95)} max=${ms(rejoin.pages.max)}; SDK n=${rejoin.subs.n} p50=${ms(rejoin.subs.p50)} p95=${ms(rejoin.subs.p95)} max=${ms(rejoin.subs.max)}; SDK clients that entered the disconnected (polling) state: ${rejoin.subsFallbacksAfterDrop}; channel re-creations after the drop: ${rejoin.subsRecreatesAfterDrop} (0 expected: realtime-js rejoins within the 60 s grace)`);
+  }
+  if (doubleSave) {
+    lines.push("");
+    lines.push("## Double-save drill");
+    lines.push("");
+    lines.push(`- 2nd PUT started ${ms(doubleSave.gapMs)} ms after the 1st; final save = song ${doubleSave.finalSong} (rev ${doubleSave.finalRev})${doubleSave.supersededSong ? `, replaced song ${doubleSave.supersededSong}` : " (the other PUT failed)"}`);
+    lines.push(`- converged by the end of the edit window: pages ${doubleSave.pagesOk}/${doubleSave.pages} (final marker shown, replaced one gone), SDK ${doubleSave.subsOk}/${doubleSave.subs} (applied ≥ rev ${doubleSave.finalRev}); final save start → final state p50/p95/max ${ms(doubleSave.latency.p50)}/${ms(doubleSave.latency.p95)}/${ms(doubleSave.latency.max)} ms`);
+  }
+  if (monoPagesBad.length || monoSubsBad.length) {
+    lines.push("");
+    lines.push("## Monotonicity regressions (first 10)");
+    lines.push("");
+    for (const m of monoPagesBad.slice(0, 10)) lines.push(`- page ${m.r.idx} (${m.r.locale}): ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
+    for (const m of monoSubsBad.slice(0, 10)) lines.push(`- SDK ${m.r.idx}: ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
   }
   if (drillEvents.length) {
     lines.push("");
@@ -592,7 +856,23 @@ function report(state, fin) {
     lines.push("");
     for (const d of drillEvents) lines.push(`- edit ${d.k} ${d.at}: ${d.what}`);
   }
-  if (DRILL === "silent-loss" || DRILL === "ws-blocked") {
+  if (DRILL === "lost-final") {
+    // Which fetch delivered the dropped save to each SDK client: the first
+    // applied snapshot with rev ≥ the PUT's rev. "periodic" is the repair
+    // poll this drill exists to prove.
+    const e = edits.find((x) => x.k === drillK);
+    if (e) {
+      const reasons = {};
+      for (const r of subRecs) {
+        const a = (r.appliedAll || []).find(([t, rev]) => t >= e.put.startedAt && rev >= e.put.rev);
+        const k = a ? a[2] : "never";
+        reasons[k] = (reasons[k] || 0) + 1;
+      }
+      lines.push("");
+      lines.push(`SDK clients: fetch reason that delivered the dropped save ${JSON.stringify(reasons)}; dropped notifications recorded ${subRecs.reduce((a, r) => a + r.notes.filter(([, ty]) => ty === "x").length, 0)}.`);
+    }
+  }
+  if (DRILL === "silent-loss" || DRILL === "ws-blocked" || DRILL === "lost-final") {
     // Which request repaired each drilled page: the first /api/setlist
     // response carrying rev ≥ the PUT's rev. A notification-triggered
     // request sends minRev = applied + 1; a periodic / fallback poll
@@ -629,11 +909,17 @@ function report(state, fin) {
   const json = {
     config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
-    verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify,
+    verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
+    // Every page's DOM-derived version history and every client's
+    // regressions (the full per-client apply log is too large to keep).
+    monotonic: {
+      pages: pageMono.map((m) => ({ idx: m.r.idx, versions: m.versions, regressions: m.regressions })),
+      subs: monoSubsBad.map((m) => ({ idx: m.r.idx, regressions: m.regressions })),
+    },
     edits: rows.map(({ e, s }) => ({
       k: e.k, id: e.id, song: e.song,
       insert: { start: iso(e.ins.startedAt), ms: e.ins.ms, rev: e.ins.rev, position: e.ins.position },
-      put: { start: iso(e.put.startedAt), ms: e.put.ms, rev: e.put.rev },
+      put: { start: iso(e.put.startedAt), successStart: iso(e.put.successAt ?? e.put.startedAt), attempts: e.put.attempts ?? 1, ms: e.put.ms, rev: e.put.rev },
       pages: { lat: s.pages.lat, drilledLat: s.pages.drilledLat, missing: s.pages.missing, drilledMissing: s.pages.drilledMissing, notifPut: s.pages.notifPut, notifIns: s.pages.notifIns },
       subs: { latDist: dist(s.subs.lat), drilledDist: dist(s.subs.drilledLat), missing: s.subs.missing, drilledMissing: s.subs.drilledMissing, notifPut: dist(s.subs.notifPut), bcastPut: dist(s.subs.bcastPut), bcastIns: dist(s.subs.bcastIns) },
     })),
@@ -677,7 +963,7 @@ try {
   console.log("\n" + md);
   log(`results: ${base}.md`);
   // null (nothing in scope, e.g. every pair drilled) is not a failure.
-  process.exit(json.verdicts.primary.pass !== false && json.verdicts.drill?.pass !== false ? 0 : 1);
+  process.exit(json.verdicts.primary.pass !== false && json.verdicts.drill?.pass !== false && json.verdicts.monotonic.pass !== false ? 0 : 1);
 } catch (e) {
   log(`ERROR: ${e.stack || e.message}`);
   await finalize(mainState, `error: ${e.message}`);

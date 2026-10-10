@@ -215,7 +215,7 @@ describe("useImpressionPolling — n14 cadence + visibility", () => {
     expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 
-  it("does not poll while the tab is hidden; resumes with one immediate catch-up", async () => {
+  it("does not poll while the tab is hidden; resumes with one jittered catch-up", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     renderHook(() => useImpressionPolling({ eventId: "1", enabled: true }));
     await advance(15_000);
@@ -230,10 +230,14 @@ describe("useImpressionPolling — n14 cadence + visibility", () => {
     await act(async () => {
       setDocumentHidden(false);
     });
-    await advance(0);
+    // The resume fetch shares the scheduler's catch-up jitter
+    // (U(0, 500 ms) = 250 ms at 0.5): many viewers return together.
+    await advance(249);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    await advance(1);
     expect(global.fetch).toHaveBeenCalledTimes(2);
     // Cadence restarts with a fresh random phase (15 s at 0.5).
-    await advance(15_000);
+    await advance(14_750);
     expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 

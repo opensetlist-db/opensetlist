@@ -10,8 +10,27 @@ import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
 } from "@/lib/liveBroadcast";
+import {
+  liveWriterBusyResponse,
+  liveWriterTransaction,
+} from "@/lib/liveWriterTx";
 
 type RouteProps = { params: Promise<{ id: string }> };
+
+/**
+ * The 500 for a failed lookup/write that happened BEFORE anything was
+ * written in this request — unless the database could not be reached
+ * at all (pool / pooler exhausted, transaction never started), which
+ * answers 503 `db_busy` + Retry-After instead: nothing ran, so the
+ * client may safely submit again. Public route: the body carries only
+ * the stable code, never text.
+ */
+function preWriteFailure(err: unknown): NextResponse {
+  return (
+    liveWriterBusyResponse(err, "public") ??
+    NextResponse.json({ ok: false, error: "internal_error" }, { status: 500 })
+  );
+}
 
 /**
  * POST /api/events/[id]/setlist-items
@@ -41,6 +60,8 @@ type RouteProps = { params: Promise<{ id: string }> };
  *                              | "position_already_confirmed" }
  *   → 404 { ok: false, error: "event_not_found" | "song_not_found" }
  *   → 409 { ok: false, error: "position_conflict" }   (after retries)
+ *   → 503 { ok: false, error: "db_busy" }, Retry-After: 2
+ *         (the database could not be reached; nothing was written)
  *
  * Backs the Phase 1C `<AddItemBottomSheet>` — user-submitted setlist
  * rows. The conflict-handling extension (this PR) flips the position
@@ -310,10 +331,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       "[POST /api/events/[id]/setlist-items] event lookup failed",
       err,
     );
-    return NextResponse.json(
-      { ok: false, error: "internal_error" },
-      { status: 500 },
-    );
+    return preWriteFailure(err);
   }
   if (!event) {
     return NextResponse.json(
@@ -352,10 +370,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       "[POST /api/events/[id]/setlist-items] occupant lookup failed",
       err,
     );
-    return NextResponse.json(
-      { ok: false, error: "internal_error" },
-      { status: 500 },
-    );
+    return preWriteFailure(err);
   }
   if (occupant) {
     return NextResponse.json(
@@ -389,10 +404,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         "[POST /api/events/[id]/setlist-items] song lookup failed",
         err,
       );
-      return NextResponse.json(
-        { ok: false, error: "internal_error" },
-        { status: 500 },
-      );
+      return preWriteFailure(err);
     }
     if (!song) {
       return NextResponse.json(
@@ -472,10 +484,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
         "[POST /api/events/[id]/setlist-items] dup lookup failed",
         err,
       );
-      return NextResponse.json(
-        { ok: false, error: "internal_error" },
-        { status: 500 },
-      );
+      return preWriteFailure(err);
     }
     if (dupRow) {
       // Write a SetlistItemConfirm on the existing row + return its
@@ -495,22 +504,21 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       // event cache is expired after commit (below).
       const dupRowId = dupRow.id;
       try {
-        await prisma.$transaction(async (tx) => {
+        await liveWriterTransaction("public-add-item-merge", async (tx) => {
           await lockEvent(tx, eventId);
           await tx.setlistItemConfirm.create({
             data: { setlistItemId: dupRowId },
           });
-          await bumpSetlistRevisionAndBroadcast(tx, eventId);
+          return bumpSetlistRevisionAndBroadcast(tx, eventId);
         });
       } catch (err) {
         console.error(
           "[POST /api/events/[id]/setlist-items] auto-merge confirm write failed",
           err,
         );
-        return NextResponse.json(
-          { ok: false, error: "internal_error" },
-          { status: 500 },
-        );
+        // 503 only when the transaction never started (nothing was
+        // written); any later failure stays a 500.
+        return preWriteFailure(err);
       }
       let merged;
       try {
@@ -607,7 +615,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       // they are advisory for this flag-gated user path (rumoured rows
       // are not position-unique), and the lock's job here is only to
       // serialize the revision with concurrent operator saves.
-      const created = await prisma.$transaction(async (tx) => {
+      const { row: created } = await liveWriterTransaction("public-add-item", async (tx) => {
         await lockEvent(tx, eventId);
         const row = await tx.setlistItem.create({
           data: {
@@ -661,9 +669,9 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
             },
           },
         });
-        await bumpSetlistRevisionAndBroadcast(tx, eventId);
-        return row;
-      });
+        const rev = await bumpSetlistRevisionAndBroadcast(tx, eventId);
+        return { row, rev };
+      }, (r) => r.rev);
 
       const { _count, ...createdRest } = created;
       revalidateEventData(eventId);
@@ -681,7 +689,11 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       lastError = err;
       // Only retry on a position-unique-constraint hit. Anything else
       // (DB down, FK violation from a deleted performer, etc.) is
-      // not a race — fall through to the 500 handling below.
+      // not a race — fall through to the 500 handling below. The
+      // P2002 retry is safe where a generic retry is not: a unique
+      // violation aborts the statement, so that attempt's transaction
+      // definitely rolled back. A busy database is never retried here
+      // (it falls through to the 503 below and the client decides).
       const isPositionRace =
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === "P2002" &&
@@ -724,6 +736,10 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       { status: 409 },
     );
   }
+  // The create transaction never started (pool / pooler exhausted):
+  // nothing was written, 503 + Retry-After.
+  const busy = liveWriterBusyResponse(lastError, "public");
+  if (busy) return busy;
   console.error(
     "[POST /api/events/[id]/setlist-items] unexpected error",
     lastError,

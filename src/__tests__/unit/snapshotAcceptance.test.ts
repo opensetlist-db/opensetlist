@@ -113,6 +113,27 @@ describe("SnapshotAcceptance", () => {
     expect(acc.minRevToSend()).toBe(4);
   });
 
+  it("one watermark across a polling ↔ realtime hand-over never moves backwards", () => {
+    // The live page feeds realtime catch-ups AND disconnected polls
+    // into this one instance: 10 (realtime) → 12 (poll) → 10 (stale
+    // catch-up) → 11 (stale poll) → 12 later read.
+    const acc = new SnapshotAcceptance({ rev: 9, capturedAt: T0 });
+    const g = acc.generation;
+    const applied: number[] = [];
+    const feed = (rev: number, capturedAt: string) => {
+      const v = acc.evaluate(g, { rev, capturedAt });
+      if (v.kind === "evaluated" && v.apply) applied.push(rev);
+      return v;
+    };
+    feed(10, T0);
+    feed(12, T1);
+    expect(feed(10, T2)).toMatchObject({ apply: false, serverGap: true });
+    expect(feed(11, T2)).toMatchObject({ apply: false, serverGap: true });
+    feed(12, T2);
+    expect(applied).toEqual([10, 12, 12]);
+    expect(acc.applied).toEqual({ rev: 12, capturedAt: ms(T2) });
+  });
+
   it("generation scoping: a late response from the previous event/locale is discarded untouched", () => {
     const acc = new SnapshotAcceptance({ rev: 3, capturedAt: T0 });
     const oldGen = acc.generation;

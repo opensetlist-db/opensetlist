@@ -16,6 +16,9 @@ the wiki page `output/task-n12-capacity-experiment`.
 | `viewers.js` | n14 run #2 **500-viewer model** on the R1 live path: cold-cache start, 25 rps periodic poll (`?minRev`) + 10 % SSR, admin cycles with a 500-request notification burst (`?minRev=appliedRev+1`, U(0, 500 ms) jitter, 20 % old-build tabs ×2) after every save, a 500-tap reaction POST/DELETE burst. Per-burst `x-snapshot-source` counts, PASS/FAIL per gate | n14 run #2 |
 | `viewers-check.mjs` | Node, dev DB only: after a `viewers.js` run, lists leftover `n14run2-` reactions (`--delete` removes exactly those) and live rows carrying its note | after `viewers.js` |
 | `pg-connections.mjs` | Node side-car: samples `pg_stat_activity` every 5 s into a CSV | second terminal during runs |
+| `pooler-clients.mjs` | Node side-car, dev only: every 2 s one CSV row with the Supabase metrics endpoint's pooler gauges (needs a service-role key), `pg_stat_activity` backends by state / `application_name`, and a transaction-pooler connect probe that records `EMAXCONN`. Stops on the STOP file | detached, n14 run #2b |
+| `vercel-logs-capture.mjs` | `vercel logs --follow` of the dev alias into one text file, restarted in overlapping segments (the CLI stops after ~5 min). Stops on the STOP file | detached, n14 run #2b |
+| `vercel-logs-summary.mjs` | turns a log capture into markdown: builds per `rev` with distinct instances, build failures / repair reads / coalescing, `EMAXCONN` API vs SSR, admin write timings, instances per minute, Σ per-instance pool size per 5 s. `node --test tests/load/vercel-logs-summary.test.mjs` pins it to the run #2 capture | after a run |
 | `run.sh` | wrapper: creates `results/<UTC date>/`, passes the common env vars | every run |
 
 ## Before the first run
@@ -111,13 +114,19 @@ VU fires the burst itself with async requests (k6 VUs share no state, so
 "right after the save" can only be known there) — it comes from one
 process over multiplexed HTTP/2, not 500 browsers.
 
-Per burst the report has p50/p95/max, errors, the `x-snapshot-source`
-split (build / cache / repair) and the share of R1 requests that got
-`rev ≥ minRev`. **Builds per save** is the build + repair count per burst:
-a header-based **lower bound** (no Vercel log access; background
-revalidation builds and builds whose response went to someone else are
-invisible). Count `[liveSnapshot] build` log lines when logs are
-available.
+Old-build tabs keep their own timing: their first request is always at
+U(0, 500 ms), whatever `JITTER_MS` says, so a jitter experiment moves only
+the R1 clients and two runs stay comparable.
+
+Per burst the report has the request count, p50/p95/max, the error count
+(and %), the `x-snapshot-source` split (build / cache / repair), the share
+of R1 requests that got `rev ≥ minRev`, and the **distinct error bodies**
+(status + first 80 characters, at most 5 per burst; k6 can only carry
+strings from a VU to the summary as check names, so they show up as failed
+`burst-error <id> | …` checks too). The header split is only a rough
+proxy for builds: coalesced waiters share the first request's result
+(header included), so it over-counts. Count builds from the logs with
+`vercel-logs-summary.mjs`.
 
 Gates (PASS/FAIL table at the top of the report; k6 also exits 99 when a
 gate threshold fails): snapshot p95 ≤ 1 s and errors ≤ 0.1 % over **all**
@@ -127,8 +136,9 @@ worst burst p95 ≤ 3 s; admin save+reload p95 ≤ 3 s in the steady
 visible and the event back at `EXPECTED_ROWS`; reaction errors ≤ 0.1 %,
 `ackAt` present and ≥ request start (clock offset estimated in setup from
 `servedAt`, tolerance ±RTT/2); generator achieved ≥ 95 % with 0 dropped.
-The pooler-client row (≤ 140 of 200) is a placeholder for the dashboard
-reading.
+The pooler-client row (≤ 140 of 200, 0 `EMAXCONN`) is filled in by hand
+from `pooler-clients.mjs` and `vercel-logs-summary.mjs` (see the run #2b-1
+recipe below).
 
 Safety: no threshold aborts (a threshold abort would kill the admin VU
 mid-cycle and leave rows behind). The admin VU itself aborts, after
@@ -161,7 +171,14 @@ is an env var / `-e`: `POLL_RPS`, `SSR_RPS`, `STEADY_START`,
 `OLD_REPEATS`, `OLD_REPEAT_MS`, `COLD_START` (0 = off), `REACTIONS`,
 `REACTION_SECONDS`, `REACTION_AT`, `ABORT_ERR_RATE`, `ABORT_P95_MS`,
 `BURST_GATE_P95`, `ACCEPT_ENCODING` (default `gzip, deflate, br`, like a
-browser; a raw snapshot is ~47 KB), `BODY_SAMPLE_RATE`. The smoke used:
+browser; a raw snapshot is ~47 KB), `BODY_SAMPLE_RATE`, and:
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `BURST_GAP_S` | unset | unset: cycle k starts at `ADMIN_FIRST + k·ADMIN_SPACING`. Set: cycle 1 at `ADMIN_FIRST`, every later cycle `BURST_GAP_S` seconds after the previous one **ended** — repeated bursts that land on still-warm instances |
+| `DRAIN_S` | 90 | quiet tail with **no requests** from any scenario, while the test keeps running so the side-car samplers see the pools drain. It starts when the last admin cycle, the steady window (`STEADY_START + STEADY_SECONDS`) and the reaction window are all over — k6 VUs share no state, so the steady streams cannot be stopped early from the admin VU. Size `STEADY_SECONDS` to the cycles if the drain should follow the last burst directly. The report prints the actual cycle starts, the last cycle's end and the drain start. `0` = no drain. No drain after an abort (the run ends at once) |
+
+The smoke used:
 
 ```bash
 tests/load/run.sh viewers.js -e POLL_RPS=1 -e SSR_RPS=0.2 -e STEADY_START=8 \
@@ -169,6 +186,86 @@ tests/load/run.sh viewers.js -e POLL_RPS=1 -e SSR_RPS=0.2 -e STEADY_START=8 \
   -e ADMIN_SPACING=30 -e SAVE_GAP=1 -e BURST_SIZE=5 -e OLD_SHARE=0.4 \
   -e REACTIONS=5 -e REACTION_SECONDS=5 -e REACTION_AT=40 -e BODY_SAMPLE_RATE=1
 ```
+
+## n14 run #2b-1 — 500 cold burst + nearby repeats, with pooler measurement
+
+Same event and env as run #2 above. What is new is the measurement around
+the k6 run: the pooler-client number the Supabase dashboard never showed,
+and the Vercel logs that count real builds per save.
+
+**Side-cars run detached.** A load session outlives a 10-minute shell, and
+detached `bash -c` loops did not start on the Windows load machine, so both
+samplers are started with PowerShell `Start-Process` (the process survives
+the shell that started it) and stop on a STOP file in the results folder
+(a STOP file older than the sampler is ignored). From the repo root, in
+PowerShell:
+
+```powershell
+$out = "tests/load/results/$((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd'))"
+New-Item -ItemType Directory -Force $out | Out-Null
+$env:ENV_DIR = "F:/work/ClaudeCode/opensetlist4"   # only if the cwd has no .env / .env.local
+Start-Process -FilePath node -ArgumentList 'tests/load/pooler-clients.mjs' -WorkingDirectory (Get-Location) `
+  -WindowStyle Hidden -RedirectStandardOutput "$out/pooler-clients.out" -RedirectStandardError "$out/pooler-clients.err"
+Start-Process -FilePath node -ArgumentList 'tests/load/vercel-logs-capture.mjs' -WorkingDirectory (Get-Location) `
+  -WindowStyle Hidden -RedirectStandardOutput "$out/vercel-logs-capture.out" -RedirectStandardError "$out/vercel-logs-capture.err"
+Get-Content "$out/pooler-clients.out" -Tail 3     # a row every 2 s; let it record ~30 s of baseline
+```
+
+`pooler-clients.mjs` writes `<stamp>-pooler-clients.csv`; its header says
+which readings it has. (a) the Supabase metrics endpoint needs the dev
+project's service-role (or `sb_secret_…`) key in `.env.local` as
+`SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`); without it the
+header says "unavailable" and the metric columns stay empty — the endpoint
+exists on dev (HTTP 401 without a key). With a key, every metric name
+matching supavisor / pooler / pgbouncer / client goes to
+`<stamp>-pooler-metrics.txt` and the client/backend connection gauges are
+sampled (`--metrics=a,b` to choose). Verified on dev 2026-10-10: Supavisor
+exports pgbouncer-compatible names; the gate reads
+**`pgbouncer_used_clients`** against `pgbouncer_config_max_client_connections`
+(= 200 on Micro) — `pgbouncer_pools_client_active_connections` only counts
+clients linked to a backend and misses idle-but-open Prisma clients.
+(b) backends by state and
+`application_name` (`Supavisor` rows are the pooler's server side). (c)
+`probe_result`: a fresh connection through the transaction pooler every
+2 s; `EMAXCONN` there means the 200-client cap was hit at that moment.
+Options: `--interval=2`, `--max-minutes=90` (safety stop), `--no-probe`,
+`--seconds=N` (bounded smoke). `vercel-logs-capture.mjs` writes
+`<stamp>-vercel-logs.txt` (`--segment=280 --overlap=15`, `--max-minutes=90`);
+it needs a logged-in Vercel CLI (`npx vercel whoami`).
+
+**k6** (Git Bash, env as in the run #2 block above):
+
+```bash
+tests/load/run.sh viewers.js -e BURST_SIZE=500 -e JITTER_MS=500 -e BURST_GAP_S=8 \
+  -e ADMIN_CYCLES=4 -e DRAIN_S=90
+```
+
+The cold-start burst (b00), then 4 burst cycles + 2 quiet cycles (default
+`QUIET_CYCLES`), each starting 8 s after the previous one ended, so the
+bursts land on instances whose pools are still open. With the default
+600 s steady window the 90 s drain begins at ~615 s; for a drain right
+after the last burst add `-e STEADY_SECONDS=280 -e REACTION_AT=150` (a
+cycle takes ~30–45 s at `SAVE_GAP=4`; the report's timeline line shows
+where the last cycle really ended — adjust next time). The 2 % / 5 s
+per-burst abort gate still applies; after an abort the run ends at once,
+so wait ~90 s before the STOP file to let the samplers see the drain.
+
+**Afterwards:**
+
+```powershell
+New-Item -ItemType File "$out/run2b.STOP" | Out-Null   # both side-cars exit within a few seconds
+node tests/load/vercel-logs-summary.mjs (Get-ChildItem "$out/*-vercel-logs.txt" | Select-Object -Last 1).FullName `
+  --add-hours=7 --out="$out/vercel-logs-summary.md"   # +7: PDT log clock → UTC, to line up with the k6 report
+node tests/load/viewers-check.mjs                      # 0 n14run2 reactions, 0 live rows with the note, 23 rows
+node --no-warnings tests/load/browsers/restore.mjs --compact --yes   # event 111 positions back to 1..23
+```
+
+Reading it: the pooler row of the k6 gate table = metrics peak (if
+available) and the probe's `EMAXCONN` count from the CSV, plus the
+"Prisma pool totals per 5 s" peak from the log summary (Σ of each
+instance's last reported pool size, held for `--carry=5` s — the pool's
+idle timeout); builds per save = the log summary's builds per `rev`, not
+the k6 header split.
 
 ## Reading the result
 
