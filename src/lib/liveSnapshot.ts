@@ -7,7 +7,11 @@ import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { cachedQuery, eventTag, revalidateEventData } from "@/lib/dataCache";
 import { revToNumber } from "@/lib/liveBroadcast";
-import { liveWarmEnabled, warmLookup } from "@/lib/liveWarm";
+import {
+  __resetLiveWarmStateForTests,
+  liveWarmEnabled,
+  warmLookup,
+} from "@/lib/liveWarm";
 import type { ServerSnapshotVerify } from "@/lib/snapshotVerify";
 import { INSTANCE_ID } from "@/lib/instanceId";
 import { describeError, isDbTimeout } from "@/lib/dbErrors";
@@ -659,6 +663,7 @@ export function __resetLiveSnapshotStateForTests(): void {
   inFlightRepair.clear();
   inFlightRevRead.clear();
   revMemo.clear();
+  __resetLiveWarmStateForTests();
 }
 
 /**

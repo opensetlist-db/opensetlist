@@ -31,7 +31,10 @@ import {
   scheduleWarm,
   warmKey,
   warmLookup,
+  __resetLiveWarmStateForTests,
+  __warmMissMemoSizeForTests,
   WARM_MAX_BYTES,
+  WARM_MISS_MEMO_MAX_KEYS,
   WARM_TTL_SECONDS,
   type WarmEnvelope,
 } from "@/lib/liveWarm";
@@ -74,6 +77,7 @@ const lines = () => vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  __resetLiveWarmStateForTests();
   vi.mocked(warmEntryCache).mockReset().mockImplementation(actualDataCache.warmEntryCache);
   delete process.env.LIVE_WARM_ENTRIES;
   delete process.env.LIVE_WARM_CONCURRENCY;
@@ -330,6 +334,7 @@ describe("warmLookup", () => {
       tags: [WARM_PUBLIC_DATA_TAG],
     });
     expect(await warmLookup(EVENT, "ja", 7)).toEqual({ result: "stale" });
+    __resetLiveWarmStateForTests();
     await warmEntryCache().set(warmKey(EVENT, "ja", 7), { ...envelope(7), capturedAt: "" }, {
       tags: [WARM_PUBLIC_DATA_TAG],
     });
@@ -356,9 +361,97 @@ describe("warmLookup", () => {
       },
     } as unknown as RuntimeCache);
     expect(await warmLookup(EVENT, "ja", 7)).toEqual({ result: "error" });
+    __resetLiveWarmStateForTests();
     vi.mocked(warmEntryCache).mockImplementationOnce(() => {
       throw new Error("no cache");
     });
     expect(await warmLookup(EVENT, "ja", 7)).toEqual({ result: "error" });
+  });
+});
+
+describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
+  // A cache whose `get` the test resolves by hand, counting calls.
+  function manualCache() {
+    const pending: Array<(v: unknown) => void> = [];
+    const get = vi.fn(() => new Promise((r) => pending.push(r)));
+    vi.mocked(warmEntryCache).mockReturnValue({ get } as unknown as RuntimeCache);
+    return { get, pending };
+  }
+
+  it("concurrent lookups for one key share a single get and its result", async () => {
+    const { get, pending } = manualCache();
+    const a = warmLookup(EVENT, "ja", 7);
+    const b = warmLookup(EVENT, "ja", 7);
+    const c = warmLookup(EVENT, "ko", 7); // another key: its own get
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(2);
+    pending[0](envelope(7));
+    pending[1](null);
+    const [ra, rb, rc] = await Promise.all([a, b, c]);
+    expect(ra.result).toBe("hit");
+    expect(rb.result).toBe("hit");
+    expect(rc.result).toBe("miss");
+    expect(lines().filter((l) => l.startsWith("[setlist] warm-lookup "))).toHaveLength(3);
+  });
+
+  it("a miss suppresses the get for 1 s (memo-miss), then asks again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { get } = manualCache();
+    get.mockResolvedValue(null);
+    expect((await warmLookup(EVENT, "ja", 7)).result).toBe("miss");
+    vi.setSystemTime(10_999);
+    expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(lines().at(-1)).toMatch(
+      /^\[setlist\] warm-lookup event=111 locale=ja minRev=7 result=memo-miss ms=\d+ instance=[0-9a-f]{8}$/,
+    );
+    vi.setSystemTime(11_000);
+    expect((await warmLookup(EVENT, "ja", 7)).result).toBe("miss");
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["invalid", "error", "timeout"] as const)("a %s result is memoised like a miss", async (kind) => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const { get } = manualCache();
+    if (kind === "invalid") get.mockResolvedValue({ junk: true });
+    if (kind === "error") get.mockRejectedValue(new Error("network"));
+    const first = warmLookup(EVENT, "ja", 7);
+    if (kind === "timeout") await vi.advanceTimersByTimeAsync(300);
+    expect((await first).result).toBe(kind);
+    expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hit is not memoised: every lookup reads the cache", async () => {
+    const { get } = manualCache();
+    get.mockResolvedValue(envelope(7));
+    for (let i = 0; i < 3; i++) {
+      expect((await warmLookup(EVENT, "ja", 7)).result).toBe("hit");
+    }
+    expect(get).toHaveBeenCalledTimes(3);
+  });
+
+  it("a warm job storing the key on this instance clears its memoised miss", async () => {
+    expect((await warmLookup(EVENT, "ko", 5)).result).toBe("miss");
+    expect((await warmLookup(EVENT, "ko", 5)).result).toBe("memo-miss");
+    vi.mocked(buildEventSnapshot).mockImplementation(async () => snap(5));
+    await runWarmJob(EVENT, BigInt(5));
+    expect((await warmLookup(EVENT, "ko", 5)).result).toBe("hit");
+  });
+
+  it("the memo holds at most WARM_MISS_MEMO_MAX_KEYS keys, dropping the oldest", async () => {
+    const { get } = manualCache();
+    get.mockResolvedValue(null);
+    for (let r = 1; r <= WARM_MISS_MEMO_MAX_KEYS + 50; r++) {
+      await warmLookup(EVENT, "ja", r);
+    }
+    expect(__warmMissMemoSizeForTests()).toBe(WARM_MISS_MEMO_MAX_KEYS);
+    // The oldest forged revision was evicted (asks again); the newest is
+    // still memoised.
+    get.mockClear();
+    expect((await warmLookup(EVENT, "ja", 1)).result).toBe("miss");
+    expect((await warmLookup(EVENT, "ja", WARM_MISS_MEMO_MAX_KEYS + 50)).result).toBe("memo-miss");
+    expect(get).toHaveBeenCalledTimes(1);
   });
 });

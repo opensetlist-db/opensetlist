@@ -359,6 +359,10 @@ async function warmOneLocale(
     ok = false;
     console.error(`[liveWarm] set-error ${head} err=${describeError(err)}`);
   }
+  // A reader on this instance may have memoised a miss for this key
+  // while the job was building; the entry exists now (or at least was
+  // just offered to the cache), so let the next lookup ask again.
+  missMemo.delete(lookupKey(eventId, locale, atLeastRev));
   console.log(
     `[liveWarm] set ${head} rev=${envelope.rev} bytes=${envelope.bytes} ` +
       `buildMs=${buildMs} setMs=${Date.now() - setStarted} ok=${ok} ` +
@@ -372,18 +376,84 @@ async function warmOneLocale(
 
 export type WarmLookupResult =
   | { result: "hit"; snapshot: EventSnapshot }
-  | { result: "miss" | "stale" | "invalid" | "error" | "timeout" };
+  | { result: "miss" | "stale" | "invalid" | "error" | "timeout" | "memo-miss" };
+
+// ---------------------------------------------------------------------
+// Per-instance bound on lookup VOLUME
+//
+// `/api/setlist` is public and the broadcast channel is public, so a
+// `?hint=1&minRev=<n>` is untrusted: anyone can send any number of
+// hinted requests with any revision. The 300 ms race bounds a lookup's
+// LATENCY, not how many Runtime Cache reads a flood of hinted requests
+// causes. Like the repair check's revision read (`revMemo` in
+// `liveSnapshot.ts`), the lookup must therefore cost at most one cache
+// read per key per instance per `WARM_MISS_MEMO_MS`:
+//   - concurrent lookups for the same (event, locale, minRev) share one
+//     in-flight `get` (a notification burst lands many requests for the
+//     same key on one instance at once);
+//   - a non-hit outcome is remembered for `WARM_MISS_MEMO_MS`; lookups
+//     for that key inside the window answer `memo-miss` without a `get`.
+// A hit is NOT remembered: it is read from the Runtime Cache each time.
+// An honest burst already costs one `get` per key per instance thanks to
+// the coalescing, and not keeping decoded snapshots avoids per-instance
+// memory and a second invalidation path next to the tag expiry.
+//
+// Cost of the negative memo: a notification fetch that reaches an
+// instance BEFORE the writer's job stored the entry memoises the miss,
+// so later fetches for the same revision on that instance skip the
+// lookup for up to 1 s (they take the normal path — slower, never
+// wrong). A job running on THIS instance clears the memo for the keys
+// it stores. Watch the warm hit rate per save for this effect.
+//
+// The memo map is capped (oldest dropped first) so a flood of distinct
+// forged revisions cannot grow memory without bound; the in-flight map
+// is bounded by the number of concurrently pending lookups.
+// ---------------------------------------------------------------------
+
+export const WARM_MISS_MEMO_MS = 1_000;
+export const WARM_MISS_MEMO_MAX_KEYS = 256;
+
+const inFlightLookups = new Map<string, Promise<WarmLookupResult>>();
+// Insertion-ordered: the first key is the oldest memo.
+const missMemo = new Map<string, number>();
+
+function lookupKey(eventId: bigint, locale: Locale, minRev: bigint | number): string {
+  return `${eventId}:${locale}:${minRev}`;
+}
+
+function rememberMiss(key: string, at: number): void {
+  missMemo.delete(key);
+  missMemo.set(key, at);
+  while (missMemo.size > WARM_MISS_MEMO_MAX_KEYS) {
+    const oldest = missMemo.keys().next().value;
+    if (oldest === undefined) break;
+    missMemo.delete(oldest);
+  }
+}
+
+/** Test-only: forget coalescing and negative-memo state. */
+export function __resetLiveWarmStateForTests(): void {
+  inFlightLookups.clear();
+  missMemo.clear();
+}
+
+/** Test-only: how many keys the negative memo currently holds. */
+export function __warmMissMemoSizeForTests(): number {
+  return missMemo.size;
+}
 
 /**
  * Look up the warm entry for exactly `(eventId, locale, minRev)`. Bounded
- * at `WARM_LOOKUP_TIMEOUT_MS`; every outcome but `hit` means "take the
- * normal path". Never rejects. One log line per lookup:
+ * at `WARM_LOOKUP_TIMEOUT_MS` per `get`, and at one `get` per key per
+ * instance per `WARM_MISS_MEMO_MS` (see above); every outcome but `hit`
+ * means "take the normal path". Never rejects. One log line per call
+ * (coalesced waiters log the shared result):
  *
- *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout> ms=<n> instance=<id>
+ *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss> ms=<n> instance=<id>
  *
- * The bound is a `Promise.race` on our side. That is acceptable here
- * (unlike the revision read, which bounds itself in the database): a
- * lookup that loses the race holds no pool connection and no server
+ * The time bound is a `Promise.race` on our side. That is acceptable
+ * here (unlike the revision read, which bounds itself in the database):
+ * a lookup that loses the race holds no pool connection and no server
  * work — the cache GET merely finishes later and its value is dropped.
  */
 export async function warmLookup(
@@ -392,7 +462,28 @@ export async function warmLookup(
   minRev: number,
 ): Promise<WarmLookupResult> {
   const started = Date.now();
-  const out = await lookupBounded(eventId, locale, minRev);
+  const key = lookupKey(eventId, locale, minRev);
+  let out: WarmLookupResult;
+  const memoAt = missMemo.get(key);
+  if (memoAt !== undefined && started - memoAt < WARM_MISS_MEMO_MS) {
+    out = { result: "memo-miss" };
+  } else {
+    let pending = inFlightLookups.get(key);
+    if (!pending) {
+      const entry: Promise<WarmLookupResult> = lookupBounded(eventId, locale, minRev)
+        .then((r) => {
+          if (r.result === "hit") missMemo.delete(key);
+          else rememberMiss(key, Date.now());
+          return r;
+        })
+        .finally(() => {
+          if (inFlightLookups.get(key) === entry) inFlightLookups.delete(key);
+        });
+      inFlightLookups.set(key, entry);
+      pending = entry;
+    }
+    out = await pending;
+  }
   console.log(
     `[setlist] warm-lookup event=${eventId} locale=${locale} minRev=${minRev} ` +
       `result=${out.result} ms=${Date.now() - started} instance=${INSTANCE_ID}`,
