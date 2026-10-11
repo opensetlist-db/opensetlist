@@ -266,8 +266,12 @@ async function subsProgress() {
 // (R2 build: a `rev` broadcast ≥ rev, dropped or not, counts as "it
 // reached the page"; R1 build: the postgres_changes `ty` event for row
 // `id`).
+// A broadcast the proxy DROPPED (marker "x") was recorded on the way
+// through the proxy but never reached Chromium, so it is not an arrival;
+// counting it would make a silent-loss / lost-final run report a
+// delivery (and a timestamp) the page never saw.
 const pageNoted = (rec, { rev, id, ty }) =>
-  rec.bcasts.some(([, r]) => r !== null && rev != null && r >= rev) || rec.notes.some(([, t, i]) => t === ty && i === id);
+  rec.bcasts.some(([, r, w]) => w !== "x" && r !== null && rev != null && r >= rev) || rec.notes.some(([, t, i]) => t === ty && i === id);
 
 async function stopWorkers() {
   const results = await Promise.all(workers.map((w) => Promise.race([
@@ -339,16 +343,30 @@ async function openGuest() {
 // The spam loop: SPAM_RATE messages per second for SPAM_SECS, on a fixed
 // schedule from its start (a slow ack delays one message, not the rest).
 // `latestRev()` = the newest real save rev the admin driver has seen.
+// A message whose slot has already passed by a whole interval (a slow ack
+// held the loop) is SKIPPED, not sent late: catching up would send a
+// back-to-back burst above the configured rate, and the drill's claim is
+// "N messages per second", not "N × SECS messages". Skipped slots are
+// reported so the achieved rate is visible.
 async function runSpam(g, latestRev) {
   const total = Math.round(SPAM_RATE * SPAM_SECS);
+  const interval = 1000 / SPAM_RATE;
   const start = Date.now();
+  let sent = 0;
+  let skipped = 0;
   for (let j = 0; j < total; j++) {
-    const due = start + (j * 1000) / SPAM_RATE;
-    if (Date.now() < due) await sleep(due - Date.now());
+    const due = start + j * interval;
+    const now = Date.now();
+    if (now < due) await sleep(due - now);
+    else if (now > due + interval) {
+      skipped++;
+      continue;
+    }
     const rev = SPAM_REV === "max" ? Number.MAX_SAFE_INTEGER : SPAM_REV === "stale" ? latestRev() : latestRev() + 1;
     await g.send(rev, `spam ${j + 1}/${total}`);
+    sent++;
   }
-  return { sent: total, ms: Date.now() - start };
+  return { sent, skipped, planned: total, ms: Date.now() - start };
 }
 
 // ─── measurement helpers ───
@@ -397,7 +415,7 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
       out.pages.hint.notif++;
       bumpK(out.pages.hint.verify, verifyKindOf(f[5]));
     }
-    const bpp = firstAfter(r.bcasts || [], ([t, rev]) => rev === edit.put.rev && t >= tPut - 50);
+    const bpp = firstAfter(r.bcasts || [], ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bpp) out.pages.bcastPut.push(bpp[0] - tPut);
   }
   for (const r of subRecs) {
@@ -442,9 +460,9 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
       if (!drilled) bucket.latFromSuccess.push(a[0] - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
-    const bp = firstAfter(r.bcasts, ([t, rev]) => rev === edit.put.rev && t >= tPut - 50);
+    const bp = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bp) bucket.bcastPut.push(bp[0] - tPut);
-    const bi = firstAfter(r.bcasts, ([t, rev]) => rev === edit.ins.rev && t >= tIns - 50);
+    const bi = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.ins.rev && t >= tIns - 50);
     if (bi) bucket.bcastIns.push(bi[0] - tIns);
   }
   return out;
@@ -848,7 +866,7 @@ async function main() {
   // above is already closed, so this only delays the clean-up.
   if (spamP) {
     const s = await spamP;
-    drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} messages in ${Math.round(s.ms / 1000)} s`, at: iso(Date.now()) });
+    drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} of ${s.planned} messages in ${Math.round(s.ms / 1000)} s${s.skipped ? ` (${s.skipped} slots skipped after slow acks)` : ""}`, at: iso(Date.now()) });
   }
   return { runStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
 }
@@ -1083,10 +1101,13 @@ function report(state, fin) {
     const secs = (to - from) / 1000;
     const per = subRecs.map((r) => {
       const inWin = (r.reqs || []).filter((q) => q[0] >= from && q[0] <= to);
-      // The cooldown binds the non-generic hint-driven requests
-      // (notification fetches and rechecks); a periodic tick or a retry
-      // may legitimately carry a ticket inside the window.
-      const bound = inWin.filter((q) => !q[2] && (q[1] === "notification" || q[1] === "recheck")).map((q) => q[0]).sort((a, b) => a - b);
+      // The cooldown binds EVERY request that carries a hint ticket —
+      // notification fetches, rechecks, and also a retry or a generic
+      // maintenance request the ticket rides along on (the scheduler
+      // holds any ticket-carrying dispatch to the ticket cooldown edge).
+      // Filtering by reason would let a regression on the retry/generic
+      // path pass the gate.
+      const bound = inWin.filter((q) => q[3] != null).map((q) => q[0]).sort((a, b) => a - b);
       let minGap = null;
       let tooClose = 0;
       for (let i = 1; i < bound.length; i++) {
