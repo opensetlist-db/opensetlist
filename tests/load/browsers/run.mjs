@@ -64,7 +64,7 @@ import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSo
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
-import { startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+import { startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW } from "./hostmon.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -219,6 +219,13 @@ const mainLag = startLagMonitor();
 const heartbeats = {}; // worker idx → [[recvT, sendT, lagMaxSinceLast], …]
 const workerStarted = {}; // worker idx → spawn time
 let workerMeta = []; // per worker: { worker, lag, deadlineLate, timedOut }
+// Host telemetry, 1 s: load average, host CPU busy (all cores), this
+// process's CPU (all its threads, incl. the SDK workers), RSS, free
+// memory, thread count. Summarised per phase in the report, raw in the
+// JSON — the context for a lag spike (was the HOST busy, or only us?).
+// Chromium runs in separate processes, so its CPU shows in the host
+// figure, not in the process figure.
+const hostMon = startHostSampler({ threads: () => 1 + workers.length });
 
 // Short-lived DB connection for one check (session pooler; holding one
 // open for the whole run would pin a pooler client for minutes).
@@ -672,6 +679,7 @@ async function main() {
     allPgReadySec: WAIT_PG_READY && pgReadyAt ? (pgReadyAt - popStart) / 1000 : null,
   };
   log(`population: ${JSON.stringify(popSummary)}; settling ${SETTLE_MS / 1000}s`);
+  const settleStart = Date.now();
   // The guest joins during the settle time, so its join does not shift
   // the edit schedule; a guest that cannot join makes the drill
   // meaningless, so the run stops (after the usual clean-up) instead of
@@ -929,7 +937,7 @@ async function main() {
     const s = await spamP;
     drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} of ${s.planned} messages in ${Math.round(s.ms / 1000)} s${s.skipped ? ` (${s.skipped} slots skipped after slow acks)` : ""}`, at: iso(Date.now()) });
   }
-  return { runStart, popStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
+  return { runStart, popStart, settleStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
 }
 
 async function finalize(state, aborted) {
@@ -991,6 +999,38 @@ function report(state, fin) {
   const mainSummary = mainLag.recorder.summary();
   const lagThreads = [{ thread: "main", summary: mainSummary }, ...workerMeta.map((m) => ({ thread: `worker ${m.worker}`, summary: m.lag }))];
   const valid = validity({ lags: lagThreads, heartbeats, from: vFrom, to: vTo, workerStarted });
+  // ─── host telemetry per phase ───
+  // join = population start → all joined (+ guest), settle = the quiet
+  // time before the first edit, edits = first edit → last edit settled,
+  // drill = the drilled edit's window (its first drill action or save →
+  // its timeout, clipped to the edit window; the spam's send window).
+  const phases = [
+    { name: "join", from: state.popStart, to: state.settleStart },
+    { name: "settle", from: state.settleStart, to: state.editsStart },
+    { name: "edits", from: state.editsStart, to: state.editsEnd },
+  ];
+  if (DRILL) {
+    let from = null;
+    let to = null;
+    if (DRILL === "spam" && guest?.sends.length) {
+      from = guest.sends[0][0];
+      to = guest.sends[guest.sends.length - 1][0] + 3000;
+    } else if (DRILL === "ws-blocked") {
+      from = state.editsStart;
+      to = state.editsEnd;
+    } else {
+      const de = edits.find((e) => e.k === DRILL_EDIT);
+      const ts = drillEvents.map((d) => d.atMs ?? Date.parse(d.at)).filter(Number.isFinite);
+      if (de) ts.push(de.ins?.startedAt ?? de.put.startedAt);
+      if (ts.length) {
+        from = Math.min(...ts);
+        to = Math.min(state.editsEnd, Math.max(...ts, de ? de.put.startedAt + TIMEOUT_MS : 0));
+      }
+    }
+    if (from != null) phases.push({ name: `drill ${DRILL}`, from, to });
+  }
+  const hostPhases = summarizeHost(hostMon.samples, phases.filter((p) => p.from != null && p.to != null));
+
   const threadRows = lagThreads.map(({ thread, summary }) => {
     const w = thread === "main" ? null : Number(thread.split(" ")[1]);
     const meta = w == null ? null : workerMeta.find((m) => m.worker === w);
@@ -1462,6 +1502,12 @@ function report(state, fin) {
   lines.push("");
   lines.push(`Verdict: ${valid.invalid ? `**INVALID** (${valid.reasons.length} reason(s))` : "valid"}.`);
   lines.push("");
+  lines.push(`Host (1 s samples; ${hostMon.ncpu} logical cores, ${hostMon.totalMemMB} MB): host CPU = busy share of all cores; process CPU = this process (main + SDK workers) as a share of all cores; Chromium is in the host figure only. load1 is always 0 on Windows.`);
+  lines.push("");
+  lines.push("| phase | s | host CPU p50 / max % | process CPU p50 / max % | RSS max MB | free mem min MB | load1 max | threads |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const p of hostPhases) lines.push(`| ${p.name} | ${((p.to - p.from) / 1000).toFixed(1)} | ${ms(p.hostCpuP50)} / ${ms(p.hostCpuMax)} | ${ms(p.procCpuP50)} / ${ms(p.procCpuMax)} | ${ms(p.rssMaxMB)} | ${ms(p.freeMemMinMB)} | ${ms(p.load1Max)} | ${p.threadsMax} |`);
+  lines.push("");
   lines.push("## Population");
   lines.push("");
   const pagesPgN = pageRecs.filter((r) => r.pgReadyAt.length).length;
@@ -1601,6 +1647,11 @@ function report(state, fin) {
       threads: threadRows,
       lag: { main: mainSummary, workers: workerMeta.map((m) => ({ worker: m.worker, lag: m.lag, timedOut: m.timedOut })) },
       heartbeats, deadlineLate: Object.fromEntries(workerMeta.map((m) => [m.worker, m.deadlineLate])),
+    },
+    host: {
+      ncpu: hostMon.ncpu, totalMemMB: hostMon.totalMemMB, platform: process.platform,
+      phases: hostPhases.map((p) => ({ ...p, fromIso: iso(p.from), toIso: iso(p.to) })),
+      row: HOST_SAMPLE_ROW, samples: hostMon.samples,
     }, saveFailures, clean, verify, doubleSave,
     guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
     hints: { sdk: hintTotals, pages: pageHint }, poison, spam, ambiguity,

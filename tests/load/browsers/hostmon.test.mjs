@@ -5,7 +5,24 @@
 // themselves are timers and are exercised by every smoke run.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createLagRecorder, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+import { createLagRecorder, lagOver, validity, summarizeHost, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+
+test("summarizeHost: per-phase CPU / memory figures", () => {
+  // [t, load1, hostCpuPct, procCpuPct, rssMB, freeMemMB, threads]
+  const samples = [
+    [1_000, 0, 10, 2, 300, 8_000, 1],
+    [2_000, 0, 30, 4, 320, 7_900, 5],
+    [3_000, 0, 90, 40, 400, 7_000, 5],
+  ];
+  const [a, b] = summarizeHost(samples, [{ name: "join", from: 0, to: 2_000 }, { name: "edits", from: 2_500, to: 4_000 }]);
+  assert.equal(a.n, 2);
+  assert.equal(a.hostCpuMax, 30);
+  assert.equal(a.procCpuP50, 2);
+  assert.equal(a.rssMaxMB, 320);
+  assert.equal(a.freeMemMinMB, 7_900);
+  assert.equal(a.threadsMax, 5);
+  assert.equal(b.hostCpuP50, 90);
+});
 
 test("lag recorder: per-bucket percentiles, run max and spikes", () => {
   const r = createLagRecorder({ bucketMs: 10_000 });

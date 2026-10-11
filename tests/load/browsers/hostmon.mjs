@@ -14,11 +14,13 @@
 //
 // So every thread that takes timestamps (the main thread: pages, admin
 // driver; each SDK worker) runs an event-loop lag monitor, the main
-// thread can sample the host, and run.mjs turns a stall into the verdict
+// thread samples the host, and run.mjs turns a stall into the verdict
 // INVALID (not FAIL) — see `validity()` below.
 //
 // No dependencies beyond node:os / node:child_process, so the worker can
 // import it cheaply and `hostmon.test.mjs` can pin the pure parts.
+
+import os from "node:os";
 
 // Lag monitor tick and bucket width. 100 ms is fine-grained enough to
 // see a 1 s stall as ~10 missing ticks folded into one large sample, and
@@ -178,3 +180,76 @@ export function validity({ lags, heartbeats, from, to, workerStarted = {} }) {
   reasons.sort((a, b) => a.at - b.at);
   return { invalid: reasons.length > 0, reasons };
 }
+// ─── host telemetry (main thread) ───
+// One sample per second: [t, load1, hostCpuPct, procCpuPct, rssMB,
+// freeMemMB, threads]. hostCpuPct = busy share of all cores since the
+// previous sample (from os.cpus() tick counters — the only host-wide CPU
+// figure on Windows, where os.loadavg() is always [0, 0, 0]); procCpuPct
+// = this process's user+system CPU (all its threads) over the same wall
+// time, as a share of ALL cores, so 100 % = every core busy with us.
+export const HOST_SAMPLE_ROW = ["t", "load1", "hostCpuPct", "procCpuPct", "rssMB", "freeMemMB", "threads"];
+
+function cpuTimes() {
+  let idle = 0;
+  let total = 0;
+  for (const c of os.cpus()) {
+    for (const v of Object.values(c.times)) total += v;
+    idle += c.times.idle;
+  }
+  return { idle, total };
+}
+
+export function startHostSampler({ intervalMs = 1000, threads = () => 1 } = {}) {
+  const samples = [];
+  const ncpu = os.cpus().length || 1;
+  let prevCpu = cpuTimes();
+  let prevProc = process.cpuUsage();
+  let prevWall = performance.now();
+  const timer = setInterval(() => {
+    const cpu = cpuTimes();
+    const proc = process.cpuUsage();
+    const wall = performance.now();
+    const dt = cpu.total - prevCpu.total;
+    const hostPct = dt > 0 ? Math.round((1 - (cpu.idle - prevCpu.idle) / dt) * 1000) / 10 : null;
+    const procUs = proc.user - prevProc.user + (proc.system - prevProc.system);
+    const wallUs = (wall - prevWall) * 1000;
+    const procPct = wallUs > 0 ? Math.round((procUs / (wallUs * ncpu)) * 1000) / 10 : null;
+    prevCpu = cpu;
+    prevProc = proc;
+    prevWall = wall;
+    samples.push([
+      Date.now(),
+      Math.round(os.loadavg()[0] * 100) / 100,
+      hostPct,
+      procPct,
+      Math.round(process.memoryUsage().rss / 1048576),
+      Math.round(os.freemem() / 1048576),
+      threads(),
+    ]);
+  }, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  return { samples, stop: () => clearInterval(timer), ncpu, totalMemMB: Math.round(os.totalmem() / 1048576) };
+}
+
+// Per-phase summary of the host samples: phases = [{ name, from, to }].
+export function summarizeHost(samples, phases) {
+  const col = (rows, i) => rows.map((r) => r[i]).filter((v) => v != null).sort((a, b) => a - b);
+  return phases.map(({ name, from, to }) => {
+    const rows = samples.filter(([t]) => t >= from && t <= to);
+    const host = col(rows, 2);
+    const proc = col(rows, 3);
+    const rss = col(rows, 4);
+    const free = col(rows, 5);
+    const load = col(rows, 1);
+    return {
+      name, from, to, n: rows.length,
+      hostCpuP50: pct(host, 0.5), hostCpuMax: host.length ? host[host.length - 1] : null,
+      procCpuP50: pct(proc, 0.5), procCpuMax: proc.length ? proc[proc.length - 1] : null,
+      rssMaxMB: rss.length ? rss[rss.length - 1] : null,
+      freeMemMinMB: free.length ? free[0] : null,
+      load1Max: load.length ? load[load.length - 1] : null,
+      threadsMax: rows.reduce((a, r) => Math.max(a, r[6] ?? 0), 0),
+    };
+  });
+}
+
