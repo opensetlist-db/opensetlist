@@ -1,9 +1,12 @@
-// n14 run #2 — real browsers + SDK subscribers on the live event page
-// (dev only). See README.md in this folder for the full-scale commands.
+// n14 — real browsers + SDK subscribers on the live event page (dev
+// only). See README.md in this folder for the full-scale commands.
 //
 // Population: `--pages` headless Chromium pages (ja/ko/en 70/20/10) on
-// the event page + `--subs` supabase-js clients that behave like the R1
-// page (subs-worker.mjs). Edits: an admin driver inserts a row after
+// the event page — whatever build the preview serves, R1 or R2 — + `--subs`
+// supabase-js clients that behave like the R2 page (subs-worker.mjs:
+// broadcast-driven, the page's own acceptance / scheduler / verify
+// parser). Pages and SDK clients are reported separately per save.
+// Edits: an admin driver inserts a row after
 // the 2nd row and fills in a never-used "marker" song, `--edits` times,
 // `--pause` seconds apart (admin.mjs). Measurement: PUT start → marker
 // link in each page's DOM, and PUT start → each SDK client applying a
@@ -20,8 +23,8 @@
 // monotonicity() below). Any decrease is a failure.
 //
 // Drills (one per run): `--drill=silent-loss | ws-blocked | reconnect |
-// double-save | lost-final | poison | spam`, see the README and the
-// per-drill comments below. `poison` and `spam` are the two guest-
+// double-save | lost-final | poison | spam | verify-ambiguity`, see the
+// README and the per-drill comments below. `poison` and `spam` are the two guest-
 // broadcast drills: an anonymous supabase-js client (anon key, like any
 // visitor) joins the public `event:<id>` channel and sends forged `rev`
 // broadcasts in the exact shape the writer sends, so the clients cannot
@@ -41,6 +44,8 @@ import { createClient } from "@supabase/supabase-js";
 import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient } from "../realtime/lib.mjs";
 import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSongs, cleanup, findUnacknowledgedInsert } from "./admin.mjs";
 import { launchPages } from "./pages.mjs";
+import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
+import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +66,10 @@ const AFTER_ROW = int("after-row", 2);
 const TIMEOUT_MS = int("timeout", 30) * 1000;
 const SETTLE_MS = int("settle", 10) * 1000;
 const JOIN_TIMEOUT_MS = int("join-timeout", 120) * 1000;
-const WAIT_PG_READY = args["wait-pg-ready"] !== "false";
+// Off by default: an R2 page / SDK client registers no postgres_changes,
+// so there is nothing to wait for. `--wait-pg-ready=true` only makes
+// sense with an R1 page build (the SDK clients never register).
+const WAIT_PG_READY = args["wait-pg-ready"] === "true" || args["wait-pg-ready"] === true;
 const PG_READY_TIMEOUT_MS = int("pg-ready-timeout", 180) * 1000;
 const SUB_WORKERS = args["sub-workers"] ? int("sub-workers", 1) : Math.max(1, Math.min(os.cpus().length - 2, Math.ceil(SUBS / 120)));
 const SUB_BATCH = int("sub-batch", 50); // joins per second across all workers
@@ -70,7 +78,7 @@ const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position 
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
-if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam"].includes(DRILL)) {
+if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam", "verify-ambiguity"].includes(DRILL)) {
   console.error(`unknown --drill=${args.drill}`);
   process.exit(2);
 }
@@ -107,10 +115,11 @@ const DRILL_EDIT =
     : int("drill-edit", DRILL === "silent-loss" ? EDITS : GUEST_DRILL ? 1 : Math.max(1, Math.ceil(EDITS / 2)));
 // Guest-broadcast drills (see above).
 const POISON_REV = args["poison-rev"] === undefined ? Number.MAX_SAFE_INTEGER : Number(args["poison-rev"]);
-// Long enough for the forged hint's jittered notification fetch (≤ 0.5 s),
-// its recheck (+1–1.5 s) and the recheck's response, so the first honest
-// save meets a client that has already finished with the forgery.
-const POISON_LEAD_MS = int("poison-lead", 3000);
+// Long enough for the forged hint's jittered notification fetch (≤ 0.5 s
+// + response), its recheck (settle + max(1 s, cooldown) + U(0, 0.5 s))
+// and the recheck's response, so the first honest save meets a client
+// that has already finished with the forgery.
+const POISON_LEAD_MS = int("poison-lead", 4000);
 const SPAM_RATE = parseFloat(args["spam-rate"] ?? "2");
 const SPAM_SECS = parseFloat(args["spam-secs"] ?? "60");
 // Which rev each spam message claims:
@@ -127,6 +136,33 @@ if (DRILL === "poison" && !(Number.isSafeInteger(POISON_REV) && POISON_REV >= 0)
 }
 if (DRILL === "spam" && (!["ahead", "max", "stale"].includes(SPAM_REV) || !(SPAM_RATE > 0) || !(SPAM_SECS > 0))) {
   console.error("--spam-rev must be ahead|max|stale, --spam-rate and --spam-secs > 0");
+  process.exit(2);
+}
+// verify-ambiguity: right before the drilled edit's PUT, a helper sends
+// --prime-per-locale requests per locale with `minRev = <current rev> +
+// --prime-offset` (no hint). Each lands on some instance whose cached
+// snapshot is older than that minRev, so the instance does its 1-row
+// revision read and REMEMBERS the pre-save revision for 1 s (the
+// server's revMemo). The PUT starts --prime-lead ms after the priming
+// requests were sent (not awaited: waiting for their responses would
+// spend most of the 1 s window before the save even commits); a hinted
+// notification fetch that then lands on a primed instance inside the
+// window, with an older snapshot in hand, is answered `memo=<old>` —
+// inconclusive — and the client's ONE recheck must bring the save.
+// Which instance serves which request is Vercel's choice, so the memo
+// share is a measurement, not a guarantee.
+const PRIME_PER_LOCALE = int("prime-per-locale", 1);
+const PRIME_OFFSET = int("prime-offset", 1000);
+const PRIME_LEAD_MS = int("prime-lead", 150);
+// silent-loss / lost-final: how the pages lose the notification —
+// "proxy" (the websocket proxy drops every notification frame while the
+// drill is on; R1 and R2 builds alike) or "hook" (the page's own
+// `__osl.dropNextNotification`: drops the next VALID notification once;
+// armed right before the drilled PUT, after the insert's notification
+// was delivered, so it is the PUT's notification that is lost).
+const DROP_VIA = String(args["drop-via"] ?? "proxy");
+if (!["proxy", "hook"].includes(DROP_VIA)) {
+  console.error("--drop-via must be proxy|hook");
   process.exit(2);
 }
 const RECONNECT_LEAD_MS = int("reconnect-lead", 1000);
@@ -204,21 +240,34 @@ async function subsReached(rev) {
   return all.reduce((a, r) => a + r.count, 0);
 }
 
-// SDK clients that received a (not dropped) notification of change
-// type `ty` for row `id`.
-async function subsNoted(id, ty) {
-  const all = await Promise.all(workers.map((w) => w.ask("noted", "noted", { id, ty })));
+// SDK clients that received a valid, not-dropped `rev` broadcast with
+// rev ≥ `rev` (the notification of that save reached them).
+async function subsNoted(rev) {
+  const all = await Promise.all(workers.map((w) => w.ask("noted", "noted", { rev })));
   return all.reduce((a, r) => a + r.count, 0);
 }
 
-async function subsDropPg(on) {
-  await Promise.all(workers.map((w) => w.ask("dropPg", "dropPgAck", { on })));
+async function subsDropNotify(on) {
+  await Promise.all(workers.map((w) => w.ask("dropNotify", "dropNotifyAck", { on })));
+}
+
+// Every SDK client's acceptance + scheduler state right now.
+async function subsState() {
+  const all = await Promise.all(workers.map((w) => w.ask("state", "state")));
+  return all.flatMap((r) => r.clients);
 }
 
 async function subsProgress() {
   const all = await Promise.all(workers.map((w) => w.ask("progress", "progress")));
-  return all.reduce((a, p) => ({ joined: a.joined + p.joined, pgReady: a.pgReady + p.pgReady }), { joined: 0, pgReady: 0 });
+  return all.reduce((a, p) => ({ joined: a.joined + p.joined }), { joined: 0 });
 }
+
+// A page has received the notification of the save that produced `rev`
+// (R2 build: a `rev` broadcast ≥ rev, dropped or not, counts as "it
+// reached the page"; R1 build: the postgres_changes `ty` event for row
+// `id`).
+const pageNoted = (rec, { rev, id, ty }) =>
+  rec.bcasts.some(([, r]) => r !== null && rev != null && r >= rev) || rec.notes.some(([, t, i]) => t === ty && i === id);
 
 async function stopWorkers() {
   const results = await Promise.all(workers.map((w) => Promise.race([
@@ -303,6 +352,11 @@ async function runSpam(g, latestRev) {
 }
 
 // ─── measurement helpers ───
+// Raw `x-snapshot-verify` value (a page's recorded response header) →
+// the kind the page's own parser makes of it (absent / malformed →
+// "missing").
+const verifyKindOf = (raw) => parseSnapshotVerify(raw ?? null).kind;
+
 const firstAfter = (arr, pred) => {
   for (const x of arr) if (pred(x)) return x;
   return null;
@@ -324,10 +378,43 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   // measurement window and before the clean-up starts — the clean-up's
   // soft-delete of the same row is an UPDATE too.
   const noteEnd = Math.min(deadline, notesUntil);
+  // Per-save hint accounting: the requests that carried THIS save's
+  // revision as their ticket (`hint === put.rev`) — its notification
+  // fetches, their verification kinds and resolutions, and its rechecks.
+  // A ticket merged into a larger one (a later save's broadcast in the
+  // same batch) is counted under the larger save, where it was checked.
+  const hintStats = () => ({ notif: 0, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0 });
   const out = {
-    pages: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [] },
-    subs: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], bcastIns: [] },
+    pages: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], hint: hintStats() },
+    subs: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], bcastIns: [], hint: hintStats() },
   };
+  const bumpK = (o, k) => { o[k] = (o[k] || 0) + 1; };
+  for (const r of pageRecs) {
+    // An R2 page's notification fetch for this save: `hint=1` with
+    // minRev = put.rev (pages expose no ticket, the URL is the evidence).
+    for (const f of r.fetches) {
+      if (!f[6] || f[1] !== edit.put.rev) continue;
+      out.pages.hint.notif++;
+      bumpK(out.pages.hint.verify, verifyKindOf(f[5]));
+    }
+    const bpp = firstAfter(r.bcasts || [], ([t, rev]) => rev === edit.put.rev && t >= tPut - 50);
+    if (bpp) out.pages.bcastPut.push(bpp[0] - tPut);
+  }
+  for (const r of subRecs) {
+    for (const q of r.reqs || []) {
+      if (q[3] !== edit.put.rev) continue;
+      if (q[4]) {
+        out.subs.hint.notif++;
+        if (q[7]) bumpK(out.subs.hint.verify, q[7]);
+      }
+      if (q[9] && q[9] !== "none") bumpK(out.subs.hint.res, q[9]);
+      if (q[1] === "recheck") {
+        out.subs.hint.rechecks++;
+        if (q[9] === "satisfied" || q[9] === "superseded" || q[9] === "disproved") out.subs.hint.recheckOk++;
+      }
+    }
+    out.subs.hint.exhausted += (r.exhausted || []).filter(([, h]) => h === edit.put.rev).length;
+  }
   for (const r of pageRecs) {
     const seen = r.seen[edit.song.id];
     const ok = seen != null && seen <= deadline;
@@ -355,10 +442,6 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
       if (!drilled) bucket.latFromSuccess.push(a[0] - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
-    const nu = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "U" && t >= tPut && t < noteEnd);
-    if (nu) bucket.notifPut.push(nu[0] - tPut);
-    const ni = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "I" && t >= tIns && t < noteEnd);
-    if (ni) bucket.notifIns.push(ni[0] - tIns);
     const bp = firstAfter(r.bcasts, ([t, rev]) => rev === edit.put.rev && t >= tPut - 50);
     if (bp) bucket.bcastPut.push(bp[0] - tPut);
     const bi = firstAfter(r.bcasts, ([t, rev]) => rev === edit.ins.rev && t >= tIns - 50);
@@ -466,35 +549,35 @@ async function main() {
   const drillPageSet = new Set(Array.from({ length: Math.min(DRILL_PAGES, PAGES) }, (_, i) => i));
   const routeMode = (idx) => {
     if (DRILL === "ws-blocked" && drillPageSet.has(idx)) return "blocked";
-    if (DRILL === "silent-loss" && drillPageSet.has(idx)) return "proxy";
+    if (DRILL === "silent-loss" && DROP_VIA === "proxy" && drillPageSet.has(idx)) return "proxy";
     if (DRILL === "reconnect") return "proxy";
-    if (DRILL === "lost-final" && drillPageSet.has(idx)) return "proxy";
+    if (DRILL === "lost-final" && DROP_VIA === "proxy" && drillPageSet.has(idx)) return "proxy";
     return "none";
   };
   if (SUBS > 0) startWorkers();
   const popStart = Date.now();
   pagePop = PAGES > 0
     ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode, headless: !args.headed, concurrency: PAGE_CONCURRENCY, log })
-    : { pages: [], joined: () => 0, pgReady: () => 0, setDropPg() {}, dropSockets: () => 0, close: async () => {} };
+    : { pages: [], joined: () => 0, pgReady: () => 0, setDropNotify() {}, armHookDrop: async () => 0, disarmHookDrop: async () => 0, hookDropPending: async () => null, dropSockets: () => 0, close: async () => {} };
   const realtimePages = pagePop.pages.filter((p) => p && p.rec.mode !== "blocked").length;
 
-  // Wait for joins (and, by default, postgres_changes registration —
-  // otherwise the first edits would measure registration lag, not the
-  // steady state; registration time is reported either way).
+  // Wait for joins. An R2 page / SDK client is live at SUBSCRIBED (a
+  // broadcast join has no DB-side registration). Only with
+  // --wait-pg-ready=true (an R1 page build) does the run also wait for
+  // the pages' postgres_changes registration.
   let joinedAt = null;
   let pgReadyAt = null;
   let lastPrint = 0;
   while (true) {
-    const s = SUBS > 0 ? await subsProgress() : { joined: 0, pgReady: 0 };
+    const s = SUBS > 0 ? await subsProgress() : { joined: 0 };
     const pj = pagePop.joined();
     const pr = pagePop.pgReady();
     const allJoined = s.joined >= SUBS && pj >= PAGES;
     if (allJoined && joinedAt === null) joinedAt = Date.now();
-    const allReady = s.pgReady >= SUBS && pr >= realtimePages;
-    if (allReady && pgReadyAt === null) pgReadyAt = Date.now();
+    if (pr >= realtimePages && pgReadyAt === null && realtimePages > 0) pgReadyAt = Date.now();
     if (Date.now() - lastPrint > 3000) {
       lastPrint = Date.now();
-      log(`  joined: pages ${pj}/${PAGES} subs ${s.joined}/${SUBS}; pg_changes ready: pages ${pr}/${realtimePages} subs ${s.pgReady}/${SUBS}`);
+      log(`  joined: pages ${pj}/${PAGES} subs ${s.joined}/${SUBS}${WAIT_PG_READY ? `; pg_changes ready: pages ${pr}/${realtimePages}` : ""}`);
     }
     if (joinedAt && (!WAIT_PG_READY || pgReadyAt)) break;
     if (!joinedAt && Date.now() - popStart > JOIN_TIMEOUT_MS) { log("join timeout — measuring whoever joined; the shortfall counts as missing updates"); break; }
@@ -502,10 +585,12 @@ async function main() {
     await sleep(500);
   }
   const popSummary = {
-    pagesJoined: pagePop.joined(), pagesPgReady: pagePop.pgReady(),
-    ...(SUBS > 0 ? await subsProgress() : { joined: 0, pgReady: 0 }),
+    pagesJoined: pagePop.joined(),
+    // R1 page builds only; 0 on an R2 build.
+    pagesPgReady: pagePop.pgReady(),
+    ...(SUBS > 0 ? await subsProgress() : { joined: 0 }),
     allJoinedSec: joinedAt ? (joinedAt - popStart) / 1000 : null,
-    allPgReadySec: pgReadyAt ? (pgReadyAt - popStart) / 1000 : null,
+    allPgReadySec: WAIT_PG_READY && pgReadyAt ? (pgReadyAt - popStart) / 1000 : null,
   };
   log(`population: ${JSON.stringify(popSummary)}; settling ${SETTLE_MS / 1000}s`);
   // The guest joins during the settle time, so its join does not shift
@@ -549,9 +634,9 @@ async function main() {
       log(`  drill: spam ${SPAM_RATE}/s × ${SPAM_SECS} s (${SPAM_REV}) running alongside the saves`);
     }
 
-    if (DRILL === "silent-loss" && drillThis) {
-      pagePop.setDropPg(drillPageSet, true);
-      drillEvents.push({ k, what: `drop postgres_changes frames on pages ${[...drillPageSet].join(",")}`, at: iso(Date.now()) });
+    if (DRILL === "silent-loss" && DROP_VIA === "proxy" && drillThis) {
+      pagePop.setDropNotify(drillPageSet, true);
+      drillEvents.push({ k, what: `proxy drops notification frames (rev broadcast / postgres_changes) on pages ${[...drillPageSet].join(",")}`, at: iso(Date.now()) });
     }
     if (DRILL === "reconnect" && drillThis) {
       const t = Date.now();
@@ -606,22 +691,56 @@ async function main() {
     }
     if (ins) Object.assign(ins, { successAt: ins.startedAt, startedAt: insFirst, attempts: insAttempts });
 
-    if (ins && DRILL === "lost-final" && drillThis) {
-      // Make the drop hit the PUT and nothing else: wait until the
-      // insert's own notification has reached the population (≤ 5 s) and
-      // the fetches it triggered are done, THEN drop, THEN save.
+    // Drills that must hit the PUT and nothing else (lost-final, a hook-
+    // driven silent-loss, verify-ambiguity's memo priming): wait until the
+    // insert's own notification has reached the population (≤ 5 s) and
+    // the fetches it triggered are done (plus, for the priming, the 1 s
+    // memo window those fetches may have opened), THEN act, THEN save.
+    const hookSilent = DRILL === "silent-loss" && DROP_VIA === "hook";
+    if (ins && drillThis && (DRILL === "lost-final" || hookSilent || DRILL === "verify-ambiguity")) {
       const until = Date.now() + 5000;
       const realtimeIdx = [...drillPageSet].filter((i) => pagePop.pages[i] && pagePop.pages[i].rec.mode !== "blocked");
+      const seenIns = { rev: ins.rev, id: ins.id, ty: "I" };
       while (Date.now() < until) {
-        const pagesNoted = realtimeIdx.every((i) => pagePop.pages[i].rec.notes.some(([, ty, id]) => ty === "I" && id === ins.id));
-        const subsNotedN = SUBS > 0 ? await subsNoted(ins.id, "I") : 0;
+        const pagesNoted = realtimeIdx.every((i) => pageNoted(pagePop.pages[i].rec, seenIns));
+        const subsNotedN = SUBS > 0 && ins.rev != null ? await subsNoted(ins.rev) : SUBS;
         if (pagesNoted && subsNotedN >= SUBS) break;
         await sleep(200);
       }
       await sleep(LOST_SETTLE_MS);
-      pagePop.setDropPg(drillPageSet, true);
-      if (SUBS > 0) await subsDropPg(true);
-      drillEvents.push({ k, what: `drop postgres_changes on pages ${[...drillPageSet].join(",")} + all SDK clients (insert notification delivered first)`, at: iso(Date.now()) });
+    }
+    if (ins && drillThis && (DRILL === "lost-final" || hookSilent)) {
+      const lost = DRILL === "lost-final";
+      if (DROP_VIA === "hook") {
+        const armed = await pagePop.armHookDrop([...drillPageSet]);
+        drillEvents.push({ k, what: `page hook __osl.dropNextNotification armed on ${armed} page(s)${lost ? " + SDK clients drop every notification" : ""} (insert notification delivered first)`, at: iso(Date.now()) });
+      } else {
+        pagePop.setDropNotify(drillPageSet, true);
+        drillEvents.push({ k, what: `proxy drops notification frames on pages ${[...drillPageSet].join(",")}${lost ? " + all SDK clients" : ""} (insert notification delivered first)`, at: iso(Date.now()) });
+      }
+      if (lost && SUBS > 0) await subsDropNotify(true);
+    }
+    let prime = null;
+    if (ins && drillThis && DRILL === "verify-ambiguity") {
+      // See the PRIME_* constants. Sent, not awaited; the PUT follows
+      // PRIME_LEAD_MS later.
+      const minRev = latestRev + PRIME_OFFSET;
+      const t0 = Date.now();
+      const reqs = [];
+      for (const locale of ["ja", "ko", "en"]) {
+        for (let j = 0; j < PRIME_PER_LOCALE; j++) {
+          reqs.push(
+            fetch(`${BASE}/api/setlist?eventId=${EVENT_ID}&locale=${locale}&minRev=${minRev}`, { signal: AbortSignal.timeout(15000) })
+              .then(async (r) => {
+                await r.arrayBuffer().catch(() => {});
+                return { locale, status: r.status, verify: r.headers.get("x-snapshot-verify"), ms: Date.now() - t0 };
+              })
+              .catch((e) => ({ locale, status: 0, verify: null, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 60) })),
+          );
+        }
+      }
+      prime = { at: t0, minRev, promise: Promise.all(reqs) };
+      await sleep(PRIME_LEAD_MS);
     }
 
     let double = null;
@@ -665,10 +784,16 @@ async function main() {
       }
     }
     const lostFinalOn = DRILL === "lost-final" && drillThis;
+    if (prime) {
+      const res = await prime.promise;
+      const kinds = {};
+      for (const r of res) kinds[`${r.status} ${verifyKindOf(r.verify)}`] = (kinds[`${r.status} ${verifyKindOf(r.verify)}`] || 0) + 1;
+      drillEvents.push({ k, what: `memo priming: ${res.length} request(s) minRev=${prime.minRev} sent ${PRIME_LEAD_MS} ms before the PUT; responses ${JSON.stringify(kinds)}, ms ${res.map((r) => r.ms).join("/")}`, at: iso(prime.at), atMs: prime.at });
+    }
     if (!ins || !put) {
       log(`edit ${k} SKIPPED (save failed twice) — continuing`);
-      if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) pagePop.setDropPg(drillPageSet, false);
-      if (lostFinalOn && SUBS > 0) await subsDropPg(false);
+      if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) pagePop.setDropNotify(drillPageSet, false);
+      if (lostFinalOn && SUBS > 0) await subsDropNotify(false);
       continue;
     }
     // A writer that doesn't return rev (older deployment): take it from
@@ -696,9 +821,13 @@ async function main() {
         if (!pagesPending && !subsPending) break;
         await sleep(lostFinalOn ? 250 : 100);
       }
-      pagePop.setDropPg(drillPageSet, false);
-      if (lostFinalOn && SUBS > 0) await subsDropPg(false);
-      drillEvents.push({ k, what: Date.now() >= nextDue ? "stop dropping (next edit due — later notifications may have repaired)" : "stop dropping (drilled clients repaired or timeout)", at: iso(Date.now()) });
+      pagePop.setDropNotify(drillPageSet, false);
+      // A hook drop the page never consumed (its PUT notification never
+      // came, or came before the arm) would eat a LATER notification:
+      // disarm it, and say how many were left.
+      const unconsumed = DROP_VIA === "hook" ? await pagePop.disarmHookDrop([...drillPageSet]) : 0;
+      if (lostFinalOn && SUBS > 0) await subsDropNotify(false);
+      drillEvents.push({ k, what: `${Date.now() >= nextDue ? "stop dropping (next edit due — later notifications may have repaired)" : "stop dropping (drilled clients repaired or timeout)"}${DROP_VIA === "hook" ? `; hook drops left unconsumed: ${unconsumed}` : ""}`, at: iso(Date.now()) });
     }
   }
 
@@ -788,7 +917,7 @@ function report(state, fin) {
     (DRILL === "lost-final" && e.k === drillK) ||
     (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.subscribedAt, e.put.startedAt))));
 
-  const all = { pagesLat: [], subsLat: [], pagesMissing: 0, subsMissing: 0, drilledLat: [], drilledMissing: 0, pagesIns: [], subsIns: [], notifPagesPut: [], notifSubsPut: [], bcastPut: [], notifSubsCount: 0, bcastCount: 0 };
+  const all = { pagesLat: [], subsLat: [], pagesMissing: 0, subsMissing: 0, drilledLat: [], drilledMissing: 0, pagesIns: [], subsIns: [], notifPagesPut: [], bcastPagesPut: [], bcastPut: [] };
   const rows = [];
   for (const e of edits) {
     const s = editStats(e, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notesUntil: state.editsEnd });
@@ -801,7 +930,7 @@ function report(state, fin) {
     all.pagesIns.push(...s.pages.latFromInsert);
     all.subsIns.push(...s.subs.latFromInsert);
     all.notifPagesPut.push(...s.pages.notifPut);
-    all.notifSubsPut.push(...s.subs.notifPut);
+    all.bcastPagesPut.push(...s.pages.bcastPut);
     all.bcastPut.push(...s.subs.bcastPut);
     rows.push({ e, s });
   }
@@ -868,6 +997,160 @@ function report(state, fin) {
     subRegressions: monoSubsN, subsWithRegressions: monoSubsBad.length,
     pass: monoPagesN === 0 && monoSubsN === 0,
   };
+
+  // ─── hint accounting ───
+  // SDK: from each client's own request log (the scheduler's descriptor
+  // + what came back). Pages: from the URLs and headers they sent / got
+  // (an R2 page's notification fetch carries `hint=1`; an R1 build never
+  // does).
+  const bumpK = (o, k) => { o[k] = (o[k] || 0) + 1; };
+  const resolved = (res) => res === "satisfied" || res === "disproved" || res === "superseded";
+  const hintTotals = { reqs: 0, notif: 0, notifVerify: {}, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0, byShape: {}, failKinds: {}, serverRevMax: null };
+  for (const r of subRecs) {
+    for (const q of r.reqs || []) {
+      hintTotals.reqs++;
+      // e.g. "notification +hint=1", "periodic generic +H", "recheck +H"
+      bumpK(hintTotals.byShape, `${q[1]}${q[2] ? " generic" : ""}${q[3] != null ? (q[4] ? " +hint=1" : " +H") : ""}`);
+      if (q[7]) bumpK(hintTotals.verify, q[7]);
+      if (q[4]) {
+        hintTotals.notif++;
+        if (q[7]) bumpK(hintTotals.notifVerify, q[7]);
+      }
+      if (q[9] && q[9] !== "none") bumpK(hintTotals.res, q[9]);
+      if (q[1] === "recheck") {
+        hintTotals.rechecks++;
+        if (resolved(q[9])) hintTotals.recheckOk++;
+      }
+    }
+    hintTotals.exhausted += (r.exhausted || []).length;
+    for (const [k, v] of Object.entries(r.failKinds || {})) hintTotals.failKinds[k] = (hintTotals.failKinds[k] || 0) + v;
+    if (r.serverRevMax != null && (hintTotals.serverRevMax == null || r.serverRevMax > hintTotals.serverRevMax)) hintTotals.serverRevMax = r.serverRevMax;
+  }
+  const pageHint = { fetches: 0, notif: 0, notifVerify: {}, verify: {} };
+  for (const r of pageRecs) {
+    for (const f of r.fetches) {
+      pageHint.fetches++;
+      if (f[2] === 200) bumpK(pageHint.verify, verifyKindOf(f[5]));
+      if (f[6]) {
+        pageHint.notif++;
+        if (f[2] === 200) bumpK(pageHint.notifVerify, verifyKindOf(f[5]));
+      }
+    }
+  }
+
+  // ─── poison: what the forged hint cost ───
+  let poison = null;
+  if (DRILL === "poison") {
+    const ev = drillEvents.find((d) => d.atMs && d.what.startsWith("guest broadcast"));
+    const per = subRecs.map((r) => {
+      const carrying = (r.reqs || []).filter((q) => q[3] === POISON_REV);
+      return {
+        idx: r.idx,
+        received: r.bcasts.some(([, rev]) => rev === POISON_REV),
+        noted: r.bcasts.some(([, rev, w]) => rev === POISON_REV && w === "n"),
+        carrying: carrying.length,
+        notif: carrying.filter((q) => q[4]).length,
+        rechecks: carrying.filter((q) => q[1] === "recheck").length,
+        res: carrying.map((q) => q[9]).filter(Boolean),
+        exhausted: (r.exhausted || []).filter(([, h]) => h === POISON_REV).length,
+        watermark: r.serverRevMax != null && r.serverRevMax >= POISON_REV,
+      };
+    });
+    const tooMany = per.filter((p) => p.rechecks > 1).length;
+    const poisoned = per.filter((p) => p.watermark).length;
+    const received = per.filter((p) => p.received).length;
+    const resCounts = {};
+    for (const p of per) for (const x of p.res) bumpK(resCounts, x);
+    const pagesCarrying = pageRecs.map((r) => r.fetches.filter((f) => f[1] === POISON_REV).length);
+    poison = {
+      at: ev?.at ?? null, per, received, noted: per.filter((p) => p.noted).length, tooMany, poisoned, resCounts,
+      carryingMax: per.reduce((a, p) => Math.max(a, p.carrying), 0),
+      rechecksTotal: per.reduce((a, p) => a + p.rechecks, 0),
+      exhaustedTotal: per.reduce((a, p) => a + p.exhausted, 0),
+      pagesCarryingMax: pagesCarrying.reduce((a, v) => Math.max(a, v), 0),
+      pagesCarryingTotal: pagesCarrying.reduce((a, v) => a + v, 0),
+      // No client received the forgery → the drill did not happen.
+      verdict: { pass: SUBS === 0 ? null : received === 0 ? false : tooMany === 0 && poisoned === 0 },
+    };
+  }
+
+  // ─── spam: per-client request rate under forged hints ───
+  let spam = null;
+  if (DRILL === "spam" && guest && guest.sends.length) {
+    const from = guest.sends[0][0];
+    // + the last message's notification fetch and its recheck.
+    const to = guest.sends[guest.sends.length - 1][0] + 3000;
+    const secs = (to - from) / 1000;
+    const per = subRecs.map((r) => {
+      const inWin = (r.reqs || []).filter((q) => q[0] >= from && q[0] <= to);
+      // The cooldown binds the non-generic hint-driven requests
+      // (notification fetches and rechecks); a periodic tick or a retry
+      // may legitimately carry a ticket inside the window.
+      const bound = inWin.filter((q) => !q[2] && (q[1] === "notification" || q[1] === "recheck")).map((q) => q[0]).sort((a, b) => a - b);
+      let minGap = null;
+      let tooClose = 0;
+      for (let i = 1; i < bound.length; i++) {
+        const g = bound[i] - bound[i - 1];
+        minGap = minGap === null ? g : Math.min(minGap, g);
+        if (g < COOLDOWN_MS - 5) tooClose++;
+      }
+      // Failures that are not a verdict on a hint: HTTP / network /
+      // deadline / malformed body (a server-proven gap has a verify kind).
+      const hardFails = inWin.filter((q) => q[11] === "failed" && q[7] == null).length;
+      return {
+        idx: r.idx, requests: inWin.length, bound: bound.length, minGap, tooClose, hardFails,
+        received: r.bcasts.filter(([t]) => t >= from && t <= to).length,
+        noted: r.bcasts.filter(([t, , w]) => t >= from && t <= to && w === "n").length,
+      };
+    });
+    const pagesNotif = pageRecs.map((r) => r.fetches.filter((f) => f[6] && f[0] >= from && f[0] <= to).length);
+    const tooClose = per.filter((p) => p.tooClose > 0).length;
+    const hardFails = per.reduce((a, p) => a + p.hardFails, 0);
+    const gaps = per.map((p) => p.minGap).filter((g) => g != null);
+    spam = {
+      from: iso(from), to: iso(to), secs, per, tooClose, hardFails,
+      boundMaxRate: per.reduce((a, p) => Math.max(a, p.bound / secs), 0),
+      requestsMaxRate: per.reduce((a, p) => Math.max(a, p.requests / secs), 0),
+      minGap: gaps.length ? Math.min(...gaps) : null,
+      receivedMedian: dist(per.map((p) => p.received)).p50,
+      pagesNotifMaxRate: pagesNotif.reduce((a, v) => Math.max(a, v / secs), 0),
+      verdict: { pass: SUBS === 0 ? null : tooClose === 0 && hardFails === 0 },
+    };
+  }
+
+  // ─── verify-ambiguity: memo answers and their rechecks ───
+  let ambiguity = null;
+  const ae = DRILL === "verify-ambiguity" ? edits.find((e) => e.k === drillK) : null;
+  if (ae) {
+    const h = ae.put.rev;
+    let memoClients = 0;
+    let memoRecheckOk = 0;
+    let memoRecheckBad = 0;
+    let memoNoRecheck = 0;
+    const notifVerify = {};
+    let notif = 0;
+    for (const r of subRecs) {
+      const qs = (r.reqs || []).filter((q) => q[3] === h);
+      const n1 = qs.find((q) => q[4]);
+      if (!n1) continue;
+      notif++;
+      if (n1[7]) bumpK(notifVerify, n1[7]);
+      if (n1[7] !== "memo" || n1[9] !== "inconclusive") continue;
+      memoClients++;
+      const rc = qs.find((q) => (q[1] === "recheck" || q[1] === "retry") && q[0] > n1[0]);
+      if (!rc) memoNoRecheck++;
+      else if (resolved(rc[9])) memoRecheckOk++;
+      else memoRecheckBad++;
+    }
+    const pagesVerify = {};
+    for (const r of pageRecs) for (const f of r.fetches) if (f[6] && f[1] === h && f[2] === 200) bumpK(pagesVerify, verifyKindOf(f[5]));
+    ambiguity = {
+      rev: h, notif, notifVerify, memoClients, memoShare: notif ? memoClients / notif : null,
+      memoRecheckOk, memoRecheckBad, memoNoRecheck, pagesVerify,
+      verdict: { pass: memoClients === 0 ? null : memoRecheckBad === 0 && memoNoRecheck === 0 },
+    };
+  }
+
   if (DRILL === "double-save") {
     const conv = doubleSave ? doubleSave.pagesOk + doubleSave.subsOk : 0;
     const total = doubleSave ? doubleSave.pages + doubleSave.subs : 0;
@@ -876,13 +1159,23 @@ function report(state, fin) {
       ...(doubleSave ? doubleSave.latency : dist([])), missing: total - conv,
       pass: doubleSave ? conv === total && verdicts.monotonic.pass : false,
     };
-  } else if (GUEST_DRILL) {
-    // No pair is degraded on purpose: the honest saves ARE the drill's
-    // subject and are judged by the primary gate above (delivered, p95,
-    // 0 missing, monotonic). What the forged hints cost the clients
-    // (notification fetches, rechecks, fetch rate) is read off the SDK
-    // clients' fetch counters, not gated here.
-    verdicts.drill = { drill: DRILL, gate: "informational — honest saves judged by the primary gate", ...dist([]), missing: 0, pass: null };
+  } else if (DRILL === "poison" && poison) {
+    // The honest saves are judged by the primary gate (no pair is
+    // degraded on purpose); this row judges what the forgery cost.
+    verdicts.drill = {
+      drill: DRILL, gate: "≤ 1 recheck of the forged hint per SDK client, serverRev never ≥ the forged rev, forged broadcast received",
+      ...dist([]), missing: 0, ...poison.verdict,
+    };
+  } else if (DRILL === "spam" && spam) {
+    verdicts.drill = {
+      drill: DRILL, gate: `notification / recheck starts ≥ ${COOLDOWN_MS} ms apart per SDK client, 0 HTTP / network / deadline failures during the spam`,
+      ...dist([]), missing: 0, ...spam.verdict,
+    };
+  } else if (DRILL === "verify-ambiguity" && ambiguity) {
+    verdicts.drill = {
+      drill: DRILL, gate: "every SDK client answered `memo` for the drilled save resolves it on its one recheck (n/a when no memo was observed)",
+      ...dist([]), missing: 0, ...ambiguity.verdict,
+    };
   } else if (DRILL) {
     const gate = DRILL === "silent-loss" ? SILENT_GATE_MS : DRILL === "ws-blocked" ? BLOCKED_GATE_MS : DRILL === "lost-final" ? LOST_GATE_MS : null;
     verdicts.drill = { drill: DRILL, gate: gate == null ? "informational (catch-up after reconnect)" : `max ≤ ${gate} ms, 0 missing`, ...drilled, pass: gate == null ? null : drilled.n > 0 && drilled.missing === 0 && drilled.max <= gate };
@@ -892,7 +1185,6 @@ function report(state, fin) {
   const pageJoin = dist(pageRecs.filter((r) => r.joinAt.length && r.loadedAt).map((r) => r.joinAt[0] - r.openedAt));
   const pagePg = dist(pageRecs.filter((r) => r.pgReadyAt.length).map((r) => r.pgReadyAt[0] - r.openedAt));
   const subJoin = dist(subRecs.filter((r) => r.subscribedAt.length).map((r) => r.subscribedAt[0] - r.attemptAt));
-  const subPg = dist(subRecs.filter((r) => r.pgReadyAt.length).map((r) => r.pgReadyAt[0] - r.attemptAt));
   const statusTotals = {};
   const errTotals = {};
   const fetchReasons = {};
@@ -954,6 +1246,12 @@ function report(state, fin) {
   if (DRILL === "double-save") {
     const dd = verdicts.drill;
     lines.push(`| drill double-save (edit ${drillK}: final save start → final state) | ${dline(dd)} | ${dd.missing} not converged | ${dd.gate} | ${v(dd.pass)} |`);
+  } else if (poison) {
+    lines.push(`| drill poison (forged rev ${POISON_REV}) | ${poison.received}/${M} SDK received | — | — | — | ${poison.tooMany} client(s) > 1 recheck, ${poison.poisoned} with serverRev ≥ forged | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
+  } else if (spam) {
+    lines.push(`| drill spam (${guest.sends.length} msgs, ${spam.secs.toFixed(0)} s) | ${M} SDK | — | — | — | ${spam.tooClose} client(s) under the cooldown, ${spam.hardFails} hard failure(s) | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
+  } else if (ambiguity) {
+    lines.push(`| drill verify-ambiguity (rev ${ambiguity.rev}) | ${ambiguity.notif} notification fetches | — | — | — | memo ${ambiguity.memoClients} → recheck ok ${ambiguity.memoRecheckOk}, not ok ${ambiguity.memoRecheckBad}, none ${ambiguity.memoNoRecheck} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
   } else if (verdicts.drill) {
     lines.push(`| drill ${DRILL} (drilled pairs) | ${dline(drilled)} | ${drilled.missing} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
   }
@@ -966,38 +1264,97 @@ function report(state, fin) {
   lines.push("");
   lines.push("## Notification paths (PUT start → arrival)");
   lines.push("");
+  lines.push("An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.");
+  lines.push("");
   lines.push("| Path | delivered / expected | p50 ms | p95 ms | max ms |");
   lines.push("|---|---|---|---|---|");
   const nP = dist(all.notifPagesPut);
-  const nS = dist(all.notifSubsPut);
+  const bP = dist(all.bcastPagesPut);
   const bS = dist(all.bcastPut);
-  lines.push(`| R1 postgres_changes UPDATE → pages | ${nP.n} / ${P * edits.length} | ${ms(nP.p50)} | ${ms(nP.p95)} | ${ms(nP.max)} |`);
-  lines.push(`| R1 postgres_changes UPDATE → SDK | ${nS.n} / ${M * edits.length} | ${ms(nS.p50)} | ${ms(nS.p95)} | ${ms(nS.max)} |`);
-  lines.push(`| R2 broadcast \`rev\` → SDK | ${bS.n} / ${M * edits.length} | ${ms(bS.p50)} | ${ms(bS.p95)} | ${ms(bS.max)} |`);
+  lines.push(`| postgres_changes UPDATE → pages (R1 build) | ${nP.n} / ${P * edits.length} | ${ms(nP.p50)} | ${ms(nP.p95)} | ${ms(nP.max)} |`);
+  lines.push(`| broadcast \`rev\` → pages | ${bP.n} / ${P * edits.length} | ${ms(bP.p50)} | ${ms(bP.p95)} | ${ms(bP.max)} |`);
+  lines.push(`| broadcast \`rev\` → SDK | ${bS.n} / ${M * edits.length} | ${ms(bS.p50)} | ${ms(bS.p95)} | ${ms(bS.max)} |`);
   lines.push("");
   lines.push("## Per edit");
   lines.push("");
-  lines.push("| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev | pages seen | pages p50/p95/max | SDK seen | SDK p50/p95/max | pg→pages | pg→SDK | bcast→SDK p50/p95 |");
-  lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  lines.push("| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
+  const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
+  const markOf = (e) => {
+    const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
+    return `${e.k}${nDrilled ? ` (drill: ${nDrilled})` : ""}${e.double ? " (double save)" : ""}`;
+  };
+  for (const { e } of rows) {
+    lines.push(`| ${markOf(e)} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
+  }
+  // Two tables, one per population: the gate is judged over both, but a
+  // page (real React render, R1 or R2 build) and an SDK client (the R2
+  // client logic without a DOM) fail differently, so they are read apart.
+  const kinds = (o) => Object.entries(o).map(([k, n]) => `${k} ${n}`).join(", ") || "—";
+  lines.push("");
+  lines.push("### Per save — pages (PUT start → marker in the DOM)");
+  lines.push("");
+  lines.push("| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const pl = dist([...s.pages.lat, ...s.pages.drilledLat]);
+    const bp = dist(s.pages.bcastPut);
+    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)} / ${ms(pl.p95)} / ${ms(pl.max)} | ${s.pages.missing + s.pages.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${s.pages.notifPut.length} | ${s.pages.hint.notif} | ${kinds(s.pages.hint.verify)} |`);
+  }
+  lines.push("");
+  lines.push("### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)");
+  lines.push("");
+  lines.push("| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const { e, s } of rows) {
     const sl = dist([...s.subs.lat, ...s.subs.drilledLat]);
     const bp = dist(s.subs.bcastPut);
-    const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
-    const mark = nDrilled ? ` (drill: ${nDrilled})` : "";
-    const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
-    lines.push(`| ${e.k}${mark}${e.double ? " (double save)" : ""} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)}/${ms(pl.p95)}/${ms(pl.max)} | ${sl.n}/${M} | ${ms(sl.p50)}/${ms(sl.p95)}/${ms(sl.max)} | ${s.pages.notifPut.length}/${P} | ${s.subs.notifPut.length}/${M} | ${ms(bp.p50)}/${ms(bp.p95)} (${bp.n}) |`);
+    const h = s.subs.hint;
+    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${sl.n}/${M} | ${ms(sl.p50)} / ${ms(sl.p95)} / ${ms(sl.max)} | ${s.subs.missing + s.subs.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${h.notif} | ${kinds(h.verify)} | ${kinds(h.res)} | ${h.rechecks} (${h.recheckOk}) | ${h.exhausted} |`);
   }
+  lines.push("");
+  lines.push("## Hint outcomes (whole run)");
+  lines.push("");
+  lines.push(`- SDK: ${hintTotals.reqs} requests; notification fetches (hint=1) ${hintTotals.notif}, their x-snapshot-verify: ${kinds(hintTotals.notifVerify)}; all 200 responses: ${kinds(hintTotals.verify)}`);
+  lines.push(`  - ticket resolutions: ${kinds(hintTotals.res)}; rechecks ${hintTotals.rechecks} (${hintTotals.notif ? ((hintTotals.rechecks / hintTotals.notif) * 100).toFixed(1) : "—"} % of notification fetches), resolved on the recheck ${hintTotals.recheckOk}; hints exhausted ${hintTotals.exhausted}; highest serverRev held ${hintTotals.serverRevMax ?? "—"}`);
+  lines.push(`  - request shapes (reason / generic / ticket): ${kinds(hintTotals.byShape)}; failures by kind: ${kinds(hintTotals.failKinds)}`);
+  lines.push(`- Pages: ${pageHint.fetches} /api/setlist responses; notification fetches (hint=1) ${pageHint.notif}, their x-snapshot-verify: ${kinds(pageHint.notifVerify)}; all 200 responses: ${kinds(pageHint.verify)} (an R1 page build sends no hint=1)`);
   lines.push("");
   lines.push("## Population");
   lines.push("");
-  lines.push(`- Pages: ${pageRecs.filter((r) => r.loadedAt).length}/${P} loaded; channel joined ${pageRecs.filter((r) => r.joinAt.length).length}; pg_changes registered ${pageRecs.filter((r) => r.pgReadyAt.length).length}; visibility ${JSON.stringify(Object.fromEntries(Object.entries(pageRecs.reduce((a, r) => ((a[r.visibility] = (a[r.visibility] || 0) + 1), a), {}))))}; locales ${JSON.stringify(pageRecs.reduce((a, r) => ((a[r.locale] = (a[r.locale] || 0) + 1), a), {}))}`);
-  lines.push(`  - open → join ms: n=${pageJoin.n} p50=${ms(pageJoin.p50)} p95=${ms(pageJoin.p95)} max=${ms(pageJoin.max)}; open → pg_changes ready: n=${pagePg.n} p50=${ms(pagePg.p50)} p95=${ms(pagePg.p95)} max=${ms(pagePg.max)}`);
-  lines.push(`  - /api/setlist responses seen: ${pageFetches} (${JSON.stringify(pageSources)}); page errors: ${pageRecs.reduce((a, r) => a + r.errors.length, 0)}; ws opens ${pageRecs.reduce((a, r) => a + r.wsOpens, 0)}, closes ${pageRecs.reduce((a, r) => a + r.wsCloses, 0)}, dropped pg frames ${pageRecs.reduce((a, r) => a + r.droppedFrames, 0)}, blocked attempts ${pageRecs.reduce((a, r) => a + r.blockedAttempts, 0)}`);
-  lines.push(`- SDK: ${subRecs.filter((r) => r.subscribedAt.length).length}/${M} joined; pg_changes registered ${subRecs.filter((r) => r.pgReadyAt.length).length}; all joined after ${popSummary.allJoinedSec ?? "—"} s, all registered after ${popSummary.allPgReadySec ?? "—"} s (from population start)`);
-  lines.push(`  - subscribe → SUBSCRIBED ms: n=${subJoin.n} p50=${ms(subJoin.p50)} p95=${ms(subJoin.p95)} max=${ms(subJoin.max)}; subscribe → pg_changes ready: n=${subPg.n} p50=${ms(subPg.p50)} p95=${ms(subPg.p95)} max=${ms(subPg.max)}`);
+  const pagesPgN = pageRecs.filter((r) => r.pgReadyAt.length).length;
+  lines.push(`- Pages: ${pageRecs.filter((r) => r.loadedAt).length}/${P} loaded; channel joined ${pageRecs.filter((r) => r.joinAt.length).length}${pagesPgN ? `; pg_changes registered ${pagesPgN} (R1 build)` : ""}; visibility ${JSON.stringify(Object.fromEntries(Object.entries(pageRecs.reduce((a, r) => ((a[r.visibility] = (a[r.visibility] || 0) + 1), a), {}))))}; locales ${JSON.stringify(pageRecs.reduce((a, r) => ((a[r.locale] = (a[r.locale] || 0) + 1), a), {}))}`);
+  lines.push(`  - open → join ms: n=${pageJoin.n} p50=${ms(pageJoin.p50)} p95=${ms(pageJoin.p95)} max=${ms(pageJoin.max)}${pagePg.n ? `; open → pg_changes ready: n=${pagePg.n} p50=${ms(pagePg.p50)} p95=${ms(pagePg.p95)} max=${ms(pagePg.max)}` : ""}`);
+  lines.push(`  - /api/setlist responses seen: ${pageFetches} (${JSON.stringify(pageSources)}); page errors: ${pageRecs.reduce((a, r) => a + r.errors.length, 0)}; ws opens ${pageRecs.reduce((a, r) => a + r.wsOpens, 0)}, closes ${pageRecs.reduce((a, r) => a + r.wsCloses, 0)}; rev broadcasts seen ${pageRecs.reduce((a, r) => a + r.bcasts.length, 0)}; dropped notification frames ${pageRecs.reduce((a, r) => a + r.droppedFrames, 0)}, blocked attempts ${pageRecs.reduce((a, r) => a + r.blockedAttempts, 0)}`);
+  lines.push(`- SDK: ${subRecs.filter((r) => r.subscribedAt.length).length}/${M} joined; all joined after ${popSummary.allJoinedSec ?? "—"} s (from population start)`);
+  lines.push(`  - subscribe → SUBSCRIBED ms: n=${subJoin.n} p50=${ms(subJoin.p50)} p95=${ms(subJoin.p95)} max=${ms(subJoin.max)}`);
   lines.push(`  - statuses ${JSON.stringify(statusTotals)}; disconnected episodes (polling while realtime-js rejoins) ${fallbacks}; channel re-creations ${recreates}; fetch failures ${fetchFailures} (with Retry-After ${retryAfter}); fetches by reason ${JSON.stringify(fetchReasons)}; X-Snapshot-Source ${JSON.stringify(sources)}`);
   if (Object.keys(errTotals).length) lines.push(`  - channel errors: ${JSON.stringify(errTotals)}`);
+  if (poison) {
+    lines.push("");
+    lines.push("## Poison drill");
+    lines.push("");
+    lines.push(`- forged \`{ kind: "setlist", rev: ${POISON_REV} }\` sent ${poison.at ?? "—"}; received by ${poison.received}/${M} SDK clients (news for ${poison.noted})`);
+    lines.push(`- requests carrying the forged hint: ${poison.per.reduce((a, p) => a + p.carrying, 0)} (max ${poison.carryingMax} per client); notification fetches ${poison.per.reduce((a, p) => a + p.notif, 0)}; rechecks ${poison.rechecksTotal} (clients with > 1: ${poison.tooMany}); resolutions ${kinds(poison.resCounts)}; exhausted ${poison.exhaustedTotal}`);
+    lines.push(`- durable watermark: clients whose serverRev ever reached the forged rev: **${poison.poisoned}**; highest serverRev held by any client ${hintTotals.serverRevMax ?? "—"}`);
+    lines.push(`- pages: /api/setlist requests with minRev = the forged rev: ${poison.pagesCarryingTotal} (max ${poison.pagesCarryingMax} per page; an R1 build ignores the broadcast → 0)`);
+  }
+  if (spam) {
+    lines.push("");
+    lines.push("## Spam drill");
+    lines.push("");
+    lines.push(`- window ${spam.from} → ${spam.to} (${spam.secs.toFixed(1)} s, last message + 3 s); messages received per SDK client p50 ${spam.receivedMedian ?? "—"}`);
+    lines.push(`- per SDK client: hint-driven requests (notification + recheck) max ${spam.boundMaxRate.toFixed(2)}/s, all requests max ${spam.requestsMaxRate.toFixed(2)}/s; smallest gap between two hint-driven starts ${spam.minGap ?? "—"} ms (cooldown ${COOLDOWN_MS} ms; clients under it: ${spam.tooClose}); HTTP / network / deadline failures ${spam.hardFails}`);
+    lines.push(`- pages: notification fetches (hint=1) max ${spam.pagesNotifMaxRate.toFixed(2)}/s per page (an R1 build ignores the broadcast → 0)`);
+  }
+  if (ambiguity) {
+    lines.push("");
+    lines.push("## Verify-ambiguity drill");
+    lines.push("");
+    lines.push(`- drilled save rev ${ambiguity.rev}: SDK notification fetches ${ambiguity.notif}, x-snapshot-verify ${kinds(ambiguity.notifVerify)}; memo share ${ambiguity.memoShare == null ? "—" : `${(ambiguity.memoShare * 100).toFixed(1)} %`} (${ambiguity.memoClients} client(s))`);
+    lines.push(`- after a memo answer: recheck resolved ${ambiguity.memoRecheckOk}, recheck NOT resolved ${ambiguity.memoRecheckBad}, no recheck ${ambiguity.memoNoRecheck}; pages' notification fetches for that rev: ${kinds(ambiguity.pagesVerify)}`);
+    lines.push("- memo only appears when a hinted fetch lands on a primed instance within 1 s AND its snapshot read still returned the pre-save revision (a coalesced read that began before the commit, or a cache entry the purge had not reached yet); Vercel decides the routing, so 0 memo is a valid outcome (verdict n/a), not a pass.");
+  }
   if (rejoin) {
     lines.push("");
     lines.push("## Reconnect drill");
@@ -1050,7 +1407,7 @@ function report(state, fin) {
         reasons[k] = (reasons[k] || 0) + 1;
       }
       lines.push("");
-      lines.push(`SDK clients: fetch reason that delivered the dropped save ${JSON.stringify(reasons)}; dropped notifications recorded ${subRecs.reduce((a, r) => a + r.notes.filter(([, ty]) => ty === "x").length, 0)}.`);
+      lines.push(`SDK clients: fetch reason that delivered the dropped save ${JSON.stringify(reasons)}; dropped notifications recorded ${subRecs.reduce((a, r) => a + r.bcasts.filter(([, , w]) => w === "x").length, 0)}.`);
     }
   }
   if (DRILL === "silent-loss" || DRILL === "ws-blocked" || DRILL === "lost-final") {
@@ -1059,7 +1416,7 @@ function report(state, fin) {
     // request sends minRev = applied + 1; a periodic / fallback poll
     // sends the highest rev it has already seen.
     lines.push("");
-    lines.push("| drilled page | edit | locale | PUT → marker ms | dropped pg frames | repairing fetch: ms after PUT, minRev, source |");
+    lines.push("| drilled page | edit | locale | PUT → marker ms | dropped notification frames (proxy) | repairing fetch: ms after PUT, minRev, source |");
     lines.push("|---|---|---|---|---|---|");
     for (const e of edits) {
       for (const r of pageRecs) {
@@ -1094,6 +1451,7 @@ function report(state, fin) {
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
     verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
     guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
+    hints: { sdk: hintTotals, pages: pageHint }, poison, spam, ambiguity,
     // Every page's DOM-derived version history and every client's
     // regressions (the full per-client apply log is too large to keep).
     monotonic: {
