@@ -219,12 +219,16 @@ header says "unavailable" and the metric columns stay empty — the endpoint
 exists on dev (HTTP 401 without a key). With a key, every metric name
 matching supavisor / pooler / pgbouncer / client goes to
 `<stamp>-pooler-metrics.txt` and the client/backend connection gauges are
-sampled (`--metrics=a,b` to choose). Verified on dev 2026-10-10: Supavisor
-exports pgbouncer-compatible names; the gate reads
-**`pgbouncer_used_clients`** against `pgbouncer_config_max_client_connections`
-(= 200 on Micro) — `pgbouncer_pools_client_active_connections` only counts
-clients linked to a backend and misses idle-but-open Prisma clients.
-(b) backends by state and
+sampled (`--metrics=a,b` to choose). **Measured on dev 2026-10-10 (run
+#2b-1): these `pgbouncer_*` gauges belong to the project's dedicated
+PgBouncer, not to Supavisor** — `pgbouncer_used_clients` stayed at 1 and
+`pgbouncer_config_max_client_connections` at 200 through a burst that put
+153 app connections on `aws-1-…pooler.supabase.com:6543`. The endpoint
+exposes no Supavisor client gauge, so the metric columns are kept only
+for the record. **The pooler-client measure is the app-side Σ of per-instance
+Prisma pool totals** from `vercel-logs-summary.mjs` ("Prisma pool totals per
+5 s", 5 s carry = the pool's idle timeout) **plus the probe's `EMAXCONN`
+count below**; the gate is Σ peak ≤ 140 and 0 EMAXCONN. (b) backends by state and
 `application_name` (`Supavisor` rows are the pooler's server side). (c)
 `probe_result`: a fresh connection through the transaction pooler every
 2 s; `EMAXCONN` there means the 200-client cap was hit at that moment.
@@ -260,12 +264,20 @@ node tests/load/viewers-check.mjs                      # 0 n14run2 reactions, 0 
 node --no-warnings tests/load/browsers/restore.mjs --compact --yes   # event 111 positions back to 1..23
 ```
 
-Reading it: the pooler row of the k6 gate table = metrics peak (if
-available) and the probe's `EMAXCONN` count from the CSV, plus the
-"Prisma pool totals per 5 s" peak from the log summary (Σ of each
-instance's last reported pool size, held for `--carry=5` s — the pool's
-idle timeout); builds per save = the log summary's builds per `rev`, not
-the k6 header split.
+**Always re-fetch the run in history mode afterwards.** In run #2b-1 the
+`--follow` capture kept only 29 % of the entries (b00: 85 builds / 67
+instances against the true 171 / 152), so the follow file is a live view,
+not the record. Fetch `npx vercel logs <alias> --since <ISO> --until <ISO>
+--limit 5000 --expand --scope opensetlist-projects` in ~20 s windows over
+the run (entries go to stderr — redirect `2>`), concatenate, and summarise
+that file; the summariser drops duplicates from overlapping windows.
+
+Reading it: the pooler row of the k6 gate table = the "Prisma pool totals
+per 5 s" peak from the log summary (Σ of each instance's last reported
+pool size, held for `--carry=5` s — the pool's idle timeout) and the
+probe's `EMAXCONN` count from the CSV (the metrics columns do not see
+Supavisor — see above); builds per save = the log summary's builds per
+`rev`, not the k6 header split.
 
 ## Reading the result
 
