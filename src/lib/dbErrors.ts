@@ -24,6 +24,15 @@
  *      `{ code: "57014", message: "canceling statement due to statement
  *      timeout" }`).
  *
+ * Since @prisma/client 7.9 an adapter error of the generic `postgres`
+ * kind (which includes shape 2's EMAXCONN) raised by a model query is
+ * also wrapped, as `PrismaClientKnownRequestError` P2039 ("Database
+ * error. Code: `XX000`. …") with the same `meta.driverAdapterError`
+ * (runtime `client.mjs`, the unmapped-kind branch). The classifiers
+ * below walk `meta.driverAdapterError` → `cause` and match on that inner
+ * node's code + message, so they see shapes 2 and 3 the same way whether
+ * Prisma wrapped them or not; the outer code is never relied on.
+ *
  * Prisma's own transaction errors are `PrismaClientKnownRequestError`
  * P2028 in two flavours that must not be confused: "Unable to start a
  * transaction in the given time." (`maxWait` exceeded — nothing ran) and

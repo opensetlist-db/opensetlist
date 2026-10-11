@@ -89,6 +89,20 @@ describe("classifyPreExecutionFailure", () => {
     expect(classifyPreExecutionFailure(wrapped)).toBe("pooler_cap");
   });
 
+  // @prisma/client 7.9+ wraps unmapped `postgres`-kind adapter errors
+  // from model queries as P2039, embedding the inner code and message in
+  // its own message. The outer node's code is P2039, so the match must
+  // come from the inner driver error, not from the wrapper's text.
+  it("pooler cap wrapped by Prisma 7.9+ as P2039 under meta.driverAdapterError", () => {
+    const wrapped = new PrismaClientKnownRequestError(
+      "Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 200`",
+      "P2039",
+      { driverAdapterError: emaxconn() },
+    );
+    expect(classifyPreExecutionFailure(wrapped)).toBe("pooler_cap");
+    expect(isDbTimeout(wrapped)).toBe(false);
+  });
+
   it("Postgres' own too_many_connections (53300 / TooManyConnections)", () => {
     expect(
       classifyPreExecutionFailure(
