@@ -270,12 +270,13 @@ export function summarizeHost(samples, phases) {
 
 // ─── host isolation guard ───
 // Load-host processes that may run next to a measurement: the side-car
-// samplers and the live log capture (and the `vercel logs --follow`
-// child it spawns). Anything else from tests/load — a second run, the
+// samplers (pooler gauges, `pg_stat_activity`, the 1 s Supavisor backend
+// sampler that lives next to its results) and the live log capture (and
+// the `vercel logs --follow` child it spawns). Anything else from tests/load — a second run, the
 // history re-fetch (`vercel logs --since/--until`, which pulls and
 // prints tens of MB), the summariser, warm-join — competes for the same
 // cores and is exactly what stalled the workers before.
-const ALLOWED_LOAD_SCRIPTS = ["vercel-logs-capture.mjs", "pooler-clients.mjs", "pg-connections.mjs"];
+const ALLOWED_LOAD_SCRIPTS = ["vercel-logs-capture.mjs", "pooler-clients.mjs", "pg-connections.mjs", "supavisor-backends.mjs"];
 
 // procs: [{ pid, name, cmd }]. Returns the competing ones with a reason.
 export function competingProcesses(procs, selfPid = process.pid, parentPid = process.ppid) {
