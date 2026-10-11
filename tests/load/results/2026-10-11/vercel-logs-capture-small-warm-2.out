@@ -1,0 +1,6 @@
+capturing https://opensetlist-git-dev-opensetlist-projects.vercel.app → F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T05-59-12-209Z-vercel-logs.txt; stop with F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\run2b.STOP
+segment 1 started 2026-10-11T05:59:12.304Z
+segment 2 started 2026-10-11T06:03:37.803Z
+segment 1 appended (282 s)
+segment 2 appended (102 s)
+stopped (STOP file)
