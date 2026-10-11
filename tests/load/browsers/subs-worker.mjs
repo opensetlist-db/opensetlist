@@ -1,26 +1,38 @@
 // Worker thread: a slice of the SDK-subscriber population (dev only).
 //
 // Each subscriber is one supabase-js client with its own websocket —
-// one browser tab's worth of Realtime — that behaves like the R1 live
+// one browser tab's worth of Realtime — that behaves like the R2 live
 // page (`src/hooks/useRealtimeEventChannel.ts` + `useLiveSnapshot.ts`):
 //
-//   - channel `event:<id>` (public), `postgres_changes` on
-//     public.SetlistItem with NO server-side filter and the page's
-//     client-side scope check on `new.eventId ?? old.eventId`
-//     (the R1 notification source);
+//   - channel `event:<id>` (public) with ONE subscription: the writer's
+//     transactional `rev` broadcast. No `postgres_changes` (R2 removed
+//     it), so there is no registration step to wait for — SUBSCRIBED
+//     means delivery is live;
+//   - the broadcast handler of the hook, line for line: the payload is
+//     untrusted, accepted only as `{ kind: "setlist", rev: <non-negative
+//     safe integer> }`; `acceptance.noteHint(rev)` puts it in the
+//     transient batch and says whether it is news (rev > the server-
+//     observed watermark); only then `scheduler.requestFetch(
+//     "notification")`;
 //   - the page's real scheduler (`src/lib/liveScheduler.ts`, imported
-//     from source), ONE per client for its whole life, like the hook's
-//     one-per-session: notification → jittered U(0, 500 ms) fetch;
-//     SUBSCRIBED catch-up jittered U(0, CATCHUP_JITTER_MS); ≥ 1 s
-//     cooldown shared by those; single-flight with one dirty follow-up;
-//     an immediate `initial` seed at start; periodic repair poll every
-//     20 s ± 4 s; a 503's `Retry-After` handed over as `notBeforeMs`, the
-//     floor every scheduling path honours;
-//   - the page's real acceptance rule + `?minRev=`
-//     (`src/lib/snapshotAcceptance.ts`): `appliedRev + 1` for
-//     notification-triggered requests, the highest server-shown rev
-//     otherwise; 8 s deadline and n13's retry schedule
-//     (`src/lib/snapshotFreshness.ts`);
+//     from source), ONE per client for its whole life, wired like the
+//     hook: `captureHint` drains the batch at dispatch, `onHintExhausted`
+//     records a dropped ticket, healthy cadence 20 s ± 4 s, jittered
+//     SUBSCRIBED catch-up, 1 s cooldown shared by notifications and
+//     rechecks, single-flight + dirty follow-up, the sticky generic
+//     obligation, a 503's `Retry-After` as the floor;
+//   - the page's runner (`useLiveSnapshot`'s `runFetch`), mirrored: URL
+//     `minRev = minRevFor(request.hint)` (= max(serverRev, H), or
+//     serverRev without a ticket) and `&hint=1` iff `request.notify`;
+//     8 s deadline that settles the request as a failure at once; the
+//     `x-snapshot-verify` header parsed by the page's own
+//     `parseSnapshotVerify`; `acceptance.evaluate(gen, body, verify,
+//     hint)`; the verdict's hint resolution mapped to the scheduler's
+//     outcome (satisfied / disproved / superseded → "resolved",
+//     inconclusive → "inconclusive"); a server-proven gap is a failure
+//     that still reports the ticket's fate; HTTP / network / deadline
+//     failures report none (the retry carries the ticket); n13's retry
+//     schedule (`src/lib/snapshotFreshness.ts`);
 //   - the hook's channel-recovery state machine (constants imported
 //     from `src/lib/realtimeRecovery.ts`): on CHANNEL_ERROR / TIMED_OUT /
 //     CLOSED the channel object is KEPT (realtime-js rejoins it on its
@@ -36,28 +48,30 @@
 //     teardown has no equivalent here: a worker client is always
 //     "visible".
 //
-// On top of that, every client listens for the server's transactional
-// broadcast (`rev` on the same topic — R1 sends it, R1 pages ignore it)
-// and records its arrival, so one run compares the R1 notification
-// (postgres_changes) with the R2 transport (broadcast) on the same
-// population.
+// What each client records (for run.mjs): every broadcast it received
+// and what the handler did with it; every request as the scheduler
+// described it (`{reason, generic, hint, notify}`) with the URL's
+// `minRev`, the status, the verification header kind, the body rev and
+// the hint resolution; per-kind counts; dropped (exhausted) tickets; the
+// highest `serverRev` the acceptance state ever held — the poisoning
+// drill's proof that a forged hint never entered the durable watermark.
 //
-// Drills: `dropPg` (worker-wide) makes every client ignore its
-// scope-checked postgres_changes notifications — recorded in `notes` with
-// type "x" instead of the change type, never scheduled — so only the
-// periodic repair poll can bring the client forward (lost-notification
-// drill). The socket and the channel stay healthy.
+// Drill: `dropNotify` (worker-wide) makes every client drop each VALID
+// broadcast payload before `noteHint` — the hook's own drill point — so
+// only the periodic repair poll can bring the client forward (lost-
+// notification drill). The socket and the channel stay healthy.
 //
-// What is kept per client is deliberately tiny — timestamps and revs,
-// never response bodies — so a few hundred clients fit in one laptop
-// process. The population is split over several worker threads so the
-// JSON parsing of a notification burst (hundreds of ~80 KB snapshots
-// within 0.5 s) does not delay the timestamps of other clients by
-// event-loop lag on a single thread.
+// What is kept per client is deliberately tiny — timestamps, revs and
+// short labels, never response bodies — so a few hundred clients fit in
+// one laptop process. The population is split over several worker
+// threads so the JSON parsing of a notification burst (hundreds of
+// ~80 KB snapshots within 0.5 s) does not delay the timestamps of other
+// clients by event-loop lag on a single thread.
 //
 // Importing the app's .ts modules relies on Node's built-in type
-// stripping (Node ≥ 22.18 / 23.6); those four files have no imports
-// and no TS-only runtime syntax. `realtimeRecovery.ts` also exports
+// stripping (Node ≥ 22.18 / 23.6). `snapshotAcceptance.ts` and
+// `liveBroadcast.ts` have one import each, and it is `import type`
+// (erased); the others have none. None uses TS-only runtime syntax. `realtimeRecovery.ts` also exports
 // `document` helpers, but only touches `document` when they are called,
 // which this worker never does.
 import { parentPort, workerData } from "node:worker_threads";
@@ -69,9 +83,10 @@ import {
   FALLBACK_POLL_MS,
   FALLBACK_POLL_SPREAD_MS,
 } from "../../../src/lib/liveScheduler.ts";
-import { SnapshotAcceptance, setlistSnapshotUrl } from "../../../src/lib/snapshotAcceptance.ts";
+import { SnapshotAcceptance, isValidRev, setlistSnapshotUrl } from "../../../src/lib/snapshotAcceptance.ts";
+import { SNAPSHOT_VERIFY_HEADER, parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import {
-  SNAPSHOT_FETCH_TIMEOUT_MS,
+  armSnapshotDeadline,
   snapshotRetryDelayMs,
   parseRetryAfterMs,
   clampRetryAfterMs,
@@ -82,27 +97,37 @@ import {
   HEALTHY_BUDGET_RESET_MS,
   recreateBackoffMs,
 } from "../../../src/lib/realtimeRecovery.ts";
+// Type-only Prisma import (erased); the runtime exports are plain.
+import { LIVE_BROADCAST_EVENT, liveTopic } from "../../../src/lib/liveBroadcast.ts";
 
 // The hook's two cadences (`HEALTHY_CADENCE` / `DISCONNECTED_CADENCE` in
 // src/hooks/useRealtimeEventChannel.ts — module-private there, so
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-
 const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf } = workerData;
 const EVENT = String(eventId);
-const TOPIC = `event:${EVENT}`;
+// The writer's own topic and event name, so a rename on either side
+// cannot silently leave the population listening to nothing.
+const TOPIC = liveTopic(BigInt(EVENT));
 const CANCELLED = { kind: "cancelled" };
-const OK = { kind: "ok" };
 const subs = [];
-let dropPg = false; // see "Drills" above
+let dropNotify = false; // see "Drill" above
+
+// `HintResolution` → the scheduler's `LiveHintOutcome` (useLiveSnapshot's
+// `hintOutcomeFor`).
+const hintOutcomeFor = (resolution) =>
+  resolution === "none" ? undefined : resolution === "inconclusive" ? "inconclusive" : "resolved";
+
+const bump = (o, k) => {
+  o[k] = (o[k] || 0) + 1;
+};
 
 function makeSub(idx) {
   const rec = {
     idx,
     locale: localeOf[idx % localeOf.length],
     subscribedAt: [], // every SUBSCRIBED (initial + rejoins)
-    pgReadyAt: [], // "Subscribed to PostgreSQL" system messages
     statuses: {},
     errors: {},
     // [t, status] each time the client ENTERED the disconnected state
@@ -112,14 +137,25 @@ function makeSub(idx) {
     applied: [], // [t, rev] whenever the applied rev increases
     // [t, rev, reason] for EVERY snapshot the acceptance rule applied, in
     // order — not only increases — so the run can prove the applied rev
-    // never went backwards (e.g. across the polling → realtime handoff)
-    // and say which fetch reason delivered a revision.
+    // never went backwards and say which fetch reason delivered a rev.
     appliedAll: [],
-    notes: [], // [t, eventType initial, row id] (scope-checked notifications)
-    bcasts: [], // [t, rev]
+    // [t, rev, what] per `rev` broadcast: "n" = news (noteHint true →
+    // notification requested), "d" = not news (rev ≤ serverRev), "x" =
+    // dropped by the drill, "i" = invalid payload (rev null then).
+    bcasts: [],
+    // [tStart, reason, generic 0/1, hint, notify 0/1, minRev, status,
+    //  verify kind, body rev, hint resolution, tEnd, outcome]
+    // status 0 = network error / deadline; outcome ok | failed | cancelled.
+    reqs: [],
     fetches: {}, // reason → count
     sources: {}, // x-snapshot-source → count
+    verifyKinds: {}, // x-snapshot-verify kind → count (200 responses)
+    hintRes: {}, // satisfied / disproved / superseded / inconclusive → count
+    exhausted: [], // [t, hint] tickets dropped after an inconclusive recheck
+    serverRevMax: null, // highest acceptance.serverRev ever held
+    serverRevFinal: null,
     failures: 0,
+    failKinds: {}, // http / network / deadline / gap / body → count
     retryAfter: 0, // failed responses that carried a Retry-After
     attemptAt: null,
   };
@@ -127,60 +163,121 @@ function makeSub(idx) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   const acceptance = new SnapshotAcceptance();
+  const generation = acceptance.generation;
   let consecutiveFailures = 0;
   let lastAppliedRev = null;
   let stopped = false;
 
-  // useLiveSnapshot's runner: URL + minRev, 8 s deadline, acceptance,
-  // n13 failure bookkeeping, Retry-After → retry delay AND floor.
-  const runFetch = async (reason) => {
-    if (stopped) return CANCELLED;
-    rec.fetches[reason] = (rec.fetches[reason] || 0) + 1;
-    const generation = acceptance.generation;
-    const minRev = reason === "notification" ? acceptance.notificationMinRev() : acceptance.minRevToSend();
-    const ctrl = new AbortController();
-    const deadline = setTimeout(() => ctrl.abort(), SNAPSHOT_FETCH_TIMEOUT_MS);
-    const fail = (retryAfter) => {
-      if (stopped) return CANCELLED;
-      consecutiveFailures++;
-      rec.failures++;
-      if (retryAfter !== null) rec.retryAfter++;
-      return {
-        kind: "failed",
-        retryInMs: snapshotRetryDelayMs(consecutiveFailures, retryAfter),
-        notBeforeMs: retryAfter === null ? null : clampRetryAfterMs(retryAfter),
-      };
-    };
-    try {
-      const res = await fetch(base + setlistSnapshotUrl(EVENT, rec.locale, minRev), { signal: ctrl.signal });
-      if (stopped) return CANCELLED;
-      if (!res.ok) {
-        await res.arrayBuffer().catch(() => {});
-        return fail(parseRetryAfterMs(res.headers.get("retry-after")));
-      }
-      const src = res.headers.get("x-snapshot-source") || "none";
-      rec.sources[src] = (rec.sources[src] || 0) + 1;
-      const body = await res.json();
-      if (stopped) return CANCELLED;
-      if (!body || !Array.isArray(body.items)) return fail(null);
-      const v = acceptance.evaluate(generation, body);
-      if (v.kind === "stale-generation") return CANCELLED;
-      if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason]);
-      if (v.apply && v.version && (lastAppliedRev === null || v.version.rev > lastAppliedRev)) {
-        lastAppliedRev = v.version.rev;
-        rec.applied.push([Date.now(), v.version.rev]);
-      }
-      if (v.serverGap) return fail(null);
-      consecutiveFailures = 0;
-      return OK;
-    } catch {
-      return fail(null);
-    } finally {
-      clearTimeout(deadline);
-    }
+  const noteServerRev = () => {
+    const s = acceptance.serverRev;
+    if (s !== null && (rec.serverRevMax === null || s > rec.serverRevMax)) rec.serverRevMax = s;
   };
 
-  const scheduler = createLiveScheduler({ runFetch, periodic: HEALTHY_CADENCE });
+  // useLiveSnapshot's runner (see header).
+  const runFetch = (reason, request) =>
+    new Promise((resolve) => {
+      if (stopped) return resolve(CANCELLED);
+      const hint = request?.hint ?? null;
+      const notify = request?.notify === true;
+      const minRev = acceptance.minRevFor(hint);
+      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null];
+      rec.reqs.push(row);
+      bump(rec.fetches, reason);
+      let settled = false;
+      const finish = (outcome) => {
+        if (settled) return;
+        settled = true;
+        row[10] = Date.now();
+        row[11] = outcome.kind;
+        resolve(outcome);
+      };
+      const fail = (kind, retryAfterMs, hintOutcome) => {
+        if (settled) return;
+        if (stopped) return finish(CANCELLED);
+        consecutiveFailures++;
+        rec.failures++;
+        bump(rec.failKinds, kind);
+        if (retryAfterMs !== null) rec.retryAfter++;
+        finish({
+          kind: "failed",
+          retryInMs: snapshotRetryDelayMs(consecutiveFailures, retryAfterMs),
+          notBeforeMs: retryAfterMs === null ? null : clampRetryAfterMs(retryAfterMs),
+          ...(hintOutcome ? { hint: hintOutcome } : {}),
+        });
+      };
+      const controller = new AbortController();
+      const deadline = armSnapshotDeadline(controller, () => fail("deadline", null));
+      void (async () => {
+        try {
+          const res = await fetch(base + setlistSnapshotUrl(EVENT, rec.locale, minRev, notify), { signal: controller.signal });
+          row[6] = res.status;
+          if (settled) return;
+          if (stopped) return finish(CANCELLED);
+          if (!res.ok) {
+            await res.arrayBuffer().catch(() => {});
+            return fail("http", parseRetryAfterMs(res.headers.get("retry-after")));
+          }
+          bump(rec.sources, res.headers.get("x-snapshot-source") || "none");
+          const body = await res.json();
+          if (settled) return;
+          if (stopped) return finish(CANCELLED);
+          if (!body || !Array.isArray(body.items)) return fail("body", null);
+          const verify = parseSnapshotVerify(res.headers.get(SNAPSHOT_VERIFY_HEADER));
+          row[7] = verify.kind;
+          row[8] = isValidRev(body.rev) ? body.rev : null;
+          bump(rec.verifyKinds, verify.kind);
+          const v = acceptance.evaluate(generation, body, verify, hint);
+          if (v.kind === "stale-generation") return finish(CANCELLED);
+          noteServerRev();
+          row[9] = v.hint;
+          if (v.hint !== "none") bump(rec.hintRes, v.hint);
+          if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason]);
+          if (v.apply && v.version && (lastAppliedRev === null || v.version.rev > lastAppliedRev)) {
+            lastAppliedRev = v.version.rev;
+            rec.applied.push([Date.now(), v.version.rev]);
+          }
+          const hintOutcome = hintOutcomeFor(v.hint);
+          if (v.serverGap) return fail("gap", null, hintOutcome);
+          consecutiveFailures = 0;
+          finish(hintOutcome ? { kind: "ok", hint: hintOutcome } : { kind: "ok" });
+        } catch {
+          fail("network", null);
+        } finally {
+          deadline.clear();
+        }
+      })();
+    });
+
+  const scheduler = createLiveScheduler({
+    runFetch,
+    captureHint: () => acceptance.captureHint(),
+    onHintExhausted: (h) => rec.exhausted.push([Date.now(), h]),
+    periodic: HEALTHY_CADENCE,
+  });
+
+  // The hook's `handleRevBroadcast`.
+  const handleRevBroadcast = (message) => {
+    const payload = message?.payload;
+    if (payload === null || typeof payload !== "object") {
+      rec.bcasts.push([Date.now(), null, "i"]);
+      return;
+    }
+    const { kind, rev } = payload;
+    if (kind !== "setlist" || !isValidRev(rev)) {
+      rec.bcasts.push([Date.now(), null, "i"]);
+      return;
+    }
+    if (dropNotify) {
+      rec.bcasts.push([Date.now(), rev, "x"]);
+      return;
+    }
+    if (!acceptance.noteHint(rev)) {
+      rec.bcasts.push([Date.now(), rev, "d"]);
+      return;
+    }
+    rec.bcasts.push([Date.now(), rev, "n"]);
+    scheduler.requestFetch("notification");
+  };
 
   // ── channel recovery: the hook's state machine (see header) ──
   let connection = "joining"; // "joining" | "subscribed" | "disconnected"
@@ -202,22 +299,9 @@ function makeSub(idx) {
     try {
       channel = c
         .channel(TOPIC)
-        .on("postgres_changes", { event: "*", schema: "public", table: "SetlistItem" }, (p) => {
+        .on("broadcast", { event: LIVE_BROADCAST_EVENT }, (m) => {
           if (stopped || seq !== channelSeq) return;
-          const pushed = p.new?.eventId ?? p.old?.eventId;
-          if (pushed != null && String(pushed) !== EVENT) return;
-          if (dropPg) {
-            rec.notes.push([Date.now(), "x", String(p.new?.id ?? p.old?.id ?? "")]);
-            return;
-          }
-          rec.notes.push([Date.now(), (p.eventType || "?")[0], String(p.new?.id ?? p.old?.id ?? "")]);
-          scheduler.requestFetch("notification");
-        })
-        .on("broadcast", { event: "rev" }, (m) => {
-          rec.bcasts.push([Date.now(), typeof m.payload?.rev === "number" ? m.payload.rev : null]);
-        })
-        .on("system", {}, (p) => {
-          if (p?.extension === "postgres_changes" && p?.status === "ok") rec.pgReadyAt.push(Date.now());
+          handleRevBroadcast(m);
         })
         .subscribe((status, err) => onStatus(seq, status, err));
     } catch (e) {
@@ -287,6 +371,8 @@ function makeSub(idx) {
 
   return {
     rec,
+    acceptance,
+    scheduler,
     start() {
       rec.attemptAt = Date.now();
       scheduler.start();
@@ -307,6 +393,7 @@ function makeSub(idx) {
       // `stopped` first: removing the channels reports CLOSED, which must
       // not look like a disconnect.
       stopped = true;
+      rec.serverRevFinal = acceptance.serverRev;
       clearRecoveryTimer();
       clearHealthyTimer();
       scheduler.dispose();
@@ -318,12 +405,8 @@ function makeSub(idx) {
 
 function progress() {
   let joined = 0;
-  let pgReady = 0;
-  for (const s of subs) {
-    if (s.rec.subscribedAt.length) joined++;
-    if (s.rec.pgReadyAt.length) pgReady++;
-  }
-  return { joined, pgReady, total: n };
+  for (const s of subs) if (s.rec.subscribedAt.length) joined++;
+  return { joined, total: n };
 }
 
 parentPort.on("message", async (msg) => {
@@ -338,14 +421,25 @@ parentPort.on("message", async (msg) => {
     }
     parentPort.postMessage({ type: "reached", count });
   } else if (msg.cmd === "noted") {
-    // How many clients have received a (not dropped) notification of
-    // change type msg.ty ("I" / "U" / "D") for row msg.id.
+    // How many clients have received a valid, not-dropped `rev`
+    // broadcast with rev ≥ msg.rev (news or a duplicate — either way
+    // the notification reached them).
     let count = 0;
-    for (const s of subs) if (s.rec.notes.some(([, ty, id]) => ty === msg.ty && id === msg.id)) count++;
+    for (const s of subs) if (s.rec.bcasts.some(([, rev, w]) => rev !== null && rev >= msg.rev && (w === "n" || w === "d"))) count++;
     parentPort.postMessage({ type: "noted", count });
-  } else if (msg.cmd === "dropPg") {
-    dropPg = !!msg.on;
-    parentPort.postMessage({ type: "dropPgAck", on: dropPg });
+  } else if (msg.cmd === "dropNotify") {
+    dropNotify = !!msg.on;
+    parentPort.postMessage({ type: "dropNotifyAck", on: dropNotify });
+  } else if (msg.cmd === "state") {
+    // The acceptance + scheduler state right now (drills read serverRev
+    // and the carried ticket from here).
+    const clients = subs.map((s) => ({
+      idx: s.rec.idx,
+      serverRev: s.acceptance.serverRev,
+      pendingHint: s.acceptance.pendingHint,
+      ...s.scheduler.getState(),
+    }));
+    parentPort.postMessage({ type: "state", clients });
   } else if (msg.cmd === "drop") {
     let ok = 0;
     for (const s of subs) if (s.dropSocket()) ok++;
