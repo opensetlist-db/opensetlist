@@ -87,6 +87,7 @@ import { SnapshotAcceptance, isValidRev, setlistSnapshotUrl } from "../../../src
 import { SNAPSHOT_VERIFY_HEADER, parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import {
   armSnapshotDeadline,
+  SNAPSHOT_FETCH_TIMEOUT_MS,
   snapshotRetryDelayMs,
   parseRetryAfterMs,
   clampRetryAfterMs,
@@ -99,13 +100,14 @@ import {
 } from "../../../src/lib/realtimeRecovery.ts";
 // Type-only Prisma import (erased); the runtime exports are plain.
 import { LIVE_BROADCAST_EVENT, liveTopic } from "../../../src/lib/liveBroadcast.ts";
+import { startLagMonitor, HEARTBEAT_MS } from "./hostmon.mjs";
 
 // The hook's two cadences (`HEALTHY_CADENCE` / `DISCONNECTED_CADENCE` in
 // src/hooks/useRealtimeEventChannel.ts — module-private there, so
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf } = workerData;
+const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0 } = workerData;
 const EVENT = String(eventId);
 // The writer's own topic and event name, so a rename on either side
 // cannot silently leave the population listening to nothing.
@@ -113,6 +115,34 @@ const TOPIC = liveTopic(BigInt(EVENT));
 const CANCELLED = { kind: "cancelled" };
 const subs = [];
 let dropNotify = false; // see "Drill" above
+
+// ── measurement validity (see hostmon.mjs) ──
+// This thread's event-loop lag, sampled every 100 ms from the moment the
+// worker loads, plus a heartbeat to the main thread once a second
+// carrying the largest lag since the previous one. The heartbeat is the
+// signal that survives a stall the worker never recovers from (its final
+// result may never arrive); the full lag series comes back with the
+// result. A heartbeat is sent from the lag tick itself, so a blocked
+// loop delays both together — exactly what the main thread looks for.
+let hbLagMax = 0;
+let lastHb = Date.now();
+const lagMon = startLagMonitor({
+  onTick(lag) {
+    if (lag > hbLagMax) hbLagMax = lag;
+    const now = Date.now();
+    if (now - lastHb >= HEARTBEAT_MS) {
+      parentPort.postMessage({ type: "hb", t: now, lagMax: hbLagMax });
+      lastHb = now;
+      hbLagMax = 0;
+    }
+  },
+});
+// Lateness of every 8 s deadline timer that fired: fired − armed − 8,000
+// ms, [t, lateMs, client idx]. A healthy loop fires within a few ms; a
+// late timer is the second, independent sign of a blocked thread (it was
+// how the stalled workers were first recognised: the failures looked
+// like server timeouts, but the timers fired seconds late).
+const deadlineLate = [];
 
 // `HintResolution` → the scheduler's `LiveHintOutcome` (useLiveSnapshot's
 // `hintOutcomeFor`).
@@ -126,6 +156,7 @@ const bump = (o, k) => {
 function makeSub(idx) {
   const rec = {
     idx,
+    worker: workerIdx,
     locale: localeOf[idx % localeOf.length],
     subscribedAt: [], // every SUBSCRIBED (initial + rejoins)
     statuses: {},
@@ -213,7 +244,11 @@ function makeSub(idx) {
         });
       };
       const controller = new AbortController();
-      const deadline = armSnapshotDeadline(controller, () => fail("deadline", null));
+      const armedAt = Date.now();
+      const deadline = armSnapshotDeadline(controller, () => {
+        deadlineLate.push([Date.now(), Date.now() - armedAt - SNAPSHOT_FETCH_TIMEOUT_MS, idx]);
+        fail("deadline", null);
+      });
       void (async () => {
         try {
           const res = await fetch(base + setlistSnapshotUrl(EVENT, rec.locale, minRev, notify), { signal: controller.signal });
@@ -454,7 +489,8 @@ parentPort.on("message", async (msg) => {
     parentPort.postMessage({ type: "dropped", ok, at: Date.now() });
   } else if (msg.cmd === "stop") {
     await Promise.allSettled(subs.map((s) => s.stop()));
-    parentPort.postMessage({ type: "result", clients: subs.map((s) => s.rec) });
+    lagMon.stop();
+    parentPort.postMessage({ type: "result", worker: workerIdx, lag: lagMon.recorder.summary(), deadlineLate, clients: subs.map((s) => s.rec) });
   }
 });
 

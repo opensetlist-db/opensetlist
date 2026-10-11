@@ -41,6 +41,15 @@
 // ../warm-join.mjs, which lines it up with the warm job's completion
 // from the Vercel history logs (the harness cannot see those live).
 //
+// Measurement validity (every run): the main thread and every SDK
+// worker thread run an event-loop lag monitor (100 ms tick), the workers
+// send a heartbeat each second, and the workers time their own 8 s
+// deadline timers. A lag sample > 1 s on any thread, or a worker silent
+// for > 3 s, inside the measurement window makes the run INVALID (exit
+// code 3; a banner names the thread and the time; the gates are still
+// printed, labelled "measurement invalid"): the load host, not the
+// system under test, delayed the timestamps. See hostmon.mjs.
+//
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
 // gitignored). All timestamps in the files are UTC ISO so the run can be
 // aligned with a concurrent k6 burst from another stream.
@@ -55,6 +64,7 @@ import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSo
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
+import { startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -202,6 +212,13 @@ const workers = [];
 const saveFailures = [];
 let finalized = false;
 let guest = null; // guest broadcaster of the poison / spam drills
+// Measurement validity (see the header and hostmon.mjs). The main
+// thread's monitor starts at load: it owns every page timestamp
+// (Playwright events land here) and the admin driver's save clock.
+const mainLag = startLagMonitor();
+const heartbeats = {}; // worker idx → [[recvT, sendT, lagMaxSinceLast], …]
+const workerStarted = {}; // worker idx → spawn time
+let workerMeta = []; // per worker: { worker, lag, deadlineLate, timedOut }
 
 // Short-lived DB connection for one check (session pooler; holding one
 // open for the whole run would pin a pooler client for minutes).
@@ -226,11 +243,17 @@ function startWorkers() {
         offset, n, base: BASE, eventId: EVENT_ID,
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        batch: batchPer, every: 1000, localeOf: LOCALE_OF,
+        batch: batchPer, every: 1000, localeOf: LOCALE_OF, workerIdx: w,
       },
     });
+    workerStarted[w] = Date.now();
+    heartbeats[w] = [];
     const waiters = {};
     worker.on("message", (m) => {
+      if (m.type === "hb") {
+        heartbeats[w].push([Date.now(), m.t, m.lagMax]);
+        return;
+      }
       const q = waiters[m.type];
       if (q && q.length) q.shift()(m);
     });
@@ -239,7 +262,7 @@ function startWorkers() {
       (waiters[type] ||= []).push(resolve);
       worker.postMessage({ cmd, ...extra });
     });
-    workers.push({ worker, n, ask });
+    workers.push({ worker, n, ask, idx: w });
   }
 }
 
@@ -285,9 +308,10 @@ const pageNoted = (rec, { rev, id, ty }) =>
 async function stopWorkers() {
   const results = await Promise.all(workers.map((w) => Promise.race([
     w.ask("stop", "result"),
-    sleep(20000).then(() => ({ clients: [] })),
+    sleep(20000).then(() => ({ worker: w.idx, clients: [], timedOut: true })),
   ])));
   await Promise.allSettled(workers.map((w) => w.worker.terminate()));
+  workerMeta = results.map((r, i) => ({ worker: r.worker ?? workers[i].idx, lag: r.lag ?? null, deadlineLate: r.deadlineLate ?? [], timedOut: !!r.timedOut, clients: r.clients.length }));
   return results.flatMap((r) => r.clients);
 }
 
@@ -609,8 +633,8 @@ async function main() {
     if (DRILL === "lost-final" && DROP_VIA === "proxy" && drillPageSet.has(idx)) return "proxy";
     return "none";
   };
-  if (SUBS > 0) startWorkers();
   const popStart = Date.now();
+  if (SUBS > 0) startWorkers();
   pagePop = PAGES > 0
     ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode, headless: !args.headed, concurrency: PAGE_CONCURRENCY, log })
     : { pages: [], joined: () => 0, pgReady: () => 0, setDropNotify() {}, armHookDrop: async () => 0, disarmHookDrop: async () => 0, hookDropPending: async () => null, dropSockets: () => 0, close: async () => {} };
@@ -905,7 +929,7 @@ async function main() {
     const s = await spamP;
     drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} of ${s.planned} messages in ${Math.round(s.ms / 1000)} s${s.skipped ? ` (${s.skipped} slots skipped after slow acks)` : ""}`, at: iso(Date.now()) });
   }
-  return { runStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
+  return { runStart, popStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
 }
 
 async function finalize(state, aborted) {
@@ -957,6 +981,30 @@ function report(state, fin) {
   const { edits, popSummary, drillEvents, drillPageSet } = state;
   const { pageRecs, subRecs, clean, verify } = fin;
   const drillK = DRILL_EDIT;
+
+  // ─── measurement validity ───
+  // Window: from the population start (the first SDK client's first
+  // request) to the end of the edit window. Clean-up, worker shutdown
+  // and this report run after it and cannot move a measured timestamp.
+  const vFrom = state.popStart ?? state.runStart;
+  const vTo = state.editsEnd;
+  const mainSummary = mainLag.recorder.summary();
+  const lagThreads = [{ thread: "main", summary: mainSummary }, ...workerMeta.map((m) => ({ thread: `worker ${m.worker}`, summary: m.lag }))];
+  const valid = validity({ lags: lagThreads, heartbeats, from: vFrom, to: vTo, workerStarted });
+  const threadRows = lagThreads.map(({ thread, summary }) => {
+    const w = thread === "main" ? null : Number(thread.split(" ")[1]);
+    const meta = w == null ? null : workerMeta.find((m) => m.worker === w);
+    const hbs = w == null ? [] : heartbeats[w] || [];
+    let hbGapMax = null;
+    for (let i = 1; i < hbs.length; i++) hbGapMax = Math.max(hbGapMax ?? 0, hbs[i][1] - hbs[i - 1][1]);
+    const late = dist((meta?.deadlineLate || []).map((x) => x[1]));
+    return {
+      thread, window: lagOver(summary, vFrom, vTo), whole: summary ? { max: summary.max, maxAt: summary.maxAt, n: summary.n } : null,
+      over1s: (summary?.spikes || []).filter(([t, l]) => t >= vFrom && t <= vTo && l > LAG_INVALID_MS).length,
+      heartbeats: hbs.length, hbGapMax, deadlines: late, resultTimedOut: meta?.timedOut ?? false,
+    };
+  });
+
   // Reconnect drill: the drilled edit is judged as catch-up for every
   // page and client; a LATER edit is too for any page/client that had
   // not rejoined the channel by that edit's PUT (the R3 fallback keeps
@@ -1287,17 +1335,26 @@ function report(state, fin) {
 
   const P = pageRecs.length;
   const M = subRecs.length;
-  const v = (x) => (x == null ? "n/a" : x ? "**PASS**" : "**FAIL**");
+  // An invalid measurement still prints every gate (the numbers are
+  // useful for diagnosis), but no verdict may read as a result.
+  const v = (x) => `${x == null ? "n/a" : x ? "**PASS**" : "**FAIL**"}${valid.invalid ? " (measurement invalid)" : ""}`;
   const lines = [];
   lines.push(`# Browsers run — ${new Date(state.runStart).toISOString()}`);
   lines.push("");
+  if (valid.invalid) {
+    lines.push("> **VERDICT: INVALID — the load host stalled; this run measured the laptop, not the system.**");
+    for (const r of valid.reasons.slice(0, 8)) lines.push(`> - ${r.thread}: ${r.what} at ${iso(r.at)}`);
+    if (valid.reasons.length > 8) lines.push(`> - … ${valid.reasons.length - 8} more (JSON \`validity.reasons\`)`);
+    lines.push(`> Thresholds: a lag sample > ${LAG_INVALID_MS} ms on any thread, or a worker without a heartbeat for > ${SILENT_INVALID_MS} ms, between ${iso(vFrom)} and ${iso(vTo)}. Re-run with nothing else on the host (see README "Host isolation").`);
+    lines.push("");
+  }
   lines.push(`- Target: ${BASE}${EVENT_PATH} (event ${EVENT_ID}, start rev ${state.startRev}, ${original.length} active rows; insert after row ${AFTER_ROW} = position ${state.afterPosition})`);
   lines.push(`- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)`);
   lines.push(`- Edits: ${EDITS} × (insert-after + PUT marker song), every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
   lines.push("");
-  lines.push("## Gate verdicts");
+  lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
   lines.push("");
   lines.push("Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
   lines.push("");
@@ -1391,6 +1448,19 @@ function report(state, fin) {
   lines.push(`  - notification fetches by x-snapshot-source: ${kinds(hintTotals.notifSources)} (warm ${warmTxt(hintTotals.notifWarm, hintTotals.notif)})`);
   lines.push(`- Pages: ${pageHint.fetches} /api/setlist responses; notification fetches (hint=1) ${pageHint.notif}, their x-snapshot-verify: ${kinds(pageHint.notifVerify)}; all 200 responses: ${kinds(pageHint.verify)} (an R1 page build sends no hint=1)`);
   lines.push(`  - notification fetches by x-snapshot-source: ${kinds(pageHint.notifSources)} (warm ${warmTxt(pageHint.notifWarm, pageHint.notif)})`);
+  lines.push("");
+  lines.push("## Measurement validity (load host)");
+  lines.push("");
+  lines.push(`Event-loop lag = how late a 100 ms interval tick ran, per thread, inside the measurement window ${iso(vFrom)} → ${iso(vTo)} (p50 = median of the 10 s buckets' p50, p95 / p99 / max = the worst bucket). Heartbeats: one per second per worker, from its own loop. Deadline timers: fired − armed − 8,000 ms for every SDK request that hit the 8 s deadline. INVALID if any lag sample > ${LAG_INVALID_MS} ms or any heartbeat gap > ${SILENT_INVALID_MS} ms.`);
+  lines.push("");
+  lines.push("| thread | lag p50 / p95 / p99 / max ms | samples > 1 s | heartbeats (max gap ms) | deadline timers fired: n, late p50 / p95 / max ms |");
+  lines.push("|---|---|---|---|---|");
+  for (const t of threadRows) {
+    const w = t.window;
+    lines.push(`| ${t.thread}${t.resultTimedOut ? " (no result: stop timed out)" : ""} | ${ms(w.p50)} / ${ms(w.p95)} / ${ms(w.p99)} / ${ms(w.max)} | ${t.over1s} | ${t.thread === "main" ? "—" : `${t.heartbeats} (${ms(t.hbGapMax)})`} | ${t.thread === "main" ? "—" : `${t.deadlines.n}, ${ms(t.deadlines.p50)} / ${ms(t.deadlines.p95)} / ${ms(t.deadlines.max)}`} |`);
+  }
+  lines.push("");
+  lines.push(`Verdict: ${valid.invalid ? `**INVALID** (${valid.reasons.length} reason(s))` : "valid"}.`);
   lines.push("");
   lines.push("## Population");
   lines.push("");
@@ -1521,7 +1591,17 @@ function report(state, fin) {
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
       ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
-    verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
+    verdicts, popSummary, rejoin, drillEvents,
+    // Measurement validity: the verdict, why, and each thread's lag
+    // series (10 s buckets [start, n, p50, p95, p99, max] + every sample
+    // > 200 ms), heartbeats and deadline-timer lateness.
+    validity: {
+      invalid: valid.invalid, reasons: valid.reasons.map((r) => ({ ...r, atIso: iso(r.at) })), window: { from: iso(vFrom), to: iso(vTo) },
+      thresholds: { lagMs: LAG_INVALID_MS, silentMs: SILENT_INVALID_MS },
+      threads: threadRows,
+      lag: { main: mainSummary, workers: workerMeta.map((m) => ({ worker: m.worker, lag: m.lag, timedOut: m.timedOut })) },
+      heartbeats, deadlineLate: Object.fromEntries(workerMeta.map((m) => [m.worker, m.deadlineLate])),
+    }, saveFailures, clean, verify, doubleSave,
     guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
     hints: { sdk: hintTotals, pages: pageHint }, poison, spam, ambiguity,
     // Input of warm-join.mjs: per save, the commit proxy and every
@@ -1593,6 +1673,11 @@ try {
   const base = writeResults(md, json);
   console.log("\n" + md);
   log(`results: ${base}.md`);
+  // INVALID (3) outranks pass / fail: the gates were not measured.
+  if (json.validity.invalid) {
+    log(`VERDICT: INVALID — ${json.validity.reasons.length} host stall(s), first: ${json.validity.reasons[0].thread} ${json.validity.reasons[0].what} at ${json.validity.reasons[0].atIso}`);
+    process.exit(3);
+  }
   // null (nothing in scope, e.g. every pair drilled) is not a failure.
   process.exit(json.verdicts.primary.pass !== false && json.verdicts.drill?.pass !== false && json.verdicts.monotonic.pass !== false ? 0 : 1);
 } catch (e) {
