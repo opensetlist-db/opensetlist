@@ -101,8 +101,9 @@ function snapshotUnavailable(): NextResponse {
  * `Cache-Control: public, max-age=0, must-revalidate`: no browser or
  * CDN reuse in R1 (CDN caching is a later, measured experiment); the
  * data cache behind this route does the deduplication.
- * `x-snapshot-source: build | cache | repair | error` is diagnostics
- * only.
+ * `x-snapshot-source: build | cache | repair | warm | error` is
+ * diagnostics only (`warm` = a writer-warmed entry for the exact
+ * `minRev`, see below).
  *
  * `x-snapshot-verify: none | satisfied | fresh=<dbRev> |
  * memo=<rev>;age=<ms> | deferred` (200 only) tells the client how its
@@ -111,9 +112,14 @@ function snapshotUnavailable(): NextResponse {
  *
  * `?hint=1` marks a notification fetch (sent because a broadcast hint
  * arrived). It is accepted and logged (`[setlist] hint-fetch`, and
- * `hint=` on the revision-read line) and changes nothing else, so old
- * clients that never send it and new clients against an older server
- * both keep working.
+ * `hint=` on the revision-read line), so old clients that never send it
+ * and new clients against an older server both keep working. With
+ * writer warming on (`LIVE_WARM_ENTRIES=1`, `src/lib/liveWarm.ts`) a
+ * request with `hint=1` AND `minRev` first looks up the writer-warmed
+ * entry for exactly that revision — one `[setlist] warm-lookup` line
+ * per lookup — and a hit answers `x-snapshot-source: warm`,
+ * `x-snapshot-verify: satisfied`, through the same response shaping as
+ * every other source. Everything else is unchanged.
  */
 export async function GET(req: NextRequest) {
   const started = Date.now();

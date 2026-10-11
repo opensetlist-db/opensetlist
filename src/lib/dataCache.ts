@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
-import { getCache, type RuntimeCache } from "@vercel/functions";
+import { getCache, waitUntil, type RuntimeCache } from "@vercel/functions";
 
 /**
  * Cross-request data cache for public SSR reads.
@@ -286,9 +286,48 @@ export function warmEntryCache(): RuntimeCache {
   return getCache({ namespace: WARM_CACHE_NAMESPACE, keyHashFunction: sha256Hex });
 }
 
-/** Expire every cached public read. Call after a committed admin write. */
+/**
+ * Expire every warm live-snapshot entry. Best-effort and asynchronous:
+ * the Runtime Cache call is a network round trip that must not delay or
+ * fail the admin write that already committed, so it is started here,
+ * handed to `waitUntil` (keeps the Vercel function alive until it
+ * settles; a no-op off Vercel, where the promise simply runs) and every
+ * error is logged, never thrown.
+ *
+ * Why at all: a warm entry is keyed by setlist revision, and a catalog
+ * edit (song title, artist name, …) changes what a snapshot renders
+ * WITHOUT bumping any event's revision — so an entry built before the
+ * edit would keep serving the old name to every notification fetch
+ * that still asks for that revision (late jitter, retries) for up to
+ * its 90 s TTL. A warm job that was already building when this runs
+ * can still store a pre-edit snapshot after the expiry (late fill);
+ * that window is accepted.
+ */
+function expireWarmPublicData(): void {
+  const fail = (err: unknown) =>
+    console.error(`[dataCache] expireTag(${WARM_PUBLIC_DATA_TAG}) failed`, err);
+  let pending: Promise<void>;
+  try {
+    pending = warmEntryCache().expireTag(WARM_PUBLIC_DATA_TAG).catch(fail);
+  } catch (err) {
+    fail(err);
+    return;
+  }
+  try {
+    waitUntil(pending);
+  } catch (err) {
+    fail(err);
+  }
+}
+
+/**
+ * Expire every cached public read — the Next data cache entries and the
+ * live path's warm Runtime Cache entries. Call after a committed admin
+ * write.
+ */
 export function revalidatePublicData(): void {
   expireTags([PUBLIC_DATA_TAG]);
+  expireWarmPublicData();
 }
 
 /**
