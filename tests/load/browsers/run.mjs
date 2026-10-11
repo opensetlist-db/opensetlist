@@ -119,6 +119,11 @@ const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position 
 // Host isolation guard (see hostGuard()): warn by default, refuse to
 // start with --strict-host.
 const STRICT_HOST = args["strict-host"] === true || args["strict-host"] === "true";
+// Self-test of the INVALID path: `--debug-stall=<ms>` makes SDK worker 0
+// busy-wait that long right before the first edit, i.e. exactly the
+// failure the validity monitors exist to catch. Expect exit code 3 and
+// the banner naming "worker 0". Never use it for a measurement.
+const DEBUG_STALL_MS = int("debug-stall", 0);
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
@@ -788,6 +793,10 @@ async function main() {
     if (Number.isSafeInteger(r) && r > latestRev) latestRev = r;
   };
   let spamP = null;
+  if (DEBUG_STALL_MS > 0 && workers.length) {
+    log(`--debug-stall: blocking worker 0 for ${DEBUG_STALL_MS} ms (self-test; this run must come out INVALID)`);
+    workers[0].worker.postMessage({ cmd: "debugStall", ms: DEBUG_STALL_MS });
+  }
   const editsStart = Date.now();
   for (let k = 1; k <= EDITS; k++) {
     const due = editsStart + (k - 1) * PAUSE_MS;

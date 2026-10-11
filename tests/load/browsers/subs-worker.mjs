@@ -487,6 +487,12 @@ parentPort.on("message", async (msg) => {
     let ok = 0;
     for (const s of subs) if (s.dropSocket()) ok++;
     parentPort.postMessage({ type: "dropped", ok, at: Date.now() });
+  } else if (msg.cmd === "debugStall") {
+    // run.mjs --debug-stall: block this thread's event loop on purpose
+    // (synchronous busy-wait), so the INVALID path can be tested end to
+    // end. No reply: a stalled thread could not send one in time anyway.
+    const until = Date.now() + Number(msg.ms || 0);
+    while (Date.now() < until) { /* busy */ }
   } else if (msg.cmd === "stop") {
     await Promise.allSettled(subs.map((s) => s.stop()));
     lagMon.stop();

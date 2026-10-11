@@ -93,7 +93,7 @@ test("validity: a > 1 s lag inside the window invalidates; outside does not", ()
   assert.equal(v.invalid, true);
   assert.equal(v.reasons.length, 1);
   assert.equal(v.reasons[0].thread, "worker 1");
-  assert.equal(v.reasons[0].at, 5_000);
+  assert.equal(v.reasons[0].at, 5_000 - (LAG_INVALID_MS + 1), "stall start");
   const ok = validity({ lags: [{ thread: "main", summary: (() => { const x = createLagRecorder(); x.record(1, LAG_INVALID_MS); return x.summary(); })() }], heartbeats: {}, from: 0, to: 10 });
   assert.equal(ok.invalid, false, "exactly the threshold is still valid");
 });

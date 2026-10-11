@@ -151,7 +151,8 @@ export function validity({ lags, heartbeats, from, to, workerStarted = {} }) {
     if (!summary) continue;
     for (const [t, lag] of summary.spikes || []) {
       if (t >= from && t <= to + LAG_INTERVAL_MS && lag > LAG_INVALID_MS) {
-        reasons.push({ thread, what: `event-loop lag ${lag} ms`, at: t, ms: lag });
+        // `at` = when the stall began (the late tick fires at its end).
+        reasons.push({ thread, what: `event loop blocked ${lag} ms (lag sample)`, at: t - lag, ms: lag });
       }
     }
   }
