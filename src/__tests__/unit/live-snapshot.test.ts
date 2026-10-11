@@ -16,6 +16,8 @@ const db = vi.hoisted(() => ({
   revReads: 0,
   // Lets a test hold a build open to prove coalescing.
   gate: null as Promise<void> | null,
+  // Same, for the repair check's revision read.
+  revGate: null as Promise<void> | null,
   // Make the next build / revision read throw this.
   buildError: null as unknown,
   revReadError: null as unknown,
@@ -47,6 +49,7 @@ vi.mock("@/lib/prisma", () => {
     $queryRaw: vi.fn(async (strings: TemplateStringsArray) => {
       if (strings.join("").includes("set_config")) return [{ set_config: "500" }];
       db.revReads += 1;
+      if (db.revGate) await db.revGate;
       if (db.revReadError) throw db.revReadError;
       return [{ setlistRevision: db.rev }];
     }),
@@ -92,6 +95,7 @@ vi.mock("@/lib/dataCache", () => ({
 
 import {
   getLiveSnapshot,
+  parseHint,
   parseMinRev,
   resolveSnapshotForResponse,
   __resetLiveSnapshotStateForTests,
@@ -109,6 +113,7 @@ beforeEach(() => {
   db.builds = 0;
   db.revReads = 0;
   db.gate = null;
+  db.revGate = null;
   db.buildError = null;
   db.revReadError = null;
   vi.clearAllMocks();
@@ -147,6 +152,15 @@ describe("parseMinRev", () => {
     "99999999999999999999",
   ])("ignores %s", (raw) => {
     expect(parseMinRev(raw as string | null)).toBeNull();
+  });
+});
+
+describe("parseHint", () => {
+  it("only the exact value 1 marks a notification fetch", () => {
+    expect(parseHint("1")).toBe(true);
+    for (const raw of [null, "", "0", "true", "yes", " 1", "1 ", "01", "2"]) {
+      expect(parseHint(raw)).toBe(false);
+    }
   });
 });
 
@@ -370,7 +384,7 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     const lines = logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read "));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(
-      /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ instance=[0-9a-f]{8}$/,
+      /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ hint=0 instance=[0-9a-f]{8}$/,
     );
   });
 
@@ -395,7 +409,7 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     expect(revalidateEventData).not.toHaveBeenCalled();
     expect(
       logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
-    ).toEqual([expect.stringMatching(/ rev=timeout ms=\d+ instance=/)]);
+    ).toEqual([expect.stringMatching(/ rev=timeout ms=\d+ hint=0 instance=/)]);
     // Within the memo window the failure is remembered: no second read.
     db.revReadError = null;
     await getLiveSnapshot(BigInt(1), "ja", 6);
@@ -409,6 +423,152 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     expect(r.source).toBe("cache");
     expect(
       logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
-    ).toEqual([expect.stringMatching(/ rev=error ms=\d+ instance=/)]);
+    ).toEqual([expect.stringMatching(/ rev=error ms=\d+ hint=0 instance=/)]);
+  });
+});
+
+describe("getLiveSnapshot — x-snapshot-verify classification", () => {
+  const T0 = new Date("2026-11-14T07:00:00.000Z");
+
+  it("no minRev → none (and no revision read)", async () => {
+    const r = await getLiveSnapshot(BigInt(1), "ja");
+    expect(r.verify).toEqual({ kind: "none" });
+    expect(db.revReads).toBe(0);
+  });
+
+  it("cached snapshot already at minRev → satisfied without a revision read", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    expect((await getLiveSnapshot(BigInt(1), "ja", 5)).verify).toEqual({ kind: "satisfied" });
+    expect((await getLiveSnapshot(BigInt(1), "ja", 0)).verify).toEqual({ kind: "satisfied" });
+    expect(db.revReads).toBe(0);
+  });
+
+  it("this request started the revision read and it is below minRev → fresh=<dbRev>", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    const r = await getLiveSnapshot(BigInt(1), "ja", 999);
+    expect(r.verify).toEqual({ kind: "fresh", dbRev: 5 });
+    expect(r.snapshot.rev).toBe(BigInt(5));
+    expect(db.revReads).toBe(1);
+  });
+
+  it("a coalesced waiter on someone else's read → memo, aged from that read's start", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    await getLiveSnapshot(BigInt(1), "ja");
+    let release!: () => void;
+    db.revGate = new Promise<void>((r) => (release = r));
+    const initiator = getLiveSnapshot(BigInt(1), "ja", 100);
+    // Let the initiator reach the (gated) read before the others arrive.
+    // (Not `vi.waitFor`: under fake timers it advances the fake clock.)
+    while (db.revReads < 1) await new Promise((r) => setImmediate(r));
+    vi.setSystemTime(new Date(T0.getTime() + 250));
+    const waiters = [
+      getLiveSnapshot(BigInt(1), "ja", 200),
+      getLiveSnapshot(BigInt(1), "ja", 300),
+    ];
+    // Let both waiters join the in-flight read before it settles.
+    await new Promise((r) => setImmediate(r));
+    vi.setSystemTime(new Date(T0.getTime() + 400));
+    release();
+    const [a, b, c] = await Promise.all([initiator, ...waiters]);
+    expect(db.revReads).toBe(1);
+    expect(a.verify).toEqual({ kind: "fresh", dbRev: 5 });
+    // The read started at T0 and the waiters were answered at T0+400.
+    expect(b.verify).toEqual({ kind: "memo", rev: 5, ageMs: 400 });
+    expect(c.verify).toEqual({ kind: "memo", rev: 5, ageMs: 400 });
+  });
+
+  it("a remembered revision inside the memo window → memo with the age of that read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    await getLiveSnapshot(BigInt(1), "ja");
+    expect((await getLiveSnapshot(BigInt(1), "ja", 6)).verify).toEqual({
+      kind: "fresh",
+      dbRev: 5,
+    });
+    vi.setSystemTime(new Date(T0.getTime() + 300));
+    const r = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(r.verify).toEqual({ kind: "memo", rev: 5, ageMs: 300 });
+    expect(db.revReads).toBe(1);
+  });
+
+  it("a save landing inside the memo window is reported as memo, never as fresh proof", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    await getLiveSnapshot(BigInt(1), "ja");
+    await getLiveSnapshot(BigInt(1), "ja", 6); // read → 5
+    db.rev = BigInt(6); // the announced save commits after that read
+    vi.setSystemTime(new Date(T0.getTime() + 500));
+    const r = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(r.snapshot.rev).toBe(BigInt(5));
+    expect(r.verify).toEqual({ kind: "memo", rev: 5, ageMs: 500 });
+  });
+
+  it("revision read timed out → deferred; the remembered failure stays deferred", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    db.revReadError = Object.assign(new Error("Raw query failed. Code: `57014`."), {
+      code: "P2010",
+      meta: {
+        driverAdapterError: {
+          name: "DriverAdapterError",
+          cause: { kind: "postgres", code: "57014", message: "canceling statement due to statement timeout" },
+        },
+      },
+    });
+    expect((await getLiveSnapshot(BigInt(1), "ja", 6)).verify).toEqual({ kind: "deferred" });
+    db.revReadError = null;
+    expect((await getLiveSnapshot(BigInt(1), "ja", 6)).verify).toEqual({ kind: "deferred" });
+    expect(db.revReads).toBe(1);
+  });
+
+  it("revision read failed for another reason → deferred", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    db.revReadError = new Error("boom");
+    expect((await getLiveSnapshot(BigInt(1), "ja", 6)).verify).toEqual({ kind: "deferred" });
+  });
+
+  it("a repair that reaches minRev → satisfied (classified against the served snapshot)", async () => {
+    await getLiveSnapshot(BigInt(1), "ja"); // caches rev 5
+    db.rev = BigInt(6);
+    const r = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(r.source).toBe("repair");
+    expect(r.verify).toEqual({ kind: "satisfied" });
+    // Remembered 6 ≥ minRev 6 → repair entry → still satisfied.
+    const again = await getLiveSnapshot(BigInt(1), "ja", 6);
+    expect(again.snapshot.rev).toBe(BigInt(6));
+    expect(again.verify).toEqual({ kind: "satisfied" });
+  });
+
+  it("a repair that stays below minRev → fresh=<dbRev> equal to the served rev", async () => {
+    await getLiveSnapshot(BigInt(1), "ja"); // caches rev 5
+    db.rev = BigInt(6);
+    const r = await getLiveSnapshot(BigInt(1), "ja", 7);
+    expect(r.source).toBe("repair");
+    expect(r.snapshot.rev).toBe(BigInt(6));
+    expect(r.verify).toEqual({ kind: "fresh", dbRev: 6 });
+  });
+
+  it("coalesced first-read waiters each get their own verification", async () => {
+    let release!: () => void;
+    db.gate = new Promise<void>((r) => (release = r));
+    const plain = getLiveSnapshot(BigInt(1), "ja");
+    const hinted = getLiveSnapshot(BigInt(1), "ja", 5);
+    release();
+    const [p, h] = await Promise.all([plain, hinted]);
+    expect(db.builds).toBe(1);
+    expect(p.verify).toEqual({ kind: "none" });
+    expect(h.verify).toEqual({ kind: "satisfied" });
+  });
+
+  it("the rev-read line carries the initiating request's hint flag", async () => {
+    await getLiveSnapshot(BigInt(1), "ja");
+    await getLiveSnapshot(BigInt(1), "ja", 999, { hint: true });
+    expect(
+      logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
+    ).toEqual([
+      expect.stringMatching(
+        /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ hint=1 instance=[0-9a-f]{8}$/,
+      ),
+    ]);
   });
 });
