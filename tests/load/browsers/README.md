@@ -10,19 +10,38 @@ that behave like the **R2** page. Dev only (same guard as `../realtime/`).
 | `run.mjs` | Orchestrator: populations, edits, drills, measurement, report. |
 | `pages.mjs` | Headless Chromium pages (one browser context each) on `/<locale>/events/111/...`, ja/ko/en 70/20/10, running whatever build the preview serves (R1 or R2). A MutationObserver (init script) reports, with the page's own clock, when each song link `a[href*="/songs/<id>/"]` appears. Websocket frames (the `rev` broadcast — JSON or the 2.0.0 binary user-broadcast frame — and, on an R1 build, postgres_changes) and `/api/setlist` responses (`minRev`, `hint=1`, `x-snapshot-verify`, body rev) are recorded from CDP; drills use `page.routeWebSocket` on the Realtime endpoint, or the page's own `__osl.dropNextNotification` hook. |
 | `subs-worker.mjs` | Worker thread holding a slice of the SDK population. Each client imports the page's **real** `snapshotAcceptance.ts`, `liveScheduler.ts`, `snapshotVerify.ts`, `snapshotFreshness.ts`, `realtimeRecovery.ts` and `liveBroadcast.ts` from `src/lib` (Node type stripping) and mirrors `useRealtimeEventChannel` + `useLiveSnapshot`: ONE subscription, the `rev` broadcast; the handler validates `{ kind: "setlist", rev }`, `noteHint(rev)` → `requestFetch("notification")`; the scheduler drains the batch at dispatch (`captureHint`) and describes each request (`{reason, generic, hint, notify}`); the URL is `minRev = max(serverRev, H)` (or `serverRev`) with `&hint=1` iff `notify`; `x-snapshot-verify` parsed by the page's parser; `evaluate(gen, body, verify, hint)` → resolved / inconclusive (one recheck, then exhausted); 8 s deadline, n13 retry schedule, `Retry-After` floor; the hook's channel recovery (keep the channel on CHANNEL_ERROR / TIMED_OUT / CLOSED, 5 s ± 1 s polling, re-create only after 60 s + randomized backoff, max 3 per budget). Per client it records every broadcast and what the handler did with it, every request (descriptor, minRev, status, verify kind, body rev, hint resolution), exhausted tickets and the highest `serverRev` ever held. |
+| `hostmon.mjs` | Load-host self-monitoring, shared by `run.mjs` and the workers: event-loop lag monitor (100 ms tick, 10 s buckets), the INVALID rule, the 1 s host sampler, the host isolation guard. `node --test tests/load/browsers/hostmon.test.mjs` pins the pure parts. |
 | `admin.mjs` | Admin driver: login, insert-after, PUT, soft-delete, marker-song picking, optional position restore. |
 | `restore.mjs` | Recovery for a hard-killed run: list active rows, soft-delete given ids, optionally compact positions (`--compact --yes`, see below). |
 
-## One edit
+## One edit (`--edit-mode`)
+
+`pair` (default):
 
 1. `POST /api/admin/setlist-items/insert-after { afterPosition: <row 2> }` → a blank row ("曲名確認中") at position 3.
 2. `PUT /api/admin/setlist-items/<id> { songIds: [<marker>] }` → the row shows the marker song.
 
+`standalone`: ONE save per edit. insert-after cannot carry a song (the
+route takes only `{ eventId, afterPosition }`), so the run creates one
+blank **anchor row** after row 2 before any viewer joins, and each edit
+is a single PUT that swaps the anchor's marker song: one save, one
+broadcast. In a pair the PUT's notification fetch always meets the 1 s
+cooldown the insert's fetch opened, so the pair measures "save after a
+save"; standalone measures the clean single save. The anchor's position
+is re-read from the DB before each standalone save (the PUT writes
+`position`; pair inserts above it shift it).
+
+`mixed`: pair on odd edits, standalone on even ones (both shapes in one
+run, same population).
+
 Marker songs are real songs that no `SetlistItemSong` has ever referenced,
 so their link can't already be on the page and each run gets fresh ones.
-Both saves return the new `rev`.
+Every save returns the new `rev`. The report names the mode in its header
+and per edit; the per-save tables' "save rev" is the PUT's rev in every
+mode. Monotonicity treats every higher-rev marker on the same row as a
+replacement (the anchor chain, a double save).
 
-**Primary latency** = PUT request start → (page) marker link in the DOM /
+**Primary latency** = save (PUT) request start → (page) marker link in the DOM /
 (SDK) first applied snapshot with `rev ≥` the PUT's rev. Not seen within
 `--timeout` (30 s) = **missing**. Gate: **p95 ≤ 3 s and 0 missing** over all
 (edit × page) and (edit × client) pairs that no drill degrades on purpose.
@@ -58,6 +77,53 @@ gate table (pages / SDK), 0 regressions required; the JSON has every
 page's version history.
 
 All created rows are soft-deleted at the end, on error, and on Ctrl-C.
+
+## Measurement validity — verdict INVALID
+
+The run's timestamps come from the load host. If a thread there stalls,
+requests leave late (or never), 8 s deadline timers fire late, and the
+report would blame the server: in a flag-on spam / lost-final drill two
+of four SDK worker threads stalled while other work ran on the laptop,
+and the harness reported 224 "missing" + 594 deadline failures that
+never reached Vercel. So every run checks itself:
+
+- **Event-loop lag** on the main thread (pages, admin driver) and in
+  every SDK worker: a 100 ms interval; lag = how late each tick ran,
+  kept as 10 s buckets (n, p50, p95, p99, max) plus every sample
+  > 200 ms with its time, and the run-wide max.
+- **Heartbeats**: each worker posts one per second from its own loop.
+- **Deadline timers**: every SDK request that hit the 8 s deadline
+  records fired − armed − 8,000 ms (a healthy loop: a few ms).
+
+A lag sample > 1,000 ms on any thread, or a worker without a heartbeat
+for > 3,000 ms, between the population start and the end of the edit
+window makes the verdict **INVALID**: exit code **3**, a banner at the
+top of the report naming the thread and the time, every gate still
+printed but labelled "measurement invalid". INVALID outranks pass and
+fail — re-run on a quiet host; it says nothing about the system. The
+report's "Measurement validity" section has the per-thread table, the
+JSON `validity` the series. `--debug-stall=<ms>` blocks worker 0 that
+long before the first edit to test this path (expect exit 3). Idle
+reference on the Windows load laptop (12 logical cores): lag p95 ≈ 15
+ms (timer granularity), max < 150 ms during Chromium start-up.
+
+**Host telemetry**: a 1 s sampler of `os.loadavg()` (always 0 on
+Windows), host CPU busy (all cores, from `os.cpus()`), this process's
+CPU (main + workers; Chromium shows in the host figure only), RSS, free
+memory and the thread count, summarised per phase (join / settle /
+edits / drill) in the report and raw in the JSON (`host`).
+
+## Host isolation
+
+**Nothing else runs on the load host during a run; fetch and summarise
+logs afterwards.** At start the run checks the host: CPU busy > 60 %
+(POSIX: 1-min load ÷ cores; Windows: a 2 s CPU sample), or a competing
+process — another `tests/load` node process, a `vercel logs` history
+fetch, `vercel-logs-summary`, `warm-join`, k6 — prints a warning (the
+live `vercel-logs-capture.mjs` with its `vercel logs --follow` child and
+the `pooler-clients.mjs` / `pg-connections.mjs` samplers are allowed).
+`--strict-host` refuses to start instead (exit 2, nothing created). The
+check is in the report header and the JSON (`host.guard`).
 
 ## Full-scale commands (run one at a time)
 
@@ -118,11 +184,19 @@ soft-deleted): `--pages=2 --subs=5 --edits=2 --pause=12 --drill=<name>`;
 afterwards `restore.mjs --compact --yes`.
 
 Results: `tests/load/results/<UTC date>/<stamp>-browsers[-<drill>].md` (+ `.json`,
-gitignored, with per-page raw data, `hints`, and the drill's per-client
-detail). Exit code 0 = gates passed; 1 also when a monotonicity
-regression was seen or a drill gate failed.
+gitignored, with per-page raw data, `hints`, `validity`, `host`, and the
+drill's per-client detail) and **`<stamp>-timelines.jsonl`** — one line per
+thread, per save, per SDK client and per page with the full request /
+apply / broadcast timeline exactly as recorded (the JSON keeps only
+per-save aggregates for SDK clients); its first line documents every row
+layout. The `.jsonl` is gitignored and **stays local** on the load host
+(tens of MB at full scale); keep it next to the report for later
+analysis. Exit code 0 = gates passed; 1 also when a monotonicity
+regression was seen or a drill gate failed; 2 = error / refused
+(`--strict-host`); **3 = INVALID** (host stall, see above).
 
-Other flags: `--event-id`, `--event-path`, `--after-row=2`, `--timeout=30`,
+Other flags: `--edit-mode=pair|standalone|mixed`, `--strict-host`,
+`--debug-stall=<ms>` (self-test only), `--event-id`, `--event-path`, `--after-row=2`, `--timeout=30`,
 `--settle=10`, `--join-timeout=120`, `--wait-pg-ready=true` (only for an R1
 page build: also wait for the pages' postgres_changes registration, up to
 `--pg-ready-timeout=180` s; off by default — an R2 page / SDK client is live

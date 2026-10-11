@@ -328,6 +328,19 @@ be counted for this run too:
 node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=r2-baseline
 ```
 
+**Nothing else runs on the load host during a browsers run; fetch and
+summarise logs afterwards.** Only the live side-cars (`vercel-logs-capture.mjs`,
+`pooler-clients.mjs`) may run next to it; the history re-fetch,
+`vercel-logs-summary.mjs` and `warm-join.mjs` come after the run ends. The
+run warns at start when the host is busy or a competing process is found
+(`--strict-host` refuses), and a stalled load-host thread during the run
+turns the verdict into **INVALID** (exit 3) instead of FAIL — re-run, don't
+read it (`browsers/README.md`, "Measurement validity", "Host isolation").
+Each run also leaves `<stamp>-timelines.jsonl` (per-client timelines,
+gitignored, local only) next to the report. `--edit-mode=standalone` (one
+save per edit) or `mixed` measures the single-save case next to the default
+insert-after + PUT pair.
+
 **Do not start a k6 burst during it** — that was the run #2 recipe and is
 now the 1,000-client trap: under R2 every one of these 500 clients fetches
 on the broadcast by itself, so the browsers run IS the 500-viewer burst; a
@@ -459,7 +472,10 @@ baseline):
 node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=warm-on
 ```
 
-The report's per-save tables add `warm / hinted` and the first hinted
+Run it with nothing else on the host (see the R2 baseline (b): the
+history re-fetch and the summariser come afterwards; an INVALID verdict,
+exit 3, means the load host stalled — re-run). The report's per-save
+tables add `warm / hinted` and the first hinted
 request's start − commit (commit proxy = the PUT's response); the gate
 table adds an informational **warming** row (hit rate SDK / pages). The
 JSON's `warm` section holds every client's first hinted fetch per save
