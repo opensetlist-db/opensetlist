@@ -37,7 +37,7 @@ function get(query: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(getLiveSnapshot).mockResolvedValue({ snapshot, source: "cache" });
+  vi.mocked(getLiveSnapshot).mockResolvedValue({ snapshot, source: "cache", verify: { kind: "none" } });
 });
 
 afterEach(() => {
@@ -72,7 +72,7 @@ describe("GET /api/setlist", () => {
   });
 
   it("headers: public must-revalidate, no s-maxage, snapshot source passed through", async () => {
-    vi.mocked(getLiveSnapshot).mockResolvedValue({ snapshot, source: "repair" });
+    vi.mocked(getLiveSnapshot).mockResolvedValue({ snapshot, source: "repair", verify: { kind: "none" } });
     const res = await get("eventId=111&locale=ja");
     expect(res.headers.get("Cache-Control")).toBe(
       "public, max-age=0, must-revalidate",
@@ -106,6 +106,7 @@ describe("GET /api/setlist", () => {
     vi.mocked(getLiveSnapshot).mockResolvedValue({
       snapshot: { ...snapshot, isDeleted: true },
       source: "cache",
+      verify: { kind: "none" },
     });
     const body = await (await get("eventId=111")).json();
     expect(body.status).toBeNull();
@@ -148,7 +149,7 @@ describe("GET /api/setlist — failure and slow-hit diagnostics", () => {
     const at = (ms: number) =>
       vi.mocked(getLiveSnapshot).mockImplementationOnce(async () => {
         vi.setSystemTime(Date.now() + ms);
-        return { snapshot, source: "cache" };
+        return { snapshot, source: "cache", verify: { kind: "none" } } as const;
       });
     vi.useFakeTimers({ toFake: ["Date"] });
     at(120);
@@ -164,7 +165,7 @@ describe("GET /api/setlist — failure and slow-hit diagnostics", () => {
     // A slow BUILD is expected and not a slow hit.
     vi.mocked(getLiveSnapshot).mockImplementationOnce(async () => {
       vi.setSystemTime(Date.now() + 900);
-      return { snapshot, source: "build" };
+      return { snapshot, source: "build", verify: { kind: "none" } } as const;
     });
     await get("eventId=111&locale=en");
     expect(lines().filter((l) => l.startsWith("[setlist] slow-hit"))).toHaveLength(1);

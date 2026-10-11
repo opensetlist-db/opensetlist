@@ -6,6 +6,10 @@ import {
   resolveSnapshotForResponse,
 } from "@/lib/liveSnapshot";
 import { INSTANCE_ID } from "@/lib/instanceId";
+import {
+  formatSnapshotVerify,
+  SNAPSHOT_VERIFY_HEADER,
+} from "@/lib/snapshotVerify";
 import { locales, defaultLocale, type Locale } from "@/i18n/routing";
 
 const SLOW_HIT_MS = 500;
@@ -78,6 +82,11 @@ function snapshotUnavailable(): NextResponse {
  * data cache behind this route does the deduplication.
  * `x-snapshot-source: build | cache | repair | error` is diagnostics
  * only.
+ *
+ * `x-snapshot-verify: none | satisfied | fresh=<dbRev> |
+ * memo=<rev>;age=<ms> | deferred` (200 only) tells the client how its
+ * `minRev` was resolved — see `src/lib/snapshotVerify.ts` for the
+ * grammar and what each value proves.
  */
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -113,7 +122,7 @@ export async function GET(req: NextRequest) {
     logSnapshotFailure(eventId, locale, Date.now() - started, err);
     return snapshotUnavailable();
   }
-  const { snapshot, source } = result;
+  const { snapshot, source, verify } = result;
   const resolved = resolveSnapshotForResponse(snapshot);
   const servedAt = new Date().toISOString();
 
@@ -151,6 +160,22 @@ export async function GET(req: NextRequest) {
       headers: {
         "Cache-Control": "public, max-age=0, must-revalidate",
         "x-snapshot-source": source,
+        // Verification is a HEADER, never a body field, on purpose. The
+        // body is the shared snapshot: one data-cache entry per
+        // (event, locale), built once and handed to every request on
+        // every instance (and, if CDN caching is ever enabled for this
+        // route, potentially to other viewers too). The verification
+        // result is not a property of that snapshot — it depends on
+        // this request's `minRev`, on whether this request started or
+        // merely joined the revision read, and on the instance's memo
+        // at this moment. Stored in the body it would leak one
+        // request's evidence (e.g. `fresh=…`) into another request's
+        // answer, where it would be false. `Cache-Control` is left
+        // unchanged: nothing reuses responses today, and the URL
+        // carries `minRev`, so a future CDN experiment must revisit this
+        // header (a cached `fresh` would turn into stale evidence)
+        // before turning reuse on.
+        [SNAPSHOT_VERIFY_HEADER]: formatSnapshotVerify(verify),
       },
     },
   );

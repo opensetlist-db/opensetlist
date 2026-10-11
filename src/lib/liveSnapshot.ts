@@ -7,6 +7,7 @@ import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { cachedQuery, eventTag, revalidateEventData } from "@/lib/dataCache";
 import { revToNumber } from "@/lib/liveBroadcast";
+import type { ServerSnapshotVerify } from "@/lib/snapshotVerify";
 import { INSTANCE_ID } from "@/lib/instanceId";
 import { describeError, isDbTimeout } from "@/lib/dbErrors";
 import { FALLBACK_LOCALE, type Locale } from "@/i18n/routing";
@@ -383,39 +384,66 @@ const cachedSnapshotAtRev = cachedQuery(
 
 type SnapshotResult = { snapshot: EventSnapshot; source: SnapshotSource };
 
+/** `getLiveSnapshot`'s answer: the shared snapshot + this request's verification. */
+export type LiveSnapshotResult = SnapshotResult & { verify: ServerSnapshotVerify };
+
 // Per-instance coalescing. A broadcast makes hundreds of clients fetch
 // within the jitter window; the ones landing on the same warm lambda
 // while a build is running share it instead of each opening a
 // REPEATABLE READ transaction. Entries are removed when they settle.
-type InFlight<T> = { promise: Promise<T>; waiters: number };
+type InFlight<T> = { promise: Promise<T>; waiters: number; startedAt: number };
 const inFlight = new Map<string, InFlight<SnapshotResult>>();
 const inFlightRepair = new Map<string, InFlight<SnapshotResult>>();
 const inFlightRevRead = new Map<string, InFlight<bigint | null>>();
+
+/**
+ * One caller's view of a coalesced run: the shared value, plus whether
+ * THIS caller started the run (`initiator`) or joined one already in
+ * flight, and when the run started (`Date.now()` ms). The revision
+ * check needs the distinction: a read this request started began after
+ * the request did, so it is fresh evidence about the database; a read
+ * it merely joined may have run its SELECT before a save this request
+ * was told about committed, so it only counts as remembered evidence
+ * (see `x-snapshot-verify` in `src/lib/snapshotVerify.ts`).
+ */
+type Coalesced<T> = { value: T; initiator: boolean; startedAt: number };
 
 /**
  * Run `run` once per key on this instance; concurrent callers share the
  * result. `onShared(waiters)` fires when an entry settles that more than
  * one caller waited on (first caller included) — diagnostics for how
  * much per-instance coalescing absorbs a burst.
+ *
+ * Single-flight is unchanged by the provenance wrapper: the map still
+ * holds exactly one shared promise per key, `run` is still invoked
+ * only by the first caller, and every caller still settles with that
+ * one promise's value or rejection — each caller merely receives its
+ * own small `{ value, initiator, startedAt }` envelope around it.
  */
 function coalesce<T>(
   map: Map<string, InFlight<T>>,
   key: string,
   run: () => Promise<T>,
   onShared?: (waiters: number) => void,
-): Promise<T> {
+): Promise<Coalesced<T>> {
   const existing = map.get(key);
   if (existing) {
     existing.waiters += 1;
-    return existing.promise;
+    const { startedAt } = existing;
+    return existing.promise.then((value) => ({ value, initiator: false, startedAt }));
   }
-  const entry: InFlight<T> = { promise: undefined as never, waiters: 1 };
+  const entry: InFlight<T> = {
+    promise: undefined as never,
+    waiters: 1,
+    startedAt: Date.now(),
+  };
   entry.promise = run().finally(() => {
     if (map.get(key) === entry) map.delete(key);
     if (entry.waiters > 1) onShared?.(entry.waiters);
   });
   map.set(key, entry);
-  return entry.promise;
+  const { startedAt } = entry;
+  return entry.promise.then((value) => ({ value, initiator: true, startedAt }));
 }
 
 function logCoalesced(
@@ -447,8 +475,15 @@ async function readThroughCache(
 
 // Last revision this instance read from the database, per event. The
 // revision only ever grows, so a remembered value is always a valid
-// LOWER bound of the current one.
-const revMemo = new Map<string, { rev: bigint | null; readAt: number }>();
+// LOWER bound of the current one. `readAt` (when the read finished)
+// drives the memo window; `startedAt` (when it began) is the age the
+// `x-snapshot-verify: memo=…;age=…` header reports, because the SELECT
+// may have run at any instant between the two — the evidence is only
+// guaranteed to be as recent as the read's start.
+const revMemo = new Map<
+  string,
+  { rev: bigint | null; readAt: number; startedAt: number }
+>();
 // How long a completed read refutes hints above it. Bounds the repair
 // check to one 1-row read per instance per burst: the pooler is the
 // scarce resource (an uncached-read burst exhausted the dev pooler's
@@ -507,18 +542,34 @@ export async function readRevisionBounded(
 }
 
 /**
+ * Outcome of the repair check's revision lookup, with its provenance.
+ *
+ *   - `fresh`: this request itself started the bounded read (it was the
+ *     coalescing initiator), so the read began after the request did.
+ *   - `memo`: the value came from older evidence — the instance's
+ *     remembered revision, or a read already in flight that this
+ *     request joined as a coalesced waiter. `startedAt` is when that
+ *     read began.
+ *
+ * `rev: null` means "cannot verify" in both cases — the event is
+ * missing, or the read failed / ran out of time (a remembered failure
+ * included) — and the caller serves its cached snapshot.
+ */
+type RevCheck =
+  | { source: "fresh"; rev: bigint | null }
+  | { source: "memo"; rev: bigint | null; startedAt: number };
+
+/**
  * Database revision for the repair check: a remembered value when it
  * already satisfies the hint (`rev >= minRev`) or is younger than
  * `REV_MEMO_MS`, otherwise ONE bounded, uncached
  * `SELECT "setlistRevision"`, coalesced across concurrent requests on
- * this instance. `null` means "cannot verify" — the event is missing,
- * or the read failed / ran out of time — and the caller serves its
- * cached snapshot.
+ * this instance.
  */
 async function verifiedRevision(
   eventId: bigint,
   minRev: number,
-): Promise<bigint | null> {
+): Promise<RevCheck> {
   const key = eventId.toString();
   const memo = revMemo.get(key);
   if (
@@ -526,9 +577,9 @@ async function verifiedRevision(
     ((memo.rev !== null && memo.rev >= BigInt(minRev)) ||
       Date.now() - memo.readAt < REV_MEMO_MS)
   ) {
-    return memo.rev;
+    return { source: "memo", rev: memo.rev, startedAt: memo.startedAt };
   }
-  return coalesce(inFlightRevRead, key, async () => {
+  const read = await coalesce(inFlightRevRead, key, async () => {
     const started = Date.now();
     let rev: bigint | null = null;
     let outcome: string;
@@ -549,7 +600,7 @@ async function verifiedRevision(
         );
       }
     }
-    revMemo.set(key, { rev, readAt: Date.now() });
+    revMemo.set(key, { rev, readAt: Date.now(), startedAt: started });
     // One line per real database read (coalesced waiters share it).
     console.log(
       `[liveSnapshot] rev-read event=${eventId} rev=${outcome} ` +
@@ -557,6 +608,39 @@ async function verifiedRevision(
     );
     return rev;
   });
+  return read.initiator
+    ? { source: "fresh", rev: read.value }
+    : { source: "memo", rev: read.value, startedAt: read.startedAt };
+}
+
+/**
+ * Classify how a `minRev` hint was resolved, against the snapshot that
+ * is actually being SERVED (after any repair) — the `x-snapshot-verify`
+ * header value. Only called with a `minRev` (no hint → `none`).
+ *
+ * Why the served `rev` and not the first read decides `satisfied`: a
+ * repair rebuild that reached `minRev` answered the hint, whatever the
+ * cached entry said before it.
+ *
+ * `fresh` / `memo` report the revision the check saw. With a non-null
+ * check revision `dbRev`, a served `rev < minRev` implies `dbRev <
+ * minRev`: `dbRev > first rev` triggers the repair, whose entry is
+ * built after a read that saw `dbRev` and so has `rev ≥ dbRev`; and
+ * `dbRev ≤ first rev < minRev` otherwise. So `fresh=<dbRev>` really is
+ * "the database was below the hint when a read that began after this
+ * request looked".
+ */
+function classifyVerify(
+  minRev: number,
+  servedRev: bigint,
+  check: RevCheck,
+  now: number,
+): ServerSnapshotVerify {
+  if (servedRev >= BigInt(minRev)) return { kind: "satisfied" };
+  if (check.rev === null) return { kind: "deferred" };
+  const rev = revToNumber(check.rev);
+  if (check.source === "fresh") return { kind: "fresh", dbRev: rev };
+  return { kind: "memo", rev, ageMs: Math.max(0, now - check.startedAt) };
 }
 
 /** Test-only: forget per-instance coalescing and revision memo state. */
@@ -601,39 +685,53 @@ export function parseMinRev(raw: string | null): number | null {
  * This is the only database read on the hot path outside the cached
  * builder; a cache hit with no (or a satisfied) `minRev` touches the
  * database not at all.
+ *
+ * `verify` says how the hint was resolved for THIS request (see
+ * `classifyVerify` and `src/lib/snapshotVerify.ts`). It is per-request
+ * metadata for the response header and is never stored with the
+ * snapshot.
  */
 export async function getLiveSnapshot(
   eventId: bigint,
   locale: Locale,
   minRev: number | null = null,
-): Promise<SnapshotResult> {
+): Promise<LiveSnapshotResult> {
   const idKey = eventId.toString();
   const key = `${idKey}:${locale}`;
-  const first = await coalesce(
+  const { value: first } = await coalesce(
     inFlight,
     key,
     () => readThroughCache(() => cachedSnapshot(idKey, locale), "build"),
     logCoalesced("coalesced", eventId, locale),
   );
-  if (minRev === null || first.snapshot.rev >= BigInt(minRev)) return first;
+  if (minRev === null) return { ...first, verify: { kind: "none" } };
+  if (first.snapshot.rev >= BigInt(minRev)) {
+    return { ...first, verify: { kind: "satisfied" } };
+  }
 
-  const dbRev = await verifiedRevision(eventId, minRev);
-  if (dbRev === null || dbRev <= first.snapshot.rev) return first;
-
-  revalidateEventData(eventId);
-  const repaired = await coalesce(
-    inFlightRepair,
-    `${key}:${dbRev}`,
-    () =>
-      readThroughCache(
-        () => cachedSnapshotAtRev(idKey, locale, dbRev.toString()),
-        "repair",
-      ),
-    logCoalesced("coalesced-repair", eventId, locale),
-  );
-  // A repair entry that is itself older than the first read (cannot
-  // happen with a monotonic counter, but cheap to guard) never wins.
-  return repaired.snapshot.rev >= first.snapshot.rev ? repaired : first;
+  const check = await verifiedRevision(eventId, minRev);
+  const dbRev = check.rev;
+  let served = first;
+  if (dbRev !== null && dbRev > first.snapshot.rev) {
+    revalidateEventData(eventId);
+    const { value: repaired } = await coalesce(
+      inFlightRepair,
+      `${key}:${dbRev}`,
+      () =>
+        readThroughCache(
+          () => cachedSnapshotAtRev(idKey, locale, dbRev.toString()),
+          "repair",
+        ),
+      logCoalesced("coalesced-repair", eventId, locale),
+    );
+    // A repair entry that is itself older than the first read (cannot
+    // happen with a monotonic counter, but cheap to guard) never wins.
+    if (repaired.snapshot.rev >= first.snapshot.rev) served = repaired;
+  }
+  return {
+    ...served,
+    verify: classifyVerify(minRev, served.snapshot.rev, check, Date.now()),
+  };
 }
 
 /**
