@@ -1864,7 +1864,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     );
   });
 
-  it("a notification request carries minRev = appliedRev + 1; periodic / catch-up carry the applied rev", async () => {
+  it("a postgres_changes notification no longer guesses appliedRev + 1 (removed with the R2 hint contract); every request carries the server-observed rev", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(revResponse(7, "2026-11-14T07:30:00.000Z"));
@@ -1881,7 +1881,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toBe(
-      "/api/setlist?eventId=1&locale=ko&minRev=8",
+      "/api/setlist?eventId=1&locale=ko&minRev=7",
     );
     // The server answered rev 7 (DB not ahead / purge not visible yet):
     // a normal healthy response — no retry, nothing "delayed".
@@ -1890,7 +1890,7 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await advance(19_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    // The hint was single-use: periodic and catch-up go back to 7.
+    // Periodic and catch-up carry the same server-observed rev.
     await advance(750); // periodic at 20 s
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[2][0]).toBe(
@@ -1920,10 +1920,10 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
       await advance(1_000);
       expect(result.current.freshness.state).toBe("live");
     }
-    // 1 seed + 5 notification requests, every one hinted at 4, no retries.
+    // 1 seed + 5 notification requests, every one at the server-observed rev, no retries.
     expect(fetchMock).toHaveBeenCalledTimes(6);
     for (const call of fetchMock.mock.calls.slice(1)) {
-      expect(call[0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+      expect(call[0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=3");
     }
   });
 

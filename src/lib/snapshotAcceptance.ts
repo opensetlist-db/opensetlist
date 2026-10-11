@@ -20,19 +20,42 @@
 // new generation and late responses from the old one are discarded
 // without touching anything.
 //
-// `wantedRev` is what the client sends as `?minRev=`. It is the highest
-// revision the SERVER has shown this client (SSR or any response) plus,
-// from R2 on, the highest revision announced by a broadcast hint. The
-// two sources are kept apart on purpose: a response older than a
-// server-observed revision is a real, server-proven gap (counts toward
-// n13's retry path and may surface the "delayed" indicator); a response
-// older than a hint only proves that SOMEONE claimed a newer revision —
-// on a public channel that claim is unauthenticated, so it must never
-// drive the indicator on its own (spec decisions log, 2026-10-10).
-// R1 has no hints: postgres_changes notifications carry no revision,
-// they only mark the scheduler dirty.
+// `serverRev` is the DURABLE watermark: the highest revision the SERVER
+// has shown this client — the SSR seed, every response body's `rev`,
+// and a `fresh=<dbRev>` verification header whose database read saw a
+// revision above the served one. It is what every maintenance request
+// (initial, periodic, catch-up, resume, boundary) sends as `?minRev=`,
+// and a response older than it is a real, server-proven gap (n13's
+// retry path; may surface the "delayed" indicator).
 //
-// Pure: no timers, no fetch, `now` is passed in.
+// Hints are kept apart from it on purpose. The live channel is a PUBLIC
+// Realtime broadcast (private channels failed the admission probe), so
+// anyone holding the anon key can publish `{ rev: 2^53 - 1 }` to an
+// event's topic. If a hint could enter the durable watermark, one forged
+// message would poison every later request of every viewer: each one
+// would ask for a revision that never comes, each answer would read as
+// a gap, and the indicator would claim the page is broken. So a hint is
+// CHECK-ONCE (spec decisions log, "Codex discussion on R2"):
+//
+//   - `noteHint(rev)` validates a broadcast payload's revision and keeps
+//     the max of the current BATCH (every payload since the last
+//     dispatch). Nothing else changes.
+//   - `captureHint()` is called when a request is DISPATCHED. It hands
+//     the batch's max to that request (the request's "ticket") and
+//     starts a new, empty batch. Payloads arriving while that request is
+//     in flight therefore form the next batch, and since nothing but
+//     `captureHint` ever empties the batch, an older request completing
+//     can never consume a newer batch — the guard is structural.
+//   - The request sends `minRev = max(serverRev, H)`; `evaluate` gets
+//     the ticket back and classifies how the response resolved it
+//     (`HintResolution`). The ticket itself lives with the scheduler
+//     (liveScheduler.ts), which owns the one bounded recheck and drops
+//     the ticket after it. Only server-observed values ever raise
+//     `serverRev`.
+//
+// Pure: no timers, no fetch, no clock.
+
+import type { SnapshotVerify } from "@/lib/snapshotVerify";
 
 /** Applied watermark. `null` = unknown (no rev-carrying snapshot yet). */
 export interface AppliedSnapshotState {
@@ -77,6 +100,34 @@ export function shouldApply(
   return incoming.capturedAt >= applied.capturedAt;
 }
 
+/**
+ * How a response resolved the hint ticket its request carried (`H`).
+ * Checked in this order — the first that holds wins:
+ *
+ *   - `none`: the request carried no ticket.
+ *   - `satisfied`: body `rev ≥ H`, whatever the header says. Consume.
+ *   - `disproved`: header `fresh=<dbRev>` with `dbRev < H` — a database
+ *     read that began after the request did found no such revision. The
+ *     hint was wrong (forged, or simply ahead of anything committed).
+ *     Consume; healthy; no retry; no indicator effect.
+ *   - `superseded`: the server itself has now shown a revision ≥ H (a
+ *     `fresh` dbRev ≥ H above the served rev, or an earlier response),
+ *     but this body is older. That is a server-proven gap — `serverGap`
+ *     is true and the n13 retry path chases `serverRev`, which already
+ *     covers H. Consume the ticket.
+ *   - `inconclusive`: anything else — `memo`, `deferred`, a missing or
+ *     malformed header (an R1 server after a rollback), `none` or
+ *     `satisfied` contradicting the body, or a compat body without
+ *     `rev`. Not a refutation and not a failure: the scheduler runs ONE
+ *     quiet recheck, then drops the ticket.
+ */
+export type HintResolution =
+  | "none"
+  | "satisfied"
+  | "disproved"
+  | "superseded"
+  | "inconclusive";
+
 export type AcceptanceVerdict =
   | { kind: "stale-generation" }
   | {
@@ -89,15 +140,19 @@ export type AcceptanceVerdict =
       version: SnapshotVersion | null;
       /**
        * The response is older than a revision the server itself has
-       * shown this client. Counts as a soft failure (n13 retry path;
-       * may surface "delayed").
+       * shown this client (including a `fresh` dbRev reported with this
+       * very response). Counts as a soft failure (n13 retry path; may
+       * surface "delayed").
        */
       serverGap: boolean;
       /**
-       * The response is older than a hinted (notification) revision
-       * only. Never drives the indicator. Always false in R1.
+       * A `fresh=<dbRev>` header raised `serverRev` above the served
+       * body's revision (the server's own read saw a newer head than the
+       * snapshot it served). Always implies `serverGap`.
        */
-      hintGap: boolean;
+      serverRevRaised: boolean;
+      /** What happened to the carried hint ticket (see `HintResolution`). */
+      hint: HintResolution;
     };
 
 export interface SnapshotSeed {
@@ -107,14 +162,15 @@ export interface SnapshotSeed {
 
 /**
  * Mutable acceptance state for one live data source (one hook
- * instance). All mutation goes through `reset` / `noteHintRev` /
- * `evaluate`; read the rest through the getters.
+ * instance). All mutation goes through `reset` / `adopt` / `noteHint` /
+ * `captureHint` / `evaluate`; read the rest through the getters.
  */
 export class SnapshotAcceptance {
   private _generation = 0;
   private _applied: AppliedSnapshotState = { rev: null, capturedAt: null };
   private _serverRev: number | null = null;
-  private _hintRev: number | null = null;
+  // Max valid hint of the current (not yet dispatched) batch.
+  private _pendingHint: number | null = null;
 
   constructor(seed?: SnapshotSeed) {
     this.reset(seed);
@@ -128,44 +184,37 @@ export class SnapshotAcceptance {
     return this._applied;
   }
 
-  /** Highest revision we have reason to expect; null when unknown. */
-  get wantedRev(): number | null {
-    if (this._serverRev === null) return this._hintRev;
-    if (this._hintRev === null) return this._serverRev;
-    return Math.max(this._serverRev, this._hintRev);
-  }
-
-  /** `?minRev=` value to send, or null to omit the parameter. */
-  minRevToSend(): number | null {
-    return this.wantedRev;
+  /** Durable, server-observed watermark; null when unknown. */
+  get serverRev(): number | null {
+    return this._serverRev;
   }
 
   /**
-   * `?minRev=` for a NOTIFICATION-triggered request: one past the
-   * applied revision (or `wantedRev`, whichever is higher).
-   *
-   * Why: in R1 a notification (postgres_changes) carries no revision,
-   * but it does mean "a save just committed". The save purges the
-   * snapshot cache right after its commit, and the push + jitter can
-   * beat that purge to the client — with `minRev = appliedRev` the
-   * server would happily serve the still-cached old snapshot, and the
-   * page would wait for the next periodic poll (≤ 24 s). Asking for
-   * `appliedRev + 1` makes the server's repair path check the real DB
-   * revision and rebuild only if the DB is ahead; a wrong guess costs
-   * one coalesced 1-row read and never a rebuild.
-   *
-   * Single-use: the value is NOT stored. It never raises `wantedRev`,
-   * so a response that still comes back at `appliedRev` is a normal,
-   * healthy response — not a server gap, not a hint gap, no retry, no
-   * "delayed" indicator. Null when nothing is applied yet (no basis
-   * for a guess; fall back to `wantedRev`).
+   * What a maintenance request asks for: the server-observed watermark
+   * only. Kept under its old name — hints never raise it.
    */
-  notificationMinRev(): number | null {
-    const applied = this._applied.rev;
-    if (applied === null) return this.wantedRev;
-    const next = applied + 1;
-    if (!isValidRev(next)) return this.wantedRev;
-    return Math.max(this.wantedRev ?? 0, next);
+  get wantedRev(): number | null {
+    return this._serverRev;
+  }
+
+  /** The current, not yet dispatched hint batch (diagnostics / tests). */
+  get pendingHint(): number | null {
+    return this._pendingHint;
+  }
+
+  /** `?minRev=` for a request without a ticket, or null to omit it. */
+  minRevToSend(): number | null {
+    return this._serverRev;
+  }
+
+  /**
+   * `?minRev=` for a request carrying ticket `hint`:
+   * `max(serverRev, hint)`. A null / invalid ticket falls back to
+   * `minRevToSend()`.
+   */
+  minRevFor(hint: number | null): number | null {
+    if (!isValidRev(hint)) return this._serverRev;
+    return this._serverRev === null ? hint : Math.max(this._serverRev, hint);
   }
 
   /**
@@ -206,7 +255,8 @@ export class SnapshotAcceptance {
    * Start a new generation (event or locale changed, or first mount)
    * seeded from SSR. SSR's revision counts as server-observed: the
    * first client fetch must not roll the server-rendered page back.
-   * Invalid seeds are ignored (treated as unknown).
+   * Invalid seeds are ignored (treated as unknown). The pending hint
+   * batch belongs to the old event and is dropped.
    */
   reset(seed?: SnapshotSeed): number {
     this._generation += 1;
@@ -214,23 +264,54 @@ export class SnapshotAcceptance {
     const capturedAt = rev === null ? null : parseCapturedAt(seed?.capturedAt);
     this._applied = { rev, capturedAt };
     this._serverRev = rev;
-    this._hintRev = null;
+    this._pendingHint = null;
     return this._generation;
   }
 
   /**
-   * R2 hook: a broadcast announced revision `rev`. Unvalidated input
-   * is dropped. Raises `wantedRev`, so the next request carries it as
-   * `minRev` and the server's repair path can rebuild a stale cache.
+   * A broadcast announced revision `rev` (untrusted). Returns whether it
+   * is news worth a notification fetch:
+   *
+   *   - invalid (not a non-negative safe integer) → ignored, false;
+   *   - `rev ≤ serverRev` → the server has already shown this revision
+   *     (or a newer one), nothing to check → false. `serverRev` is never
+   *     below `applied.rev` (every applied version is server-observed),
+   *     so this includes the "already applied" duplicates — the echo of
+   *     a save this page has already fetched, a replay after a rejoin;
+   *   - otherwise it joins the current batch (max) → true.
+   *
+   * Never touches `serverRev`.
    */
-  noteHintRev(rev: unknown): void {
-    if (!isValidRev(rev)) return;
-    this._hintRev = this._hintRev === null ? rev : Math.max(this._hintRev, rev);
+  noteHint(rev: unknown): boolean {
+    if (!isValidRev(rev)) return false;
+    if (this._serverRev !== null && rev <= this._serverRev) return false;
+    this._pendingHint =
+      this._pendingHint === null ? rev : Math.max(this._pendingHint, rev);
+    return true;
+  }
+
+  /**
+   * Hand the current batch's max to the request being dispatched and
+   * start a new batch. Null when the batch is empty, or when the server
+   * has meanwhile shown a revision at or past it (nothing left to check).
+   */
+  captureHint(): number | null {
+    const hint = this._pendingHint;
+    this._pendingHint = null;
+    if (hint === null) return null;
+    if (this._serverRev !== null && hint <= this._serverRev) return null;
+    return hint;
   }
 
   /**
    * Decide what to do with a parsed response body from generation
    * `generation`, and record it.
+   *
+   * `verify` is the response's parsed `x-snapshot-verify` header
+   * (absent → `missing`). `carriedHint` is the ticket the request
+   * carried (null = none). Neither can make a response apply or not —
+   * that is the `(rev, capturedAt)` rule alone — they only decide the
+   * gap classification and the hint resolution.
    *
    * Compat (v0.18.x responses without `rev`, during a rollout): the
    * spec treats them as `rev = applied.rev ?? 0, capturedAt = now`,
@@ -238,12 +319,17 @@ export class SnapshotAcceptance {
    * untouched instead of writing `now` into it — `now` is the CLIENT
    * clock, and storing it next to server `capturedAt` values would let
    * a fast client clock reject the next real same-revision snapshot.
+   * A ticket carried by such a request is inconclusive (nothing to
+   * compare it with).
    */
   evaluate(
     generation: number,
     body: { rev?: unknown; capturedAt?: unknown },
+    verify: SnapshotVerify = { kind: "missing" },
+    carriedHint: number | null = null,
   ): AcceptanceVerdict {
     if (generation !== this._generation) return { kind: "stale-generation" };
+    const hint = isValidRev(carriedHint) ? carriedHint : null;
 
     if (!isValidRev(body.rev)) {
       return {
@@ -251,7 +337,8 @@ export class SnapshotAcceptance {
         apply: true,
         version: null,
         serverGap: false,
-        hintGap: false,
+        serverRevRaised: false,
+        hint: hint === null ? "none" : "inconclusive",
       };
     }
 
@@ -259,16 +346,31 @@ export class SnapshotAcceptance {
       rev: body.rev,
       capturedAt: parseCapturedAt(body.capturedAt),
     };
-    const serverGap = this._serverRev !== null && version.rev < this._serverRev;
-    const hintGap =
-      !serverGap && this._hintRev !== null && version.rev < this._hintRev;
     const apply = shouldApply(version, this._applied);
 
     // Every revision the server returns is server-observed, applied or
     // not (a rejected response is by definition not newer, so this
     // never raises the bar above what was applied — it is a max).
-    this._serverRev =
+    let serverRev =
       this._serverRev === null ? version.rev : Math.max(this._serverRev, version.rev);
+    // A fresh revision read is server-observed too. Only when it is
+    // ABOVE the served body does it say anything new: the server's own
+    // read saw a head the snapshot it served does not contain, so the
+    // existing server-gap path must chase it. (A `memo` revision is not
+    // used here: it may be a coalesced read that predates the save.)
+    let serverRevRaised = false;
+    if (
+      verify.kind === "fresh" &&
+      isValidRev(verify.dbRev) &&
+      verify.dbRev > version.rev &&
+      verify.dbRev > serverRev
+    ) {
+      serverRev = verify.dbRev;
+      serverRevRaised = true;
+    }
+    this._serverRev = serverRev;
+    const serverGap = version.rev < serverRev;
+
     if (apply) {
       this._applied = {
         rev: version.rev,
@@ -277,21 +379,38 @@ export class SnapshotAcceptance {
           (version.rev === this._applied.rev ? this._applied.capturedAt : null),
       };
     }
-    // A hint is satisfied once a response at or past it lands.
-    if (this._hintRev !== null && version.rev >= this._hintRev) {
-      this._hintRev = null;
-    }
 
-    return { kind: "evaluated", apply, version, serverGap, hintGap };
+    let resolution: HintResolution;
+    if (hint === null) resolution = "none";
+    else if (version.rev >= hint) resolution = "satisfied";
+    else if (verify.kind === "fresh" && verify.dbRev < hint) resolution = "disproved";
+    else if (serverRev >= hint) resolution = "superseded";
+    else resolution = "inconclusive";
+
+    return {
+      kind: "evaluated",
+      apply,
+      version,
+      serverGap,
+      serverRevRaised,
+      hint: resolution,
+    };
   }
 }
 
-/** `/api/setlist` URL for one snapshot request. */
+/**
+ * `/api/setlist` URL for one snapshot request. `minRev` is appended only
+ * when it is a valid revision; `&hint=1` (marks a notification fetch —
+ * the server only logs it, and an older server ignores it) only together
+ * with a `minRev`.
+ */
 export function setlistSnapshotUrl(
   eventId: string,
   locale: string,
   minRev: number | null,
+  notify = false,
 ): string {
   const base = `/api/setlist?eventId=${encodeURIComponent(eventId)}&locale=${encodeURIComponent(locale)}`;
-  return isValidRev(minRev) ? `${base}&minRev=${minRev}` : base;
+  if (!isValidRev(minRev)) return base;
+  return notify ? `${base}&minRev=${minRev}&hint=1` : `${base}&minRev=${minRev}`;
 }

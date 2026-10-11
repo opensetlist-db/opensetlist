@@ -337,15 +337,8 @@ export function useLiveSnapshot<T>({
               // forbid conditional requests the server may answer
               // cheaply later.
               //
-              // `minRev`: a notification-triggered request asks for one
-              // past the applied revision as a single-use hint (see
-              // `notificationMinRev` — closes the push-beats-cache-purge
-              // window); everything else asks for the highest revision
-              // the server has shown us.
-              const minRev =
-                reason === "notification"
-                  ? acceptance.notificationMinRev()
-                  : acceptance.minRevToSend();
+              // `minRev`: the highest revision the server has shown us.
+              const minRev = acceptance.minRevToSend();
               const res = await fetch(
                 setlistSnapshotUrl(fetchEventId, fetchLocale, minRev),
                 { signal: controller.signal },
@@ -383,9 +376,6 @@ export function useLiveSnapshot<T>({
                 fail(null);
                 return;
               }
-              // `verdict.hintGap` (R2 only) is deliberately not a
-              // failure: an unauthenticated hint is check-once — this
-              // request carried it as `minRev`, which was the check.
               failuresRef.current = 0;
               setFreshness({ lastSyncAt: new Date(), state: "live" });
               finish(OK);
