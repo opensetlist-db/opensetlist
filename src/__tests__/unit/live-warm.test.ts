@@ -418,7 +418,7 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
     async (kind) => {
       vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
       vi.setSystemTime(20_000);
-      const { get } = manualCache();
+      const { get, pending } = manualCache();
       if (kind === "invalid") get.mockResolvedValue({ junk: true });
       if (kind === "stale") get.mockResolvedValue({ ...envelope(7), rev: 6 });
       if (kind === "error") get.mockRejectedValue(new Error("network"));
@@ -426,6 +426,12 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
       if (kind === "timeout") await vi.advanceTimersByTimeAsync(300);
       expect((await first).result).toBe(kind);
       const doneAt = Date.now();
+      if (kind === "timeout") {
+        // The slow get answers later: it frees its slot, and its `miss`
+        // must not shorten the 1 s fault window.
+        pending[0](null);
+        await vi.advanceTimersByTimeAsync(0);
+      }
       vi.setSystemTime(doneAt + 999);
       expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
       expect(get).toHaveBeenCalledTimes(1);
@@ -525,5 +531,30 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
     expect(get).toHaveBeenCalledTimes(2);
     pending[1](envelope(5, 5, "ko"));
     expect((await next).result).toBe("hit");
+  });
+
+  it("a timed-out lookup keeps its slot until the underlying get settles", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const { get } = manualCache(); // later gets stay pending
+    // The first key's get answers (absent) only at 400 ms.
+    get.mockImplementationOnce(() => new Promise((r) => setTimeout(() => r(null), 400)));
+    const slow = warmLookup(EVENT, "ja", 1);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(await slow).toEqual({ result: "timeout" }); // the caller's deadline
+
+    await vi.advanceTimersByTimeAsync(50); // t = 350: get still running
+    const others = Array.from({ length: WARM_LOOKUP_MAX_INFLIGHT - 1 }, (_, i) =>
+      warmLookup(EVENT, "ja", 100 + i),
+    );
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT);
+    // The slow key + 15 others = 16 slots: a 17th distinct key is capped.
+    expect(await warmLookup(EVENT, "ja", 999)).toEqual({ result: "capped" });
+
+    await vi.advanceTimersByTimeAsync(100); // t = 450: the slow get settled
+    const freed = warmLookup(EVENT, "ja", 998);
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT + 1);
+    await vi.advanceTimersByTimeAsync(300);
+    expect((await freed).result).toBe("timeout");
+    await Promise.all(others);
   });
 });

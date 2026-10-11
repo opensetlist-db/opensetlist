@@ -443,7 +443,10 @@ export const WARM_FAULT_MEMO_MS = 1_000;
 export const WARM_MISS_MEMO_MAX_KEYS = 256;
 export const WARM_LOOKUP_MAX_INFLIGHT = 16;
 
-const inFlightLookups = new Map<string, Promise<WarmLookupResult>>();
+// One entry per key whose cache `get` has not settled yet. `generation`
+// is the key's clear stamp when the `get` started (see below).
+type InFlightLookup = { generation: number; result: Promise<WarmLookupResult> };
+const inFlightLookups = new Map<string, InFlightLookup>();
 // key → memo expiry (epoch ms). Insertion-ordered: the first key is the
 // oldest memo.
 const missMemo = new Map<string, number>();
@@ -502,17 +505,23 @@ export function __warmMissMemoSizeForTests(): number {
 
 /**
  * Look up the warm entry for exactly `(eventId, locale, minRev)`. Bounded
- * at `WARM_LOOKUP_TIMEOUT_MS` per `get`; same-key duplicates on one
- * instance are coalesced and briefly memoised (see above); every outcome but `hit`
- * means "take the normal path". Never rejects. One log line per call
- * (coalesced waiters log the shared result):
+ * at `WARM_LOOKUP_TIMEOUT_MS` per caller; same-key duplicates on one
+ * instance are coalesced and briefly memoised (see above); every outcome
+ * but `hit` means "take the normal path". Never rejects. One log line
+ * per call (coalesced waiters log the shared result):
  *
  *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss|capped> ms=<n> instance=<id>
  *
- * The time bound is a `Promise.race` on our side. That is acceptable
- * here (unlike the revision read, which bounds itself in the database):
- * a lookup that loses the race holds no pool connection and no server
- * work — the cache GET merely finishes later and its value is dropped.
+ * The time bound is a per-caller `Promise.race` against the shared
+ * `get`. That is acceptable here (unlike the revision read, which bounds
+ * itself in the database): a caller that loses the race holds no pool
+ * connection and no server work. The `get` itself keeps running (the
+ * SDK's HTTP client gives up only at its own 500 ms), so the key's
+ * in-flight slot is held until the `get` SETTLES, not until the caller's
+ * deadline — otherwise the number of cache operations actually in
+ * flight could exceed `WARM_LOOKUP_MAX_INFLIGHT`. Callers that join the
+ * key during that overhang share the still-pending `get` under their
+ * own deadline (and may get a hit if it answers in time).
  */
 export async function warmLookup(
   eventId: bigint,
@@ -526,31 +535,13 @@ export async function warmLookup(
   if (memoUntil !== undefined && started < memoUntil) {
     out = { result: "memo-miss" };
   } else {
-    let pending = inFlightLookups.get(key);
-    if (!pending && inFlightLookups.size >= WARM_LOOKUP_MAX_INFLIGHT) {
+    let entry = inFlightLookups.get(key);
+    if (!entry && inFlightLookups.size >= WARM_LOOKUP_MAX_INFLIGHT) {
       out = { result: "capped" };
     } else {
-      if (!pending) {
-        const generation = clearGeneration.get(key) ?? 0;
-        const entry: Promise<WarmLookupResult> = lookupBounded(eventId, locale, minRev)
-          .then((r) => {
-            // A warm job cleared this key while the get was in flight:
-            // its result predates the entry, so it must not be memoised.
-            if ((clearGeneration.get(key) ?? 0) !== generation) return r;
-            if (r.result === "hit") missMemo.delete(key);
-            else {
-              const window = r.result === "miss" ? WARM_MISS_MEMO_MS : WARM_FAULT_MEMO_MS;
-              rememberMiss(key, Date.now() + window);
-            }
-            return r;
-          })
-          .finally(() => {
-            if (inFlightLookups.get(key) === entry) inFlightLookups.delete(key);
-          });
-        inFlightLookups.set(key, entry);
-        pending = entry;
-      }
-      out = await pending;
+      if (!entry) entry = startLookup(eventId, locale, minRev, key);
+      out = await raceDeadline(entry.result);
+      if (out.result === "timeout") memoise(key, entry.generation, out);
     }
   }
   console.log(
@@ -560,37 +551,80 @@ export async function warmLookup(
   return out;
 }
 
-async function lookupBounded(
+/**
+ * Record a non-hit outcome in the negative memo (or clear the memo on a
+ * hit) — unless a warm job cleared this key after the lookup started:
+ * that outcome predates the stored entry and must not hide it.
+ */
+function memoise(key: string, generation: number, r: WarmLookupResult): void {
+  if ((clearGeneration.get(key) ?? 0) !== generation) return;
+  if (r.result === "hit") {
+    missMemo.delete(key);
+    return;
+  }
+  const window = r.result === "miss" ? WARM_MISS_MEMO_MS : WARM_FAULT_MEMO_MS;
+  // Never shorten a running memo: a `get` that answers `miss` AFTER its
+  // callers already timed out must not cut the 1 s fault window (the
+  // cache was slow) down to the 250 ms miss window.
+  const until = Math.max(Date.now() + window, missMemo.get(key) ?? 0);
+  rememberMiss(key, until);
+}
+
+/**
+ * Start the ONE cache `get` for `key` on this instance and register it
+ * as the key's in-flight entry until the `get` settles (see
+ * `warmLookup`). The entry's `result` never rejects and has no deadline
+ * of its own; each caller applies its own.
+ */
+function startLookup(
+  eventId: bigint,
+  locale: Locale,
+  minRev: number,
+  key: string,
+): InFlightLookup {
+  const generation = clearGeneration.get(key) ?? 0;
+  const entry: InFlightLookup = { generation, result: undefined as never };
+  entry.result = readAndDecode(eventId, locale, minRev)
+    .then((r) => {
+      memoise(key, generation, r);
+      return r;
+    })
+    .finally(() => {
+      if (inFlightLookups.get(key) === entry) inFlightLookups.delete(key);
+    });
+  inFlightLookups.set(key, entry);
+  return entry;
+}
+
+async function raceDeadline(result: Promise<WarmLookupResult>): Promise<WarmLookupResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<WarmLookupResult>((resolve) => {
+    timer = setTimeout(() => resolve({ result: "timeout" }), WARM_LOOKUP_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([result, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The cache `get` + envelope validation, without a deadline. Never rejects. */
+async function readAndDecode(
   eventId: bigint,
   locale: Locale,
   minRev: number,
 ): Promise<WarmLookupResult> {
-  let get: Promise<{ value: unknown } | { error: unknown }>;
+  let value: unknown;
   try {
-    get = warmEntryCache()
-      .get(warmKey(eventId, locale, minRev))
-      .then(
-        (value) => ({ value }),
-        (error: unknown) => ({ error }),
-      );
+    // `getCache` resolves its store synchronously and may throw; the
+    // `await` turns that into the same path as a rejected `get`.
+    value = await warmEntryCache().get(warmKey(eventId, locale, minRev));
   } catch (error) {
-    // `getCache` resolves its store synchronously and may throw.
     console.error(`[liveWarm] lookup-error err=${describeError(error)}`);
     return { result: "error" };
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), WARM_LOOKUP_TIMEOUT_MS);
-  });
-  const settled = await Promise.race([get, timeout]);
-  clearTimeout(timer);
-  if (settled === "timeout") return { result: "timeout" };
-  if ("error" in settled) {
-    console.error(`[liveWarm] lookup-error err=${describeError(settled.error)}`);
-    return { result: "error" };
-  }
-  if (settled.value === null || settled.value === undefined) return { result: "miss" };
-  const decoded = decodeWarmEnvelope(settled.value, eventId, locale, minRev);
+  if (value === null || value === undefined) return { result: "miss" };
+  const decoded = decodeWarmEnvelope(value, eventId, locale, minRev);
   return decoded.ok
     ? { result: "hit", snapshot: decoded.snapshot }
     : { result: decoded.reason };
