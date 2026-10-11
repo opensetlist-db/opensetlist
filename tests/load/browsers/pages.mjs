@@ -19,17 +19,29 @@
 // newer marker or bring back a replaced one).
 //
 // Diagnostics per page (cheap, from CDP events — no app changes):
-//   - websocket frames: postgres_changes notifications (with the row id
-//     and change type), the channel join reply, and the "Subscribed to
-//     PostgreSQL" system message (pg_changes registration done);
+//   - websocket frames: the writer's `rev` broadcast (the R2 page's
+//     notification) with its rev, the channel join reply, and — for an
+//     R1 page build, which is what a preview runs until R2 deploys or
+//     after a rollback — postgres_changes notifications (row id + change
+//     type) and the "Subscribed to PostgreSQL" registration message;
 //   - every `/api/setlist` response: time, `minRev` sent, status,
-//     X-Snapshot-Source, and the `rev` in the body.
+//     X-Snapshot-Source, the `rev` in the body, the `x-snapshot-verify`
+//     header and whether the request carried `hint=1`.
+//
+// Broadcast frames come in two encodings: realtime-js 2.x speaks the
+// 2.0.0 protocol, where the server may push a user broadcast as a BINARY
+// frame (kind byte 4, then topic / event / metadata lengths, the JSON
+// encoding flag, and the bytes — `lib/serializer.js` `_decodeUserBroadcast`),
+// or as the JSON array `[join_ref, ref, topic, "broadcast", {event,
+// payload}]`. `parseFrame` decodes both, so a page's notifications are
+// seen (and droppable) whatever the server chooses.
 //
 // Websocket control (drills) uses Playwright's `page.routeWebSocket`
 // on the Realtime endpoint, only for the pages a drill needs:
 //   - "proxy": the page talks to the real server through a pass-through
 //     proxy in this process, which can (a) drop server→page
-//     postgres_changes frames while `rec.dropPg` is set (silent loss:
+//     notification frames — the `rev` broadcast and, for an R1 build,
+//     postgres_changes — while `rec.dropNotify` is set (silent loss:
 //     the socket stays healthy, heartbeats and joins pass, only the
 //     notification vanishes), and (b) close both legs at once
 //     (network-blip / reconnect drill);
@@ -37,7 +49,11 @@
 //     never reaches the server (websocket blocked by the network), so
 //     realtime-js keeps failing and the page's R3 polling fallback must
 //     carry it.
-// Unrouted pages are left completely alone.
+// Unrouted pages are left completely alone. The page's own drill hook
+// (`window.__osl.dropNextNotification`, honoured on non-production
+// builds: the hook drops the next VALID notification before it reaches
+// the hint batch) needs no proxy: `armHookDrop` sets it in the page,
+// `hookDropPending` says whether the page has consumed it yet.
 //
 // Resource diet: images, media and fonts are aborted (the DOM is all we
 // look at), as are Google Analytics and the Sentry tunnel (`/monitoring`)
@@ -68,9 +84,35 @@ const INIT_SCRIPT = `(() => {
 
 const BLOCK_HOST = /(^|\.)(google-analytics\.com|googletagmanager\.com|doubleclick\.net|googlesyndication\.com|sentry\.io)$/;
 
+// Binary user broadcast (protocol 2.0.0), see the header. Returns null
+// for any other binary frame.
+const USER_BROADCAST_KIND = 4;
+const JSON_ENCODING = 1;
+function parseBinaryFrame(buf) {
+  if (buf.length < 5 || buf[0] !== USER_BROADCAST_KIND) return null;
+  const topicSize = buf[1];
+  const eventSize = buf[2];
+  const metaSize = buf[3];
+  const encoding = buf[4];
+  let off = 5;
+  const topic = buf.subarray(off, off + topicSize).toString("utf8");
+  off += topicSize;
+  const event = buf.subarray(off, off + eventSize).toString("utf8");
+  off += eventSize + metaSize;
+  let payload = null;
+  if (encoding === JSON_ENCODING) {
+    try { payload = JSON.parse(buf.subarray(off).toString("utf8")); } catch { payload = null; }
+  }
+  return { joinRef: null, ref: null, topic, event: "broadcast", body: { type: "broadcast", event, payload } };
+}
+
 function parseFrame(payload) {
+  if (payload && typeof payload !== "string") {
+    // Playwright hands binary frames over as a Buffer.
+    try { return parseBinaryFrame(Buffer.isBuffer(payload) ? payload : Buffer.from(payload)); } catch { return null; }
+  }
   if (typeof payload !== "string") return null;
-  if (!payload.includes("postgres_changes") && !payload.includes("phx_reply") && !payload.includes('"system"')) return null;
+  if (!payload.includes("postgres_changes") && !payload.includes("phx_reply") && !payload.includes('"system"') && !payload.includes('"broadcast"')) return null;
   let msg;
   try { msg = JSON.parse(payload); } catch { return null; }
   if (Array.isArray(msg)) {
@@ -79,6 +121,11 @@ function parseFrame(payload) {
   }
   return { joinRef: msg.join_ref, ref: msg.ref, topic: msg.topic, event: msg.event, body: msg.payload };
 }
+
+// A server→page frame that carries a live notification: the `rev`
+// broadcast (R2) or a postgres_changes event (R1 build).
+const isNotification = (f) =>
+  f.event === "postgres_changes" || (f.event === "broadcast" && f.body?.event === "rev");
 
 export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log }) {
   const browser = await chromium.launch({
@@ -104,6 +151,9 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     if (f.event === "postgres_changes") {
       const d = f.body?.data;
       rec.notes.push([now, String(d?.type || "?")[0], String(d?.record?.id ?? d?.old_record?.id ?? "")]);
+    } else if (f.event === "broadcast" && f.body?.event === "rev") {
+      const rev = f.body?.payload?.rev;
+      rec.bcasts.push([now, typeof rev === "number" ? rev : null, rec.dropNotify ? "x" : "n"]);
     } else if (f.event === "phx_reply" && f.ref != null && f.ref === f.joinRef && f.body?.status === "ok") {
       rec.joinAt.push(now);
     } else if (f.event === "system" && f.body?.extension === "postgres_changes" && f.body?.status === "ok") {
@@ -120,8 +170,10 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       url: `${base}/${locale}${eventPath}`,
       openedAt: Date.now(), loadedAt: null, visibility: null,
       joinAt: [], pgReadyAt: [], wsOpens: 0, wsCloses: 0,
-      seen: {}, gone: {}, dom: [], notes: [], fetches: [], errors: [],
-      dropPg: false, droppedFrames: 0, blockedAttempts: 0,
+      // notes: R1 postgres_changes [t, type, row id]; bcasts: `rev`
+      // broadcasts [t, rev, "n" | "x" (dropped by the proxy drill)].
+      seen: {}, gone: {}, dom: [], notes: [], bcasts: [], fetches: [], errors: [],
+      dropNotify: false, droppedFrames: 0, blockedAttempts: 0,
     };
     const context = await browser.newContext({ viewport: { width: 800, height: 900 }, locale: locale === "ko" ? "ko-KR" : locale === "en" ? "en-US" : "ja-JP" });
     await context.route("**/*", (route) => {
@@ -148,8 +200,16 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       if (!u.includes("/api/setlist?")) return;
       const t = Date.now();
       let minRev = null;
-      try { minRev = new URL(u).searchParams.get("minRev"); } catch { /* keep null */ }
-      const entry = [t, minRev === null ? null : Number(minRev), r.status(), r.headers()["x-snapshot-source"] || null, null];
+      let hint = false;
+      try {
+        const sp = new URL(u).searchParams;
+        minRev = sp.get("minRev");
+        hint = sp.get("hint") === "1";
+      } catch { /* keep defaults */ }
+      // [t, minRev, status, x-snapshot-source, body rev, x-snapshot-verify
+      //  (raw; null = absent), hint=1 sent]
+      const h = r.headers();
+      const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint];
       rec.fetches.push(entry);
       try {
         const txt = await r.text();
@@ -180,7 +240,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         ws.onMessage((m) => { if (!leg.closed) try { server.send(m); } catch { /* leg closing */ } });
         server.onMessage((m) => {
           const f = onFrame(rec, m);
-          if (rec.dropPg && f && f.topic === topic && f.event === "postgres_changes") {
+          if (rec.dropNotify && f && f.topic === topic && isNotification(f)) {
             rec.droppedFrames++;
             return;
           }
@@ -222,9 +282,36 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
   return {
     pages,
     joined: () => pages.filter((p) => p && (p.rec.mode === "blocked" ? p.rec.loadedAt : p.rec.joinAt.length)).length,
+    // R1 page builds only (an R2 page registers no postgres_changes).
     pgReady: () => pages.filter((p) => p && p.rec.pgReadyAt.length).length,
-    setDropPg(indices, on) {
-      for (const i of indices) if (pages[i]) pages[i].rec.dropPg = on;
+    // Proxy drop of every notification frame (proxied pages only).
+    setDropNotify(indices, on) {
+      for (const i of indices) if (pages[i]) pages[i].rec.dropNotify = on;
+    },
+    // The page's own drill hook: drop the NEXT valid notification once.
+    // Works on any routing mode; returns how many pages were armed.
+    async armHookDrop(indices) {
+      const r = await Promise.all(indices.map((i) => pages[i]?.page
+        .evaluate(() => { window.__osl = Object.assign(window.__osl || {}, { dropNextNotification: true }); return true; })
+        .catch(() => false)));
+      return r.filter(Boolean).length;
+    },
+    // Whether page i still holds an unconsumed hook drop (null = gone).
+    async hookDropPending(i) {
+      if (!pages[i]) return null;
+      return pages[i].page.evaluate(() => window.__osl?.dropNextNotification === true).catch(() => null);
+    },
+    // Clear the hook drop; returns how many pages still had it armed
+    // (never consumed).
+    async disarmHookDrop(indices) {
+      const r = await Promise.all(indices.map((i) => pages[i]?.page
+        .evaluate(() => {
+          const was = window.__osl?.dropNextNotification === true;
+          if (window.__osl) window.__osl.dropNextNotification = false;
+          return was;
+        })
+        .catch(() => false)));
+      return r.filter(Boolean).length;
     },
     // Close both legs of every proxied socket at once. Returns how many
     // live sockets were closed.
