@@ -154,7 +154,8 @@ describe("SnapshotAcceptance", () => {
       apply: true,
       version: null,
       serverGap: false,
-      hintGap: false,
+      serverRevRaised: false,
+      hint: "none",
     });
     expect(acc.applied).toEqual({ rev: 5, capturedAt: ms(T1) });
 
@@ -181,80 +182,217 @@ describe("SnapshotAcceptance", () => {
     expect(acc.applied).toEqual({ rev: 6, capturedAt: null });
   });
 
-  describe("delayed only from server-observed gaps", () => {
-    it("a hint-only gap is not a server gap (R2: hints never drive the indicator)", () => {
+  // R2 hint contract. These replace the R1 tests of `noteHintRev`
+  // (a hint raised the durable `wantedRev` until a response reached it)
+  // and of `notificationMinRev` (the `appliedRev + 1` guess): both are
+  // gone — a hint is a transient, per-batch ticket and only
+  // server-observed values enter `serverRev`.
+  describe("hint contract — durable serverRev vs transient batch ticket", () => {
+    const MISSING = { kind: "missing" } as const;
+
+    it("a hint never raises serverRev / wantedRev / minRevToSend", () => {
       const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
-      acc.noteHintRev(9);
-      expect(acc.minRevToSend()).toBe(9);
-      const v = acc.evaluate(acc.generation, { rev: 6, capturedAt: T1 });
-      expect(v).toMatchObject({ apply: true, serverGap: false, hintGap: true });
+      expect(acc.noteHint(9)).toBe(true);
+      expect(acc.serverRev).toBe(5);
+      expect(acc.wantedRev).toBe(5);
+      expect(acc.minRevToSend()).toBe(5);
+      expect(acc.pendingHint).toBe(9);
+    });
+
+    it("noteHint validates, ignores revisions the server already showed, and keeps the batch max", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      for (const bad of ["99", -1, 1.5, 2 ** 60, NaN, null, undefined, {}]) {
+        expect(acc.noteHint(bad)).toBe(false);
+      }
+      expect(acc.noteHint(5)).toBe(false); // already applied (duplicate / echo)
+      expect(acc.noteHint(3)).toBe(false);
+      expect(acc.pendingHint).toBeNull();
+      expect(acc.noteHint(7)).toBe(true);
+      expect(acc.noteHint(6)).toBe(true);
+      expect(acc.pendingHint).toBe(7);
+    });
+
+    it("captureHint consumes the batch; payloads after a dispatch form the next batch", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      acc.noteHint(7);
+      acc.noteHint(8);
+      expect(acc.captureHint()).toBe(8);
+      expect(acc.captureHint()).toBeNull();
+      acc.noteHint(9);
+      expect(acc.captureHint()).toBe(9);
+    });
+
+    it("captureHint drops a batch the server has meanwhile reached", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      acc.noteHint(7);
+      acc.evaluate(acc.generation, { rev: 7, capturedAt: T1 });
+      expect(acc.captureHint()).toBeNull();
+    });
+
+    it("minRevFor = max(serverRev, H)", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      expect(acc.minRevFor(9)).toBe(9);
+      expect(acc.minRevFor(3)).toBe(5);
+      expect(acc.minRevFor(null)).toBe(5);
+      expect(new SnapshotAcceptance().minRevFor(4)).toBe(4);
+      expect(new SnapshotAcceptance().minRevFor(null)).toBeNull();
+    });
+
+    it("an OLDER request completing cannot consume a NEWER batch", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      acc.noteHint(6);
+      const ticketA = acc.captureHint(); // request A dispatched with H = 6
+      acc.noteHint(7); // arrives while A is in flight → next batch
+      // A answers rev 7 — it satisfies A's own ticket…
+      expect(
+        acc.evaluate(acc.generation, { rev: 6, capturedAt: T1 }, MISSING, ticketA),
+      ).toMatchObject({ hint: "satisfied" });
+      // …and leaves the newer batch for its own dispatch.
+      expect(acc.pendingHint).toBe(7);
+      expect(acc.captureHint()).toBe(7);
+    });
+
+    it("satisfied: body rev ≥ H, whatever the header says", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      for (const verify of [
+        MISSING,
+        { kind: "memo", rev: 1, ageMs: 10 } as const,
+        { kind: "deferred" } as const,
+        { kind: "fresh", dbRev: 2 } as const,
+      ]) {
+        expect(
+          acc.evaluate(acc.generation, { rev: 6, capturedAt: T1 }, verify, 6),
+        ).toMatchObject({ apply: true, serverGap: false, hint: "satisfied" });
+      }
+    });
+
+    it("disproved: fresh dbRev < H → healthy, no gap, serverRev untouched by H", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      const v = acc.evaluate(
+        acc.generation,
+        { rev: 5, capturedAt: T1 },
+        { kind: "fresh", dbRev: 5 },
+        Number.MAX_SAFE_INTEGER,
+      );
+      expect(v).toMatchObject({
+        apply: true,
+        serverGap: false,
+        serverRevRaised: false,
+        hint: "disproved",
+      });
+      expect(acc.serverRev).toBe(5);
+    });
+
+    it("fresh dbRev > body rev raises serverRev → server gap (existing retry path)", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      // Hint 9, served 5, the server's own read saw 7: the hint is still
+      // disproved (7 < 9), and 7 is a server-proven head to chase.
+      const v = acc.evaluate(
+        acc.generation,
+        { rev: 5, capturedAt: T1 },
+        { kind: "fresh", dbRev: 7 },
+        9,
+      );
+      expect(v).toMatchObject({ serverGap: true, serverRevRaised: true, hint: "disproved" });
+      expect(acc.serverRev).toBe(7);
+      expect(acc.minRevToSend()).toBe(7);
+      // A request without a ticket raises it the same way.
+      const w = acc.evaluate(acc.generation, { rev: 6, capturedAt: T2 }, { kind: "fresh", dbRev: 8 });
+      expect(w).toMatchObject({ serverGap: true, serverRevRaised: true, hint: "none" });
+      expect(acc.serverRev).toBe(8);
+    });
+
+    it("superseded: the server itself proved a head ≥ H above the body → gap path, ticket consumed", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      const v = acc.evaluate(
+        acc.generation,
+        { rev: 5, capturedAt: T1 },
+        { kind: "fresh", dbRev: 9 },
+        8,
+      );
+      expect(v).toMatchObject({ serverGap: true, serverRevRaised: true, hint: "superseded" });
+    });
+
+    it("inconclusive: memo / deferred / missing / contradicting headers never refute and never raise", () => {
+      for (const verify of [
+        { kind: "memo", rev: 9, ageMs: 200 } as const,
+        { kind: "deferred" } as const,
+        MISSING,
+        { kind: "none" } as const,
+        { kind: "satisfied" } as const,
+      ]) {
+        const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+        const v = acc.evaluate(acc.generation, { rev: 5, capturedAt: T1 }, verify, 6);
+        expect(v).toMatchObject({ apply: true, serverGap: false, hint: "inconclusive" });
+        // A memo revision is NOT server-proven (it may predate the save).
+        expect(acc.serverRev).toBe(5);
+      }
+    });
+
+    it("a compat body (no rev) leaves a carried ticket inconclusive", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      expect(acc.evaluate(acc.generation, {}, MISSING, 6)).toMatchObject({
+        apply: true,
+        version: null,
+        hint: "inconclusive",
+      });
+    });
+
+    it("poisoning drill: a max-safe-integer hint then honest saves — serverRev is never poisoned", () => {
+      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
+      const g = acc.generation;
+      expect(acc.noteHint(Number.MAX_SAFE_INTEGER)).toBe(true);
+      const forged = acc.captureHint();
+      expect(forged).toBe(Number.MAX_SAFE_INTEGER);
+      expect(acc.minRevFor(forged)).toBe(Number.MAX_SAFE_INTEGER);
+      // First check: a memo answer (inconclusive) …
+      expect(
+        acc.evaluate(g, { rev: 5, capturedAt: T1 }, { kind: "memo", rev: 5, ageMs: 300 }, forged),
+      ).toMatchObject({ serverGap: false, hint: "inconclusive" });
+      // … the one recheck: deferred (inconclusive again → the scheduler
+      // drops the ticket).
+      expect(
+        acc.evaluate(g, { rev: 5, capturedAt: T2 }, { kind: "deferred" }, forged),
+      ).toMatchObject({ serverGap: false, hint: "inconclusive" });
+      // Nothing durable moved.
+      expect(acc.serverRev).toBe(5);
+      expect(acc.minRevToSend()).toBe(5);
+      // Honest saves after the drop work normally.
+      expect(acc.noteHint(6)).toBe(true);
+      const honest = acc.captureHint();
+      expect(honest).toBe(6);
+      expect(acc.minRevFor(honest)).toBe(6);
+      expect(
+        acc.evaluate(g, { rev: 6, capturedAt: T2 }, { kind: "satisfied" }, honest),
+      ).toMatchObject({ apply: true, serverGap: false, hint: "satisfied" });
+      expect(acc.minRevToSend()).toBe(6);
     });
 
     it("a gap below a revision the server itself returned is a server gap", () => {
       const acc = new SnapshotAcceptance();
       acc.evaluate(acc.generation, { rev: 8, capturedAt: T1 });
       const v = acc.evaluate(acc.generation, { rev: 7, capturedAt: T2 });
-      expect(v).toMatchObject({ apply: false, serverGap: true, hintGap: false });
+      expect(v).toMatchObject({ apply: false, serverGap: true, hint: "none" });
     });
 
-    it("hints are validated and satisfied once a response reaches them", () => {
-      const acc = new SnapshotAcceptance({ rev: 5, capturedAt: T0 });
-      acc.noteHintRev("99");
-      acc.noteHintRev(-1);
-      acc.noteHintRev(2 ** 60);
-      expect(acc.minRevToSend()).toBe(5);
-      acc.noteHintRev(7);
-      acc.evaluate(acc.generation, { rev: 7, capturedAt: T1 });
-      expect(acc.minRevToSend()).toBe(7);
-      // Hint consumed: a later same-rev response is not a hint gap.
-      expect(
-        acc.evaluate(acc.generation, { rev: 7, capturedAt: T2 }),
-      ).toMatchObject({ hintGap: false });
-    });
-
-    it("reset clears hints", () => {
+    it("reset drops the pending batch", () => {
       const acc = new SnapshotAcceptance({ rev: 1, capturedAt: T0 });
-      acc.noteHintRev(50);
+      acc.noteHint(50);
       acc.reset({ rev: 2, capturedAt: T0 });
+      expect(acc.pendingHint).toBeNull();
+      expect(acc.captureHint()).toBeNull();
       expect(acc.minRevToSend()).toBe(2);
     });
   });
 
-  describe("notificationMinRev — single-use hint", () => {
-    it("asks for appliedRev + 1 without storing it", () => {
-      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
-      expect(acc.notificationMinRev()).toBe(8);
-      // Not stored: wantedRev / ordinary minRev are unchanged.
-      expect(acc.wantedRev).toBe(7);
-      expect(acc.minRevToSend()).toBe(7);
-    });
-
-    it("a response that still comes back at appliedRev is healthy (no gap of any kind)", () => {
-      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
-      acc.notificationMinRev();
-      expect(acc.evaluate(acc.generation, { rev: 7, capturedAt: T1 })).toMatchObject({
-        apply: true,
-        serverGap: false,
-        hintGap: false,
-      });
-      expect(acc.wantedRev).toBe(7);
-    });
-
-    it("never goes below wantedRev (an R2 hint already higher wins)", () => {
-      const acc = new SnapshotAcceptance({ rev: 7, capturedAt: T0 });
-      acc.noteHintRev(12);
-      expect(acc.notificationMinRev()).toBe(12);
-    });
-
-    it("falls back to wantedRev when nothing is applied", () => {
-      const acc = new SnapshotAcceptance();
-      expect(acc.notificationMinRev()).toBeNull();
-    });
-
-    it("does not overflow past MAX_SAFE_INTEGER", () => {
-      const acc = new SnapshotAcceptance({ rev: Number.MAX_SAFE_INTEGER, capturedAt: T0 });
-      expect(acc.notificationMinRev()).toBe(Number.MAX_SAFE_INTEGER);
-    });
+  it("setlistSnapshotUrl appends &hint=1 only for a notification fetch with a minRev", () => {
+    expect(setlistSnapshotUrl("7", "ko", 12, true)).toBe(
+      "/api/setlist?eventId=7&locale=ko&minRev=12&hint=1",
+    );
+    expect(setlistSnapshotUrl("7", "ko", 12, false)).toBe(
+      "/api/setlist?eventId=7&locale=ko&minRev=12",
+    );
+    expect(setlistSnapshotUrl("7", "ko", null, true)).toBe("/api/setlist?eventId=7&locale=ko");
   });
 
   describe("adopt — hand-over from another live source", () => {

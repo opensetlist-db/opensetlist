@@ -17,9 +17,19 @@ import {
   isValidRev,
   parseCapturedAt,
   setlistSnapshotUrl,
+  type HintResolution,
   type SnapshotVersion,
 } from "@/lib/snapshotAcceptance";
-import type { LiveFetchOutcome, LiveFetchReason } from "@/lib/liveScheduler";
+import {
+  SNAPSHOT_VERIFY_HEADER,
+  parseSnapshotVerify,
+} from "@/lib/snapshotVerify";
+import type {
+  LiveFetchOutcome,
+  LiveFetchReason,
+  LiveFetchRequest,
+  LiveHintOutcome,
+} from "@/lib/liveScheduler";
 
 // Shared state + request runner behind `useRealtimeEventChannel` and
 // `useSetlistPolling`. Both hooks fetch the same `/api/setlist`
@@ -97,11 +107,32 @@ export interface SnapshotFailureInfo {
 /**
  * One channel/polling session's request runner. `runFetch` is handed to
  * `createLiveScheduler`; `abort()` cancels every in-flight request
- * silently (cleanup, not failure).
+ * silently (cleanup, not failure). `noteHint` / `captureHint` expose the
+ * acceptance state's hint batch (see snapshotAcceptance.ts): the channel
+ * feeds broadcast payloads into `noteHint`, the scheduler drains the
+ * batch with `captureHint` at dispatch.
  */
 export interface SnapshotRunner {
-  runFetch: (reason: LiveFetchReason) => Promise<LiveFetchOutcome>;
+  runFetch: (
+    reason: LiveFetchReason,
+    request?: LiveFetchRequest,
+  ) => Promise<LiveFetchOutcome>;
   abort: () => void;
+  /** Feed an untrusted broadcast `rev`; true = worth a notification fetch. */
+  noteHint: (rev: unknown) => boolean;
+  /** Drain the current hint batch for the request being dispatched. */
+  captureHint: () => number | null;
+}
+
+/**
+ * `HintResolution` (acceptance) → what the scheduler needs to know.
+ * Satisfied, disproved and superseded all consume the ticket; only an
+ * inconclusive answer asks for the recheck. `none` (no ticket) reports
+ * nothing.
+ */
+function hintOutcomeFor(resolution: HintResolution): LiveHintOutcome | undefined {
+  if (resolution === "none") return undefined;
+  return resolution === "inconclusive" ? "inconclusive" : "resolved";
 }
 
 const CANCELLED: LiveFetchOutcome = { kind: "cancelled" };
@@ -280,8 +311,12 @@ export function useLiveSnapshot<T>({
         }
       };
 
-      const runFetch = (reason: LiveFetchReason) =>
+      const runFetch = (reason: LiveFetchReason, request?: LiveFetchRequest) =>
         new Promise<LiveFetchOutcome>((resolve) => {
+          // A caller without a descriptor (none today — every scheduler
+          // passes one) gets the plain maintenance request.
+          const hint = request?.hint ?? null;
+          const notify = request?.notify === true;
           let settled = false;
           const finish = (outcome: LiveFetchOutcome) => {
             if (settled) return;
@@ -299,7 +334,15 @@ export function useLiveSnapshot<T>({
           // and the floor are the same number. The failure still
           // counts toward SNAPSHOT_DELAYED_AFTER_FAILURES like any
           // other non-OK response.
-          const fail = (retryAfterMs: number | null) => {
+          //
+          // `hintOutcome` is set only when the response DID evaluate the
+          // request's hint ticket and still failed (a server-proven
+          // gap): the scheduler then settles the ticket from it. Without
+          // it (HTTP / network / deadline) the ticket rides on the retry.
+          const fail = (
+            retryAfterMs: number | null,
+            hintOutcome?: LiveHintOutcome,
+          ) => {
             if (settled) return;
             if (!isLive()) {
               finish(CANCELLED);
@@ -318,6 +361,7 @@ export function useLiveSnapshot<T>({
               retryInMs: delayMs,
               notBeforeMs:
                 retryAfterMs === null ? null : clampRetryAfterMs(retryAfterMs),
+              ...(hintOutcome ? { hint: hintOutcome } : {}),
             });
           };
 
@@ -337,17 +381,14 @@ export function useLiveSnapshot<T>({
               // forbid conditional requests the server may answer
               // cheaply later.
               //
-              // `minRev`: a notification-triggered request asks for one
-              // past the applied revision as a single-use hint (see
-              // `notificationMinRev` — closes the push-beats-cache-purge
-              // window); everything else asks for the highest revision
-              // the server has shown us.
-              const minRev =
-                reason === "notification"
-                  ? acceptance.notificationMinRev()
-                  : acceptance.minRevToSend();
+              // URL per the scheduler's descriptor (liveScheduler.ts,
+              // `LiveFetchRequest`): `minRev = serverRev` for a request
+              // without a ticket, `max(serverRev, H)` with one, and
+              // `&hint=1` only on a notification fetch (first check of
+              // H, non-generic). Hints never enter the durable `minRev`.
+              const minRev = acceptance.minRevFor(hint);
               const res = await fetch(
-                setlistSnapshotUrl(fetchEventId, fetchLocale, minRev),
+                setlistSnapshotUrl(fetchEventId, fetchLocale, minRev, notify),
                 { signal: controller.signal },
               );
               if (settled) return;
@@ -369,26 +410,36 @@ export function useLiveSnapshot<T>({
                 fail(null);
                 return;
               }
-              const verdict = acceptance.evaluate(generation, body);
+              // Per-request verification metadata. Absent or malformed
+              // (an R1 server after a rollback, a proxy) parses as
+              // `missing`, which can only ever be inconclusive.
+              const verify = parseSnapshotVerify(
+                res.headers?.get?.(SNAPSHOT_VERIFY_HEADER) ?? null,
+              );
+              const verdict = acceptance.evaluate(generation, body, verify, hint);
               if (verdict.kind === "stale-generation") {
                 finish(CANCELLED);
                 return;
               }
               if (verdict.apply) apply(body, verdict.version);
+              const hintOutcome = hintOutcomeFor(verdict.hint);
               if (verdict.serverGap) {
-                // Older than a revision the server already showed us:
-                // a stale cache somewhere. Soft failure → n13 retry
-                // path (and, if it persists, the "delayed" state —
+                // Older than a revision the server itself showed us —
+                // including a `fresh` dbRev reported with this very
+                // response: a stale cache somewhere. Soft failure → n13
+                // retry path (and, if it persists, the "delayed" state —
                 // legitimate here because the gap is server-proven).
-                fail(null);
+                fail(null, hintOutcome);
                 return;
               }
-              // `verdict.hintGap` (R2 only) is deliberately not a
-              // failure: an unauthenticated hint is check-once — this
-              // request carried it as `minRev`, which was the check.
+              // Healthy sync. A ticket that was satisfied or disproved is
+              // done; an inconclusive one (memo / deferred / missing
+              // header) asks the scheduler for its one quiet recheck and
+              // counts ZERO failures: an unauthenticated hint must never
+              // drive the "delayed" indicator.
               failuresRef.current = 0;
               setFreshness({ lastSyncAt: new Date(), state: "live" });
-              finish(OK);
+              finish(hintOutcome ? { kind: "ok", hint: hintOutcome } : OK);
             } catch {
               // Cleanup aborts resolve as cancelled inside `fail`
               // (isLive() is false); network/JSON errors are failures.
@@ -402,6 +453,12 @@ export function useLiveSnapshot<T>({
 
       return {
         runFetch,
+        // Scoped to this runner's generation: a payload for a previous
+        // event/locale session must not seed the new one's batch.
+        noteHint: (rev: unknown) =>
+          acceptance.generation === generation && acceptance.noteHint(rev),
+        captureHint: () =>
+          acceptance.generation === generation ? acceptance.captureHint() : null,
         abort: () => {
           cancelled = true;
           for (const controller of controllers) controller.abort();
