@@ -1,0 +1,494 @@
+### capture segment start 2026-10-11T05:34:51.739Z
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Streaming logs for deployment dpl_Wbm7QT6CsXbSSTv4evf9nuKJz3gr starting from 22:34:54.89
+
+waiting for new logs...
+22:35:39.45  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=695 items=23 ms=69 instance=14c92be2
+
+waiting for new logs...
+22:35:40.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=695 items=23 ms=47 instance=14c92be2
+
+waiting for new logs...
+22:35:41.99  ℹ️  POST  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/admin/setlist-items
+------------------------------------------------------------------------------------------------------------
+[liveWriter] route=admin-create acquireMs=4 execMs=126 rev=696 ok=true instance=14c92be2
+
+waiting for new logs...
+22:35:42.22  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=58 instance=14c92be2
+
+waiting for new logs...
+22:35:42.23  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.28  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=106 instance=14c92be2
+
+waiting for new logs...
+22:35:42.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ko instance=14c92be2
+
+waiting for new logs...
+22:35:42.65  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=46 instance=14c92be2
+
+waiting for new logs...
+22:35:42.66  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+
+waiting for new logs...
+22:35:42.66  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.52  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.52  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.52  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.59  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.66  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.58  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=45 instance=14c92be2
+
+waiting for new logs...
+22:35:42.59  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.78  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.70  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=88 instance=14c92be2
+
+waiting for new logs...
+22:35:42.71  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.84  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=56 instance=14c92be2
+
+waiting for new logs...
+22:35:42.85  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.77  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=58 instance=14c92be2
+
+waiting for new logs...
+22:35:42.87  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.88  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.51  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=45 instance=14c92be2
+
+waiting for new logs...
+22:35:42.51  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+
+waiting for new logs...
+22:35:42.51  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=4 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.88  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.87  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=63 instance=14c92be2
+
+waiting for new logs...
+22:35:42.87  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=6 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.94  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=42 instance=14c92be2
+
+waiting for new logs...
+22:35:42.95  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.79  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=67 instance=14c92be2
+
+waiting for new logs...
+22:35:42.79  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.88  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.95  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:42.66  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+waiting for new logs...
+22:35:43.03  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=61 instance=14c92be2
+
+waiting for new logs...
+22:35:43.04  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:42.98  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=53 instance=14c92be2
+
+waiting for new logs...
+22:35:42.99  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ko instance=14c92be2
+
+waiting for new logs...
+22:35:44.37  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=230 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e76602f6
+
+waiting for new logs...
+22:35:43.21  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=44 instance=14c92be2
+
+waiting for new logs...
+22:35:43.22  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:44.58  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ko ms=270 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=b602aaa8
+
+waiting for new logs...
+22:35:44.47  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=9a6e8939
+
+waiting for new logs...
+22:35:44.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=269 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=fdbe07cf
+
+waiting for new logs...
+22:35:44.62  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=296 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=1219e95c
+
+waiting for new logs...
+22:35:44.49  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=296 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=575e1dec
+
+waiting for new logs...
+22:35:44.46  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=219 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=f1881a52
+
+waiting for new logs...
+22:35:44.66  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=210 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c175ac82
+
+waiting for new logs...
+22:35:44.49  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=839 instance=b6e95807
+
+waiting for new logs...
+22:35:44.49  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=b6e95807 tag=build
+
+waiting for new logs...
+22:35:44.70  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=297 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e9177345
+
+waiting for new logs...
+22:35:43.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=51 instance=14c92be2
+
+waiting for new logs...
+22:35:43.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ko instance=14c92be2
+
+waiting for new logs...
+22:35:43.27  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=43 instance=14c92be2
+
+waiting for new logs...
+22:35:43.27  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:44.68  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=303 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=fdf52954
+
+waiting for new logs...
+22:35:44.85  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1337 instance=cac12a87
+
+waiting for new logs...
+22:35:44.86  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=cac12a87
+
+waiting for new logs...
+22:35:44.59  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=299 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=4292ce09
+
+waiting for new logs...
+22:35:44.68  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=263 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=bfdff88b
+
+waiting for new logs...
+22:35:44.79  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1359 instance=85328576
+
+waiting for new logs...
+22:35:43.34  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=51 instance=14c92be2
+
+waiting for new logs...
+22:35:43.34  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=en instance=14c92be2
+
+waiting for new logs...
+22:35:43.35  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=51 instance=14c92be2
+
+waiting for new logs...
+22:35:44.54  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=220 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=15efe666
+
+waiting for new logs...
+22:35:44.62  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1221 instance=28c7dd90
+
+waiting for new logs...
+22:35:44.74  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=266 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=299f48f9
+
+waiting for new logs...
+22:35:44.67  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=217 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=a759aaca
+
+waiting for new logs...
+22:35:44.71  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=d2de960f
+
+waiting for new logs...
+22:35:44.75  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=281 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=9f02c7d3
+
+waiting for new logs...
+22:35:44.58  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=871 instance=fb7aafe7
+
+waiting for new logs...
+22:35:44.58  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=fb7aafe7 tag=build
+
+waiting for new logs...
+22:35:44.85  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1081 instance=539d9e8f
+
+waiting for new logs...
+22:35:43.46  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=43 instance=14c92be2
+
+waiting for new logs...
+22:35:43.46  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:44.83  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=281 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=071f8a98
+
+waiting for new logs...
+22:35:44.83  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=259 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=965a654a
+
+waiting for new logs...
+22:35:44.64  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1183 instance=626923e7
+
+waiting for new logs...
+22:35:44.80  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1063 instance=85328576
+
+waiting for new logs...
+22:35:44.80  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=85328576 tag=build
+
+waiting for new logs...
+22:35:44.68  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ko ms=208 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=d7092b5a
+
+waiting for new logs...
+22:35:45.00  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1451 instance=c279d303
+
+waiting for new logs...
+22:35:44.84  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1105 instance=91633739
+
+waiting for new logs...
+22:35:44.83  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build-failed event=111 locale=ja ms=215 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=3b99767c
+
+waiting for new logs...
+22:35:44.77  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1003 instance=626923e7
+
+waiting for new logs...
+22:35:44.77  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=626923e7 tag=build
+
+waiting for new logs...
+22:35:44.48  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=787 instance=14c92be2
+
+waiting for new logs...
+22:35:44.49  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=4 event=111 locale=ja instance=14c92be2
+
+waiting for new logs...
+22:35:44.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=939 instance=254fca35
+
+waiting for new logs...
+22:35:44.55  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=835 instance=8d87c5fc
+
+waiting for new logs...
+22:35:48.79  ℹ️  DELETE  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/admin/setlist-items/1944
+-------------------------------------------------------------------------------------------------------------------
+[liveWriter] route=admin-delete acquireMs=3 execMs=25 rev=697 ok=true instance=3a0bc8f7
+
+waiting for new logs...
+### capture end 2026-10-11T05:37:24.042Z (STOP file)

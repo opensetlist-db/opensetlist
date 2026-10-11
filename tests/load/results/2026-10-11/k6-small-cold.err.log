@@ -1,0 +1,5 @@
+time="2026-10-10T22:35:44-07:00" level=warning msg="[error] burst b00: HTTP 503  {\"error\":\"snapshot_unavailable\"}" source=console
+time="2026-10-10T22:35:45-07:00" level=warning msg="[error] burst b00: HTTP 503  {\"error\":\"snapshot_unavailable\"}" source=console
+time="2026-10-10T22:35:45-07:00" level=warning msg="[error] burst b00: HTTP 503  {\"error\":\"snapshot_unavailable\"}" source=console
+time="2026-10-10T22:35:47-07:00" level=info msg="[burst b00] create appliedRev=695 savedRev=696 minRev=696+hint n=600 errors=74 p95=4463ms max=4847ms bodies=[\"74x HTTP 503: {\\\"error\\\":\\\"snapshot_unavailable\\\"}\"]" source=console
+time="2026-10-10T22:35:49-07:00" level=error msg="test aborted: burst b00 over the abort gate (errors 74/600, p95 4463 ms) — stopping before the pooler melts — stop and reconcile the event — wait 90s before creating the STOP file so the samplers record the drain at cleanupAndAbort (file:///F:/work/ClaudeCode/opensetlist4/tests/load/viewers.js:882:18(68))"
