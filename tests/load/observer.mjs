@@ -292,7 +292,12 @@ async function main() {
   // the previous poll), single request at a time — a hung poll delays
   // the next one rather than piling up.
   let pollTimer = null;
-  let pollInflight = null;
+  // Every poll still in flight, not just the latest: the loop is on a
+  // fixed 5 s cadence and does not wait for the previous request, so a
+  // slow server (the very case the poller exists to measure) makes polls
+  // overlap, and shutdown must wait for all of them or the slow rows are
+  // the ones that go missing from the record.
+  const pollsInflight = new Set();
   let stopping = false;
   const poll = async () => {
     const t = Date.now();
@@ -313,7 +318,8 @@ async function main() {
   };
   const pollLoop = () => {
     if (stopping) return;
-    pollInflight = poll().finally(() => { pollInflight = null; });
+    const p = poll().finally(() => pollsInflight.delete(p));
+    pollsInflight.add(p);
     pollTimer = setTimeout(pollLoop, POLL_MS);
   };
   pollLoop();
@@ -371,7 +377,8 @@ async function main() {
     // its socket; 15 s caps a wedged Realtime disconnect.
     const result = await ask("stop", "result", 15000);
     await worker.terminate().catch(() => {});
-    if (pollInflight) await pollInflight;
+    // Each poll has its own POLL_TIMEOUT_MS abort, so this is bounded.
+    if (pollsInflight.size) await Promise.allSettled([...pollsInflight]);
     clearTimeout(lagTimer);
     meta.endedAt = new Date().toISOString();
     if (!result && !meta.workerError) meta.workerError = "no result from the SDK worker within 15 s";
