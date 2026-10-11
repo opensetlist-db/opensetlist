@@ -1300,6 +1300,58 @@ describe("liveScheduler — ticket-less notifications are skipped", () => {
     });
   });
 
+  // A recheck entry that replaced a pending retry. With the default
+  // clock the recheck always finds its ticket due and merges it, so
+  // the run fetches anyway (first test). The guard on the recheck early
+  // return only becomes observable when the clock lags the timer —
+  // constructed here through the injectable `clock` (second test).
+  it("a recheck that replaced a pending retry still fetches (default clock: the ticket rides it)", async () => {
+    const { calls, runFetch, scheduler, state } = batchHarness();
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    // Server-gap failure whose ticket was inconclusive: a recheck-phase
+    // ticket is carried (due 1500) and a retry is armed at 4250.
+    await settle(calls[0], { kind: "failed", retryInMs: 4_000, hint: "inconclusive" });
+    expect(scheduler.getState()).toMatchObject({ retryPending: true, carriedHintPhase: "recheck" });
+    scheduler.requestFetch("recheck"); // due 1500 < 4250 → replaces the retry entry
+    expect(scheduler.getState()).toMatchObject({ retryPending: false, scheduledReason: "recheck" });
+    await advance(1_250); // t = 1500
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "recheck",
+      generic: false,
+      hint: 6,
+      notify: false,
+    });
+  });
+
+  it("a recheck that replaced a pending retry is not swallowed when its ticket is not yet due", async () => {
+    let lagMs = 0;
+    const { calls, runFetch, scheduler, state } = batchHarness({
+      clock: {
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        now: () => Date.now() - lagMs,
+      },
+    });
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    await settle(calls[0], { kind: "failed", retryInMs: 4_000, hint: "inconclusive" });
+    scheduler.requestFetch("recheck"); // replaces the retry entry (due 1500)
+    lagMs = 100; // at the timer, the scheduler's clock reads 1400 < due 1500
+    await advance(1_250);
+    // The ticket is not merged (not due), so `ticket` is null with no
+    // generic obligation — without the `retryOwed` guard the run would
+    // return and re-arm the recheck; the owed retry fetches now.
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toMatchObject({ generic: false, hint: null, notify: false });
+    // The ticket stays carried for its own recheck.
+    await settle(calls[1]);
+    expect(scheduler.getState()).toMatchObject({ carriedHint: 6, scheduledReason: "recheck" });
+  });
+
   it("a retry run without a ticket is never skipped", async () => {
     const { calls, runFetch, scheduler, state } = batchHarness();
     state.batch = 6;

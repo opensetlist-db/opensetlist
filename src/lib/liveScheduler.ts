@@ -655,9 +655,22 @@ export function createLiveScheduler(
 
     // A recheck timer with nothing left to do (its ticket rode along
     // on an earlier request) does not fetch.
+    //
+    // …unless a retry is owed (`retryOwed`). A recheck entry is armed
+    // through the same single scheduled slot as the retry, so an earlier
+    // recheck can REPLACE a pending retry entry, and this run then
+    // stands in for the retry without `isRetryRun`. Returning here would
+    // drop (or, with a carried ticket, postpone to the recheck's own due
+    // time) a request a failure is owed. With the default clock this
+    // combination does not arise today — the ticket that armed the
+    // recheck is still carried and due when the timer fires, so it is
+    // merged and `ticket` is non-null — but that rests on timer and
+    // clock agreeing exactly (an injected clock, or a timer that fires a
+    // tick early, breaks it), and the cost of guarding is nil.
     if (
       entryReason === "recheck" &&
       !isRetryRun &&
+      !retryOwed &&
       ticket === null &&
       !generic &&
       !hadNotification
