@@ -60,7 +60,7 @@ export function isDevDatabaseUrl(raw) {
 // Vercel alias of this project. Nothing else — a deployment-specific
 // `opensetlist-<hash>-....vercel.app` URL can be a production deploy, so
 // it is refused like opensetlist.com.
-function isAllowedBaseUrl(raw) {
+export function isAllowedBaseUrl(raw) {
   const u = parseUrl(raw);
   if (!u) return false;
   if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;

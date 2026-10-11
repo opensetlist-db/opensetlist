@@ -245,6 +245,207 @@ export function decodeWarmEnvelope(
 }
 
 // ---------------------------------------------------------------------
+// Fault injection at the warm-cache boundary (drills only)
+//
+// Why it exists: "a warm miss takes the old path" proves a fallback,
+// not capacity under widespread misses. Qualifying warming therefore
+// needs drills at full load in which the Runtime Cache is absent, slow,
+// failing, or only partly published — and the obvious platform knobs do
+// not produce those faults: `RUNTIME_CACHE_TIMEOUT` only configures the
+// SDK's fallback HTTP client (a deployed function prefers the request
+// context's cache, so it may never apply), a different namespace merely
+// moves the key prefix, the SDK turns HTTP errors into `null` (= a
+// plain `miss`, never `error`), and a very short SDK timeout still does
+// not exercise OUR 300 ms deadline (`WARM_LOOKUP_TIMEOUT_MS`). So the
+// fault is injected here, in our code, around the cache handle's
+// `get` / `set` and the warm job's per-locale step, and every affected
+// log line names it (`fault=<spec>`) so a drill can prove that the
+// intended fault was actually active before its numbers are trusted.
+//
+// Arming: `LIVE_WARM_FAULT_ARMED=1` AND `LIVE_WARM_FAULT=<spec>` AND
+// `VERCEL_ENV` is not `production`. Two variables, so a stray
+// `LIVE_WARM_FAULT` copied between environments injects nothing on its
+// own; the production check is a hard stop even when both are set (one
+// `fault-blocked` line per process says someone tried). Like the
+// warming flag, Vercel binds env vars at deploy time, so on a deployment
+// the fault is fixed for its lifetime — the drills use a disposable
+// preview deployment (tests/load/README.md, "warming fault drills").
+// All three are read per call, which keeps tests able to flip them;
+// unarmed, the cost is one env lookup and a string compare per call,
+// before any parsing or allocation.
+//
+// Spec: comma-separated modes, combinable (e.g. `slow=400,locale=ja`):
+//   absent        lookups skip the `get` entirely → `miss` ("no entry")
+//   slow=<ms>     each `get` waits <ms> before running normally; ≥ 300
+//                 trips the reader deadline (`timeout`), below it is a
+//                 slow hit. The wait sits inside the shared in-flight
+//                 `get`, so it holds the key's slot exactly as a slow
+//                 cache would
+//   getnull       the `get` runs, then its value is dropped → `miss`
+//                 with real cache latency
+//   geterror      the `get` runs, then rejects → `error`
+//   seterror      the warm job's `set` rejects without storing →
+//                 `set … ok=false`, nothing published
+//   setskip       the `set` silently does nothing → `ok=true` but the
+//                 entry is absent (what the SDK's swallowed `set` errors
+//                 look like from here)
+//   locale=<l>    the warm job skips that locale's build + set
+//                 (`skip reason=fault-locale`) → partial publication;
+//                 repeatable for several locales
+//   slowjob=<ms>  each locale's build starts <ms> later → warm-complete
+//                 − commit grows; hinted fetches arrive before publication
+// An unparseable spec injects NOTHING (one `fault-invalid` line): a
+// drill must not run on a half-understood fault, and the missing
+// `fault=` on the log lines makes the mistake visible.
+// ---------------------------------------------------------------------
+
+export type WarmFault = {
+  /** Normalised spec in its log encoding (`slow:400+locale:ja`, see
+   *  `oneToken`), as logged in `fault=` / `mode=`. */
+  label: string;
+  absent: boolean;
+  slowMs: number;
+  getNull: boolean;
+  getError: boolean;
+  setError: boolean;
+  setSkip: boolean;
+  skipLocales: ReadonlySet<Locale>;
+  slowJobMs: number;
+};
+
+// Upper bound for the delay modes: well past every deadline they are
+// meant to cross (300 ms lookup; a warm job's whole budget is seconds),
+// low enough that a typo like `slow=40000` cannot pin a function.
+const FAULT_MAX_DELAY_MS = 10_000;
+
+/** Parse a fault spec. `null` = unparseable (nothing is injected). */
+export function parseWarmFault(spec: string): WarmFault | null {
+  // An empty token (`slow=400,,locale=ja`, a trailing comma) is a
+  // malformed spec, not something to tolerate: the rule is that anything
+  // off-grammar injects nothing, so a typo shows up as `fault-invalid`
+  // instead of silently arming a partial fault.
+  const tokens = spec.split(",").map((t) => t.trim());
+  if (tokens.length === 0 || tokens.some((t) => t === "")) return null;
+  const f = {
+    absent: false,
+    slowMs: 0,
+    getNull: false,
+    getError: false,
+    setError: false,
+    setSkip: false,
+    skipLocales: new Set<Locale>(),
+    slowJobMs: 0,
+  };
+  const delay = (v: string): number | null => {
+    if (!/^\d+$/.test(v)) return null;
+    const ms = Number(v);
+    return ms > 0 && ms <= FAULT_MAX_DELAY_MS ? ms : null;
+  };
+  for (const t of tokens) {
+    const eq = t.indexOf("=");
+    const name = eq < 0 ? t : t.slice(0, eq);
+    const value = eq < 0 ? null : t.slice(eq + 1);
+    if (value === null) {
+      if (name === "absent") f.absent = true;
+      else if (name === "getnull") f.getNull = true;
+      else if (name === "geterror") f.getError = true;
+      else if (name === "seterror") f.setError = true;
+      else if (name === "setskip") f.setSkip = true;
+      else return null;
+    } else if (name === "slow" || name === "slowjob") {
+      const ms = delay(value);
+      if (ms === null) return null;
+      if (name === "slow") f.slowMs = ms;
+      else f.slowJobMs = ms;
+    } else if (name === "locale") {
+      if (!(locales as readonly string[]).includes(value)) return null;
+      f.skipLocales.add(value as Locale);
+    } else {
+      return null;
+    }
+  }
+  return { ...f, label: oneToken(tokens.join(",")) };
+}
+
+// What was last announced (`armed:` / `invalid:` / `blocked:` + spec),
+// so each distinct state logs exactly one line per process, and the
+// parse of the last spec seen (the spec is fixed per deployment, so
+// this parses once).
+let faultAnnounced: string | null = null;
+let faultParsed: { spec: string; fault: WarmFault | null } | null = null;
+
+// The spec as ONE log value: no whitespace, `=` → `:`, `,` → `+`
+// (`slow=400,locale=ja` → `slow:400+locale:ja`). Log consumers parse
+// lines as space-separated `key=value` pairs; a raw spec inside a value
+// would carry an inner `locale=ja` that a non-greedy or comma-splitting
+// tokenizer reads as the line's own `locale` field, misattributing a
+// lookup in exactly the combined drills that rely on the logs.
+const oneToken = (s: string) => s.replace(/\s+/g, "").replace(/=/g, ":").replace(/,/g, "+");
+
+/** The active fault, or `null` (unarmed, production, or unparseable). */
+export function activeWarmFault(): WarmFault | null {
+  // Unarmed fast path: the only work on every normal call.
+  if (process.env.LIVE_WARM_FAULT_ARMED !== "1") return null;
+  const spec = process.env.LIVE_WARM_FAULT ?? "";
+  if (spec === "") return null;
+  if (process.env.VERCEL_ENV === "production") {
+    if (faultAnnounced !== `blocked:${spec}`) {
+      faultAnnounced = `blocked:${spec}`;
+      console.log(
+        `[liveWarm] fault-blocked mode=${oneToken(spec)} reason=production ` +
+          `instance=${INSTANCE_ID}`,
+      );
+    }
+    return null;
+  }
+  if (faultParsed?.spec !== spec) faultParsed = { spec, fault: parseWarmFault(spec) };
+  const { fault } = faultParsed;
+  const state = fault ? `armed:${fault.label}` : `invalid:${spec}`;
+  if (faultAnnounced !== state) {
+    faultAnnounced = state;
+    console.log(
+      fault
+        ? `[liveWarm] fault armed mode=${fault.label} instance=${INSTANCE_ID}`
+        : `[liveWarm] fault-invalid mode=${oneToken(spec)} injected=none ` +
+            `instance=${INSTANCE_ID}`,
+    );
+  }
+  return fault;
+}
+
+/** ` fault=<label>` for a log line while a fault is active, else "". */
+function faultTag(fault: WarmFault | null): string {
+  return fault ? ` fault=${fault.label}` : "";
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** The reader's `get`, with the active fault (if any) applied. */
+async function faultyGet(key: string, fault: WarmFault | null): Promise<unknown> {
+  if (!fault) return warmEntryCache().get(key);
+  if (fault.slowMs > 0) await sleep(fault.slowMs);
+  if (fault.absent) return null;
+  const value = await warmEntryCache().get(key);
+  // Applied after the real round trip, so the drill keeps the cache's
+  // actual latency instead of an instant answer no real outage gives.
+  if (fault.getError) throw new Error("injected fault: geterror");
+  if (fault.getNull) return null;
+  return value;
+}
+
+/** The warm job's `set`, with the active fault (if any) applied. */
+async function faultySet(
+  key: string,
+  value: WarmEnvelope,
+  options: { ttl: number; tags: string[] },
+  fault: WarmFault | null,
+): Promise<void> {
+  if (fault?.setError) throw new Error("injected fault: seterror");
+  if (fault?.setSkip) return;
+  await warmEntryCache().set(key, value, options);
+}
+
+// ---------------------------------------------------------------------
 // Writer side
 // ---------------------------------------------------------------------
 
@@ -276,9 +477,9 @@ export function scheduleWarm(eventId: bigint, rev: bigint): void {
  * builds at a time. Exported so tests can run it without `after()`.
  * Never rejects; every outcome is a log line:
  *
- *   [liveWarm] start event=<id> rev=<R> instance=<id>
+ *   [liveWarm] start event=<id> rev=<R> instance=<id>[ fault=<spec>]
  *   [liveWarm] set event=<id> locale=<l> atLeastRev=<R> rev=<n> bytes=<n> buildMs=<n> setMs=<n> ok=<true|false> instance=<id>
- *   [liveWarm] skip event=<id> locale=<l> atLeastRev=<R> reason=<build-error|oversize> rev=<n|-> bytes=<n|-> buildMs=<n> instance=<id>
+ *   [liveWarm] skip event=<id> locale=<l> atLeastRev=<R> reason=<build-error|oversize|fault-locale> rev=<n|-> bytes=<n|-> buildMs=<n> instance=<id>
  *   [liveWarm] done event=<id> rev=<R> ms=<n> instance=<id>
  *
  * `set` is logged only when a `set` was attempted (ok=false = it
@@ -288,7 +489,12 @@ export function scheduleWarm(eventId: bigint, rev: bigint): void {
  */
 export async function runWarmJob(eventId: bigint, rev: bigint): Promise<void> {
   const started = Date.now();
-  console.log(`[liveWarm] start event=${eventId} rev=${rev} instance=${INSTANCE_ID}`);
+  // Read once per job: on a deployment it cannot change mid-job anyway,
+  // and one value keeps the start line and the per-locale steps agreeing.
+  const fault = activeWarmFault();
+  console.log(
+    `[liveWarm] start event=${eventId} rev=${rev} instance=${INSTANCE_ID}${faultTag(fault)}`,
+  );
   try {
     // Loaded here rather than imported at the top: `liveSnapshot.ts`
     // imports this module (the reader's `warmLookup`), and a static
@@ -298,7 +504,22 @@ export async function runWarmJob(eventId: bigint, rev: bigint): Promise<void> {
     const queue = [...locales];
     const worker = async () => {
       for (let locale = queue.shift(); locale; locale = queue.shift()) {
-        await warmOneLocale(eventId, locale, rev, buildEventSnapshot);
+        if (fault) {
+          // Injected partial publication: the locale is neither built
+          // nor stored, exactly as if its build had been lost — but
+          // logged with its own reason so the summariser's build
+          // matching (which only claims `set` / `oversize` locales)
+          // and the drill report can tell it from a real failure.
+          if (fault.skipLocales.has(locale)) {
+            console.log(
+              `[liveWarm] skip event=${eventId} locale=${locale} atLeastRev=${rev} ` +
+                `reason=fault-locale rev=- bytes=- buildMs=0 instance=${INSTANCE_ID}`,
+            );
+            continue;
+          }
+          if (fault.slowJobMs > 0) await sleep(fault.slowJobMs);
+        }
+        await warmOneLocale(eventId, locale, rev, buildEventSnapshot, fault);
       }
     };
     await Promise.all(
@@ -323,6 +544,7 @@ async function warmOneLocale(
   locale: Locale,
   atLeastRev: bigint,
   build: (eventId: bigint, locale: Locale) => Promise<EventSnapshot>,
+  fault: WarmFault | null,
 ): Promise<void> {
   const head = `event=${eventId} locale=${locale} atLeastRev=${atLeastRev}`;
   const buildStarted = Date.now();
@@ -351,10 +573,12 @@ async function warmOneLocale(
   const setStarted = Date.now();
   let ok = true;
   try {
-    await warmEntryCache().set(warmKey(eventId, locale, atLeastRev), envelope, {
-      ttl: WARM_TTL_SECONDS,
-      tags: [WARM_PUBLIC_DATA_TAG, warmEventTag(eventId)],
-    });
+    await faultySet(
+      warmKey(eventId, locale, atLeastRev),
+      envelope,
+      { ttl: WARM_TTL_SECONDS, tags: [WARM_PUBLIC_DATA_TAG, warmEventTag(eventId)] },
+      fault,
+    );
   } catch (err) {
     ok = false;
     console.error(`[liveWarm] set-error ${head} err=${describeError(err)}`);
@@ -496,6 +720,8 @@ export function __resetLiveWarmStateForTests(): void {
   inFlightLookups.clear();
   missMemo.clear();
   clearGeneration.clear();
+  faultAnnounced = null;
+  faultParsed = null;
 }
 
 /** Test-only: how many keys the negative memo currently holds. */
@@ -510,7 +736,9 @@ export function __warmMissMemoSizeForTests(): number {
  * but `hit` means "take the normal path". Never rejects. One log line
  * per call (coalesced waiters log the shared result):
  *
- *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss|capped> ms=<n> instance=<id>
+ *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss|capped> ms=<n> instance=<id>[ fault=<spec>]
+ *
+ * (`fault=` only while a drill fault is armed — see "Fault injection".)
  *
  * The time bound is a per-caller `Promise.race` against the shared
  * `get`. That is acceptable here (unlike the revision read, which bounds
@@ -530,6 +758,7 @@ export async function warmLookup(
 ): Promise<WarmLookupResult> {
   const started = Date.now();
   const key = lookupKey(eventId, locale, minRev);
+  const fault = activeWarmFault();
   let out: WarmLookupResult;
   const memoUntil = missMemo.get(key);
   if (memoUntil !== undefined && started < memoUntil) {
@@ -539,14 +768,15 @@ export async function warmLookup(
     if (!entry && inFlightLookups.size >= WARM_LOOKUP_MAX_INFLIGHT) {
       out = { result: "capped" };
     } else {
-      if (!entry) entry = startLookup(eventId, locale, minRev, key);
+      if (!entry) entry = startLookup(eventId, locale, minRev, key, fault);
       out = await raceDeadline(entry.result);
       if (out.result === "timeout") memoise(key, entry.generation, out);
     }
   }
   console.log(
     `[setlist] warm-lookup event=${eventId} locale=${locale} minRev=${minRev} ` +
-      `result=${out.result} ms=${Date.now() - started} instance=${INSTANCE_ID}`,
+      `result=${out.result} ms=${Date.now() - started} instance=${INSTANCE_ID}` +
+      faultTag(fault),
   );
   return out;
 }
@@ -581,10 +811,11 @@ function startLookup(
   locale: Locale,
   minRev: number,
   key: string,
+  fault: WarmFault | null,
 ): InFlightLookup {
   const generation = clearGeneration.get(key) ?? 0;
   const entry: InFlightLookup = { generation, result: undefined as never };
-  entry.result = readAndDecode(eventId, locale, minRev)
+  entry.result = readAndDecode(eventId, locale, minRev, fault)
     .then((r) => {
       memoise(key, generation, r);
       return r;
@@ -613,12 +844,13 @@ async function readAndDecode(
   eventId: bigint,
   locale: Locale,
   minRev: number,
+  fault: WarmFault | null,
 ): Promise<WarmLookupResult> {
   let value: unknown;
   try {
     // `getCache` resolves its store synchronously and may throw; the
     // `await` turns that into the same path as a rejected `get`.
-    value = await warmEntryCache().get(warmKey(eventId, locale, minRev));
+    value = await faultyGet(warmKey(eventId, locale, minRev), fault);
   } catch (error) {
     console.error(`[liveWarm] lookup-error err=${describeError(error)}`);
     return { result: "error" };
