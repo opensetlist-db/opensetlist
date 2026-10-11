@@ -21,8 +21,10 @@
 //
 //   - Single-flight with a `dirty` flag. A trigger that arrives while a
 //     request is in flight never starts a second one; it marks the
-//     client dirty, and exactly ONE more request runs after the current
-//     one settles (however many triggers arrived meanwhile). The
+//     client dirty, and at most ONE more request runs after the current
+//     one settles (however many triggers arrived meanwhile; none when
+//     the only trigger was a notification the settled request already
+//     answered — see "nothing left to check" below). The
 //     follow-up is needed because the in-flight request may have read
 //     the database before the change the trigger is announcing.
 //
@@ -148,6 +150,24 @@
 //     unrelated request that dispatches before the recheck is due (that
 //     would spend the one recheck inside the memo window); it waits for
 //     its own timer, which is re-armed after that request settles.
+//
+//   - A notification with nothing left to check does not fetch. A save
+//     typically broadcasts twice in quick succession (an insert-after
+//     followed by the PUT that fills it in), so the second broadcast
+//     often lands while the first one's fetch is in flight and becomes
+//     its dirty follow-up — but that fetch usually comes back with the
+//     newer revision already, and `captureHint` then returns null
+//     (every pending hint is ≤ the server-observed watermark). Running
+//     a plain request anyway does nothing the contract needs: the
+//     server has already shown a revision ≥ every hint this client was
+//     told about. Measured on dev, that was about a third of all
+//     notification-driven requests. So such a dispatch is skipped —
+//     but ONLY when nothing else is owed: no maintenance obligation, no
+//     retry (a retry stands in for a failed request, including a
+//     server-proven gap whose ticket was already resolved), and a
+//     carried recheck ticket keeps its own timer. A scheduler without
+//     `captureHint` has no ticket evidence at all, so its notifications
+//     still run as plain requests.
 //
 // Everything time-related goes through the injectable `clock` and
 // `random` so the unit tests can drive it with fake timers and pinned
@@ -346,7 +366,9 @@ export interface LiveSchedulerOptions {
   /**
    * Hands over the current hint batch at dispatch (and starts a new
    * one) — `SnapshotAcceptance.captureHint`. Absent = this data source
-   * has no hints (polling, impressions).
+   * has no hints (polling, impressions), and a notification then always
+   * runs as a plain request. Present = a notification whose capture
+   * comes back null (and with nothing else owed) is skipped.
    */
   captureHint?: () => number | null;
   /** A ticket was dropped after its recheck was inconclusive too. */
@@ -505,6 +527,14 @@ export function createLiveScheduler(
   let notificationPending = false;
   // The ticket waiting for a retry or its recheck.
   let carried: HintTicket | null = null;
+  // A failed request is owed a retry that has not dispatched yet. The
+  // retry normally runs from its own scheduled entry (`isRetryRun`), but
+  // an earlier-due trigger may REPLACE that entry ("an explicit trigger
+  // supersedes the retry"), and the replacing run then stands in for
+  // the retry without being marked as one. The ticket-less-notification
+  // skip in `run` must not swallow it, so the debt is tracked here and
+  // cleared by whichever request dispatches next.
+  let retryOwed = false;
 
   // Follow-up owed after the in-flight request settles; `immediate`
   // when any trigger that marked it runs unjittered (initial, periodic,
@@ -625,12 +655,59 @@ export function createLiveScheduler(
 
     // A recheck timer with nothing left to do (its ticket rode along
     // on an earlier request) does not fetch.
+    //
+    // …unless a retry is owed (`retryOwed`). A recheck entry is armed
+    // through the same single scheduled slot as the retry, so an earlier
+    // recheck can REPLACE a pending retry entry, and this run then
+    // stands in for the retry without `isRetryRun`. Returning here would
+    // drop (or, with a carried ticket, postpone to the recheck's own due
+    // time) a request a failure is owed. With the default clock this
+    // combination does not arise today — the ticket that armed the
+    // recheck is still carried and due when the timer fires, so it is
+    // merged and `ticket` is non-null — but that rests on timer and
+    // clock agreeing exactly (an injected clock, or a timer that fires a
+    // tick early, breaks it), and the cost of guarding is nil.
     if (
       entryReason === "recheck" &&
       !isRetryRun &&
+      !retryOwed &&
       ticket === null &&
       !generic &&
       !hadNotification
+    ) {
+      if (carried !== null) armRecheck(carried, now);
+      return;
+    }
+
+    // A notification whose hints the server has already answered does
+    // not fetch (header: "a notification with nothing left to check").
+    // `ticket === null` with a `captureHint` source means the batch was
+    // empty or every hint in it is ≤ `serverRev` — the server has shown
+    // a revision at or past everything this client was told about, so a
+    // plain request could only re-read what is already applied.
+    //
+    // This does not lose the REPEATABLE READ case: fetch A's snapshot
+    // may predate commit N+1 while broadcast N+1 arrives during A. Then
+    // A's response carries at most N, `serverRev` stays below N+1, and
+    // `captureHint` returns N+1 at this dispatch — a real ticket, so the
+    // follow-up runs as a notification fetch. The skip fires only when
+    // the server has already shown a revision ≥ every pending hint.
+    //
+    // Everything else that may be owed still runs: a maintenance
+    // obligation (`generic`), a retry (its own entry, or one this run
+    // replaced — `retryOwed`), and a carried recheck ticket, whose
+    // timer is re-armed here exactly as the early return above does
+    // (this run's dispatch cleared the scheduled slot, which may have
+    // been holding it). A scheduler created without `captureHint`
+    // (polling, impressions, R1-era callers) has no ticket evidence, so
+    // its notification still runs as a plain request.
+    if (
+      entryReason === "notification" &&
+      captureHint !== undefined &&
+      !isRetryRun &&
+      !retryOwed &&
+      ticket === null &&
+      !generic
     ) {
       if (carried !== null) armRecheck(carried, now);
       return;
@@ -676,6 +753,7 @@ export function createLiveScheduler(
 
     inFlight = true;
     inFlightGeneric = generic;
+    retryOwed = false;
     dirty = null;
     if (isSpreadReason(label) || ticket !== null) lastSpreadStartAt = now;
     if (ticket !== null) lastTicketStartAt = now;
@@ -743,6 +821,7 @@ export function createLiveScheduler(
       // (generic, the ticket, a pending batch), and respects the
       // backoff a struggling server needs. An earlier-due explicit
       // trigger still replaces it, but never below the floor.
+      retryOwed = true;
       scheduleAt(
         Math.max(settledAt + Math.max(0, outcome.retryInMs), notBeforeAt),
         "retry",

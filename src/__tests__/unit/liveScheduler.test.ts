@@ -184,7 +184,16 @@ describe("liveScheduler — notifications", () => {
   });
 
   it("an immediate dirty follow-up without a ticket is not held by the cooldown", async () => {
-    const { calls, runFetch, scheduler } = harness({ captureHint: () => null });
+    // The first request carries a ticket (a real notification fetch —
+    // a ticket-less one would be skipped); the follow-up has none.
+    let batch: number | null = 5;
+    const { calls, runFetch, scheduler } = harness({
+      captureHint: () => {
+        const h = batch;
+        batch = null;
+        return h;
+      },
+    });
     scheduler.requestFetch("notification");
     await advance(0);
     scheduler.requestFetch("periodic");
@@ -965,9 +974,14 @@ describe("liveScheduler — R2 sticky maintenance obligation (genericRequired)",
   });
 
   it("a periodic tick during an in-flight notification fetch is NOT dropped: one generic follow-up", async () => {
+    let batch: number | null = 7; // the notification fetch's ticket
     const { calls, runFetch, scheduler } = harness({
       random: () => 0.5,
-      captureHint: () => null,
+      captureHint: () => {
+        const h = batch;
+        batch = null;
+        return h;
+      },
       periodic: { intervalMs: 1_000, spreadMs: 0, firstTick: "interval" },
     });
     scheduler.start();
@@ -1078,5 +1092,275 @@ describe("liveScheduler — R2 sticky maintenance obligation (genericRequired)",
     await settle(calls[1], { kind: "ok", hint: "resolved" });
     await advance(10_000);
     expect(runFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// A notification whose hints the server has already answered does not
+// fetch. The typical source: a save broadcasts twice (insert-after, then
+// the PUT that fills it in); the second broadcast becomes the dirty
+// follow-up of the first one's fetch, which already brought the newer
+// revision — `captureHint` then returns null at the follow-up's
+// dispatch.
+// ────────────────────────────────────────────────────────────────────
+
+describe("liveScheduler — ticket-less notifications are skipped", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A real `SnapshotAcceptance` (serverRev 5) behind `captureHint`;
+  // `respond` records the response body the way the page's runner does
+  // (so `serverRev` rises) and settles the request with the verdict.
+  function acceptanceHarness(opts: Partial<LiveSchedulerOptions> = {}) {
+    const acceptance = new SnapshotAcceptance({ rev: 5, capturedAt: "2026-11-14T07:30:00.000Z" });
+    const h = harness({
+      random: () => 0.5,
+      captureHint: () => acceptance.captureHint(),
+      ...opts,
+    });
+    const push = (rev: number) => {
+      if (acceptance.noteHint(rev)) h.scheduler.requestFetch("notification");
+    };
+    const respond = async (d: Deferred, rev: number) => {
+      acceptance.evaluate(
+        acceptance.generation,
+        { rev, capturedAt: "2026-11-14T07:31:00.000Z" },
+        { kind: "satisfied" },
+        d.request.hint,
+      );
+      const satisfied = d.request.hint === null || rev >= d.request.hint;
+      await settle(d, { kind: "ok", hint: satisfied ? "resolved" : "inconclusive" });
+    };
+    return { ...h, acceptance, push, respond };
+  }
+
+  // A hand-driven batch: `captureHint` returns `batch` once, then null.
+  function batchHarness(opts: Partial<LiveSchedulerOptions> = {}) {
+    const state = { batch: null as number | null };
+    const h = harness({
+      random: () => 0.5,
+      captureHint: () => {
+        const b = state.batch;
+        state.batch = null;
+        return b;
+      },
+      ...opts,
+    });
+    return { ...h, state };
+  }
+
+  it("insert + PUT pair: the follow-up for N+1 dispatches nothing when the N fetch already brought N+1", async () => {
+    const { calls, runFetch, scheduler, push, respond, acceptance } = acceptanceHarness();
+    push(6); // insert-after
+    await advance(250);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request).toMatchObject({ hint: 6, notify: true });
+    push(7); // the PUT's broadcast, during the flight → dirty
+    expect(scheduler.getState().dirty).toBe(true);
+    await respond(calls[0], 7); // the read already saw commit 7
+    expect(acceptance.serverRev).toBe(7);
+    await advance(10_000);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(scheduler.getState()).toMatchObject({
+      scheduledAt: null,
+      dirty: false,
+      carriedHint: null,
+    });
+    // The next real save still fetches normally.
+    push(8);
+    await advance(250);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: 8,
+      notify: true,
+    });
+  });
+
+  it("REPEATABLE READ: the N fetch's snapshot predates N+1 → the follow-up runs with hint N+1", async () => {
+    const { calls, runFetch, push, respond } = acceptanceHarness();
+    push(6);
+    await advance(250); // dispatched at 250 with hint 6
+    push(7); // arrives during the flight
+    await respond(calls[0], 6); // the snapshot was taken before commit 7
+    // Follow-up at the cooldown edge (1 s after the first start).
+    await advance(999);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: 7,
+      notify: true,
+    });
+  });
+
+  it("a scheduler without `captureHint` still runs a notification as a plain request", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0.5 });
+    scheduler.requestFetch("notification");
+    await advance(250);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(calls[0].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: null,
+      notify: false,
+    });
+    // …and so does its dirty follow-up.
+    scheduler.requestFetch("notification");
+    await settle(calls[0]);
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toMatchObject({ hint: null, notify: false });
+  });
+
+  it("a ticket-less notification does not swallow a pending maintenance obligation", async () => {
+    const { calls, runFetch, scheduler } = batchHarness({
+      periodic: { intervalMs: 100, spreadMs: 0, firstTick: "interval" },
+    });
+    scheduler.start();
+    scheduler.requestFetch("notification"); // due 250, batch empty
+    await advance(100); // tick at 100: a scheduled entry exists → obligation only
+    expect(calls).toHaveLength(0);
+    await advance(150);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(calls[0].request).toEqual({
+      reason: "periodic",
+      generic: true,
+      hint: null,
+      notify: false,
+    });
+  });
+
+  it("a ticket-less notification does not disturb the periodic cadence", async () => {
+    const { calls, runFetch, scheduler } = batchHarness({
+      periodic: { intervalMs: 5_000, spreadMs: 0, firstTick: "interval" },
+    });
+    scheduler.start();
+    scheduler.requestFetch("notification"); // skipped at 250
+    await advance(250);
+    expect(runFetch).not.toHaveBeenCalled();
+    await advance(4_749);
+    expect(runFetch).not.toHaveBeenCalled();
+    await advance(1); // t = 5000
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(calls[0].request).toMatchObject({ reason: "periodic", generic: true });
+  });
+
+  it("a ticket-less notification that replaced a recheck timer re-arms it; the recheck still runs", async () => {
+    const { calls, runFetch, scheduler, state } = batchHarness();
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250); // dispatched at 250 with hint 6
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" });
+    // 250 + max(1000, 1250 − 250) + 0.5 × 500 = 1500.
+    expect(scheduler.getState()).toMatchObject({ scheduledReason: "recheck", carriedHint: 6 });
+    await advance(350); // t = 600
+    scheduler.requestFetch("notification"); // batch empty; due 1250 < 1500 → replaces the recheck
+    expect(scheduler.getState().scheduledReason).toBe("notification");
+    await advance(650); // t = 1250: skipped, recheck re-armed
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(scheduler.getState()).toMatchObject({
+      scheduledReason: "recheck",
+      carriedHint: 6,
+      carriedHintPhase: "recheck",
+    });
+    await advance(250); // t = 1500
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "recheck",
+      generic: false,
+      hint: 6,
+      notify: false,
+    });
+  });
+
+  it("a ticket-less notification that replaced a pending retry still runs (it IS the retry)", async () => {
+    const { calls, runFetch, scheduler, state } = batchHarness();
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    // A server-proven gap: the ticket is resolved, the request failed.
+    await settle(calls[0], { kind: "failed", retryInMs: 2_000, hint: "resolved" });
+    expect(scheduler.getState().retryPending).toBe(true);
+    scheduler.requestFetch("notification"); // due 1250 < retry at 2250 → replaces it
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: null,
+      notify: false,
+    });
+  });
+
+  // A recheck entry that replaced a pending retry. With the default
+  // clock the recheck always finds its ticket due and merges it, so
+  // the run fetches anyway (first test). The guard on the recheck early
+  // return only becomes observable when the clock lags the timer —
+  // constructed here through the injectable `clock` (second test).
+  it("a recheck that replaced a pending retry still fetches (default clock: the ticket rides it)", async () => {
+    const { calls, runFetch, scheduler, state } = batchHarness();
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    // Server-gap failure whose ticket was inconclusive: a recheck-phase
+    // ticket is carried (due 1500) and a retry is armed at 4250.
+    await settle(calls[0], { kind: "failed", retryInMs: 4_000, hint: "inconclusive" });
+    expect(scheduler.getState()).toMatchObject({ retryPending: true, carriedHintPhase: "recheck" });
+    scheduler.requestFetch("recheck"); // due 1500 < 4250 → replaces the retry entry
+    expect(scheduler.getState()).toMatchObject({ retryPending: false, scheduledReason: "recheck" });
+    await advance(1_250); // t = 1500
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toEqual({
+      reason: "recheck",
+      generic: false,
+      hint: 6,
+      notify: false,
+    });
+  });
+
+  it("a recheck that replaced a pending retry is not swallowed when its ticket is not yet due", async () => {
+    let lagMs = 0;
+    const { calls, runFetch, scheduler, state } = batchHarness({
+      clock: {
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        now: () => Date.now() - lagMs,
+      },
+    });
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    await settle(calls[0], { kind: "failed", retryInMs: 4_000, hint: "inconclusive" });
+    scheduler.requestFetch("recheck"); // replaces the retry entry (due 1500)
+    lagMs = 100; // at the timer, the scheduler's clock reads 1400 < due 1500
+    await advance(1_250);
+    // The ticket is not merged (not due), so `ticket` is null with no
+    // generic obligation — without the `retryOwed` guard the run would
+    // return and re-arm the recheck; the owed retry fetches now.
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toMatchObject({ generic: false, hint: null, notify: false });
+    // The ticket stays carried for its own recheck.
+    await settle(calls[1]);
+    expect(scheduler.getState()).toMatchObject({ carriedHint: 6, scheduledReason: "recheck" });
+  });
+
+  it("a retry run without a ticket is never skipped", async () => {
+    const { calls, runFetch, scheduler, state } = batchHarness();
+    state.batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(250);
+    scheduler.requestFetch("notification"); // dirty during the flight
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000, hint: "resolved" });
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toMatchObject({ reason: "retry", hint: null });
   });
 });
