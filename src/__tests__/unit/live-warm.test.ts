@@ -35,6 +35,7 @@ import {
   __warmMissMemoSizeForTests,
   WARM_MAX_BYTES,
   WARM_MISS_MEMO_MAX_KEYS,
+  WARM_LOOKUP_MAX_INFLIGHT,
   WARM_TTL_SECONDS,
   type WarmEnvelope,
 } from "@/lib/liveWarm";
@@ -374,8 +375,9 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
   function manualCache() {
     const pending: Array<(v: unknown) => void> = [];
     const get = vi.fn(() => new Promise((r) => pending.push(r)));
-    vi.mocked(warmEntryCache).mockReturnValue({ get } as unknown as RuntimeCache);
-    return { get, pending };
+    const set = vi.fn(async () => {});
+    vi.mocked(warmEntryCache).mockReturnValue({ get, set } as unknown as RuntimeCache);
+    return { get, set, pending };
   }
 
   it("concurrent lookups for one key share a single get and its result", async () => {
@@ -469,5 +471,59 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
     expect((await warmLookup(EVENT, "ja", 1)).result).toBe("miss");
     expect((await warmLookup(EVENT, "ja", WARM_MISS_MEMO_MAX_KEYS + 50)).result).toBe("memo-miss");
     expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps concurrent DISTINCT keys: the 17th new key is capped without a get; same-key joins still share", async () => {
+    const { get, pending } = manualCache();
+    const inflight = Array.from({ length: WARM_LOOKUP_MAX_INFLIGHT }, (_, i) =>
+      warmLookup(EVENT, "ja", 100 + i),
+    );
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT);
+
+    expect(await warmLookup(EVENT, "ja", 999)).toEqual({ result: "capped" });
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT);
+    expect(lines().at(-1)).toMatch(
+      /^\[setlist\] warm-lookup event=111 locale=ja minRev=999 result=capped ms=\d+ instance=[0-9a-f]{8}$/,
+    );
+
+    // Joining a key already in flight takes no slot and shares its get.
+    const join = warmLookup(EVENT, "ja", 100);
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT);
+    pending[0](envelope(100));
+    for (const resolve of pending.slice(1)) resolve(null);
+    expect((await join).result).toBe("hit");
+    expect((await inflight[0]).result).toBe("hit");
+    await Promise.all(inflight);
+
+    // Slots are free again once the gets settled.
+    const next = warmLookup(EVENT, "ja", 999);
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(WARM_LOOKUP_MAX_INFLIGHT + 1);
+    pending.at(-1)!(null);
+    expect((await next).result).toBe("miss");
+  });
+
+  it("a lookup in flight when a warm job stores its key does not memoise its outdated miss", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // the memo cannot expire on its own
+    const { get, set, pending } = manualCache();
+    const early = warmLookup(EVENT, "ko", 5);
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(1);
+
+    vi.mocked(buildEventSnapshot).mockImplementation(async () => snap(5));
+    await runWarmJob(EVENT, BigInt(5)); // stores (and clears) ko/ja/en for R=5
+    expect(set).toHaveBeenCalledTimes(3);
+
+    pending[0](null); // the early get answers "absent" — from before the set
+    expect((await early).result).toBe("miss");
+    expect(__warmMissMemoSizeForTests()).toBe(0);
+
+    // The next lookup asks the cache instead of answering memo-miss.
+    const next = warmLookup(EVENT, "ko", 5);
+    await Promise.resolve();
+    expect(get).toHaveBeenCalledTimes(2);
+    pending[1](envelope(5, 5, "ko"));
+    expect((await next).result).toBe("hit");
   });
 });

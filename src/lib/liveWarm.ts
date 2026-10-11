@@ -362,7 +362,7 @@ async function warmOneLocale(
   // A reader on this instance may have memoised a miss for this key
   // while the job was building; the entry exists now (or at least was
   // just offered to the cache), so let the next lookup ask again.
-  missMemo.delete(lookupKey(eventId, locale, atLeastRev));
+  clearMissMemo(lookupKey(eventId, locale, atLeastRev));
   console.log(
     `[liveWarm] set ${head} rev=${envelope.rev} bytes=${envelope.bytes} ` +
       `buildMs=${buildMs} setMs=${Date.now() - setStarted} ok=${ok} ` +
@@ -376,7 +376,9 @@ async function warmOneLocale(
 
 export type WarmLookupResult =
   | { result: "hit"; snapshot: EventSnapshot }
-  | { result: "miss" | "stale" | "invalid" | "error" | "timeout" | "memo-miss" };
+  | {
+      result: "miss" | "stale" | "invalid" | "error" | "timeout" | "memo-miss" | "capped";
+    };
 
 // ---------------------------------------------------------------------
 // Per-instance bound on lookup VOLUME
@@ -422,37 +424,75 @@ export type WarmLookupResult =
 // memory and a second invalidation path next to the tag expiry.
 //
 // The memo map is capped (oldest dropped first) so a flood of distinct
-// forged revisions cannot grow memory without bound; the in-flight map
-// is bounded by the number of concurrently pending lookups.
+// forged revisions cannot grow memory without bound.
+//
+// Concurrent DISTINCT keys are capped too (`WARM_LOOKUP_MAX_INFLIGHT`).
+// An honest notification burst needs at most 3 keys per event on an
+// instance (one per locale, all for the same revision), so 16 covers
+// several live events at once with room to spare. Beyond that, the
+// extra keys can only be forged or pathological revisions; a NEW key
+// arriving while 16 are already in flight does not `get` at all — it
+// answers `capped` and the request takes the verified path (whose own
+// revision read is memoised per event, so this cannot turn into
+// database load either). Joining a key that is already in flight still
+// coalesces and takes no slot.
 // ---------------------------------------------------------------------
 
 export const WARM_MISS_MEMO_MS = 250;
 export const WARM_FAULT_MEMO_MS = 1_000;
 export const WARM_MISS_MEMO_MAX_KEYS = 256;
+export const WARM_LOOKUP_MAX_INFLIGHT = 16;
 
 const inFlightLookups = new Map<string, Promise<WarmLookupResult>>();
 // key → memo expiry (epoch ms). Insertion-ordered: the first key is the
 // oldest memo.
 const missMemo = new Map<string, number>();
 
+// Clear generations, so a lookup that was already in flight when a warm
+// job cleared its key cannot write its (now outdated) miss back after
+// the clear and hide the fresh entry for a whole memo window. A clear
+// stamps the key with a new value of a per-instance sequence; a lookup
+// records the key's stamp when it starts and writes its memo only if the
+// stamp is unchanged when it settles. Capped like the memo (oldest
+// dropped). Eviction could only defeat the check if more than
+// `WARM_MISS_MEMO_MAX_KEYS` other keys were cleared during one ≤ 300 ms
+// lookup (three clears per save → ~85 saves in 300 ms), and even then
+// the cost is one memo window of fallback builds, never a wrong answer.
+let clearSeq = 0;
+const clearGeneration = new Map<string, number>();
+
 function lookupKey(eventId: bigint, locale: Locale, minRev: bigint | number): string {
   return `${eventId}:${locale}:${minRev}`;
+}
+
+function dropOldest(map: Map<string, unknown>, max: number): void {
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
 }
 
 function rememberMiss(key: string, until: number): void {
   missMemo.delete(key);
   missMemo.set(key, until);
-  while (missMemo.size > WARM_MISS_MEMO_MAX_KEYS) {
-    const oldest = missMemo.keys().next().value;
-    if (oldest === undefined) break;
-    missMemo.delete(oldest);
-  }
+  dropOldest(missMemo, WARM_MISS_MEMO_MAX_KEYS);
 }
 
-/** Test-only: forget coalescing and negative-memo state. */
+/** Called by a warm job on this instance after it stored `key`. */
+function clearMissMemo(key: string): void {
+  missMemo.delete(key);
+  clearSeq += 1;
+  clearGeneration.delete(key);
+  clearGeneration.set(key, clearSeq);
+  dropOldest(clearGeneration, WARM_MISS_MEMO_MAX_KEYS);
+}
+
+/** Test-only: forget coalescing, negative-memo and generation state. */
 export function __resetLiveWarmStateForTests(): void {
   inFlightLookups.clear();
   missMemo.clear();
+  clearGeneration.clear();
 }
 
 /** Test-only: how many keys the negative memo currently holds. */
@@ -467,7 +507,7 @@ export function __warmMissMemoSizeForTests(): number {
  * means "take the normal path". Never rejects. One log line per call
  * (coalesced waiters log the shared result):
  *
- *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss> ms=<n> instance=<id>
+ *   [setlist] warm-lookup event=<id> locale=<l> minRev=<R> result=<hit|miss|stale|invalid|error|timeout|memo-miss|capped> ms=<n> instance=<id>
  *
  * The time bound is a `Promise.race` on our side. That is acceptable
  * here (unlike the revision read, which bounds itself in the database):
@@ -487,23 +527,31 @@ export async function warmLookup(
     out = { result: "memo-miss" };
   } else {
     let pending = inFlightLookups.get(key);
-    if (!pending) {
-      const entry: Promise<WarmLookupResult> = lookupBounded(eventId, locale, minRev)
-        .then((r) => {
-          if (r.result === "hit") missMemo.delete(key);
-          else {
-            const window = r.result === "miss" ? WARM_MISS_MEMO_MS : WARM_FAULT_MEMO_MS;
-            rememberMiss(key, Date.now() + window);
-          }
-          return r;
-        })
-        .finally(() => {
-          if (inFlightLookups.get(key) === entry) inFlightLookups.delete(key);
-        });
-      inFlightLookups.set(key, entry);
-      pending = entry;
+    if (!pending && inFlightLookups.size >= WARM_LOOKUP_MAX_INFLIGHT) {
+      out = { result: "capped" };
+    } else {
+      if (!pending) {
+        const generation = clearGeneration.get(key) ?? 0;
+        const entry: Promise<WarmLookupResult> = lookupBounded(eventId, locale, minRev)
+          .then((r) => {
+            // A warm job cleared this key while the get was in flight:
+            // its result predates the entry, so it must not be memoised.
+            if ((clearGeneration.get(key) ?? 0) !== generation) return r;
+            if (r.result === "hit") missMemo.delete(key);
+            else {
+              const window = r.result === "miss" ? WARM_MISS_MEMO_MS : WARM_FAULT_MEMO_MS;
+              rememberMiss(key, Date.now() + window);
+            }
+            return r;
+          })
+          .finally(() => {
+            if (inFlightLookups.get(key) === entry) inFlightLookups.delete(key);
+          });
+        inFlightLookups.set(key, entry);
+        pending = entry;
+      }
+      out = await pending;
     }
-    out = await pending;
   }
   console.log(
     `[setlist] warm-lookup event=${eventId} locale=${locale} minRev=${minRev} ` +
