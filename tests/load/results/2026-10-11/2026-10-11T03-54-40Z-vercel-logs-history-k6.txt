@@ -1,0 +1,2391 @@
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+TIME         HOST                                                 LEVEL                                           
+20:55:38.69  opensetlist-git-dev-opensetlist-projects.vercel.app  info     DELETE /api/admin/setlist-items/1872   
+[liveWriter] route=admin-delete acquireMs=3 execMs=25 rev=512 ok=true instance=98ca577c
+
+20:55:36.59  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1080 instance=d871dbe2
+[prisma] pool total=2 idle=2 waiting=0 instance=d871dbe2 tag=build
+
+20:55:36.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1691 instance=2b9fc9f2
+[prisma] pool total=1 idle=1 waiting=0 instance=2b9fc9f2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=2b9fc9f2
+
+20:55:36.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1585 instance=d38909db
+[prisma] pool total=1 idle=1 waiting=0 instance=d38909db tag=build
+
+20:55:36.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1690 instance=271430bc
+[prisma] pool total=1 idle=1 waiting=0 instance=271430bc tag=build
+
+20:55:36.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1656 instance=158685a3
+[prisma] pool total=1 idle=1 waiting=0 instance=158685a3 tag=build
+
+20:55:36.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1810 instance=b797bf77
+[prisma] pool total=1 idle=1 waiting=0 instance=b797bf77 tag=build
+
+20:55:36.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=333 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6194ba22
+
+20:55:36.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=966 instance=a4dc652a
+[prisma] pool total=2 idle=2 waiting=0 instance=a4dc652a tag=build
+
+20:55:36.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.44  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.44  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1821 instance=95cf70ec
+[prisma] pool total=1 idle=1 waiting=0 instance=95cf70ec tag=build
+
+20:55:36.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1662 instance=3f41b3b2
+[prisma] pool total=1 idle=1 waiting=0 instance=3f41b3b2 tag=build
+
+20:55:36.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1157 instance=f6b2dbff
+[prisma] pool total=2 idle=1 waiting=0 instance=f6b2dbff tag=build
+
+20:55:36.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=971 instance=275d4e7b
+[prisma] pool total=2 idle=2 waiting=0 instance=275d4e7b tag=build
+
+20:55:36.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1350 instance=13e27aad
+[prisma] pool total=2 idle=2 waiting=0 instance=13e27aad tag=build
+
+20:55:36.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=29 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=296 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=136090a4
+
+20:55:36.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1122 instance=6592e8cc
+[prisma] pool total=2 idle=2 waiting=0 instance=6592e8cc tag=build
+
+20:55:36.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1844 instance=44aa8bfc
+[prisma] pool total=1 idle=1 waiting=0 instance=44aa8bfc tag=build
+
+20:55:36.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1386 instance=e69080b0
+[prisma] pool total=1 idle=1 waiting=0 instance=e69080b0 tag=build
+
+20:55:36.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1621 instance=743362fb
+[prisma] pool total=1 idle=1 waiting=0 instance=743362fb tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=743362fb
+
+20:55:36.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1408 instance=cfa80770
+[prisma] pool total=1 idle=1 waiting=0 instance=cfa80770 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=cfa80770
+
+20:55:36.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=290 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f6f83160
+
+20:55:36.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=35 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1444 instance=f6b2dbff
+[prisma] pool total=2 idle=2 waiting=0 instance=f6b2dbff tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=f6b2dbff
+
+20:55:36.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=356 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9fb905ed
+
+20:55:36.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1355 instance=6592e8cc
+[prisma] pool total=2 idle=1 waiting=0 instance=6592e8cc tag=build
+
+20:55:36.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=272 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=8439b488
+
+20:55:36.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=276 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=971b7f2b
+
+20:55:36.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=231 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=04a72481
+
+20:55:36.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1327 instance=4835d84f
+[prisma] pool total=1 idle=1 waiting=0 instance=4835d84f tag=build
+
+20:55:36.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1306 instance=c085bbfe
+[prisma] pool total=2 idle=1 waiting=0 instance=c085bbfe tag=build
+
+20:55:36.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+
+20:55:36.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1315 instance=7ab87dec
+[prisma] pool total=2 idle=1 waiting=0 instance=7ab87dec tag=build
+
+20:55:36.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1032 instance=6f33b96c
+[prisma] pool total=2 idle=2 waiting=0 instance=6f33b96c tag=build
+
+20:55:36.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=297 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=75c6d4e7
+
+20:55:36.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1216 instance=47ad130e
+[prisma] pool total=1 idle=1 waiting=0 instance=47ad130e tag=build
+
+20:55:36.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1042 instance=c085bbfe
+[prisma] pool total=2 idle=2 waiting=0 instance=c085bbfe tag=build
+
+20:55:36.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1731 instance=411a981f
+[prisma] pool total=1 idle=1 waiting=0 instance=411a981f tag=build
+
+20:55:36.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1637 instance=7ab87dec
+[prisma] pool total=2 idle=2 waiting=0 instance=7ab87dec tag=build
+
+20:55:36.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1390 instance=b06a68a1
+[prisma] pool total=1 idle=1 waiting=0 instance=b06a68a1 tag=build
+
+20:55:36.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=248 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=05d08a6b
+
+20:55:36.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=322 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=36ddbc15
+
+20:55:36.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:36.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=233 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=78aba227
+
+20:55:36.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=31 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+20:55:36.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1326 instance=473c03e2
+[prisma] pool total=1 idle=1 waiting=0 instance=473c03e2 tag=build
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=245 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e41ddc8d
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=e41ddc8d
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=cfee2a47
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=cfee2a47
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=245 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b5d63460
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=272 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=94553545
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=94553545
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=286 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=103015a7
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=103015a7
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=bd5d2616
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=bd5d2616
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=254 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=606359a6
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=606359a6
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=263 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=2857ab63
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=2857ab63
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=254 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6bd5b973
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=6bd5b973
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=247 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=1d15408a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=1d15408a
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=349 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ac5da7ee
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ac5da7ee
+
+20:55:35.62  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=279 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=99fe49ae
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=99fe49ae
+
+20:55:35.59  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=251 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=feb62983
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=feb62983
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=335 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=56207df1
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=56207df1
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=362 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d3987d3b
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=d3987d3b
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=237 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9ed34509
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=9ed34509
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=367 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a57176ac
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=a57176ac
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d5ff2ba8
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=282 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=09503dce
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=09503dce
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=307 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=00cab37f
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=00cab37f
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=288 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d631321d
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=d631321d
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=273 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=1a13bf8e
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=1a13bf8e
+
+20:55:35.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=254 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ea7f9afe
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=289 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=efad8bdc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=efad8bdc
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=258 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f626d642
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f626d642
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=223 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=7f0f62b1
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=7f0f62b1
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=335 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b72620ad
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=b72620ad
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=241 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=1ab18e10
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=1ab18e10
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e8e2a533
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=259 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=98fca46b
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=2c37d1e9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=2c37d1e9
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b67909eb
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=232 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=36c56907
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=36c56907
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=272 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ad966f32
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ad966f32
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=234 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f0778094
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f0778094
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=236 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=46386e5d
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=256 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c42b575b
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=c42b575b
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=453730e3
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=269 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=41d88286
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=41d88286
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=3ea2c526
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=3ea2c526
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=292 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c078ef2a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c078ef2a
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=374 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b4f0a858
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=b4f0a858
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=20d24b1d
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=264 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a624fe9b
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5d13d176
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=273 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b5484148
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=b5484148
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=227 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c999c456
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c999c456
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=250 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=72fef2b3
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=72fef2b3
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=237 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=00d2154a
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=00d2154a
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=220 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ba308b4a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ba308b4a
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ab22d47a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ab22d47a
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=272 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f3a91976
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=f3a91976
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=311 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=893dc3a6
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=893dc3a6
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=255 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=87b9a182
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=87b9a182
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=228 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c0bacbad
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c0bacbad
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4938aeed
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=288 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=835da401
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=33 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=321 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=cdfe4851
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=cdfe4851
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=263 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=7aa8c6ec
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=7aa8c6ec
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=0fc1a534
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=265 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=626f87fa
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=626f87fa
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=240 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=09324a60
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=09324a60
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=280 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a4ee57bf
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=a4ee57bf
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=40b40e03
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c02f8572
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=273 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=224b4f5f
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=224b4f5f
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=321 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9117787f
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=9117787f
+
+20:55:35.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=246 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f6001da7
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f6001da7
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=221 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ee742192
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ee742192
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=222 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=997af4da
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=997af4da
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=356 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=bf64363e
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=a094fd95
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=212 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9c3ce20d
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5a989eeb
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9b948ac8
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=222 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=655060c7
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=655060c7
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=255 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5f23c252
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=220 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=7c4bcde4
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=7c4bcde4
+
+20:55:35.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=298 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9c0b0d9c
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=9c0b0d9c
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=226 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0dd88125
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=0dd88125
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=250 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=86796df8
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=86796df8
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=277 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=087f7b7f
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=214 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b4f74dcc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=b4f74dcc
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=379 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6fbbfa3e
+
+20:55:35.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e0033d61
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=244 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f86c22d8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f86c22d8
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=215 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=be2e9532
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=be2e9532
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=265 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=05a7a702
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=05a7a702
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=206 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a19c8b1b
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=a19c8b1b
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=249 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4827a89c
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=4827a89c
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cf11c34e
+
+20:55:35.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5dcde20d
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=296 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4e664db7
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=207 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ee78937d
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ee78937d
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=293 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=333a912b
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=333a912b
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=230 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6ee2a5f9
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=6ee2a5f9
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=376 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9ee2f5d3
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=9ee2f5d3
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=270 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4bce0321
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=373 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=53e7511a
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=53e7511a
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=25c1a4cf
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c3ceb44d
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=266 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=62df3263
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=62df3263
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1707 instance=7f0970a4
+[prisma] pool total=1 idle=1 waiting=0 instance=7f0970a4 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=7f0970a4
+
+20:55:35.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=324 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e300b30f
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=e300b30f
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=261 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=2b8b2b6d
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=2b8b2b6d
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=297 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=94fb5073
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=213 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=8c0d3c2c
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=244 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e164bb4f
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=367 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=7ea4f96e
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=7ea4f96e
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e51553f0
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=305 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c98ed030
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c98ed030
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=224 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=03092844
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=03092844
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0d1afd04
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=0d1afd04
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=204 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f03f91d6
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=f03f91d6
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=252 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d1cea37b
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=d1cea37b
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d4ee9b8c
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b2cad398
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=379 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=cc742e81
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=cc742e81
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=249 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ba31ae39
+
+20:55:35.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=271 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c7c92288
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=c7c92288
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=33e09263
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=bce48b3b
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=bce48b3b
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e3afa546
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=252 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ed866af8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ed866af8
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=269 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=786be1a4
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=786be1a4
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=218 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ee05f1ab
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=ee05f1ab
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=270 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f55811d1
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=f55811d1
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=236 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=76fb1a95
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=76fb1a95
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=327 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f8648303
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=f8648303
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ee573010
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ee573010
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b9c4266e
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=252 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=dad3c55d
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=dad3c55d
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=283 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=fd980d76
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=fd980d76
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7ff77b74
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=266 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4ac5fa0a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=4ac5fa0a
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=309 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ec4a64ee
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=213 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d08e157c
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=d08e157c
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=37 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=215 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=acc73eb8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=acc73eb8
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=272 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ebb64f90
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ebb64f90
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=222 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=58e4543e
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=58e4543e
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e8126f2c
+
+20:55:35.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=263 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a479dd95
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=228 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e217d8c1
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=e217d8c1
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=239 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=771066e3
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=771066e3
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=278 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=aa6ee78c
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=aa6ee78c
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=289 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=be2c1e42
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=be2c1e42
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=220 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0f517ab3
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=0f517ab3
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=239 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6f6033bd
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=6f6033bd
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f0b50ffe
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=93596be9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=93596be9
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=273 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=bbb80fca
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=bbb80fca
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1670 instance=5c3cc2c5
+[prisma] pool total=1 idle=1 waiting=0 instance=5c3cc2c5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5c3cc2c5
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=341 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9a0ca67a
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=269 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=3efcf3cc
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=265 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=00784e5e
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=281 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=697b2f22
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=697b2f22
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1684 instance=b598d11e
+[prisma] pool total=1 idle=1 waiting=0 instance=b598d11e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b598d11e
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=247 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0c4c9996
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=0c4c9996
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1800 instance=630ca814
+[prisma] pool total=1 idle=1 waiting=0 instance=630ca814 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=630ca814
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=222 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=12b7b3d9
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=12b7b3d9
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=310 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6dcd4676
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=6dcd4676
+
+20:55:35.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=271 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=363f52cd
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=363f52cd
+
+20:55:35.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=266 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5cd27061
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=5cd27061
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=248 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=89d93af5
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=89d93af5
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=276 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=3713dfba
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=2bd65eeb
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=2bd65eeb
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=255 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=89a93adc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=89a93adc
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=247 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=35635dfd
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=35635dfd
+
+20:55:35.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=212 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=37aebbe7
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=37aebbe7
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=256 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=09e042f9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=09e042f9
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=251 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=61082361
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=61082361
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=279 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=82c8230c
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=82c8230c
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=222 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ee1c7bcb
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=282 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=242b3f18
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=04c6c164
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c1fa0ba4
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c1fa0ba4
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=424ccc71
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=424ccc71
+
+20:55:35.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=247 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d8074cc2
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=d8074cc2
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=270 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9df7e7e2
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=9df7e7e2
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=374 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=727aa92f
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=727aa92f
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=280 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=61041607
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=61041607
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=285 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5ca7e5a6
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=5ca7e5a6
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=239 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0a9ce535
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=0a9ce535
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=266 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=057ccdfd
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=ed362819
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=290 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=84415600
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=84415600
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=69 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f38d7926
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f38d7926
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=285 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=124994e1
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=124994e1
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=264 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=32776d6b
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=32776d6b
+
+20:55:35.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=212 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c63e48eb
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c63e48eb
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=273 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=eb3c5ceb
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=eb3c5ceb
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=251 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5912b0f3
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=5912b0f3
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=dffcebfc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=dffcebfc
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=277 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5e025c5b
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=5e025c5b
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=258 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4ccccc74
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1823 instance=0947b0a6
+[prisma] pool total=1 idle=1 waiting=0 instance=0947b0a6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=0947b0a6
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1750 instance=4583fd27
+[prisma] pool total=1 idle=1 waiting=0 instance=4583fd27 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=4583fd27
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1523 instance=431efc93
+[prisma] pool total=1 idle=1 waiting=0 instance=431efc93 tag=build
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1590 instance=a325c269
+[prisma] pool total=1 idle=1 waiting=0 instance=a325c269 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=a325c269
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5943fc59
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=223 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=34fedb87
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=34fedb87
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=313 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=42b86516
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=42b86516
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1669 instance=ecb804b6
+[prisma] pool total=1 idle=1 waiting=0 instance=ecb804b6 tag=build
+
+20:55:35.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=294 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=406072e1
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=406072e1
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1641 instance=2e8f3a8f
+[prisma] pool total=1 idle=1 waiting=0 instance=2e8f3a8f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2e8f3a8f
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=224 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a3d28ef8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=a3d28ef8
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=269 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=3ec096b8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=3ec096b8
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=af7e25ac
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=af7e25ac
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=267 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=1468c53e
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=1468c53e
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1461 instance=d697d68e
+[prisma] pool total=1 idle=1 waiting=0 instance=d697d68e tag=build
+
+20:55:35.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=17613e70
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=286 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=32e276ca
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f7ef6c80
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=253 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=bf913a63
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=356 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5f96ad26
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1811 instance=b05adaa5
+[prisma] pool total=1 idle=1 waiting=0 instance=b05adaa5 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=b05adaa5
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=012f6d64
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=de2a12d5
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=268 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e61379c7
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=e61379c7
+
+20:55:35.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=255 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6998a3ee
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=6998a3ee
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=a3ac5785
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=209 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=8f6f236f
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=8f6f236f
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=325 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f50b9966
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=f50b9966
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7dbbae5a
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=280 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=400ca030
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=400ca030
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7318869f
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=283 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=db2e5d75
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=db2e5d75
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d3782642
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=316 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c93fc1d9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=c93fc1d9
+
+20:55:35.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1757 instance=71d9e0a2
+[prisma] pool total=1 idle=1 waiting=0 instance=71d9e0a2 tag=build
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=385 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=fa3c3c42
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=fa3c3c42
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=260 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=45a9a1b9
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=3e9d4888
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=377 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d276740a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=d276740a
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=252 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=449fcc21
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f4ae0acf
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=297 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=833850b9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=833850b9
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=fa7d2ae1
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=252 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ae57eff8
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ae57eff8
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=259 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9504e501
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=9504e501
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=281 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=76380015
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=76380015
+
+20:55:35.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1420 instance=34527867
+[prisma] pool total=1 idle=1 waiting=0 instance=34527867 tag=build
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1656 instance=2cfd46c3
+[prisma] pool total=1 idle=1 waiting=0 instance=2cfd46c3 tag=build
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1508 instance=35b66472
+[prisma] pool total=1 idle=1 waiting=0 instance=35b66472 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=35b66472
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1724 instance=f3a97f4e
+[prisma] pool total=1 idle=1 waiting=0 instance=f3a97f4e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f3a97f4e
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1464 instance=620fdc12
+[prisma] pool total=1 idle=1 waiting=0 instance=620fdc12 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=620fdc12
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1799 instance=d6037ff9
+[prisma] pool total=1 idle=1 waiting=0 instance=d6037ff9 tag=build
+
+20:55:35.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=298 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=47e926cb
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=47e926cb
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=286 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=5b957cbc
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=5b957cbc
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=255 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d23ecbde
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=d23ecbde
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1832 instance=45995f92
+[prisma] pool total=1 idle=1 waiting=0 instance=45995f92 tag=build
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=224 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4aef00fe
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=4aef00fe
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=284 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=1aacb5f0
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=08f39280
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1821 instance=4d14f25f
+[prisma] pool total=1 idle=1 waiting=0 instance=4d14f25f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4d14f25f
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1432 instance=881767d0
+[prisma] pool total=1 idle=1 waiting=0 instance=881767d0 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=881767d0
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=328 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=70a2a1cd
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=70a2a1cd
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=29c92059
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1376 instance=9c66132e
+[prisma] pool total=1 idle=1 waiting=0 instance=9c66132e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9c66132e
+
+20:55:35.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=323 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=a7d1941a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=a7d1941a
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=244 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=3b0ab81b
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=3b0ab81b
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=278 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=dfd2fabb
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=dfd2fabb
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=274 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=27b0c3f9
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=27b0c3f9
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=244 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ef0512d9
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1426 instance=d11ae310
+[prisma] pool total=1 idle=1 waiting=0 instance=d11ae310 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=d11ae310
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d38909db
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1817 instance=1d5c2f66
+[prisma] pool total=1 idle=1 waiting=0 instance=1d5c2f66 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=1d5c2f66
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1013 instance=c661de13
+[prisma] pool total=1 idle=1 waiting=0 instance=c661de13 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=c661de13
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c661de13
+
+20:55:35.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1284 instance=1182869b
+[prisma] pool total=1 idle=1 waiting=0 instance=1182869b tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=1182869b
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=227 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=7dde1739
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=319 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b775c371
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=b775c371
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1608 instance=2564fa32
+[prisma] pool total=1 idle=1 waiting=0 instance=2564fa32 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2564fa32
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1282 instance=2fd95412
+[prisma] pool total=1 idle=1 waiting=0 instance=2fd95412 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2fd95412
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=1d2e0f1d
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=279 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=2b3aec3c
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=2b3aec3c
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1516 instance=e4769086
+[prisma] pool total=1 idle=1 waiting=0 instance=e4769086 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=e4769086
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1375 instance=c80ad6c9
+[prisma] pool total=1 idle=1 waiting=0 instance=c80ad6c9 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c80ad6c9
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1841 instance=07c24477
+[prisma] pool total=1 idle=1 waiting=0 instance=07c24477 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=07c24477
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1329 instance=691fb455
+[prisma] pool total=1 idle=1 waiting=0 instance=691fb455 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=691fb455
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=ffa210b1
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=ffa210b1
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=259 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d05165d4
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=d05165d4
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=bd01000b
+
+20:55:35.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=260 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=aa381be6
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=aa381be6
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=231 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e6947f8c
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1541 instance=2523165d
+[prisma] pool total=1 idle=1 waiting=0 instance=2523165d tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=2523165d
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=243 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=11730bd6
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=11730bd6
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1487 instance=b27642f3
+[prisma] pool total=1 idle=1 waiting=0 instance=b27642f3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b27642f3
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=262 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c7fac9ab
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1880 instance=0acca924
+[prisma] pool total=1 idle=1 waiting=0 instance=0acca924 tag=build
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=370 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4824fbcd
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=261 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=93b932a2
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=93b932a2
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=45 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=52 instance=90d6d5cc
+[prisma] pool total=2 idle=0 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1498 instance=91643629
+[prisma] pool total=1 idle=1 waiting=0 instance=91643629 tag=build
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1832 instance=f7f0694c
+[prisma] pool total=1 idle=1 waiting=0 instance=f7f0694c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=f7f0694c
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=280 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=fbe0ed19
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=fbe0ed19
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1792 instance=b267466b
+[prisma] pool total=1 idle=1 waiting=0 instance=b267466b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b267466b
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=257 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=d65e00c3
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1514 instance=384e82d4
+[prisma] pool total=1 idle=1 waiting=0 instance=384e82d4 tag=build
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=281 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=51521b79
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1589 instance=4ff02b14
+[prisma] pool total=1 idle=1 waiting=0 instance=4ff02b14 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4ff02b14
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=ab6601d3
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=750f9f59
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=277 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=41b6c7fe
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=41b6c7fe
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1490 instance=e3cc0c1f
+[prisma] pool total=1 idle=1 waiting=0 instance=e3cc0c1f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e3cc0c1f
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=66c1a297
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=364 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=c5e07ecb
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=c5e07ecb
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=53 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=300 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=0180a0cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=0180a0cc
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=f948d5b9
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=f948d5b9
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1404 instance=6675eb0a
+[prisma] pool total=1 idle=1 waiting=0 instance=6675eb0a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=6675eb0a
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=277 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=796610c4
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=275 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=830162ff
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=830162ff
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=224 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=6c9b2feb
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=6c9b2feb
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=277 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=05ceaeec
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=05ceaeec
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1615 instance=d673a9a3
+[prisma] pool total=1 idle=1 waiting=0 instance=d673a9a3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d673a9a3
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1645 instance=92126745
+[prisma] pool total=1 idle=1 waiting=0 instance=92126745 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=92126745
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1853 instance=7f73c5b8
+[prisma] pool total=1 idle=1 waiting=0 instance=7f73c5b8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7f73c5b8
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=364 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=cc440dd3
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=cc440dd3
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=51 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=244 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=4a2531b1
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=4a2531b1
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1715 instance=c80a626b
+[prisma] pool total=1 idle=1 waiting=0 instance=c80a626b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c80a626b
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=338 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=decc7829
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=decc7829
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1766 instance=f2398749
+[prisma] pool total=1 idle=1 waiting=0 instance=f2398749 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f2398749
+
+20:55:35.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=3f41b3b2
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1122 instance=1b8f0ddc
+[prisma] pool total=1 idle=1 waiting=0 instance=1b8f0ddc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=1b8f0ddc
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1252 instance=933e2efe
+[prisma] pool total=1 idle=1 waiting=0 instance=933e2efe tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=933e2efe
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1225 instance=08fff085
+[prisma] pool total=1 idle=1 waiting=0 instance=08fff085 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=08fff085
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1235 instance=72df5ce6
+[prisma] pool total=1 idle=1 waiting=0 instance=72df5ce6 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=72df5ce6
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1434 instance=c3cb2dfc
+[prisma] pool total=1 idle=1 waiting=0 instance=c3cb2dfc tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=c3cb2dfc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c3cb2dfc
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1527 instance=c1d878b7
+[prisma] pool total=1 idle=1 waiting=0 instance=c1d878b7 tag=build
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=411a981f
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1461 instance=d6129951
+[prisma] pool total=1 idle=1 waiting=0 instance=d6129951 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=d6129951
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1624 instance=d37c1c19
+[prisma] pool total=1 idle=1 waiting=0 instance=d37c1c19 tag=build
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=31d7dcea
+
+20:55:35.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1444 instance=8ddb0b5f
+[prisma] pool total=1 idle=1 waiting=0 instance=8ddb0b5f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=8ddb0b5f
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1243 instance=57c916c7
+[prisma] pool total=1 idle=1 waiting=0 instance=57c916c7 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=57c916c7
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1165 instance=2847b4c2
+[prisma] pool total=1 idle=1 waiting=0 instance=2847b4c2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2847b4c2
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=372 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=744ee8e4
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=744ee8e4
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=745 instance=4a47a070
+[prisma] pool total=1 idle=1 waiting=0 instance=4a47a070 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4a47a070
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=271430bc
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=288 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=9ff11740
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=error instance=9ff11740
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=743362fb
+
+20:55:35.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1085 instance=9de14b02
+[prisma] pool total=1 idle=1 waiting=0 instance=9de14b02 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=9de14b02
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9de14b02
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1743 instance=9552dd31
+[prisma] pool total=1 idle=1 waiting=0 instance=9552dd31 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=9552dd31
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1351 instance=5f455270
+[prisma] pool total=1 idle=1 waiting=0 instance=5f455270 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5f455270
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1278 instance=1ccd936a
+[prisma] pool total=1 idle=1 waiting=0 instance=1ccd936a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=1ccd936a
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=136090a4
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1383 instance=4a6f40e0
+[prisma] pool total=1 idle=1 waiting=0 instance=4a6f40e0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4a6f40e0
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1075 instance=f5328b3b
+[prisma] pool total=1 idle=1 waiting=0 instance=f5328b3b tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=f5328b3b
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7ab87dec
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=577 instance=3a68ee34
+[prisma] pool total=1 idle=1 waiting=0 instance=3a68ee34 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=3a68ee34
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=158685a3
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=263 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b3c4176a
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=b3c4176a
+
+20:55:35.23  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cfa80770
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=50 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=830 instance=a995756f
+[prisma] pool total=1 idle=1 waiting=0 instance=a995756f tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=a995756f
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1682 instance=f1c49bea
+[prisma] pool total=1 idle=1 waiting=0 instance=f1c49bea tag=build
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=62 instance=90d6d5cc
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1311 instance=93788a03
+[prisma] pool total=1 idle=1 waiting=0 instance=93788a03 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=93788a03
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1775 instance=2f39f866
+[prisma] pool total=1 idle=1 waiting=0 instance=2f39f866 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2f39f866
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=220 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=034e77b1
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=error instance=034e77b1
+
+20:55:35.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1736 instance=653a0ef7
+[prisma] pool total=1 idle=1 waiting=0 instance=653a0ef7 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=653a0ef7
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1045 instance=a96c4260
+[prisma] pool total=1 idle=1 waiting=0 instance=a96c4260 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=a96c4260
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=a96c4260
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4835d84f
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1206 instance=0dfd3418
+[prisma] pool total=1 idle=1 waiting=0 instance=0dfd3418 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=0dfd3418
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1257 instance=6f33b96c
+[prisma] pool total=2 idle=1 waiting=0 instance=6f33b96c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=6f33b96c
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1137 instance=f9bacc34
+[prisma] pool total=1 idle=1 waiting=0 instance=f9bacc34 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f9bacc34
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1680 instance=98ca577c
+[prisma] pool total=1 idle=1 waiting=0 instance=98ca577c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=98ca577c
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=6592e8cc
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=925 instance=bc23f0c7
+[prisma] pool total=1 idle=1 waiting=0 instance=bc23f0c7 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=bc23f0c7
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=736 instance=5d27e213
+[prisma] pool total=1 idle=1 waiting=0 instance=5d27e213 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=5d27e213
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=762 instance=2ef3784c
+[prisma] pool total=1 idle=1 waiting=0 instance=2ef3784c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=2ef3784c
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1205 instance=949006c0
+[prisma] pool total=1 idle=1 waiting=0 instance=949006c0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=949006c0
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=254 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=b26a91f9
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2b9fc9f2
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=736 instance=4681001f
+[prisma] pool total=1 idle=1 waiting=0 instance=4681001f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4681001f
+
+20:55:35.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1831 instance=abf2edc2
+[prisma] pool total=1 idle=1 waiting=0 instance=abf2edc2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=abf2edc2
+
+20:55:35.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1277 instance=daf3357e
+[prisma] pool total=1 idle=1 waiting=0 instance=daf3357e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=daf3357e
+
+20:55:35.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1072 instance=d871dbe2
+[prisma] pool total=2 idle=1 waiting=0 instance=d871dbe2 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=d871dbe2
+
+20:55:35.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1714 instance=9b0e3455
+[prisma] pool total=1 idle=1 waiting=0 instance=9b0e3455 tag=build
+
+20:55:35.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=905 instance=7f98284a
+[prisma] pool total=1 idle=1 waiting=0 instance=7f98284a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7f98284a
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=936 instance=1e8f68c3
+[prisma] pool total=1 idle=1 waiting=0 instance=1e8f68c3 tag=build
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=856 instance=2fc5d993
+[prisma] pool total=1 idle=1 waiting=0 instance=2fc5d993 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2fc5d993
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=929 instance=a703c131
+[prisma] pool total=1 idle=1 waiting=0 instance=a703c131 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=a703c131
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=587 instance=9b4180a4
+[prisma] pool total=1 idle=1 waiting=0 instance=9b4180a4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9b4180a4
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=44aa8bfc
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e69080b0
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=318 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=dd2fc755
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=dd2fc755
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1629 instance=54fe6908
+[prisma] pool total=1 idle=1 waiting=0 instance=54fe6908 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=54fe6908
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=916 instance=a4dc652a
+[prisma] pool total=2 idle=1 waiting=0 instance=a4dc652a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=a4dc652a
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=280 err=g:(EMAXCONN) max client connections reached, limit: 200 instance=e9c2cd18
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=error instance=e9c2cd18
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1170 instance=dbf3914e
+[prisma] pool total=1 idle=1 waiting=0 instance=dbf3914e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=dbf3914e
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=758 instance=4724e33c
+[prisma] pool total=1 idle=1 waiting=0 instance=4724e33c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=4724e33c
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1715 instance=cd9f4b40
+[prisma] pool total=1 idle=1 waiting=0 instance=cd9f4b40 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cd9f4b40
+
+20:55:35.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=85 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1085 instance=222e9069
+[prisma] pool total=1 idle=1 waiting=0 instance=222e9069 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=222e9069
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=613 instance=7e9b81a5
+[prisma] pool total=1 idle=1 waiting=0 instance=7e9b81a5 tag=build
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=586 instance=aa62288a
+[prisma] pool total=1 idle=1 waiting=0 instance=aa62288a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=aa62288a
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1348 instance=1ef94bab
+[prisma] pool total=1 idle=1 waiting=0 instance=1ef94bab tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=1ef94bab
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=939 instance=fbc146c7
+[prisma] pool total=1 idle=1 waiting=0 instance=fbc146c7 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=fbc146c7
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1025 instance=1d6def0a
+[prisma] pool total=1 idle=1 waiting=0 instance=1d6def0a tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=1d6def0a
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=737 instance=610df282
+[prisma] pool total=1 idle=1 waiting=0 instance=610df282 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=610df282
+
+20:55:35.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=572 instance=c70b3f82
+[prisma] pool total=1 idle=1 waiting=0 instance=c70b3f82 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=c70b3f82
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=796 instance=8689eb21
+[prisma] pool total=1 idle=1 waiting=0 instance=8689eb21 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=8689eb21
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=704 instance=283d6877
+[prisma] pool total=1 idle=1 waiting=0 instance=283d6877 tag=build
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1213 instance=b2c4133c
+[prisma] pool total=1 idle=1 waiting=0 instance=b2c4133c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=b2c4133c
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1187 instance=62ff6d32
+[prisma] pool total=1 idle=1 waiting=0 instance=62ff6d32 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=62ff6d32
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=954 instance=4f5136e3
+[prisma] pool total=1 idle=1 waiting=0 instance=4f5136e3 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=4f5136e3
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=898 instance=6fde6a7b
+[prisma] pool total=1 idle=1 waiting=0 instance=6fde6a7b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=6fde6a7b
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1240 instance=d149b3f9
+[prisma] pool total=1 idle=1 waiting=0 instance=d149b3f9 tag=build
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1080 instance=7524acf6
+[prisma] pool total=1 idle=1 waiting=0 instance=7524acf6 tag=build
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=948 instance=789437a1
+[prisma] pool total=1 idle=1 waiting=0 instance=789437a1 tag=build
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=930 instance=984d698d
+[prisma] pool total=1 idle=1 waiting=0 instance=984d698d tag=build
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=51 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ko instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=620 instance=8f5cd6bf
+[prisma] pool total=1 idle=1 waiting=0 instance=8f5cd6bf tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=8f5cd6bf
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1100 instance=860fae54
+[prisma] pool total=1 idle=1 waiting=0 instance=860fae54 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=860fae54
+
+20:55:35.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=946 instance=0571d9b1
+[prisma] pool total=1 idle=1 waiting=0 instance=0571d9b1 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=0571d9b1
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=0571d9b1
+
+20:55:35.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=553 instance=664ef467
+[prisma] pool total=1 idle=1 waiting=0 instance=664ef467 tag=build
+
+20:55:35.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f6b2dbff
+
+20:55:35.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1041 instance=c0e82b5e
+[prisma] pool total=1 idle=1 waiting=0 instance=c0e82b5e tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=c0e82b5e
+
+20:55:35.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=901 instance=12bfb546
+[prisma] pool total=1 idle=1 waiting=0 instance=12bfb546 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=12bfb546
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1139 instance=5923558e
+[prisma] pool total=1 idle=1 waiting=0 instance=5923558e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=5923558e
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=592 instance=0d59f540
+[prisma] pool total=1 idle=1 waiting=0 instance=0d59f540 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=0d59f540
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=817 instance=d5d7e2e2
+[prisma] pool total=1 idle=1 waiting=0 instance=d5d7e2e2 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=d5d7e2e2
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=746 instance=d59b51ad
+[prisma] pool total=1 idle=1 waiting=0 instance=d59b51ad tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d59b51ad
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1068 instance=45da548b
+[prisma] pool total=1 idle=1 waiting=0 instance=45da548b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=45da548b
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=706 instance=88408c29
+[prisma] pool total=1 idle=1 waiting=0 instance=88408c29 tag=build
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=556 instance=dc2c4e56
+[prisma] pool total=1 idle=1 waiting=0 instance=dc2c4e56 tag=build
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=818 instance=13e27aad
+[prisma] pool total=2 idle=1 waiting=0 instance=13e27aad tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=13e27aad
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=13e27aad
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1099 instance=584460f4
+[prisma] pool total=1 idle=1 waiting=0 instance=584460f4 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=584460f4
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=598 instance=160c1d31
+[prisma] pool total=1 idle=1 waiting=0 instance=160c1d31 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=160c1d31
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1302 instance=f69b5ebb
+[prisma] pool total=1 idle=1 waiting=0 instance=f69b5ebb tag=build
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1640 instance=2dba8696
+[prisma] pool total=1 idle=1 waiting=0 instance=2dba8696 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=2dba8696
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=779 instance=275d4e7b
+[prisma] pool total=2 idle=1 waiting=0 instance=275d4e7b tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=275d4e7b
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=275d4e7b
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1130 instance=f8646484
+[prisma] pool total=1 idle=1 waiting=0 instance=f8646484 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f8646484
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=959 instance=0839c21e
+[prisma] pool total=1 idle=1 waiting=0 instance=0839c21e tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=0839c21e
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=952 instance=f65eac5a
+[prisma] pool total=1 idle=1 waiting=0 instance=f65eac5a tag=build
+
+20:55:35.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1079 instance=452cce0f
+[prisma] pool total=1 idle=1 waiting=0 instance=452cce0f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=452cce0f
+
+20:55:35.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1442 instance=4c2ea530
+[prisma] pool total=1 idle=1 waiting=0 instance=4c2ea530 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=4c2ea530
+
+20:55:35.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=462 instance=983d89cb
+[prisma] pool total=1 idle=1 waiting=0 instance=983d89cb tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=983d89cb
+
+20:55:35.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1241 instance=bc06f016
+[prisma] pool total=1 idle=1 waiting=0 instance=bc06f016 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=bc06f016
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=712 instance=bf1a79ff
+[prisma] pool total=1 idle=1 waiting=0 instance=bf1a79ff tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=bf1a79ff
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=826 instance=396276bc
+[prisma] pool total=1 idle=1 waiting=0 instance=396276bc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=396276bc
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9fb905ed
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1149 instance=3a4dc7ec
+[prisma] pool total=1 idle=1 waiting=0 instance=3a4dc7ec tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=3a4dc7ec
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=774 instance=1e0fd94e
+[prisma] pool total=1 idle=1 waiting=0 instance=1e0fd94e tag=build
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=47ad130e
+
+20:55:35.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=761 instance=a3cf7306
+[prisma] pool total=1 idle=1 waiting=0 instance=a3cf7306 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=a3cf7306
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=534 instance=dd1dec01
+[prisma] pool total=1 idle=1 waiting=0 instance=dd1dec01 tag=build
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1188 instance=358f1ad8
+[prisma] pool total=1 idle=1 waiting=0 instance=358f1ad8 tag=build
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1520 instance=05db8b2a
+[prisma] pool total=1 idle=1 waiting=0 instance=05db8b2a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=05db8b2a
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=563 instance=ea521ba6
+[prisma] pool total=1 idle=1 waiting=0 instance=ea521ba6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=ea521ba6
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=540 instance=711a706d
+[prisma] pool total=1 idle=1 waiting=0 instance=711a706d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=711a706d
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1759 instance=9ffd4997
+[prisma] pool total=1 idle=1 waiting=0 instance=9ffd4997 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9ffd4997
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1009 instance=47e074e8
+[prisma] pool total=1 idle=1 waiting=0 instance=47e074e8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=47e074e8
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=896 instance=db42e4df
+[prisma] pool total=1 idle=1 waiting=0 instance=db42e4df tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=db42e4df
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=95cf70ec
+
+20:55:35.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1025 instance=545254e3
+[prisma] pool total=1 idle=1 waiting=0 instance=545254e3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=545254e3
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=89 instance=90d6d5cc
+[prisma] pool total=2 idle=0 waiting=0 instance=90d6d5cc tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=558 instance=eef9605d
+[prisma] pool total=1 idle=1 waiting=0 instance=eef9605d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=eef9605d
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=762 instance=4f00b379
+[prisma] pool total=1 idle=1 waiting=0 instance=4f00b379 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4f00b379
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1694 instance=0f35bead
+[prisma] pool total=1 idle=1 waiting=0 instance=0f35bead tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=0f35bead
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=687 instance=b778b943
+[prisma] pool total=1 idle=1 waiting=0 instance=b778b943 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=b778b943
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=565 instance=63ee8345
+[prisma] pool total=1 idle=1 waiting=0 instance=63ee8345 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=63ee8345
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1576 instance=db498002
+[prisma] pool total=1 idle=1 waiting=0 instance=db498002 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=db498002
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1586 instance=e5338498
+[prisma] pool total=1 idle=1 waiting=0 instance=e5338498 tag=build
+
+20:55:35.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1106 instance=cc829fdc
+[prisma] pool total=1 idle=1 waiting=0 instance=cc829fdc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cc829fdc
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=876 instance=040aa076
+[prisma] pool total=1 idle=1 waiting=0 instance=040aa076 tag=build
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=36 instance=90d6d5cc
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1570 instance=be6482a0
+[prisma] pool total=1 idle=1 waiting=0 instance=be6482a0 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=be6482a0
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=1011 instance=36dae5e8
+[prisma] pool total=1 idle=1 waiting=0 instance=36dae5e8 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=36dae5e8
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1069 instance=67114b46
+[prisma] pool total=1 idle=1 waiting=0 instance=67114b46 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=67114b46
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=575 instance=82b3bc09
+[prisma] pool total=1 idle=1 waiting=0 instance=82b3bc09 tag=build
+
+20:55:35.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=907 instance=ef1f4d61
+[prisma] pool total=1 idle=1 waiting=0 instance=ef1f4d61 tag=build
+
+20:55:34.69  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ POST /api/admin/setlist-items          
+[liveWriter] route=admin-create acquireMs=3 execMs=52 rev=511 ok=true instance=90d6d5cc
+
+20:55:34.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=510 items=23 ms=51 instance=90d6d5cc
+[prisma] pool total=1 idle=1 waiting=0 instance=90d6d5cc tag=build
+
+20:55:34.00  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ POST /api/admin/login                  
+
+20:55:33.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:33.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:33.07  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:32.90  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+20:55:32.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=510 items=23 ms=55 instance=90d6d5cc
+[prisma] pool total=1 idle=1 waiting=0 instance=90d6d5cc tag=build
+
+Fetched 611 logs for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist

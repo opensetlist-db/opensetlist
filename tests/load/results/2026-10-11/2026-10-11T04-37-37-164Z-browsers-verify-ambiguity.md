@@ -1,0 +1,88 @@
+# Browsers run — 2026-10-11T04:36:17.902Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 607, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: verify-ambiguity (edit 2, pages 30)
+- Window (UTC): run start 2026-10-11T04:36:17.902Z, first edit 2026-10-11T04:36:39.584Z, last edit settled 2026-10-11T04:37:32.748Z, end 2026-10-11T04:37:37.158Z
+- Label: r2-verify-ambiguity
+
+## Gate verdicts
+
+Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 1500 | 1203 | 1750 | 2071 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 90 | 1450 | 1934 | 2040 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1198 | 1729 | 2071 | 0 | same | **PASS** |
+| drill verify-ambiguity (rev 611) | 453 notification fetches | — | — | — | memo 0 → recheck ok 0, not ok 0, none 0 | every SDK client answered `memo` for the drilled save resolves it on its one recheck (n/a when no memo was observed) | n/a |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 5900 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker), non-drilled: pages 90 | 2461 | 4453 | 4650 · SDK 1410 | 2085 | 4431 | 4766 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 90 | — | — | — |
+| broadcast `rev` → pages | 90 / 90 | 586 | 807 | 893 |
+| broadcast `rev` → SDK | 1410 / 1410 | 624 | 895 | 919 |
+
+## Per edit
+
+| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1917 | 124 ド！ド！ド！ | 2026-10-11T04:36:39.584Z | 505 | 608 | 2026-10-11T04:36:40.223Z | 479 | 609 |
+| 2 | 1918 | 125 ハクチューアラモード | 2026-10-11T04:37:04.591Z | 526 | 610 | 2026-10-11T04:37:07.457Z | 528 | 611 |
+| 3 | 1919 | 126 ココン東西 | 2026-10-11T04:37:29.584Z | 631 | 612 | 2026-10-11T04:37:30.338Z | 699 | 613 |
+
+### Per save — pages (PUT start → marker in the DOM)
+
+| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 609 | 30/30 | 1365 / 1934 / 2040 | 0 | 540 / 540 (30) | 0 | 15 | satisfied 15 |
+| 2 | 611 | 30/30 | 1182 / 1731 / 1784 | 0 | 586 / 588 (30) | 0 | 28 | satisfied 28 |
+| 3 | 613 | 30/30 | 1616 / 1980 / 1987 | 0 | 776 / 829 (30) | 0 | 26 | satisfied 26 |
+
+### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)
+
+| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 609 | 470/470 | 1120 / 1663 / 2034 | 0 | 624 / 649 (470) | 73 | satisfied 73 | satisfied 80 | 0 (0) | 0 |
+| 2 | 611 | 470/470 | 1297 / 1722 / 1900 | 0 | 584 / 589 (470) | 453 | satisfied 453 | satisfied 460 | 0 (0) | 0 |
+| 3 | 613 | 470/470 | 1212 / 1780 / 2071 | 0 | 869 / 904 (470) | 141 | satisfied 141 | satisfied 145 | 0 (0) | 0 |
+
+## Hint outcomes (whole run)
+
+- SDK: 6194 requests; notification fetches (hint=1) 2954, their x-snapshot-verify: satisfied 2954; all 200 responses: none 470, satisfied 5715
+  - ticket resolutions: satisfied 3008; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 616
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 1404, notification +hint=1 2954, notification 842, periodic generic +H 54; failures by kind: —
+- Pages: 390 /api/setlist responses; notification fetches (hint=1) 217, their x-snapshot-verify: satisfied 217; all 200 responses: satisfied 390 (an R1 page build sends no hint=1)
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1604 p95=2234 max=2242
+  - /api/setlist responses seen: 390 ({"build":273,"cache":117}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 270; dropped notification frames 0, blocked attempts 0
+- SDK: 470/470 joined; all joined after 10.079 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=184 p95=463 max=556
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":1458,"notification":3796}; X-Snapshot-Source {"build":4308,"cache":1877}
+
+## Verify-ambiguity drill
+
+- drilled save rev 611: SDK notification fetches 453, x-snapshot-verify satisfied 453; memo share 0.0 % (0 client(s))
+- after a memo answer: recheck resolved 0, recheck NOT resolved 0, no recheck 0; pages' notification fetches for that rev: satisfied 28
+- memo only appears when a hinted fetch lands on a primed instance within 1 s AND its snapshot read still returned the pre-save revision (a coalesced read that began before the commit, or a cache entry the purge had not reached yet); Vercel decides the routing, so 0 memo is a valid outcome (verdict n/a), not a pass.
+
+## Drill events
+
+- edit 2 2026-10-11T04:37:07.264Z: memo priming: 60 request(s) minRev=1610 sent 150 ms before the PUT; responses {"200 fresh":35,"200 memo":25}, ms 221/319/497/325/334/333/335/325/481/340/354/353/520/408/546/356/546/497/385/481/557/516/545/702/747/704/770/621/652/640/734/597/659/623/489/481/558/670/771/404/616/592/548/362/569/516/606/569/546/378/558/507/606/570/645/606/584/644/548/587
+
+## Clean-up
+
+- Soft-deleted 3/3 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":616,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)

@@ -1,0 +1,424 @@
+### capture segment start 2026-10-11T03:54:49.535Z
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Streaming logs for deployment dpl_2NifpPg2kZXdo3g2UkuCrav4fykm starting from 20:54:52.58
+
+waiting for new logs...
+20:55:32.80  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=510 items=23 ms=55 instance=90d6d5cc
+
+waiting for new logs...
+20:55:32.80  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=1 idle=1 waiting=0 instance=90d6d5cc tag=build
+
+waiting for new logs...
+20:55:34.60  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=510 items=23 ms=51 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.00  ℹ️  POST  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/admin/setlist-items
+------------------------------------------------------------------------------------------------------------
+[liveWriter] route=admin-create acquireMs=3 execMs=52 rev=511 ok=true instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.22  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=36 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.23  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.28  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=89 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.47  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=95cf70ec
+
+waiting for new logs...
+20:55:36.37  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=47ad130e
+
+waiting for new logs...
+20:55:36.50  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=9fb905ed
+
+waiting for new logs...
+20:55:35.29  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.41  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=f6b2dbff
+
+waiting for new logs...
+20:55:35.31  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=51 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.31  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=1 waiting=0 instance=90d6d5cc tag=build
+
+waiting for new logs...
+20:55:35.32  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ko instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.36  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=85 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.38  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.45  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=e69080b0
+
+waiting for new logs...
+20:55:36.48  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=44aa8bfc
+
+waiting for new logs...
+20:55:36.46  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=2b9fc9f2
+
+waiting for new logs...
+20:55:35.32  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.42  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=6592e8cc
+
+waiting for new logs...
+20:55:36.38  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=4835d84f
+
+waiting for new logs...
+20:55:35.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=62 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+
+waiting for new logs...
+20:55:35.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.77  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=50 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.78  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.40  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cfa80770
+
+waiting for new logs...
+20:55:36.42  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=7ab87dec
+
+waiting for new logs...
+20:55:36.68  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=136090a4
+
+waiting for new logs...
+20:55:36.42  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=743362fb
+
+waiting for new logs...
+20:55:36.51  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=271430bc
+
+waiting for new logs...
+20:55:36.46  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=411a981f
+
+waiting for new logs...
+20:55:36.54  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=3f41b3b2
+
+waiting for new logs...
+20:55:35.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=45 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.64  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=51 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.69  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=52 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.70  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.71  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=53 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.72  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.51  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=d38909db
+
+waiting for new logs...
+20:55:35.75  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=en rev=511 items=24 ms=69 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.76  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=en minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.58  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=37 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.59  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ko minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.96  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.97  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:35.97  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.61  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=cf11c34e
+
+waiting for new logs...
+20:55:36.02  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.01  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=33 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.02  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.07  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.08  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.08  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[setlist] hint-fetch event=111 locale=ja minRev=511 verify=satisfied instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.21  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=31 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.22  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.53  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.54  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.26  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.27  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.34  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=32 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.34  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=2 idle=2 waiting=0 instance=90d6d5cc tag=build
+
+waiting for new logs...
+20:55:36.38  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.39  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.43  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=30 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.44  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.59  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=35 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.60  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.48  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=29 instance=90d6d5cc
+
+waiting for new logs...
+20:55:36.49  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=90d6d5cc
+
+waiting for new logs...
+20:55:38.27  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ko rev=511 items=24 ms=1690 instance=271430bc
+
+waiting for new logs...
+20:55:38.27  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=1 idle=1 waiting=0 instance=271430bc tag=build
+
+waiting for new logs...
+20:55:38.17  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1585 instance=d38909db
+
+waiting for new logs...
+20:55:37.84  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1080 instance=d871dbe2
+
+waiting for new logs...
+20:55:38.33  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] build event=111 locale=ja rev=511 items=24 ms=1691 instance=2b9fc9f2
+
+waiting for new logs...
+20:55:38.33  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[prisma] pool total=1 idle=1 waiting=0 instance=2b9fc9f2 tag=build
+
+waiting for new logs...
+20:55:38.34  ℹ️  GET  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/setlist
+-----------------------------------------------------------------------------------------------
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=2b9fc9f2
+
+waiting for new logs...
+20:55:38.97  ℹ️  DELETE  ---  opensetlist-git-dev-opensetlist-projects.vercel.app     /api/admin/setlist-items/1872
+-------------------------------------------------------------------------------------------------------------------
+[liveWriter] route=admin-delete acquireMs=3 execMs=25 rev=512 ok=true instance=98ca577c
+
+waiting for new logs...
+### capture end 2026-10-11T03:57:21.403Z (STOP file)
