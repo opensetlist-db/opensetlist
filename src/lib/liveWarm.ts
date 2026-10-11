@@ -300,7 +300,8 @@ export function decodeWarmEnvelope(
 // ---------------------------------------------------------------------
 
 export type WarmFault = {
-  /** Normalised spec, as logged in `fault=`. */
+  /** Normalised spec in its log encoding (`slow:400+locale:ja`, see
+   *  `oneToken`), as logged in `fault=` / `mode=`. */
   label: string;
   absent: boolean;
   slowMs: number;
@@ -362,7 +363,7 @@ export function parseWarmFault(spec: string): WarmFault | null {
       return null;
     }
   }
-  return { ...f, label: tokens.join(",") };
+  return { ...f, label: oneToken(tokens.join(",")) };
 }
 
 // What was last announced (`armed:` / `invalid:` / `blocked:` + spec),
@@ -372,7 +373,13 @@ export function parseWarmFault(spec: string): WarmFault | null {
 let faultAnnounced: string | null = null;
 let faultParsed: { spec: string; fault: WarmFault | null } | null = null;
 
-const oneToken = (s: string) => s.replace(/\s+/g, "");
+// The spec as ONE log value: no whitespace, `=` → `:`, `,` → `+`
+// (`slow=400,locale=ja` → `slow:400+locale:ja`). Log consumers parse
+// lines as space-separated `key=value` pairs; a raw spec inside a value
+// would carry an inner `locale=ja` that a non-greedy or comma-splitting
+// tokenizer reads as the line's own `locale` field, misattributing a
+// lookup in exactly the combined drills that rely on the logs.
+const oneToken = (s: string) => s.replace(/\s+/g, "").replace(/=/g, ":").replace(/,/g, "+");
 
 /** The active fault, or `null` (unarmed, production, or unparseable). */
 export function activeWarmFault(): WarmFault | null {

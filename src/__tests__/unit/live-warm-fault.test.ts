@@ -97,7 +97,7 @@ afterEach(() => {
 describe("parseWarmFault", () => {
   it("parses single and combined modes, normalising the label", () => {
     expect(parseWarmFault(" slow=400 , locale=ja ")).toMatchObject({
-      label: "slow=400,locale=ja",
+      label: "slow:400+locale:ja",
       slowMs: 400,
       skipLocales: new Set(["ja"]),
       absent: false,
@@ -197,7 +197,7 @@ describe("arming", () => {
     await warmLookup(EVENT, "ja", 7);
     expect(get).toHaveBeenCalledTimes(2);
     expect(lines().filter((l) => l.includes("fault-invalid"))).toEqual([
-      expect.stringMatching(/^\[liveWarm\] fault-invalid mode=slow=fast injected=none /),
+      expect.stringMatching(/^\[liveWarm\] fault-invalid mode=slow:fast injected=none /),
     ]);
     expect(lookupLines().every((l) => !l.includes("fault="))).toBe(true);
   });
@@ -243,7 +243,7 @@ describe("reader modes (warmLookup)", () => {
     expect(get).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(100);
     expect(get).toHaveBeenCalledTimes(1);
-    expect(lookupLines()[0]).toMatch(/result=timeout .* fault=slow=400$/);
+    expect(lookupLines()[0]).toMatch(/result=timeout .* fault=slow:400$/);
   });
 
   it("slow=150 is a slow hit", async () => {
@@ -270,7 +270,7 @@ describe("reader modes (warmLookup)", () => {
     await vi.advanceTimersByTimeAsync(150);
     expect(await pending).toEqual({ result: "miss" });
     expect(get).toHaveBeenCalledTimes(1);
-    expect(lookupLines()[0]).toMatch(/ fault=slow=150,getnull$/);
+    expect(lookupLines()[0]).toMatch(/ fault=slow:150\+getnull$/);
   });
 
   it("writer-only modes leave lookups untouched (but tagged)", async () => {
@@ -278,7 +278,7 @@ describe("reader modes (warmLookup)", () => {
     put("ja", 7);
     arm("seterror,locale=ko,slowjob=10");
     expect((await warmLookup(EVENT, "ja", 7)).result).toBe("hit");
-    expect(lookupLines()[0]).toMatch(/ fault=seterror,locale=ko,slowjob=10$/);
+    expect(lookupLines()[0]).toMatch(/ fault=seterror\+locale:ko\+slowjob:10$/);
   });
 });
 
@@ -357,8 +357,41 @@ describe("writer modes (runWarmJob)", () => {
     await vi.advanceTimersByTimeAsync(300);
     expect(await ko).toEqual({ result: "timeout" });
     expect(lines().find((l) => l.startsWith("[liveWarm] start"))).toMatch(
-      / fault=slow=400,locale=ja$/,
+      / fault=slow:400\+locale:ja$/,
     );
+  });
+
+  it("combined spec: every emitted line keeps one locale= field and no unencoded spec", async () => {
+    vi.useFakeTimers();
+    fakeCache();
+    arm("slow=400, locale=ja ,getnull");
+    await runWarmJob(EVENT, BigInt(5));
+    for (const l of ["ja", "ko"] as const) {
+      const p = warmLookup(EVENT, l, 5);
+      await vi.advanceTimersByTimeAsync(400);
+      await p;
+    }
+    // And the production / invalid announcements use the same encoding.
+    __resetLiveWarmStateForTests();
+    process.env.VERCEL_ENV = "production";
+    activeWarmFault();
+    delete process.env.VERCEL_ENV;
+    arm("slow=fast,locale=ja");
+    activeWarmFault();
+
+    const out = lines();
+    expect(out.some((l) => l.includes("fault=slow:400+locale:ja+getnull"))).toBe(true);
+    expect(out.some((l) => l.includes("fault armed mode=slow:400+locale:ja+getnull"))).toBe(true);
+    expect(out.some((l) => l.includes("fault-blocked mode=slow:400+locale:ja+getnull"))).toBe(true);
+    expect(out.some((l) => l.includes("fault-invalid mode=slow:fast+locale:ja"))).toBe(true);
+    for (const l of out) {
+      expect(l.match(/\blocale=/g)?.length ?? 0, l).toBeLessThanOrEqual(1);
+      expect(l, l).not.toContain(",");
+      // Every space-separated token is a single key=value at most.
+      for (const tok of l.split(" ")) {
+        expect((tok.match(/=/g) ?? []).length, tok).toBeLessThanOrEqual(1);
+      }
+    }
   });
 
   it("unarmed: the job stores all three locales through the real set path", async () => {

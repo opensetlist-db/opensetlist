@@ -555,7 +555,12 @@ lifted in place.
 
 **Spec.** Modes are comma-separated and combine, e.g. `slow=400,locale=ja`.
 An unknown or malformed token makes the whole spec inert, logged as
-`fault-invalid … injected=none`.
+`fault-invalid … injected=none`. **In the logs the spec is encoded as
+one token:** `=` becomes `:` and `,` becomes `+`, with whitespace
+removed. So `LIVE_WARM_FAULT=slow=400,locale=ja` is logged as
+`fault=slow:400+locale:ja`. The encoding keeps an inner `locale=ja`
+from being read as the line's own `locale` field. The input syntax stays
+as written.
 
 | Drill | Spec | Expected in the logs |
 |---|---|---|
@@ -575,15 +580,17 @@ not active is invalid. It is not a pass.
 1. After the deploy, make one admin save and send one hinted `curl`
    (`…&minRev=<rev>&hint=1`). The response must not be
    `x-snapshot-source: warm` for the faulted modes. In the Vercel logs
-   the request shows `[liveWarm] fault armed mode=<spec>`, which is
-   logged once per instance on first use.
+   the request shows `[liveWarm] fault armed mode=<encoded spec>` (for
+   example `mode=slow:400+locale:ja`). It is logged once per instance
+   on first use.
 2. In the run's history capture, check the following. Every
    `[liveWarm] start` and `[setlist] warm-lookup` line ends in
-   `fault=<spec>`, and the spec must be exactly the intended one. There
-   are 0 `fault-invalid` and 0 `fault-blocked` lines. The result
-   distribution matches the table above. A `hit` under `absent`,
-   `getnull`, `seterror` or `setskip`, or under `locale=ja` for
-   `locale=ja`, means the fault leaked.
+   `fault=<encoded spec>`, and that must be exactly the intended spec
+   (e.g. `fault=slow:400+locale:ja`). There are 0 `fault-invalid` and 0
+   `fault-blocked` lines. The result distribution matches the table
+   above. Any of these means the fault leaked: a `hit` under `absent`,
+   `getnull`, `seterror` or `setskip`, or a `hit` on a ja lookup under
+   `locale=ja`.
 3. The summariser needs no change. It tolerates the extra `fault=` key
    and lists `fault-locale` under the skip reasons, which do not count as
    warm builds. Quote the `fault armed` line and the result split in the
