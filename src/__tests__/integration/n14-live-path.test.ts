@@ -799,16 +799,17 @@ describe("8. GET /api/setlist reports how it resolved minRev (x-snapshot-verify)
 // 9. live writer on an exhausted pool
 // ---------------------------------------------------------------------
 //
-// Kept LAST on purpose: the transaction that times out in `maxWait`
-// is not cleanly discarded — Prisma's transaction manager hands the
-// late-arriving driver transaction to the adapter's `rollback()`, which
-// in @prisma/adapter-pg only releases the pooled client; the ROLLBACK
-// statement the manager sends on a normal close is skipped on this
-// discard path (Prisma 7.8), so that connection goes back to the pool
-// inside an open transaction. The next REPEATABLE READ build on it fails ("SET
-// TRANSACTION ISOLATION LEVEL must be called before any query") and
-// the client is destroyed. Any suite placed after this one would see
-// that one-off failure.
+// Kept LAST as a precaution: the transaction that times out in
+// `maxWait` leaves a late-arriving driver transaction to discard. Up to
+// @prisma/client 7.8 that discard skipped the ROLLBACK statement (the
+// adapter's `rollback()` only releases the pooled client), so the
+// connection went back to the pool inside an open transaction and the
+// next REPEATABLE READ build on it failed ("SET TRANSACTION ISOLATION
+// LEVEL must be called before any query"). 7.9+ sends the ROLLBACK
+// itself, and the pool's open-transaction guard (`src/lib/pgPool.ts`)
+// backs it up, so a later suite should no longer see that failure —
+// but this is the one suite that deliberately exhausts the pool, so it
+// still runs after everything that needs a clean one.
 
 describe("9. a live writer that cannot get a connection answers 503 and writes nothing", () => {
   it("both pool slots held → admin create fails after maxWait with the operator 503, revision unchanged", async () => {

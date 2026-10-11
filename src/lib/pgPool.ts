@@ -17,7 +17,7 @@ export const OPEN_TX_RELEASE_LOG_PREFIX =
 // before the pool produced a connection, the manager later calls
 // `rollback()` directly on the transaction that arrives late (Prisma
 // client ≤ 7.8, transaction-manager.ts, the `abortController.signal.aborted`
-// branch). That client has already run `BEGIN` (and `SET TRANSACTION
+// branch — fixed upstream, see "Upstream status" below). That client has already run `BEGIN` (and `SET TRANSACTION
 // ISOLATION LEVEL` if one was asked for) and goes back to the pool with
 // the transaction open. From then on:
 //   - every "auto-commit" query that lands on it runs inside that
@@ -28,6 +28,22 @@ export const OPEN_TX_RELEASE_LOG_PREFIX =
 //     (its BEGIN only warns), which the live route answers with a 503.
 // Under live overload `maxWait` give-ups are exactly what happens, so
 // this is not a theoretical path.
+//
+// Upstream status. Prisma fixed this exact path in @prisma/client 7.9.0
+// (prisma/prisma#29727): `#discardStartedTransaction` now sends an
+// explicit `ROLLBACK` on the late transaction before calling the
+// adapter's `rollback()` (adapters without phantom queries, which
+// includes pg). We run 7.10.0; on it the reproduction in
+// `src/__tests__/integration/prisma-pool-txleak.test.ts` comes back with a
+// clean connection while the guard stays silent, i.e. Prisma's own
+// ROLLBACK did the cleaning (the test itself accepts 0 or 1 firings so it
+// passes on either side of the fix). The guard stays anyway, as
+// a backstop for any OTHER way a client could be released inside a
+// transaction — a future Prisma or adapter regression, a cleanup path
+// whose ROLLBACK fails while the adapter still releases the client
+// (7.10's discard path releases in a `finally`), or any future direct
+// use of the shared pool. It costs nothing on a normal release
+// (status 'I').
 //
 // How it is detected. Every ReadyForQuery message from the server
 // carries the backend's transaction status: 'I' idle, 'T' in a
@@ -67,9 +83,6 @@ export const OPEN_TX_RELEASE_LOG_PREFIX =
 //     idle error handling removes it, and the failure is logged.
 //   - A redundant ROLLBACK (stale 'T' because the client was released
 //     again before running anything) only draws a server WARNING.
-// Prisma client 7.9.0+ sends the ROLLBACK itself on the give-up path;
-// the guard stays as a backstop for any release that leaves a
-// transaction open, whichever library version or code path causes it.
 // ---------------------------------------------------------------------
 
 type TxStatus = string; // 'I' | 'T' | 'E' as sent by the server

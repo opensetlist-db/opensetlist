@@ -81,10 +81,11 @@ function createPool(): Pool {
     connectionTimeoutMillis: 5_000,
   });
   // A client must never go back into circulation inside an open
-  // transaction — Prisma's `maxWait` give-up path can return one that
-  // way, and every later "auto-commit" query on it would then run inside
-  // that transaction. The guard rolls such a client back before reuse;
-  // full rationale in `src/lib/pgPool.ts`. Registered before
+  // transaction — Prisma's `maxWait` give-up path returned one that way
+  // up to @prisma/client 7.8 (fixed in 7.9), and every later
+  // "auto-commit" query on it would then run inside that transaction. The
+  // guard rolls such a client back before reuse and is kept as a backstop
+  // for any other path; full rationale in `src/lib/pgPool.ts`. Registered before
   // `attachDatabasePool` only for readability — both are independent
   // synchronous `release` listeners.
   installOpenTransactionGuard(pool);
