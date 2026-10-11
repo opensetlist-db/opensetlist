@@ -113,3 +113,19 @@ test("validity: heartbeat gaps (sender clock) and a silent tail", () => {
   const never = validity({ lags: [], heartbeats: { 4: [] }, from: 0, to: 10_000, workerStarted: { 4: 500 } });
   assert.equal(never.invalid, true);
 });
+
+test("validity: a heartbeat's own lag max counts even when the worker's summary never arrived", () => {
+  // Steady 1 s beats, but one beat reports a 1.5 s block since the last
+  // one — the only evidence left for a worker whose result timed out.
+  const hb = (ts) => ts.map((t) => [t + 5, t, 0]);
+  const beats = hb([1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000, 9_000, 10_000]);
+  beats[3][2] = LAG_INVALID_MS + 500;
+  const v = validity({ lags: [{ thread: "worker 1", summary: null }], heartbeats: { 1: beats }, from: 0, to: 10_000 });
+  assert.equal(v.invalid, true);
+  assert.match(v.reasons[0].what, /heartbeat lag max/);
+  assert.equal(v.reasons[0].ms, LAG_INVALID_MS + 500);
+  // Exactly at the threshold is not over it.
+  beats[3][2] = LAG_INVALID_MS;
+  assert.equal(validity({ lags: [], heartbeats: { 1: beats }, from: 0, to: 10_000 }).invalid, false);
+});
+

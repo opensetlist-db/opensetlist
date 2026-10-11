@@ -138,17 +138,25 @@ export function summarize(lines) {
 
   // Revs the clients applied that NO client received as a broadcast —
   // a save whose notification never reached this host (or happened
-  // before the clients joined; compare with the clients' first
-  // SUBSCRIBED time). The lowest applied rev is the one the clients
-  // started on and is not a save of the window, so it is skipped.
+  // before the clients joined). The lowest applied rev is USUALLY the
+  // state the clients started on, not a save of the window — but it is
+  // also exactly what a lost first-save broadcast looks like (the clients
+  // then first apply that rev from a periodic poll). So it is never
+  // dropped: it is kept and flagged `maybeStart` with the clients' first
+  // SUBSCRIBED time, so the reader can tell "initial state" (applied by
+  // the `initial`/`catchup` fetch right after the join) from "first save
+  // whose broadcast went missing" (applied later, by `periodic`).
   const broadcastRevs = new Set(bcasts.map((b) => b.rev));
   const startRev = applied.length ? Math.min(...applied.map((a) => a.rev)) : null;
+  const subscribedAts = by("client").map((c) => c.firstSubscribedAt).filter((t) => Number.isFinite(t));
+  const firstSubscribedAt = subscribedAts.length ? Math.min(...subscribedAts) : null;
   const unnotified = [...new Set(applied.map((a) => a.rev))]
-    .filter((rev) => rev !== startRev && !broadcastRevs.has(rev))
+    .filter((rev) => !broadcastRevs.has(rev))
     .sort((a, b) => a - b)
     .map((rev) => {
       const first = applied.filter((a) => a.rev === rev).sort((a, b) => a.t - b.t)[0];
-      return { rev, firstAppliedAt: first.t, reason: first.reason };
+      const maybeStart = rev === startRev && (first.reason === "initial" || first.reason === "catchup");
+      return { rev, firstAppliedAt: first.t, reason: first.reason, maybeStart, firstSubscribedAt };
     });
 
   const pollStatus = {};
@@ -196,7 +204,14 @@ export function toMarkdown(s) {
   if (s.unnotified.length) {
     out.push("", "## Revs applied without any broadcast", "");
     out.push("No client received these revs' `rev` broadcast; a poll brought them. Check the clients' first SUBSCRIBED time below — a save before it is expected here.", "");
-    for (const u of s.unnotified) out.push(`- rev ${u.rev}: first applied ${iso(u.firstAppliedAt)} by a \`${u.reason}\` fetch`);
+    for (const u of s.unnotified) {
+      const tag = u.maybeStart
+        ? " — lowest applied rev, applied by the join's own fetch: probably the clients' starting state, not a lost broadcast"
+        : u.firstSubscribedAt != null && u.firstAppliedAt < u.firstSubscribedAt
+          ? " — applied before the first SUBSCRIBED: the save predates the clients"
+          : " — the clients were subscribed; this save's broadcast did not reach them";
+      out.push(`- rev ${u.rev}: first applied ${iso(u.firstAppliedAt)} by a \`${u.reason}\` fetch${tag}`);
+    }
   }
   if (s.clients.length) {
     out.push("", "## Clients", "", "| client | locale | first SUBSCRIBED (UTC) | SUBSCRIBED | statuses | fallbacks | recreates | errors |", "|---|---|---|---|---|---|---|---|");
@@ -383,7 +398,12 @@ async function main() {
     meta.endedAt = new Date().toISOString();
     if (!result && !meta.workerError) meta.workerError = "no result from the SDK worker within 15 s";
     for (const rec of result?.clients ?? []) lines.push(...recordToLines(rec));
-    const all = [meta, ...lines.sort((a, b) => a.t - b.t)];
+    // Only timestamped records are ordered by time; `client` records
+    // (no `t`) would make the comparator NaN and scramble the order, so
+    // they go last.
+    const timed = lines.filter((l) => Number.isFinite(l.t)).sort((a, b) => a.t - b.t);
+    const untimed = lines.filter((l) => !Number.isFinite(l.t));
+    const all = [meta, ...timed, ...untimed];
     fs.writeFileSync(`${outBase}.jsonl`, all.map((l) => JSON.stringify(l)).join("\n") + "\n");
     const summary = summarize(all);
     fs.writeFileSync(`${outBase}.md`, toMarkdown(summary));

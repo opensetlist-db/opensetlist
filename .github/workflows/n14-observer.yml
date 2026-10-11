@@ -103,7 +103,11 @@ jobs:
       OBS_CLIENTS: ${{ inputs.clients }}
       OBS_LABEL: ${{ inputs.label }}
     steps:
+      # The job runs installed dependencies after checkout but never
+      # needs Git credentials again; do not leave the token in .git/config.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Node 22 ≥ 22.18: subs-worker.mjs imports the app's src/lib/*.ts
       # modules at runtime through Node's built-in type stripping, which

@@ -95,6 +95,12 @@ afterEach(() => {
 });
 
 describe("parseWarmFault", () => {
+  it("rejects a spec with an empty token instead of arming the rest of it", () => {
+    expect(parseWarmFault("slow=400,,locale=ja")).toBeNull();
+    expect(parseWarmFault("slow=400,")).toBeNull();
+    expect(parseWarmFault(",absent")).toBeNull();
+    expect(parseWarmFault("   ")).toBeNull();
+  });
   it("parses single and combined modes, normalising the label", () => {
     expect(parseWarmFault(" slow=400 , locale=ja ")).toMatchObject({
       label: "slow:400+locale:ja",

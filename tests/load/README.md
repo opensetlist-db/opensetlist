@@ -648,11 +648,11 @@ as written.
 
 | Drill | Spec | Expected in the logs |
 |---|---|---|
-| cache absent (no entry anywhere) | `absent` | every `warm-lookup` → `result=miss`, near-0 ms (the `get` is skipped) |
-| absent, with real cache latency | `getnull` | `result=miss` at the normal lookup ms |
+| cache absent (no entry anywhere) | `absent` | the first `warm-lookup` per key per instance → `result=miss`, near-0 ms (the `get` is skipped); repeats of that key within the 250 ms miss memo → `memo-miss` (at 500 viewers most lookups of a save are `memo-miss`; what must be 0 is `hit`) |
+| absent, with real cache latency | `getnull` | `result=miss` at the normal lookup ms, repeats `memo-miss` within 250 ms; 0 `hit` |
 | one missing locale (partial publication) | `locale=ja` (ja carries ~70 % of the traffic, the worst case); `locale=en` for the sparse case | per job `skip locale=ja reason=fault-locale`; ja lookups `miss`, ko/en `hit` |
-| failed writes, visible | `seterror` | per locale `set … ok=false` + `set-error … injected fault: seterror`; all lookups `miss` |
-| failed writes, silent (what the SDK's swallowed errors look like) | `setskip` | `set … ok=true`, yet all lookups `miss` |
+| failed writes, visible | `seterror` | per locale `set … ok=false` + `set-error … injected fault: seterror`; lookups `miss` / `memo-miss`, 0 `hit` |
+| failed writes, silent (what the SDK's swallowed errors look like) | `setskip` | `set … ok=true`, yet lookups `miss` / `memo-miss`, 0 `hit` |
 | reads over the 300 ms deadline | `slow=400` | `result=timeout` at ~300 ms; repeats on that key answer `memo-miss` for 1 s |
 | slow but in time (control) | `slow=150` | `result=hit` at ≥ 150 ms |
 | cache errors | `geterror` | `result=error` + `lookup-error … injected fault: geterror` |
@@ -662,8 +662,12 @@ as written.
 not active is invalid. It is not a pass.
 
 1. After the deploy, make one admin save and send one hinted `curl`
-   (`…&minRev=<rev>&hint=1`). The response must not be
-   `x-snapshot-source: warm` for the faulted modes. In the Vercel logs
+   (`…&minRev=<rev>&hint=1`) per locale. What the response must be
+   depends on the mode: `absent`, `getnull`, `geterror`, `seterror`,
+   `setskip` and `slow=400` → never `x-snapshot-source: warm`;
+   `locale=ja` → not `warm` for ja, but ko and en ARE `warm`; `slow=150`
+   and `slowjob=…` → `warm` (they slow the path, they do not break it).
+   A `warm` where the table says none = the fault is not active. In the Vercel logs
    the request shows `[liveWarm] fault armed mode=<encoded spec>` (for
    example `mode=slow:400+locale:ja`). It is logged once per instance
    on first use.

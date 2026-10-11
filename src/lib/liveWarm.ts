@@ -320,11 +320,12 @@ const FAULT_MAX_DELAY_MS = 10_000;
 
 /** Parse a fault spec. `null` = unparseable (nothing is injected). */
 export function parseWarmFault(spec: string): WarmFault | null {
-  const tokens = spec
-    .split(",")
-    .map((t) => t.trim())
-    .filter((t) => t !== "");
-  if (tokens.length === 0) return null;
+  // An empty token (`slow=400,,locale=ja`, a trailing comma) is a
+  // malformed spec, not something to tolerate: the rule is that anything
+  // off-grammar injects nothing, so a typo shows up as `fault-invalid`
+  // instead of silently arming a partial fault.
+  const tokens = spec.split(",").map((t) => t.trim());
+  if (tokens.length === 0 || tokens.some((t) => t === "")) return null;
   const f = {
     absent: false,
     slowMs: 0,

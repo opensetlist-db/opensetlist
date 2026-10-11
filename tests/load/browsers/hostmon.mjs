@@ -169,6 +169,19 @@ export function validity({ lags, heartbeats, from, to, workerStarted = {} }) {
         reasons.push({ thread, what: `no heartbeat for ${gap} ms`, at: hbs[i - 1][1], ms: gap });
       }
     }
+    // The heartbeat also carries the worker's own lag max since its last
+    // beat (index 2). It is the only lag evidence left for a worker whose
+    // result never arrived (stopWorkers() timed out) — exactly the worker
+    // most likely to have stalled — and a 1–3 s stall shows up here but
+    // not as a heartbeat gap. Summaries and heartbeats may both report
+    // the same stall; two independent signals are kept.
+    for (const hb of hbs) {
+      const t = hb[1];
+      const lagMax = hb[2];
+      if (typeof lagMax === "number" && lagMax > LAG_INVALID_MS && t >= from && t <= to + SILENT_INVALID_MS) {
+        reasons.push({ thread, what: `event loop blocked ${lagMax} ms (heartbeat lag max)`, at: t - lagMax, ms: lagMax });
+      }
+    }
     // Silent until the end of the window (dead or blocked for good). A
     // worker that has not sent its first heartbeat yet is judged from
     // its start.

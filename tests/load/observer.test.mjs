@@ -59,14 +59,20 @@ test("markdown carries the host, the rev row and the lag line", () => {
   assert.match(md, /p95 250 · max 250 ms/);
 });
 
-test("a rev applied by a poll but never broadcast is listed; the start rev is not", () => {
+test("a rev applied by a poll but never broadcast is listed; the start rev is kept but flagged", () => {
   const extra = [
     { kind: "applied", client: 0, t: T - 9000, rev: 19, reason: "initial" },
     { kind: "applied", client: 0, t: T - 5000, rev: 20, reason: "periodic" },
     { kind: "applied", client: 1, t: T - 4000, rev: 20, reason: "periodic" },
   ];
   const s = summarize([...JSONL, ...extra]);
-  assert.deepEqual(s.unnotified, [{ rev: 20, firstAppliedAt: T - 5000, reason: "periodic" }]);
+  // The lowest applied rev is not dropped any more (a lost first-save
+  // broadcast looks exactly like it); it is flagged as the probable
+  // starting state when the join's own fetch applied it.
+  assert.deepEqual(
+    s.unnotified.map((u) => [u.rev, u.firstAppliedAt, u.reason, u.maybeStart]),
+    [[19, T - 9000, "initial", true], [20, T - 5000, "periodic", false]],
+  );
   assert.match(toMarkdown(s), /rev 20: first applied 14:09:55\.000 by a `periodic` fetch/);
   assert.deepEqual(summarize(JSONL).unnotified, []);
 });
@@ -93,3 +99,37 @@ test("recordToLines decodes a subs-worker client record", () => {
   const s = summarize(lines);
   assert.equal(s.revs[0].hinted.sources.warm, 1);
 });
+
+test("a first save whose broadcast was lost is reported, not mistaken for the starting state", () => {
+  const lines = [
+    { kind: "meta", host: "h", startedAt: "2026-10-11T00:00:00.000Z" },
+    { kind: "client", client: 0, locale: "ja", subscribed: 1, firstSubscribedAt: 1_000, statuses: {}, errors: {}, fallbacks: 0, recreates: 0, failKinds: {}, exhausted: 0 },
+    // The join's own fetch: the clients' starting state (rev 10).
+    { kind: "applied", client: 0, t: 1_200, rev: 10, reason: "initial" },
+    // 6 s later a save (rev 11) whose broadcast never arrived; the
+    // periodic poll brought it.
+    { kind: "applied", client: 0, t: 7_500, rev: 11, reason: "periodic" },
+  ];
+  const s = summarize(lines);
+  const revs = s.unnotified.map((u) => u.rev);
+  assert.deepEqual(revs, [10, 11]);
+  assert.equal(s.unnotified[0].maybeStart, true);
+  assert.equal(s.unnotified[1].maybeStart, false);
+  assert.equal(s.unnotified[1].firstSubscribedAt, 1_000);
+  const md = toMarkdown(s);
+  assert.match(md, /rev 11: .*broadcast did not reach them/);
+  assert.match(md, /rev 10: .*starting state/);
+});
+
+test("jsonl ordering: client records (no t) never scramble the timed records", () => {
+  const rec = {
+    locale: "ja", subscribedAt: [5_000], statuses: {}, errors: {}, fallbacks: [], recreates: [], failKinds: {}, exhausted: [],
+    appliedAll: [[6_000, 1, "initial"]], bcasts: [], reqs: [],
+  };
+  const lines = recordToLines(rec);
+  const client = lines.find((l) => l.kind === "client");
+  assert.equal(client.t, undefined);
+  const timed = lines.filter((l) => Number.isFinite(l.t)).sort((a, b) => a.t - b.t);
+  assert.ok(timed.length >= 1);
+});
+
