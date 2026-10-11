@@ -154,6 +154,47 @@ describe("liveScheduler — notifications", () => {
     expect(runFetch).toHaveBeenLastCalledWith("catchup", expect.anything());
   });
 
+  it("an immediate dirty follow-up that would carry a hint ticket waits for the shared cooldown", async () => {
+    let batch: number | null = null;
+    const { calls, runFetch, scheduler } = harness({
+      captureHint: () => {
+        const h = batch;
+        batch = null;
+        return h;
+      },
+    });
+    batch = 5;
+    scheduler.requestFetch("notification");
+    await advance(0); // dispatched at t = 0 with hint 5
+    expect(calls[0].request.hint).toBe(5);
+    // During flight: a periodic tick (immediate follow-up) and a new push.
+    scheduler.requestFetch("periodic");
+    batch = 6;
+    scheduler.requestFetch("notification");
+    await advance(50);
+    await settle(calls[0]);
+    // The follow-up is generic (periodic obligation) AND carries hint 6,
+    // so it may not start before the cooldown edge at t = 1000.
+    await advance(949);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request.generic).toBe(true);
+    expect(calls[1].request.hint).toBe(6);
+  });
+
+  it("an immediate dirty follow-up without a ticket is not held by the cooldown", async () => {
+    const { calls, runFetch, scheduler } = harness({ captureHint: () => null });
+    scheduler.requestFetch("notification");
+    await advance(0);
+    scheduler.requestFetch("periodic");
+    await advance(50);
+    await settle(calls[0]);
+    await advance(0);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request.hint).toBeNull();
+  });
+
   // R1 let the notification win here (the follow-up became a hint
   // fetch). R2: the catch-up's maintenance obligation wins and the push's
   // hint rides along as minRev without hint=1 — one request, both duties.

@@ -522,6 +522,11 @@ export function createLiveScheduler(
   // Start time of the last cooldown-bound request; the cooldown window
   // is measured from here.
   let lastSpreadStartAt = Number.NEGATIVE_INFINITY;
+  // Start of the last request that carried a hint ticket. Separate from
+  // `lastSpreadStartAt` (which maintenance triggers also advance) so a
+  // catch-up or resume never pushes a due recheck past its own window:
+  // the hint cooldown is a ceiling on HINT-carrying requests only.
+  let lastTicketStartAt = Number.NEGATIVE_INFINITY;
   let notBeforeAt =
     initialNotBeforeAt === null || !Number.isFinite(initialNotBeforeAt)
       ? Number.NEGATIVE_INFINITY
@@ -631,6 +636,25 @@ export function createLiveScheduler(
       return;
     }
 
+    // No request that carries a hint ticket starts inside the shared
+    // cooldown, whatever path dispatched it: an immediate dirty
+    // follow-up after a settle, a maintenance tick that happened to be
+    // due, a retry armed with a short delay. The cooldown is the
+    // per-client ceiling the contract promises the server (≤ 1
+    // hint-carrying request per second, so a broadcast flood cannot
+    // turn into a fetch flood by riding on uncorrelated triggers).
+    // Put the ticket back and come back at the cooldown edge; a plain
+    // maintenance request without a ticket is not held.
+    if (ticket !== null && now < lastTicketStartAt + cooldownMs) {
+      carried = mergeTickets(carried, ticket);
+      scheduleAt(
+        applyFloor(lastTicketStartAt + cooldownMs, now, jitterMs),
+        entryReason,
+        isRetryRun,
+      );
+      return;
+    }
+
     genericRequired = false;
     const label: LiveFetchReason = isRetryRun
       ? "retry"
@@ -654,6 +678,7 @@ export function createLiveScheduler(
     inFlightGeneric = generic;
     dirty = null;
     if (isSpreadReason(label) || ticket !== null) lastSpreadStartAt = now;
+    if (ticket !== null) lastTicketStartAt = now;
 
     let outcome: LiveFetchOutcome;
     try {
