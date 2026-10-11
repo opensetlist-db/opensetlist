@@ -3,6 +3,7 @@ import { attachDatabasePool } from "@vercel/functions/db-connections";
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { INSTANCE_ID } from "@/lib/instanceId";
+import { installOpenTransactionGuard } from "@/lib/pgPool";
 
 // ---------------------------------------------------------------------
 // Pool sizing — why 2 connections, 5 s idle, 5 s connect timeout
@@ -79,6 +80,14 @@ function createPool(): Pool {
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 5_000,
   });
+  // A client must never go back into circulation inside an open
+  // transaction — Prisma's `maxWait` give-up path can return one that
+  // way, and every later "auto-commit" query on it would then run inside
+  // that transaction. The guard rolls such a client back before reuse;
+  // full rationale in `src/lib/pgPool.ts`. Registered before
+  // `attachDatabasePool` only for readability — both are independent
+  // synchronous `release` listeners.
+  installOpenTransactionGuard(pool);
   // Off Vercel this only registers a `release` listener whose handler
   // returns early (it needs VERCEL_URL + VERCEL_REGION), so it is safe
   // in local dev, tests and scripts — verified in
