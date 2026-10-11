@@ -8,7 +8,13 @@
 // parser). Pages and SDK clients are reported separately per save.
 // Edits: an admin driver inserts a row after
 // the 2nd row and fills in a never-used "marker" song, `--edits` times,
-// `--pause` seconds apart (admin.mjs). Measurement: PUT start → marker
+// `--pause` seconds apart (admin.mjs). `--edit-mode` picks the shape of
+// one edit: `pair` (default) = insert-after + PUT (two saves, two
+// broadcasts; the PUT's notification fetch always meets the 1 s cooldown
+// the insert's opened), `standalone` = ONE PUT that puts the next marker
+// on an "anchor" row the run created before the population joined (one
+// save, one broadcast — the clean single-save case), `mixed` = pair on
+// odd edits, standalone on even ones. Measurement: PUT start → marker
 // link in each page's DOM, and PUT start → each SDK client applying a
 // snapshot with rev ≥ the PUT's rev. The clock starts at the FIRST
 // attempt of a save: a retried save keeps its original start, because
@@ -41,8 +47,20 @@
 // ../warm-join.mjs, which lines it up with the warm job's completion
 // from the Vercel history logs (the harness cannot see those live).
 //
+// Measurement validity (every run): the main thread and every SDK
+// worker thread run an event-loop lag monitor (100 ms tick), the workers
+// send a heartbeat each second, and the workers time their own 8 s
+// deadline timers. A lag sample > 1 s on any thread, or a worker silent
+// for > 3 s, inside the measurement window makes the run INVALID (exit
+// code 3; a banner names the thread and the time; the gates are still
+// printed, labelled "measurement invalid"): the load host, not the
+// system under test, delayed the timestamps. See hostmon.mjs.
+//
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
-// gitignored). All timestamps in the files are UTC ISO so the run can be
+// gitignored) and <stamp>-timelines.jsonl (gitignored, stays local): one
+// line per SDK client and per page with its full request / apply /
+// broadcast timeline, so a run can be re-analysed client by client
+// afterwards (the JSON keeps only per-save aggregates for SDK clients). All timestamps in the files are UTC ISO so the run can be
 // aligned with a concurrent k6 burst from another stream.
 import fs from "node:fs";
 import path from "node:path";
@@ -55,6 +73,10 @@ import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSo
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
+import {
+  startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW,
+  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT,
+} from "./hostmon.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +94,16 @@ const SUBS = int("subs", 470);
 const EDITS = int("edits", 12);
 const PAUSE_MS = Math.round(parseFloat(args.pause ?? "25") * 1000);
 const AFTER_ROW = int("after-row", 2);
+// See the header. insert-after cannot carry a song (the route takes only
+// { eventId, afterPosition }), so a single-save edit is a PUT that swaps
+// the marker song on a row the run created up front.
+const EDIT_MODE = String(args["edit-mode"] ?? "pair");
+if (!["pair", "standalone", "mixed"].includes(EDIT_MODE)) {
+  console.error("--edit-mode must be pair|standalone|mixed");
+  process.exit(2);
+}
+const modeOf = (k) => (EDIT_MODE === "mixed" ? (k % 2 === 1 ? "pair" : "standalone") : EDIT_MODE);
+const NEEDS_ANCHOR = EDIT_MODE !== "pair";
 const TIMEOUT_MS = int("timeout", 30) * 1000;
 const SETTLE_MS = int("settle", 10) * 1000;
 const JOIN_TIMEOUT_MS = int("join-timeout", 120) * 1000;
@@ -84,6 +116,14 @@ const SUB_WORKERS = args["sub-workers"] ? int("sub-workers", 1) : Math.max(1, Ma
 const SUB_BATCH = int("sub-batch", 50); // joins per second across all workers
 const PAGE_CONCURRENCY = int("page-concurrency", 5);
 const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position restore"
+// Host isolation guard (see hostGuard()): warn by default, refuse to
+// start with --strict-host.
+const STRICT_HOST = args["strict-host"] === true || args["strict-host"] === "true";
+// Self-test of the INVALID path: `--debug-stall=<ms>` makes SDK worker 0
+// busy-wait that long right before the first edit, i.e. exactly the
+// failure the validity monitors exist to catch. Expect exit code 3 and
+// the banner naming "worker 0". Never use it for a measurement.
+const DEBUG_STALL_MS = int("debug-stall", 0);
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
@@ -202,6 +242,26 @@ const workers = [];
 const saveFailures = [];
 let finalized = false;
 let guest = null; // guest broadcaster of the poison / spam drills
+// standalone / mixed: the row every single-save edit rewrites. Its
+// position is tracked (each pair insert above it shifts it down by one)
+// AND re-read from the DB before each standalone save, because the PUT
+// writes `position` too: a stale value would move the row or trip the
+// (eventId, position) unique index.
+let anchor = null; // { id, position }
+// Measurement validity (see the header and hostmon.mjs). The main
+// thread's monitor starts at load: it owns every page timestamp
+// (Playwright events land here) and the admin driver's save clock.
+const mainLag = startLagMonitor();
+const heartbeats = {}; // worker idx → [[recvT, sendT, lagMaxSinceLast], …]
+const workerStarted = {}; // worker idx → spawn time
+let workerMeta = []; // per worker: { worker, lag, deadlineLate, timedOut }
+// Host telemetry, 1 s: load average, host CPU busy (all cores), this
+// process's CPU (all its threads, incl. the SDK workers), RSS, free
+// memory, thread count. Summarised per phase in the report, raw in the
+// JSON — the context for a lag spike (was the HOST busy, or only us?).
+// Chromium runs in separate processes, so its CPU shows in the host
+// figure, not in the process figure.
+const hostMon = startHostSampler({ threads: () => 1 + workers.length });
 
 // Short-lived DB connection for one check (session pooler; holding one
 // open for the whole run would pin a pooler client for minutes).
@@ -226,11 +286,17 @@ function startWorkers() {
         offset, n, base: BASE, eventId: EVENT_ID,
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        batch: batchPer, every: 1000, localeOf: LOCALE_OF,
+        batch: batchPer, every: 1000, localeOf: LOCALE_OF, workerIdx: w,
       },
     });
+    workerStarted[w] = Date.now();
+    heartbeats[w] = [];
     const waiters = {};
     worker.on("message", (m) => {
+      if (m.type === "hb") {
+        heartbeats[w].push([Date.now(), m.t, m.lagMax]);
+        return;
+      }
       const q = waiters[m.type];
       if (q && q.length) q.shift()(m);
     });
@@ -239,7 +305,7 @@ function startWorkers() {
       (waiters[type] ||= []).push(resolve);
       worker.postMessage({ cmd, ...extra });
     });
-    workers.push({ worker, n, ask });
+    workers.push({ worker, n, ask, idx: w });
   }
 }
 
@@ -285,9 +351,10 @@ const pageNoted = (rec, { rev, id, ty }) =>
 async function stopWorkers() {
   const results = await Promise.all(workers.map((w) => Promise.race([
     w.ask("stop", "result"),
-    sleep(20000).then(() => ({ clients: [] })),
+    sleep(20000).then(() => ({ worker: w.idx, clients: [], timedOut: true })),
   ])));
   await Promise.allSettled(workers.map((w) => w.worker.terminate()));
+  workerMeta = results.map((r, i) => ({ worker: r.worker ?? workers[i].idx, lag: r.lag ?? null, deadlineLate: r.deadlineLate ?? [], timedOut: !!r.timedOut, clients: r.clients.length }));
   return results.flatMap((r) => r.clients);
 }
 
@@ -399,7 +466,9 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   // that worked, reported next to it for retried edits only.
   const tPut = edit.put.startedAt;
   const tPutOk = edit.put.successAt ?? tPut;
-  const tIns = edit.ins.startedAt;
+  // null for a standalone edit (no insert): the insert-based columns are
+  // then simply empty for it.
+  const tIns = edit.ins?.startedAt ?? null;
   const deadline = tPut + TIMEOUT_MS;
   // A notification only counts for this save if it arrives inside the
   // measurement window and before the clean-up starts — the clean-up's
@@ -477,13 +546,13 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     const bucket = out.pages;
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(seen - tPut);
-      if (!drilled) bucket.latFromInsert.push(seen - tIns);
+      if (!drilled && tIns != null) bucket.latFromInsert.push(seen - tIns);
       if (!drilled) bucket.latFromSuccess.push(seen - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const nu = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "U" && t >= tPut && t < noteEnd);
     if (nu) bucket.notifPut.push(nu[0] - tPut);
-    const ni = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "I" && t >= tIns && t < noteEnd);
+    const ni = tIns == null ? null : firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "I" && t >= tIns && t < noteEnd);
     if (ni) bucket.notifIns.push(ni[0] - tIns);
   }
   for (const r of subRecs) {
@@ -493,13 +562,13 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     const bucket = out.subs;
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(a[0] - tPut);
-      if (!drilled) bucket.latFromInsert.push(a[0] - tIns);
+      if (!drilled && tIns != null) bucket.latFromInsert.push(a[0] - tIns);
       if (!drilled) bucket.latFromSuccess.push(a[0] - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const bp = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bp) bucket.bcastPut.push(bp[0] - tPut);
-    const bi = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.ins.rev && t >= tIns - 50);
+    const bi = tIns == null ? null : firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.ins.rev && t >= tIns - 50);
     if (bi) bucket.bcastIns.push(bi[0] - tIns);
   }
   return out;
@@ -509,22 +578,37 @@ const ms = (v) => (v == null ? "—" : `${v}`);
 const dline = (d) => `${d.n} | ${ms(d.p50)} | ${ms(d.p95)} | ${ms(d.max)}`;
 
 // ─── monotonicity ───
-// Marker song → rev of the save that put it on its row, plus, for a
-// double save, which marker the final save replaced (removing that one is
-// the expected outcome, not a regression).
+// Marker song → rev of the save that put it on its row, plus which
+// markers a later save on the SAME row replaced (removing those is the
+// expected outcome, not a regression): the superseded save of a double
+// save, and every earlier marker on the standalone anchor row. A marker
+// is "replaced" by every higher-rev marker on its row, not only the next
+// one — a page may skip an intermediate version entirely.
 function markerIndex(edits) {
   const rev = new Map();
-  const replacedBy = new Map();
+  const byRow = new Map(); // row id → [[songId, rev], …]
+  const add = (row, songId, r) => {
+    rev.set(songId, r);
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row).push([songId, r]);
+  };
   for (const e of edits) {
     if (e.double) {
-      for (const x of [e.double.first, e.double.second]) if (x) rev.set(String(x.song.id), x.put.rev);
-      if (e.double.superseded) replacedBy.set(String(e.double.superseded.song.id), String(e.double.final.song.id));
+      for (const x of [e.double.first, e.double.second]) if (x) add(e.id, String(x.song.id), x.put.rev);
     } else {
-      rev.set(String(e.song.id), e.put.rev);
+      add(e.id, String(e.song.id), e.put.rev);
+    }
+  }
+  const replacedBy = new Map(); // songId → Set of songIds that replace it
+  for (const list of byRow.values()) {
+    for (const [id, r] of list) {
+      const later = list.filter(([, r2]) => r2 > r).map(([x]) => x);
+      if (later.length) replacedBy.set(id, new Set(later));
     }
   }
   return { rev, replacedBy };
 }
+const replacedPresent = (idx, id, present) => [...(idx.replacedBy.get(id) || [])].some((x) => present.has(x));
 
 // A page exposes no "applied rev", so its version is derived from the
 // DOM: the highest rev among the marker songs it currently shows. Every
@@ -551,8 +635,7 @@ function pageMonotonicity(r, idx, until) {
       if (!idx.rev.has(id)) continue;
       present.delete(id);
       touched = true;
-      const by = idx.replacedBy.get(id);
-      if (!(by && present.has(by))) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
+      if (!replacedPresent(idx, id, present)) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
     }
     if (!touched) continue;
     let v = -Infinity;
@@ -576,9 +659,39 @@ function subMonotonicity(r) {
   return { regressions };
 }
 
+// ─── host isolation guard ───
+// Nothing else may run on the load host during a run: a busy host or a
+// concurrent heavy process (a history log fetch, the summariser, another
+// run, k6) stalls the worker threads and turns the run INVALID at best,
+// or skews it below the INVALID thresholds at worst. Checked once, before
+// anything is created: host CPU busy (POSIX: 1-min load ÷ cores;
+// Windows: a 2 s CPU sample, loadavg is always 0 there) > 60 %, or a
+// competing process (hostmon.mjs `competingProcesses`; the log capture
+// and the pooler samplers are allowed). Warn, or with --strict-host
+// refuse. The result goes into the report and the JSON either way.
+let hostCheck = null;
+async function hostGuard() {
+  const busy = await hostBusy(2000);
+  const procs = listProcesses();
+  const competing = procs ? competingProcesses(procs) : null;
+  const problems = [];
+  if (busy.pct != null && busy.pct > HOST_BUSY_LIMIT_PCT) problems.push(`host CPU ${busy.pct} % busy (${busy.how}) > ${HOST_BUSY_LIMIT_PCT} %`);
+  for (const p of competing || []) problems.push(`pid ${p.pid}: ${p.why} — ${String(p.cmd).slice(0, 120)}`);
+  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST };
+  if (procs == null) log("host guard: could not list processes (not checked)");
+  if (!problems.length) {
+    log(`host guard: ok (CPU ${busy.pct} % busy, ${busy.how}; no competing processes)`);
+    return;
+  }
+  for (const m of problems) log(`host guard WARNING: ${m}`);
+  if (STRICT_HOST) throw new Error(`--strict-host: the load host is not isolated (${problems.length} problem(s)); nothing was created`);
+  log("host guard: continuing (no --strict-host); expect an INVALID verdict if the host stalls");
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
+  await hostGuard();
   log(`browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}`);
 
   // DB: recorded starting rows (for the position restore) + marker songs.
@@ -600,6 +713,17 @@ async function main() {
 
   cookie = await adminLogin(BASE);
 
+  // standalone / mixed: create the anchor row now, before any viewer
+  // joins, so its own insert is not part of any measured save. It sits
+  // right after row AFTER_ROW, i.e. exactly where pair inserts land —
+  // which shifts it down by one per pair insert (tracked below).
+  if (NEEDS_ANCHOR) {
+    const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
+    created.push(a.id);
+    anchor = { id: a.id, position: a.position };
+    log(`anchor row ${a.id} @${a.position} created (rev ${a.rev}) for ${EDIT_MODE} edits`);
+  }
+
   // Populations.
   const drillPageSet = new Set(Array.from({ length: Math.min(DRILL_PAGES, PAGES) }, (_, i) => i));
   const routeMode = (idx) => {
@@ -609,8 +733,8 @@ async function main() {
     if (DRILL === "lost-final" && DROP_VIA === "proxy" && drillPageSet.has(idx)) return "proxy";
     return "none";
   };
-  if (SUBS > 0) startWorkers();
   const popStart = Date.now();
+  if (SUBS > 0) startWorkers();
   pagePop = PAGES > 0
     ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode, headless: !args.headed, concurrency: PAGE_CONCURRENCY, log })
     : { pages: [], joined: () => 0, pgReady: () => 0, setDropNotify() {}, armHookDrop: async () => 0, disarmHookDrop: async () => 0, hookDropPending: async () => null, dropSockets: () => 0, close: async () => {} };
@@ -648,6 +772,7 @@ async function main() {
     allPgReadySec: WAIT_PG_READY && pgReadyAt ? (pgReadyAt - popStart) / 1000 : null,
   };
   log(`population: ${JSON.stringify(popSummary)}; settling ${SETTLE_MS / 1000}s`);
+  const settleStart = Date.now();
   // The guest joins during the settle time, so its join does not shift
   // the edit schedule; a guest that cannot join makes the drill
   // meaningless, so the run stops (after the usual clean-up) instead of
@@ -668,12 +793,25 @@ async function main() {
     if (Number.isSafeInteger(r) && r > latestRev) latestRev = r;
   };
   let spamP = null;
+  if (DEBUG_STALL_MS > 0 && workers.length) {
+    log(`--debug-stall: blocking worker 0 for ${DEBUG_STALL_MS} ms (self-test; this run must come out INVALID)`);
+    workers[0].worker.postMessage({ cmd: "debugStall", ms: DEBUG_STALL_MS });
+  }
   const editsStart = Date.now();
   for (let k = 1; k <= EDITS; k++) {
     const due = editsStart + (k - 1) * PAUSE_MS;
     if (Date.now() < due) await sleep(due - Date.now());
     const song = songs[k - 1];
     const drillThis = k === DRILL_EDIT;
+    const mode = modeOf(k);
+    if (mode === "standalone") {
+      // Re-read the anchor's position (see `anchor`); the tracked value
+      // is the fallback when the DB read fails. Before any drill action,
+      // so a drill's timing relative to the save is unchanged.
+      const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position)
+        .catch((e) => { log(`  anchor position read failed (${e.message}); using tracked ${anchor.position}`); return null; });
+      if (p != null) anchor.position = Number(p);
+    }
 
     if (DRILL === "poison" && drillThis) {
       const t = Date.now();
@@ -723,7 +861,7 @@ async function main() {
     let put = null;
     const insFirst = Date.now();
     let insAttempts = 0;
-    for (let attempt = 1; attempt <= 2 && !ins; attempt++) {
+    for (let attempt = 1; attempt <= 2 && !ins && mode === "pair"; attempt++) {
       const tryStart = Date.now();
       insAttempts = attempt;
       try {
@@ -745,6 +883,11 @@ async function main() {
       }
     }
     if (ins) Object.assign(ins, { successAt: ins.startedAt, startedAt: insFirst, attempts: insAttempts });
+    // A committed pair insert at or above the anchor shifts it down.
+    if (ins && anchor && anchor.position >= ins.position) anchor.position++;
+    // The row this edit's PUT(s) write: the fresh row of a pair, or the
+    // anchor of a standalone edit.
+    const target = mode === "pair" ? ins : anchor;
 
     // Drills that must hit the PUT and nothing else (lost-final, a hook-
     // driven silent-loss, verify-ambiguity's memo priming): wait until the
@@ -764,7 +907,7 @@ async function main() {
       }
       await sleep(LOST_SETTLE_MS);
     }
-    if (ins && drillThis && (DRILL === "lost-final" || hookSilent)) {
+    if (target && drillThis && (DRILL === "lost-final" || hookSilent)) {
       const lost = DRILL === "lost-final";
       if (DROP_VIA === "hook") {
         const armed = await pagePop.armHookDrop([...drillPageSet]);
@@ -776,7 +919,7 @@ async function main() {
       if (lost && SUBS > 0) await subsDropNotify(true);
     }
     let prime = null;
-    if (ins && drillThis && DRILL === "verify-ambiguity") {
+    if (target && drillThis && DRILL === "verify-ambiguity") {
       // See the PRIME_* constants. Sent, not awaited; the PUT follows
       // PRIME_LEAD_MS later.
       const minRev = latestRev + PRIME_OFFSET;
@@ -799,7 +942,7 @@ async function main() {
     }
 
     let double = null;
-    if (ins && DRILL === "double-save" && drillThis) {
+    if (target && DRILL === "double-save" && drillThis) {
       // Two PUTs on the same row, the 2nd started DOUBLE_GAP_MS after the
       // 1st without waiting for it. Both take the Event row lock, so they
       // commit one after the other; which one commits last is decided by
@@ -809,7 +952,7 @@ async function main() {
       const second = songs[EDITS];
       const fire = (s, delayMs) => sleep(delayMs).then(() => {
         const t = Date.now();
-        return putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: s.id })
+        return putSong({ base: BASE, cookie, id: target.id, position: target.position, songId: s.id })
           .then((r) => ({ song: s, put: { ...r, successAt: r.startedAt, attempts: 1 } }))
           .catch((e) => {
             saveFailures.push({ k, op: `put (double-save ${s === song ? "1st" : "2nd"})`, attempt: 1, at: iso(t), error: e.message });
@@ -825,16 +968,22 @@ async function main() {
         put = fin.put;
         drillEvents.push({ k, what: `double save: song ${song.id} @${iso(a?.put.startedAt)} rev ${a?.put.rev ?? "failed"}, song ${second.id} @${iso(b?.put.startedAt)} rev ${b?.put.rev ?? "failed"} → final ${fin.song.id}`, at: iso(Date.now()) });
       }
-    } else if (ins) {
+    } else if (target) {
       const putFirst = Date.now();
       for (let attempt = 1; attempt <= 2 && !put; attempt++) {
         try {
-          put = await putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: song.id });
+          put = await putSong({ base: BASE, cookie, id: target.id, position: target.position, songId: song.id });
           Object.assign(put, { successAt: put.startedAt, startedAt: putFirst, attempts: attempt });
         } catch (e) {
-          saveFailures.push({ k, op: "put", attempt, at: iso(Date.now()), error: e.message });
+          saveFailures.push({ k, op: mode === "pair" ? "put" : "put (standalone)", attempt, at: iso(Date.now()), error: e.message });
           log(`edit ${k}: PUT failed (${e.message})`);
           await sleep(1000);
+          // A stale anchor position fails on the unique index: re-read it
+          // before the retry.
+          if (mode === "standalone") {
+            const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position).catch(() => null);
+            if (p != null) anchor.position = Number(p);
+          }
         }
       }
     }
@@ -845,7 +994,7 @@ async function main() {
       for (const r of res) kinds[`${r.status} ${verifyKindOf(r.verify)}`] = (kinds[`${r.status} ${verifyKindOf(r.verify)}`] || 0) + 1;
       drillEvents.push({ k, what: `memo priming: ${res.length} request(s) minRev=${prime.minRev} sent ${PRIME_LEAD_MS} ms before the PUT; responses ${JSON.stringify(kinds)}, ms ${res.map((r) => r.ms).join("/")}`, at: iso(prime.at), atMs: prime.at });
     }
-    if (!ins || !put) {
+    if (!target || !put) {
       log(`edit ${k} SKIPPED (save failed twice) — continuing`);
       if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) pagePop.setDropNotify(drillPageSet, false);
       if (lostFinalOn && SUBS > 0) await subsDropNotify(false);
@@ -856,9 +1005,9 @@ async function main() {
     if (put.rev == null) put.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
     noteRev(put.rev);
     const finalSong = double ? double.final.song : song;
-    const edit = { k, id: ins.id, song: finalSong, ins, put, double };
+    const edit = { k, mode, id: target.id, song: finalSong, ins, put, double };
     edits.push(edit);
-    log(`edit ${k}: row ${ins.id} @${ins.position} insert ${ins.ms} ms (rev ${ins.rev}${ins.attempts > 1 ? `, ${ins.attempts} attempts` : ""}) → song ${finalSong.id} "${finalSong.title}" put ${put.ms} ms (rev ${put.rev}${put.attempts > 1 ? `, ${put.attempts} attempts` : ""})${double ? " [double save]" : ""}`);
+    log(`edit ${k} [${mode}]: row ${target.id} @${target.position}${ins ? ` insert ${ins.ms} ms (rev ${ins.rev}${ins.attempts > 1 ? `, ${ins.attempts} attempts` : ""})` : ""} → song ${finalSong.id} "${finalSong.title}" put ${put.ms} ms (rev ${put.rev}${put.attempts > 1 ? `, ${put.attempts} attempts` : ""})${double ? " [double save]" : ""}`);
 
     if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) {
       // Keep swallowing notifications on the drilled pages (and, for
@@ -905,7 +1054,7 @@ async function main() {
     const s = await spamP;
     drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} of ${s.planned} messages in ${Math.round(s.ms / 1000)} s${s.skipped ? ` (${s.skipped} slots skipped after slow acks)` : ""}`, at: iso(Date.now()) });
   }
-  return { runStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
+  return { runStart, popStart, settleStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
 }
 
 async function finalize(state, aborted) {
@@ -957,6 +1106,62 @@ function report(state, fin) {
   const { edits, popSummary, drillEvents, drillPageSet } = state;
   const { pageRecs, subRecs, clean, verify } = fin;
   const drillK = DRILL_EDIT;
+
+  // ─── measurement validity ───
+  // Window: from the population start (the first SDK client's first
+  // request) to the end of the edit window. Clean-up, worker shutdown
+  // and this report run after it and cannot move a measured timestamp.
+  const vFrom = state.popStart ?? state.runStart;
+  const vTo = state.editsEnd;
+  const mainSummary = mainLag.recorder.summary();
+  const lagThreads = [{ thread: "main", summary: mainSummary }, ...workerMeta.map((m) => ({ thread: `worker ${m.worker}`, summary: m.lag }))];
+  const valid = validity({ lags: lagThreads, heartbeats, from: vFrom, to: vTo, workerStarted });
+  // ─── host telemetry per phase ───
+  // join = population start → all joined (+ guest), settle = the quiet
+  // time before the first edit, edits = first edit → last edit settled,
+  // drill = the drilled edit's window (its first drill action or save →
+  // its timeout, clipped to the edit window; the spam's send window).
+  const phases = [
+    { name: "join", from: state.popStart, to: state.settleStart },
+    { name: "settle", from: state.settleStart, to: state.editsStart },
+    { name: "edits", from: state.editsStart, to: state.editsEnd },
+  ];
+  if (DRILL) {
+    let from = null;
+    let to = null;
+    if (DRILL === "spam" && guest?.sends.length) {
+      from = guest.sends[0][0];
+      to = guest.sends[guest.sends.length - 1][0] + 3000;
+    } else if (DRILL === "ws-blocked") {
+      from = state.editsStart;
+      to = state.editsEnd;
+    } else {
+      const de = edits.find((e) => e.k === DRILL_EDIT);
+      const ts = drillEvents.map((d) => d.atMs ?? Date.parse(d.at)).filter(Number.isFinite);
+      if (de) ts.push(de.ins?.startedAt ?? de.put.startedAt);
+      if (ts.length) {
+        from = Math.min(...ts);
+        to = Math.min(state.editsEnd, Math.max(...ts, de ? de.put.startedAt + TIMEOUT_MS : 0));
+      }
+    }
+    if (from != null) phases.push({ name: `drill ${DRILL}`, from, to });
+  }
+  const hostPhases = summarizeHost(hostMon.samples, phases.filter((p) => p.from != null && p.to != null));
+
+  const threadRows = lagThreads.map(({ thread, summary }) => {
+    const w = thread === "main" ? null : Number(thread.split(" ")[1]);
+    const meta = w == null ? null : workerMeta.find((m) => m.worker === w);
+    const hbs = w == null ? [] : heartbeats[w] || [];
+    let hbGapMax = null;
+    for (let i = 1; i < hbs.length; i++) hbGapMax = Math.max(hbGapMax ?? 0, hbs[i][1] - hbs[i - 1][1]);
+    const late = dist((meta?.deadlineLate || []).map((x) => x[1]));
+    return {
+      thread, window: lagOver(summary, vFrom, vTo), whole: summary ? { max: summary.max, maxAt: summary.maxAt, n: summary.n } : null,
+      over1s: (summary?.spikes || []).filter(([t, l]) => t >= vFrom && t <= vTo && l > LAG_INVALID_MS).length,
+      heartbeats: hbs.length, hbGapMax, deadlines: late, resultTimedOut: meta?.timedOut ?? false,
+    };
+  });
+
   // Reconnect drill: the drilled edit is judged as catch-up for every
   // page and client; a LATER edit is too for any page/client that had
   // not rejoined the channel by that edit's PUT (the R3 fallback keeps
@@ -993,7 +1198,7 @@ function report(state, fin) {
   // after a failed response): their latency already counts from the first
   // attempt above; here they are also shown alone, with the successful
   // attempt's clock next to it, so a retry storm can't hide in the p95.
-  const retried = rows.filter(({ e }) => e.put.attempts > 1 || e.ins.attempts > 1 || e.ins.adopted);
+  const retried = rows.filter(({ e }) => e.put.attempts > 1 || e.ins?.attempts > 1 || e.ins?.adopted);
   const retriedFirst = summarize(retried.flatMap(({ s }) => [...s.pages.lat, ...s.subs.lat]), retried.reduce((a, { s }) => a + s.pages.missing + s.subs.missing, 0));
   const retriedOk = dist(retried.flatMap(({ s }) => [...s.pages.latFromSuccess, ...s.subs.latFromSuccess]));
 
@@ -1021,7 +1226,10 @@ function report(state, fin) {
   if (de) {
     const fin = String(de.double.final.song.id);
     const sup = de.double.superseded ? String(de.double.superseded.song.id) : null;
-    const pagesOk = pageMono.filter((m) => m.present.has(fin) && !(sup && m.present.has(sup))).length;
+    // On the anchor row a LATER standalone save may replace the final
+    // marker before the window ends; showing that later marker counts as
+    // having converged past the double save.
+    const pagesOk = pageMono.filter((m) => (m.present.has(fin) || replacedPresent(idx, fin, m.present)) && !(sup && m.present.has(sup))).length;
     const subsOk = subRecs.filter((r) => {
       const before = (r.appliedAll || []).filter(([t]) => t < state.editsEnd);
       return before.length && Math.max(...before.map(([, rev]) => rev)) >= de.put.rev;
@@ -1287,19 +1495,30 @@ function report(state, fin) {
 
   const P = pageRecs.length;
   const M = subRecs.length;
-  const v = (x) => (x == null ? "n/a" : x ? "**PASS**" : "**FAIL**");
+  // An invalid measurement still prints every gate (the numbers are
+  // useful for diagnosis), but no verdict may read as a result.
+  const v = (x) => `${x == null ? "n/a" : x ? "**PASS**" : "**FAIL**"}${valid.invalid ? " (measurement invalid)" : ""}`;
   const lines = [];
   lines.push(`# Browsers run — ${new Date(state.runStart).toISOString()}`);
   lines.push("");
+  if (valid.invalid) {
+    lines.push("> **VERDICT: INVALID — the load host stalled; this run measured the laptop, not the system.**");
+    for (const r of valid.reasons.slice(0, 8)) lines.push(`> - ${r.thread}: ${r.what} at ${iso(r.at)}`);
+    if (valid.reasons.length > 8) lines.push(`> - … ${valid.reasons.length - 8} more (JSON \`validity.reasons\`)`);
+    lines.push(`> Thresholds: a lag sample > ${LAG_INVALID_MS} ms on any thread, or a worker without a heartbeat for > ${SILENT_INVALID_MS} ms, between ${iso(vFrom)} and ${iso(vTo)}. Re-run with nothing else on the host (see README "Host isolation").`);
+    lines.push("");
+  }
   lines.push(`- Target: ${BASE}${EVENT_PATH} (event ${EVENT_ID}, start rev ${state.startRev}, ${original.length} active rows; insert after row ${AFTER_ROW} = position ${state.afterPosition})`);
   lines.push(`- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)`);
-  lines.push(`- Edits: ${EDITS} × (insert-after + PUT marker song), every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
+  const modeTxt = { pair: "(insert-after + PUT marker song) — edit mode pair", standalone: "(ONE PUT swapping the marker song on the anchor row) — edit mode standalone", mixed: "pair on odd edits, standalone on even — edit mode mixed" }[EDIT_MODE];
+  lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
+  if (hostCheck) lines.push(`- Host guard at start: CPU ${hostCheck.busyPct ?? "—"} % busy (${hostCheck.how}); ${hostCheck.processListOk ? `${hostCheck.competing.length} competing process(es)` : "process list unavailable"}${hostCheck.problems.length ? ` — **${hostCheck.problems.join("; ").replace(/\|/g, "/")}**` : ""}${STRICT_HOST ? " (--strict-host)" : ""}`);
   lines.push("");
-  lines.push("## Gate verdicts");
+  lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
   lines.push("");
-  lines.push("Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
+  lines.push("Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
   lines.push("");
   lines.push("| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |");
   lines.push("|---|---|---|---|---|---|---|---|");
@@ -1328,7 +1547,7 @@ function report(state, fin) {
   lines.push(`| warming: warm hits ÷ hinted fetches (\`x-snapshot-source: warm\`) | SDK ${warmTxt(hintTotals.notifWarm, hintTotals.notif)}, pages ${warmTxt(pageHint.notifWarm, pageHint.notif)} | — | — | — | — | informational; reader builds per save: \`vercel-logs-summary.mjs\` "Warming" on the history logs; arrival vs warm-complete: \`warm-join.mjs\` | n/a |`);
   lines.push(`| edits with a retried save (clock from the 1st attempt) | ${dline(retriedFirst)} | ${retriedFirst.missing} | informational — ${retried.length} edit(s); from the successful attempt p50/p95/max ${ms(retriedOk.p50)}/${ms(retriedOk.p95)}/${ms(retriedOk.max)} | n/a |`);
   lines.push("");
-  lines.push(`Insert-start based (insert-after request start → marker), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
+  lines.push(`Insert-start based (insert-after request start → marker; pair edits only), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
   lines.push("");
   lines.push("## Notification paths (PUT start → arrival)");
   lines.push("");
@@ -1345,24 +1564,24 @@ function report(state, fin) {
   lines.push("");
   lines.push("## Per edit");
   lines.push("");
-  lines.push("| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |");
-  lines.push("|---|---|---|---|---|---|---|---|---|");
+  lines.push("| # | mode | row | marker song | insert start (UTC) | ins ms | rev | save (PUT) start (UTC) | save ms | save rev |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|");
   const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
   const markOf = (e) => {
     const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
     return `${e.k}${nDrilled ? ` (drill: ${nDrilled})` : ""}${e.double ? " (double save)" : ""}`;
   };
   for (const { e } of rows) {
-    lines.push(`| ${markOf(e)} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
+    lines.push(`| ${markOf(e)} | ${e.mode} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${e.ins ? iso(e.ins.startedAt) : "—"} | ${e.ins ? `${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)}` : "—"} | ${ms(e.ins?.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
   }
   // Two tables, one per population: the gate is judged over both, but a
   // page (real React render, R1 or R2 build) and an SDK client (the R2
   // client logic without a DOM) fail differently, so they are read apart.
   const kinds = (o) => Object.entries(o).map(([k, n]) => `${k} ${n}`).join(", ") || "—";
   lines.push("");
-  lines.push("### Per save — pages (PUT start → marker in the DOM)");
+  lines.push("### Per save — pages (save start → marker in the DOM)");
   lines.push("");
-  lines.push("| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |");
+  lines.push("| # | save rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const pl = dist([...s.pages.lat, ...s.pages.drilledLat]);
@@ -1371,9 +1590,9 @@ function report(state, fin) {
     lines.push(`| ${markOf(e)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)} / ${ms(pl.p95)} / ${ms(pl.max)} | ${s.pages.missing + s.pages.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${s.pages.notifPut.length} | ${s.pages.hint.notif} | ${kinds(s.pages.hint.verify)} | ${s.pages.hint.warm}/${s.pages.hint.notif} | ${ms(pf.p50)} / ${ms(pf.p95)} |`);
   }
   lines.push("");
-  lines.push("### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)");
+  lines.push("### Per save — SDK clients (save start → applied rev ≥ save rev)");
   lines.push("");
-  lines.push("| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |");
+  lines.push("| # | save rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const sl = dist([...s.subs.lat, ...s.subs.drilledLat]);
@@ -1391,6 +1610,25 @@ function report(state, fin) {
   lines.push(`  - notification fetches by x-snapshot-source: ${kinds(hintTotals.notifSources)} (warm ${warmTxt(hintTotals.notifWarm, hintTotals.notif)})`);
   lines.push(`- Pages: ${pageHint.fetches} /api/setlist responses; notification fetches (hint=1) ${pageHint.notif}, their x-snapshot-verify: ${kinds(pageHint.notifVerify)}; all 200 responses: ${kinds(pageHint.verify)} (an R1 page build sends no hint=1)`);
   lines.push(`  - notification fetches by x-snapshot-source: ${kinds(pageHint.notifSources)} (warm ${warmTxt(pageHint.notifWarm, pageHint.notif)})`);
+  lines.push("");
+  lines.push("## Measurement validity (load host)");
+  lines.push("");
+  lines.push(`Event-loop lag = how late a 100 ms interval tick ran, per thread, inside the measurement window ${iso(vFrom)} → ${iso(vTo)} (p50 = median of the 10 s buckets' p50, p95 / p99 / max = the worst bucket). Heartbeats: one per second per worker, from its own loop. Deadline timers: fired − armed − 8,000 ms for every SDK request that hit the 8 s deadline. INVALID if any lag sample > ${LAG_INVALID_MS} ms or any heartbeat gap > ${SILENT_INVALID_MS} ms.`);
+  lines.push("");
+  lines.push("| thread | lag p50 / p95 / p99 / max ms | samples > 1 s | heartbeats (max gap ms) | deadline timers fired: n, late p50 / p95 / max ms |");
+  lines.push("|---|---|---|---|---|");
+  for (const t of threadRows) {
+    const w = t.window;
+    lines.push(`| ${t.thread}${t.resultTimedOut ? " (no result: stop timed out)" : ""} | ${ms(w.p50)} / ${ms(w.p95)} / ${ms(w.p99)} / ${ms(w.max)} | ${t.over1s} | ${t.thread === "main" ? "—" : `${t.heartbeats} (${ms(t.hbGapMax)})`} | ${t.thread === "main" ? "—" : `${t.deadlines.n}, ${ms(t.deadlines.p50)} / ${ms(t.deadlines.p95)} / ${ms(t.deadlines.max)}`} |`);
+  }
+  lines.push("");
+  lines.push(`Verdict: ${valid.invalid ? `**INVALID** (${valid.reasons.length} reason(s))` : "valid"}.`);
+  lines.push("");
+  lines.push(`Host (1 s samples; ${hostMon.ncpu} logical cores, ${hostMon.totalMemMB} MB): host CPU = busy share of all cores; process CPU = this process (main + SDK workers) as a share of all cores; Chromium is in the host figure only. load1 is always 0 on Windows.`);
+  lines.push("");
+  lines.push("| phase | s | host CPU p50 / max % | process CPU p50 / max % | RSS max MB | free mem min MB | load1 max | threads |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const p of hostPhases) lines.push(`| ${p.name} | ${((p.to - p.from) / 1000).toFixed(1)} | ${ms(p.hostCpuP50)} / ${ms(p.hostCpuMax)} | ${ms(p.procCpuP50)} / ${ms(p.procCpuMax)} | ${ms(p.rssMaxMB)} | ${ms(p.freeMemMinMB)} | ${ms(p.load1Max)} | ${p.threadsMax} |`);
   lines.push("");
   lines.push("## Population");
   lines.push("");
@@ -1516,12 +1754,92 @@ function report(state, fin) {
   lines.push("");
   const md = lines.join("\n");
 
+  // ─── timelines side file (JSONL) ───
+  // One JSON object per line. The first line documents every row layout,
+  // so the file is readable without this source. The rows are exactly
+  // what the worker / page recorder keeps (no re-shaping), so a later
+  // analysis sees what the run saw.
+  const lateByIdx = new Map();
+  for (const m of workerMeta) for (const x of m.deadlineLate || []) {
+    if (!lateByIdx.has(x[2])) lateByIdx.set(x[2], []);
+    lateByIdx.get(x[2]).push([x[0], x[1]]);
+  }
+  const timelines = [
+    {
+      kind: "header", version: 1, runStart: iso(state.runStart), base: BASE, eventId: EVENT_ID, drill: DRILL, label: args.label ?? null,
+      clock: "epoch ms of the load host (Date.now()); same clock as the report's UTC times",
+      kinds: {
+        thread: "one per thread: main (pages + admin driver) and each SDK worker; lag = 10 s buckets + spikes, heartbeats, deadline timers",
+        save: "one per writer save (insert-after / PUT), in run order",
+        sdk: "one per SDK client",
+        page: "one per Chromium page",
+      },
+      rows: {
+        "thread.lag.buckets": ["bucketStart", "n", "p50", "p95", "p99", "max"],
+        "thread.lag.spikes": ["t", "lagMs (> 200)"],
+        "thread.heartbeats": ["recvT (main clock)", "sendT (worker clock)", "lagMaxSinceLastMs"],
+        "thread.deadlineLate": ["t", "lateMs = fired - armed - 8000", "client idx"],
+        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source"],
+        "sdk.applied": ["t", "rev", "fetch reason"],
+        "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid"],
+        "sdk.exhausted": ["t", "hint"],
+        "sdk.lag.deadlineLate": ["t", "lateMs"],
+        "page.reqs": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start"],
+        "page.applied": ["t", "marker song ids added", "removed"],
+        "page.bcasts": ["t", "rev", "n | x (dropped by the proxy drill)"],
+        "page.notes": ["t", "postgres_changes type I/U/D", "row id"],
+      },
+    },
+    ...lagThreads.map(({ thread, summary }) => {
+      const w = thread === "main" ? null : Number(thread.split(" ")[1]);
+      return {
+        kind: "thread", thread, lag: summary,
+        ...(w == null ? {} : { heartbeats: heartbeats[w] || [], deadlineLate: workerMeta.find((m) => m.worker === w)?.deadlineLate || [] }),
+      };
+    }),
+    ...edits.flatMap((e) => [
+      ...(e.ins ? [{ kind: "save", k: e.k, op: "insert-after", id: e.id, start: e.ins.startedAt, successStart: e.ins.successAt ?? e.ins.startedAt, ms: e.ins.ms, rev: e.ins.rev, attempts: e.ins.attempts ?? 1 }] : []),
+      { kind: "save", k: e.k, op: "put", mode: e.mode, id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double },
+    ]),
+    ...subRecs.map((r) => ({
+      kind: "sdk", idx: r.idx, worker: r.worker ?? null, locale: r.locale,
+      reqs: r.reqs, applied: r.appliedAll, bcasts: r.bcasts, exhausted: r.exhausted,
+      subscribedAt: r.subscribedAt, fallbacks: r.fallbacks, recreates: r.recreates, failKinds: r.failKinds,
+      lag: { thread: `worker ${r.worker ?? "?"}`, deadlineLate: lateByIdx.get(r.idx) || [] },
+    })),
+    ...pageRecs.map((r) => ({
+      kind: "page", idx: r.idx, worker: null, locale: r.locale, mode: r.mode,
+      reqs: r.fetches, applied: r.dom, bcasts: r.bcasts, notes: r.notes,
+      openedAt: r.openedAt, loadedAt: r.loadedAt, joinAt: r.joinAt,
+      // Page events are timestamped by the browser (DOM) or by Playwright
+      // callbacks on the main thread; the main thread's lag is the one
+      // that can delay the latter.
+      lag: { thread: "main" },
+    })),
+  ].map((o) => JSON.stringify(o));
+
   const json = {
-    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
+    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
       ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
-    verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
+    verdicts, popSummary, rejoin, drillEvents,
+    // Measurement validity: the verdict, why, and each thread's lag
+    // series (10 s buckets [start, n, p50, p95, p99, max] + every sample
+    // > 200 ms), heartbeats and deadline-timer lateness.
+    validity: {
+      invalid: valid.invalid, reasons: valid.reasons.map((r) => ({ ...r, atIso: iso(r.at) })), window: { from: iso(vFrom), to: iso(vTo) },
+      thresholds: { lagMs: LAG_INVALID_MS, silentMs: SILENT_INVALID_MS },
+      threads: threadRows,
+      lag: { main: mainSummary, workers: workerMeta.map((m) => ({ worker: m.worker, lag: m.lag, timedOut: m.timedOut })) },
+      heartbeats, deadlineLate: Object.fromEntries(workerMeta.map((m) => [m.worker, m.deadlineLate])),
+    },
+    host: {
+      guard: hostCheck,
+      ncpu: hostMon.ncpu, totalMemMB: hostMon.totalMemMB, platform: process.platform,
+      phases: hostPhases.map((p) => ({ ...p, fromIso: iso(p.from), toIso: iso(p.to) })),
+      row: HOST_SAMPLE_ROW, samples: hostMon.samples,
+    }, saveFailures, clean, verify, doubleSave,
     guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
     hints: { sdk: hintTotals, pages: pageHint }, poison, spam, ambiguity,
     // Input of warm-join.mjs: per save, the commit proxy and every
@@ -1533,7 +1851,7 @@ function report(state, fin) {
       sdkRow: ["idx", "locale", "sendMinusCommitMs", "endMinusCommitMs", "source", "verify", "minRev"],
       pageRow: ["idx", "locale", "requestStartMinusCommitMs", "responseMinusCommitMs", "source", "verify", "minRev"],
       saves: rows.map(({ e, s }) => ({
-        k: e.k, rev: e.put.rev, insRev: e.ins.rev ?? null, double: !!e.double,
+        k: e.k, mode: e.mode, rev: e.put.rev, insRev: e.ins?.rev ?? null, double: !!e.double,
         putStart: e.put.successAt ?? e.put.startedAt, putMs: e.put.ms ?? null,
         putEnd: (e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0),
         putEndIso: iso((e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0)),
@@ -1548,18 +1866,18 @@ function report(state, fin) {
       subs: monoSubsBad.map((m) => ({ idx: m.r.idx, regressions: m.regressions })),
     },
     edits: rows.map(({ e, s }) => ({
-      k: e.k, id: e.id, song: e.song,
-      insert: { start: iso(e.ins.startedAt), ms: e.ins.ms, rev: e.ins.rev, position: e.ins.position },
+      k: e.k, mode: e.mode, id: e.id, song: e.song,
+      insert: e.ins ? { start: iso(e.ins.startedAt), ms: e.ins.ms, rev: e.ins.rev, position: e.ins.position } : null,
       put: { start: iso(e.put.startedAt), successStart: iso(e.put.successAt ?? e.put.startedAt), attempts: e.put.attempts ?? 1, ms: e.put.ms, rev: e.put.rev },
       pages: { lat: s.pages.lat, drilledLat: s.pages.drilledLat, missing: s.pages.missing, drilledMissing: s.pages.drilledMissing, notifPut: s.pages.notifPut, notifIns: s.pages.notifIns },
       subs: { latDist: dist(s.subs.lat), drilledDist: dist(s.subs.drilledLat), missing: s.subs.missing, drilledMissing: s.subs.drilledMissing, notifPut: dist(s.subs.notifPut), bcastPut: dist(s.subs.bcastPut), bcastIns: dist(s.subs.bcastIns) },
     })),
     pages: pageRecs,
   };
-  return { md, json };
+  return { md, json, timelines };
 }
 
-function writeResults(md, json) {
+function writeResults(md, json, timelines) {
   const now = new Date();
   const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
   fs.mkdirSync(dir, { recursive: true });
@@ -1567,6 +1885,7 @@ function writeResults(md, json) {
   const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ""}`);
   fs.writeFileSync(`${base}.md`, md);
   fs.writeFileSync(`${base}.json`, JSON.stringify(json, null, 1));
+  if (timelines) fs.writeFileSync(path.join(dir, `${stamp}-timelines.jsonl`), timelines.join("\n") + "\n");
   return base;
 }
 
@@ -1578,8 +1897,8 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
     if (finalized) process.exit(130);
     const fin = await finalize(mainState, sig);
     if (fin && mainState) {
-      const { md, json } = report(mainState, fin);
-      const base = writeResults(md, json);
+      const { md, json, timelines } = report(mainState, fin);
+      const base = writeResults(md, json, timelines);
       log(`partial results: ${base}.md`);
     }
     process.exit(130);
@@ -1589,10 +1908,15 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 try {
   mainState = await main();
   const fin = await finalize(mainState, null);
-  const { md, json } = report(mainState, fin);
-  const base = writeResults(md, json);
+  const { md, json, timelines } = report(mainState, fin);
+  const base = writeResults(md, json, timelines);
   console.log("\n" + md);
   log(`results: ${base}.md`);
+  // INVALID (3) outranks pass / fail: the gates were not measured.
+  if (json.validity.invalid) {
+    log(`VERDICT: INVALID — ${json.validity.reasons.length} host stall(s), first: ${json.validity.reasons[0].thread} ${json.validity.reasons[0].what} at ${json.validity.reasons[0].atIso}`);
+    process.exit(3);
+  }
   // null (nothing in scope, e.g. every pair drilled) is not a failure.
   process.exit(json.verdicts.primary.pass !== false && json.verdicts.drill?.pass !== false && json.verdicts.monotonic.pass !== false ? 0 : 1);
 } catch (e) {
