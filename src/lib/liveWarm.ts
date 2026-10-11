@@ -385,45 +385,63 @@ export type WarmLookupResult =
 // `?hint=1&minRev=<n>` is untrusted: anyone can send any number of
 // hinted requests with any revision. The 300 ms race bounds a lookup's
 // LATENCY, not how many Runtime Cache reads a flood of hinted requests
-// causes. Like the repair check's revision read (`revMemo` in
-// `liveSnapshot.ts`), the lookup must therefore cost at most one cache
-// read per key per instance per `WARM_MISS_MEMO_MS`:
-//   - concurrent lookups for the same (event, locale, minRev) share one
-//     in-flight `get` (a notification burst lands many requests for the
-//     same key on one instance at once);
-//   - a non-hit outcome is remembered for `WARM_MISS_MEMO_MS`; lookups
-//     for that key inside the window answer `memo-miss` without a `get`.
+// causes. Two per-instance measures, per key (event, locale, minRev):
+//   - concurrent lookups for the same key share one in-flight `get` (a
+//     notification burst lands many requests for the same key on one
+//     instance at once);
+//   - a non-hit outcome is remembered briefly; lookups for that key
+//     inside the window answer `memo-miss` without a `get`.
+//
+// What the memo is for — and what it is not. It collapses same-key
+// duplicates and stops an instance from re-asking a cache that just
+// failed. It does NOT bound a flood of DISTINCT forged revisions: each
+// is a new key and costs one `get`. That flood is bounded elsewhere —
+// by the client's notification cooldown (≤ 1 hinted request per client
+// per second, so honest traffic never produces it) and by the
+// coalescing above — and a forged key costs one cache read, never a
+// build or a database read on this path.
+//
+// Two windows, because the honest case dominates:
+//   - `miss` (key absent) — `WARM_MISS_MEMO_MS` = 250 ms. The writer's
+//     entry typically appears 0.3–0.7 s after the commit, i.e. after the
+//     first notification fetches of the burst have already arrived. A
+//     long plain-miss memo would turn every later fetch on that instance
+//     into a fallback build for the whole window; 250 ms (about one
+//     cache round trip) still collapses an honest burst's duplicates and
+//     lets the instance ask again soon enough to catch the entry.
+//   - `invalid` / `stale` / `error` / `timeout` — `WARM_FAULT_MEMO_MS` =
+//     1 s. The entry exists but is unusable, or the cache is failing or
+//     slow; asking again within a second would mostly repeat the fault
+//     and put load on a struggling cache.
+// A warm job running on THIS instance clears the memo for the keys it
+// stores, so its own readers pick the entry up at once.
+//
 // A hit is NOT remembered: it is read from the Runtime Cache each time.
 // An honest burst already costs one `get` per key per instance thanks to
 // the coalescing, and not keeping decoded snapshots avoids per-instance
 // memory and a second invalidation path next to the tag expiry.
-//
-// Cost of the negative memo: a notification fetch that reaches an
-// instance BEFORE the writer's job stored the entry memoises the miss,
-// so later fetches for the same revision on that instance skip the
-// lookup for up to 1 s (they take the normal path — slower, never
-// wrong). A job running on THIS instance clears the memo for the keys
-// it stores. Watch the warm hit rate per save for this effect.
 //
 // The memo map is capped (oldest dropped first) so a flood of distinct
 // forged revisions cannot grow memory without bound; the in-flight map
 // is bounded by the number of concurrently pending lookups.
 // ---------------------------------------------------------------------
 
-export const WARM_MISS_MEMO_MS = 1_000;
+export const WARM_MISS_MEMO_MS = 250;
+export const WARM_FAULT_MEMO_MS = 1_000;
 export const WARM_MISS_MEMO_MAX_KEYS = 256;
 
 const inFlightLookups = new Map<string, Promise<WarmLookupResult>>();
-// Insertion-ordered: the first key is the oldest memo.
+// key → memo expiry (epoch ms). Insertion-ordered: the first key is the
+// oldest memo.
 const missMemo = new Map<string, number>();
 
 function lookupKey(eventId: bigint, locale: Locale, minRev: bigint | number): string {
   return `${eventId}:${locale}:${minRev}`;
 }
 
-function rememberMiss(key: string, at: number): void {
+function rememberMiss(key: string, until: number): void {
   missMemo.delete(key);
-  missMemo.set(key, at);
+  missMemo.set(key, until);
   while (missMemo.size > WARM_MISS_MEMO_MAX_KEYS) {
     const oldest = missMemo.keys().next().value;
     if (oldest === undefined) break;
@@ -444,8 +462,8 @@ export function __warmMissMemoSizeForTests(): number {
 
 /**
  * Look up the warm entry for exactly `(eventId, locale, minRev)`. Bounded
- * at `WARM_LOOKUP_TIMEOUT_MS` per `get`, and at one `get` per key per
- * instance per `WARM_MISS_MEMO_MS` (see above); every outcome but `hit`
+ * at `WARM_LOOKUP_TIMEOUT_MS` per `get`; same-key duplicates on one
+ * instance are coalesced and briefly memoised (see above); every outcome but `hit`
  * means "take the normal path". Never rejects. One log line per call
  * (coalesced waiters log the shared result):
  *
@@ -464,8 +482,8 @@ export async function warmLookup(
   const started = Date.now();
   const key = lookupKey(eventId, locale, minRev);
   let out: WarmLookupResult;
-  const memoAt = missMemo.get(key);
-  if (memoAt !== undefined && started - memoAt < WARM_MISS_MEMO_MS) {
+  const memoUntil = missMemo.get(key);
+  if (memoUntil !== undefined && started < memoUntil) {
     out = { result: "memo-miss" };
   } else {
     let pending = inFlightLookups.get(key);
@@ -473,7 +491,10 @@ export async function warmLookup(
       const entry: Promise<WarmLookupResult> = lookupBounded(eventId, locale, minRev)
         .then((r) => {
           if (r.result === "hit") missMemo.delete(key);
-          else rememberMiss(key, Date.now());
+          else {
+            const window = r.result === "miss" ? WARM_MISS_MEMO_MS : WARM_FAULT_MEMO_MS;
+            rememberMiss(key, Date.now() + window);
+          }
           return r;
         })
         .finally(() => {

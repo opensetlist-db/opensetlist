@@ -394,34 +394,46 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
     expect(lines().filter((l) => l.startsWith("[setlist] warm-lookup "))).toHaveLength(3);
   });
 
-  it("a miss suppresses the get for 1 s (memo-miss), then asks again", async () => {
+  it("a plain miss suppresses the get for 250 ms (memo-miss), then asks again", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(10_000);
     const { get } = manualCache();
     get.mockResolvedValue(null);
     expect((await warmLookup(EVENT, "ja", 7)).result).toBe("miss");
-    vi.setSystemTime(10_999);
+    vi.setSystemTime(10_249);
     expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
     expect(get).toHaveBeenCalledTimes(1);
     expect(lines().at(-1)).toMatch(
       /^\[setlist\] warm-lookup event=111 locale=ja minRev=7 result=memo-miss ms=\d+ instance=[0-9a-f]{8}$/,
     );
-    vi.setSystemTime(11_000);
+    vi.setSystemTime(10_250);
     expect((await warmLookup(EVENT, "ja", 7)).result).toBe("miss");
     expect(get).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["invalid", "error", "timeout"] as const)("a %s result is memoised like a miss", async (kind) => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    const { get } = manualCache();
-    if (kind === "invalid") get.mockResolvedValue({ junk: true });
-    if (kind === "error") get.mockRejectedValue(new Error("network"));
-    const first = warmLookup(EVENT, "ja", 7);
-    if (kind === "timeout") await vi.advanceTimersByTimeAsync(300);
-    expect((await first).result).toBe(kind);
-    expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
-    expect(get).toHaveBeenCalledTimes(1);
-  });
+  it.each(["invalid", "stale", "error", "timeout"] as const)(
+    "a %s result is memoised for 1 s",
+    async (kind) => {
+      vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+      vi.setSystemTime(20_000);
+      const { get } = manualCache();
+      if (kind === "invalid") get.mockResolvedValue({ junk: true });
+      if (kind === "stale") get.mockResolvedValue({ ...envelope(7), rev: 6 });
+      if (kind === "error") get.mockRejectedValue(new Error("network"));
+      const first = warmLookup(EVENT, "ja", 7);
+      if (kind === "timeout") await vi.advanceTimersByTimeAsync(300);
+      expect((await first).result).toBe(kind);
+      const doneAt = Date.now();
+      vi.setSystemTime(doneAt + 999);
+      expect((await warmLookup(EVENT, "ja", 7)).result).toBe("memo-miss");
+      expect(get).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(doneAt + 1_000);
+      const again = warmLookup(EVENT, "ja", 7);
+      if (kind === "timeout") await vi.advanceTimersByTimeAsync(300);
+      expect((await again).result).toBe(kind);
+      expect(get).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("a hit is not memoised: every lookup reads the cache", async () => {
     const { get } = manualCache();
@@ -433,6 +445,9 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
   });
 
   it("a warm job storing the key on this instance clears its memoised miss", async () => {
+    // Frozen clock: the memo cannot expire on its own, so the hit below
+    // is the job clearing it.
+    vi.useFakeTimers({ toFake: ["Date"] });
     expect((await warmLookup(EVENT, "ko", 5)).result).toBe("miss");
     expect((await warmLookup(EVENT, "ko", 5)).result).toBe("memo-miss");
     vi.mocked(buildEventSnapshot).mockImplementation(async () => snap(5));
@@ -441,6 +456,7 @@ describe("warmLookup — per-instance volume bound (untrusted hints)", () => {
   });
 
   it("the memo holds at most WARM_MISS_MEMO_MAX_KEYS keys, dropping the oldest", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // no memo expires mid-test
     const { get } = manualCache();
     get.mockResolvedValue(null);
     for (let r = 1; r <= WARM_MISS_MEMO_MAX_KEYS + 50; r++) {
