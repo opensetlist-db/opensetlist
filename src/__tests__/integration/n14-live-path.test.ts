@@ -14,7 +14,11 @@ import { Client } from "pg";
 //   5. the snapshot builder is one consistent REPEATABLE READ snapshot;
 //   6. the reaction ack watermark orders correctly against snapshots;
 //   7. the repair check's revision read works through the pooler with
-//      its transaction-local statement_timeout.
+//      its transaction-local statement_timeout;
+//   8. `GET /api/setlist` reports how it resolved `minRev` in
+//      `x-snapshot-verify` against the real revision;
+//   9. a live writer on an exhausted pool answers 503 and writes
+//      nothing (kept last — see its section).
 //
 // Everything runs on a throwaway Event created here (slug
 // `n14-itest-<ts>`) and hard-deleted in afterAll with all of its rows.
@@ -28,8 +32,17 @@ vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }))
 
 // Cache expiry needs a Next request scope; outside one it would only
 // log. The suites assert database effects, not cache effects.
+// `cachedQuery` is a pass-through for the same reason: `unstable_cache`
+// throws outside Next ("incrementalCache missing"), and the
+// `/api/setlist` suite wants every request to read the real database
+// (the data cache's own behaviour is covered by the unit suite's
+// in-memory stand-in).
 vi.mock("@/lib/dataCache", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/dataCache")>()),
+  cachedQuery:
+    <A extends unknown[], R>(_name: string, fn: (...args: A) => Promise<R>) =>
+    (...args: A) =>
+      fn(...args),
   revalidateEventData: vi.fn(),
   revalidatePublicData: vi.fn(),
   revalidateEventImpressions: vi.fn(),
@@ -56,8 +69,10 @@ import {
 import {
   buildEventSnapshot,
   readRevisionBounded,
+  __resetLiveSnapshotStateForTests,
   __setSnapshotEstablishedHookForTests,
 } from "@/lib/liveSnapshot";
+import { GET as SETLIST_GET } from "@/app/api/setlist/route";
 import { POST as ADMIN_CREATE } from "@/app/api/admin/setlist-items/route";
 import {
   PUT as ADMIN_PUT,
@@ -731,10 +746,71 @@ describe("7. bounded revision read (repair check)", () => {
 });
 
 // ---------------------------------------------------------------------
-// 8. live writer on an exhausted pool
+// 8. x-snapshot-verify through the real route
 // ---------------------------------------------------------------------
 
-describe("8. a live writer that cannot get a connection answers 503 and writes nothing", () => {
+describe("8. GET /api/setlist reports how it resolved minRev (x-snapshot-verify)", () => {
+  async function getSetlist(query: string): Promise<{
+    status: number;
+    verify: string | null;
+    rev: number;
+  }> {
+    const res = await SETLIST_GET(
+      req(`http://x/api/setlist?eventId=${eventId}&locale=ja${query}`, null, "GET"),
+    );
+    const body = res.status === 200 ? await res.json() : { rev: NaN };
+    return {
+      status: res.status,
+      verify: res.headers.get("x-snapshot-verify"),
+      rev: body.rev,
+    };
+  }
+
+  it("no minRev → none", async () => {
+    __resetLiveSnapshotStateForTests();
+    const r = await getSetlist("");
+    expect(r.status).toBe(200);
+    expect(r.verify).toBe("none");
+    expect(r.rev).toBe(await currentRev());
+  });
+
+  it("minRev at or below the database revision → satisfied", async () => {
+    __resetLiveSnapshotStateForTests();
+    const rev = await currentRev();
+    expect((await getSetlist(`&minRev=${rev}`)).verify).toBe("satisfied");
+    expect((await getSetlist(`&minRev=0&hint=1`)).verify).toBe("satisfied");
+  });
+
+  // Memo / coalesced-waiter / deferred outcomes depend on timing (the
+  // 1 s memo window vs. a build's round trips to the Seoul pooler) and
+  // are covered deterministically by the unit suite; here only the
+  // outcomes a single request decides on its own are asserted.
+  it("minRev above the database revision → fresh=<dbRev> from this request's own read", async () => {
+    __resetLiveSnapshotStateForTests();
+    const rev = await currentRev();
+    const r = await getSetlist(`&minRev=${rev + 1000}&hint=1`);
+    expect(r.status).toBe(200);
+    expect(r.rev).toBe(rev);
+    expect(r.verify).toBe(`fresh=${rev}`);
+  });
+});
+
+// ---------------------------------------------------------------------
+// 9. live writer on an exhausted pool
+// ---------------------------------------------------------------------
+//
+// Kept LAST on purpose: the transaction that times out in `maxWait`
+// is not cleanly discarded — Prisma's transaction manager hands the
+// late-arriving driver transaction to the adapter's `rollback()`, which
+// in @prisma/adapter-pg only releases the pooled client; the ROLLBACK
+// statement the manager sends on a normal close is skipped on this
+// discard path (Prisma 7.8), so that connection goes back to the pool
+// inside an open transaction. The next REPEATABLE READ build on it fails ("SET
+// TRANSACTION ISOLATION LEVEL must be called before any query") and
+// the client is destroyed. Any suite placed after this one would see
+// that one-off failure.
+
+describe("9. a live writer that cannot get a connection answers 503 and writes nothing", () => {
   it("both pool slots held → admin create fails after maxWait with the operator 503, revision unchanged", async () => {
     const revBefore = await currentRev();
     const release = barrier();
