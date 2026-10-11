@@ -8,7 +8,13 @@
 // parser). Pages and SDK clients are reported separately per save.
 // Edits: an admin driver inserts a row after
 // the 2nd row and fills in a never-used "marker" song, `--edits` times,
-// `--pause` seconds apart (admin.mjs). Measurement: PUT start → marker
+// `--pause` seconds apart (admin.mjs). `--edit-mode` picks the shape of
+// one edit: `pair` (default) = insert-after + PUT (two saves, two
+// broadcasts; the PUT's notification fetch always meets the 1 s cooldown
+// the insert's opened), `standalone` = ONE PUT that puts the next marker
+// on an "anchor" row the run created before the population joined (one
+// save, one broadcast — the clean single-save case), `mixed` = pair on
+// odd edits, standalone on even ones. Measurement: PUT start → marker
 // link in each page's DOM, and PUT start → each SDK client applying a
 // snapshot with rev ≥ the PUT's rev. The clock starts at the FIRST
 // attempt of a save: a retried save keeps its original start, because
@@ -85,6 +91,16 @@ const SUBS = int("subs", 470);
 const EDITS = int("edits", 12);
 const PAUSE_MS = Math.round(parseFloat(args.pause ?? "25") * 1000);
 const AFTER_ROW = int("after-row", 2);
+// See the header. insert-after cannot carry a song (the route takes only
+// { eventId, afterPosition }), so a single-save edit is a PUT that swaps
+// the marker song on a row the run created up front.
+const EDIT_MODE = String(args["edit-mode"] ?? "pair");
+if (!["pair", "standalone", "mixed"].includes(EDIT_MODE)) {
+  console.error("--edit-mode must be pair|standalone|mixed");
+  process.exit(2);
+}
+const modeOf = (k) => (EDIT_MODE === "mixed" ? (k % 2 === 1 ? "pair" : "standalone") : EDIT_MODE);
+const NEEDS_ANCHOR = EDIT_MODE !== "pair";
 const TIMEOUT_MS = int("timeout", 30) * 1000;
 const SETTLE_MS = int("settle", 10) * 1000;
 const JOIN_TIMEOUT_MS = int("join-timeout", 120) * 1000;
@@ -215,6 +231,12 @@ const workers = [];
 const saveFailures = [];
 let finalized = false;
 let guest = null; // guest broadcaster of the poison / spam drills
+// standalone / mixed: the row every single-save edit rewrites. Its
+// position is tracked (each pair insert above it shifts it down by one)
+// AND re-read from the DB before each standalone save, because the PUT
+// writes `position` too: a stale value would move the row or trip the
+// (eventId, position) unique index.
+let anchor = null; // { id, position }
 // Measurement validity (see the header and hostmon.mjs). The main
 // thread's monitor starts at load: it owns every page timestamp
 // (Playwright events land here) and the admin driver's save clock.
@@ -433,7 +455,9 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   // that worked, reported next to it for retried edits only.
   const tPut = edit.put.startedAt;
   const tPutOk = edit.put.successAt ?? tPut;
-  const tIns = edit.ins.startedAt;
+  // null for a standalone edit (no insert): the insert-based columns are
+  // then simply empty for it.
+  const tIns = edit.ins?.startedAt ?? null;
   const deadline = tPut + TIMEOUT_MS;
   // A notification only counts for this save if it arrives inside the
   // measurement window and before the clean-up starts — the clean-up's
@@ -511,13 +535,13 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     const bucket = out.pages;
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(seen - tPut);
-      if (!drilled) bucket.latFromInsert.push(seen - tIns);
+      if (!drilled && tIns != null) bucket.latFromInsert.push(seen - tIns);
       if (!drilled) bucket.latFromSuccess.push(seen - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const nu = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "U" && t >= tPut && t < noteEnd);
     if (nu) bucket.notifPut.push(nu[0] - tPut);
-    const ni = firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "I" && t >= tIns && t < noteEnd);
+    const ni = tIns == null ? null : firstAfter(r.notes, ([t, ty, id]) => id === edit.id && ty === "I" && t >= tIns && t < noteEnd);
     if (ni) bucket.notifIns.push(ni[0] - tIns);
   }
   for (const r of subRecs) {
@@ -527,13 +551,13 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     const bucket = out.subs;
     if (ok) {
       (drilled ? bucket.drilledLat : bucket.lat).push(a[0] - tPut);
-      if (!drilled) bucket.latFromInsert.push(a[0] - tIns);
+      if (!drilled && tIns != null) bucket.latFromInsert.push(a[0] - tIns);
       if (!drilled) bucket.latFromSuccess.push(a[0] - tPutOk);
     } else if (drilled) bucket.drilledMissing++;
     else bucket.missing++;
     const bp = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bp) bucket.bcastPut.push(bp[0] - tPut);
-    const bi = firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.ins.rev && t >= tIns - 50);
+    const bi = tIns == null ? null : firstAfter(r.bcasts, ([t, rev, w]) => w !== "x" && rev === edit.ins.rev && t >= tIns - 50);
     if (bi) bucket.bcastIns.push(bi[0] - tIns);
   }
   return out;
@@ -543,22 +567,37 @@ const ms = (v) => (v == null ? "—" : `${v}`);
 const dline = (d) => `${d.n} | ${ms(d.p50)} | ${ms(d.p95)} | ${ms(d.max)}`;
 
 // ─── monotonicity ───
-// Marker song → rev of the save that put it on its row, plus, for a
-// double save, which marker the final save replaced (removing that one is
-// the expected outcome, not a regression).
+// Marker song → rev of the save that put it on its row, plus which
+// markers a later save on the SAME row replaced (removing those is the
+// expected outcome, not a regression): the superseded save of a double
+// save, and every earlier marker on the standalone anchor row. A marker
+// is "replaced" by every higher-rev marker on its row, not only the next
+// one — a page may skip an intermediate version entirely.
 function markerIndex(edits) {
   const rev = new Map();
-  const replacedBy = new Map();
+  const byRow = new Map(); // row id → [[songId, rev], …]
+  const add = (row, songId, r) => {
+    rev.set(songId, r);
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row).push([songId, r]);
+  };
   for (const e of edits) {
     if (e.double) {
-      for (const x of [e.double.first, e.double.second]) if (x) rev.set(String(x.song.id), x.put.rev);
-      if (e.double.superseded) replacedBy.set(String(e.double.superseded.song.id), String(e.double.final.song.id));
+      for (const x of [e.double.first, e.double.second]) if (x) add(e.id, String(x.song.id), x.put.rev);
     } else {
-      rev.set(String(e.song.id), e.put.rev);
+      add(e.id, String(e.song.id), e.put.rev);
+    }
+  }
+  const replacedBy = new Map(); // songId → Set of songIds that replace it
+  for (const list of byRow.values()) {
+    for (const [id, r] of list) {
+      const later = list.filter(([, r2]) => r2 > r).map(([x]) => x);
+      if (later.length) replacedBy.set(id, new Set(later));
     }
   }
   return { rev, replacedBy };
 }
+const replacedPresent = (idx, id, present) => [...(idx.replacedBy.get(id) || [])].some((x) => present.has(x));
 
 // A page exposes no "applied rev", so its version is derived from the
 // DOM: the highest rev among the marker songs it currently shows. Every
@@ -585,8 +624,7 @@ function pageMonotonicity(r, idx, until) {
       if (!idx.rev.has(id)) continue;
       present.delete(id);
       touched = true;
-      const by = idx.replacedBy.get(id);
-      if (!(by && present.has(by))) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
+      if (!replacedPresent(idx, id, present)) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
     }
     if (!touched) continue;
     let v = -Infinity;
@@ -633,6 +671,17 @@ async function main() {
   log(`event ${EVENT_ID}: ${original.length} active rows, rev ${startRev}; inserting after row ${AFTER_ROW} (position ${afterPosition}); markers ${songs.map((s) => s.id).join(",")}`);
 
   cookie = await adminLogin(BASE);
+
+  // standalone / mixed: create the anchor row now, before any viewer
+  // joins, so its own insert is not part of any measured save. It sits
+  // right after row AFTER_ROW, i.e. exactly where pair inserts land —
+  // which shifts it down by one per pair insert (tracked below).
+  if (NEEDS_ANCHOR) {
+    const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
+    created.push(a.id);
+    anchor = { id: a.id, position: a.position };
+    log(`anchor row ${a.id} @${a.position} created (rev ${a.rev}) for ${EDIT_MODE} edits`);
+  }
 
   // Populations.
   const drillPageSet = new Set(Array.from({ length: Math.min(DRILL_PAGES, PAGES) }, (_, i) => i));
@@ -709,6 +758,15 @@ async function main() {
     if (Date.now() < due) await sleep(due - Date.now());
     const song = songs[k - 1];
     const drillThis = k === DRILL_EDIT;
+    const mode = modeOf(k);
+    if (mode === "standalone") {
+      // Re-read the anchor's position (see `anchor`); the tracked value
+      // is the fallback when the DB read fails. Before any drill action,
+      // so a drill's timing relative to the save is unchanged.
+      const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position)
+        .catch((e) => { log(`  anchor position read failed (${e.message}); using tracked ${anchor.position}`); return null; });
+      if (p != null) anchor.position = Number(p);
+    }
 
     if (DRILL === "poison" && drillThis) {
       const t = Date.now();
@@ -758,7 +816,7 @@ async function main() {
     let put = null;
     const insFirst = Date.now();
     let insAttempts = 0;
-    for (let attempt = 1; attempt <= 2 && !ins; attempt++) {
+    for (let attempt = 1; attempt <= 2 && !ins && mode === "pair"; attempt++) {
       const tryStart = Date.now();
       insAttempts = attempt;
       try {
@@ -780,6 +838,11 @@ async function main() {
       }
     }
     if (ins) Object.assign(ins, { successAt: ins.startedAt, startedAt: insFirst, attempts: insAttempts });
+    // A committed pair insert at or above the anchor shifts it down.
+    if (ins && anchor && anchor.position >= ins.position) anchor.position++;
+    // The row this edit's PUT(s) write: the fresh row of a pair, or the
+    // anchor of a standalone edit.
+    const target = mode === "pair" ? ins : anchor;
 
     // Drills that must hit the PUT and nothing else (lost-final, a hook-
     // driven silent-loss, verify-ambiguity's memo priming): wait until the
@@ -799,7 +862,7 @@ async function main() {
       }
       await sleep(LOST_SETTLE_MS);
     }
-    if (ins && drillThis && (DRILL === "lost-final" || hookSilent)) {
+    if (target && drillThis && (DRILL === "lost-final" || hookSilent)) {
       const lost = DRILL === "lost-final";
       if (DROP_VIA === "hook") {
         const armed = await pagePop.armHookDrop([...drillPageSet]);
@@ -811,7 +874,7 @@ async function main() {
       if (lost && SUBS > 0) await subsDropNotify(true);
     }
     let prime = null;
-    if (ins && drillThis && DRILL === "verify-ambiguity") {
+    if (target && drillThis && DRILL === "verify-ambiguity") {
       // See the PRIME_* constants. Sent, not awaited; the PUT follows
       // PRIME_LEAD_MS later.
       const minRev = latestRev + PRIME_OFFSET;
@@ -834,7 +897,7 @@ async function main() {
     }
 
     let double = null;
-    if (ins && DRILL === "double-save" && drillThis) {
+    if (target && DRILL === "double-save" && drillThis) {
       // Two PUTs on the same row, the 2nd started DOUBLE_GAP_MS after the
       // 1st without waiting for it. Both take the Event row lock, so they
       // commit one after the other; which one commits last is decided by
@@ -844,7 +907,7 @@ async function main() {
       const second = songs[EDITS];
       const fire = (s, delayMs) => sleep(delayMs).then(() => {
         const t = Date.now();
-        return putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: s.id })
+        return putSong({ base: BASE, cookie, id: target.id, position: target.position, songId: s.id })
           .then((r) => ({ song: s, put: { ...r, successAt: r.startedAt, attempts: 1 } }))
           .catch((e) => {
             saveFailures.push({ k, op: `put (double-save ${s === song ? "1st" : "2nd"})`, attempt: 1, at: iso(t), error: e.message });
@@ -860,16 +923,22 @@ async function main() {
         put = fin.put;
         drillEvents.push({ k, what: `double save: song ${song.id} @${iso(a?.put.startedAt)} rev ${a?.put.rev ?? "failed"}, song ${second.id} @${iso(b?.put.startedAt)} rev ${b?.put.rev ?? "failed"} → final ${fin.song.id}`, at: iso(Date.now()) });
       }
-    } else if (ins) {
+    } else if (target) {
       const putFirst = Date.now();
       for (let attempt = 1; attempt <= 2 && !put; attempt++) {
         try {
-          put = await putSong({ base: BASE, cookie, id: ins.id, position: ins.position, songId: song.id });
+          put = await putSong({ base: BASE, cookie, id: target.id, position: target.position, songId: song.id });
           Object.assign(put, { successAt: put.startedAt, startedAt: putFirst, attempts: attempt });
         } catch (e) {
-          saveFailures.push({ k, op: "put", attempt, at: iso(Date.now()), error: e.message });
+          saveFailures.push({ k, op: mode === "pair" ? "put" : "put (standalone)", attempt, at: iso(Date.now()), error: e.message });
           log(`edit ${k}: PUT failed (${e.message})`);
           await sleep(1000);
+          // A stale anchor position fails on the unique index: re-read it
+          // before the retry.
+          if (mode === "standalone") {
+            const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position).catch(() => null);
+            if (p != null) anchor.position = Number(p);
+          }
         }
       }
     }
@@ -880,7 +949,7 @@ async function main() {
       for (const r of res) kinds[`${r.status} ${verifyKindOf(r.verify)}`] = (kinds[`${r.status} ${verifyKindOf(r.verify)}`] || 0) + 1;
       drillEvents.push({ k, what: `memo priming: ${res.length} request(s) minRev=${prime.minRev} sent ${PRIME_LEAD_MS} ms before the PUT; responses ${JSON.stringify(kinds)}, ms ${res.map((r) => r.ms).join("/")}`, at: iso(prime.at), atMs: prime.at });
     }
-    if (!ins || !put) {
+    if (!target || !put) {
       log(`edit ${k} SKIPPED (save failed twice) — continuing`);
       if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) pagePop.setDropNotify(drillPageSet, false);
       if (lostFinalOn && SUBS > 0) await subsDropNotify(false);
@@ -891,9 +960,9 @@ async function main() {
     if (put.rev == null) put.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
     noteRev(put.rev);
     const finalSong = double ? double.final.song : song;
-    const edit = { k, id: ins.id, song: finalSong, ins, put, double };
+    const edit = { k, mode, id: target.id, song: finalSong, ins, put, double };
     edits.push(edit);
-    log(`edit ${k}: row ${ins.id} @${ins.position} insert ${ins.ms} ms (rev ${ins.rev}${ins.attempts > 1 ? `, ${ins.attempts} attempts` : ""}) → song ${finalSong.id} "${finalSong.title}" put ${put.ms} ms (rev ${put.rev}${put.attempts > 1 ? `, ${put.attempts} attempts` : ""})${double ? " [double save]" : ""}`);
+    log(`edit ${k} [${mode}]: row ${target.id} @${target.position}${ins ? ` insert ${ins.ms} ms (rev ${ins.rev}${ins.attempts > 1 ? `, ${ins.attempts} attempts` : ""})` : ""} → song ${finalSong.id} "${finalSong.title}" put ${put.ms} ms (rev ${put.rev}${put.attempts > 1 ? `, ${put.attempts} attempts` : ""})${double ? " [double save]" : ""}`);
 
     if ((DRILL === "silent-loss" || DRILL === "lost-final") && drillThis) {
       // Keep swallowing notifications on the drilled pages (and, for
@@ -1084,7 +1153,7 @@ function report(state, fin) {
   // after a failed response): their latency already counts from the first
   // attempt above; here they are also shown alone, with the successful
   // attempt's clock next to it, so a retry storm can't hide in the p95.
-  const retried = rows.filter(({ e }) => e.put.attempts > 1 || e.ins.attempts > 1 || e.ins.adopted);
+  const retried = rows.filter(({ e }) => e.put.attempts > 1 || e.ins?.attempts > 1 || e.ins?.adopted);
   const retriedFirst = summarize(retried.flatMap(({ s }) => [...s.pages.lat, ...s.subs.lat]), retried.reduce((a, { s }) => a + s.pages.missing + s.subs.missing, 0));
   const retriedOk = dist(retried.flatMap(({ s }) => [...s.pages.latFromSuccess, ...s.subs.latFromSuccess]));
 
@@ -1112,7 +1181,10 @@ function report(state, fin) {
   if (de) {
     const fin = String(de.double.final.song.id);
     const sup = de.double.superseded ? String(de.double.superseded.song.id) : null;
-    const pagesOk = pageMono.filter((m) => m.present.has(fin) && !(sup && m.present.has(sup))).length;
+    // On the anchor row a LATER standalone save may replace the final
+    // marker before the window ends; showing that later marker counts as
+    // having converged past the double save.
+    const pagesOk = pageMono.filter((m) => (m.present.has(fin) || replacedPresent(idx, fin, m.present)) && !(sup && m.present.has(sup))).length;
     const subsOk = subRecs.filter((r) => {
       const before = (r.appliedAll || []).filter(([t]) => t < state.editsEnd);
       return before.length && Math.max(...before.map(([, rev]) => rev)) >= de.put.rev;
@@ -1393,13 +1465,14 @@ function report(state, fin) {
   }
   lines.push(`- Target: ${BASE}${EVENT_PATH} (event ${EVENT_ID}, start rev ${state.startRev}, ${original.length} active rows; insert after row ${AFTER_ROW} = position ${state.afterPosition})`);
   lines.push(`- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)`);
-  lines.push(`- Edits: ${EDITS} × (insert-after + PUT marker song), every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
+  const modeTxt = { pair: "(insert-after + PUT marker song) — edit mode pair", standalone: "(ONE PUT swapping the marker song on the anchor row) — edit mode standalone", mixed: "pair on odd edits, standalone on even — edit mode mixed" }[EDIT_MODE];
+  lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
   lines.push("");
   lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
   lines.push("");
-  lines.push("Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
+  lines.push("Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
   lines.push("");
   lines.push("| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |");
   lines.push("|---|---|---|---|---|---|---|---|");
@@ -1428,7 +1501,7 @@ function report(state, fin) {
   lines.push(`| warming: warm hits ÷ hinted fetches (\`x-snapshot-source: warm\`) | SDK ${warmTxt(hintTotals.notifWarm, hintTotals.notif)}, pages ${warmTxt(pageHint.notifWarm, pageHint.notif)} | — | — | — | — | informational; reader builds per save: \`vercel-logs-summary.mjs\` "Warming" on the history logs; arrival vs warm-complete: \`warm-join.mjs\` | n/a |`);
   lines.push(`| edits with a retried save (clock from the 1st attempt) | ${dline(retriedFirst)} | ${retriedFirst.missing} | informational — ${retried.length} edit(s); from the successful attempt p50/p95/max ${ms(retriedOk.p50)}/${ms(retriedOk.p95)}/${ms(retriedOk.max)} | n/a |`);
   lines.push("");
-  lines.push(`Insert-start based (insert-after request start → marker), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
+  lines.push(`Insert-start based (insert-after request start → marker; pair edits only), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
   lines.push("");
   lines.push("## Notification paths (PUT start → arrival)");
   lines.push("");
@@ -1445,24 +1518,24 @@ function report(state, fin) {
   lines.push("");
   lines.push("## Per edit");
   lines.push("");
-  lines.push("| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |");
-  lines.push("|---|---|---|---|---|---|---|---|---|");
+  lines.push("| # | mode | row | marker song | insert start (UTC) | ins ms | rev | save (PUT) start (UTC) | save ms | save rev |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|");
   const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
   const markOf = (e) => {
     const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
     return `${e.k}${nDrilled ? ` (drill: ${nDrilled})` : ""}${e.double ? " (double save)" : ""}`;
   };
   for (const { e } of rows) {
-    lines.push(`| ${markOf(e)} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${iso(e.ins.startedAt)} | ${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)} | ${ms(e.ins.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
+    lines.push(`| ${markOf(e)} | ${e.mode} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${e.ins ? iso(e.ins.startedAt) : "—"} | ${e.ins ? `${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)}` : "—"} | ${ms(e.ins?.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
   }
   // Two tables, one per population: the gate is judged over both, but a
   // page (real React render, R1 or R2 build) and an SDK client (the R2
   // client logic without a DOM) fail differently, so they are read apart.
   const kinds = (o) => Object.entries(o).map(([k, n]) => `${k} ${n}`).join(", ") || "—";
   lines.push("");
-  lines.push("### Per save — pages (PUT start → marker in the DOM)");
+  lines.push("### Per save — pages (save start → marker in the DOM)");
   lines.push("");
-  lines.push("| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |");
+  lines.push("| # | save rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const pl = dist([...s.pages.lat, ...s.pages.drilledLat]);
@@ -1471,9 +1544,9 @@ function report(state, fin) {
     lines.push(`| ${markOf(e)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)} / ${ms(pl.p95)} / ${ms(pl.max)} | ${s.pages.missing + s.pages.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${s.pages.notifPut.length} | ${s.pages.hint.notif} | ${kinds(s.pages.hint.verify)} | ${s.pages.hint.warm}/${s.pages.hint.notif} | ${ms(pf.p50)} / ${ms(pf.p95)} |`);
   }
   lines.push("");
-  lines.push("### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)");
+  lines.push("### Per save — SDK clients (save start → applied rev ≥ save rev)");
   lines.push("");
-  lines.push("| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |");
+  lines.push("| # | save rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |");
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const sl = dist([...s.subs.lat, ...s.subs.drilledLat]);
@@ -1680,7 +1753,7 @@ function report(state, fin) {
     }),
     ...edits.flatMap((e) => [
       ...(e.ins ? [{ kind: "save", k: e.k, op: "insert-after", id: e.id, start: e.ins.startedAt, successStart: e.ins.successAt ?? e.ins.startedAt, ms: e.ins.ms, rev: e.ins.rev, attempts: e.ins.attempts ?? 1 }] : []),
-      { kind: "save", k: e.k, op: "put", id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double },
+      { kind: "save", k: e.k, op: "put", mode: e.mode, id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double },
     ]),
     ...subRecs.map((r) => ({
       kind: "sdk", idx: r.idx, worker: r.worker ?? null, locale: r.locale,
@@ -1700,7 +1773,7 @@ function report(state, fin) {
   ].map((o) => JSON.stringify(o));
 
   const json = {
-    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
+    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
       ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
@@ -1731,7 +1804,7 @@ function report(state, fin) {
       sdkRow: ["idx", "locale", "sendMinusCommitMs", "endMinusCommitMs", "source", "verify", "minRev"],
       pageRow: ["idx", "locale", "requestStartMinusCommitMs", "responseMinusCommitMs", "source", "verify", "minRev"],
       saves: rows.map(({ e, s }) => ({
-        k: e.k, rev: e.put.rev, insRev: e.ins.rev ?? null, double: !!e.double,
+        k: e.k, mode: e.mode, rev: e.put.rev, insRev: e.ins?.rev ?? null, double: !!e.double,
         putStart: e.put.successAt ?? e.put.startedAt, putMs: e.put.ms ?? null,
         putEnd: (e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0),
         putEndIso: iso((e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0)),
@@ -1746,8 +1819,8 @@ function report(state, fin) {
       subs: monoSubsBad.map((m) => ({ idx: m.r.idx, regressions: m.regressions })),
     },
     edits: rows.map(({ e, s }) => ({
-      k: e.k, id: e.id, song: e.song,
-      insert: { start: iso(e.ins.startedAt), ms: e.ins.ms, rev: e.ins.rev, position: e.ins.position },
+      k: e.k, mode: e.mode, id: e.id, song: e.song,
+      insert: e.ins ? { start: iso(e.ins.startedAt), ms: e.ins.ms, rev: e.ins.rev, position: e.ins.position } : null,
       put: { start: iso(e.put.startedAt), successStart: iso(e.put.successAt ?? e.put.startedAt), attempts: e.put.attempts ?? 1, ms: e.put.ms, rev: e.put.rev },
       pages: { lat: s.pages.lat, drilledLat: s.pages.drilledLat, missing: s.pages.missing, drilledMissing: s.pages.drilledMissing, notifPut: s.pages.notifPut, notifIns: s.pages.notifIns },
       subs: { latDist: dist(s.subs.lat), drilledDist: dist(s.subs.drilledLat), missing: s.subs.missing, drilledMissing: s.subs.drilledMissing, notifPut: dist(s.subs.notifPut), bcastPut: dist(s.subs.bcastPut), bcastIns: dist(s.subs.bcastIns) },
