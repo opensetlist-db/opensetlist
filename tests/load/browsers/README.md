@@ -32,7 +32,11 @@ the save's notification fetches with their `x-snapshot-verify` kinds, and
 for SDK clients the ticket resolutions, rechecks and exhausted hints), a
 whole-run "Hint outcomes" section, insert-start based numbers, and the
 notification arrival per path (postgres_changes → R1 pages, broadcast →
-pages, broadcast → SDK).
+pages, broadcast → SDK). With writer warming on the server, both per-save
+tables also give `warm / hinted` (notification fetches answered with
+`x-snapshot-source: warm`) and the first hinted request's start − commit,
+the gate table an informational "warming" row, and the JSON a `warm`
+section for `../warm-join.mjs` (see `../README.md`, "n14 warming run").
 
 **The clock starts at the first attempt.** A failed save is retried once
 (insert-after only after checking that the failed attempt did not commit;
