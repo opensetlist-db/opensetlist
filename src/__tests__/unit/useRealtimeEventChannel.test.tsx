@@ -26,25 +26,35 @@ let capturedSubscribeCallback:
   | ((status: string, err?: Error) => void)
   | null = null;
 
-// Captured postgres_changes handlers, keyed by their subscription
-// config so a test can drive a specific table's push (e.g. the
-// SetlistItem Path B handler) and assert the scopedRefetch guard.
-const capturedPostgresHandlers: Array<{
+// Captured `.on(type, filter, handler)` registrations, so a test can
+// deliver a broadcast exactly as realtime-js does and assert what the
+// hook subscribed to.
+const capturedHandlers: Array<{
+  type: string;
   config: { table?: string; event?: string };
   handler: (payload: unknown) => void;
 }> = [];
 
+function captureOn(
+  type: string,
+  config: { table?: string; event?: string },
+  handler: (payload: unknown) => void,
+) {
+  capturedHandlers.push({ type, config, handler });
+  return fakeChannel;
+}
+
+/** Deliver one `rev` broadcast message (realtime-js message shape). */
+function sendRev(payload: unknown) {
+  const entry = capturedHandlers.find(
+    (h) => h.type === "broadcast" && h.config.event === "rev",
+  );
+  if (!entry) throw new Error("no rev broadcast handler registered");
+  entry.handler({ type: "broadcast", event: "rev", payload });
+}
+
 const fakeChannel = {
-  on: vi.fn(
-    (
-      _event: string,
-      config: { table?: string; event?: string },
-      handler: (payload: unknown) => void,
-    ) => {
-      capturedPostgresHandlers.push({ config, handler });
-      return fakeChannel;
-    },
-  ),
+  on: vi.fn(captureOn),
   subscribe: vi.fn((cb: (status: string, err?: Error) => void) => {
     capturedSubscribeCallback = cb;
     return fakeChannel;
@@ -108,17 +118,8 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     // Re-establish the handler-capturing impl + clear the capture
     // buffer so each test sees only its own subscription handlers
     // (restoreAllMocks in afterEach can reset the vi.fn impl).
-    capturedPostgresHandlers.length = 0;
-    fakeChannel.on.mockImplementation(
-      (
-        _event: string,
-        config: { table?: string; event?: string },
-        handler: (payload: unknown) => void,
-      ) => {
-        capturedPostgresHandlers.push({ config, handler });
-        return fakeChannel;
-      },
-    );
+    capturedHandlers.length = 0;
+    fakeChannel.on.mockImplementation(captureOn);
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
@@ -299,10 +300,16 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     expect(statusCrumbs).toHaveLength(2); // → SUBSCRIBED, → CHANNEL_ERROR
   });
 
-  it("scopes notifications to this event — cross-event pushes don't refetch", async () => {
-    // Pin jitter to 0 so a same-event push fetches on the next timer
-    // turn; advance past the 1 s cooldown between pushes.
-    vi.spyOn(Math, "random").mockReturnValue(0);
+  // R1 subscribed to postgres_changes on SetlistItem without a
+  // server-side filter and scope-checked every row's eventId. R2's topic
+  // is per event, so the remaining guard is payload validation: the
+  // public channel accepts anyone's message.
+  it("validates broadcast payloads; duplicates and already-applied revisions do no work", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(revResponse(3, "2026-11-14T07:30:00.000Z"));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "5",
@@ -312,14 +319,11 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         locale: "ko",
         enabled: true,
         startTime: null,
+        initialRev: 3,
+        initialCapturedAt: "2026-11-14T07:29:00.000Z",
       }),
     );
-
     expect(channelMock).toHaveBeenCalledWith("event:5");
-    const setlistItemHandler = capturedPostgresHandlers.find(
-      (h) => h.config.table === "SetlistItem",
-    )?.handler;
-    expect(setlistItemHandler).toBeTypeOf("function");
 
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
@@ -328,35 +332,52 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
-    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
     const baseline = fetchMock.mock.calls.length;
 
-    const push = async (payload: unknown) => {
+    const deliver = async (payload: unknown) => {
       await act(async () => {
-        setlistItemHandler!(payload);
+        sendRev(payload);
         await vi.advanceTimersByTimeAsync(1_000);
       });
     };
 
-    // Cross-event INSERT/UPDATE (payload.new.eventId = 9 ≠ 5): no refetch.
-    await push({ new: { eventId: 9 }, old: null });
-    expect(fetchMock.mock.calls.length).toBe(baseline);
-    // Cross-event DELETE (eventId only on payload.old — REPLICA
-    // IDENTITY FULL): still no refetch.
-    await push({ new: null, old: { eventId: 9 } });
+    for (const bad of [
+      { kind: "reaction", rev: 9 },
+      { rev: 9 },
+      { kind: "setlist", rev: "9" },
+      { kind: "setlist", rev: -1 },
+      { kind: "setlist", rev: 1.5 },
+      { kind: "setlist", rev: 2 ** 60 },
+      { kind: "setlist" },
+      null,
+      "rev 9",
+      42,
+    ]) {
+      await deliver(bad);
+    }
     expect(fetchMock.mock.calls.length).toBe(baseline);
 
-    // Same-event push: exactly one refetch.
-    await push({ new: { eventId: 5 }, old: null });
+    // Already applied (the echo of a save this page fetched) or older.
+    await deliver({ kind: "setlist", rev: 3 });
+    await deliver({ kind: "setlist", rev: 2 });
+    expect(fetchMock.mock.calls.length).toBe(baseline);
+
+    // A valid, newer revision: exactly one notification fetch.
+    fetchMock.mockResolvedValue(revResponse(4, "2026-11-14T07:31:00.000Z"));
+    await deliver({ kind: "setlist", rev: 4 });
     expect(fetchMock.mock.calls.length).toBe(baseline + 1);
-
-    // Missing eventId (REPLICA IDENTITY misconfig / unexpected shape):
-    // fall through to a refetch — correctness over efficiency.
-    await push({ new: {}, old: null });
-    expect(fetchMock.mock.calls.length).toBe(baseline + 2);
+    expect(fetchMock.mock.calls[baseline][0]).toBe(
+      "/api/setlist?eventId=5&locale=ko&minRev=4&hint=1",
+    );
+    // …and its echo afterwards is a duplicate.
+    await deliver({ kind: "setlist", rev: 4 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(fetchMock.mock.calls.length).toBe(baseline + 1);
   });
 
-  it("subscribes to SetlistItem only — the SetlistItemReaction and SongWish paths are gone (n14)", () => {
+  it("subscribes to the `rev` broadcast only — no postgres_changes (R2)", () => {
     renderHook(() =>
       useRealtimeEventChannel({
         eventId: "5",
@@ -368,8 +389,9 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
         startTime: null,
       }),
     );
-    const tables = capturedPostgresHandlers.map((h) => h.config.table);
-    expect(tables).toEqual(["SetlistItem"]);
+    expect(capturedHandlers.map((h) => [h.type, h.config.event])).toEqual([
+      ["broadcast", "rev"],
+    ]);
   });
 
   it("emits captureMessage exactly once per session even on repeated errors", async () => {
@@ -591,8 +613,8 @@ describe("useRealtimeEventChannel — R3 fallback", () => {
   // Pre-Realtime, the 5s polling cadence inside `useSetlistPolling`
   // implicitly caught the upcoming → ongoing flip — every poll's
   // /api/setlist response carried server-resolved `status`. With
-  // Realtime, the endpoint is only refetched on push (SetlistItem
-  // and SongWish), so a startTime crossing in a no-activity window
+  // Realtime, the endpoint is refetched on push and by the repair poll,
+  // so a startTime crossing in a no-activity window
   // would leave polledStatus stale and let `polledStatus ?? status`
   // in LiveEventLayout mask a fresh SSR status. The boundary
   // scheduler closes that gap.
@@ -756,20 +778,11 @@ describe("useRealtimeEventChannel — R3.5 visibility + auto-recovery", () => {
     fakeChannel.subscribe.mockClear();
     // Mirror the first describe's reset (CR #504): clear the capture
     // buffer + re-establish the handler-capturing impl so any future
-    // Path B handler test added to this block isn't flaky. The R3.5
-    // tests below don't read capturedPostgresHandlers today, but the
-    // two beforeEach blocks should stay symmetric.
-    capturedPostgresHandlers.length = 0;
-    fakeChannel.on.mockImplementation(
-      (
-        _event: string,
-        config: { table?: string; event?: string },
-        handler: (payload: unknown) => void,
-      ) => {
-        capturedPostgresHandlers.push({ config, handler });
-        return fakeChannel;
-      },
-    );
+    // broadcast test added to this block isn't flaky. The R3.5 tests
+    // below don't read capturedHandlers today, but the beforeEach
+    // blocks should stay symmetric.
+    capturedHandlers.length = 0;
+    fakeChannel.on.mockImplementation(captureOn);
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
@@ -1350,17 +1363,8 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     removeChannelMock.mockClear();
     fakeChannel.on.mockClear();
     fakeChannel.subscribe.mockClear();
-    capturedPostgresHandlers.length = 0;
-    fakeChannel.on.mockImplementation(
-      (
-        _event: string,
-        config: { table?: string; event?: string },
-        handler: (payload: unknown) => void,
-      ) => {
-        capturedPostgresHandlers.push({ config, handler });
-        return fakeChannel;
-      },
-    );
+    capturedHandlers.length = 0;
+    fakeChannel.on.mockImplementation(captureOn);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     Object.defineProperty(document, "hidden", {
       value: false,
@@ -1430,13 +1434,17 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
   });
 
   it("walks freshness live → retrying → delayed → live, and success resets the schedule", async () => {
+    // The fake server answers with its current revision, so the
+    // notification's hint is satisfied once a request gets through.
+    let serverRev = 1;
+    const ok = async () => revResponse(serverRev, capturedAtFor(serverRev));
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(makeFetchResponse()) // seed OK
+      .mockImplementationOnce(ok) // seed OK
       .mockResolvedValueOnce(makeErrorResponse()) // push refetch fails
       .mockResolvedValueOnce(makeErrorResponse()) // +1 s
       .mockResolvedValueOnce(makeErrorResponse()) // +2 s
-      .mockResolvedValueOnce(makeFetchResponse()) // +4 s recovers
+      .mockImplementationOnce(ok) // +4 s recovers
       .mockResolvedValue(makeErrorResponse());
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     const { result } = mount();
@@ -1446,13 +1454,11 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     const firstSync = result.current.freshness.lastSyncAt;
     expect(firstSync).toBeInstanceOf(Date);
 
-    // A SetlistItem push for this event triggers a refetch (after the
-    // 250 ms jitter Math.random = 0.5 yields) that fails.
-    const setlistHandler = capturedPostgresHandlers.find(
-      (h) => h.config.table === "SetlistItem",
-    )!.handler;
+    // A save's broadcast triggers a refetch (after the 250 ms jitter
+    // Math.random = 0.5 yields) that fails.
     await act(async () => {
-      setlistHandler({ new: { eventId: 1 } });
+      serverRev = 2;
+      sendRev({ kind: "setlist", rev: 2 });
     });
     await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -1470,11 +1476,15 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     expect(result.current.freshness.state).toBe("live");
     expect(result.current.freshness.lastSyncAt).not.toBe(firstSync);
 
-    // Next failure starts the schedule over at 1 s, not 8 s.
+    // Next failure starts the schedule over at 1 s, not 8 s. (The
+    // notification waits out the 1 s cooldown first: the recovering
+    // request carried the previous hint, so it counts as a notification
+    // fetch.)
     await act(async () => {
-      setlistHandler({ new: { eventId: 1 } });
+      serverRev = 3;
+      sendRev({ kind: "setlist", rev: 3 });
     });
-    await advance(250);
+    await advance(1_000);
     expect(fetchMock).toHaveBeenCalledTimes(6);
     expect(result.current.freshness.state).toBe("retrying");
     await advance(1_000);
@@ -1498,10 +1508,11 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
   });
 
   it("a 503 Retry-After is a floor: pushes inside the window do not fetch before it", async () => {
+    let serverRev = 1;
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(makeErrorResponse(503, "3"))
-      .mockResolvedValue(makeFetchResponse());
+      .mockImplementation(async () => revResponse(serverRev, capturedAtFor(serverRev)));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     const { result } = mount();
     await flushMicrotasks();
@@ -1509,17 +1520,18 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     // A 503 counts toward the delayed indicator like any failure.
     expect(result.current.freshness.state).toBe("retrying");
 
-    const push = capturedPostgresHandlers.find(
-      (h) => h.config.table === "SetlistItem",
-    )!.handler;
+    const save = () => {
+      serverRev += 1;
+      sendRev({ kind: "setlist", rev: serverRev });
+    };
     await advance(500);
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      save();
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await advance(1_000);
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      save();
     });
     await advance(1_499); // t = 2999
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -1530,7 +1542,7 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
     // Floor expired → normal notification cadence (250 ms jitter here).
     await advance(2_000);
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      save();
     });
     await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -1635,6 +1647,25 @@ describe("useRealtimeEventChannel — snapshot freshness", () => {
 // notification jitter and exact 20 s periodic ticks.
 // ────────────────────────────────────────────────────────────────────
 
+/** A distinct, increasing `capturedAt` per revision. */
+function capturedAtFor(rev: number) {
+  return new Date(Date.parse("2026-11-14T07:30:00.000Z") + rev * 1_000).toISOString();
+}
+
+/** A fetch mock that answers every call with `answer()` (evaluated per call). */
+function answering(answer: () => unknown) {
+  return vi.fn((url: string, init?: RequestInit) => {
+    void url;
+    void init;
+    return Promise.resolve(answer());
+  });
+}
+
+/** Attach an `x-snapshot-verify` header to a fake response. */
+function withVerify<R extends object>(res: R, verify: string) {
+  return { ...res, headers: new Headers({ "x-snapshot-verify": verify }) };
+}
+
 function revResponse(rev: number, capturedAt: string, items: unknown[] = []) {
   return {
     ok: true,
@@ -1660,17 +1691,8 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     removeChannelMock.mockClear();
     fakeChannel.on.mockClear();
     fakeChannel.subscribe.mockClear();
-    capturedPostgresHandlers.length = 0;
-    fakeChannel.on.mockImplementation(
-      (
-        _event: string,
-        config: { table?: string; event?: string },
-        handler: (payload: unknown) => void,
-      ) => {
-        capturedPostgresHandlers.push({ config, handler });
-        return fakeChannel;
-      },
-    );
+    capturedHandlers.length = 0;
+    fakeChannel.on.mockImplementation(captureOn);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     Object.defineProperty(document, "hidden", {
       value: false,
@@ -1712,39 +1734,49 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     });
   }
 
-  function setlistHandler() {
-    return capturedPostgresHandlers.find((h) => h.config.table === "SetlistItem")!
-      .handler;
+  // A fake server whose head moves with each save; every broadcast
+  // announces the new head, and every request answers with the head as
+  // of the moment it was sent — so a notification's hint is satisfied
+  // by the request that carries it.
+  function liveServer(initial = 1) {
+    const server = {
+      rev: initial,
+      save() {
+        server.rev += 1;
+        sendRev({ kind: "setlist", rev: server.rev });
+      },
+    };
+    return server;
   }
 
   // Each request takes `ms` to answer — long enough for notifications
   // to land while it is in flight.
-  function slowFetch(ms: number) {
-    return vi.fn(
-      () =>
-        new Promise((resolve) => {
-          setTimeout(() => resolve(makeFetchResponse()), ms);
-        }),
-    );
+  function slowFetch(ms: number, server: { rev: number }) {
+    return vi.fn(() => {
+      const rev = server.rev;
+      return new Promise((resolve) => {
+        setTimeout(() => resolve(revResponse(rev, capturedAtFor(rev))), ms);
+      });
+    });
   }
 
   it("a notification while a request is in flight → exactly one more request after it settles", async () => {
-    const fetchMock = slowFetch(300);
+    const server = liveServer();
+    const fetchMock = slowFetch(300, server);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
     await advance(300); // seed settles
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const push = setlistHandler();
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      server.save();
     });
     await advance(250); // jitter → request #2 starts (in flight 300 ms)
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await act(async () => {
-      push({ new: { eventId: 1 } });
-      push({ new: { eventId: 1 } });
-      push({ new: { eventId: 1 } });
+      server.save();
+      server.save();
+      server.save();
     });
     await advance(5_000);
     // Three in-flight notifications collapse into ONE follow-up.
@@ -1752,37 +1784,37 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
   });
 
   it("two notifications within 1 s → two requests total, not three", async () => {
-    const fetchMock = slowFetch(300);
+    const server = liveServer();
+    const fetchMock = slowFetch(300, server);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
     await advance(300);
     const baseline = fetchMock.mock.calls.length;
 
-    const push = setlistHandler();
     await act(async () => {
-      push({ new: { eventId: 1 } }); // → request at +250
+      server.save(); // → request at +250
     });
     await advance(400); // second push lands mid-flight
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      server.save();
     });
     await advance(5_000);
     expect(fetchMock.mock.calls.length - baseline).toBe(2);
   });
 
   it("the follow-up after a notification waits out the 1 s cooldown", async () => {
-    const fetchMock = slowFetch(100);
+    const server = liveServer();
+    const fetchMock = slowFetch(100, server);
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
     await advance(100);
 
-    const push = setlistHandler();
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      server.save();
     });
     await advance(250); // request #2 starts at t0 + 250
     await act(async () => {
-      push({ new: { eventId: 1 } }); // dirty
+      server.save(); // dirty
     });
     await advance(100); // #2 settles at +350
     // Follow-up eligible at +1250 (cooldown from #2's start).
@@ -1864,67 +1896,155 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     );
   });
 
-  it("a postgres_changes notification no longer guesses appliedRev + 1 (removed with the R2 hint contract); every request carries the server-observed rev", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(revResponse(7, "2026-11-14T07:30:00.000Z"));
+  // R1 sent a notification fetch as `minRev = appliedRev + 1` (a guess,
+  // since postgres_changes carried no revision). R2 sends the broadcast's
+  // own revision: `max(serverRev, H)` plus `hint=1`; maintenance requests
+  // send the server-observed revision only.
+  it("a broadcast notification fetch sends minRev = max(serverRev, H) & hint=1; periodic / catch-up send serverRev", async () => {
+    const server = { rev: 7 };
+    const fetchMock = answering(() => revResponse(server.rev, capturedAtFor(server.rev)));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     const { result } = mount({ initialRev: 7, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
     await flushMicrotasks();
-    expect(fetchMock.mock.calls[0][0]).toBe(
-      "/api/setlist?eventId=1&locale=ko&minRev=7",
-    );
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=7");
 
+    server.rev = 8;
     await act(async () => {
-      setlistHandler()({ new: { eventId: 1 } });
+      sendRev({ kind: "setlist", rev: 8 });
     });
     await advance(250);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toBe(
-      "/api/setlist?eventId=1&locale=ko&minRev=7",
+      "/api/setlist?eventId=1&locale=ko&minRev=8&hint=1",
     );
-    // The server answered rev 7 (DB not ahead / purge not visible yet):
-    // a normal healthy response — no retry, nothing "delayed".
+    expect(result.current.rev).toBe(8);
     expect(result.current.freshness.state).toBe("live");
-    expect(result.current.rev).toBe(7);
-    await advance(19_000);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    // Periodic and catch-up carry the same server-observed rev.
-    await advance(750); // periodic at 20 s
+    await advance(19_750); // periodic at 20 s
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[2][0]).toBe(
-      "/api/setlist?eventId=1&locale=ko&minRev=7",
-    );
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=8");
     await act(async () => {
       capturedSubscribeCallback!("SUBSCRIBED");
     });
     await advance(250); // catch-up jitter
-    expect(fetchMock.mock.calls[3][0]).toBe(
-      "/api/setlist?eventId=1&locale=ko&minRev=7",
-    );
-    expect(result.current.freshness.state).toBe("live");
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=8");
   });
 
-  it("repeated hint misses never escalate to retrying / delayed", async () => {
+  it("a hint an R1 server never confirms (no verify header) → one quiet recheck, then dropped; never retrying / delayed", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(revResponse(3, "2026-11-14T07:30:00.000Z"));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     const { result } = mount({ initialRev: 3, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
     await flushMicrotasks();
-    for (let i = 0; i < 5; i++) {
-      await act(async () => {
-        setlistHandler()({ new: { eventId: 1 } });
-      });
-      await advance(1_000);
-      expect(result.current.freshness.state).toBe("live");
-    }
-    // 1 seed + 5 notification requests, every one at the server-observed rev, no retries.
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    for (const call of fetchMock.mock.calls.slice(1)) {
-      expect(call[0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=3");
-    }
+
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 4 });
+    });
+    await advance(250);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4&hint=1");
+    expect(result.current.freshness.state).toBe("live");
+
+    // Recheck at settle + max(1 s, cooldown left) + U(0, 500) = +1250.
+    await advance(1_249);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await advance(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+    expect(result.current.freshness.state).toBe("live");
+    expect(addBreadcrumbMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("hint exhausted (rev 4)") }),
+    );
+
+    // Dropped: nothing more until the periodic repair, which is generic.
+    await advance(18_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await advance(500); // periodic at 20 s
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=3");
+    expect(result.current.freshness.state).toBe("live");
+  });
+
+  it("an inconclusive memo answer is rechecked, and the recheck lands the update", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(revResponse(3, "2026-11-14T07:30:00.000Z")) // seed
+      .mockResolvedValueOnce(
+        withVerify(revResponse(3, "2026-11-14T07:30:01.000Z"), "memo=3;age=120"),
+      )
+      .mockResolvedValue(withVerify(revResponse(4, "2026-11-14T07:30:02.000Z"), "satisfied"));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({ initialRev: 3, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
+    await flushMicrotasks();
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 4 });
+    });
+    await advance(250);
+    expect(result.current.rev).toBe(3);
+    await advance(1_250);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+    expect(result.current.rev).toBe(4);
+    expect(result.current.freshness.state).toBe("live");
+    await advance(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("poisoning drill: a forged max-safe-integer broadcast is disproved once; honest saves then work and serverRev is never poisoned", async () => {
+    let serverRev = 3;
+    const fetchMock = answering(() =>
+      withVerify(revResponse(serverRev, capturedAtFor(serverRev)), `fresh=${serverRev}`),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({ initialRev: 3, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
+    await flushMicrotasks();
+
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: Number.MAX_SAFE_INTEGER });
+    });
+    await advance(250);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      `/api/setlist?eventId=1&locale=ko&minRev=${Number.MAX_SAFE_INTEGER}&hint=1`,
+    );
+    // fresh=3 < H → disproved: no recheck, no failure.
+    await advance(3_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.freshness.state).toBe("live");
+
+    serverRev = 4;
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 4 });
+    });
+    await advance(250);
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4&hint=1");
+    expect(result.current.rev).toBe(4);
+
+    await advance(20_000); // periodic: the durable watermark is 4, not 2^53 − 1
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+    expect(result.current.freshness.state).toBe("live");
+  });
+
+  it("fresh dbRev above the served rev is a server-proven gap: retry path chases dbRev", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(revResponse(3, "2026-11-14T07:30:00.000Z")) // seed
+      .mockResolvedValueOnce(withVerify(revResponse(3, "2026-11-14T07:30:01.000Z"), "fresh=4"))
+      .mockResolvedValue(withVerify(revResponse(4, "2026-11-14T07:30:02.000Z"), "satisfied"));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result } = mount({ initialRev: 3, initialCapturedAt: "2026-11-14T07:29:00.000Z" });
+    await flushMicrotasks();
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 9 });
+    });
+    await advance(250);
+    expect(result.current.freshness.state).toBe("retrying");
+    await advance(1_000); // n13 retry, 1 s
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // The hint (9) was disproved; the retry asks for the proven head.
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/setlist?eventId=1&locale=ko&minRev=4");
+    expect(result.current.rev).toBe(4);
+    expect(result.current.freshness.state).toBe("live");
   });
 
   it("polling while disconnected shares realtime's applied version: an older polled rev is rejected", async () => {
@@ -2175,15 +2295,15 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
   });
 
   it("__osl.dropNextNotification ignores exactly one notification and clears the flag", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse());
+    const server = liveServer();
+    const fetchMock = answering(() => revResponse(server.rev, capturedAtFor(server.rev)));
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
     mount();
     await flushMicrotasks();
-    const push = setlistHandler();
 
     window.__osl = { dropNextNotification: true };
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      server.save();
     });
     await advance(1_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -2195,13 +2315,13 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     );
 
     await act(async () => {
-      push({ new: { eventId: 1 } });
+      server.save();
     });
     await advance(1_000);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("a cross-event push does not consume the drop flag", async () => {
+  it("an invalid broadcast payload does not consume the drop flag", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(makeFetchResponse()) as unknown as typeof fetch,
@@ -2210,7 +2330,8 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     await flushMicrotasks();
     window.__osl = { dropNextNotification: true };
     await act(async () => {
-      setlistHandler()({ new: { eventId: 99 } });
+      sendRev({ kind: "reaction", rev: 99 });
+      sendRev({ kind: "setlist", rev: "99" });
     });
     expect(window.__osl.dropNextNotification).toBe(true);
   });
