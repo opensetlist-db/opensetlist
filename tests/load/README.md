@@ -317,15 +317,15 @@ control value. Old-build tabs (20 %) still model R1 tabs open across the
 deploy.
 
 **(b) Browsers — 30 pages + 470 SDK clients on the R2 client, alone.** The
-population runs the R2 page / client (broadcast-driven notification
-fetches); `--wait-pg-ready=false` because an R2 client registers no
-`postgres_changes` (waiting for it would just burn the 180 s timeout).
-Same side-cars + history re-fetch, so builds per save can be counted for
-this run too:
+SDK clients run the R2 client logic (broadcast-driven notification
+fetches, the page's own acceptance / scheduler / verify parser); the pages
+run whatever the preview serves. Nothing waits for `postgres_changes`
+registration any more (`--wait-pg-ready` is off by default; an R2 client
+registers none). Same side-cars + history re-fetch, so builds per save can
+be counted for this run too:
 
 ```bash
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 \
-  --wait-pg-ready=false --label=r2-baseline
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=r2-baseline
 ```
 
 **Do not start a k6 burst during it** — that was the run #2 recipe and is
@@ -333,47 +333,70 @@ now the 1,000-client trap: under R2 every one of these 500 clients fetches
 on the broadcast by itself, so the browsers run IS the 500-viewer burst; a
 concurrent `viewers.js` would add another 500 notification fetches per save
 (and its own saves on the same event) and measure an audience twice the
-one being sized. Report pages and SDK separately per save (the per-edit
-table has both): save → DOM / save → applied rev p50/p95/max, the
-broadcast arrival (`bcast→SDK`), and the hint outcomes / rechecks per
-client population (SDK counters; pages from their recorded `/api/setlist`
-responses — both *P2*, see (c)).
+one being sized. The report has one per-save table for pages and one for
+SDK clients: save → DOM / save → applied rev p50/p95/max, missing, the
+broadcast arrival, the save's notification fetches and their
+`x-snapshot-verify` kinds, and (SDK) ticket resolutions, rechecks and
+exhausted hints; plus a whole-run "Hint outcomes" section.
 
-**(c) Drills** (one per run, after the baseline; *P2* = needs the R2 client
-API in `subs-worker.mjs` / `run.mjs` / `pages.mjs` and lands with it; the
-rest is k6 or manual):
+**(c) Drills** (one per run, after the baseline; commands and gates in
+`browsers/README.md`):
 
-- **Hint poisoning** (`--drill=poison`, guest side in place; client-side
-  measurement *P2*): a guest anon client sends one forged
-  `{ kind: "setlist", rev: 9007199254740991 }` on the public channel, then
-  the honest saves run — expect one notification fetch + one recheck per
-  client, no permanent watermark (every honest save passes the primary gate).
-- **Paired spam** (`--drill=spam`, guest side in place; fetch-rate
-  measurement *P2*): the guest sends 2 msgs/s for 60 s during real saves —
-  expect each client's notification fetch rate bounded by the shared 1 s
-  cooldown and 0 failures.
-- **Verification ambiguity** (*P2*): prime the memo — right before the
-  drilled PUT, every SDK client fires one fetch with `minRev = current rev
-  + 1` (no hint), so the instances that serve them remember the pre-save
-  rev; the save's hinted fetches landing within 1 s on those instances get
-  `memo` — expect `memo`, then one recheck that comes back satisfied.
-- **Lost final / reconnect / double save** (existing drills, *P2*): the
-  drop logic moves from `postgres_changes` frames to the `rev` broadcast
-  (SDK workers and the pages' websocket proxy); gates unchanged.
+- **Hint poisoning** (`--drill=poison`): a guest anon client sends one
+  forged `{ kind: "setlist", rev: 9007199254740991 }` on the public
+  channel, then the honest saves run. Gated: ≤ 1 recheck of the forged hint
+  per SDK client, no client's `serverRev` (read from its acceptance state)
+  ever ≥ the forged rev, the forgery received; honest saves under the
+  primary gate.
+- **Paired spam** (`--drill=spam`): the guest sends 2 msgs/s for 60 s
+  during real saves. Gated: per SDK client, notification + recheck starts
+  ≥ 1 s apart (the shared cooldown) and 0 HTTP / network / deadline
+  failures in the window; per-client request rates reported.
+- **Verification ambiguity** (`--drill=verify-ambiguity`): right before the
+  drilled PUT a helper sends `/api/setlist?…&minRev=<rev + 1000>` on all 3
+  locales (`--prime-per-locale`, default 1) so the instances that serve
+  them memoise the pre-save revision for 1 s, then the save follows 150 ms
+  later. Reports the memo share among the save's notification fetches and
+  whether each memo answer was resolved by the one recheck (the gate);
+  n/a when no memo was seen — which instance serves what is Vercel's
+  choice, so raise `--prime-per-locale` for a wider net.
+- **Lost final / silent loss / reconnect / double save**: on the
+  broadcast path. The SDK workers drop valid payloads before `noteHint`;
+  the pages lose the notification through the websocket proxy (every `rev`
+  broadcast frame, and postgres_changes on an R1 build) or, with
+  `--drop-via=hook`, through the page's own `__osl.dropNextNotification`.
+  Gates unchanged.
 - **R2 tabs during a real R1 rollback** (manual): start the browsers run
   with a long window (`--edits=8 --pause=40`), redeploy the last R1 build to
   the dev preview mid-run, keep editing, then redeploy R2. Expect no
   `x-snapshot-verify` (missing) → body satisfied or one recheck, 0 missing,
   0 failures; the redeploy itself is a cold start, judge it apart.
 - **Sustained spam + real saves + background traffic** (k6 + `--drill=spam`
-  long, client side *P2*): `--drill=spam --spam-secs=300 --edits=12`, and
-  from Git Bash a background-only `viewers.js` with **no saves and no
-  bursts** — `-e ADMIN_CYCLES=0 -e QUIET_CYCLES=0 -e COLD_START=0 -e
-  POLL_RPS=1 -e SSR_RPS=2.5 -e REACTIONS=500 -e REACTION_AT=60
-  -e STEADY_SECONDS=300 -e DRAIN_S=0`, with `EXPECTED_ROWS` unset (the
-  browsers run adds a row per edit). The SDK clients already produce the
-  periodic polls, so k6 adds only the page loads and reactions; its
-  admin/burst gates read n/a or FAIL in this mode by construction.
+  long): `--drill=spam --spam-secs=300 --edits=12`, and from Git Bash a
+  background-only `viewers.js` with **no saves and no bursts** — `-e
+  ADMIN_CYCLES=0 -e QUIET_CYCLES=0 -e COLD_START=0 -e POLL_RPS=1 -e
+  SSR_RPS=2.5 -e REACTIONS=500 -e REACTION_AT=60 -e STEADY_SECONDS=300 -e
+  DRAIN_S=0`, with `EXPECTED_ROWS` unset (the browsers run adds a row per
+  edit). The SDK clients already produce the periodic polls, so k6 adds
+  only the page loads and reactions; its admin/burst gates read n/a or
+  FAIL in this mode by construction.
+
+**Harness smoke (2026-10-11, 2 pages + 5 SDK, event 111, dev preview still
+on R1 server and R1 page build).** Every run: primary gate PASS, 0 missing,
+0 monotonicity regressions. Without the `x-snapshot-verify` header every
+answer is `missing`; the R1 server's repair path served the saved rev, so
+the honest saves' notification fetches were satisfied without a recheck.
+
+| Run | Result |
+|---|---|
+| no drill (2 edits) | pairs p95 1,579 ms; SDK: 26 hinted fetches, all `missing` + satisfied, 0 rechecks; pages (R1 build) received the `rev` broadcast 4/4 at p50 456 ms vs postgres_changes 569 ms |
+| `poison` | PASS: 5/5 SDK received the forgery; per client 1 notification fetch + 1 recheck (both inconclusive) → exhausted; 0 clients with serverRev ≥ forged (max held 453) |
+| `spam` (`--spam-secs=20`) | PASS: 40 msgs, all acked `ok`; per client ≤ 0.98 hinted requests/s, smallest gap 1,000 ms; 0 failures; 104 hinted fetches, 1 recheck (new spam hints keep superseding the carried ticket) |
+| `verify-ambiguity` | n/a (by design on R1): 3 priming requests, 5 hinted fetches all `missing` + satisfied; memo needs the R2 server |
+| `lost-final` | PASS: drilled max 21.5 s (gate 26 s); SDK delivered by `periodic` 5/5; proxy dropped 7 frames per page |
+| `silent-loss --drop-via=hook` | PASS: 1 page, hook armed and consumed (0 left), repaired by the periodic poll at 15.5 s |
+| `double-save` | PASS: pages 2/2, SDK 5/5 converged to the final save (rev 480), p95 1,320 ms |
+| `reconnect` | PASS: rejoin p95 pages 1.2 s / SDK 1.24 s, 0 re-creations, 0 handoff regressions |
 
 ## Reading the result
 
