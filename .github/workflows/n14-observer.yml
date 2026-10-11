@@ -109,12 +109,15 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node 22 ≥ 22.18: subs-worker.mjs imports the app's src/lib/*.ts
-      # modules at runtime through Node's built-in type stripping, which
-      # is on by default from 22.18; "22" resolves to the latest 22.x.
+      # Node 24, the same major as ci.yml and event-detail-perf.yml: the
+      # lockfile is written by npm 11 (Node 24) and `npm ci` under Node
+      # 22's npm 10 rejects it as out of sync ("Missing: @swc/helpers …
+      # from lock file" on the first dispatch). Type stripping, which
+      # subs-worker.mjs needs to import the app's src/lib/*.ts modules at
+      # runtime, is on by default from 22.18 and in every 24.x.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "24"
           cache: "npm"
 
       # Full install (the observer needs only @supabase/supabase-js,
