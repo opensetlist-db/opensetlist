@@ -1,0 +1,19 @@
+2026-10-11T08:48:14.916Z insert rev 787 id 2021 pos 24 ms 721
+file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/admin.mjs:87
+  if (!res.ok) throw new Error(`${label}: HTTP ${res.status} ${JSON.stringify(body)?.slice(0, 200)}`);
+                     ^
+
+Error: put: HTTP 400 {"error":"앙코르 항목(position 23)이 일반 항목(position 24) 앞에 있습니다."}
+    at timedJson (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/admin.mjs:87:22)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async putSong (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/admin.mjs:104:13)
+    at async file:///C:/Users/cheon/AppData/Local/Temp/claude/F--work-ClaudeCode-opensetlist4/d5b4d07b-b71e-4d5a-8c11-1c72a24fe58d/scratchpad/warmrun/warm-check.mjs:14:13
+
+Node.js v24.14.0
+2026-10-11T08:48:37.821Z rev=787 ja 200 source warm verify satisfied bodyRev 787 ms 375 vid sfo1::icn1::g4vzj-1791708516892-c15decb912b3
+2026-10-11T08:48:37.996Z rev=787 ko 200 source warm verify satisfied bodyRev 787 ms 174 vid sfo1::icn1::g4vzj-1791708517200-99aa3eec9075
+2026-10-11T08:48:38.190Z rev=787 en 200 source warm verify satisfied bodyRev 787 ms 194 vid sfo1::icn1::zn84j-1791708517372-922c2104eba4
+2026-10-11T08:48:39.024Z deleted 2021 rev 788 ms 496
+2026-10-11T08:48:42.194Z rev=788 ja 200 source warm verify satisfied bodyRev 788 ms 168 vid sfo1::icn1::8h6lg-1791708521404-5667a1865875
+2026-10-11T08:48:42.360Z rev=788 ko 200 source warm verify satisfied bodyRev 788 ms 165 vid sfo1::icn1::8h6lg-1791708521572-6216776502c5
+2026-10-11T08:48:42.526Z rev=788 en 200 source warm verify satisfied bodyRev 788 ms 166 vid sfo1::icn1::sxgfz-1791708521740-58105755ad9e
