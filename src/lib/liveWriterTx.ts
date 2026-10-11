@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { INSTANCE_ID } from "@/lib/instanceId";
+import { scheduleWarm } from "@/lib/liveWarm";
 import {
   classifyPreExecutionFailure,
   describeError,
@@ -91,12 +92,23 @@ const executedFailures = new WeakSet<object>();
 
 /**
  * Run one live writer's save. `route` is the log tag (stable, e.g.
- * `admin-create`); `revOf` reads the produced revision out of the
- * transaction's result for the log line (omit when the result is the
- * revision itself or carries none).
+ * `admin-create`); `eventId` is the event the save locks and bumps;
+ * `revOf` reads the produced revision out of the transaction's result
+ * (omit when the result is the revision itself or carries none).
+ *
+ * After a COMMITTED save that produced a revision, the flagged writer
+ * warming job is registered here (`scheduleWarm`, a no-op unless
+ * `LIVE_WARM_ENTRIES=1`) — in this one place so every live writer gets
+ * it and none can forget it. It is reached only on the success path: a
+ * transaction that threw (rolled back, never started, or failed to
+ * commit) leaves through the `catch` below and never warms, and a save
+ * that changed nothing (`rev` null) has no new revision to warm. The
+ * CSV import route does not use this wrapper and so never warms (an
+ * off-peak bulk replace, not a live save).
  */
 export async function liveWriterTransaction<T>(
   route: string,
+  eventId: bigint,
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   revOf: (result: T) => bigint | null | undefined = (r) =>
     typeof r === "bigint" ? r : null,
@@ -104,8 +116,9 @@ export async function liveWriterTransaction<T>(
   const t = { called: Date.now(), entered: null as number | null };
   let rev: bigint | null = null;
   let ok = false;
+  let result: T;
   try {
-    const result = await prisma.$transaction(
+    result = await prisma.$transaction(
       (tx) => {
         t.entered = Date.now();
         return fn(tx);
@@ -114,7 +127,6 @@ export async function liveWriterTransaction<T>(
     );
     ok = true;
     rev = revOf(result) ?? null;
-    return result;
   } catch (err) {
     const kind =
       t.entered === null ? classifyPreExecutionFailure(err) : null;
@@ -136,6 +148,11 @@ export async function liveWriterTransaction<T>(
         `rev=${rev ?? "-"} ok=${ok} instance=${INSTANCE_ID}`,
     );
   }
+  // Only reached when the transaction resolved (the catch rethrows).
+  // After the `[liveWriter]` line, so the harness's commit timestamp
+  // precedes the job's `[liveWarm] start`. `scheduleWarm` never throws.
+  if (rev !== null) scheduleWarm(eventId, rev);
+  return result;
 }
 
 /**

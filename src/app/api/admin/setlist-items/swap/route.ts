@@ -69,7 +69,7 @@ async function swapItems(request: NextRequest) {
   }
   const eventId = ownerA.eventId;
 
-  const rev = await liveWriterTransaction("admin-swap", async (tx) => {
+  const rev = await liveWriterTransaction("admin-swap", eventId, async (tx) => {
     await lockEvent(tx, eventId);
     const rows = await tx.setlistItem.findMany({
       where: { id: { in: [idA, idB] } },

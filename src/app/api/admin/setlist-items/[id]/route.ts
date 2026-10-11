@@ -78,7 +78,7 @@ async function updateItem(request: NextRequest, { params }: Props) {
   // whole save back — the item never ends up with its links deleted but
   // not rewritten, and no notification goes out for a save that didn't
   // happen. The event-cache expiry runs only after commit.
-  const result = await liveWriterTransaction("admin-update", async (tx) => {
+  const result = await liveWriterTransaction("admin-update", eventId, async (tx) => {
     await lockEvent(tx, eventId);
 
     const existingItems = await tx.setlistItem.findMany({
@@ -172,7 +172,7 @@ async function deleteItem({ params }: Props) {
   // Soft-delete + revision bump in one transaction (n14). Deleting an
   // already-deleted row still bumps: the request is a logical save from
   // the operator's point of view, and an extra refetch is harmless.
-  const rev = await liveWriterTransaction("admin-delete", async (tx) => {
+  const rev = await liveWriterTransaction("admin-delete", eventId, async (tx) => {
     await lockEvent(tx, eventId);
     await tx.setlistItem.update({
       where: { id: itemId },

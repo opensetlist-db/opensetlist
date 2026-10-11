@@ -200,7 +200,7 @@ async function updateEvent(request: NextRequest, { params }: Props) {
   if (dupErr) return dupErr;
 
   try {
-    const { updated: event, rev } = await liveWriterTransaction("admin-event-update", async (tx) => {
+    const { updated: event, rev } = await liveWriterTransaction("admin-event-update", eventId, async (tx) => {
       // n14: lock the event row and read the fields the live snapshot
       // carries BEFORE writing, so we can tell whether this edit
       // changes what `/api/setlist` serves. Most event edits (title,
@@ -317,7 +317,7 @@ async function deleteEvent({ params }: Props) {
   // The live snapshot carries `isDeleted` (a deleted event resolves to
   // `status: null`), so a soft-delete is a snapshot change like any
   // other: bump + broadcast in the same transaction (n14).
-  await liveWriterTransaction("admin-event-delete", async (tx) => {
+  await liveWriterTransaction("admin-event-delete", eventId, async (tx) => {
     await lockEvent(tx, eventId);
     await tx.event.update({
       where: { id: eventId },
