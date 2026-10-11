@@ -90,16 +90,16 @@ describe("GET /api/setlist", () => {
 
   it("passes a valid minRev through and ignores an invalid one", async () => {
     await get("eventId=111&locale=ko&minRev=43");
-    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", 43);
+    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", 43, { hint: false });
     await get("eventId=111&locale=ko&minRev=-1");
-    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", null);
+    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", null, { hint: false });
     await get("eventId=111&locale=ko&minRev=1e9");
-    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", null);
+    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", null, { hint: false });
   });
 
   it("normalizes an unknown locale to the default before it reaches the cache key", async () => {
     await get("eventId=111&locale=xx");
-    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ja", null);
+    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ja", null, { hint: false });
   });
 
   it("soft-deleted event → status null", async () => {

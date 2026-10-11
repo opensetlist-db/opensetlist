@@ -370,7 +370,7 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     const lines = logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read "));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(
-      /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ instance=[0-9a-f]{8}$/,
+      /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ hint=0 instance=[0-9a-f]{8}$/,
     );
   });
 
@@ -395,7 +395,7 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     expect(revalidateEventData).not.toHaveBeenCalled();
     expect(
       logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
-    ).toEqual([expect.stringMatching(/ rev=timeout ms=\d+ instance=/)]);
+    ).toEqual([expect.stringMatching(/ rev=timeout ms=\d+ hint=0 instance=/)]);
     // Within the memo window the failure is remembered: no second read.
     db.revReadError = null;
     await getLiveSnapshot(BigInt(1), "ja", 6);
@@ -409,6 +409,6 @@ describe("getLiveSnapshot — diagnostics and failure handling", () => {
     expect(r.source).toBe("cache");
     expect(
       logLines().filter((l) => l.startsWith("[liveSnapshot] rev-read ")),
-    ).toEqual([expect.stringMatching(/ rev=error ms=\d+ instance=/)]);
+    ).toEqual([expect.stringMatching(/ rev=error ms=\d+ hint=0 instance=/)]);
   });
 });

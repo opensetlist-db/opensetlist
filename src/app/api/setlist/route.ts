@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getLiveSnapshot,
   logSnapshotFailure,
+  parseHint,
   parseMinRev,
   resolveSnapshotForResponse,
 } from "@/lib/liveSnapshot";
@@ -13,6 +14,26 @@ import {
 import { locales, defaultLocale, type Locale } from "@/i18n/routing";
 
 const SLOW_HIT_MS = 500;
+
+/**
+ * `[setlist] hint-fetch …` — exactly one line per request that carried
+ * `?hint=1`, so the load harness can count hint outcomes (satisfied /
+ * fresh / memo / deferred) per save from the Vercel logs. `verify` is
+ * the `x-snapshot-verify` kind (without its `=…` detail), or `error`
+ * for a 503 — that response carries no header, but the request still
+ * happened and must be counted. `minRev=none` when absent/invalid.
+ */
+function logHintFetch(
+  eventId: bigint,
+  locale: Locale,
+  minRev: number | null,
+  verify: string,
+): void {
+  console.log(
+    `[setlist] hint-fetch event=${eventId} locale=${locale} ` +
+      `minRev=${minRev ?? "none"} verify=${verify} instance=${INSTANCE_ID}`,
+  );
+}
 
 /**
  * 503 for a snapshot that could not be built (pool / pooler exhausted,
@@ -49,7 +70,7 @@ function snapshotUnavailable(): NextResponse {
 }
 
 /**
- * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>]
+ * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>][&hint=1]
  *
  * The live event page's snapshot: setlist items, reaction counts, the
  * wish TOP-3 and the event status, all from ONE consistent database
@@ -87,6 +108,12 @@ function snapshotUnavailable(): NextResponse {
  * memo=<rev>;age=<ms> | deferred` (200 only) tells the client how its
  * `minRev` was resolved — see `src/lib/snapshotVerify.ts` for the
  * grammar and what each value proves.
+ *
+ * `?hint=1` marks a notification fetch (sent because a broadcast hint
+ * arrived). It is accepted and logged (`[setlist] hint-fetch`, and
+ * `hint=` on the revision-read line) and changes nothing else, so old
+ * clients that never send it and new clients against an older server
+ * both keep working.
  */
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -115,11 +142,13 @@ export async function GET(req: NextRequest) {
   }
 
   const minRev = parseMinRev(url.searchParams.get("minRev"));
+  const hint = parseHint(url.searchParams.get("hint"));
   let result: Awaited<ReturnType<typeof getLiveSnapshot>>;
   try {
-    result = await getLiveSnapshot(eventId, locale, minRev);
+    result = await getLiveSnapshot(eventId, locale, minRev, { hint });
   } catch (err) {
     logSnapshotFailure(eventId, locale, Date.now() - started, err);
+    if (hint) logHintFetch(eventId, locale, minRev, "error");
     return snapshotUnavailable();
   }
   const { snapshot, source, verify } = result;
@@ -143,6 +172,7 @@ export async function GET(req: NextRequest) {
         `instance=${INSTANCE_ID}`,
     );
   }
+  if (hint) logHintFetch(eventId, locale, minRev, verify.kind);
 
   return NextResponse.json(
     {

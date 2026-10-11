@@ -569,6 +569,7 @@ type RevCheck =
 async function verifiedRevision(
   eventId: bigint,
   minRev: number,
+  hint: boolean,
 ): Promise<RevCheck> {
   const key = eventId.toString();
   const memo = revMemo.get(key);
@@ -602,9 +603,11 @@ async function verifiedRevision(
     }
     revMemo.set(key, { rev, readAt: Date.now(), startedAt: started });
     // One line per real database read (coalesced waiters share it).
+    // `hint` is the INITIATING request's `?hint=1` flag: whether a
+    // notification fetch or a maintenance fetch paid for this read.
     console.log(
       `[liveSnapshot] rev-read event=${eventId} rev=${outcome} ` +
-        `ms=${Date.now() - started} instance=${INSTANCE_ID}`,
+        `ms=${Date.now() - started} hint=${hint ? 1 : 0} instance=${INSTANCE_ID}`,
     );
     return rev;
   });
@@ -664,6 +667,18 @@ export function parseMinRev(raw: string | null): number | null {
 }
 
 /**
+ * Parse the client's `?hint=1` marker: the request is a notification
+ * fetch (sent because a broadcast hint arrived), as opposed to a poll /
+ * catch-up / resume / recheck. Exactly `"1"` counts; anything else —
+ * absent, empty, `true`, `0` — is "no hint", so an unexpected value
+ * degrades to a plain request. Diagnostics only: the server logs it
+ * and changes no behaviour on it.
+ */
+export function parseHint(raw: string | null): boolean {
+  return raw === "1";
+}
+
+/**
  * The cached, coalesced snapshot read.
  *
  * Repair path (`minRev`): the client passes the highest revision it has
@@ -689,12 +704,14 @@ export function parseMinRev(raw: string | null): number | null {
  * `verify` says how the hint was resolved for THIS request (see
  * `classifyVerify` and `src/lib/snapshotVerify.ts`). It is per-request
  * metadata for the response header and is never stored with the
- * snapshot.
+ * snapshot. `opts.hint` (`?hint=1`) only labels the revision-read log
+ * line.
  */
 export async function getLiveSnapshot(
   eventId: bigint,
   locale: Locale,
   minRev: number | null = null,
+  opts: { hint?: boolean } = {},
 ): Promise<LiveSnapshotResult> {
   const idKey = eventId.toString();
   const key = `${idKey}:${locale}`;
@@ -709,7 +726,7 @@ export async function getLiveSnapshot(
     return { ...first, verify: { kind: "satisfied" } };
   }
 
-  const check = await verifiedRevision(eventId, minRev);
+  const check = await verifiedRevision(eventId, minRev, opts.hint ?? false);
   const dbRev = check.rev;
   let served = first;
   if (dbRev !== null && dbRev > first.snapshot.rev) {
