@@ -82,6 +82,9 @@ test("follow-mode capture: overlap dedupe and the newer line kinds", () => {
   assert.equal(s.emaxconn.inTypedLines, 1);
   assert.equal(s.revRead.total, 2);
   assert.equal(s.revRead.timeouts, 1);
+  // These rev-read lines predate the `hint=` field.
+  assert.deepEqual(s.revRead.byHint, { "—": 2 });
+  assert.equal(s.hint.total, 0);
   assert.deepEqual([s.coalesced.lines, s.coalesced.waitersMax], [1, 7]);
   assert.deepEqual(s.slowHit, { total: 1, maxMs: 1800 });
   const w = s.writers.find((x) => x.route === "update");
@@ -94,4 +97,48 @@ test("follow-mode capture: overlap dedupe and the newer line kinds", () => {
   assert.deepEqual(sums, [[4, 4], [0, 4], [1, 1]]);
   assert.equal(s.poolPeak, 4);
   assert.deepEqual(s.other, [["[someNewThing] hello", 1]]);
+});
+
+// History-mode shape with the R2 server's lines: `[setlist] hint-fetch`
+// (one per hint=1 request, every verify shape plus an unknown and an
+// absent one) and `rev-read … hint=<0|1>`, across two minutes.
+const HINTS = `14:00:58.10  opensetlist-x.vercel.app  info   λ GET /api/setlist
+[setlist] hint-fetch event=111 locale=ja minRev=12 verify=satisfied instance=aa
+
+14:00:58.20  opensetlist-x.vercel.app  info   λ GET /api/setlist
+[liveSnapshot] rev-read event=111 rev=11 ms=30 hint=1 instance=bb
+[setlist] hint-fetch event=111 locale=ko minRev=12 verify=fresh=11 instance=bb
+
+14:00:59.00  opensetlist-x.vercel.app  info   λ GET /api/setlist
+[setlist] hint-fetch event=111 locale=ja minRev=12 verify=memo=11;age=420 instance=cc
+
+14:01:00.50  opensetlist-x.vercel.app  info   λ GET /api/setlist
+[liveSnapshot] rev-read event=111 rev=timeout ms=1500 hint=1 instance=dd
+[setlist] hint-fetch event=111 locale=en minRev=13 verify=deferred instance=dd
+
+14:01:01.00  opensetlist-x.vercel.app  info   λ GET /api/setlist
+[liveSnapshot] rev-read event=111 rev=13 ms=25 hint=0 instance=aa
+[setlist] hint-fetch event=111 locale=ja minRev=13 verify=bogus instance=aa
+[setlist] hint-fetch event=111 locale=ja minRev=13 instance=aa
+`;
+
+test("hint outcomes per kind and minute; rev-read split by hint", () => {
+  const s = summarise(HINTS);
+  assert.equal(s.entries, 5);
+  assert.equal(s.hint.total, 6);
+  assert.deepEqual(s.hint.counts, { satisfied: 1, fresh: 1, memo: 1, deferred: 1, none: 0, other: 2 });
+  assert.deepEqual(
+    s.hint.perMinute.map((m) => [m.minute, m.total, m.satisfied, m.fresh, m.memo, m.deferred, m.other]),
+    [[14 * 60, 3, 1, 1, 1, 0, 0], [14 * 60 + 1, 3, 0, 0, 0, 1, 2]],
+  );
+  assert.equal(s.revRead.total, 3);
+  assert.equal(s.revRead.timeouts, 1);
+  assert.deepEqual(s.revRead.byHint, { 1: 2, 0: 1 });
+  // hint-fetch lines are typed, not "other lines".
+  assert.equal(s.other.length, 0);
+  const md = toMarkdown(s);
+  assert.match(md, /### Hint outcomes \(`\[setlist\] hint-fetch` lines: 6\)/);
+  assert.match(md, /\| 14:00 \| 3 \| 1 \| 1 \| 1 \| 0 \| 0 \| 0 \|/);
+  assert.match(md, /\| 14:01 \| 3 \| 0 \| 0 \| 0 \| 1 \| 0 \| 2 \|/);
+  assert.match(md, /by hint: hint=1 2, hint=0 1/);
 });

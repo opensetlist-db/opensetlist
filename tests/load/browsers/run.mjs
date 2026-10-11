@@ -20,8 +20,14 @@
 // monotonicity() below). Any decrease is a failure.
 //
 // Drills (one per run): `--drill=silent-loss | ws-blocked | reconnect |
-// double-save | lost-final`, see the README and the per-drill comments
-// below.
+// double-save | lost-final | poison | spam`, see the README and the
+// per-drill comments below. `poison` and `spam` are the two guest-
+// broadcast drills: an anonymous supabase-js client (anon key, like any
+// visitor) joins the public `event:<id>` channel and sends forged `rev`
+// broadcasts in the exact shape the writer sends, so the clients cannot
+// tell them apart from real hints. They only mean something against R2
+// clients (which treat the broadcast as their notification); R1 pages
+// ignore broadcasts.
 //
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
 // gitignored). All timestamps in the files are UTC ISO so the run can be
@@ -31,6 +37,7 @@ import path from "node:path";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
+import { createClient } from "@supabase/supabase-js";
 import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient } from "../realtime/lib.mjs";
 import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSongs, cleanup, findUnacknowledgedInsert } from "./admin.mjs";
 import { launchPages } from "./pages.mjs";
@@ -63,10 +70,11 @@ const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position 
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
-if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final"].includes(DRILL)) {
+if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam"].includes(DRILL)) {
   console.error(`unknown --drill=${args.drill}`);
   process.exit(2);
 }
+const GUEST_DRILL = DRILL === "poison" || DRILL === "spam";
 // silent-loss: a subset of pages loses the notification for ONE edit.
 // ws-blocked: pages with the websocket blocked for the whole run.
 // reconnect: every socket (pages + SDK) is force-closed right before ONE edit.
@@ -76,11 +84,51 @@ if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-fi
 // lost-final: the notification of the run's LAST save (the last edit's
 //   PUT) is dropped on every page and SDK client; only the periodic
 //   repair poll (20 s ± 4 s) can deliver it.
+// poison: right before edit --drill-edit (default 1) a guest sends ONE
+//   forged broadcast `{ kind: "setlist", rev: --poison-rev }` (default
+//   Number.MAX_SAFE_INTEGER), waits --poison-lead ms, then the honest
+//   saves run as usual. A correct client spends one notification fetch +
+//   at most one recheck on it and keeps no watermark from it, so every
+//   honest save after it must still pass the primary gate.
+// spam: from edit --drill-edit (default 1) on, a guest sends
+//   --spam-rate (2) forged broadcasts per second for --spam-secs (60) s,
+//   concurrently with the real saves. Expect the clients' notification
+//   fetch rate to stay bounded by the shared 1 s cooldown and the real
+//   saves to land with 0 failures.
 const DRILL_PAGES = int("drill-pages", DRILL === "silent-loss" ? Math.max(1, Math.ceil(PAGES / 2)) : PAGES);
 // silent-loss drills the LAST edit by default: a later edit's notification
 // would otherwise repair the drilled pages before the periodic poll does.
-// lost-final is the last edit by definition.
-const DRILL_EDIT = DRILL === "lost-final" ? EDITS : int("drill-edit", DRILL === "silent-loss" ? EDITS : Math.max(1, Math.ceil(EDITS / 2)));
+// lost-final is the last edit by definition. The guest drills start at
+// the first edit so every honest save comes after (poison) or during
+// (spam) the forged traffic.
+const DRILL_EDIT =
+  DRILL === "lost-final"
+    ? EDITS
+    : int("drill-edit", DRILL === "silent-loss" ? EDITS : GUEST_DRILL ? 1 : Math.max(1, Math.ceil(EDITS / 2)));
+// Guest-broadcast drills (see above).
+const POISON_REV = args["poison-rev"] === undefined ? Number.MAX_SAFE_INTEGER : Number(args["poison-rev"]);
+// Long enough for the forged hint's jittered notification fetch (≤ 0.5 s),
+// its recheck (+1–1.5 s) and the recheck's response, so the first honest
+// save meets a client that has already finished with the forgery.
+const POISON_LEAD_MS = int("poison-lead", 3000);
+const SPAM_RATE = parseFloat(args["spam-rate"] ?? "2");
+const SPAM_SECS = parseFloat(args["spam-secs"] ?? "60");
+// Which rev each spam message claims:
+//   ahead  the latest real save's rev + 1 — always one step newer than
+//          the truth until the next real save, i.e. the most plausible
+//          forgery (every message looks like a real, unseen save);
+//   max    Number.MAX_SAFE_INTEGER every time;
+//   stale  the latest real save's rev — a duplicate a correct client
+//          drops without any fetch.
+const SPAM_REV = String(args["spam-rev"] ?? "ahead");
+if (DRILL === "poison" && !(Number.isSafeInteger(POISON_REV) && POISON_REV >= 0)) {
+  console.error(`--poison-rev must be a safe integer, got ${args["poison-rev"]}`);
+  process.exit(2);
+}
+if (DRILL === "spam" && (!["ahead", "max", "stale"].includes(SPAM_REV) || !(SPAM_RATE > 0) || !(SPAM_SECS > 0))) {
+  console.error("--spam-rev must be ahead|max|stale, --spam-rate and --spam-secs > 0");
+  process.exit(2);
+}
 const RECONNECT_LEAD_MS = int("reconnect-lead", 1000);
 // Silent-loss repair gate (spec): periodic poll 20 s ± 4 s → ≤ 24 s incl. fetch/render.
 const SILENT_GATE_MS = int("silent-gate", 24000);
@@ -108,6 +156,7 @@ let pagePop = null;
 const workers = [];
 const saveFailures = [];
 let finalized = false;
+let guest = null; // guest broadcaster of the poison / spam drills
 
 // Short-lived DB connection for one check (session pooler; holding one
 // open for the whole run would pin a pooler client for minutes).
@@ -178,6 +227,79 @@ async function stopWorkers() {
   ])));
   await Promise.allSettled(workers.map((w) => w.worker.terminate()));
   return results.flatMap((r) => r.clients);
+}
+
+// ─── guest broadcaster (poison / spam drills) ───
+// A plain supabase-js client with the public anon key — exactly what any
+// visitor of the page holds — on the same public channel the writer
+// broadcasts to. Nothing here needs a privilege the public lacks, which
+// is the point: the client contract has to survive whatever this sends.
+//
+// The payload is the writer's own shape (`{ kind, rev }`, no marker
+// field), so a client cannot tell a forgery from a real hint by its
+// shape; the report tells them apart by rev and send time instead.
+// `ack: true` makes `send` resolve with the server's verdict ("ok" |
+// "timed out" | "error"), recorded per message, so a Realtime-side
+// rate limit or rejection shows in the report instead of looking like a
+// client that ignored the message. `self: false` (the default) keeps the
+// guest from receiving its own messages.
+async function openGuest() {
+  const c = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const ch = c.channel(`event:${EVENT_ID}`, { config: { private: false, broadcast: { ack: true, self: false } } });
+  const t0 = Date.now();
+  const status = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve("no-reply"), 10000);
+    ch.subscribe((s) => {
+      if (s === "SUBSCRIBED" || s === "CHANNEL_ERROR" || s === "TIMED_OUT") {
+        clearTimeout(timer);
+        resolve(s);
+      }
+    });
+  });
+  const g = {
+    joined: status === "SUBSCRIBED",
+    status,
+    joinMs: Date.now() - t0,
+    sends: [], // [t, rev, result, label]
+    closed: false,
+    async send(rev, label) {
+      // After close() (clean-up, Ctrl-C) a still-running spam loop must
+      // go quiet: realtime-js would push a send on a left channel over
+      // the REST endpoint instead, i.e. keep spamming the population.
+      if (g.closed) return "closed";
+      const t = Date.now();
+      let r;
+      try {
+        r = await ch.send({ type: "broadcast", event: "rev", payload: { kind: "setlist", rev } });
+      } catch (e) {
+        r = `threw: ${String(e?.message || e).slice(0, 80)}`;
+      }
+      g.sends.push([t, rev, r, label]);
+      return r;
+    },
+    async close() {
+      g.closed = true;
+      await c.removeAllChannels().catch(() => {});
+    },
+  };
+  return g;
+}
+
+// The spam loop: SPAM_RATE messages per second for SPAM_SECS, on a fixed
+// schedule from its start (a slow ack delays one message, not the rest).
+// `latestRev()` = the newest real save rev the admin driver has seen.
+async function runSpam(g, latestRev) {
+  const total = Math.round(SPAM_RATE * SPAM_SECS);
+  const start = Date.now();
+  for (let j = 0; j < total; j++) {
+    const due = start + (j * 1000) / SPAM_RATE;
+    if (Date.now() < due) await sleep(due - Date.now());
+    const rev = SPAM_REV === "max" ? Number.MAX_SAFE_INTEGER : SPAM_REV === "stale" ? latestRev() : latestRev() + 1;
+    await g.send(rev, `spam ${j + 1}/${total}`);
+  }
+  return { sent: total, ms: Date.now() - start };
 }
 
 // ─── measurement helpers ───
@@ -386,17 +508,46 @@ async function main() {
     allPgReadySec: pgReadyAt ? (pgReadyAt - popStart) / 1000 : null,
   };
   log(`population: ${JSON.stringify(popSummary)}; settling ${SETTLE_MS / 1000}s`);
+  // The guest joins during the settle time, so its join does not shift
+  // the edit schedule; a guest that cannot join makes the drill
+  // meaningless, so the run stops (after the usual clean-up) instead of
+  // reporting honest saves as if they had been poisoned.
+  if (GUEST_DRILL) {
+    guest = await openGuest();
+    log(`guest broadcaster: ${guest.status} after ${guest.joinMs} ms`);
+    if (!guest.joined) throw new Error(`guest could not join event:${EVENT_ID} (${guest.status})`);
+  }
   await sleep(SETTLE_MS);
 
   // Edits.
   const edits = [];
   const drillEvents = [];
+  // Newest real save rev seen by the admin driver (spam --spam-rev).
+  let latestRev = startRev;
+  const noteRev = (r) => {
+    if (Number.isSafeInteger(r) && r > latestRev) latestRev = r;
+  };
+  let spamP = null;
   const editsStart = Date.now();
   for (let k = 1; k <= EDITS; k++) {
     const due = editsStart + (k - 1) * PAUSE_MS;
     if (Date.now() < due) await sleep(due - Date.now());
     const song = songs[k - 1];
     const drillThis = k === DRILL_EDIT;
+
+    if (DRILL === "poison" && drillThis) {
+      const t = Date.now();
+      const r = await guest.send(POISON_REV, "poison");
+      drillEvents.push({ k, what: `guest broadcast { kind: "setlist", rev: ${POISON_REV} } → ${r}; honest saves follow in ${POISON_LEAD_MS} ms`, at: iso(t), atMs: t });
+      log(`  drill: forged rev ${POISON_REV} sent (${r}); editing in ${POISON_LEAD_MS} ms`);
+      await sleep(POISON_LEAD_MS);
+    }
+    if (DRILL === "spam" && drillThis) {
+      const t = Date.now();
+      spamP = runSpam(guest, () => latestRev);
+      drillEvents.push({ k, what: `guest spam started: ${SPAM_RATE}/s for ${SPAM_SECS} s, rev mode ${SPAM_REV}`, at: iso(t), atMs: t });
+      log(`  drill: spam ${SPAM_RATE}/s × ${SPAM_SECS} s (${SPAM_REV}) running alongside the saves`);
+    }
 
     if (DRILL === "silent-loss" && drillThis) {
       pagePop.setDropPg(drillPageSet, true);
@@ -438,6 +589,7 @@ async function main() {
       try {
         ins = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
         created.push(ins.id);
+        noteRev(ins.rev);
       } catch (e) {
         saveFailures.push({ k, op: "insert-after", attempt, at: iso(tryStart), error: e.message });
         log(`edit ${k}: insert-after failed (${e.message})`);
@@ -522,6 +674,7 @@ async function main() {
     // A writer that doesn't return rev (older deployment): take it from
     // the next snapshot instead.
     if (put.rev == null) put.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
+    noteRev(put.rev);
     const finalSong = double ? double.final.song : song;
     const edit = { k, id: ins.id, song: finalSong, ins, put, double };
     edits.push(edit);
@@ -561,6 +714,13 @@ async function main() {
     await sleep(500);
   }
   const editsEnd = Date.now();
+  // The spam runs its full length even when the edits finished first:
+  // its duration is part of the drill's definition. The edit window
+  // above is already closed, so this only delays the clean-up.
+  if (spamP) {
+    const s = await spamP;
+    drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} messages in ${Math.round(s.ms / 1000)} s`, at: iso(Date.now()) });
+  }
   return { runStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
 }
 
@@ -568,6 +728,7 @@ async function finalize(state, aborted) {
   if (finalized) return null;
   finalized = true;
   log(aborted ? `aborting (${aborted}) — cleaning up` : "cleaning up");
+  if (guest) await guest.close();
   let clean = null;
   if (created.length && cookie) {
     const pg = pgClient();
@@ -715,6 +876,13 @@ function report(state, fin) {
       ...(doubleSave ? doubleSave.latency : dist([])), missing: total - conv,
       pass: doubleSave ? conv === total && verdicts.monotonic.pass : false,
     };
+  } else if (GUEST_DRILL) {
+    // No pair is degraded on purpose: the honest saves ARE the drill's
+    // subject and are judged by the primary gate above (delivered, p95,
+    // 0 missing, monotonic). What the forged hints cost the clients
+    // (notification fetches, rechecks, fetch rate) is read off the SDK
+    // clients' fetch counters, not gated here.
+    verdicts.drill = { drill: DRILL, gate: "informational — honest saves judged by the primary gate", ...dist([]), missing: 0, pass: null };
   } else if (DRILL) {
     const gate = DRILL === "silent-loss" ? SILENT_GATE_MS : DRILL === "ws-blocked" ? BLOCKED_GATE_MS : DRILL === "lost-final" ? LOST_GATE_MS : null;
     verdicts.drill = { drill: DRILL, gate: gate == null ? "informational (catch-up after reconnect)" : `max ≤ ${gate} ms, 0 missing`, ...drilled, pass: gate == null ? null : drilled.n > 0 && drilled.missing === 0 && drilled.max <= gate };
@@ -850,6 +1018,19 @@ function report(state, fin) {
     for (const m of monoPagesBad.slice(0, 10)) lines.push(`- page ${m.r.idx} (${m.r.locale}): ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
     for (const m of monoSubsBad.slice(0, 10)) lines.push(`- SDK ${m.r.idx}: ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
   }
+  if (guest) {
+    // Send results by the server's verdict, and the time span, so a
+    // Realtime rate limit (results other than "ok") is visible.
+    const results = {};
+    for (const [, , r] of guest.sends) results[r] = (results[r] || 0) + 1;
+    const ts = guest.sends.map(([t]) => t);
+    const revs = [...new Set(guest.sends.map(([, rev]) => rev))];
+    lines.push("");
+    lines.push("## Guest broadcasts");
+    lines.push("");
+    lines.push(`- anon client on public \`event:${EVENT_ID}\`: ${guest.status} after ${guest.joinMs} ms; ${guest.sends.length} message(s) \`{ kind: "setlist", rev }\` sent ${ts.length ? `${iso(Math.min(...ts))} → ${iso(Math.max(...ts))}` : "—"}; results ${JSON.stringify(results)}`);
+    lines.push(`- revs claimed: ${revs.length <= 6 ? revs.join(", ") : `${revs.slice(0, 3).join(", ")} … ${revs.slice(-2).join(", ")} (${revs.length} distinct)`}${DRILL === "spam" ? ` (mode ${SPAM_REV})` : ""}`);
+  }
   if (drillEvents.length) {
     lines.push("");
     lines.push("## Drill events");
@@ -907,9 +1088,12 @@ function report(state, fin) {
   const md = lines.join("\n");
 
   const json = {
-    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null },
+    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
+      ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
+      ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
     verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
+    guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
     // Every page's DOM-derived version history and every client's
     // regressions (the full per-client apply log is too large to keep).
     monotonic: {

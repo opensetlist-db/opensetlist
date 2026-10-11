@@ -17,6 +17,15 @@
 //   - `[liveWriter]` admin save timings per route (acquire = waiting for a
 //     pool connection, exec = first statement → commit) and `ok=false`;
 //   - `[setlist] slow-hit` cache hits that took long;
+//   - hint outcomes: one `[setlist] hint-fetch event= locale= minRev=
+//     verify=<kind> instance=` line per notification fetch (`hint=1`),
+//     counted per verification kind (satisfied / fresh / memo / deferred
+//     / none; `verify=fresh=<dbRev>` and `verify=memo=<rev>;age=<ms>` count
+//     under their kind) and per minute; any other value goes to "other"
+//     so a new server kind shows up instead of vanishing. The repair
+//     revision reads (`rev-read`) are also split by their `hint=<0|1>`
+//     field — how many of the 1-row reads the notification fetches caused
+//     (lines without the field, from an older server, count as "—");
 //   - distinct function instances per minute (any line with `instance=`);
 //   - the SUM of per-instance Prisma pool sizes per time bucket, from
 //     `[prisma] pool total= idle= waiting= instance=` lines — the best
@@ -71,6 +80,19 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+
+// The server's verification kinds (`x-snapshot-verify`), in report order.
+// "missing" is a client-side notion (no header) and is never logged.
+export const HINT_KINDS = ["satisfied", "fresh", "memo", "deferred", "none"];
+
+// `verify=` value → kind: `fresh=<dbRev>` → fresh, `memo=<rev>;age=<ms>`
+// → memo, the bare kinds as they are; anything else (absent, empty, a
+// value this script does not know yet) → "other".
+function hintKind(v) {
+  if (typeof v !== "string") return "other";
+  const k = v.split(/[=;]/)[0];
+  return HINT_KINDS.includes(k) ? k : "other";
+}
 
 function pct(values, p) {
   if (!values.length) return null;
@@ -138,6 +160,7 @@ export function parseLog(text) {
     else if (/\[liveWriter\] failed\b/.test(line)) kind = "writerFailed";
     else if (/\[liveWriter\]/.test(line)) kind = "writer";
     else if (/\[setlist\] slow-hit\b/.test(line)) kind = "slowHit";
+    else if (/\[setlist\] hint-fetch\b/.test(line)) kind = "hintFetch";
     else if (/EMAXCONN/.test(line)) kind = "emaxconn";
     if (kind) {
       recs.push({ kind, ...base, f, api: (entry?.path ?? "").startsWith("/api/"), emax: /EMAXCONN/.test(line) });
@@ -193,6 +216,35 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
   const revReads = by("revRead");
   const revReadTimeouts = revReads.filter((r) => r.f.rev === "timeout").length;
   const revReadMs = revReads.map((r) => num(r.f.ms)).filter((v) => v != null);
+  // "1" = read caused by a notification fetch, "0" = any other request,
+  // "—" = a line without the field (a server that predates it).
+  const revReadByHint = {};
+  for (const r of revReads) {
+    const h = r.f.hint === "0" || r.f.hint === "1" ? r.f.hint : "—";
+    revReadByHint[h] = (revReadByHint[h] || 0) + 1;
+  }
+
+  // hint outcomes (`[setlist] hint-fetch … verify=<kind> …`)
+  const hintCols = [...HINT_KINDS, "other"];
+  const zero = () => Object.fromEntries(hintCols.map((k) => [k, 0]));
+  const hintCounts = zero();
+  const hintMinutes = new Map();
+  const hintFetches = by("hintFetch");
+  for (const r of hintFetches) {
+    const k = hintKind(r.f.verify);
+    hintCounts[k]++;
+    if (r.t == null) continue;
+    const m = Math.floor(r.t / 60);
+    let g = hintMinutes.get(m);
+    if (!g) hintMinutes.set(m, (g = { minute: m, total: 0, ...zero() }));
+    g[k]++;
+    g.total++;
+  }
+  const hint = {
+    total: hintFetches.length,
+    counts: hintCounts,
+    perMinute: [...hintMinutes.values()].sort((a, b) => a.minute - b.minute),
+  };
   const coalesced = by("coalesced");
   const waiters = coalesced.map((r) => num(r.f.waiters)).filter((v) => v != null);
 
@@ -300,7 +352,8 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     },
     builds, buildTotal: by("build").length,
     buildFailed: { total: by("buildFailed").length, byErr: failedByErr },
-    revRead: { total: revReads.length, timeouts: revReadTimeouts, errors: revReadErrors, p50: pct(revReadMs, 0.5), max: revReadMs.length ? Math.max(...revReadMs) : null },
+    revRead: { total: revReads.length, timeouts: revReadTimeouts, errors: revReadErrors, p50: pct(revReadMs, 0.5), max: revReadMs.length ? Math.max(...revReadMs) : null, byHint: revReadByHint },
+    hint,
     coalesced: { lines: coalesced.length, waitersSum: waiters.reduce((a, b) => a + b, 0), waitersMax: waiters.length ? Math.max(...waiters) : null },
     emaxconn, writers,
     slowHit: { total: slow.length, maxMs: slow.length ? Math.max(...slow) : null },
@@ -341,9 +394,22 @@ export function toMarkdown(s, { addHours = 0, bucketS = 5, carryS = 5, source = 
   L.push("|---|---|---|");
   L.push(`| EMAXCONN (pooler client cap) | ${s.emaxconn.total} | API ${s.emaxconn.api}, SSR ${s.emaxconn.ssr}${s.emaxconn.inTypedLines ? ` (${s.emaxconn.inTypedLines} inside build-failed / writer lines)` : ""} |`);
   L.push(`| \`[liveSnapshot] build-failed\` | ${s.buildFailed.total} | ${Object.entries(s.buildFailed.byErr).map(([k, v]) => `${k} ${v}`).join(", ") || "—"} |`);
-  L.push(`| \`[liveSnapshot] rev-read\` (repair revision read) | ${s.revRead.total} | rev=timeout ${s.revRead.timeouts}, rev=error ${s.revRead.errors}; ms p50 ${d(s.revRead.p50)} / max ${d(s.revRead.max)} |`);
+  L.push(`| \`[liveSnapshot] rev-read\` (repair revision read) | ${s.revRead.total} | rev=timeout ${s.revRead.timeouts}, rev=error ${s.revRead.errors}; ms p50 ${d(s.revRead.p50)} / max ${d(s.revRead.max)}; by hint: ${["1", "0", "—"].filter((k) => s.revRead.byHint[k]).map((k) => `hint=${k} ${s.revRead.byHint[k]}`).join(", ") || "—"} |`);
   L.push(`| \`[liveSnapshot] coalesced\` | ${s.coalesced.lines} | waiters sum ${s.coalesced.waitersSum}, max ${d(s.coalesced.waitersMax)} |`);
   L.push(`| \`[setlist] slow-hit\` | ${s.slowHit.total} | max ${d(s.slowHit.maxMs)} ms |`);
+  L.push("");
+  L.push(`### Hint outcomes (\`[setlist] hint-fetch\` lines: ${s.hint.total})`);
+  L.push("");
+  if (!s.hint.total) {
+    L.push("No `[setlist] hint-fetch` lines in this capture (an R1 server, or no `hint=1` request).");
+  } else {
+    const cols = [...HINT_KINDS, "other"];
+    L.push(`Whole capture: ${cols.map((k) => `${k} ${s.hint.counts[k]}`).join(", ")}. "other" = a \`verify=\` value this script does not know.`);
+    L.push("");
+    L.push(`| minute | hint fetches | ${cols.join(" | ")} |`);
+    L.push(`|---|---|${cols.map(() => "---").join("|")}|`);
+    for (const m of s.hint.perMinute) L.push(`| ${clock(m.minute * 60, addHours).slice(0, 5)} | ${m.total} | ${cols.map((k) => m[k]).join(" | ")} |`);
+  }
   L.push("");
   if (s.writers.length) {
     L.push("### Admin writes (`[liveWriter]`)");

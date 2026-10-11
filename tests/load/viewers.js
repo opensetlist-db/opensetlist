@@ -81,6 +81,32 @@
 // checks named `burst-error <id> | <body>`, one failed check per
 // occurrence. handleSummary lists them per burst.
 //
+// Notification model (HINT_MODE). `r1` (default) is the above: the new-
+// build tabs send `minRev = appliedRev + 1`, the R1 page's guess. `r2`
+// is the R2 hint contract: the broadcast payload carries the exact saved
+// revision, so a notification fetch sends `minRev = <rev from the save
+// response>&hint=1` (the transient hint H; the durable server-observed
+// watermark is ≤ H here, so max(serverRev, H) = H). Old-build tabs are
+// the same in both modes. Every 200 burst response's `x-snapshot-verify`
+// header is counted per burst (none / satisfied / fresh / memo / deferred
+// / missing — "missing" also takes a malformed value, which the R2 client
+// treats exactly like an absent header: inconclusive). In `r2`, a hint-
+// carrying response that is inconclusive (memo / deferred / missing) AND
+// still below H (`body.rev < minRev`) fires ONE recheck, 1,000 ms (the
+// server's 1 s revision-memo window) + U(0, 500 ms) later, with the same
+// minRev and no `hint` — the client's quiet recheck. A recheck that is
+// inconclusive again is "hint exhausted" (the real client then leaves it
+// to the periodic poll). Rechecks are viewer snapshot requests like any
+// other (whole-run gates, error bodies, the burst abort's error rate)
+// but stay out of the burst latency trend, so the per-burst p95 keeps
+// meaning "the notification wave" across runs.
+//
+// One provenance check rides along in both modes: the burst fires after
+// the save RETURNED, i.e. after its commit, so a `fresh=<dbRev>` with
+// dbRev below the saved revision — a fresh read "disproving" a revision
+// that was already committed when the request began — is a server bug.
+// Counted as `verify_fresh_violation`, must be 0.
+//
 // Requests send `Accept-Encoding: gzip, deflate, br` (ACCEPT_ENCODING)
 // like a browser; k6 decodes the body. Without it each snapshot is
 // ~47 KB on the wire and a 600-request burst is ~28 MB into one laptop.
@@ -168,6 +194,17 @@ const ERROR_BODIES_PER_BURST = 5;
 const ERROR_BODY_CHARS = 80;
 const ERR_CHECK_PREFIX = "burst-error ";
 const POOLER_GATE = num("POOLER_GATE", 140);
+// See the header ("Notification model"). The value doubles as the k6
+// `client` tag of the new-build tabs' burst requests (r1 | r2).
+const HINT_MODE = (__ENV.HINT_MODE || "r1").toLowerCase();
+if (HINT_MODE !== "r1" && HINT_MODE !== "r2") throw new Error(`HINT_MODE must be r1 or r2, got ${__ENV.HINT_MODE}`);
+const NEW_CLIENT = HINT_MODE;
+// The R2 client's recheck delay: max(1 s memo window, 1 s cooldown) +
+// U(0, jitter). Pinned to the contract, not knobs.
+const RECHECK_BASE_MS = 1000;
+const RECHECK_SPREAD_MS = 500;
+const VERIFY_KINDS = ["none", "satisfied", "fresh", "memo", "deferred", "missing"];
+const INCONCLUSIVE = new Set(["memo", "deferred", "missing"]);
 
 // Each admin cycle briefly adds two rows (cold start: one), and the
 // admin VU runs them strictly one after another, so a correct snapshot
@@ -221,6 +258,19 @@ const SRC = {
   repair: new Counter("snap_src_repair"),
   other: new Counter("snap_src_other"),
 };
+// `x-snapshot-verify` per 200 burst response: tags kind (VERIFY_KINDS),
+// burst, client (r1 | r2 | old) and req (first = the notification wave
+// incl. old tabs' repeats, recheck = the r2 recheck).
+const verifyOutcome = new Counter("verify_outcome");
+// A header value that is neither absent nor one of the five shapes
+// (also counted as kind=missing above): a server bug worth seeing.
+const verifyMalformed = new Counter("verify_malformed");
+const verifyFreshViolation = new Counter("verify_fresh_violation");
+// r2 only: rechecks fired (tag burst), and rechecks that were still
+// inconclusive below H (the client drops the hint: "hint exhausted").
+const hintRechecks = new Counter("hint_rechecks");
+const hintExhausted = new Counter("hint_exhausted");
+const recheckLatency = new Trend("recheck_latency", true);
 const reactionLatency = new Trend("reaction_latency", true);
 const reactionErrors = new Rate("reaction_errors");
 const reactionAckOk = new Rate("reaction_ack_ok");
@@ -327,10 +377,16 @@ const thresholds = {
   bursts_fired: ["count>=0"],
   final_row_count: ["max>=0"],
   snapshot_rows: ["max>=0"],
-  "burst_latency{client:r1}": ["max>=0"],
+  [`burst_latency{client:${NEW_CLIENT}}`]: ["max>=0"],
   "burst_latency{client:old}": ["max>=0"],
-  "burst_errors{client:r1}": ["rate>=0"],
+  [`burst_errors{client:${NEW_CLIENT}}`]: ["rate>=0"],
   "burst_errors{client:old}": ["rate>=0"],
+  verify_malformed: ["count>=0"],
+  verify_fresh_violation: ["count>=0"],
+  hint_rechecks: ["count>=0"],
+  hint_exhausted: ["count>=0"],
+  recheck_latency: ["max>=0"],
+  "snapshot_errors{phase:recheck}": ["rate>=0"],
   "burst_fresh{client:old,wave:1}": ["rate>=0"],
   "burst_fresh{client:old,wave:2}": ["rate>=0"],
   burst_rev_ok: ["rate>=0"],
@@ -341,11 +397,17 @@ for (const phase of ["poll", "burst"]) {
   for (const s of Object.keys(SRC)) thresholds[`snap_src_${s}{phase:${phase}}`] = ["count>=0"];
 }
 for (const c of PLAN.cycles) thresholds[`admin_cycle_start_s{cycle:c${c.n}}`] = ["max>=0"];
+for (const k of VERIFY_KINDS) {
+  thresholds[`verify_outcome{client:${NEW_CLIENT},kind:${k},req:first}`] = ["count>=0"];
+  thresholds[`verify_outcome{kind:${k},req:recheck}`] = ["count>=0"];
+}
 for (const b of PLAN.bursts) {
   thresholds[`burst_latency{burst:${b.id}}`] = ["max>=0"];
   thresholds[`burst_errors{burst:${b.id}}`] = ["rate>=0"];
   thresholds[`burst_rev_ok{burst:${b.id}}`] = ["rate>=0"];
   for (const s of Object.keys(SRC)) thresholds[`snap_src_${s}{burst:${b.id}}`] = ["count>=0"];
+  for (const k of VERIFY_KINDS) thresholds[`verify_outcome{burst:${b.id},kind:${k},req:first}`] = ["count>=0"];
+  if (HINT_MODE === "r2") thresholds[`hint_rechecks{burst:${b.id}}`] = ["count>=0"];
 }
 
 export const options = {
@@ -366,8 +428,26 @@ function viewerHeaders() {
   return h;
 }
 
-function withMinRev(url, minRev) {
-  return minRev == null ? url : `${url}&minRev=${minRev}`;
+function withMinRev(url, minRev, hint = false) {
+  if (minRev == null) return url;
+  return `${url}&minRev=${minRev}${hint ? "&hint=1" : ""}`;
+}
+
+// `x-snapshot-verify` → { kind, rev, malformed }. The five shapes of the
+// R2 contract; anything else — absent (an R1 server) or unparseable — is
+// "missing", which the R2 client treats as inconclusive. `rev` is the
+// dbRev of `fresh=` / the remembered rev of `memo=`.
+function verifyOf(res) {
+  const h = res.headers || {};
+  const raw = h["X-Snapshot-Verify"] ?? h["x-snapshot-verify"];
+  if (raw == null || raw === "") return { kind: "missing", rev: null, malformed: false };
+  const v = String(raw).trim();
+  if (v === "none" || v === "satisfied" || v === "deferred") return { kind: v, rev: null, malformed: false };
+  let m = /^fresh=(\d+)$/.exec(v);
+  if (m) return { kind: "fresh", rev: Number(m[1]), malformed: false };
+  m = /^memo=(\d+);age=\d+$/.exec(v);
+  if (m) return { kind: "memo", rev: Number(m[1]), malformed: false };
+  return { kind: "missing", rev: null, malformed: true };
 }
 
 // `rev` without parsing the whole ~47 KB body: it is a top-level key
@@ -593,12 +673,25 @@ async function readSnapshot(tags = {}) {
 const byId = (body, id) => body.items.find((it) => String(it.id) === String(id));
 const songIdsOf = (item) => (item.songs || []).map((s) => Number(s.song.id));
 
-// One burst request. `appliedRev` is the pre-save revision; a response
-// at > appliedRev carries the save.
-async function burstRequest(burstId, minRev, client, wave, appliedRev) {
+// Counts one 200 response's verification outcome; returns it.
+// `savedRev` = the revision the burst's save committed (null if the save
+// response had none): see "provenance check" in the header.
+function recordVerify(res, vtags, minRev, savedRev) {
+  const v = verifyOf(res);
+  verifyOutcome.add(1, { ...vtags, kind: v.kind });
+  if (v.malformed) verifyMalformed.add(1, vtags);
+  if (v.kind === "fresh" && minRev != null && savedRev != null && v.rev < savedRev) verifyFreshViolation.add(1, vtags);
+  return v;
+}
+
+// One burst request; resolves to a LIST of results — the request, plus
+// its recheck when one was due. `appliedRev` is the pre-save revision (a
+// response at > appliedRev carries the save); `hint` marks an r2
+// notification fetch (`&hint=1`, eligible for a recheck).
+async function burstRequest(burstId, minRev, client, wave, appliedRev, savedRev, hint) {
   const locale = pickLocale();
   const tags = { name: "snapshot", phase: "burst", burst: burstId, client, wave: String(wave), locale };
-  const res = await http.asyncRequest("GET", withMinRev(snapshotUrl(locale), minRev), null, {
+  const res = await http.asyncRequest("GET", withMinRev(snapshotUrl(locale), minRev, hint), null, {
     headers: viewerHeaders(),
     responseType: "text",
     tags,
@@ -609,7 +702,38 @@ async function burstRequest(burstId, minRev, client, wave, appliedRev) {
   burstErrors.add(!r.ok, tags);
   if (r.ok && appliedRev != null) burstFresh.add(r.rev != null && r.rev > appliedRev, tags);
   if (r.ok && minRev != null) burstRevOk.add(r.rev != null && r.rev >= minRev, tags);
-  return { ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res) };
+  const out = [{ ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res), recheck: false }];
+  if (!r.ok) return out; // error responses carry no header (and the harness models no retry)
+  const v = recordVerify(res, { burst: burstId, client, req: "first" }, minRev, savedRev);
+  // Satisfied by the body whatever the header says (rev ≥ H); `fresh`
+  // disproves H, `none` cannot happen with a minRev — only the
+  // inconclusive kinds below H earn a recheck.
+  if (hint && INCONCLUSIVE.has(v.kind) && (r.rev == null || r.rev < minRev)) {
+    await delay(RECHECK_BASE_MS + Math.random() * RECHECK_SPREAD_MS);
+    out.push(await recheckRequest(burstId, minRev, client, savedRev, locale));
+  }
+  return out;
+}
+
+// The R2 client's quiet recheck: same minRev (H), no `hint`, same locale
+// (one tab). Its own HTTP failure is an ordinary failure, so it feeds the
+// whole-run error gate and the burst's error count.
+async function recheckRequest(burstId, minRev, client, savedRev, locale) {
+  const tags = { name: "snapshot", phase: "recheck", burst: burstId, client, locale };
+  hintRechecks.add(1, { burst: burstId });
+  const res = await http.asyncRequest("GET", withMinRev(snapshotUrl(locale), minRev, false), null, {
+    headers: viewerHeaders(),
+    responseType: "text",
+    tags,
+    timeout: "30s",
+  });
+  const r = recordViewerSnapshot(res, tags);
+  recheckLatency.add(res.timings.duration, tags);
+  if (r.ok) {
+    const v = recordVerify(res, { burst: burstId, client, req: "recheck" }, minRev, savedRev);
+    if (INCONCLUSIVE.has(v.kind) && (r.rev == null || r.rev < minRev)) hintExhausted.add(1, { burst: burstId });
+  }
+  return { ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res), recheck: true };
 }
 
 // "HTTP 500: <first 80 chars of the body, whitespace collapsed>", or the
@@ -637,27 +761,53 @@ function recordErrorBodies(burstId, errs) {
 
 // Fires the whole burst and returns a promise of its summary. Request
 // i starts at U(0, JITTER_MS) after the call — U(0, OLD_JITTER_MS) for an
-// old-build tab, which then repeats.
-function fireBurst(burstId, appliedRev) {
+// old-build tab, which then repeats. `savedRev` = the `rev` of the save
+// response (what the R2 broadcast carries); r2 mode sends it as minRev.
+// The summary's n / errors include r2 rechecks (the abort's error rate
+// covers every request the burst caused); p95 / max are the
+// notification wave's only (see the header).
+function fireBurst(burstId, appliedRev, savedRev) {
   burstsFired.add(1);
-  const minRev = appliedRev == null ? null : appliedRev + 1;
+  let minRev = appliedRev == null ? null : appliedRev + 1;
+  const hint = HINT_MODE === "r2";
+  if (hint) {
+    if (savedRev != null) minRev = savedRev;
+    // Every admin writer route returns `rev`; without it the exact-rev
+    // model is impossible, so say so instead of silently measuring r1.
+    else console.warn(`[burst ${burstId}] save response has no rev — r2 falls back to appliedRev + 1 = ${minRev}`);
+  }
   const all = [];
   for (let i = 0; i < BURST_SIZE; i++) {
     const old = Math.random() < OLD_SHARE;
     const at = Math.random() * (old ? OLD_JITTER_MS : JITTER_MS);
-    all.push(delay(at).then(() => burstRequest(burstId, old ? null : minRev, old ? "old" : "r1", 1, appliedRev)));
+    all.push(
+      delay(at).then(() =>
+        old
+          ? burstRequest(burstId, null, "old", 1, appliedRev, savedRev, false)
+          : burstRequest(burstId, minRev, NEW_CLIENT, 1, appliedRev, savedRev, hint && minRev != null),
+      ),
+    );
     if (old) {
       for (let k = 1; k <= OLD_REPEATS; k++) {
-        all.push(delay(at + k * OLD_REPEAT_MS).then(() => burstRequest(burstId, null, "old", k + 1, appliedRev)));
+        all.push(delay(at + k * OLD_REPEAT_MS).then(() => burstRequest(burstId, null, "old", k + 1, appliedRev, savedRev, false)));
       }
     }
   }
-  return Promise.all(all).then((rs) => {
-    const ms = rs.map((r) => r.ms).sort((a, b) => a - b);
+  return Promise.all(all).then((lists) => {
+    const rs = lists.flat();
+    const ms = rs.filter((r) => !r.recheck).map((r) => r.ms).sort((a, b) => a - b);
     const errs = rs.filter((r) => !r.ok).map((r) => r.err);
     const p95 = ms.length ? ms[Math.min(ms.length - 1, Math.ceil(0.95 * ms.length) - 1)] : 0;
     const bodies = recordErrorBodies(burstId, errs);
-    return { n: rs.length, errors: errs.length, p95, max: ms.length ? ms[ms.length - 1] : 0, bodies };
+    return {
+      n: rs.length,
+      rechecks: rs.filter((r) => r.recheck).length,
+      errors: errs.length,
+      p95,
+      max: ms.length ? ms[ms.length - 1] : 0,
+      bodies,
+      minRev,
+    };
   });
 }
 
@@ -673,7 +823,11 @@ async function timedSave(label, window, burstId, doWrite, isVisible, onAck) {
   // look at the status, like a client reacting to the DB notification.
   // A failed save produces no notification, so no burst then.
   const okWrite = res.status >= 200 && res.status < 300;
-  const burstP = okWrite && burstId ? fireBurst(burstId, appliedRev) : null;
+  // The committed revision, as every admin writer route returns it — the
+  // value the R2 broadcast carries to the tabs.
+  const saved = okWrite ? jsonParse(res.body) : null;
+  const savedRev = saved && Number.isSafeInteger(saved.rev) ? saved.rev : null;
+  const burstP = okWrite && burstId ? fireBurst(burstId, appliedRev, savedRev) : null;
   adminWrites.add(1, wtags);
   adminWriteLatency.add(res.timings.duration, wtags);
   try {
@@ -699,7 +853,8 @@ async function timedSave(label, window, burstId, doWrite, isVisible, onAck) {
     if (burstP) {
       const b = await burstP;
       console.log(
-        `[burst ${burstId}] ${label} appliedRev=${appliedRev} n=${b.n} errors=${b.errors} p95=${Math.round(b.p95)}ms max=${Math.round(b.max)}ms` +
+        `[burst ${burstId}] ${label} appliedRev=${appliedRev} savedRev=${savedRev} minRev=${b.minRev}${HINT_MODE === "r2" ? "+hint" : ""} ` +
+          `n=${b.n}${b.rechecks ? ` (${b.rechecks} rechecks)` : ""} errors=${b.errors} p95=${Math.round(b.p95)}ms max=${Math.round(b.max)}ms` +
           (b.bodies.length
             ? ` bodies=${JSON.stringify(b.bodies.slice(0, ERROR_BODIES_PER_BURST).map(([body, n]) => `${n}x ${body}`))}` +
               (b.bodies.length > ERROR_BODIES_PER_BURST ? ` (+${b.bodies.length - ERROR_BODIES_PER_BURST} more distinct)` : "")
@@ -1008,14 +1163,33 @@ export function handleSummary(data) {
     }
     const em = M(data, `burst_errors{burst:${b.id}}`);
     const errN = em && em.values ? em.values.passes : 0;
+    const vc = VERIFY_KINDS.map((k) => cnt(data, `verify_outcome{burst:${b.id},kind:${k},req:first}`)).join(" / ");
+    const re = HINT_MODE === "r2" ? ` · rechecks ${cnt(data, `hint_rechecks{burst:${b.id}}`)}` : "";
     rows.push(
       `| ${b.id} | ${b.label} | ${n ?? 0} | ${ms(val(data, `burst_latency{burst:${b.id}}`, "med"))} / ${ms(p95)} / ` +
         `${ms(val(data, `burst_latency{burst:${b.id}}`, "max"))} | ${errN} (${pct(val(data, `burst_errors{burst:${b.id}}`, "rate"))}) | ` +
         `${s.build} / ${s.cache} / ${s.repair}${s.other ? ` (+${s.other} other)` : ""} | ${s.build + s.repair} | ` +
-        `${pct(val(data, `burst_rev_ok{burst:${b.id}}`, "rate"), 1)} |`,
+        `${pct(val(data, `burst_rev_ok{burst:${b.id}}`, "rate"), 1)} | ${vc}${re} |`,
     );
   }
   const fired = cnt(data, "bursts_fired");
+  // Hint outcomes: the new-build tabs' notification fetches (first wave),
+  // then the r2 rechecks.
+  const vFirst = Object.fromEntries(VERIFY_KINDS.map((k) => [k, cnt(data, `verify_outcome{client:${NEW_CLIENT},kind:${k},req:first}`)]));
+  const vRe = Object.fromEntries(VERIFY_KINDS.map((k) => [k, cnt(data, `verify_outcome{kind:${k},req:recheck}`)]));
+  const notifN = VERIFY_KINDS.reduce((a, k) => a + vFirst[k], 0);
+  const rechecks = cnt(data, "hint_rechecks");
+  const exhausted = cnt(data, "hint_exhausted");
+  const kindLine = (o) => VERIFY_KINDS.map((k) => `${k} ${o[k]}`).join(", ");
+  const hintLines =
+    `- **hint outcomes** (${NEW_CLIENT} notification fetches, 200 responses, \`x-snapshot-verify\`; HINT_MODE=${HINT_MODE}): ` +
+    `${notifN} — ${kindLine(vFirst)}; malformed ${cnt(data, "verify_malformed")} (counted as missing); ` +
+    `fresh refutations of a committed save ${cnt(data, "verify_fresh_violation")} (must be 0)\n` +
+    (HINT_MODE === "r2"
+      ? `- **rechecks**: ${rechecks} (${notifN ? pct(rechecks / notifN, 2) : "—"} of notification fetches), ` +
+        `p95 ${ms(val(data, "recheck_latency", "p(95)"))}, errors ${pct(val(data, "snapshot_errors{phase:recheck}", "rate"), 3)}; ` +
+        `outcome ${kindLine(vRe)}; still inconclusive below H (hint exhausted) ${exhausted}\n`
+      : "");
   const burstSrc = srcCells(data, "phase:burst");
   const pollSrc = srcCells(data, "phase:poll");
 
@@ -1070,7 +1244,8 @@ export function handleSummary(data) {
     `(poll ${POLL_RPS} rps + SSR ${SSR_RPS} rps)\n` +
     `- admin cycles (SAVE_GAP ${SAVE_GAP}s${BURST_GAP_S != null ? `, BURST_GAP_S ${BURST_GAP_S}s after each cycle's end` : ""}): ` +
     `${PLAN.cycles.map((c) => `c${c.n} ${c.kind} @${c.at != null ? c.at : "+gap"}s → ran @${fmtS(val(data, `admin_cycle_start_s{cycle:c${c.n}}`, "max"))}`).join(", ")}\n` +
-    `- bursts: ${BURST_SIZE} req; R1 tabs over U(0, ${JITTER_MS} ms), old-build share ${OLD_SHARE * 100} % over U(0, ${OLD_JITTER_MS} ms, pinned) ×${OLD_REPEATS + 1} (repeat +${OLD_REPEAT_MS} ms)\n` +
+    `- bursts: ${BURST_SIZE} req; ${NEW_CLIENT.toUpperCase()} tabs over U(0, ${JITTER_MS} ms) with ` +
+    `${HINT_MODE === "r2" ? "minRev = saved rev + hint=1 (one recheck at +1–1.5 s when inconclusive)" : "minRev = appliedRev + 1"}, old-build share ${OLD_SHARE * 100} % over U(0, ${OLD_JITTER_MS} ms, pinned) ×${OLD_REPEATS + 1} (repeat +${OLD_REPEAT_MS} ms)\n` +
     `- timeline: last cycle ended @${fmtS(val(data, "admin_last_cycle_end_s", "max"))}, steady window ended @${STEADY_START + STEADY_SECONDS}s, ` +
     `quiet drain (no requests) from @${fmtS(val(data, "drain_start_s", "max"))} for ${DRAIN_S}s\n` +
     `- reactions: ${REACTIONS} POST+DELETE over ${REACTION_SECONDS}s @${REACTION_AT}s\n` +
@@ -1080,7 +1255,7 @@ export function handleSummary(data) {
   const md =
     `## Viewers (500-viewer model) — ${new Date().toISOString()}\n\n` +
     `BASE_URL=${BASE_URL} EVENT_ID=${EVENT_ID} EXPECTED_ROWS=${EXPECTED_ROWS ?? "—"} ROW_SLACK=${ROW_SLACK} ` +
-    `BODY_SAMPLE_RATE=${BODY_SAMPLE_RATE}\n\n` +
+    `BODY_SAMPLE_RATE=${BODY_SAMPLE_RATE} HINT_MODE=${HINT_MODE}\n\n` +
     plan +
     "\n### Gates\n\n| Gate | measured | gate | verdict |\n|---|---|---|---|\n" +
     gates.join("\n") +
@@ -1096,14 +1271,15 @@ export function handleSummary(data) {
     "`x-snapshot-source` is only a rough proxy for builds per save: coalesced waiters share the first request's result " +
     "(header included), so it over-counts, and background rebuilds are never attributed. The real number is the " +
     "`[liveSnapshot] build` log lines — run `node tests/load/vercel-logs-summary.mjs` on the run's Vercel log capture.\n\n" +
-    "| Burst | save | requests | p50 / p95 / max | errors (%) | build / cache / repair | builds (build+repair) | rev ≥ minRev (R1 reqs) |\n" +
-    "|---|---|---|---|---|---|---|---|\n" +
+    `| Burst | save | requests | p50 / p95 / max | errors (%) | build / cache / repair | builds (build+repair) | rev ≥ minRev (${NEW_CLIENT} reqs) | verify none / satisfied / fresh / memo / deferred / missing (all clients, 1st wave) |\n` +
+    "|---|---|---|---|---|---|---|---|---|\n" +
     rows.join("\n") +
     "\n\n" +
     `- all bursts: ${burstSrc.total} req; build ${burstSrc.build}, cache ${burstSrc.cache}, repair ${burstSrc.repair}` +
     `${burstSrc.other ? `, other ${burstSrc.other}` : ""} → **${fired ? ((burstSrc.build + burstSrc.repair) / fired).toFixed(2) : "—"} builds per save** (header proxy)\n` +
-    `- R1 requests (minRev): p95 ${ms(val(data, "burst_latency{client:r1}", "p(95)"))}, errors ${pct(val(data, "burst_errors{client:r1}", "rate"), 3)}, ` +
+    `- ${NEW_CLIENT.toUpperCase()} requests (minRev): p95 ${ms(val(data, `burst_latency{client:${NEW_CLIENT}}`, "p(95)"))}, errors ${pct(val(data, `burst_errors{client:${NEW_CLIENT}}`, "rate"), 3)}, ` +
     `rev ≥ minRev ${pct(val(data, "burst_rev_ok", "rate"), 1)}\n` +
+    hintLines +
     `- old-build requests (no minRev): p95 ${ms(val(data, "burst_latency{client:old}", "p(95)"))}, errors ${pct(val(data, "burst_errors{client:old}", "rate"), 3)}, ` +
     `post-save rev on 1st request ${pct(val(data, "burst_fresh{client:old,wave:1}", "rate"), 1)}, on the repeat ${pct(val(data, "burst_fresh{client:old,wave:2}", "rate"), 1)}\n` +
     "\n#### Burst error bodies (distinct, first " + ERROR_BODY_CHARS + " chars, ≤ " + ERROR_BODIES_PER_BURST + " per burst)\n\n" +
