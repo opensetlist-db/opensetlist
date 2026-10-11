@@ -5,7 +5,30 @@
 // themselves are timers and are exercised by every smoke run.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createLagRecorder, lagOver, validity, summarizeHost, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+import { createLagRecorder, lagOver, validity, summarizeHost, competingProcesses, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+
+test("competingProcesses: side-cars allowed, offenders named", () => {
+  const procs = [
+    { pid: 1, name: "node.exe", cmd: "node --no-warnings tests/load/browsers/run.mjs --pages=30" }, // self
+    { pid: 2, name: "node.exe", cmd: "node tests\\load\\vercel-logs-capture.mjs --segment=280" },
+    { pid: 3, name: "node.exe", cmd: "\"C:\\nodejs\\node.exe\" \"C:\\npm\\node_modules\\npm\\bin\\npx-cli.js\" vercel logs https://x --follow --scope s" },
+    { pid: 4, name: "node.exe", cmd: "node tests/load/pooler-clients.mjs" },
+    { pid: 5, name: "node.exe", cmd: "\"C:\\nodejs\\node.exe\" \"C:\\x\\node_modules\\vercel\\dist\\vc.js\" logs https://x --since 2026-10-11T09:00:00Z --until 2026-10-11T09:20:00Z" },
+    { pid: 6, name: "node.exe", cmd: "node tests/load/vercel-logs-summary.mjs h.txt --add-hours=7" },
+    { pid: 7, name: "node.exe", cmd: "node tests/load/warm-join.mjs a.json b.txt" },
+    { pid: 8, name: "node.exe", cmd: "node tests/load/browsers/run.mjs --pages=2" },
+    { pid: 9, name: "k6.exe", cmd: "k6 run viewers.js" },
+    { pid: 10, name: "node.exe", cmd: "node C:/work/other-project/server.js" },
+  ];
+  const out = competingProcesses(procs, 1, 0);
+  assert.deepEqual(out.map((p) => [p.pid, p.why]), [
+    [5, "vercel logs history fetch"],
+    [6, "vercel-logs-summary"],
+    [7, "warm-join"],
+    [8, "another tests/load node process"],
+    [9, "k6 run (a concurrent burst doubles the population)"],
+  ]);
+});
 
 test("summarizeHost: per-phase CPU / memory figures", () => {
   // [t, load1, hostCpuPct, procCpuPct, rssMB, freeMemMB, threads]

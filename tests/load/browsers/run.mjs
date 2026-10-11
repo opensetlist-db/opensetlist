@@ -73,7 +73,10 @@ import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSo
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
-import { startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW } from "./hostmon.mjs";
+import {
+  startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW,
+  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT,
+} from "./hostmon.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -113,6 +116,9 @@ const SUB_WORKERS = args["sub-workers"] ? int("sub-workers", 1) : Math.max(1, Ma
 const SUB_BATCH = int("sub-batch", 50); // joins per second across all workers
 const PAGE_CONCURRENCY = int("page-concurrency", 5);
 const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position restore"
+// Host isolation guard (see hostGuard()): warn by default, refuse to
+// start with --strict-host.
+const STRICT_HOST = args["strict-host"] === true || args["strict-host"] === "true";
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
@@ -648,9 +654,39 @@ function subMonotonicity(r) {
   return { regressions };
 }
 
+// ─── host isolation guard ───
+// Nothing else may run on the load host during a run: a busy host or a
+// concurrent heavy process (a history log fetch, the summariser, another
+// run, k6) stalls the worker threads and turns the run INVALID at best,
+// or skews it below the INVALID thresholds at worst. Checked once, before
+// anything is created: host CPU busy (POSIX: 1-min load ÷ cores;
+// Windows: a 2 s CPU sample, loadavg is always 0 there) > 60 %, or a
+// competing process (hostmon.mjs `competingProcesses`; the log capture
+// and the pooler samplers are allowed). Warn, or with --strict-host
+// refuse. The result goes into the report and the JSON either way.
+let hostCheck = null;
+async function hostGuard() {
+  const busy = await hostBusy(2000);
+  const procs = listProcesses();
+  const competing = procs ? competingProcesses(procs) : null;
+  const problems = [];
+  if (busy.pct != null && busy.pct > HOST_BUSY_LIMIT_PCT) problems.push(`host CPU ${busy.pct} % busy (${busy.how}) > ${HOST_BUSY_LIMIT_PCT} %`);
+  for (const p of competing || []) problems.push(`pid ${p.pid}: ${p.why} — ${String(p.cmd).slice(0, 120)}`);
+  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST };
+  if (procs == null) log("host guard: could not list processes (not checked)");
+  if (!problems.length) {
+    log(`host guard: ok (CPU ${busy.pct} % busy, ${busy.how}; no competing processes)`);
+    return;
+  }
+  for (const m of problems) log(`host guard WARNING: ${m}`);
+  if (STRICT_HOST) throw new Error(`--strict-host: the load host is not isolated (${problems.length} problem(s)); nothing was created`);
+  log("host guard: continuing (no --strict-host); expect an INVALID verdict if the host stalls");
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
+  await hostGuard();
   log(`browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}`);
 
   // DB: recorded starting rows (for the position restore) + marker songs.
@@ -1469,6 +1505,7 @@ function report(state, fin) {
   lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
+  if (hostCheck) lines.push(`- Host guard at start: CPU ${hostCheck.busyPct ?? "—"} % busy (${hostCheck.how}); ${hostCheck.processListOk ? `${hostCheck.competing.length} competing process(es)` : "process list unavailable"}${hostCheck.problems.length ? ` — **${hostCheck.problems.join("; ").replace(/\|/g, "/")}**` : ""}${STRICT_HOST ? " (--strict-host)" : ""}`);
   lines.push("");
   lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
   lines.push("");
@@ -1789,6 +1826,7 @@ function report(state, fin) {
       heartbeats, deadlineLate: Object.fromEntries(workerMeta.map((m) => [m.worker, m.deadlineLate])),
     },
     host: {
+      guard: hostCheck,
       ncpu: hostMon.ncpu, totalMemMB: hostMon.totalMemMB, platform: process.platform,
       phases: hostPhases.map((p) => ({ ...p, fromIso: iso(p.from), toIso: iso(p.to) })),
       row: HOST_SAMPLE_ROW, samples: hostMon.samples,

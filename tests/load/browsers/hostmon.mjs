@@ -21,6 +21,7 @@
 // import it cheaply and `hostmon.test.mjs` can pin the pure parts.
 
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 // Lag monitor tick and bucket width. 100 ms is fine-grained enough to
 // see a 1 s stall as ~10 missing ticks folded into one large sample, and
@@ -253,3 +254,82 @@ export function summarizeHost(samples, phases) {
   });
 }
 
+// ─── host isolation guard ───
+// Load-host processes that may run next to a measurement: the side-car
+// samplers and the live log capture (and the `vercel logs --follow`
+// child it spawns). Anything else from tests/load — a second run, the
+// history re-fetch (`vercel logs --since/--until`, which pulls and
+// prints tens of MB), the summariser, warm-join — competes for the same
+// cores and is exactly what stalled the workers before.
+const ALLOWED_LOAD_SCRIPTS = ["vercel-logs-capture.mjs", "pooler-clients.mjs", "pg-connections.mjs"];
+
+// procs: [{ pid, name, cmd }]. Returns the competing ones with a reason.
+export function competingProcesses(procs, selfPid = process.pid, parentPid = process.ppid) {
+  const out = [];
+  for (const p of procs) {
+    if (p.pid === selfPid || p.pid === parentPid) continue;
+    const cmd = String(p.cmd || "").replace(/\\/g, "/");
+    const name = String(p.name || "").toLowerCase();
+    if (/(^|\/)k6(\.exe)?$/.test(name) || /(^|[\s/"])k6(\.exe)?"?\s+run\b/.test(cmd)) {
+      out.push({ ...p, why: "k6 run (a concurrent burst doubles the population)" });
+      continue;
+    }
+    // Order matters: the allowed side-cars first (the capture's own
+    // command line contains "vercel-logs"), then the named offenders,
+    // then the Vercel CLI itself — `npx vercel logs …` and the CLI's own
+    // node process (`…/vercel/dist/vc.js" logs …`) both have `logs` as
+    // the word after the vercel path.
+    if (ALLOWED_LOAD_SCRIPTS.some((s) => cmd.includes(s))) continue;
+    if (/vercel-logs-summary/.test(cmd)) { out.push({ ...p, why: "vercel-logs-summary" }); continue; }
+    if (/warm-join/.test(cmd)) { out.push({ ...p, why: "warm-join" }); continue; }
+    if (/\bvercel[^\s"]*"?\s+logs\b/.test(cmd)) {
+      if (/--follow\b/.test(cmd)) continue; // the live capture's own child
+      out.push({ ...p, why: "vercel logs history fetch" });
+      continue;
+    }
+    if (/tests\/load\//.test(cmd)) out.push({ ...p, why: "another tests/load node process" });
+  }
+  return out;
+}
+
+// Process list with command lines. Windows: CIM via PowerShell (wmic is
+// gone on current builds); elsewhere ps. Errors → null (the guard then
+// says it could not check rather than claiming the host is clean).
+export function listProcesses() {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command",
+          "Get-CimInstance Win32_Process -Filter \"Name='node.exe' or Name='k6.exe'\" | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress"],
+        { encoding: "utf8", timeout: 15000, windowsHide: true },
+      );
+      const j = out.trim() ? JSON.parse(out) : [];
+      return (Array.isArray(j) ? j : [j]).map((x) => ({ pid: x.ProcessId, name: x.Name, cmd: x.CommandLine ?? "" }));
+    }
+    const out = execFileSync("ps", ["-eo", "pid=,comm=,args="], { encoding: "utf8", timeout: 15000 });
+    return out.split("\n").filter(Boolean).map((l) => {
+      const m = l.trim().match(/^(\d+)\s+(\S+)\s+(.*)$/);
+      return m ? { pid: Number(m[1]), name: m[2], cmd: m[3] } : null;
+    }).filter((p) => p && (/node|k6/.test(p.name)));
+  } catch {
+    return null;
+  }
+}
+
+// Host CPU busy share right now: POSIX → 1-min load average ÷ cores;
+// Windows (loadavg is always 0) → a `sampleMs` os.cpus() sample.
+export async function hostBusy(sampleMs = 2000) {
+  const ncpu = os.cpus().length || 1;
+  if (process.platform !== "win32") {
+    return { pct: Math.round((os.loadavg()[0] / ncpu) * 1000) / 10, how: `loadavg ${os.loadavg()[0].toFixed(2)} / ${ncpu} cores` };
+  }
+  const a = cpuTimes();
+  await new Promise((r) => setTimeout(r, sampleMs));
+  const b = cpuTimes();
+  const dt = b.total - a.total;
+  const pctBusy = dt > 0 ? Math.round((1 - (b.idle - a.idle) / dt) * 1000) / 10 : null;
+  return { pct: pctBusy, how: `${sampleMs / 1000} s CPU sample over ${ncpu} cores` };
+}
+
+export const HOST_BUSY_LIMIT_PCT = 60;
