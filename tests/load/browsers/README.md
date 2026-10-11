@@ -107,6 +107,33 @@ node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 -
 node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=lost-final --label=run2b-lost-final
 ```
 
+**Guest-broadcast drills (R2 clients only).** Both open one extra
+supabase-js client with the public anon key (what any visitor has), join
+the public `event:<id>` channel and send forged `rev` broadcasts in the
+writer's exact payload shape `{ kind: "setlist", rev }` (no marker field;
+the report tells them apart by rev and send time). Sends use `ack: true`,
+so each message's server verdict (`ok` / `timed out` / `error`) is in the
+report's "Guest broadcasts" section and the JSON (`guest.sends`). R1 pages
+ignore broadcasts, so these drills say nothing until the population runs
+the R2 client; the honest saves are judged by the primary gate (no pair
+is "drilled"), and what the forgeries cost the clients is read from the
+SDK clients' fetch counters.
+
+```sh
+# Drill: hint poisoning. Before edit --drill-edit (default 1) the guest sends
+# ONE { kind: "setlist", rev: --poison-rev } (default Number.MAX_SAFE_INTEGER),
+# waits --poison-lead=3000 ms (notification fetch + one recheck), then the
+# honest saves run. Expect one recheck per client and no permanent watermark:
+# every honest save still passes the primary gate.
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=poison --label=r2-poison
+
+# Drill: paired spam. From edit 1 on, the guest sends --spam-rate=2 messages/s
+# for --spam-secs=60 alongside the real saves; --spam-rev=ahead (default:
+# latest real save rev + 1, the most plausible forgery) | max | stale.
+# Expect the notification fetch rate bounded by the 1 s cooldown, 0 failures.
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=spam --label=r2-spam
+```
+
 `--drill` also accepts the camelCase names (`doubleSave`, `lostFinal`).
 Small smoke (used to check the harness, ~1 min each, 2 rows created and
 soft-deleted): `--pages=2 --subs=5 --edits=2 --pause=12 --drill=doubleSave`
@@ -122,7 +149,11 @@ up to `--pg-ready-timeout=180` s, and reports how long that took),
 `--sub-workers=N` (default ⌈subs/120⌉), `--sub-batch=50` (SDK joins per
 second), `--page-concurrency=5`, `--drill-edit=k` (ignored by lost-final:
 always the last edit), `--reconnect-lead=1000`, `--double-gap=300`,
-`--lost-gate=26000`, `--lost-settle=2000`, `--gate-p95=3000`, `--headed`.
+`--lost-gate=26000`, `--lost-settle=2000`, `--gate-p95=3000`, `--headed`;
+guest drills: `--poison-rev`, `--poison-lead=3000`, `--spam-rate=2`,
+`--spam-secs=60`, `--spam-rev=ahead|max|stale` (`--drill-edit` defaults to 1
+for both). A guest that cannot join the channel stops the run (clean-up
+first) rather than report un-poisoned saves as a drill.
 Exit code 1 also when a monotonicity regression was seen.
 
 ## Positions (read before running repeatedly)
