@@ -517,6 +517,74 @@ returns, so the drills whose correctness depends on that answer run again:
   lookup misses and their ms p95 during the spam window, and that no
   forged rev ever shows `warm`.
 
+## Independent observer (`observer.mjs`, `n14-observer.yml`)
+
+The browsers harness stamps every broadcast arrival on the laptop that
+also runs the load. When a save's notification looks late, the report
+alone cannot say whether the service was slow or the laptop was
+saturated. The observer is a second vantage point on another host and
+network: a few SDK clients (`browsers/subs-worker.mjs` run unchanged
+in a worker, i.e. the same R2 page model with hinted fetches), one
+plain `/api/setlist` poller every 5 s without Realtime, and a 100 ms
+event-loop lag sampler. It never writes and needs no database URL or
+admin password.
+
+**When to start it.** Before the run's population join, so its clients
+are subscribed when the measured saves happen, and with a window that
+covers the whole run (`minutes` ≥ the run's length; max 60). Saves
+before its clients' first SUBSCRIBED time cannot be in its report.
+
+- On GitHub (preferred: different host and network): Actions →
+  "n14 — independent observer" → Run workflow (`base`, `minutes`,
+  `clients`, `label`). Results are the `n14-observer-<run id>` artifact.
+  It costs Actions minutes for the whole window, and only one observer
+  runs at a time.
+- Locally (smoke, or a second machine):
+  `node --no-warnings tests/load/observer.mjs --event=111 --clients=5 --minutes=10 --label=<s> [--out=<dir>]`
+  (Node ≥ 22.18; env as for the harness, only `NEXT_PUBLIC_SUPABASE_URL`
+  and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are read; Ctrl-C stops early and
+  still writes the files).
+
+**Output.** `<stamp>-observer[-<label>].jsonl` (one line per broadcast
+arrival, request, applied snapshot, poll and lag sample; `t` is epoch
+ms UTC) and `.md`: per rev the first arrival (UTC), the spread across
+the observer's clients, the hinted fetch p50 / p95 and its
+`x-snapshot-source` mix (`warm` = served from the writer-warmed entry),
+applied − first arrival, when the plain poller first saw the rev; revs
+the clients applied that no client got as a broadcast; event-loop lag
+p95 / max; the host.
+
+**Reading it next to the harness report.** Line up the same rev:
+
+- Observer on time, harness late → the load host is the suspect
+  (check the harness's own lag / CPU); the service delivered.
+- Both late by a similar amount → the service (Realtime fan-out or the
+  writer) was late.
+- Observer's hinted fetch p95 high too → `/api/setlist` was slow for
+  everyone; the plain poller's latency at that time is the floor
+  without hints.
+- Observer's own lag p95 in the hundreds of ms → its numbers for that
+  window are not trustworthy either.
+
+It is a relative observer: a GitHub runner is in the US, ~150–200 ms
+RTT from the Seoul project, and that RTT is in every number it records.
+Compare arrivals per rev (both hosts' clocks are NTP-synced, so tens of
+ms of skew at worst — fine for second-scale spikes), not its absolute
+latency with the laptop's.
+
+**One-time setup (repository variables).** The workflow reads the DEV
+project's public URL and anon key from repository *variables* (they
+ship in every page bundle, so they are not secrets): Settings → Secrets
+and variables → Actions → Variables → New repository variable:
+
+- `N14_DEV_SUPABASE_URL` = the dev project's `NEXT_PUBLIC_SUPABASE_URL`
+  (`https://nddawybyuedsrshhxikx.supabase.co`)
+- `N14_DEV_SUPABASE_ANON_KEY` = the dev project's
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+The observer refuses any other Supabase project and any base URL other
+than localhost or the dev preview alias.
+
 ## Reading the result
 
 - **Achieved rps** must be ≥ 95 % of the target, or the stage doesn't
