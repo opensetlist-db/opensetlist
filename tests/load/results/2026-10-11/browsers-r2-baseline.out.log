@@ -1,0 +1,132 @@
+[04:21:29.801] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=12 pause=25000ms drill=none
+[04:21:31.022] event 111: 23 active rows, rev 550; inserting after row 2 (position 2); markers 104,105,106,107,108,110,111,113,114,115,116,117
+[04:21:37.612]   pages: 5/30 opened
+[04:21:39.224]   pages: 10/30 opened
+[04:21:42.784]   pages: 15/30 opened
+[04:21:44.403]   pages: 20/30 opened
+[04:21:45.925]   pages: 25/30 opened
+[04:21:47.677]   pages: 30/30 opened
+[04:21:47.686]   joined: pages 27/30 subs 470/470
+[04:21:48.222] population: {"pagesJoined":30,"pagesPgReady":0,"joined":470,"allJoinedSec":15.373,"allPgReadySec":null}; settling 10s
+[04:21:59.823] edit 1: row 1899 @3 insert 586 ms (rev 551) → song 104 "DEEPNESS" put 723 ms (rev 552)
+[04:22:24.704] edit 2: row 1900 @3 insert 546 ms (rev 553) → song 105 "夏めきペイン" put 731 ms (rev 554)
+[04:22:49.902] edit 3: row 1901 @3 insert 525 ms (rev 555) → song 106 "Trick ＆ Cute" put 987 ms (rev 556)
+[04:23:14.546] edit 4: row 1902 @3 insert 617 ms (rev 557) → song 107 "ツバサ・ラ・リベルテ" put 557 ms (rev 558)
+[04:23:39.381] edit 5: row 1903 @3 insert 576 ms (rev 559) → song 108 "Link to the FUTURE" put 556 ms (rev 560)
+[04:24:04.494] edit 6: row 1904 @3 insert 618 ms (rev 561) → song 110 "水彩世界" put 498 ms (rev 562)
+[04:24:29.596] edit 7: row 1905 @3 insert 528 ms (rev 563) → song 111 "Mix shake!!" put 686 ms (rev 564)
+[04:24:56.747] edit 8: row 1906 @3 insert 530 ms (rev 565) → song 113 "眩耀夜行" put 2821 ms (rev 566)
+[04:25:19.385] edit 9: row 1907 @3 insert 530 ms (rev 567) → song 114 "素顔のピクセル" put 489 ms (rev 568)
+[04:25:44.463] edit 10: row 1908 @3 insert 586 ms (rev 569) → song 115 "千変万華" put 504 ms (rev 570)
+[04:26:09.591] edit 11: row 1909 @3 insert 591 ms (rev 571) → song 116 "シュガーメルト" put 572 ms (rev 572)
+[04:26:34.323] edit 12: row 1910 @3 insert 549 ms (rev 573) → song 117 "AWOKE" put 503 ms (rev 574)
+[04:26:36.480] cleaning up
+[04:26:48.301] cleanup: deleted 12/12; restore null
+[04:26:49.761] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":586,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]}
+
+# Browsers run — 2026-10-11T04:21:29.801Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 550, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 12 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: none
+- Window (UTC): run start 2026-10-11T04:21:29.801Z, first edit 2026-10-11T04:21:58.235Z, last edit settled 2026-10-11T04:26:36.479Z, end 2026-10-11T04:26:50.591Z
+- Label: r2-baseline
+
+## Gate verdicts
+
+Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 6000 | 1408 | 3596 | 7872 | 0 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 360 | 1685 | 3763 | 6929 | 0 | same | **FAIL** |
+| edit × SDK client | 5640 | 1392 | 3594 | 7872 | 0 | same | **FAIL** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 360 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 23196 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker), non-drilled: pages 360 | 2367 | 4429 | 7595 · SDK 5640 | 2061 | 4260 | 8538 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 360 | — | — | — |
+| broadcast `rev` → pages | 360 / 360 | 665 | 2863 | 2866 |
+| broadcast `rev` → SDK | 5640 / 5640 | 731 | 2864 | 2871 |
+
+## Per edit
+
+| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1899 | 104 DEEPNESS | 2026-10-11T04:21:58.235Z | 586 | 551 | 2026-10-11T04:21:58.946Z | 723 | 552 |
+| 2 | 1900 | 105 夏めきペイン | 2026-10-11T04:22:23.248Z | 546 | 553 | 2026-10-11T04:22:23.928Z | 731 | 554 |
+| 3 | 1901 | 106 Trick ＆ Cute | 2026-10-11T04:22:48.246Z | 525 | 555 | 2026-10-11T04:22:48.904Z | 987 | 556 |
+| 4 | 1902 | 107 ツバサ・ラ・リベルテ | 2026-10-11T04:23:13.239Z | 617 | 557 | 2026-10-11T04:23:13.983Z | 557 | 558 |
+| 5 | 1903 | 108 Link to the FUTURE | 2026-10-11T04:23:38.234Z | 576 | 559 | 2026-10-11T04:23:38.812Z | 556 | 560 |
+| 6 | 1904 | 110 水彩世界 | 2026-10-11T04:24:03.242Z | 618 | 561 | 2026-10-11T04:24:03.988Z | 498 | 562 |
+| 7 | 1905 | 111 Mix shake!! | 2026-10-11T04:24:28.241Z | 528 | 563 | 2026-10-11T04:24:28.899Z | 686 | 564 |
+| 8 | 1906 | 113 眩耀夜行 | 2026-10-11T04:24:53.239Z | 530 | 565 | 2026-10-11T04:24:53.905Z | 2821 | 566 |
+| 9 | 1907 | 114 素顔のピクセル | 2026-10-11T04:25:18.238Z | 530 | 567 | 2026-10-11T04:25:18.773Z | 489 | 568 |
+| 10 | 1908 | 115 千変万華 | 2026-10-11T04:25:43.237Z | 586 | 569 | 2026-10-11T04:25:43.955Z | 504 | 570 |
+| 11 | 1909 | 116 シュガーメルト | 2026-10-11T04:26:08.246Z | 591 | 571 | 2026-10-11T04:26:08.972Z | 572 | 572 |
+| 12 | 1910 | 117 AWOKE | 2026-10-11T04:26:33.249Z | 549 | 573 | 2026-10-11T04:26:33.803Z | 503 | 574 |
+
+### Per save — pages (PUT start → marker in the DOM)
+
+| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 552 | 30/30 | 1625 / 2291 / 2352 | 0 | 800 / 821 (30) | 0 | 25 | satisfied 25 |
+| 2 | 554 | 30/30 | 1789 / 2379 / 2403 | 0 | 801 / 933 (30) | 0 | 26 | satisfied 26 |
+| 3 | 556 | 30/30 | 1689 / 2286 / 3891 | 0 | 1046 / 1056 (30) | 0 | 30 | satisfied 30 |
+| 4 | 558 | 30/30 | 1667 / 2131 / 2339 | 0 | 666 / 667 (30) | 0 | 24 | satisfied 24 |
+| 5 | 560 | 30/30 | 1560 / 2663 / 2672 | 0 | 621 / 645 (30) | 0 | 19 | satisfied 19 |
+| 6 | 562 | 30/30 | 1701 / 2333 / 2360 | 0 | 560 / 594 (30) | 0 | 24 | satisfied 24 |
+| 7 | 564 | 30/30 | 1751 / 2233 / 2278 | 0 | 745 / 761 (30) | 0 | 29 | satisfied 29 |
+| 8 | 566 | 30/30 | 3831 / 6725 / 6929 | 0 | 2864 / 2866 (30) | 0 | 39 | missing 11, satisfied 28 |
+| 9 | 568 | 30/30 | 1071 / 2187 / 2223 | 0 | 629 / 637 (30) | 0 | 11 | satisfied 11 |
+| 10 | 570 | 30/30 | 1739 / 2562 / 2723 | 0 | 568 / 602 (30) | 0 | 23 | satisfied 23 |
+| 11 | 572 | 30/30 | 1592 / 2075 / 2232 | 0 | 642 / 740 (30) | 0 | 27 | satisfied 27 |
+| 12 | 574 | 30/30 | 1066 / 2055 / 2392 | 0 | 560 / 577 (30) | 0 | 13 | satisfied 13 |
+
+### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)
+
+| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 552 | 470/470 | 1455 / 2027 / 2428 | 0 | 936 / 1058 (470) | 119 | satisfied 119 | satisfied 133 | 0 (0) | 0 |
+| 2 | 554 | 470/470 | 1388 / 2203 / 2915 | 0 | 863 / 896 (470) | 259 | satisfied 259 | satisfied 264 | 0 (0) | 0 |
+| 3 | 556 | 470/470 | 1778 / 2165 / 2300 | 0 | 1049 / 1069 (470) | 362 | satisfied 362 | satisfied 367 | 0 (0) | 0 |
+| 4 | 558 | 470/470 | 1252 / 1953 / 2281 | 0 | 615 / 740 (470) | 146 | satisfied 146 | satisfied 154 | 0 (0) | 0 |
+| 5 | 560 | 470/470 | 1277 / 2184 / 2686 | 0 | 1016 / 1040 (470) | 127 | satisfied 127 | satisfied 130 | 0 (0) | 0 |
+| 6 | 562 | 470/470 | 1245 / 1958 / 2494 | 0 | 588 / 693 (470) | 119 | satisfied 119 | satisfied 122 | 0 (0) | 0 |
+| 7 | 564 | 470/470 | 1331 / 2037 / 2238 | 0 | 742 / 751 (470) | 180 | satisfied 180 | satisfied 188 | 0 (0) | 0 |
+| 8 | 566 | 470/470 | 3719 / 6636 / 7872 | 0 | 2865 / 2869 (470) | 544 | satisfied 436 | satisfied 458 | 0 (0) | 0 |
+| 9 | 568 | 470/470 | 1289 / 1871 / 2429 | 0 | 636 / 641 (470) | 100 | satisfied 100 | satisfied 102 | 0 (0) | 0 |
+| 10 | 570 | 470/470 | 1276 / 2214 / 2704 | 0 | 674 / 710 (470) | 121 | satisfied 121 | satisfied 125 | 0 (0) | 0 |
+| 11 | 572 | 470/470 | 1238 / 1874 / 2236 | 0 | 772 / 836 (470) | 168 | satisfied 168 | satisfied 177 | 0 (0) | 0 |
+| 12 | 574 | 470/470 | 1221 / 1812 / 2381 | 0 | 616 / 667 (470) | 114 | satisfied 114 | satisfied 121 | 0 (0) | 0 |
+
+## Hint outcomes (whole run)
+
+- SDK: 24230 requests; notification fetches (hint=1) 11135, their x-snapshot-verify: satisfied 11019; all 200 responses: none 470, satisfied 23554
+  - ticket resolutions: satisfied 11267; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 586
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 6852, notification +hint=1 11042, notification 5029, periodic generic +H 233, retry +hint=1 93, retry 9, retry generic +H 20, retry generic 12; failures by kind: http 134
+- Pages: 1542 /api/setlist responses; notification fetches (hint=1) 864, their x-snapshot-verify: satisfied 853; all 200 responses: satisfied 1531 (an R1 page build sends no hint=1)
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1709 p95=4638 max=4845
+  - /api/setlist responses seen: 1542 ({"cache":503,"build":1028,"error":11}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 1080; dropped notification frames 0, blocked attempts 0
+- SDK: 470/470 joined; all joined after 15.373 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=198 p95=1947 max=2001
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 134 (with Retry-After 134); fetches by reason {"initial":470,"catchup":470,"periodic":7085,"notification":16071,"retry":134}; X-Snapshot-Source {"cache":7837,"build":16194}
+
+## Clean-up
+
+- Soft-deleted 12/12 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":586,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)
+
+[04:26:50.612] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T04-26-50-601Z-browsers.md
