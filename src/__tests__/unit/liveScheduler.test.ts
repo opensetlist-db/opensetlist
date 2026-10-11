@@ -6,9 +6,11 @@ import {
   HEALTHY_PERIODIC_SPREAD_MS,
   type LiveFetchOutcome,
   type LiveFetchReason,
+  type LiveFetchRequest,
   type LiveScheduler,
   type LiveSchedulerOptions,
 } from "@/lib/liveScheduler";
+import { SnapshotAcceptance } from "@/lib/snapshotAcceptance";
 
 // Fake timers drive the scheduler's default clock (setTimeout +
 // Date.now are both faked). `runFetch` is a controllable deferred so a
@@ -16,15 +18,16 @@ import {
 
 interface Deferred {
   reason: LiveFetchReason;
+  request: LiveFetchRequest;
   resolve: (outcome: LiveFetchOutcome) => void;
 }
 
 function harness(opts: Partial<LiveSchedulerOptions> = {}) {
   const calls: Deferred[] = [];
   const runFetch = vi.fn(
-    (reason: LiveFetchReason) =>
+    (reason: LiveFetchReason, request: LiveFetchRequest) =>
       new Promise<LiveFetchOutcome>((resolve) => {
-        calls.push({ reason, resolve });
+        calls.push({ reason, request, resolve });
       }),
   );
   const scheduler: LiveScheduler = createLiveScheduler({
@@ -59,7 +62,7 @@ describe("liveScheduler — notifications", () => {
     expect(runFetch).not.toHaveBeenCalled(); // always via a timer
     await advance(0);
     expect(runFetch).toHaveBeenCalledTimes(1);
-    expect(runFetch).toHaveBeenCalledWith("notification");
+    expect(runFetch).toHaveBeenCalledWith("notification", expect.anything());
   });
 
   it("delays a notification by U(0, jitterMs) — upper bound stays under jitterMs", async () => {
@@ -79,7 +82,7 @@ describe("liveScheduler — notifications", () => {
       const { runFetch, scheduler } = harness({ random: () => 0.999 });
       scheduler.requestFetch(reason);
       expect(runFetch).toHaveBeenCalledTimes(1);
-      expect(runFetch).toHaveBeenCalledWith(reason);
+      expect(runFetch).toHaveBeenCalledWith(reason, expect.anything());
       scheduler.dispose();
     }
   });
@@ -148,19 +151,38 @@ describe("liveScheduler — notifications", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("catchup");
+    expect(runFetch).toHaveBeenLastCalledWith("catchup", expect.anything());
   });
 
-  it("dirty: a notification wins over a catch-up (the follow-up carries the push hint)", async () => {
-    const { calls, runFetch, scheduler } = harness();
+  // R1 let the notification win here (the follow-up became a hint
+  // fetch). R2: the catch-up's maintenance obligation wins and the push's
+  // hint rides along as minRev without hint=1 — one request, both duties.
+  it("dirty: a pending maintenance obligation wins; the notification's hint rides along", async () => {
+    let batch: number | null = null;
+    const { calls, runFetch, scheduler } = harness({
+      captureHint: () => {
+        const h = batch;
+        batch = null;
+        return h;
+      },
+    });
     scheduler.requestFetch("initial");
     scheduler.requestFetch("catchup");
+    batch = 9;
     scheduler.requestFetch("notification");
-    scheduler.requestFetch("resume"); // does not downgrade
+    scheduler.requestFetch("resume");
     await settle(calls[0]);
     await advance(0);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("notification");
+    expect(calls[1].request).toEqual({
+      reason: "resume",
+      generic: true,
+      hint: 9,
+      notify: false,
+    });
+    await settle(calls[1]);
+    await advance(60_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
   });
 
   it("single-flight: triggers while in flight do not start a second request", async () => {
@@ -177,7 +199,7 @@ describe("liveScheduler — notifications", () => {
     scheduler.requestFetch("notification"); // due t = 450
     scheduler.requestFetch("initial");
     expect(runFetch).toHaveBeenCalledTimes(1);
-    expect(runFetch).toHaveBeenCalledWith("initial");
+    expect(runFetch).toHaveBeenCalledWith("initial", expect.anything());
     await advance(1_000);
     // The scheduled notification fetch was cancelled, not run in
     // addition (the initial request's read covers it).
@@ -205,7 +227,7 @@ describe("liveScheduler — correlated triggers are spread (catch-up / resume / 
       expect(runFetch).not.toHaveBeenCalled();
       await advance(2);
       expect(runFetch).toHaveBeenCalledTimes(1);
-      expect(runFetch).toHaveBeenCalledWith(reason);
+      expect(runFetch).toHaveBeenCalledWith(reason, expect.anything());
       scheduler.dispose();
     }
   });
@@ -258,13 +280,23 @@ describe("liveScheduler — correlated triggers are spread (catch-up / resume / 
     expect(runFetch).toHaveBeenCalledTimes(2);
   });
 
-  it("a notification covered by a scheduled catch-up upgrades it to carry the push hint", async () => {
-    const { runFetch, scheduler } = harness({ random: () => 0.2 });
+  // R1 upgraded the covering catch-up to a notification. R2: it stays
+  // a generic catch-up and takes the push's hint along (no hint=1).
+  it("a notification covered by a scheduled catch-up rides on it (generic + hint)", async () => {
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.2,
+      captureHint: () => 12,
+    });
     scheduler.requestFetch("catchup"); // due 100
     scheduler.requestFetch("notification"); // due 100 → covered
     await advance(100);
     expect(runFetch).toHaveBeenCalledTimes(1);
-    expect(runFetch).toHaveBeenCalledWith("notification");
+    expect(calls[0].request).toEqual({
+      reason: "catchup",
+      generic: true,
+      hint: 12,
+      notify: false,
+    });
   });
 
   it("a catch-up covered by a scheduled retry leaves the retry in place", async () => {
@@ -274,7 +306,7 @@ describe("liveScheduler — correlated triggers are spread (catch-up / resume / 
     scheduler.requestFetch("catchup"); // due 250 > retry at 100
     await advance(100);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    expect(runFetch).toHaveBeenLastCalledWith("retry", expect.anything());
     await settle(calls[1]);
     await advance(5_000);
     expect(runFetch).toHaveBeenCalledTimes(2);
@@ -300,10 +332,9 @@ describe("liveScheduler — failures defer to the provided retry delay", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    // The dirty trigger was a push, so the retry that covers it carries
-    // the notification hint (see the failure-floor tests for the plain
-    // retry case).
-    expect(runFetch).toHaveBeenLastCalledWith("notification");
+    // The failed request was generic, so its retry is too (R1 ran it as
+    // a notification); the push's batch is captured by the retry.
+    expect(calls[1].request).toMatchObject({ reason: "retry", generic: true, notify: false });
   });
 
   it("an explicit trigger supersedes a pending retry", async () => {
@@ -313,7 +344,7 @@ describe("liveScheduler — failures defer to the provided retry delay", () => {
     scheduler.requestFetch("resume");
     await advance(0); // U(0, jitter) at random = 0
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("resume");
+    expect(runFetch).toHaveBeenLastCalledWith("resume", expect.anything());
     await settle(calls[1]);
     await advance(60_000);
     expect(runFetch).toHaveBeenCalledTimes(2);
@@ -352,8 +383,8 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1); // t = 2000: the retry (earlier than floor + jitter) covers them
     expect(runFetch).toHaveBeenCalledTimes(2);
-    // …and, having covered a push, carries the notification hint.
-    expect(runFetch).toHaveBeenLastCalledWith("notification");
+    // …and runs as the (generic) retry, which also captures the pushes' batch.
+    expect(calls[1].request).toMatchObject({ reason: "retry", generic: true });
     await settle(calls[1]);
     await advance(5_000);
     expect(runFetch).toHaveBeenCalledTimes(2);
@@ -371,7 +402,7 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("resume");
+    expect(runFetch).toHaveBeenLastCalledWith("resume", expect.anything());
     expect(scheduler.getState().retryPending).toBe(false);
   });
 
@@ -387,7 +418,7 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     expect(runFetch).not.toHaveBeenCalled();
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(1);
-    expect(runFetch).toHaveBeenCalledWith("initial");
+    expect(runFetch).toHaveBeenCalledWith("initial", expect.anything());
   });
 
   it("a dirty follow-up after a failed request waits for the floor too", async () => {
@@ -399,9 +430,9 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    // The push that arrived during the failed request is what the retry
-    // covers, so it must carry the notification hint, not a plain retry.
-    expect(runFetch).toHaveBeenLastCalledWith("notification");
+    // The retry covers the push that arrived during the failed request; the
+    // failed seed was generic, so the retry is too (R1: "notification").
+    expect(calls[1].request).toMatchObject({ reason: "retry", generic: true });
   });
 
   it("a retry after a failure with no push in between stays a plain retry", async () => {
@@ -410,7 +441,7 @@ describe("liveScheduler — server-directed floor (Retry-After)", () => {
     await settle(calls[0], { kind: "failed", retryInMs: 1_000 });
     await advance(1_000);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    expect(runFetch).toHaveBeenLastCalledWith("retry", expect.anything());
   });
 
   it("the floor expires: afterwards triggers follow the normal cadence again", async () => {
@@ -466,7 +497,7 @@ describe("liveScheduler — periodic", () => {
     await advance(15_999);
     expect(runFetch).not.toHaveBeenCalled();
     await advance(1);
-    expect(runFetch).toHaveBeenCalledWith("periodic");
+    expect(runFetch).toHaveBeenCalledWith("periodic", expect.anything());
     await settle(calls[0]);
   });
 
@@ -533,7 +564,7 @@ describe("liveScheduler — periodic", () => {
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
     expect(runFetch).toHaveBeenCalledTimes(2);
-    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    expect(runFetch).toHaveBeenLastCalledWith("retry", expect.anything());
   });
 
   it("setPeriodic swaps the cadence on the same scheduler (healthy ↔ disconnected)", async () => {
@@ -574,7 +605,7 @@ describe("liveScheduler — periodic", () => {
     await advance(7_999); // fallback ticks are skipped while the retry is pending
     expect(runFetch).toHaveBeenCalledTimes(1);
     await advance(1);
-    expect(runFetch).toHaveBeenLastCalledWith("retry");
+    expect(runFetch).toHaveBeenLastCalledWith("retry", expect.anything());
   });
 
   it("start() is idempotent", async () => {
@@ -625,5 +656,386 @@ describe("liveScheduler — dispose", () => {
     await advance(10_000);
     expect(runFetch).toHaveBeenCalledTimes(1);
     expect(scheduler.getState().retryPending).toBe(false);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
+// R2 — hint tickets, the one bounded recheck, and the sticky
+// maintenance obligation. A real `SnapshotAcceptance` supplies
+// `captureHint`, so batches behave exactly as on the page.
+// ────────────────────────────────────────────────────────────────────
+
+describe("liveScheduler — R2 hint tickets + recheck", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function hinted(opts: Partial<LiveSchedulerOptions> = {}) {
+    const acceptance = new SnapshotAcceptance({ rev: 5, capturedAt: "2026-11-14T07:30:00.000Z" });
+    const exhausted: number[] = [];
+    const h = harness({
+      random: () => 0.5,
+      captureHint: () => acceptance.captureHint(),
+      onHintExhausted: (hint) => exhausted.push(hint),
+      ...opts,
+    });
+    const push = (rev: number) => {
+      if (acceptance.noteHint(rev)) h.scheduler.requestFetch("notification");
+    };
+    return { ...h, acceptance, exhausted, push };
+  }
+
+  it("a notification fetch carries the batch: hint=H, notify, not generic", async () => {
+    const { calls, push } = hinted();
+    push(7);
+    push(9); // same batch → max
+    await advance(250);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: 9,
+      notify: true,
+    });
+  });
+
+  it("a duplicate / already-applied hint does no notification work", async () => {
+    const { runFetch, push } = hinted();
+    push(5);
+    push(3);
+    await advance(5_000);
+    expect(runFetch).not.toHaveBeenCalled();
+  });
+
+  it("an older request completing cannot consume a newer batch", async () => {
+    const { calls, push } = hinted();
+    push(7);
+    await advance(250); // request A dispatched with H = 7
+    push(8); // arrives in flight → next batch, dirty follow-up
+    await settle(calls[0], { kind: "ok", hint: "resolved" });
+    // Follow-up at the cooldown edge (1 s after A's start at 250).
+    await advance(999);
+    expect(calls).toHaveLength(1);
+    await advance(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request).toMatchObject({ hint: 8, notify: true });
+  });
+
+  it("inconclusive → ONE quiet recheck at now + max(1 s, cooldown left) + U(0, jitter), sharing the cooldown", async () => {
+    const { calls, push, scheduler } = hinted();
+    push(9);
+    await advance(250); // dispatched at 250
+    await advance(100);
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" }); // settles at 350
+    // 350 + max(1000, 1250 − 350) + 0.5 × 500 = 1600.
+    expect(scheduler.getState()).toMatchObject({
+      scheduledAt: Date.now() + 1_250,
+      scheduledReason: "recheck",
+      carriedHint: 9,
+      carriedHintPhase: "recheck",
+    });
+    await advance(1_249);
+    expect(calls).toHaveLength(1);
+    await advance(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request).toEqual({
+      reason: "recheck",
+      generic: false,
+      hint: 9,
+      notify: false,
+    });
+    // The recheck advanced the shared cooldown: a push right after it
+    // waits for 1 s from the recheck's start.
+    const recheckStart = Date.now();
+    await settle(calls[1], { kind: "ok", hint: "resolved" });
+    push(10);
+    expect(scheduler.getState().scheduledAt).toBe(recheckStart + 1_000);
+  });
+
+  it("the recheck waits out a notification cooldown longer than the memo window", async () => {
+    const t0 = Date.now();
+    const { calls, push, scheduler } = hinted({ cooldownMs: 3_000 });
+    push(9);
+    await advance(250);
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" });
+    // Cooldown left at 250 = 3000 > 1000 → 250 + 3000 + U(0, 500) = 3500.
+    expect(scheduler.getState().scheduledAt).toBe(t0 + 3_500);
+  });
+
+  it("a second inconclusive answer drops the ticket (hint exhausted) — no third request", async () => {
+    const { calls, push, scheduler, exhausted, runFetch } = hinted();
+    push(9);
+    await advance(250);
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" });
+    await advance(1_250);
+    expect(calls).toHaveLength(2);
+    await settle(calls[1], { kind: "ok", hint: "inconclusive" });
+    expect(exhausted).toEqual([9]);
+    expect(scheduler.getState()).toMatchObject({ carriedHint: null, scheduledAt: null });
+    await advance(60_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("poisoning drill: a max-safe-integer hint costs two requests, then honest saves work normally", async () => {
+    const { calls, push, acceptance, exhausted } = hinted();
+    push(Number.MAX_SAFE_INTEGER);
+    await advance(250);
+    expect(calls[0].request).toMatchObject({ hint: Number.MAX_SAFE_INTEGER, notify: true });
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" });
+    await advance(1_250);
+    expect(calls[1].request).toMatchObject({
+      reason: "recheck",
+      hint: Number.MAX_SAFE_INTEGER,
+      notify: false,
+    });
+    await settle(calls[1], { kind: "ok", hint: "inconclusive" });
+    expect(exhausted).toEqual([Number.MAX_SAFE_INTEGER]);
+    // The durable watermark never saw it.
+    expect(acceptance.minRevToSend()).toBe(5);
+
+    await advance(2_000);
+    push(6); // an honest save
+    await advance(250);
+    expect(calls).toHaveLength(3);
+    expect(calls[2].request).toEqual({
+      reason: "notification",
+      generic: false,
+      hint: 6,
+      notify: true,
+    });
+  });
+
+  it("a fresh refutation (resolved) ends it: no recheck, no failure", async () => {
+    const { calls, push, scheduler, runFetch } = hinted();
+    push(Number.MAX_SAFE_INTEGER);
+    await advance(250);
+    await settle(calls[0], { kind: "ok", hint: "resolved" });
+    expect(scheduler.getState()).toMatchObject({ carriedHint: null, scheduledAt: null });
+    await advance(10_000);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("the ticket survives an ordinary failure: the retry carries it (still a first check)", async () => {
+    const { calls, push } = hinted();
+    push(9);
+    await advance(250);
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000 });
+    await advance(1_000);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request).toEqual({
+      reason: "retry",
+      generic: false,
+      hint: 9,
+      notify: true,
+    });
+  });
+
+  it("a server-proven gap that resolved the ticket retries without it", async () => {
+    const { calls, push } = hinted();
+    push(9);
+    await advance(250);
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000, hint: "resolved" });
+    await advance(1_000);
+    expect(calls[1].request).toEqual({
+      reason: "retry",
+      generic: false,
+      hint: null,
+      notify: false,
+    });
+  });
+
+  it("an inconclusive gap failure turns its retry into the recheck, and the Retry-After floor holds", async () => {
+    const { calls, push, exhausted } = hinted();
+    push(9);
+    await advance(250);
+    await settle(calls[0], {
+      kind: "failed",
+      retryInMs: 4_000,
+      notBeforeMs: 4_000,
+      hint: "inconclusive",
+    });
+    // No separate recheck inside the server's back-off window.
+    await advance(3_999);
+    expect(calls).toHaveLength(1);
+    await advance(1);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request).toEqual({
+      reason: "retry",
+      generic: false,
+      hint: 9,
+      notify: false,
+    });
+    await settle(calls[1], { kind: "ok", hint: "inconclusive" });
+    expect(exhausted).toEqual([9]);
+  });
+
+  it("a recheck-phase ticket does not ride on an unrelated request before it is due", async () => {
+    const { calls, push, scheduler } = hinted();
+    push(9);
+    await advance(250); // notification dispatched at 250
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" }); // recheck due 1500
+    await advance(350);
+    scheduler.requestFetch("catchup"); // due at the cooldown edge, 1250 < 1500
+    await advance(650);
+    expect(calls).toHaveLength(2);
+    // Inside the memo window: the catch-up runs generic WITHOUT the ticket…
+    expect(calls[1].request).toEqual({
+      reason: "catchup",
+      generic: true,
+      hint: null,
+      notify: false,
+    });
+    await settle(calls[1]);
+    // …and the recheck is re-armed for its own due time.
+    expect(scheduler.getState()).toMatchObject({
+      scheduledReason: "recheck",
+      carriedHint: 9,
+    });
+    await advance(249);
+    expect(calls).toHaveLength(2);
+    await advance(1);
+    expect(calls).toHaveLength(3);
+    expect(calls[2].request).toEqual({
+      reason: "recheck",
+      generic: false,
+      hint: 9,
+      notify: false,
+    });
+  });
+
+  it("an ok without a hint verdict consumes the ticket (hint-less runners)", async () => {
+    const { calls, push, scheduler } = hinted();
+    push(9);
+    await advance(250);
+    await settle(calls[0]);
+    expect(scheduler.getState()).toMatchObject({ carriedHint: null, scheduledAt: null });
+  });
+});
+
+describe("liveScheduler — R2 sticky maintenance obligation (genericRequired)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("a periodic tick during an in-flight notification fetch is NOT dropped: one generic follow-up", async () => {
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      captureHint: () => null,
+      periodic: { intervalMs: 1_000, spreadMs: 0, firstTick: "interval" },
+    });
+    scheduler.start();
+    scheduler.requestFetch("notification");
+    await advance(250); // notification in flight (hangs)
+    expect(calls[0].request.generic).toBe(false);
+    // Three overdue ticks (1 s, 2 s, 3 s) collapse into ONE obligation.
+    await advance(3_000);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(scheduler.getState()).toMatchObject({ genericRequired: true, dirty: true });
+    await settle(calls[0]);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(calls[1].request).toMatchObject({ reason: "periodic", generic: true });
+    await settle(calls[1]);
+    expect(scheduler.getState().genericRequired).toBe(false);
+  });
+
+  it("a notification can neither clear nor downgrade a pending obligation", async () => {
+    const { calls, scheduler } = harness({
+      random: () => 0.5,
+      captureHint: () => 11,
+    });
+    scheduler.requestFetch("catchup"); // due 250
+    scheduler.requestFetch("notification"); // covered
+    scheduler.requestFetch("notification");
+    await advance(250);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request).toEqual({
+      reason: "catchup",
+      generic: true,
+      hint: 11,
+      notify: false,
+    });
+  });
+
+  it("a scheduled notification takes the generic path when a tick lands before it (hint rides along)", async () => {
+    const { calls, scheduler } = harness({
+      random: () => 0.5,
+      captureHint: () => 9,
+      periodic: { intervalMs: 100, spreadMs: 0, firstTick: "interval" },
+    });
+    scheduler.start();
+    scheduler.requestFetch("notification"); // due 250
+    await advance(100); // tick at 100: scheduled exists → obligation only
+    expect(calls).toHaveLength(0);
+    await advance(150);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request).toEqual({
+      reason: "periodic",
+      generic: true,
+      hint: 9,
+      notify: false,
+    });
+  });
+
+  it("a failed generic request keeps the obligation for its retry; only success clears it", async () => {
+    const { calls, scheduler } = harness({ random: () => 0.5 });
+    scheduler.requestFetch("initial");
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000 });
+    expect(scheduler.getState().genericRequired).toBe(true);
+    // A notification while the retry is pending: due earlier, replaces it
+    // — and still runs generic.
+    scheduler.requestFetch("notification");
+    await advance(250);
+    expect(calls[1].request).toMatchObject({ generic: true, notify: false });
+    await settle(calls[1], { kind: "failed", retryInMs: 2_000 });
+    expect(scheduler.getState().genericRequired).toBe(true);
+    await advance(2_000);
+    expect(calls[2].request).toMatchObject({ reason: "retry", generic: true });
+    await settle(calls[2]);
+    expect(scheduler.getState().genericRequired).toBe(false);
+  });
+
+  it("a periodic tick while a GENERIC request is in flight is covered by it", async () => {
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      periodic: { intervalMs: 1_000, spreadMs: 0, firstTick: "interval" },
+    });
+    scheduler.start();
+    scheduler.requestFetch("initial");
+    await advance(2_500);
+    expect(scheduler.getState().dirty).toBe(false);
+    await settle(calls[0]);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a newer batch at or above a recheck ticket subsumes it (one request, a fresh first check)", async () => {
+    let batch: number | null = 9;
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      captureHint: () => {
+        const h = batch;
+        batch = null;
+        return h;
+      },
+    });
+    scheduler.requestFetch("notification");
+    await advance(250);
+    await settle(calls[0], { kind: "ok", hint: "inconclusive" }); // recheck due +1250
+    // A newer batch at the recheck's level or above subsumes the ticket.
+    await advance(1_000);
+    batch = 10;
+    scheduler.requestFetch("notification"); // due at the cooldown edge (1250) ≤ recheck
+    await advance(0);
+    await advance(250);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].request).toMatchObject({ hint: 10, notify: true });
+    await settle(calls[1], { kind: "ok", hint: "resolved" });
+    await advance(10_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
   });
 });
