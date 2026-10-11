@@ -1,0 +1,63 @@
+=== drill double-save start 09:07:33
+[09:07:34.545] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=3 pause=25000ms drill=double-save
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: double-save (edit 2, pages 30)
+| all pairs (pages + SDK) | 1500 | 1623 | 4675 | 5078 | 0 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 90 | 1343 | 1760 | 2086 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1637 | 4694 | 5078 | 0 | same | **FAIL** |
+| drill double-save (edit 2: final save start → final state) | 500 | 2032 | 4743 | 4800 | 0 not converged | every client converges to the final save, 0 regressions | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 93 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 6064 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+Insert-start based (insert-after request start → marker), non-drilled: pages 90 | 2262 | 2660 | 3227 · SDK 1410 | 2418 | 5759 | 5941 (n | p50 | p95 | max).
+  - /api/setlist responses seen: 398 ({"build":16,"cache":148,"warm":234}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 300; dropped notification frames 0, blocked attempts 0
+## Double-save drill
+[09:09:23.286] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-09-23-274Z-browsers-double-save.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431@8 1432@9 1433@10 14
+=== drill lost-final start 09:09:28
+[09:09:31.597] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=3 pause=25000ms drill=lost-final
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: lost-final (edit 3, pages 30)
+| all pairs (pages + SDK) | 1000 | 6614 | 14438 | 15740 | 0 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 60 | 3035 | 4615 | 4902 | 0 | same | **FAIL** |
+| edit × SDK client | 940 | 8223 | 14452 | 15740 | 0 | same | **FAIL** |
+| drill lost-final (drilled pairs) | 500 | 14928 | 20578 | 23044 | 0 | max ≤ 26000 ms, 0 missing | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 5467 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+Insert-start based (insert-after request start → marker), non-drilled: pages 60 | 3706 | 5236 | 5523 · SDK 940 | 8894 | 15123 | 16411 (n | p50 | p95 | max).
+| 3 (drill: 500) | 2052 | 396 乙女詞華集 | 2026-10-11T09:11:10.089Z | 667 | 879 | 2026-10-11T09:11:18.486Z | 582 | 880 |
+| 3 (drill: 500) | 880 | 30/30 | 9914 / 20293 / 21752 | 0 | — / — (0) | 0 | 0 | — | 0/0 | — / — |
+| 3 (drill: 500) | 880 | 470/470 | 14945 / 20675 / 23044 | 0 | — / — (0) | 0 | — | — | 0 (0) | 0 | 0/0 | — / — |
+  - /api/setlist responses seen: 437 ({"cache":218,"warm":205,"build":14}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 270; dropped notification frames 30, blocked attempts 0
+- edit 3 2026-10-11T09:11:41.785Z: stop dropping (drilled clients repaired or timeout)
+| drilled page | edit | locale | PUT → marker ms | dropped notification frames (proxy) | repairing fetch: ms after PUT, minRev, source |
+[09:12:01.985] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-12-01-938Z-browsers-lost-final.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431@8 1432@9 1433@10 14
+=== drill spam --spam-secs=20 start 09:12:17
+[09:12:22.943] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=3 pause=25000ms drill=spam
+[09:13:20.096]   drill: spam 2/s × 20 s (ahead) running alongside the saves
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: spam (edit 1, pages 30)
+| all pairs (pages + SDK) | 1276 | 2904 | 11245 | 29618 | 224 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 90 | 3275 | 5085 | 6008 | 0 | same | **FAIL** |
+| edit × SDK client | 1186 | 2668 | 11265 | 29618 | 224 | same | **FAIL** |
+| drill spam (32 msgs, 22 s) | 470 SDK | — | — | — | 0 client(s) under the cooldown, 397 hard failure(s) | notification / recheck starts ≥ 1000 ms apart per SDK client, 0 HTTP / network / deadline failures during the spam | **FAIL** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 7523 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+Insert-start based (insert-after request start → marker), non-drilled: pages 90 | 4200 | 6183 | 7221 · SDK 1186 | 3651 | 12190 | 30831 (n | p50 | p95 | max).
+  - /api/setlist responses seen: 681 ({"cache":456,"warm":214,"build":11}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 1230; dropped notification frames 0, blocked attempts 0
+## Spam drill
+[09:14:17.772] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-14-17-765Z-browsers-spam.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431@8 1432@9 1433@10 14
+=== drill verify-ambiguity --drill-edit=2 --prime-per-locale=20 start 09:14:21
+[09:14:22.209] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=3 pause=25000ms drill=verify-ambiguity
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: verify-ambiguity (edit 2, pages 30)
+| all pairs (pages + SDK) | 1500 | 1370 | 1983 | 2739 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 90 | 1404 | 1648 | 1766 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1368 | 1987 | 2739 | 0 | same | **PASS** |
+| drill verify-ambiguity (rev 898) | 457 notification fetches | — | — | — | memo 0 → recheck ok 0, not ok 0, none 0 | every SDK client answered `memo` for the drilled save resolves it on its one recheck (n/a when no memo was observed) | n/a |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 5968 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+Insert-start based (insert-after request start → marker), non-drilled: pages 90 | 2410 | 4240 | 4333 · SDK 1410 | 2632 | 4259 | 4723 (n | p50 | p95 | max).
+  - /api/setlist responses seen: 386 ({"build":25,"cache":128,"warm":233}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 270; dropped notification frames 0, blocked attempts 0
+## Verify-ambiguity drill
+- drilled save rev 898: SDK notification fetches 457, x-snapshot-verify satisfied 457; memo share 0.0 % (0 client(s))
+[09:15:45.217] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-15-45-212Z-browsers-verify-ambiguity.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431@8 1432@9 1433@10 14
+=== drills done 09:15:49

@@ -1,0 +1,34 @@
+=== drill spam --spam-secs=20 start 09:30:19
+| all pairs (pages + SDK) | 1500 | 2125 | 2875 | 3631 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 90 | 2053 | 3280 | 3602 | 0 | same | **FAIL** |
+| edit × SDK client | 1410 | 2131 | 2843 | 3631 | 0 | same | **PASS** |
+| drill spam (40 msgs, 23 s) | 470 SDK | — | — | — | 0 client(s) under the cooldown, 0 hard failure(s) | notification / recheck starts ≥ 1000 ms apart per SDK client, 0 HTTP / network / deadline failures during the spam | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 13191 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 1200, notification +hint=1 10760, periodic generic +H 566, recheck +H 247; failures by kind: —
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":1766,"notification":10760,"recheck":247}; X-Snapshot-Source {"cache":489
+[09:31:52.788] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-31-52-776Z-browsers-spam.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431
+=== drill lost-final start 09:31:56
+| all pairs (pages + SDK) | 1000 | 1500 | 2242 | 2352 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 60 | 1458 | 1629 | 1767 | 0 | same | **PASS** |
+| edit × SDK client | 940 | 1508 | 2243 | 2352 | 0 | same | **PASS** |
+| drill lost-final (drilled pairs) | 500 | 9394 | 18341 | 23896 | 0 | max ≤ 26000 ms, 0 missing | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 6037 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 1933, notification +hint=1 3056, periodic generic +H 156; failures by kind: —
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":2089,"notification":3056}; X-Snapshot-Source {"build":496,"cache":2525,"
+[09:33:42.596] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-33-42-591Z-browsers-lost-final.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431
+=== done 09:33:46
+=== drill double-save rerun start 09:34:11
+| all pairs (pages + SDK) | 1500 | 1617 | 3864 | 4007 | 0 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 90 | 1556 | 2017 | 2042 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1619 | 3867 | 4007 | 0 | same | **FAIL** |
+| drill double-save (edit 2: final save start → final state) | 500 | 1227 | 1982 | 1998 | 0 not converged | every client converges to the final save, 0 regressions | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 100 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 6115 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 1365, notification +hint=1 3737, periodic generic +H 158; failures by kind: —
+[09:35:35.415] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-35-35-409Z-browsers-double-save.md
+after: 1424@1 1425@2 1426@3 1427@4 1428@5 1429@6 1430@7 1431
+=== done 09:35:38

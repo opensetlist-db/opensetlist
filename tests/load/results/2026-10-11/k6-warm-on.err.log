@@ -1,0 +1,34 @@
+time="2026-10-11T01:49:43-07:00" level=info msg="[burst b00] create appliedRev=788 savedRev=789 minRev=789+hint n=610 errors=0 p95=2175ms max=2555ms" source=console
+time="2026-10-11T01:49:44-07:00" level=info msg="[admin] cold start done at 6.1s" source=console
+time="2026-10-11T01:50:18-07:00" level=info msg="[admin] cycle 1 (burst) at 40.0s" source=console
+time="2026-10-11T01:50:21-07:00" level=info msg="[burst b01] create appliedRev=790 savedRev=791 minRev=791+hint n=608 errors=0 p95=473ms max=652ms" source=console
+time="2026-10-11T01:50:27-07:00" level=info msg="[burst b02] update appliedRev=791 savedRev=792 minRev=792+hint n=617 errors=0 p95=686ms max=878ms" source=console
+time="2026-10-11T01:50:34-07:00" level=info msg="[burst b03] insert_after appliedRev=792 savedRev=793 minRev=793+hint n=605 errors=0 p95=435ms max=550ms" source=console
+time="2026-10-11T01:50:40-07:00" level=info msg="[burst b04] swap appliedRev=793 savedRev=794 minRev=794+hint n=601 errors=0 p95=429ms max=598ms" source=console
+time="2026-10-11T01:50:46-07:00" level=info msg="[burst b05] delete appliedRev=794 savedRev=795 minRev=795+hint n=605 errors=0 p95=502ms max=776ms" source=console
+time="2026-10-11T01:50:52-07:00" level=info msg="[burst b06] delete appliedRev=795 savedRev=796 minRev=796+hint n=611 errors=0 p95=333ms max=406ms" source=console
+time="2026-10-11T01:51:00-07:00" level=info msg="[admin] cycle 2 (quiet) at 81.8s" source=console
+time="2026-10-11T01:51:32-07:00" level=info msg="[admin] cycle 3 (burst) at 113.5s" source=console
+time="2026-10-11T01:51:34-07:00" level=info msg="[burst b07] create appliedRev=802 savedRev=803 minRev=803+hint n=602 errors=0 p95=382ms max=565ms" source=console
+time="2026-10-11T01:51:40-07:00" level=info msg="[burst b08] update appliedRev=803 savedRev=804 minRev=804+hint n=596 errors=0 p95=339ms max=429ms" source=console
+time="2026-10-11T01:51:46-07:00" level=info msg="[burst b09] insert_after appliedRev=804 savedRev=805 minRev=805+hint n=613 errors=0 p95=445ms max=1000ms" source=console
+time="2026-10-11T01:51:53-07:00" level=info msg="[burst b10] swap appliedRev=805 savedRev=806 minRev=806+hint n=601 errors=0 p95=529ms max=635ms" source=console
+time="2026-10-11T01:51:59-07:00" level=info msg="[burst b11] delete appliedRev=806 savedRev=807 minRev=807+hint n=597 errors=0 p95=424ms max=1085ms" source=console
+time="2026-10-11T01:52:05-07:00" level=info msg="[burst b12] delete appliedRev=807 savedRev=808 minRev=808+hint n=601 errors=0 p95=362ms max=718ms" source=console
+time="2026-10-11T01:52:13-07:00" level=info msg="[admin] cycle 4 (burst) at 154.8s" source=console
+time="2026-10-11T01:52:16-07:00" level=info msg="[burst b13] create appliedRev=808 savedRev=809 minRev=809+hint n=605 errors=0 p95=352ms max=470ms" source=console
+time="2026-10-11T01:52:22-07:00" level=info msg="[burst b14] update appliedRev=809 savedRev=810 minRev=810+hint n=605 errors=0 p95=372ms max=511ms" source=console
+time="2026-10-11T01:52:29-07:00" level=info msg="[burst b15] insert_after appliedRev=810 savedRev=811 minRev=811+hint n=598 errors=0 p95=398ms max=556ms" source=console
+time="2026-10-11T01:52:38-07:00" level=info msg="[burst b16] swap appliedRev=811 savedRev=812 minRev=812+hint n=606 errors=0 p95=348ms max=874ms" source=console
+time="2026-10-11T01:52:44-07:00" level=info msg="[burst b17] delete appliedRev=812 savedRev=813 minRev=813+hint n=599 errors=0 p95=407ms max=578ms" source=console
+time="2026-10-11T01:52:52-07:00" level=info msg="[burst b18] delete appliedRev=813 savedRev=814 minRev=814+hint n=594 errors=0 p95=287ms max=720ms" source=console
+time="2026-10-11T01:53:00-07:00" level=info msg="[admin] cycle 5 (quiet) at 202.2s" source=console
+time="2026-10-11T01:53:34-07:00" level=info msg="[admin] cycle 6 (burst) at 236.2s" source=console
+time="2026-10-11T01:53:37-07:00" level=info msg="[burst b19] create appliedRev=820 savedRev=821 minRev=821+hint n=601 errors=0 p95=545ms max=707ms" source=console
+time="2026-10-11T01:53:44-07:00" level=info msg="[burst b20] update appliedRev=821 savedRev=822 minRev=822+hint n=594 errors=0 p95=265ms max=747ms" source=console
+time="2026-10-11T01:53:50-07:00" level=info msg="[burst b21] insert_after appliedRev=822 savedRev=823 minRev=823+hint n=599 errors=0 p95=409ms max=520ms" source=console
+time="2026-10-11T01:53:57-07:00" level=info msg="[burst b22] swap appliedRev=823 savedRev=824 minRev=824+hint n=596 errors=0 p95=374ms max=557ms" source=console
+time="2026-10-11T01:54:03-07:00" level=info msg="[burst b23] delete appliedRev=824 savedRev=825 minRev=825+hint n=607 errors=0 p95=422ms max=574ms" source=console
+time="2026-10-11T01:54:09-07:00" level=info msg="[burst b24] delete appliedRev=825 savedRev=826 minRev=826+hint n=592 errors=0 p95=302ms max=374ms" source=console
+time="2026-10-11T01:54:12-07:00" level=info msg="[admin] cycles done at 274.2s; waiting for the steady/reaction windows to end at 295s" source=console
+time="2026-10-11T01:54:33-07:00" level=info msg="[admin] drain: no requests from 295.0s for 90s" source=console
