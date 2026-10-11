@@ -51,7 +51,10 @@
 // system under test, delayed the timestamps. See hostmon.mjs.
 //
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
-// gitignored). All timestamps in the files are UTC ISO so the run can be
+// gitignored) and <stamp>-timelines.jsonl (gitignored, stays local): one
+// line per SDK client and per page with its full request / apply /
+// broadcast timeline, so a run can be re-analysed client by client
+// afterwards (the JSON keeps only per-save aggregates for SDK clients). All timestamps in the files are UTC ISO so the run can be
 // aligned with a concurrent k6 burst from another stream.
 import fs from "node:fs";
 import path from "node:path";
@@ -1632,6 +1635,70 @@ function report(state, fin) {
   lines.push("");
   const md = lines.join("\n");
 
+  // ─── timelines side file (JSONL) ───
+  // One JSON object per line. The first line documents every row layout,
+  // so the file is readable without this source. The rows are exactly
+  // what the worker / page recorder keeps (no re-shaping), so a later
+  // analysis sees what the run saw.
+  const lateByIdx = new Map();
+  for (const m of workerMeta) for (const x of m.deadlineLate || []) {
+    if (!lateByIdx.has(x[2])) lateByIdx.set(x[2], []);
+    lateByIdx.get(x[2]).push([x[0], x[1]]);
+  }
+  const timelines = [
+    {
+      kind: "header", version: 1, runStart: iso(state.runStart), base: BASE, eventId: EVENT_ID, drill: DRILL, label: args.label ?? null,
+      clock: "epoch ms of the load host (Date.now()); same clock as the report's UTC times",
+      kinds: {
+        thread: "one per thread: main (pages + admin driver) and each SDK worker; lag = 10 s buckets + spikes, heartbeats, deadline timers",
+        save: "one per writer save (insert-after / PUT), in run order",
+        sdk: "one per SDK client",
+        page: "one per Chromium page",
+      },
+      rows: {
+        "thread.lag.buckets": ["bucketStart", "n", "p50", "p95", "p99", "max"],
+        "thread.lag.spikes": ["t", "lagMs (> 200)"],
+        "thread.heartbeats": ["recvT (main clock)", "sendT (worker clock)", "lagMaxSinceLastMs"],
+        "thread.deadlineLate": ["t", "lateMs = fired - armed - 8000", "client idx"],
+        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source"],
+        "sdk.applied": ["t", "rev", "fetch reason"],
+        "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid"],
+        "sdk.exhausted": ["t", "hint"],
+        "sdk.lag.deadlineLate": ["t", "lateMs"],
+        "page.reqs": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start"],
+        "page.applied": ["t", "marker song ids added", "removed"],
+        "page.bcasts": ["t", "rev", "n | x (dropped by the proxy drill)"],
+        "page.notes": ["t", "postgres_changes type I/U/D", "row id"],
+      },
+    },
+    ...lagThreads.map(({ thread, summary }) => {
+      const w = thread === "main" ? null : Number(thread.split(" ")[1]);
+      return {
+        kind: "thread", thread, lag: summary,
+        ...(w == null ? {} : { heartbeats: heartbeats[w] || [], deadlineLate: workerMeta.find((m) => m.worker === w)?.deadlineLate || [] }),
+      };
+    }),
+    ...edits.flatMap((e) => [
+      ...(e.ins ? [{ kind: "save", k: e.k, op: "insert-after", id: e.id, start: e.ins.startedAt, successStart: e.ins.successAt ?? e.ins.startedAt, ms: e.ins.ms, rev: e.ins.rev, attempts: e.ins.attempts ?? 1 }] : []),
+      { kind: "save", k: e.k, op: "put", id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double },
+    ]),
+    ...subRecs.map((r) => ({
+      kind: "sdk", idx: r.idx, worker: r.worker ?? null, locale: r.locale,
+      reqs: r.reqs, applied: r.appliedAll, bcasts: r.bcasts, exhausted: r.exhausted,
+      subscribedAt: r.subscribedAt, fallbacks: r.fallbacks, recreates: r.recreates, failKinds: r.failKinds,
+      lag: { thread: `worker ${r.worker ?? "?"}`, deadlineLate: lateByIdx.get(r.idx) || [] },
+    })),
+    ...pageRecs.map((r) => ({
+      kind: "page", idx: r.idx, worker: null, locale: r.locale, mode: r.mode,
+      reqs: r.fetches, applied: r.dom, bcasts: r.bcasts, notes: r.notes,
+      openedAt: r.openedAt, loadedAt: r.loadedAt, joinAt: r.joinAt,
+      // Page events are timestamped by the browser (DOM) or by Playwright
+      // callbacks on the main thread; the main thread's lag is the one
+      // that can delay the latter.
+      lag: { thread: "main" },
+    })),
+  ].map((o) => JSON.stringify(o));
+
   const json = {
     config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
@@ -1687,10 +1754,10 @@ function report(state, fin) {
     })),
     pages: pageRecs,
   };
-  return { md, json };
+  return { md, json, timelines };
 }
 
-function writeResults(md, json) {
+function writeResults(md, json, timelines) {
   const now = new Date();
   const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
   fs.mkdirSync(dir, { recursive: true });
@@ -1698,6 +1765,7 @@ function writeResults(md, json) {
   const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ""}`);
   fs.writeFileSync(`${base}.md`, md);
   fs.writeFileSync(`${base}.json`, JSON.stringify(json, null, 1));
+  if (timelines) fs.writeFileSync(path.join(dir, `${stamp}-timelines.jsonl`), timelines.join("\n") + "\n");
   return base;
 }
 
@@ -1709,8 +1777,8 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
     if (finalized) process.exit(130);
     const fin = await finalize(mainState, sig);
     if (fin && mainState) {
-      const { md, json } = report(mainState, fin);
-      const base = writeResults(md, json);
+      const { md, json, timelines } = report(mainState, fin);
+      const base = writeResults(md, json, timelines);
       log(`partial results: ${base}.md`);
     }
     process.exit(130);
@@ -1720,8 +1788,8 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 try {
   mainState = await main();
   const fin = await finalize(mainState, null);
-  const { md, json } = report(mainState, fin);
-  const base = writeResults(md, json);
+  const { md, json, timelines } = report(mainState, fin);
+  const base = writeResults(md, json, timelines);
   console.log("\n" + md);
   log(`results: ${base}.md`);
   // INVALID (3) outranks pass / fail: the gates were not measured.
