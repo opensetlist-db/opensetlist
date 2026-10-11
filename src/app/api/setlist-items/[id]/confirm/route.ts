@@ -219,7 +219,7 @@ export async function POST(_req: Request, { params }: RouteProps) {
         // would invite the client to send the tap again and write a
         // second confirm. It falls into the catch below like any other
         // promotion failure (the next tap retries the promotion).
-        await liveWriterTransaction("public-confirm-promote", async (tx) => {
+        await liveWriterTransaction("public-confirm-promote", eventId, async (tx) => {
           await lockEvent(tx, eventId);
           const hidden = await tx.setlistItem.updateMany({
             where: {

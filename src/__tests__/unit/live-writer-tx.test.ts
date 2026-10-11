@@ -5,6 +5,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // whether it enters the callback decides "did the save start".
 
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
+// The warm hook's own behaviour (flag, after()) is covered in
+// live-warm.test.ts; here only WHEN the wrapper calls it.
+vi.mock("@/lib/liveWarm", () => ({ scheduleWarm: vi.fn() }));
 
 import {
   ADMIN_DB_BUSY_MESSAGE,
@@ -14,6 +17,9 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { prisma } from "@/lib/prisma";
+import { scheduleWarm } from "@/lib/liveWarm";
+
+const EV = BigInt(111);
 
 const tx = {} as never;
 
@@ -63,7 +69,7 @@ beforeEach(() => {
 describe("liveWriterTransaction", () => {
   it("passes explicit maxWait 2 s / timeout 8 s and returns the result", async () => {
     enters();
-    const out = await liveWriterTransaction("admin-create", async () => "x");
+    const out = await liveWriterTransaction("admin-create", EV, async () => "x");
     expect(out).toBe("x");
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       maxWait: 2_000,
@@ -75,6 +81,7 @@ describe("liveWriterTransaction", () => {
     enters();
     await liveWriterTransaction(
       "admin-update",
+      EV,
       async () => ({ kind: "ok", rev: BigInt(41) }),
       (r) => r.rev,
     );
@@ -85,9 +92,9 @@ describe("liveWriterTransaction", () => {
 
   it("a bigint result is the revision by default; anything else logs rev=-", async () => {
     enters();
-    await liveWriterTransaction("admin-swap", async () => BigInt(7));
+    await liveWriterTransaction("admin-swap", EV, async () => BigInt(7));
     enters();
-    await liveWriterTransaction("admin-x", async () => ({ kind: "invalid" }));
+    await liveWriterTransaction("admin-x", EV, async () => ({ kind: "invalid" }));
     expect(lines().map((l) => l.match(LINE)?.[4])).toEqual(["7", "-"]);
   });
 
@@ -102,7 +109,7 @@ describe("liveWriterTransaction", () => {
       vi.setSystemTime(345); // commit
       return out;
     }) as never);
-    await liveWriterTransaction("admin-create", async () => {
+    await liveWriterTransaction("admin-create", EV, async () => {
       vi.setSystemTime(340); // lock + writes
       return BigInt(1);
     });
@@ -117,7 +124,7 @@ describe("liveWriterTransaction", () => {
   ])("%s before the callback → LiveWriterBusyError, ok=false execMs=0, one attempt", async (_l, err, kind) => {
     neverStarts(err);
     const run = vi.fn(async () => "never");
-    const thrown = await liveWriterTransaction("admin-create", run).catch((e) => e);
+    const thrown = await liveWriterTransaction("admin-create", EV, run).catch((e) => e);
     expect(thrown).toBeInstanceOf(LiveWriterBusyError);
     expect(thrown.kind).toBe(kind);
     expect(thrown.cause).toBe(err);
@@ -135,17 +142,59 @@ describe("liveWriterTransaction", () => {
       { code: "P2028" },
     );
     enters(expired);
-    await expect(liveWriterTransaction("admin-create", async () => 1)).rejects.toBe(expired);
+    await expect(liveWriterTransaction("admin-create", EV, async () => 1)).rejects.toBe(expired);
     expect(liveWriterBusyResponse(expired, "admin")).toBeNull();
 
     const odd = acquireTimeout();
     enters(odd);
-    await expect(liveWriterTransaction("admin-create", async () => 1)).rejects.toBe(odd);
+    await expect(liveWriterTransaction("admin-create", EV, async () => 1)).rejects.toBe(odd);
     expect(liveWriterBusyResponse(odd, "admin")).toBeNull();
     expect(lines().filter((l) => l.startsWith("[liveWriter] failed "))).toEqual([
       expect.stringContaining(" kind=other "),
       expect.stringContaining(" kind=other "),
     ]);
+  });
+});
+
+describe("liveWriterTransaction → writer warming hook", () => {
+  it("a committed save that produced a revision schedules the warm job once, after the timing line", async () => {
+    enters();
+    vi.mocked(scheduleWarm).mockImplementationOnce(() => {
+      // The commit line is already out when the job is registered.
+      expect(lines()).toHaveLength(1);
+    });
+    await liveWriterTransaction("admin-swap", EV, async () => BigInt(7));
+    expect(scheduleWarm).toHaveBeenCalledTimes(1);
+    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(7));
+  });
+
+  it("uses the revision read by revOf", async () => {
+    enters();
+    await liveWriterTransaction(
+      "admin-update",
+      EV,
+      async () => ({ kind: "ok", rev: BigInt(41) }),
+      (r) => r.rev,
+    );
+    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(41));
+  });
+
+  it("a save that changed nothing (no revision) never warms", async () => {
+    enters();
+    await liveWriterTransaction("admin-x", EV, async () => ({ kind: "invalid" }));
+    enters();
+    await liveWriterTransaction("public-confirm-promote", EV, async () => null);
+    expect(scheduleWarm).not.toHaveBeenCalled();
+  });
+
+  it("a transaction that failed — before or after its callback ran — never warms", async () => {
+    neverStarts(acquireTimeout());
+    await liveWriterTransaction("admin-create", EV, async () => BigInt(1)).catch(() => {});
+    // The callback bumped (returned a revision) and then the commit
+    // failed: the revision never existed.
+    enters(new Error("commit failed"));
+    await liveWriterTransaction("admin-create", EV, async () => BigInt(2)).catch(() => {});
+    expect(scheduleWarm).not.toHaveBeenCalled();
   });
 });
 

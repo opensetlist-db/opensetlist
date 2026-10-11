@@ -97,6 +97,24 @@ describe("GET /api/setlist", () => {
     expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ko", null, { hint: false });
   });
 
+  it("a warm answer goes out as x-snapshot-source: warm with the same body shaping", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-14T07:31:00.000Z"));
+    vi.mocked(getLiveSnapshot).mockResolvedValue({
+      snapshot,
+      source: "warm",
+      verify: { kind: "satisfied" },
+    });
+    const res = await get("eventId=111&locale=ja&minRev=42&hint=1");
+    expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ja", 42, { hint: true });
+    expect(res.headers.get("x-snapshot-source")).toBe("warm");
+    expect(res.headers.get("x-snapshot-verify")).toBe("satisfied");
+    const body = await res.json();
+    expect(body.status).toBe("ongoing"); // resolved at response time
+    expect(body.rev).toBe(42);
+    expect(body.capturedAt).toBe("2026-11-14T07:29:00.123Z");
+  });
+
   it("normalizes an unknown locale to the default before it reaches the cache key", async () => {
     await get("eventId=111&locale=xx");
     expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ja", null, { hint: false });

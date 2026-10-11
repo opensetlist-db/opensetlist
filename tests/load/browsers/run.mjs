@@ -32,6 +32,15 @@
 // clients (which treat the broadcast as their notification); R1 pages
 // ignore broadcasts.
 //
+// Writer warming (server flag LIVE_WARM_ENTRIES=1, observed only): every
+// notification fetch's `x-snapshot-source` is recorded (pages and SDK),
+// the per-save tables give warm hits ÷ hinted fetches and the first
+// hinted request's start − commit (commit proxy = the PUT's response),
+// the gate table an informational "warming" row, and the JSON a `warm`
+// section with each client's first hinted fetch per save — the input of
+// ../warm-join.mjs, which lines it up with the warm job's completion
+// from the Vercel history logs (the harness cannot see those live).
+//
 // Results: tests/load/results/<UTC date>/<stamp>-browsers.md (+ .json,
 // gitignored). All timestamps in the files are UTC ISO so the run can be
 // aligned with a concurrent k6 burst from another stream.
@@ -401,7 +410,16 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   // fetches, their verification kinds and resolutions, and its rechecks.
   // A ticket merged into a larger one (a later save's broadcast in the
   // same batch) is counted under the larger save, where it was checked.
-  const hintStats = () => ({ notif: 0, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0 });
+  //
+  // Writer warming: `warm` = how many of those notification fetches the
+  // server answered from the save's warm entry (`x-snapshot-source:
+  // warm`), and `first` = each client's FIRST notification fetch of the
+  // save, timed against the commit proxy (`tCommit`, the PUT's response
+  // = the end of the attempt that succeeded: the server commits, then
+  // answers, then starts the warm job in `after()`). warm-join.mjs puts
+  // these next to the warm job's completion from the Vercel logs.
+  const hintStats = () => ({ notif: 0, warm: 0, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0, first: [] });
+  const tCommit = (edit.put.successAt ?? tPut) + (edit.put.ms ?? 0);
   const out = {
     pages: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], hint: hintStats() },
     subs: { lat: [], latFromSuccess: [], latFromInsert: [], missing: 0, drilledLat: [], drilledMissing: 0, notifPut: [], notifIns: [], bcastPut: [], bcastIns: [], hint: hintStats() },
@@ -410,20 +428,39 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
   for (const r of pageRecs) {
     // An R2 page's notification fetch for this save: `hint=1` with
     // minRev = put.rev (pages expose no ticket, the URL is the evidence).
+    let first = null;
     for (const f of r.fetches) {
       if (!f[6] || f[1] !== edit.put.rev) continue;
       out.pages.hint.notif++;
+      if (f[3] === "warm") out.pages.hint.warm++;
       bumpK(out.pages.hint.verify, verifyKindOf(f[5]));
+      // Responses are recorded in arrival order; the first REQUEST is
+      // the one that left first (a miss that built can answer later).
+      const start = f[7] ?? f[0];
+      if (!first || start < first.start) first = { start, f };
     }
+    // [page idx, locale, request start − commit ms, response − commit ms,
+    //  source, verify kind, minRev sent]
+    if (first) out.pages.hint.first.push([r.idx, r.locale, first.start - tCommit, first.f[0] - tCommit, first.f[3], verifyKindOf(first.f[5]), first.f[1]]);
     const bpp = firstAfter(r.bcasts || [], ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bpp) out.pages.bcastPut.push(bpp[0] - tPut);
   }
   for (const r of subRecs) {
+    let firstDone = false;
     for (const q of r.reqs || []) {
       if (q[3] !== edit.put.rev) continue;
       if (q[4]) {
         out.subs.hint.notif++;
+        if (q[12] === "warm") out.subs.hint.warm++;
         if (q[7]) bumpK(out.subs.hint.verify, q[7]);
+        // reqs are in dispatch order: the first one is the first fetch.
+        // [client idx, locale, send − commit ms, end − commit ms (null
+        //  if it never settled), source (null = no 200), verify kind,
+        //  minRev sent]
+        if (!firstDone) {
+          firstDone = true;
+          out.subs.hint.first.push([r.idx, r.locale, q[0] - tCommit, q[10] == null ? null : q[10] - tCommit, q[12] ?? null, q[7] ?? null, q[5]]);
+        }
       }
       if (q[9] && q[9] !== "none") bumpK(out.subs.hint.res, q[9]);
       if (q[1] === "recheck") {
@@ -1023,7 +1060,7 @@ function report(state, fin) {
   // does).
   const bumpK = (o, k) => { o[k] = (o[k] || 0) + 1; };
   const resolved = (res) => res === "satisfied" || res === "disproved" || res === "superseded";
-  const hintTotals = { reqs: 0, notif: 0, notifVerify: {}, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0, byShape: {}, failKinds: {}, serverRevMax: null };
+  const hintTotals = { reqs: 0, notif: 0, notifWarm: 0, notifSources: {}, notifVerify: {}, verify: {}, res: {}, rechecks: 0, recheckOk: 0, exhausted: 0, byShape: {}, failKinds: {}, serverRevMax: null };
   for (const r of subRecs) {
     for (const q of r.reqs || []) {
       hintTotals.reqs++;
@@ -1032,6 +1069,8 @@ function report(state, fin) {
       if (q[7]) bumpK(hintTotals.verify, q[7]);
       if (q[4]) {
         hintTotals.notif++;
+        if (q[12] === "warm") hintTotals.notifWarm++;
+        bumpK(hintTotals.notifSources, q[12] ?? "no 200");
         if (q[7]) bumpK(hintTotals.notifVerify, q[7]);
       }
       if (q[9] && q[9] !== "none") bumpK(hintTotals.res, q[9]);
@@ -1044,17 +1083,20 @@ function report(state, fin) {
     for (const [k, v] of Object.entries(r.failKinds || {})) hintTotals.failKinds[k] = (hintTotals.failKinds[k] || 0) + v;
     if (r.serverRevMax != null && (hintTotals.serverRevMax == null || r.serverRevMax > hintTotals.serverRevMax)) hintTotals.serverRevMax = r.serverRevMax;
   }
-  const pageHint = { fetches: 0, notif: 0, notifVerify: {}, verify: {} };
+  const pageHint = { fetches: 0, notif: 0, notifWarm: 0, notifSources: {}, notifVerify: {}, verify: {} };
   for (const r of pageRecs) {
     for (const f of r.fetches) {
       pageHint.fetches++;
       if (f[2] === 200) bumpK(pageHint.verify, verifyKindOf(f[5]));
       if (f[6]) {
         pageHint.notif++;
+        if (f[3] === "warm") pageHint.notifWarm++;
+        bumpK(pageHint.notifSources, f[2] === 200 ? f[3] ?? "none" : `HTTP ${f[2]}`);
         if (f[2] === 200) bumpK(pageHint.notifVerify, verifyKindOf(f[5]));
       }
     }
   }
+  const warmTxt = (w, n) => `${w}/${n}${n ? ` (${((w / n) * 100).toFixed(1)} %)` : ""}`;
 
   // ─── poison: what the forged hint cost ───
   let poison = null;
@@ -1279,6 +1321,11 @@ function report(state, fin) {
   lines.push(`| monotonic DOM (pages: version shown never decreases) | ${P} pages, ${pageVersions} versions | — | — | — | ${monoPagesN} regressions on ${monoPagesBad.length} page(s) | 0 | ${v(P ? monoPagesN === 0 : null)} |`);
   lines.push(`| monotonic applied rev (SDK) | ${M} clients, ${subApplies} applies | — | — | — | ${monoSubsN} regressions on ${monoSubsBad.length} client(s) | 0 | ${v(M ? monoSubsN === 0 : null)} |`);
   if (DRILL === "reconnect") lines.push(`| reconnect handoff: regressions after the drop (pages / SDK) | — | — | — | — | ${afterDrop(pageMono)} / ${afterDrop(subMono)} | 0 | ${v(afterDrop(pageMono) + afterDrop(subMono) === 0)} |`);
+  // Writer warming, informational: it changes where a notification
+  // fetch's answer comes from, not what a client must see. Reader
+  // builds per save live only in the Vercel logs (vercel-logs-summary.mjs
+  // "Warming" on the history re-fetch).
+  lines.push(`| warming: warm hits ÷ hinted fetches (\`x-snapshot-source: warm\`) | SDK ${warmTxt(hintTotals.notifWarm, hintTotals.notif)}, pages ${warmTxt(pageHint.notifWarm, pageHint.notif)} | — | — | — | — | informational; reader builds per save: \`vercel-logs-summary.mjs\` "Warming" on the history logs; arrival vs warm-complete: \`warm-join.mjs\` | n/a |`);
   lines.push(`| edits with a retried save (clock from the 1st attempt) | ${dline(retriedFirst)} | ${retriedFirst.missing} | informational — ${retried.length} edit(s); from the successful attempt p50/p95/max ${ms(retriedOk.p50)}/${ms(retriedOk.p95)}/${ms(retriedOk.max)} | n/a |`);
   lines.push("");
   lines.push(`Insert-start based (insert-after request start → marker), non-drilled: pages ${dline(dist(all.pagesIns))} · SDK ${dline(dist(all.subsIns))} (n | p50 | p95 | max).`);
@@ -1315,23 +1362,25 @@ function report(state, fin) {
   lines.push("");
   lines.push("### Per save — pages (PUT start → marker in the DOM)");
   lines.push("");
-  lines.push("| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |");
-  lines.push("|---|---|---|---|---|---|---|---|---|");
+  lines.push("| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const pl = dist([...s.pages.lat, ...s.pages.drilledLat]);
     const bp = dist(s.pages.bcastPut);
-    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)} / ${ms(pl.p95)} / ${ms(pl.max)} | ${s.pages.missing + s.pages.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${s.pages.notifPut.length} | ${s.pages.hint.notif} | ${kinds(s.pages.hint.verify)} |`);
+    const pf = dist(s.pages.hint.first.map((x) => x[2]));
+    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${pl.n}/${P} | ${ms(pl.p50)} / ${ms(pl.p95)} / ${ms(pl.max)} | ${s.pages.missing + s.pages.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${s.pages.notifPut.length} | ${s.pages.hint.notif} | ${kinds(s.pages.hint.verify)} | ${s.pages.hint.warm}/${s.pages.hint.notif} | ${ms(pf.p50)} / ${ms(pf.p95)} |`);
   }
   lines.push("");
   lines.push("### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)");
   lines.push("");
-  lines.push("| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |");
-  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  lines.push("| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const { e, s } of rows) {
     const sl = dist([...s.subs.lat, ...s.subs.drilledLat]);
     const bp = dist(s.subs.bcastPut);
     const h = s.subs.hint;
-    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${sl.n}/${M} | ${ms(sl.p50)} / ${ms(sl.p95)} / ${ms(sl.max)} | ${s.subs.missing + s.subs.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${h.notif} | ${kinds(h.verify)} | ${kinds(h.res)} | ${h.rechecks} (${h.recheckOk}) | ${h.exhausted} |`);
+    const sf = dist(h.first.map((x) => x[2]));
+    lines.push(`| ${markOf(e)} | ${e.put.rev} | ${sl.n}/${M} | ${ms(sl.p50)} / ${ms(sl.p95)} / ${ms(sl.max)} | ${s.subs.missing + s.subs.drilledMissing} | ${ms(bp.p50)} / ${ms(bp.p95)} (${bp.n}) | ${h.notif} | ${kinds(h.verify)} | ${kinds(h.res)} | ${h.rechecks} (${h.recheckOk}) | ${h.exhausted} | ${h.warm}/${h.notif} | ${ms(sf.p50)} / ${ms(sf.p95)} |`);
   }
   lines.push("");
   lines.push("## Hint outcomes (whole run)");
@@ -1339,7 +1388,9 @@ function report(state, fin) {
   lines.push(`- SDK: ${hintTotals.reqs} requests; notification fetches (hint=1) ${hintTotals.notif}, their x-snapshot-verify: ${kinds(hintTotals.notifVerify)}; all 200 responses: ${kinds(hintTotals.verify)}`);
   lines.push(`  - ticket resolutions: ${kinds(hintTotals.res)}; rechecks ${hintTotals.rechecks} (${hintTotals.notif ? ((hintTotals.rechecks / hintTotals.notif) * 100).toFixed(1) : "—"} % of notification fetches), resolved on the recheck ${hintTotals.recheckOk}; hints exhausted ${hintTotals.exhausted}; highest serverRev held ${hintTotals.serverRevMax ?? "—"}`);
   lines.push(`  - request shapes (reason / generic / ticket): ${kinds(hintTotals.byShape)}; failures by kind: ${kinds(hintTotals.failKinds)}`);
+  lines.push(`  - notification fetches by x-snapshot-source: ${kinds(hintTotals.notifSources)} (warm ${warmTxt(hintTotals.notifWarm, hintTotals.notif)})`);
   lines.push(`- Pages: ${pageHint.fetches} /api/setlist responses; notification fetches (hint=1) ${pageHint.notif}, their x-snapshot-verify: ${kinds(pageHint.notifVerify)}; all 200 responses: ${kinds(pageHint.verify)} (an R1 page build sends no hint=1)`);
+  lines.push(`  - notification fetches by x-snapshot-source: ${kinds(pageHint.notifSources)} (warm ${warmTxt(pageHint.notifWarm, pageHint.notif)})`);
   lines.push("");
   lines.push("## Population");
   lines.push("");
@@ -1473,6 +1524,23 @@ function report(state, fin) {
     verdicts, popSummary, rejoin, drillEvents, saveFailures, clean, verify, doubleSave,
     guest: guest ? { status: guest.status, joinMs: guest.joinMs, sends: guest.sends } : null,
     hints: { sdk: hintTotals, pages: pageHint }, poison, spam, ambiguity,
+    // Input of warm-join.mjs: per save, the commit proxy and every
+    // client's first notification fetch of it (see editStats). Absolute
+    // epoch ms (this machine's clock) so the Vercel log times can be
+    // lined up; the per-request offsets are relative to `putEnd`.
+    warm: {
+      commitProxy: "PUT end = start of the successful PUT attempt + its duration (the server commits, answers, then runs the warm job in after())",
+      sdkRow: ["idx", "locale", "sendMinusCommitMs", "endMinusCommitMs", "source", "verify", "minRev"],
+      pageRow: ["idx", "locale", "requestStartMinusCommitMs", "responseMinusCommitMs", "source", "verify", "minRev"],
+      saves: rows.map(({ e, s }) => ({
+        k: e.k, rev: e.put.rev, insRev: e.ins.rev ?? null, double: !!e.double,
+        putStart: e.put.successAt ?? e.put.startedAt, putMs: e.put.ms ?? null,
+        putEnd: (e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0),
+        putEndIso: iso((e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0)),
+        sdk: s.subs.hint.first, pages: s.pages.hint.first,
+        sdkWarm: s.subs.hint.warm, sdkHinted: s.subs.hint.notif, pagesWarm: s.pages.hint.warm, pagesHinted: s.pages.hint.notif,
+      })),
+    },
     // Every page's DOM-derived version history and every client's
     // regressions (the full per-client apply log is too large to keep).
     monotonic: {

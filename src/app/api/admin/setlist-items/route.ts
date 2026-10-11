@@ -47,7 +47,7 @@ async function createItem(request: NextRequest) {
   // a state the other was about to change; under the lock the second
   // save validates against the first one's committed rows.
   // `liveWriterTransaction`: explicit live-path limits + timing log.
-  const result = await liveWriterTransaction("admin-create", async (tx) => {
+  const result = await liveWriterTransaction("admin-create", eid, async (tx) => {
     if (!(await lockEvent(tx, eid))) {
       return { kind: "not_found" as const };
     }

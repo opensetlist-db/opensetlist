@@ -504,7 +504,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       // event cache is expired after commit (below).
       const dupRowId = dupRow.id;
       try {
-        await liveWriterTransaction("public-add-item-merge", async (tx) => {
+        await liveWriterTransaction("public-add-item-merge", eventId, async (tx) => {
           await lockEvent(tx, eventId);
           await tx.setlistItemConfirm.create({
             data: { setlistItemId: dupRowId },
@@ -615,7 +615,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
       // they are advisory for this flag-gated user path (rumoured rows
       // are not position-unique), and the lock's job here is only to
       // serialize the revision with concurrent operator saves.
-      const { row: created } = await liveWriterTransaction("public-add-item", async (tx) => {
+      const { row: created } = await liveWriterTransaction("public-add-item", eventId, async (tx) => {
         await lockEvent(tx, eventId);
         const row = await tx.setlistItem.create({
           data: {

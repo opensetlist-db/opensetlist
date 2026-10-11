@@ -93,6 +93,13 @@ vi.mock("@/lib/dataCache", () => ({
   revalidateEventData: vi.fn(),
 }));
 
+// Writer warming: the flag stays real (env-driven); the Runtime Cache
+// lookup is a spy whose answer each test chooses.
+vi.mock("@/lib/liveWarm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveWarm")>()),
+  warmLookup: vi.fn(async () => ({ result: "miss" })),
+}));
+
 import {
   getLiveSnapshot,
   parseHint,
@@ -103,6 +110,7 @@ import {
   type EventSnapshot,
 } from "@/lib/liveSnapshot";
 import { revalidateEventData } from "@/lib/dataCache";
+import { warmLookup } from "@/lib/liveWarm";
 import { logPoolStats, prisma } from "@/lib/prisma";
 
 beforeEach(() => {
@@ -570,5 +578,58 @@ describe("getLiveSnapshot — x-snapshot-verify classification", () => {
         /^\[liveSnapshot\] rev-read event=1 rev=5 ms=\d+ hint=1 instance=[0-9a-f]{8}$/,
       ),
     ]);
+  });
+});
+
+describe("getLiveSnapshot — writer-warmed entries (LIVE_WARM_ENTRIES)", () => {
+  const warmSnapshot: EventSnapshot = {
+    found: true,
+    isDeleted: false,
+    rawStatus: "ongoing",
+    startTime: new Date("2026-11-14T07:30:00.000Z"),
+    rev: BigInt(9),
+    capturedAt: new Date("2026-11-14T08:00:00.000Z"),
+    items: [],
+    reactionCounts: {},
+    top3Wishes: [],
+    buildId: "warm-build",
+  };
+
+  beforeEach(() => {
+    process.env.LIVE_WARM_ENTRIES = "1";
+    vi.mocked(warmLookup).mockResolvedValue({ result: "miss" });
+  });
+  afterEach(() => {
+    delete process.env.LIVE_WARM_ENTRIES;
+  });
+
+  it("a hinted request with minRev that hits is served warm + satisfied, touching neither cache nor database", async () => {
+    vi.mocked(warmLookup).mockResolvedValueOnce({ result: "hit", snapshot: warmSnapshot });
+    const r = await getLiveSnapshot(BigInt(1), "ja", 8, { hint: true });
+    expect(warmLookup).toHaveBeenCalledWith(BigInt(1), "ja", 8);
+    expect(r).toEqual({ snapshot: warmSnapshot, source: "warm", verify: { kind: "satisfied" } });
+    expect(db.builds).toBe(0);
+    expect(db.revReads).toBe(0);
+  });
+
+  it.each(["miss", "stale", "invalid", "error", "timeout"] as const)(
+    "lookup %s → the unchanged path (build / verified read)",
+    async (result) => {
+      vi.mocked(warmLookup).mockResolvedValueOnce({ result });
+      const r = await getLiveSnapshot(BigInt(1), "ja", 5, { hint: true });
+      expect(r.source).toBe("build");
+      expect(r.verify).toEqual({ kind: "satisfied" });
+      expect(db.builds).toBe(1);
+    },
+  );
+
+  it("never looks up without hint=1, without minRev, or with the flag off", async () => {
+    await getLiveSnapshot(BigInt(1), "ja", 5); // periodic / catch-up / recheck
+    await getLiveSnapshot(BigInt(1), "ja", null, { hint: true });
+    delete process.env.LIVE_WARM_ENTRIES;
+    await getLiveSnapshot(BigInt(1), "ja", 5, { hint: true });
+    process.env.LIVE_WARM_ENTRIES = "0";
+    await getLiveSnapshot(BigInt(1), "ja", 5, { hint: true });
+    expect(warmLookup).not.toHaveBeenCalled();
   });
 });

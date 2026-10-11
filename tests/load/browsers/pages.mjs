@@ -25,8 +25,10 @@
 //     after a rollback — postgres_changes notifications (row id + change
 //     type) and the "Subscribed to PostgreSQL" registration message;
 //   - every `/api/setlist` response: time, `minRev` sent, status,
-//     X-Snapshot-Source, the `rev` in the body, the `x-snapshot-verify`
-//     header and whether the request carried `hint=1`.
+//     X-Snapshot-Source (incl. `warm` = served from the save's writer-
+//     warmed entry), the `rev` in the body, the `x-snapshot-verify`
+//     header, whether the request carried `hint=1`, and the request's
+//     start time.
 //
 // Broadcast frames come in two encodings: realtime-js 2.x speaks the
 // 2.0.0 protocol, where the server may push a user broadcast as a BINARY
@@ -207,9 +209,19 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         hint = sp.get("hint") === "1";
       } catch { /* keep defaults */ }
       // [t, minRev, status, x-snapshot-source, body rev, x-snapshot-verify
-      //  (raw; null = absent), hint=1 sent]
+      //  (raw; null = absent), hint=1 sent, request start]
+      // `t` is when the response arrived; request start (epoch ms, from
+      // the browser's resource timing; null if unavailable) is the
+      // "request arrival − commit" side of warm-join.mjs: whether a
+      // hinted fetch could have found the save's warm entry depends on
+      // when it LEFT, not on how long a miss then took to build.
       const h = r.headers();
-      const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint];
+      let reqStart = null;
+      try {
+        const st = r.request().timing().startTime;
+        if (Number.isFinite(st) && st > 0) reqStart = Math.round(st);
+      } catch { /* timing not available */ }
+      const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint, reqStart];
       rec.fetches.push(entry);
       try {
         const txt = await r.text();

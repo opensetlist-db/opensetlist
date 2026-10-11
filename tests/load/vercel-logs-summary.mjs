@@ -26,6 +26,16 @@
 //     revision reads (`rev-read`) are also split by their `hint=<0|1>`
 //     field — how many of the 1-row reads the notification fetches caused
 //     (lines without the field, from an older server, count as "—");
+//   - writer warming (`LIVE_WARM_ENTRIES=1`, src/lib/liveWarm.ts): per
+//     warm job (`[liveWarm] start` … `done`, one per committed save) the
+//     start → done ms, every locale's `set` (rev, bytes, buildMs, setMs,
+//     ok) and `skip` (reason), and `schedule-failed` / `job-failed` /
+//     `set-error` counts; the reader's `[setlist] warm-lookup` results
+//     (hit / miss / stale / invalid / error / timeout) with ms p50 / p95,
+//     per minute and per save rev (`minRev`); per save rev the builds
+//     split into **warm builds** (the warm job's own `[liveSnapshot]
+//     build` lines) and **reader builds** (all the others); and the
+//     run-level "warm hit rate = hits ÷ hinted fetches";
 //   - distinct function instances per minute (any line with `instance=`);
 //   - the SUM of per-instance Prisma pool sizes per time bucket, from
 //     `[prisma] pool total= idle= waiting= instance=` lines — the best
@@ -143,7 +153,11 @@ export function parseLog(text) {
   const recs = [];
   const other = new Map();
   const classify = (line, entry) => {
-    const base = { t: entry?.t ?? null, path: entry?.path ?? null };
+    // `eid` = the log entry (request) the line came from. In history
+    // mode every line of a request carries the request's START time, so
+    // "same entry" is the only fine-grained link between, e.g., a warm
+    // job and the builds it ran (see warming()).
+    const base = { t: entry?.t ?? null, path: entry?.path ?? null, eid: entry?.eid ?? null };
     const f = kv(line);
     let kind = null;
     // Order matters: `build-failed` before `build`.
@@ -165,6 +179,18 @@ export function parseLog(text) {
     else if (/\[liveWriter\]/.test(line)) kind = "writer";
     else if (/\[setlist\] slow-hit\b/.test(line)) kind = "slowHit";
     else if (/\[setlist\] hint-fetch\b/.test(line)) kind = "hintFetch";
+    // Writer warming. `set-error` (the console.error companion of an
+    // `ok=false` set) before `set`; `set` needs the trailing space
+    // because `\b` would also match "set-error".
+    else if (/\[liveWarm\] set-error\b/.test(line)) kind = "warmSetError";
+    else if (/\[liveWarm\] set\s/.test(line)) kind = "warmSet";
+    else if (/\[liveWarm\] skip\b/.test(line)) kind = "warmSkip";
+    else if (/\[liveWarm\] start\b/.test(line)) kind = "warmStart";
+    else if (/\[liveWarm\] done\b/.test(line)) kind = "warmDone";
+    else if (/\[liveWarm\] schedule-failed\b/.test(line)) kind = "warmScheduleFailed";
+    else if (/\[liveWarm\] job-failed\b/.test(line)) kind = "warmJobFailed";
+    else if (/\[liveWarm\] lookup-error\b/.test(line)) kind = "warmLookupError";
+    else if (/\[setlist\] warm-lookup\b/.test(line)) kind = "warmLookup";
     else if (/EMAXCONN/.test(line)) kind = "emaxconn";
     if (kind) {
       recs.push({ kind, ...base, f, api: (entry?.path ?? "").startsWith("/api/"), emax: /EMAXCONN/.test(line) });
@@ -174,14 +200,186 @@ export function parseLog(text) {
     }
   };
   for (const line of loose) classify(line, null);
-  for (const e of kept) {
+  for (const [eid, e] of kept.entries()) {
     const m = e.h.hms;
     const t = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (m[4] ? Number(`0.${m[4]}`) : 0);
-    const entry = { t, level: e.h.level, method: e.h.method, path: e.h.path };
+    const entry = { t, eid, level: e.h.level, method: e.h.method, path: e.h.path };
     recs.push({ kind: "request", ...entry });
     for (const line of e.lines) classify(line, entry);
   }
   return { recs, other, entries: kept.length, duplicates };
+}
+
+// The reader's warm-lookup results, in report order (src/lib/liveWarm.ts
+// `warmLookup`). Anything else goes to "other".
+export const WARM_RESULTS = ["hit", "miss", "stale", "invalid", "error", "timeout"];
+
+// Writer warming, from the typed records (see the header). Exported for
+// the test.
+//
+// Jobs: one per (event, save rev R, instance) — `start`, the per-locale
+// `set` / `skip` lines (keyed by `atLeastRev` = R) and `done` all carry
+// the same three fields, so they group without any timing.
+//
+// Warm builds vs reader builds. The warm job calls the snapshot builder
+// directly, so every locale it stored (`set`) or measured and dropped
+// (`skip reason=oversize`) produced exactly one `[liveSnapshot] build`
+// line: same instance, same locale, and the same ACTUAL rev the `set` /
+// `skip` line reports (≥ R when a later save committed first). A
+// `skip reason=build-error` built nothing (its builder logged
+// `build-failed` instead). Each such locale is matched to one unclaimed
+// build line with those three values, preferring a line from the same
+// log entry (history mode: the warm job runs in the save request's
+// `after()`, so its lines land in that request's entry, all stamped with
+// the request's start time), else the nearest one within the job window
+// (start − 2 s … start + done ms + 2 s; follow mode stamps every line on
+// its own). That is "builds on the warm job's instance within the job
+// window", narrowed to the locales and rev the job reports, so a reader
+// request that happens to build the same rev on the same instance at the
+// same moment is not mistaken for the job's. A locale with no matching
+// build line (a capture gap) is reported as unmatched, not guessed.
+// Reader builds at rev n = all build lines at rev n − matched warm
+// builds at rev n.
+export function warming(recs) {
+  const by = (k) => recs.filter((r) => r.kind === k);
+  const jobs = new Map();
+  const jobOf = (f, revField) => {
+    const key = `${f.event ?? "?"}:${f[revField] ?? "?"}:${f.instance ?? "?"}`;
+    let j = jobs.get(key);
+    if (!j) {
+      jobs.set(key, (j = {
+        event: f.event ?? null, rev: f[revField] ?? null, instance: f.instance ?? null,
+        start: null, done: null, sets: [], skips: [], jobFailed: [], warmBuilds: 0, unmatched: 0, warmBuildRevs: {},
+      }));
+    }
+    return j;
+  };
+  for (const r of by("warmStart")) jobOf(r.f, "rev").start = { t: r.t, eid: r.eid };
+  for (const r of by("warmDone")) jobOf(r.f, "rev").done = { t: r.t, eid: r.eid, ms: num(r.f.ms) };
+  for (const r of by("warmJobFailed")) jobOf(r.f, "rev").jobFailed.push(String(r.f.err ?? "?").split(":")[0]);
+  for (const r of by("warmSet")) {
+    jobOf(r.f, "atLeastRev").sets.push({
+      locale: r.f.locale ?? "?", rev: num(r.f.rev), bytes: num(r.f.bytes), buildMs: num(r.f.buildMs),
+      setMs: num(r.f.setMs), ok: r.f.ok === "true", t: r.t, eid: r.eid,
+    });
+  }
+  for (const r of by("warmSkip")) {
+    jobOf(r.f, "atLeastRev").skips.push({
+      locale: r.f.locale ?? "?", reason: r.f.reason ?? "?", rev: num(r.f.rev), bytes: num(r.f.bytes),
+      buildMs: num(r.f.buildMs), t: r.t, eid: r.eid,
+    });
+  }
+
+  // Match warm builds (see above).
+  const builds = by("build");
+  const claimed = new Set();
+  const warmAtRev = new Map(); // actual rev → matched warm builds
+  for (const j of jobs.values()) {
+    const t0 = j.start?.t ?? null;
+    const lo = t0 == null ? null : t0 - 2;
+    const hi = t0 == null ? null : t0 + (j.done?.ms ?? 0) / 1000 + 2;
+    const built = [...j.sets, ...j.skips.filter((x) => x.reason === "oversize")];
+    for (const b of built) {
+      const cands = builds.filter((x) =>
+        !claimed.has(x) && x.f.instance === j.instance && x.f.locale === b.locale &&
+        num(x.f.rev) === b.rev && (j.event == null || x.f.event === j.event));
+      let pick = cands.find((x) => x.eid != null && (x.eid === b.eid || x.eid === j.start?.eid));
+      if (!pick) {
+        let best = null;
+        for (const x of cands) {
+          if (x.t == null) continue;
+          const inWindow = lo != null ? x.t >= lo && x.t <= hi : b.t != null && Math.abs(x.t - b.t) <= 2;
+          if (!inWindow) continue;
+          const d = Math.abs(x.t - (b.t ?? t0));
+          if (!best || d < best.d) best = { x, d };
+        }
+        pick = best?.x ?? null;
+      }
+      if (!pick) { j.unmatched++; continue; }
+      claimed.add(pick);
+      j.warmBuilds++;
+      const rv = String(b.rev);
+      j.warmBuildRevs[rv] = (j.warmBuildRevs[rv] || 0) + 1;
+      warmAtRev.set(rv, (warmAtRev.get(rv) || 0) + 1);
+    }
+  }
+
+  // warm-lookup results, whole run / per minute / per save rev.
+  const resultOf = (v) => (WARM_RESULTS.includes(v) ? v : "other");
+  const cols = [...WARM_RESULTS, "other"];
+  const zero = () => Object.fromEntries(cols.map((k) => [k, 0]));
+  const lookups = by("warmLookup");
+  const counts = zero();
+  const msBy = Object.fromEntries(cols.map((k) => [k, []]));
+  const minutes = new Map();
+  for (const r of lookups) {
+    const k = resultOf(r.f.result);
+    counts[k]++;
+    const v = num(r.f.ms);
+    if (v != null) msBy[k].push(v);
+    if (r.t == null) continue;
+    const m = Math.floor(r.t / 60);
+    let g = minutes.get(m);
+    if (!g) minutes.set(m, (g = { minute: m, total: 0, ...zero() }));
+    g[k]++;
+    g.total++;
+  }
+  const msByResult = Object.fromEntries(cols.filter((k) => msBy[k].length).map((k) => [k, { n: msBy[k].length, p50: pct(msBy[k], 0.5), p95: pct(msBy[k], 0.95) }]));
+
+  // Per save rev. Revs come from the jobs (R), the lookups (minRev), the
+  // hinted fetches (minRev) and the warm builds' actual revs; `minRev=none` / non-numeric are skipped.
+  // "hinted fetches" = `[setlist] hint-fetch` lines with a numeric
+  // minRev: the requests that are eligible for a lookup when the flag is
+  // on (a 503 is still one — it is logged with verify=error).
+  const hinted = by("hintFetch").filter((r) => num(r.f.minRev) != null);
+  const revKeys = new Set();
+  for (const j of jobs.values()) if (num(j.rev) != null) revKeys.add(String(num(j.rev)));
+  for (const r of lookups) if (num(r.f.minRev) != null) revKeys.add(String(num(r.f.minRev)));
+  for (const r of hinted) revKeys.add(String(num(r.f.minRev)));
+  // A job for R can store a later rev (a newer save committed before
+  // its build): that rev gets a row too, so its warm build is visible.
+  for (const rv of warmAtRev.keys()) revKeys.add(rv);
+  const buildsAtRev = new Map();
+  for (const b of builds) {
+    const rv = num(b.f.rev);
+    if (rv != null) buildsAtRev.set(String(rv), (buildsAtRev.get(String(rv)) || 0) + 1);
+  }
+  const perRev = [...revKeys].sort((a, b) => Number(a) - Number(b)).map((rv) => {
+    const lk = lookups.filter((r) => String(num(r.f.minRev)) === rv);
+    const c = zero();
+    for (const r of lk) c[resultOf(r.f.result)]++;
+    const lms = lk.map((r) => num(r.f.ms)).filter((v) => v != null);
+    const total = buildsAtRev.get(rv) || 0;
+    const warm = warmAtRev.get(rv) || 0;
+    const h = hinted.filter((r) => String(num(r.f.minRev)) === rv).length;
+    const js = [...jobs.values()].filter((j) => String(num(j.rev)) === rv);
+    return {
+      rev: rv, jobs: js.length, doneMs: js.map((j) => j.done?.ms ?? null),
+      builds: total, warmBuilds: warm, readerBuilds: total - warm,
+      hinted: h, lookups: lk.length, results: c, lookupP50: pct(lms, 0.5), lookupP95: pct(lms, 0.95),
+      hitRate: h ? c.hit / h : null,
+    };
+  });
+
+  const skipsByReason = {};
+  for (const j of jobs.values()) for (const s of j.skips) skipsByReason[s.reason] = (skipsByReason[s.reason] || 0) + 1;
+  const jobList = [...jobs.values()].sort((a, b) => (num(a.rev) ?? Infinity) - (num(b.rev) ?? Infinity) || (a.start?.t ?? 0) - (b.start?.t ?? 0));
+  return {
+    seen: jobs.size + lookups.length + by("warmScheduleFailed").length + by("warmLookupError").length > 0,
+    jobs: jobList,
+    scheduleFailed: by("warmScheduleFailed").map((r) => ({ rev: r.f.rev ?? "?", err: String(r.f.err ?? "?").split(":")[0], t: r.t })),
+    jobFailed: jobList.reduce((a, j) => a + j.jobFailed.length, 0),
+    setNotOk: jobList.reduce((a, j) => a + j.sets.filter((s) => !s.ok).length, 0),
+    setErrorLines: by("warmSetError").length,
+    lookupErrorLines: by("warmLookupError").length,
+    skipsByReason,
+    warmBuilds: jobList.reduce((a, j) => a + j.warmBuilds, 0),
+    unmatched: jobList.reduce((a, j) => a + j.unmatched, 0),
+    lookups: { total: lookups.length, counts, msByResult, perMinute: [...minutes.values()].sort((a, b) => a.minute - b.minute) },
+    hinted: hinted.length,
+    hitRate: hinted.length ? counts.hit / hinted.length : null,
+    perRev,
+  };
 }
 
 export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
@@ -358,6 +556,7 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     buildFailed: { total: by("buildFailed").length, byErr: failedByErr },
     revRead: { total: revReads.length, timeouts: revReadTimeouts, errors: revReadErrors, p50: pct(revReadMs, 0.5), max: revReadMs.length ? Math.max(...revReadMs) : null, byHint: revReadByHint },
     hint,
+    warm: warming(recs),
     coalesced: { lines: coalesced.length, waitersSum: waiters.reduce((a, b) => a + b, 0), waitersMax: waiters.length ? Math.max(...waiters) : null },
     emaxconn, writers,
     slowHit: { total: slow.length, maxMs: slow.length ? Math.max(...slow) : null },
@@ -376,6 +575,54 @@ const clock = (t, addH = 0) => {
   return `${hh}:${mm}:${ss}`;
 };
 const d = (v) => (v == null ? "—" : String(v));
+
+const pctTxt = (x) => (x == null ? "—" : `${(x * 100).toFixed(1)} %`);
+
+// The "Warming" section (see warming()).
+function warmingMarkdown(L, w, addHours) {
+  const cols = [...WARM_RESULTS, "other"];
+  L.push(`### Warming (\`[liveWarm]\` jobs: ${w.jobs.length}; \`[setlist] warm-lookup\` lines: ${w.lookups.total})`);
+  L.push("");
+  // The run-level line comes first and is printed even with the flag off,
+  // so a control run reads "0 hits of N hinted fetches", not nothing.
+  L.push(`**warm hit rate = hits ÷ hinted fetches = ${w.lookups.counts.hit} / ${w.hinted} = ${pctTxt(w.hitRate)}** (hinted fetches = \`[setlist] hint-fetch\` lines with a numeric minRev; lookups ${w.lookups.total}).`);
+  L.push("");
+  if (!w.seen) {
+    L.push("No warming lines in this capture (`LIVE_WARM_ENTRIES` unset on this deployment, or a server without writer warming).");
+    L.push("");
+    return;
+  }
+  L.push(`schedule-failed ${w.scheduleFailed.length}${w.scheduleFailed.length ? ` (${w.scheduleFailed.map((x) => `rev ${x.rev} ${x.err}`).join(", ")})` : ""}; job-failed ${w.jobFailed}; set ok=false ${w.setNotOk} (set-error lines ${w.setErrorLines}); skips ${Object.entries(w.skipsByReason).map(([k, v]) => `${k} ${v}`).join(", ") || "0"}; lookup-error lines ${w.lookupErrorLines}; warm builds matched ${w.warmBuilds}${w.unmatched ? `, **${w.unmatched} stored/oversize locale(s) without a matching build line** (capture gap?)` : ""}.`);
+  L.push("");
+  if (w.jobs.length) {
+    L.push("Warm jobs. start → done = the job's own `done ms=` (it starts in `after()`, i.e. right after the save's response, so it is ≈ warm-complete − commit). Per locale: actual rev, bytes, build / set ms, ok.");
+    L.push("");
+    L.push("| save rev | instance | start (log clock) | start → done ms | sets | skips | warm builds (unmatched) | job-failed |");
+    L.push("|---|---|---|---|---|---|---|---|");
+    for (const j of w.jobs) {
+      const sets = j.sets.map((x) => `${x.locale} r${d(x.rev)} ${d(x.bytes)} B ${d(x.buildMs)}/${d(x.setMs)} ms${x.ok ? "" : " **ok=false**"}`).join("; ") || "—";
+      const skips = j.skips.map((x) => `${x.locale} ${x.reason}${x.rev != null ? ` r${x.rev}` : ""} ${d(x.buildMs)} ms`).join("; ") || "—";
+      L.push(`| ${d(j.rev)} | ${d(j.instance)} | ${clock(j.start?.t, addHours)} | ${d(j.done?.ms)}${j.done ? "" : " (no done)"} | ${sets} | ${skips} | ${j.warmBuilds}${j.unmatched ? ` (${j.unmatched})` : ""} | ${j.jobFailed.join(", ") || "—"} |`);
+    }
+    L.push("");
+  }
+  L.push("Per save rev. builds = every `[liveSnapshot] build` at that rev; warm = the ones matched to a warm job (same instance, locale, rev); reader = the rest. Lookups and hinted fetches are keyed by their `minRev`.");
+  L.push("");
+  L.push(`| save rev | warm jobs | start → done ms | builds | warm | reader | hinted fetches | lookups | ${cols.join(" | ")} | lookup ms p50 / p95 | hit rate |`);
+  L.push(`|---|---|---|---|---|---|---|---|${cols.map(() => "---").join("|")}|---|---|`);
+  for (const r of w.perRev) {
+    L.push(`| ${r.rev} | ${r.jobs} | ${r.doneMs.map(d).join(", ") || "—"} | ${r.builds} | ${r.warmBuilds} | ${r.readerBuilds} | ${r.hinted} | ${r.lookups} | ${cols.map((k) => r.results[k]).join(" | ")} | ${d(r.lookupP50)} / ${d(r.lookupP95)} | ${pctTxt(r.hitRate)} |`);
+  }
+  L.push("");
+  if (w.lookups.total) {
+    L.push(`Lookup ms by result (p50 / p95, n): ${Object.entries(w.lookups.msByResult).map(([k, v]) => `${k} ${d(v.p50)} / ${d(v.p95)} (${v.n})`).join("; ")}. Whole capture: ${cols.map((k) => `${k} ${w.lookups.counts[k]}`).join(", ")}.`);
+    L.push("");
+    L.push(`| minute | lookups | ${cols.join(" | ")} |`);
+    L.push(`|---|---|${cols.map(() => "---").join("|")}|`);
+    for (const m of w.lookups.perMinute) L.push(`| ${clock(m.minute * 60, addHours).slice(0, 5)} | ${m.total} | ${cols.map((k) => m[k]).join(" | ")} |`);
+    L.push("");
+  }
+}
 
 export function toMarkdown(s, { addHours = 0, bucketS = 5, carryS = 5, source = "" } = {}) {
   const L = [];
@@ -415,6 +662,7 @@ export function toMarkdown(s, { addHours = 0, bucketS = 5, carryS = 5, source = 
     for (const m of s.hint.perMinute) L.push(`| ${clock(m.minute * 60, addHours).slice(0, 5)} | ${m.total} | ${cols.map((k) => m[k]).join(" | ")} |`);
   }
   L.push("");
+  warmingMarkdown(L, s.warm, addHours);
   if (s.writers.length) {
     L.push("### Admin writes (`[liveWriter]`)");
     L.push("");

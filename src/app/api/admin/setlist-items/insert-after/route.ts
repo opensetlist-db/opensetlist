@@ -48,7 +48,7 @@ async function insertAfter(request: NextRequest) {
   }
   const newPosition = afterPosition + 1;
 
-  const result = await liveWriterTransaction("admin-insert-after", async (tx) => {
+  const result = await liveWriterTransaction("admin-insert-after", eid, async (tx) => {
     // n14: lock the event FIRST so the position read below sees every
     // previously committed save and no concurrent same-event save can
     // shift rows between our read and our updates (before the lock, two

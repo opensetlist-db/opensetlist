@@ -7,6 +7,11 @@ import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
 import { getEventStatus, type ResolvedEventStatus } from "@/lib/eventStatus";
 import { cachedQuery, eventTag, revalidateEventData } from "@/lib/dataCache";
 import { revToNumber } from "@/lib/liveBroadcast";
+import {
+  __resetLiveWarmStateForTests,
+  liveWarmEnabled,
+  warmLookup,
+} from "@/lib/liveWarm";
 import type { ServerSnapshotVerify } from "@/lib/snapshotVerify";
 import { INSTANCE_ID } from "@/lib/instanceId";
 import { describeError, isDbTimeout } from "@/lib/dbErrors";
@@ -62,7 +67,13 @@ export type EventSnapshot = {
   buildId: string;
 };
 
-export type SnapshotSource = "build" | "cache" | "repair";
+/**
+ * Where the served snapshot came from (`x-snapshot-source`, diagnostics):
+ * `build` / `cache` / `repair` — the data-cache paths below; `warm` — a
+ * writer-warmed Runtime Cache entry for the request's exact `minRev`
+ * (`src/lib/liveWarm.ts`, flagged).
+ */
+export type SnapshotSource = "build" | "cache" | "repair" | "warm";
 
 // ---------------------------------------------------------------------
 // Test-only hook: pause the builder right after the snapshot-defining
@@ -652,6 +663,7 @@ export function __resetLiveSnapshotStateForTests(): void {
   inFlightRepair.clear();
   inFlightRevRead.clear();
   revMemo.clear();
+  __resetLiveWarmStateForTests();
 }
 
 /**
@@ -671,8 +683,9 @@ export function parseMinRev(raw: string | null): number | null {
  * fetch (sent because a broadcast hint arrived), as opposed to a poll /
  * catch-up / resume / recheck. Exactly `"1"` counts; anything else —
  * absent, empty, `true`, `0` — is "no hint", so an unexpected value
- * degrades to a plain request. Diagnostics only: the server logs it
- * and changes no behaviour on it.
+ * degrades to a plain request. The server logs it; with writer warming
+ * on (`LIVE_WARM_ENTRIES=1`) it also enables the warm-entry lookup in
+ * `getLiveSnapshot` — nothing else depends on it.
  */
 export function parseHint(raw: string | null): boolean {
   return raw === "1";
@@ -704,8 +717,17 @@ export function parseHint(raw: string | null): boolean {
  * `verify` says how the hint was resolved for THIS request (see
  * `classifyVerify` and `src/lib/snapshotVerify.ts`). It is per-request
  * metadata for the response header and is never stored with the
- * snapshot. `opts.hint` (`?hint=1`) only labels the revision-read log
- * line.
+ * snapshot. `opts.hint` (`?hint=1`) labels the revision-read log line
+ * and gates the warm lookup below.
+ *
+ * Warm lookup (flagged, `LIVE_WARM_ENTRIES=1`): a notification fetch —
+ * `hint` AND `minRev` — first asks the Runtime Cache for the entry a
+ * writer stored for exactly that revision (`warmLookup`, ≤ 300 ms). A
+ * valid entry already has `rev ≥ minRev`, so it is served as
+ * `source: "warm"`, `verify: satisfied` with no data-cache read and no
+ * revision read. Any other outcome (miss, invalid, timeout, error) falls
+ * through to the path below unchanged. Periodic / catch-up / resume /
+ * recheck requests carry no `hint` and never look.
  */
 export async function getLiveSnapshot(
   eventId: bigint,
@@ -713,6 +735,12 @@ export async function getLiveSnapshot(
   minRev: number | null = null,
   opts: { hint?: boolean } = {},
 ): Promise<LiveSnapshotResult> {
+  if (minRev !== null && opts.hint && liveWarmEnabled()) {
+    const warm = await warmLookup(eventId, locale, minRev);
+    if (warm.result === "hit") {
+      return { snapshot: warm.snapshot, source: "warm", verify: { kind: "satisfied" } };
+    }
+  }
   const idKey = eventId.toString();
   const key = `${idKey}:${locale}`;
   const { value: first } = await coalesce(
