@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
+import { getCache, type RuntimeCache } from "@vercel/functions";
 
 /**
  * Cross-request data cache for public SSR reads.
@@ -90,7 +92,7 @@ export function eventImpressionsTag(eventId: bigint | number | string): string {
 // new code until the TTL ran out. `VERCEL_DEPLOYMENT_ID` is set at
 // runtime on Vercel; the commit SHA is the fallback for other hosts;
 // "local" covers dev, where a restart is the deploy boundary anyway.
-const BUILD_KEY =
+export const BUILD_KEY =
   process.env.VERCEL_DEPLOYMENT_ID ??
   process.env.VERCEL_GIT_COMMIT_SHA ??
   "local";
@@ -238,6 +240,50 @@ function expireTags(tags: string[]): void {
       console.error(`[dataCache] revalidateTag(${tag}) failed`, err);
     }
   }
+}
+
+// ---------------------------------------------------------------------
+// Runtime Cache handle for the live snapshot's warm entries
+//
+// The flagged writer-warming path (`src/lib/liveWarm.ts`) stores
+// revision-keyed live snapshots in Vercel's Runtime Cache — a different
+// store from the Next data cache above, with its own tag space. The
+// handle lives HERE rather than in `liveWarm.ts` so that
+// `revalidatePublicData` can expire warm entries without this module
+// importing `liveWarm.ts` (which imports this module for the codec — a
+// cycle otherwise).
+//
+// Namespace: versioned, so a change of the stored envelope's shape can
+// move to `-v2` and never read a `-v1` entry. Key hash: the SDK default
+// is a 32-bit djb2-style hash; with keys minted per (event, locale,
+// revision) a collision would hand one event's snapshot to another
+// event's reader (the envelope check would reject it, but it would
+// still turn a hit into a miss), so a SHA-256 hex digest is used.
+// ---------------------------------------------------------------------
+
+export const WARM_CACHE_NAMESPACE = "n14-snap-v1";
+
+/** Tag on every warm entry; expired by `revalidatePublicData`. */
+export const WARM_PUBLIC_DATA_TAG = "warm-public-data";
+
+/** Per-event tag on warm entries (no caller expires it today). */
+export function warmEventTag(eventId: bigint | number | string): string {
+  return `warm-event-${eventId.toString()}`;
+}
+
+function sha256Hex(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * The Runtime Cache client for warm entries. `getCache` is cheap (it
+ * resolves the backing store lazily, per call), so no memoisation.
+ * Backing store: the Vercel request context's cache on Vercel, else the
+ * `RUNTIME_CACHE_ENDPOINT` HTTP client, else a per-process in-memory
+ * fallback (local dev, tests) — see `src/lib/liveWarm.ts`.
+ */
+export function warmEntryCache(): RuntimeCache {
+  return getCache({ namespace: WARM_CACHE_NAMESPACE, keyHashFunction: sha256Hex });
 }
 
 /** Expire every cached public read. Call after a committed admin write. */
