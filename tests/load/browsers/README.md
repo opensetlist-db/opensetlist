@@ -129,7 +129,12 @@ check is in the report header and the JSON (`host.guard`).
 
 From the repo root (`.env`/`.env.local` in the cwd, or `ENV_DIR=<checkout>`).
 `BASE_URL` defaults to the dev preview alias; the guard refuses anything
-but localhost / `opensetlist-git-dev-*.vercel.app`. Node ≥ 22.18 (type
+but localhost / `opensetlist-git-dev-*.vercel.app`. A one-off preview
+deployment's own URL (`opensetlist-<hash>-opensetlist-projects.vercel.app`,
+the fault drills) needs `--deployment-url`, which also checks before the
+first write that the target serves event 111 at the dev database's
+revision with exactly its rows (ids and positions; ../README.md,
+"Warming fault drills"). Node ≥ 22.18 (type
 stripping); `--no-warnings` only hides the "module type" notice for the
 imported `.ts` files. If Chromium is missing: `npx playwright install chromium`.
 

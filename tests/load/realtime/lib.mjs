@@ -67,6 +67,18 @@ export function isAllowedBaseUrl(raw) {
   return u.protocol === "https:" && /^opensetlist-git-dev-[a-z0-9-]+\.vercel\.app$/.test(u.hostname);
 }
 
+// A deployment-specific preview URL of this project
+// (`opensetlist-<hash>-opensetlist-projects.vercel.app`). NOT allowed by
+// isAllowedBaseUrl, because the same shape serves production deployments
+// too; the fault drills need it (a fault is bound to one deployment, see
+// tests/load/README.md "Warming fault drills"), so the browsers harness
+// accepts it only behind an explicit flag AND after proving the target
+// reads the dev database (run.mjs, "--deployment-url").
+export function isDeploymentBaseUrl(raw) {
+  const u = parseUrl(raw);
+  return !!u && u.protocol === "https:" && /^opensetlist-[a-z0-9]{6,12}-opensetlist-projects\.vercel\.app$/.test(u.hostname);
+}
+
 export function assertDev({ requireBase = false } = {}) {
   const url = parseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
   if (!url || url.protocol !== "https:" || url.hostname !== `${DEV_REF}.supabase.co`) {
