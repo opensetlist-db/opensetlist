@@ -83,7 +83,11 @@ const num = (v) => {
 
 // The server's verification kinds (`x-snapshot-verify`), in report order.
 // "missing" is a client-side notion (no header) and is never logged.
-export const HINT_KINDS = ["satisfied", "fresh", "memo", "deferred", "none"];
+// `error` is what the route logs for a hint request that ended in a 503
+// (the response carries no header; the line is still written so every
+// hint request is counted). Keeping it a kind of its own lets an overload
+// run tell "503 share" from "a verify= value this script does not know".
+export const HINT_KINDS = ["satisfied", "fresh", "memo", "deferred", "none", "error"];
 
 // `verify=` value → kind: `fresh=<dbRev>` → fresh, `memo=<rev>;age=<ms>`
 // → memo, the bare kinds as they are; anything else (absent, empty, a

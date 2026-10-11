@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterAll } from "vitest";
+import { describe, it, expect, vi, afterAll, beforeEach } from "vitest";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma, poolStats } from "@/lib/prisma";
 import { OPEN_TX_RELEASE_LOG_PREFIX } from "@/lib/pgPool";
@@ -27,6 +27,13 @@ import { OPEN_TX_RELEASE_LOG_PREFIX } from "@/lib/pgPool";
 // The guard logs one line each time it fires; step 6 checks it never
 // fires for a normally closed transaction.
 const warn = vi.spyOn(console, "warn");
+
+// The spy is installed at module load and restored once at the end, so
+// without this a second test in this file would see the first test's
+// guard lines in its own `guardLines.length` assertion.
+beforeEach(() => {
+  warn.mockClear();
+});
 
 afterAll(async () => {
   warn.mockRestore();
