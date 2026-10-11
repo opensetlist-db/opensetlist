@@ -51,8 +51,8 @@
 // What each client records (for run.mjs): every broadcast it received
 // and what the handler did with it; every request as the scheduler
 // described it (`{reason, generic, hint, notify}`) with the URL's
-// `minRev`, the status, the verification header kind, the body rev and
-// the hint resolution; per-kind counts; dropped (exhausted) tickets; the
+// `minRev`, the status, the verification header kind, the body rev, the
+// hint resolution and the `x-snapshot-source` header; per-kind counts; dropped (exhausted) tickets; the
 // highest `serverRev` the acceptance state ever held — the poisoning
 // drill's proof that a forged hint never entered the durable watermark.
 //
@@ -144,8 +144,15 @@ function makeSub(idx) {
     // dropped by the drill, "i" = invalid payload (rev null then).
     bcasts: [],
     // [tStart, reason, generic 0/1, hint, notify 0/1, minRev, status,
-    //  verify kind, body rev, hint resolution, tEnd, outcome]
-    // status 0 = network error / deadline; outcome ok | failed | cancelled.
+    //  verify kind, body rev, hint resolution, tEnd, outcome, source]
+    // status 0 = network error / deadline; outcome ok | failed | cancelled;
+    // source = the `x-snapshot-source` header of a 200 (build | cache |
+    // repair | warm; "none" when absent), null otherwise. `warm` = the
+    // server answered a hinted fetch from the entry the save's warm job
+    // stored (writer warming); run.mjs reports warm hits ÷ hinted
+    // fetches per save, and tStart is the "request arrival" side of
+    // warm-join.mjs's timing (client send time, i.e. arrival at the
+    // server minus about half a round trip).
     reqs: [],
     fetches: {}, // reason → count
     sources: {}, // x-snapshot-source → count
@@ -180,7 +187,7 @@ function makeSub(idx) {
       const hint = request?.hint ?? null;
       const notify = request?.notify === true;
       const minRev = acceptance.minRevFor(hint);
-      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null];
+      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null];
       rec.reqs.push(row);
       bump(rec.fetches, reason);
       let settled = false;
@@ -217,7 +224,8 @@ function makeSub(idx) {
             await res.arrayBuffer().catch(() => {});
             return fail("http", parseRetryAfterMs(res.headers.get("retry-after")));
           }
-          bump(rec.sources, res.headers.get("x-snapshot-source") || "none");
+          row[12] = res.headers.get("x-snapshot-source") || "none";
+          bump(rec.sources, row[12]);
           const body = await res.json();
           if (settled) return;
           if (stopped) return finish(CANCELLED);

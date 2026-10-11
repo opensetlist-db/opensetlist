@@ -74,6 +74,14 @@
 // Vercel logs during the run (vercel-logs-capture.mjs) and run
 // vercel-logs-summary.mjs on them.
 //
+// `warm` (writer warming, server flag LIVE_WARM_ENTRIES=1) is a fourth
+// source: the hinted fetch was answered from the entry the save's own
+// warm job stored for exactly that minRev — no build at all. It is
+// counted in the source split like the others and, for the r2 hinted
+// fetches, as "warm hits ÷ hinted fetches" per burst and in the hint-
+// outcomes line. Counting only: nothing the VUs do depends on it. With
+// the flag off it stays 0 (the control).
+//
 // Burst errors: k6's end-of-test data has no way to carry strings from a
 // VU to handleSummary except check names, so after each burst the admin
 // VU records its distinct error bodies (status + first 80 characters, at
@@ -256,8 +264,13 @@ const SRC = {
   build: new Counter("snap_src_build"),
   cache: new Counter("snap_src_cache"),
   repair: new Counter("snap_src_repair"),
+  warm: new Counter("snap_src_warm"),
   other: new Counter("snap_src_other"),
 };
+// r2 hinted notification fetches (tag burst), and those answered with
+// `x-snapshot-source: warm` — the warm hit rate's two halves.
+const hintFetches = new Counter("hint_fetches");
+const hintWarm = new Counter("hint_warm");
 // `x-snapshot-verify` per 200 burst response: tags kind (VERIFY_KINDS),
 // burst, client (r1 | r2 | old) and req (first = the notification wave
 // incl. old tabs' repeats, recheck = the r2 recheck).
@@ -385,6 +398,8 @@ const thresholds = {
   verify_fresh_violation: ["count>=0"],
   hint_rechecks: ["count>=0"],
   hint_exhausted: ["count>=0"],
+  hint_fetches: ["count>=0"],
+  hint_warm: ["count>=0"],
   recheck_latency: ["max>=0"],
   "snapshot_errors{phase:recheck}": ["rate>=0"],
   "burst_fresh{client:old,wave:1}": ["rate>=0"],
@@ -407,7 +422,11 @@ for (const b of PLAN.bursts) {
   thresholds[`burst_rev_ok{burst:${b.id}}`] = ["rate>=0"];
   for (const s of Object.keys(SRC)) thresholds[`snap_src_${s}{burst:${b.id}}`] = ["count>=0"];
   for (const k of VERIFY_KINDS) thresholds[`verify_outcome{burst:${b.id},kind:${k},req:first}`] = ["count>=0"];
-  if (HINT_MODE === "r2") thresholds[`hint_rechecks{burst:${b.id}}`] = ["count>=0"];
+  if (HINT_MODE === "r2") {
+    thresholds[`hint_rechecks{burst:${b.id}}`] = ["count>=0"];
+    thresholds[`hint_fetches{burst:${b.id}}`] = ["count>=0"];
+    thresholds[`hint_warm{burst:${b.id}}`] = ["count>=0"];
+  }
 }
 
 export const options = {
@@ -463,7 +482,7 @@ function revOf(text) {
 function sourceOf(res) {
   const h = res.headers || {};
   const v = (h["X-Snapshot-Source"] || h["x-snapshot-source"] || "").toLowerCase();
-  return v === "build" || v === "cache" || v === "repair" ? v : "other";
+  return v === "build" || v === "cache" || v === "repair" || v === "warm" ? v : "other";
 }
 
 let badLogged = 0;
@@ -702,7 +721,13 @@ async function burstRequest(burstId, minRev, client, wave, appliedRev, savedRev,
   burstErrors.add(!r.ok, tags);
   if (r.ok && appliedRev != null) burstFresh.add(r.rev != null && r.rev > appliedRev, tags);
   if (r.ok && minRev != null) burstRevOk.add(r.rev != null && r.rev >= minRev, tags);
-  const out = [{ ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res), recheck: false }];
+  // Warm hit rate: every hinted fetch counts in the denominator (a 503
+  // too — it was eligible for the lookup and did not get a warm answer).
+  if (hint) {
+    hintFetches.add(1, { burst: burstId });
+    if (r.ok && r.src === "warm") hintWarm.add(1, { burst: burstId });
+  }
+  const out =[{ ok: r.ok, ms: res.timings.duration, err: r.ok ? null : errorBody(res), recheck: false }];
   if (!r.ok) return out; // error responses carry no header (and the harness models no retry)
   const v = recordVerify(res, { burst: burstId, client, req: "first" }, minRev, savedRev);
   // Satisfied by the body whatever the header says (rev ≥ H); `fresh`
@@ -1164,11 +1189,14 @@ export function handleSummary(data) {
     const em = M(data, `burst_errors{burst:${b.id}}`);
     const errN = em && em.values ? em.values.passes : 0;
     const vc = VERIFY_KINDS.map((k) => cnt(data, `verify_outcome{burst:${b.id},kind:${k},req:first}`)).join(" / ");
-    const re = HINT_MODE === "r2" ? ` · rechecks ${cnt(data, `hint_rechecks{burst:${b.id}}`)}` : "";
+    const re =
+      HINT_MODE === "r2"
+        ? ` · rechecks ${cnt(data, `hint_rechecks{burst:${b.id}}`)} · warm ${cnt(data, `hint_warm{burst:${b.id}}`)}/${cnt(data, `hint_fetches{burst:${b.id}}`)} hinted`
+        : "";
     rows.push(
       `| ${b.id} | ${b.label} | ${n ?? 0} | ${ms(val(data, `burst_latency{burst:${b.id}}`, "med"))} / ${ms(p95)} / ` +
         `${ms(val(data, `burst_latency{burst:${b.id}}`, "max"))} | ${errN} (${pct(val(data, `burst_errors{burst:${b.id}}`, "rate"))}) | ` +
-        `${s.build} / ${s.cache} / ${s.repair}${s.other ? ` (+${s.other} other)` : ""} | ${s.build + s.repair} | ` +
+        `${s.build} / ${s.cache} / ${s.repair} / ${s.warm}${s.other ? ` (+${s.other} other)` : ""} | ${s.build + s.repair} | ` +
         `${pct(val(data, `burst_rev_ok{burst:${b.id}}`, "rate"), 1)} | ${vc}${re} |`,
     );
   }
@@ -1180,6 +1208,8 @@ export function handleSummary(data) {
   const notifN = VERIFY_KINDS.reduce((a, k) => a + vFirst[k], 0);
   const rechecks = cnt(data, "hint_rechecks");
   const exhausted = cnt(data, "hint_exhausted");
+  const hintedN = cnt(data, "hint_fetches");
+  const warmN = cnt(data, "hint_warm");
   const kindLine = (o) => VERIFY_KINDS.map((k) => `${k} ${o[k]}`).join(", ");
   const hintLines =
     `- **hint outcomes** (${NEW_CLIENT} notification fetches, 200 responses, \`x-snapshot-verify\`; HINT_MODE=${HINT_MODE}): ` +
@@ -1188,7 +1218,9 @@ export function handleSummary(data) {
     (HINT_MODE === "r2"
       ? `- **rechecks**: ${rechecks} (${notifN ? pct(rechecks / notifN, 2) : "—"} of notification fetches), ` +
         `p95 ${ms(val(data, "recheck_latency", "p(95)"))}, errors ${pct(val(data, "snapshot_errors{phase:recheck}", "rate"), 3)}; ` +
-        `outcome ${kindLine(vRe)}; still inconclusive below H (hint exhausted) ${exhausted}\n`
+        `outcome ${kindLine(vRe)}; still inconclusive below H (hint exhausted) ${exhausted}\n` +
+        `- **warm hits** (\`x-snapshot-source: warm\`, writer warming): ${warmN} of ${hintedN} hinted fetches ` +
+        `(${hintedN ? pct(warmN / hintedN, 1) : "—"}; 0 with LIVE_WARM_ENTRIES off)\n`
       : "");
   const burstSrc = srcCells(data, "phase:burst");
   const pollSrc = srcCells(data, "phase:poll");
@@ -1263,7 +1295,7 @@ export function handleSummary(data) {
     `- poll: ${pollN} req, achieved ${pollAchieved.toFixed(1)} rps, p50 ${ms(val(data, "http_req_duration{scenario:poll}", "med"))} / ` +
     `p95 ${ms(val(data, "http_req_duration{scenario:poll}", "p(95)"))} / p99 ${ms(val(data, "http_req_duration{scenario:poll}", "p(99)"))}, ` +
     `errors ${pct(val(data, "snapshot_errors{scenario:poll}", "rate"), 3)}; ` +
-    `source build/cache/repair ${pollSrc.build} / ${pollSrc.cache} / ${pollSrc.repair}${pollSrc.other ? ` (+${pollSrc.other} other)` : ""}\n` +
+    `source build/cache/repair/warm ${pollSrc.build} / ${pollSrc.cache} / ${pollSrc.repair} / ${pollSrc.warm}${pollSrc.other ? ` (+${pollSrc.other} other)` : ""}\n` +
     `- SSR event page: ${ssrN} req, achieved ${(STEADY_SECONDS > 0 ? ssrN / STEADY_SECONDS : 0).toFixed(2)} rps, ` +
     `p95 ${ms(val(data, "http_req_duration{scenario:ssr}", "p(95)"))} / p99 ${ms(val(data, "http_req_duration{scenario:ssr}", "p(99)"))}, ` +
     `errors ${pct(val(data, "ssr_errors", "rate"), 3)}\n` +
@@ -1271,11 +1303,11 @@ export function handleSummary(data) {
     "`x-snapshot-source` is only a rough proxy for builds per save: coalesced waiters share the first request's result " +
     "(header included), so it over-counts, and background rebuilds are never attributed. The real number is the " +
     "`[liveSnapshot] build` log lines — run `node tests/load/vercel-logs-summary.mjs` on the run's Vercel log capture.\n\n" +
-    `| Burst | save | requests | p50 / p95 / max | errors (%) | build / cache / repair | builds (build+repair) | rev ≥ minRev (${NEW_CLIENT} reqs) | verify none / satisfied / fresh / memo / deferred / missing (all clients, 1st wave) |\n` +
+    `| Burst | save | requests | p50 / p95 / max | errors (%) | build / cache / repair / warm | builds (build+repair) | rev ≥ minRev (${NEW_CLIENT} reqs) | verify none / satisfied / fresh / memo / deferred / missing (all clients, 1st wave) |\n` +
     "|---|---|---|---|---|---|---|---|---|\n" +
     rows.join("\n") +
     "\n\n" +
-    `- all bursts: ${burstSrc.total} req; build ${burstSrc.build}, cache ${burstSrc.cache}, repair ${burstSrc.repair}` +
+    `- all bursts: ${burstSrc.total} req; build ${burstSrc.build}, cache ${burstSrc.cache}, repair ${burstSrc.repair}, warm ${burstSrc.warm}` +
     `${burstSrc.other ? `, other ${burstSrc.other}` : ""} → **${fired ? ((burstSrc.build + burstSrc.repair) / fired).toFixed(2) : "—"} builds per save** (header proxy)\n` +
     `- ${NEW_CLIENT.toUpperCase()} requests (minRev): p95 ${ms(val(data, `burst_latency{client:${NEW_CLIENT}}`, "p(95)"))}, errors ${pct(val(data, `burst_errors{client:${NEW_CLIENT}}`, "rate"), 3)}, ` +
     `rev ≥ minRev ${pct(val(data, "burst_rev_ok", "rate"), 1)}\n` +

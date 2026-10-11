@@ -398,6 +398,125 @@ the honest saves' notification fetches were satisfied without a recheck.
 | `double-save` | PASS: pages 2/2, SDK 5/5 converged to the final save (rev 480), p95 1,320 ms |
 | `reconnect` | PASS: rejoin p95 pages 1.2 s / SDK 1.24 s, 0 re-creations, 0 handoff regressions |
 
+## n14 warming run (writer warming, `LIVE_WARM_ENTRIES=1`)
+
+Writer warming (`src/lib/liveWarm.ts`) builds every locale's snapshot
+once, right after a save commits (in the save request's `after()`), and
+stores it in the Vercel Runtime Cache under `<event>:<locale>:<rev>` for
+90 s. A notification fetch (`hint=1&minRev=R`) first looks that key up
+(≤ 300 ms) and, on a hit, is answered from it (`x-snapshot-source: warm`,
+`x-snapshot-verify: satisfied`) instead of building. The question this
+run answers: how much of the per-save build storm (215–525 builds on
+40–100 instances at 500 clients) disappears, and whether the hinted
+fetches arrive late enough to find the entry. The harness only observes;
+the flag is a server env the operator sets on the preview (a change needs
+a redeploy).
+
+**Two deployments, same day, same fleet state:**
+
+| | flag off (control) | flag on |
+|---|---|---|
+| server env | `LIVE_WARM_ENTRIES` unset | `LIVE_WARM_ENTRIES=1` (optional third variant: `+ LIVE_WARM_CONCURRENCY=1`, sequential builds) |
+| reference | the Small control (`results/2026-10-11/REPORT-small-control.md`); re-run it on the day when the fleet / compute differs | this run |
+| expected | 0 `[liveWarm]` / `warm-lookup` lines, `warm` never a source | one warm job per save, warm hits on most hinted fetches that arrive after warm-complete |
+
+Preflight as in the R2 baseline (event 111 at 23 rows, positions 1..23,
+`ongoing`; record the Supabase compute size). Confirm the flag before the
+run: one admin save, then `curl -si
+"$BASE_URL/api/setlist?eventId=111&locale=ja&minRev=<its rev>&hint=1"` →
+`x-snapshot-source: warm` within 90 s, and the Vercel logs show
+`[liveWarm] start … done` for that rev. With the flag off the same
+request answers `build` / `cache` / `repair`.
+
+**Side-cars** exactly as in run #2b-1 (`pooler-clients.mjs` +
+`vercel-logs-capture.mjs` via `Start-Process`, ~30 s of baseline; the
+1 s Supavisor backend sampler from the Small control if it is at hand),
+and **always the history re-fetch afterwards**, one file per measurement
+window (the `--follow` file is a live view, not the record). The
+summariser and `warm-join.mjs` need the complete record: the warm job's
+lines sit in the save request's entry, and the `--follow` capture kept
+only 29 % of the entries in run #2b-1.
+
+**(a) k6 alone** (Git Bash) — the same hinted bursts as the R2 baseline:
+
+```bash
+tests/load/run.sh viewers.js -e HINT_MODE=r2 -e BURST_SIZE=500 -e JITTER_MS=500 \
+  -e BURST_GAP_S=8 -e ADMIN_CYCLES=4 -e DRAIN_S=90
+```
+
+Read in the k6 report: the per-burst source split `build / cache /
+repair / warm` and `warm W/N hinted`, the **warm hits** line under the
+hint outcomes. Note that k6 fires its burst over U(0, 500 ms) from the
+moment the save RETURNED, i.e. from about when the warm job starts, so a
+large share of k6 requests arrives before warm-complete by construction
+— k6 measures the storm with warming on, the browsers run measures the
+real arrival pattern (broadcast delivery + the client's jitter).
+
+**(b) Browsers alone** (never with a concurrent k6 burst, see the R2
+baseline):
+
+```bash
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=warm-on
+```
+
+The report's per-save tables add `warm / hinted` and the first hinted
+request's start − commit (commit proxy = the PUT's response); the gate
+table adds an informational **warming** row (hit rate SDK / pages). The
+JSON's `warm` section holds every client's first hinted fetch per save
+for the join below.
+
+**Afterwards**, per window (k6, browsers):
+
+```powershell
+New-Item -ItemType File "$out/warm.STOP" | Out-Null
+# history re-fetch of the window (see run #2b-1), then:
+node tests/load/vercel-logs-summary.mjs <history.txt> --add-hours=7 --out="$out/vercel-logs-history-summary-warm-<k6|browsers>.md"
+node tests/load/warm-join.mjs <stamp>-browsers.json <browsers-history.txt> --add-hours=7 --out="$out/warm-join.md"
+node tests/load/viewers-check.mjs
+node --no-warnings tests/load/browsers/restore.mjs --compact --yes
+```
+
+- `vercel-logs-summary.mjs` → **Warming** section: the run-level **warm
+  hit rate = hits ÷ hinted fetches**; per warm job the start → done ms
+  (≈ warm-complete − commit), each locale's `set` (rev, bytes, build / set
+  ms, ok) and `skip` reasons, `schedule-failed` / `job-failed` counts; per
+  save rev the builds split into **warm** (the job's own 3) and **reader**
+  builds (every other build of that rev — the storm that is left), the
+  `warm-lookup` results (hit / miss / stale / invalid / error / timeout)
+  and their ms p50 / p95; lookups per minute. Compare reader builds per
+  save, distinct instances per save, the pool Σ peak and the backend busy
+  max against the control.
+- `warm-join.mjs` → per save and locale: warm-complete − commit (rebuilt
+  from the job's buildMs + setMs over 2 workers, `--warm-concurrency=1`
+  for the sequential variant; "unaccounted" = done ms − the rebuilt end),
+  the share of first hinted fetches (SDK / pages) that left after it, and
+  the hit rate after vs before. Hits ≈ "after" means the entry is used as
+  soon as it exists; a large "before" share means the clients outrun the
+  job and only a later trigger (e.g. a ready signal or more jitter) could
+  help — the design question this run settles.
+- The latency gates are the same as the control's (save → visible p95 ≤
+  3 s, 0 missing, 0 regressions); report save → visible p95 pages and SDK
+  per save next to the control's.
+
+**(c) Drills to repeat with the flag on** (`browsers/README.md` for the
+commands; one per run): warm entries change what a notification fetch
+returns, so the drills whose correctness depends on that answer run again:
+
+- **double-save** (`--drill=double-save`): two saves R₁ < R₂ ~300 ms apart.
+  R₁'s job may store a snapshot with rev R₂ under key R₁ (stored with its
+  actual rev, never relabelled); every client must still converge on R₂
+  with 0 regressions. Check `warm-join` for both revs.
+- **lost-final** (`--drill=lost-final`): the last save's notification is
+  dropped, so no hinted fetch exists for it; the periodic repair poll
+  (generic, never a lookup) must deliver it — expect delivering reason
+  `periodic`, no `warm` source on that save, max ≤ 26 s.
+- **spam, short** (`--drill=spam --spam-secs=20`): every forged `ahead`
+  rev becomes a notification fetch for a key no save wrote — a `miss`
+  (bounded at 300 ms) and then the normal path. Gate unchanged (cooldown
+  respected, 0 hard failures); additionally read the summariser's
+  lookup misses and their ms p95 during the spam window, and that no
+  forged rev ever shows `warm`.
+
 ## Reading the result
 
 - **Achieved rps** must be ≥ 95 % of the target, or the stage doesn't
