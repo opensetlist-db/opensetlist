@@ -4,9 +4,10 @@
 // periodic repair poll; while the channel is disconnected the same
 // scheduler switches to the 5 s ± 1 s fallback cadence via
 // `setPeriodic`), by the standalone `useSetlistPolling`, and by
-// `useImpressionPolling`. It decides WHEN a snapshot request runs; the hook
-// supplies `runFetch`, which decides WHAT a request does (URL, `minRev`,
-// deadline, acceptance, freshness bookkeeping) and reports back how it
+// `useImpressionPolling`. It decides WHEN a snapshot request runs and
+// WHAT KIND of request it is (the `LiveFetchRequest` descriptor handed
+// to `runFetch`); the hook's `runFetch` turns that into a URL, runs it
+// (deadline, acceptance, freshness bookkeeping) and reports back how it
 // went.
 //
 // Why a scheduler instead of the previous abort-and-refire supersede:
@@ -44,23 +45,25 @@
 //     phase).
 //
 //   - Per-client cooldown on those spread triggers. At most one
-//     notification / catch-up / resume / boundary request starts per
-//     `cooldownMs`. A trigger inside the window is never dropped: it is
-//     scheduled at `max(nextEligibleAt, now + jitter)`, or — if a
-//     request is in flight — becomes the dirty follow-up, which waits
-//     for `max(nextEligibleAt, now)` (no second jitter: the client
-//     already sat one out, and the in-flight request's settle time is
-//     itself random). So a reconnect that brings `SUBSCRIBED` and
-//     `online` together costs one request, not two.
+//     notification / recheck / catch-up / resume / boundary request (or
+//     any request that carries a hint ticket) starts per `cooldownMs`.
+//     A trigger inside the window is never dropped: it is scheduled at
+//     `max(nextEligibleAt, now + jitter)`, or — if a request is in
+//     flight — becomes the dirty follow-up, which waits for
+//     `max(nextEligibleAt, now)` (no second jitter: the client already
+//     sat one out, and the in-flight request's settle time is itself
+//     random). So a reconnect that brings `SUBSCRIBED` and `online`
+//     together costs one request, not two. On a public broadcast channel
+//     the cooldown is also the only per-client bound on hint-driven
+//     load: a guest spamming the topic gets at most one request per
+//     second out of each viewer (≈ 500 rps cluster-wide at 500 viewers,
+//     mostly cache hits).
 //
 //   - Periodic repair poll. While the hook keeps the scheduler alive
 //     (the realtime hook disposes it when the tab hides), a periodic
 //     tick fires every `intervalMs ± spreadMs`. It repairs lost
-//     notifications (postgres_changes delivery is not guaranteed — n12
-//     measured 0/300 delivery under load) and refreshes the slices that
-//     no longer have their own push (reaction counts, wish TOP-3). A
-//     tick is a no-op while a request is in flight, scheduled, or a
-//     retry is pending: that request already covers this period.
+//     notifications and refreshes the slices that have no push of their
+//     own (reaction counts, wish TOP-3, status).
 //
 //   - Failure path = n13's retry schedule. `runFetch` owns the
 //     consecutive-failure count and computes the delay with
@@ -81,16 +84,70 @@
 //     request. Without it, "an explicit trigger supersedes a retry" let
 //     a burst of notifications (exactly what an overloaded save
 //     produces) fire straight through the Retry-After window. Every
-//     path — notification, catch-up, resume, boundary, periodic, dirty
-//     follow-up — computes its usual due time and then takes
-//     `max(due, notBeforeAt + U(0, jitter))`. The jitter on top of the
-//     floor matters: every viewer that got a 503 in the same burst would
-//     otherwise wake at nearly the same floor edge. The retry itself is
-//     the one exception — it is due at `max(now + retryInMs,
+//     path — notification, recheck, catch-up, resume, boundary,
+//     periodic, dirty follow-up — computes its usual due time and then
+//     takes `max(due, notBeforeAt + U(0, jitter))`. The jitter on top of
+//     the floor matters: every viewer that got a 503 in the same burst
+//     would otherwise wake at nearly the same floor edge. The retry
+//     itself is the one exception — it is due at `max(now + retryInMs,
 //     notBeforeAt)` with no extra jitter, because `retryInMs` already IS
 //     the clamped Retry-After (n13: "the server asked for that exact
 //     spacing"). The floor only moves forward and simply expires; a
 //     success does not need to clear it.
+//
+// WHAT a request is — derived from state at DISPATCH, never from the
+// trigger that happened to arm the timer. The R1 scheduler stored one
+// reason per pending slot and let a notification overwrite whatever was
+// pending; with hints that reason decides the URL, so the overwrite
+// became a correctness bug (a periodic repair could be silently turned
+// into a hint fetch that a stale cache entry satisfies, and a tick that
+// landed while work was scheduled or in flight was dropped). Instead
+// the scheduler keeps three independent obligations and folds them into
+// whichever request dispatches next:
+//
+//   - `genericRequired` (sticky): set by every maintenance trigger —
+//     initial, periodic, catch-up, resume / online, boundary. The next
+//     request that dispatches takes the GENERIC path (`minRev =
+//     serverRev`, no `hint=1`). A notification can neither clear nor
+//     downgrade it. Overdue ticks collapse into the one flag. The flag
+//     moves onto the request at dispatch; if that request FAILS it comes
+//     back (the retry is generic too); it is discharged only when a
+//     generic request succeeds. A periodic tick while a generic request
+//     is already in flight is covered by it (same purpose, no ordering
+//     requirement); every other maintenance trigger during a flight —
+//     and a tick during a non-generic flight — marks the client dirty,
+//     because its read must start after the trigger.
+//
+//   - The hint TICKET (`captureHint` + a carried ticket). At dispatch
+//     the scheduler asks the page for the current broadcast batch
+//     (`captureHint`, see snapshotAcceptance.ts) and attaches it, merged
+//     with any ticket a previous request left behind, to the request.
+//     A non-generic request with a first-check ticket is a NOTIFICATION
+//     fetch (`minRev = max(serverRev, H)` + `hint=1`). A generic request
+//     takes the ticket along as `minRev = max(serverRev, H)` WITHOUT
+//     `hint=1` — one request satisfies both obligations.
+//
+//   - One bounded RECHECK per ticket. When `runFetch` reports the
+//     ticket `inconclusive` (the server answered with an older snapshot
+//     but could not prove the hint wrong — `memo`, `deferred`, or no
+//     verification header at all, i.e. an R1 server after a rollback),
+//     the ticket is kept in the "recheck" phase and a quiet recheck is
+//     scheduled at `now + max(recheckDelayMs, cooldown remaining) +
+//     U(0, jitterMs)`, under the floor. 1 s is the server's revision
+//     memo window: a recheck inside it would likely hit the same memo.
+//     The recheck still sends `minRev = max(serverRev, H)` — without the
+//     hint an unhinted request would be satisfied by the same stale
+//     cache entry and the update would wait for the periodic repair —
+//     but no `hint=1`. It shares and advances the notification cooldown.
+//     A second inconclusive answer drops the ticket (`onHintExhausted`)
+//     and leaves the periodic repair to it: a forged hint costs each
+//     viewer at most two cheap requests, never a stuck page or a
+//     "delayed" indicator. A ticket survives an ordinary failure (the
+//     retry carries it); a resolved ticket (satisfied / disproved /
+//     superseded) is gone. A recheck-phase ticket does not ride on an
+//     unrelated request that dispatches before the recheck is due (that
+//     would spend the one recheck inside the memo window); it waits for
+//     its own timer, which is re-armed after that request settles.
 //
 // Everything time-related goes through the injectable `clock` and
 // `random` so the unit tests can drive it with fake timers and pinned
@@ -98,19 +155,23 @@
 // comparisons — so the UTC rule does not apply here.
 
 /**
- * Why a snapshot request is being asked for.
+ * Why a snapshot request is being asked for (and the label the request
+ * runs with — see `LiveFetchRequest.reason`).
  *
- *   - `initial`: the first seed of a page (mount). Immediate.
- *   - `notification`: a push said the setlist changed. Jittered by
+ *   - `initial`: the first seed of a page (mount). Immediate. Generic.
+ *   - `notification`: a broadcast announced a new revision. Jittered by
  *     `jitterMs`, cooldown.
  *   - `catchup`: `SUBSCRIBED` (initial join or a rejoin after a gap).
+ *     Generic.
  *   - `resume`: the tab became visible again, or the browser went back
- *     `online`.
+ *     `online`. Generic.
  *   - `boundary`: an event-status boundary (startTime, completed flip).
- *     `catchup` / `resume` / `boundary` are jittered by
+ *     Generic. `catchup` / `resume` / `boundary` are jittered by
  *     `catchupJitterMs`, cooldown.
- *   - `periodic`: the repair / fallback poll tick.
- *   - `retry`: internal — the scheduler's own retry after a failure.
+ *   - `periodic`: the repair / fallback poll tick. Generic.
+ *   - `retry`: the scheduler's own retry after a failure.
+ *   - `recheck`: the scheduler's one quiet recheck of an inconclusive
+ *     hint ticket. Jittered by `jitterMs`, cooldown.
  */
 export type LiveFetchReason =
   | "initial"
@@ -119,7 +180,8 @@ export type LiveFetchReason =
   | "catchup"
   | "resume"
   | "boundary"
-  | "retry";
+  | "retry"
+  | "recheck";
 
 /**
  * Triggers that can fire on many viewers at the same instant, and are
@@ -128,11 +190,64 @@ export type LiveFetchReason =
 function isSpreadReason(reason: LiveFetchReason): boolean {
   return (
     reason === "notification" ||
+    reason === "recheck" ||
     reason === "catchup" ||
     reason === "resume" ||
     reason === "boundary"
   );
 }
+
+/** Maintenance triggers: they set the sticky `genericRequired`. */
+function isGenericReason(reason: LiveFetchReason): boolean {
+  return (
+    reason === "initial" ||
+    reason === "periodic" ||
+    reason === "catchup" ||
+    reason === "resume" ||
+    reason === "boundary"
+  );
+}
+
+/**
+ * What the request about to run must send. Built by the scheduler at
+ * dispatch; `runFetch` turns it into the URL:
+ *
+ *   | generic | hint | notify | URL                                  |
+ *   |---------|------|--------|--------------------------------------|
+ *   | true    | null | false  | minRev = serverRev                   |
+ *   | true    | H    | false  | minRev = max(serverRev, H)           |
+ *   | false   | H    | true   | minRev = max(serverRev, H) & hint=1  |
+ *   | false   | H    | false  | minRev = max(serverRev, H) (recheck) |
+ *   | false   | null | false  | minRev = serverRev                   |
+ */
+export interface LiveFetchRequest {
+  /**
+   * Label for logs / breadcrumbs: `retry` for a retry; a maintenance
+   * trigger's own reason when it armed the request; otherwise the
+   * pending maintenance reason (generic), `recheck` or `notification`
+   * (by the ticket's phase), or the arming trigger.
+   */
+  reason: LiveFetchReason;
+  /** Maintenance path: discharges `genericRequired` on success. */
+  generic: boolean;
+  /** The carried hint ticket `H`, or null. */
+  hint: number | null;
+  /** Send `&hint=1` — a notification fetch (first check of `H`). */
+  notify: boolean;
+}
+
+/**
+ * How the request's hint ticket fared (reported by `runFetch`):
+ *
+ *   - `resolved`: satisfied, disproved, or superseded by a server-proven
+ *     revision — the ticket is consumed.
+ *   - `inconclusive`: the answer neither satisfied nor refuted it — one
+ *     recheck (first time) or drop (after the recheck).
+ *   - absent: the request never got to evaluate it (an HTTP / network /
+ *     deadline failure) — a failed request keeps the ticket for its
+ *     retry; an `ok` without it counts as resolved.
+ */
+export type LiveHintOutcome = "resolved" | "inconclusive";
 
 /**
  * Result of one `runFetch` call.
@@ -146,7 +261,7 @@ function isSpreadReason(reason: LiveFetchReason): boolean {
  *     channel down, or the event/locale changed). Nothing follows.
  */
 export type LiveFetchOutcome =
-  | { kind: "ok" }
+  | { kind: "ok"; hint?: LiveHintOutcome }
   | {
       kind: "failed";
       retryInMs: number;
@@ -157,6 +272,12 @@ export type LiveFetchOutcome =
        * a deadline, a 5xx without the header).
        */
       notBeforeMs?: number | null;
+      /**
+       * Set when the request DID evaluate its ticket but failed anyway
+       * (a server-proven gap): the ticket's fate is decided here, not
+       * by the failure.
+       */
+      hint?: LiveHintOutcome;
     }
   | { kind: "cancelled" };
 
@@ -181,10 +302,16 @@ export const NOTIFICATION_JITTER_MS = 500;
  */
 export const CATCHUP_JITTER_MS = 500;
 /**
- * At most one spread-trigger request (notification, catch-up, resume,
- * boundary) per client per second.
+ * At most one spread-trigger request (notification, recheck, catch-up,
+ * resume, boundary) per client per second.
  */
 export const NOTIFICATION_COOLDOWN_MS = 1_000;
+/**
+ * Minimum wait before rechecking an inconclusive hint: the server's
+ * per-instance revision memo window. A recheck inside it would most
+ * likely be answered from the same memo again.
+ */
+export const RECHECK_MIN_DELAY_MS = 1_000;
 /** Healthy-path repair poll: 20 s ± 4 s while the page is visible. */
 export const HEALTHY_PERIODIC_MS = 20_000;
 export const HEALTHY_PERIODIC_SPREAD_MS = 4_000;
@@ -207,8 +334,24 @@ export interface PeriodicConfig {
 }
 
 export interface LiveSchedulerOptions {
-  runFetch: (reason: LiveFetchReason) => Promise<LiveFetchOutcome>;
-  /** Notification jitter bound (default `NOTIFICATION_JITTER_MS`). */
+  /**
+   * Runs one request. `request` is the descriptor built at dispatch;
+   * `reason` repeats `request.reason` (callers that only need the label,
+   * like the impression poller, can ignore the second argument).
+   */
+  runFetch: (
+    reason: LiveFetchReason,
+    request: LiveFetchRequest,
+  ) => Promise<LiveFetchOutcome>;
+  /**
+   * Hands over the current hint batch at dispatch (and starts a new
+   * one) — `SnapshotAcceptance.captureHint`. Absent = this data source
+   * has no hints (polling, impressions).
+   */
+  captureHint?: () => number | null;
+  /** A ticket was dropped after its recheck was inconclusive too. */
+  onHintExhausted?: (hint: number) => void;
+  /** Notification / recheck jitter bound (default `NOTIFICATION_JITTER_MS`). */
   jitterMs?: number;
   /**
    * Jitter bound for catch-up / resume / boundary (default
@@ -217,6 +360,8 @@ export interface LiveSchedulerOptions {
    */
   catchupJitterMs?: number;
   cooldownMs?: number;
+  /** Recheck minimum delay (default `RECHECK_MIN_DELAY_MS`). */
+  recheckDelayMs?: number;
   periodic?: PeriodicConfig | null;
   /**
    * A server-directed floor (clock ms) inherited from a previous
@@ -235,7 +380,18 @@ export interface LiveSchedulerState {
   dirty: boolean;
   /** Due time (clock ms) of a scheduled-but-not-started request. */
   scheduledAt: number | null;
+  /** Label of the scheduled request (null when nothing is scheduled). */
+  scheduledReason: LiveFetchReason | null;
   retryPending: boolean;
+  /**
+   * A maintenance obligation is outstanding: not yet dispatched, or
+   * dispatched and not yet succeeded.
+   */
+  genericRequired: boolean;
+  /** The carried hint ticket waiting for a retry / recheck (or null). */
+  carriedHint: number | null;
+  /** Phase of the carried ticket (null when none). */
+  carriedHintPhase: "notification" | "recheck" | null;
   /**
    * Server-directed floor (clock ms) from the last `Retry-After`; null
    * when none was ever set. May lie in the past (an expired floor).
@@ -269,14 +425,56 @@ const defaultClock: SchedulerClock = {
   now: () => Date.now(),
 };
 
+/**
+ * A hint ticket. `phase` "notification" = not checked yet; "recheck" =
+ * checked once, inconclusive, waiting for (or riding on) its recheck,
+ * which is due at `dueAt`.
+ */
+interface HintTicket {
+  hint: number;
+  phase: "notification" | "recheck";
+  dueAt: number;
+}
+
+/**
+ * Merge two tickets into one. The larger hint dominates and keeps its
+ * phase: checking the larger revision checks the smaller one too
+ * (satisfied ⇒ satisfied; a fresh refutation of the larger either
+ * refutes the smaller or raises `serverRev` past it), and an
+ * inconclusive answer for the larger is dropped together with the
+ * smaller after the one recheck. Equal hints keep the earlier phase
+ * (the one with a check still owed).
+ */
+function mergeTickets(a: HintTicket | null, b: HintTicket | null): HintTicket | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  if (a.hint !== b.hint) return a.hint > b.hint ? a : b;
+  return a.phase === "notification" ? a : b;
+}
+
+interface DirtyMark {
+  reason: LiveFetchReason;
+  immediate: boolean;
+}
+
+interface ScheduledEntry {
+  handle: unknown;
+  dueAt: number;
+  reason: LiveFetchReason;
+  isRetry: boolean;
+}
+
 export function createLiveScheduler(
   options: LiveSchedulerOptions,
 ): LiveScheduler {
   const {
     runFetch,
+    captureHint,
+    onHintExhausted,
     jitterMs = NOTIFICATION_JITTER_MS,
     catchupJitterMs = CATCHUP_JITTER_MS,
     cooldownMs = NOTIFICATION_COOLDOWN_MS,
+    recheckDelayMs = RECHECK_MIN_DELAY_MS,
     initialNotBeforeAt = null,
     random = Math.random,
     clock = defaultClock,
@@ -287,33 +485,48 @@ export function createLiveScheduler(
   // (initial, periodic, a non-spread follow-up) use the catch-up bound
   // there, so nothing wakes exactly on the shared floor edge.
   const jitterFor = (reason: LiveFetchReason): number =>
-    reason === "notification" ? jitterMs : catchupJitterMs;
+    reason === "notification" || reason === "recheck" ? jitterMs : catchupJitterMs;
 
   let periodic: PeriodicConfig | null = options.periodic ?? null;
   let disposed = false;
   let started = false;
   let inFlight = false;
-  // Reason that marked us dirty while in flight; null = clean.
-  // "notification" wins over the others, for the same reason a covered
-  // notification upgrades a scheduled request (see `scheduleAt`): the
-  // follow-up should carry the `appliedRev + 1` hint a real push
-  // justifies. Every spread reason waits out the same cooldown, so the
-  // choice changes nothing else; a catch-up's plain `minRev` is only
-  // kept when no push arrived (a mass reconnect must not turn into 500
-  // revision reads for nothing).
-  let dirtyReason: LiveFetchReason | null = null;
-  // The ONE deferred request — a jittered notification, a request held
-  // back by the floor, or the retry after a failure. Keeping the retry
-  // in this slot (instead of a timer of its own) is what makes "an
-  // earlier trigger replaces it, a later one is covered by it" fall out
-  // of `scheduleAt`'s single comparison.
-  let scheduled: { handle: unknown; dueAt: number; reason: LiveFetchReason; isRetry: boolean } | null =
-    null;
+  // Whether the in-flight request took the generic path (a periodic
+  // tick during it is covered).
+  let inFlightGeneric = false;
+
+  // Obligations (header): folded into whichever request dispatches next.
+  let genericRequired = false;
+  // Latest maintenance trigger — the label of a generic request armed by
+  // a non-maintenance trigger.
+  let genericReason: LiveFetchReason = "periodic";
+  // A notification trigger has not dispatched yet. Needed for hint-less
+  // callers (no `captureHint`): their notification still runs.
+  let notificationPending = false;
+  // The ticket waiting for a retry or its recheck.
+  let carried: HintTicket | null = null;
+
+  // Follow-up owed after the in-flight request settles; `immediate`
+  // when any trigger that marked it runs unjittered (initial, periodic,
+  // retry), else it waits for the cooldown edge.
+  let dirty: DirtyMark | null = null;
+  // The ONE deferred request — a jittered trigger, a request held back
+  // by the floor, a recheck, or the retry after a failure. Keeping the
+  // retry in this slot (instead of a timer of its own) is what makes
+  // "an earlier trigger replaces it, a later one is covered by it" fall
+  // out of `scheduleAt`'s single comparison. WHAT the request does is
+  // decided at dispatch (`run`), so replacing or covering an entry never
+  // loses an obligation.
+  let scheduled: ScheduledEntry | null = null;
   let periodicHandle: unknown = null;
-  // Start time of the last spread-trigger request (notification,
-  // catch-up, resume, boundary); the cooldown window is measured from
-  // here.
+  // Start time of the last cooldown-bound request; the cooldown window
+  // is measured from here.
   let lastSpreadStartAt = Number.NEGATIVE_INFINITY;
+  // Start of the last request that carried a hint ticket. Separate from
+  // `lastSpreadStartAt` (which maintenance triggers also advance) so a
+  // catch-up or resume never pushes a due recheck past its own window:
+  // the hint cooldown is a ceiling on HINT-carrying requests only.
+  let lastTicketStartAt = Number.NEGATIVE_INFINITY;
   let notBeforeAt =
     initialNotBeforeAt === null || !Number.isFinite(initialNotBeforeAt)
       ? Number.NEGATIVE_INFINITY
@@ -338,34 +551,23 @@ export function createLiveScheduler(
 
   // Schedule a request at `dueAt` unless one is already scheduled no
   // later than that — the earlier request starts after this trigger
-  // arrived, so its read already covers it.
-  //
-  // A covered NOTIFICATION upgrades the covering request's reason to
-  // "notification": the request then carries the single-use
-  // `appliedRev + 1` hint (see `notificationMinRev`) that a real push
-  // justifies, instead of a catch-up's or retry's plain `minRev`, which
-  // a not-yet-purged cache entry could satisfy with the old snapshot.
+  // arrived, so its read already covers it (and it will pick up this
+  // trigger's obligation at dispatch).
   //
   // `isRetry` records that the request stands in for a failed one (it
-  // is what `retryPending` reports), independently of the reason it
-  // runs with — a retry that covers a push runs as "notification".
+  // is what `retryPending` reports, and a retry takes a carried ticket
+  // along even before its recheck is due).
   const scheduleAt = (dueAt: number, reason: LiveFetchReason, isRetry = false) => {
     if (scheduled && scheduled.dueAt <= dueAt) {
-      if (reason === "notification") scheduled.reason = "notification";
       if (isRetry) scheduled.isRetry = true;
       return;
     }
     clearScheduled();
     const delay = Math.max(0, dueAt - clock.now());
-    const entry: { handle: unknown; dueAt: number; reason: LiveFetchReason; isRetry: boolean } = {
-      handle: null,
-      dueAt,
-      reason,
-      isRetry,
-    };
+    const entry: ScheduledEntry = { handle: null, dueAt, reason, isRetry };
     entry.handle = clock.setTimeout(() => {
       scheduled = null;
-      void run(entry.reason);
+      void run(entry.reason, entry.isRetry);
     }, delay);
     scheduled = entry;
   };
@@ -373,22 +575,114 @@ export function createLiveScheduler(
   // Start now if nothing holds the request back, else defer it.
   const startOrSchedule = (dueAt: number, reason: LiveFetchReason) => {
     if (dueAt <= clock.now()) {
-      void run(reason);
+      void run(reason, false);
       return;
     }
     scheduleAt(dueAt, reason);
   };
 
-  const run = async (reason: LiveFetchReason): Promise<void> => {
+  const armRecheck = (ticket: HintTicket, now: number) => {
+    scheduleAt(applyFloor(ticket.dueAt, now, jitterFor("recheck")), "recheck");
+  };
+
+  const markDirty = (reason: LiveFetchReason) => {
+    const immediate = !isSpreadReason(reason);
+    if (dirty === null) {
+      dirty = { reason, immediate };
+    } else if (immediate && !dirty.immediate) {
+      dirty = { reason, immediate: true };
+    } else if (!dirty.immediate) {
+      dirty = { reason, immediate: false };
+    }
+  };
+
+  const run = async (entryReason: LiveFetchReason, isRetryRun: boolean): Promise<void> => {
     if (disposed) return;
     clearScheduled();
+    const now = clock.now();
+
+    // ── Fold the obligations into this request ──
+    const hadNotification = notificationPending;
+    notificationPending = false;
+    const fresh = captureHint ? captureHint() : null;
+    let ticket: HintTicket | null =
+      fresh === null
+        ? null
+        : { hint: fresh, phase: "notification", dueAt: Number.NEGATIVE_INFINITY };
+    if (carried !== null) {
+      if (ticket !== null && ticket.hint >= carried.hint) {
+        // The new batch covers the carried ticket; a check of the new
+        // one checks the old one too.
+        carried = null;
+      } else if (carried.phase === "notification" || isRetryRun || now >= carried.dueAt) {
+        ticket = mergeTickets(ticket, carried);
+        carried = null;
+      }
+      // else: a recheck-phase ticket not yet due waits for its own
+      // timer (re-armed after this request settles).
+    }
+    const generic = genericRequired;
+
+    // A recheck timer with nothing left to do (its ticket rode along
+    // on an earlier request) does not fetch.
+    if (
+      entryReason === "recheck" &&
+      !isRetryRun &&
+      ticket === null &&
+      !generic &&
+      !hadNotification
+    ) {
+      if (carried !== null) armRecheck(carried, now);
+      return;
+    }
+
+    // No request that carries a hint ticket starts inside the shared
+    // cooldown, whatever path dispatched it: an immediate dirty
+    // follow-up after a settle, a maintenance tick that happened to be
+    // due, a retry armed with a short delay. The cooldown is the
+    // per-client ceiling the contract promises the server (≤ 1
+    // hint-carrying request per second, so a broadcast flood cannot
+    // turn into a fetch flood by riding on uncorrelated triggers).
+    // Put the ticket back and come back at the cooldown edge; a plain
+    // maintenance request without a ticket is not held.
+    if (ticket !== null && now < lastTicketStartAt + cooldownMs) {
+      carried = mergeTickets(carried, ticket);
+      scheduleAt(
+        applyFloor(lastTicketStartAt + cooldownMs, now, jitterMs),
+        entryReason,
+        isRetryRun,
+      );
+      return;
+    }
+
+    genericRequired = false;
+    const label: LiveFetchReason = isRetryRun
+      ? "retry"
+      : isGenericReason(entryReason)
+        ? entryReason
+        : generic
+          ? genericReason
+          : ticket?.phase === "recheck"
+            ? "recheck"
+            : ticket !== null
+              ? "notification"
+              : entryReason;
+    const request: LiveFetchRequest = {
+      reason: label,
+      generic,
+      hint: ticket?.hint ?? null,
+      notify: !generic && ticket !== null && ticket.phase === "notification",
+    };
+
     inFlight = true;
-    dirtyReason = null;
-    if (isSpreadReason(reason)) lastSpreadStartAt = clock.now();
+    inFlightGeneric = generic;
+    dirty = null;
+    if (isSpreadReason(label) || ticket !== null) lastSpreadStartAt = now;
+    if (ticket !== null) lastTicketStartAt = now;
 
     let outcome: LiveFetchOutcome;
     try {
-      outcome = await runFetch(reason);
+      outcome = await runFetch(label, request);
     } catch {
       // `runFetch` is expected to classify its own errors. A throw here
       // is a programming error in the caller; treat it as cancelled
@@ -396,51 +690,88 @@ export function createLiveScheduler(
       outcome = { kind: "cancelled" };
     }
     inFlight = false;
+    inFlightGeneric = false;
     if (disposed) return;
 
-    const followUp = dirtyReason;
-    dirtyReason = null;
+    // (Cast: TypeScript narrows `dirty` to null from the reset before
+    // the await and cannot see `requestFetch` setting it meanwhile.)
+    const followUp = dirty as DirtyMark | null;
+    dirty = null;
+
+    if (outcome.kind === "cancelled") {
+      // The session is ending (or the event changed): the ticket is
+      // dropped with it; an undischarged maintenance obligation stays.
+      if (generic) genericRequired = true;
+      return;
+    }
+
+    const settledAt = clock.now();
+
+    // ── The ticket's fate ──
+    if (ticket !== null) {
+      if (outcome.hint === "inconclusive") {
+        if (ticket.phase === "notification") {
+          const recheck: HintTicket = {
+            hint: ticket.hint,
+            phase: "recheck",
+            dueAt:
+              settledAt +
+              Math.max(recheckDelayMs, nextEligibleAt() - settledAt) +
+              random() * jitterMs,
+          };
+          carried = mergeTickets(carried, recheck);
+        } else {
+          onHintExhausted?.(ticket.hint);
+        }
+      } else if (outcome.hint === undefined && outcome.kind === "failed") {
+        // Never evaluated (HTTP / network / deadline): the retry
+        // carries it.
+        carried = mergeTickets(carried, ticket);
+      }
+      // "resolved", or an ok without a verdict: consumed.
+    }
 
     if (outcome.kind === "failed") {
-      const now = clock.now();
+      // A failed generic request keeps the obligation for its retry.
+      if (generic) genericRequired = true;
       const floorMs = outcome.notBeforeMs;
       if (typeof floorMs === "number" && Number.isFinite(floorMs)) {
-        notBeforeAt = Math.max(notBeforeAt, now + Math.max(0, floorMs));
+        notBeforeAt = Math.max(notBeforeAt, settledAt + Math.max(0, floorMs));
       }
       // The retry is the follow-up: it starts after every trigger that
-      // marked us dirty, and it respects the backoff a struggling
-      // server needs. An earlier-due explicit trigger still replaces
-      // it, but never below the floor.
-      //
-      // A push that arrived while the failed request was in flight is
-      // still a real push: the retry that covers it carries the
-      // "notification" reason, so it sends the single-use
-      // `appliedRev + 1` hint instead of a plain `minRev` that a
-      // not-yet-purged cache entry could satisfy with the old snapshot
-      // — otherwise the edit would wait for the next periodic poll.
-      // Under overload (503s right after a save) this is the common
-      // case, not a corner.
+      // marked us dirty, carries every obligation that is still open
+      // (generic, the ticket, a pending batch), and respects the
+      // backoff a struggling server needs. An earlier-due explicit
+      // trigger still replaces it, but never below the floor.
       scheduleAt(
-        Math.max(now + Math.max(0, outcome.retryInMs), notBeforeAt),
-        followUp === "notification" ? "notification" : "retry",
+        Math.max(settledAt + Math.max(0, outcome.retryInMs), notBeforeAt),
+        "retry",
         true,
       );
       return;
     }
-    if (outcome.kind === "cancelled" || followUp === null) return;
 
-    const now = clock.now();
-    if (isSpreadReason(followUp)) {
+    if (carried !== null) armRecheck(carried, settledAt);
+    if (followUp === null) return;
+
+    if (followUp.immediate) {
+      startOrSchedule(
+        applyFloor(settledAt, settledAt, jitterFor(followUp.reason)),
+        followUp.reason,
+      );
+    } else {
       // No new jitter: this client already sat out one jitter window
       // (or its trigger arrived at a random point of an in-flight
       // request whose settle time is itself random). The cooldown
       // still applies.
       scheduleAt(
-        applyFloor(Math.max(nextEligibleAt(), now), now, jitterFor(followUp)),
-        followUp,
+        applyFloor(
+          Math.max(nextEligibleAt(), settledAt),
+          settledAt,
+          jitterFor(followUp.reason),
+        ),
+        followUp.reason,
       );
-    } else {
-      startOrSchedule(applyFloor(now, now, jitterFor(followUp)), followUp);
     }
   };
 
@@ -448,17 +779,34 @@ export function createLiveScheduler(
     if (disposed) return;
     const now = clock.now();
 
-    if (reason === "periodic") {
-      // `scheduled` includes a pending retry: the backoff holds.
-      if (inFlight || scheduled) return;
-      startOrSchedule(applyFloor(now, now, jitterFor("periodic")), "periodic");
+    if (reason === "recheck") {
+      // Internal reason; an explicit call just (re)arms the recheck of
+      // a carried ticket, if there is one.
+      if (!inFlight && carried !== null) armRecheck(carried, now);
       return;
     }
 
+    if (reason === "periodic" && inFlight && inFlightGeneric) {
+      // The generic request in flight IS this period's repair.
+      return;
+    }
+    if (isGenericReason(reason)) {
+      genericRequired = true;
+      genericReason = reason;
+    } else if (reason === "notification") {
+      notificationPending = true;
+    }
+
     if (inFlight) {
-      if (dirtyReason === null || reason === "notification") {
-        dirtyReason = reason;
-      }
+      markDirty(reason);
+      return;
+    }
+
+    if (reason === "periodic") {
+      // A scheduled request (a pending retry included: the backoff
+      // holds) will take the generic path when it dispatches.
+      if (scheduled) return;
+      startOrSchedule(applyFloor(now, now, jitterFor("periodic")), "periodic");
       return;
     }
 
@@ -474,9 +822,10 @@ export function createLiveScheduler(
       return;
     }
 
-    // Not correlated across viewers (the first seed): start now, which
-    // replaces a later-due scheduled request (including a pending
-    // retry) — it IS that request — unless the floor holds it back.
+    // Not correlated across viewers (the first seed, an explicit
+    // retry): start now, which replaces a later-due scheduled request
+    // (including a pending retry) — it IS that request — unless the
+    // floor holds it back.
     startOrSchedule(applyFloor(now, now, jitterFor(reason)), reason);
   };
 
@@ -521,9 +870,13 @@ export function createLiveScheduler(
     getState() {
       return {
         inFlight,
-        dirty: dirtyReason !== null,
+        dirty: dirty !== null,
         scheduledAt: scheduled?.dueAt ?? null,
+        scheduledReason: scheduled?.reason ?? null,
         retryPending: scheduled?.isRetry === true,
+        genericRequired: genericRequired || (inFlight && inFlightGeneric),
+        carriedHint: carried?.hint ?? null,
+        carriedHintPhase: carried?.phase ?? null,
         notBeforeAt: Number.isFinite(notBeforeAt) ? notBeforeAt : null,
         disposed,
       };

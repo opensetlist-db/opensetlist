@@ -13,12 +13,12 @@ the wiki page `output/task-n12-capacity-experiment`.
 | `edit-burst.js` | 500 then 2,000 snapshot requests, each spread over 5 s (Realtime Path B refetch after one save) | inside hold, or standalone |
 | `admin-writes.js` | 1 operator, 4 cycles × 6 timed saves (create, update, insert-after, swap, delete ×2), each checked in the next snapshot | inside hold, or standalone |
 | `ssr-mix.js` | `GET /ja/events/<id>/<slug>` alone, to size the page path | standalone |
-| `viewers.js` | n14 run #2 **500-viewer model** on the R1 live path: cold-cache start, 25 rps periodic poll (`?minRev`) + 10 % SSR, admin cycles with a 500-request notification burst (`?minRev=appliedRev+1`, U(0, 500 ms) jitter, 20 % old-build tabs ×2) after every save, a 500-tap reaction POST/DELETE burst. Per-burst `x-snapshot-source` counts, PASS/FAIL per gate | n14 run #2 |
+| `viewers.js` | n14 run #2 **500-viewer model** on the R1 live path: cold-cache start, 25 rps periodic poll (`?minRev`) + 10 % SSR, admin cycles with a 500-request notification burst (`?minRev=appliedRev+1`, U(0, 500 ms) jitter, 20 % old-build tabs ×2) after every save, a 500-tap reaction POST/DELETE burst. Per-burst `x-snapshot-source` counts, PASS/FAIL per gate. `HINT_MODE=r2`: the R2 notification (`?minRev=<saved rev>&hint=1`, `x-snapshot-verify` outcomes, one recheck on an inconclusive answer) | n14 run #2, R2 baseline |
 | `viewers-check.mjs` | Node, dev DB only: after a `viewers.js` run, lists leftover `n14run2-` reactions (`--delete` removes exactly those) and live rows carrying its note | after `viewers.js` |
 | `pg-connections.mjs` | Node side-car: samples `pg_stat_activity` every 5 s into a CSV | second terminal during runs |
 | `pooler-clients.mjs` | Node side-car, dev only: every 2 s one CSV row with the Supabase metrics endpoint's pooler gauges (needs a service-role key), `pg_stat_activity` backends by state / `application_name`, and a transaction-pooler connect probe that records `EMAXCONN`. Stops on the STOP file | detached, n14 run #2b |
 | `vercel-logs-capture.mjs` | `vercel logs --follow` of the dev alias into one text file, restarted in overlapping segments (the CLI stops after ~5 min). Stops on the STOP file | detached, n14 run #2b |
-| `vercel-logs-summary.mjs` | turns a log capture into markdown: builds per `rev` with distinct instances, build failures / repair reads / coalescing, `EMAXCONN` API vs SSR, admin write timings, instances per minute, Σ per-instance pool size per 5 s. `node --test tests/load/vercel-logs-summary.test.mjs` pins it to the run #2 capture | after a run |
+| `vercel-logs-summary.mjs` | turns a log capture into markdown: builds per `rev` with distinct instances, build failures / repair reads / coalescing, `EMAXCONN` API vs SSR, admin write timings, instances per minute, Σ per-instance pool size per 5 s, hint outcomes (`[setlist] hint-fetch … verify=`) per kind and minute, repair reads split by `hint=`. `node --test tests/load/vercel-logs-summary.test.mjs` pins it to the run #2 capture | after a run |
 | `run.sh` | wrapper: creates `results/<UTC date>/`, passes the common env vars | every run |
 
 ## Before the first run
@@ -176,6 +176,7 @@ browser; a raw snapshot is ~47 KB), `BODY_SAMPLE_RATE`, and:
 | Knob | Default | Meaning |
 |---|---|---|
 | `BURST_GAP_S` | unset | unset: cycle k starts at `ADMIN_FIRST + k·ADMIN_SPACING`. Set: cycle 1 at `ADMIN_FIRST`, every later cycle `BURST_GAP_S` seconds after the previous one **ended** — repeated bursts that land on still-warm instances |
+| `HINT_MODE` | `r1` | `r1`: the new-build tabs send `?minRev=<appliedRev + 1>` (the R1 page). `r2`: they send `?minRev=<rev from the save response>&hint=1` (the R2 broadcast carries the exact rev); a 200 that is inconclusive (`x-snapshot-verify` memo / deferred / missing-or-malformed) AND below that rev gets ONE recheck 1,000 ms + U(0, 500 ms) later, same `minRev`, no `hint`. Old-build tabs are the same in both. Either mode counts the header per burst (column `verify none / satisfied / fresh / memo / deferred / missing`) and prints a run-level **hint outcomes** line (+ rechecks: count, share of notification fetches, outcome split, "hint exhausted" = recheck still inconclusive below the rev) and `fresh refutations of a committed save` — a `fresh=<dbRev>` below a rev that was already committed when the request started, a server provenance bug, must be 0. Rechecks count in the whole-run gates and the burst abort's error rate, not in the burst latency |
 | `DRAIN_S` | 90 | quiet tail with **no requests** from any scenario, while the test keeps running so the side-car samplers see the pools drain. It starts when the last admin cycle, the steady window (`STEADY_START + STEADY_SECONDS`) and the reaction window are all over — k6 VUs share no state, so the steady streams cannot be stopped early from the admin VU. Size `STEADY_SECONDS` to the cycles if the drain should follow the last burst directly. The report prints the actual cycle starts, the last cycle's end and the drain start. `0` = no drain. No drain after an abort (the run ends at once) |
 
 The smoke used:
@@ -278,6 +279,124 @@ pool size, held for `--carry=5` s — the pool's idle timeout) and the
 probe's `EMAXCONN` count from the CSV (the metrics columns do not see
 Supavisor — see above); builds per save = the log summary's builds per
 `rev`, not the k6 header split.
+
+## n14 R2 baseline run (R2-A + B1, no warming)
+
+R2 switches the live page from `postgres_changes` to the transactional
+`rev` broadcast and adds the hint contract (the page sends the broadcast's
+exact rev as `minRev` with `hint=1`; the server answers
+`x-snapshot-verify`; an inconclusive answer earns one quiet recheck). This
+baseline is the **warmer-off control**: the R2 build on the dev preview
+(jitter 500 ms; record the dev Supabase compute size in the report — the
+release plan is Small), nothing else new, so a later warming
+run has something to be compared with. Same event, env and preflight as
+run #2b-1 (event 111 at 23 rows, positions 1..23, `ongoing`). Two separate
+measurements, **never at the same time** (see (b)).
+
+**(a) k6 — 500-request hinted bursts.** Side-cars exactly as in run #2b-1
+(`pooler-clients.mjs` + `vercel-logs-capture.mjs` via `Start-Process`, ~30 s
+of baseline first), then, in Git Bash:
+
+```bash
+tests/load/run.sh viewers.js -e HINT_MODE=r2 -e BURST_SIZE=500 -e JITTER_MS=500 \
+  -e BURST_GAP_S=8 -e ADMIN_CYCLES=4 -e DRAIN_S=90
+```
+
+Afterwards: STOP file, **history-mode re-fetch** of the run window (as in
+run #2b-1 — the `--follow` file is not the record) and
+`vercel-logs-summary.mjs` on it; `viewers-check.mjs`; `restore.mjs --compact
+--yes`. Read: the per-burst `verify` column and the run-level **hint
+outcomes** line (expect `satisfied` to dominate, `fresh refutations of a
+committed save` = 0, rechecks a small share, `missing` = 0 — a `missing` on
+the R2 build means the header is not being sent); the log summary's
+"Hint outcomes" table (server side of the same requests) and `rev-read` by
+`hint=` (how many 1-row reads the notification fetches cost); builds per
+`rev` against run #2b-1's 199–290 per warm save on 38–73 instances — R2-A
+moves the transport, not the storm, so a similar number is the expected
+control value. Old-build tabs (20 %) still model R1 tabs open across the
+deploy.
+
+**(b) Browsers — 30 pages + 470 SDK clients on the R2 client, alone.** The
+SDK clients run the R2 client logic (broadcast-driven notification
+fetches, the page's own acceptance / scheduler / verify parser); the pages
+run whatever the preview serves. Nothing waits for `postgres_changes`
+registration any more (`--wait-pg-ready` is off by default; an R2 client
+registers none). Same side-cars + history re-fetch, so builds per save can
+be counted for this run too:
+
+```bash
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=r2-baseline
+```
+
+**Do not start a k6 burst during it** — that was the run #2 recipe and is
+now the 1,000-client trap: under R2 every one of these 500 clients fetches
+on the broadcast by itself, so the browsers run IS the 500-viewer burst; a
+concurrent `viewers.js` would add another 500 notification fetches per save
+(and its own saves on the same event) and measure an audience twice the
+one being sized. The report has one per-save table for pages and one for
+SDK clients: save → DOM / save → applied rev p50/p95/max, missing, the
+broadcast arrival, the save's notification fetches and their
+`x-snapshot-verify` kinds, and (SDK) ticket resolutions, rechecks and
+exhausted hints; plus a whole-run "Hint outcomes" section.
+
+**(c) Drills** (one per run, after the baseline; commands and gates in
+`browsers/README.md`):
+
+- **Hint poisoning** (`--drill=poison`): a guest anon client sends one
+  forged `{ kind: "setlist", rev: 9007199254740991 }` on the public
+  channel, then the honest saves run. Gated: ≤ 1 recheck of the forged hint
+  per SDK client, no client's `serverRev` (read from its acceptance state)
+  ever ≥ the forged rev, the forgery received; honest saves under the
+  primary gate.
+- **Paired spam** (`--drill=spam`): the guest sends 2 msgs/s for 60 s
+  during real saves. Gated: per SDK client, notification + recheck starts
+  ≥ 1 s apart (the shared cooldown) and 0 HTTP / network / deadline
+  failures in the window; per-client request rates reported.
+- **Verification ambiguity** (`--drill=verify-ambiguity`): right before the
+  drilled PUT a helper sends `/api/setlist?…&minRev=<rev + 1000>` on all 3
+  locales (`--prime-per-locale`, default 1) so the instances that serve
+  them memoise the pre-save revision for 1 s, then the save follows 150 ms
+  later. Reports the memo share among the save's notification fetches and
+  whether each memo answer was resolved by the one recheck (the gate);
+  n/a when no memo was seen — which instance serves what is Vercel's
+  choice, so raise `--prime-per-locale` for a wider net.
+- **Lost final / silent loss / reconnect / double save**: on the
+  broadcast path. The SDK workers drop valid payloads before `noteHint`;
+  the pages lose the notification through the websocket proxy (every `rev`
+  broadcast frame, and postgres_changes on an R1 build) or, with
+  `--drop-via=hook`, through the page's own `__osl.dropNextNotification`.
+  Gates unchanged.
+- **R2 tabs during a real R1 rollback** (manual): start the browsers run
+  with a long window (`--edits=8 --pause=40`), redeploy the last R1 build to
+  the dev preview mid-run, keep editing, then redeploy R2. Expect no
+  `x-snapshot-verify` (missing) → body satisfied or one recheck, 0 missing,
+  0 failures; the redeploy itself is a cold start, judge it apart.
+- **Sustained spam + real saves + background traffic** (k6 + `--drill=spam`
+  long): `--drill=spam --spam-secs=300 --edits=12`, and from Git Bash a
+  background-only `viewers.js` with **no saves and no bursts** — `-e
+  ADMIN_CYCLES=0 -e QUIET_CYCLES=0 -e COLD_START=0 -e POLL_RPS=1 -e
+  SSR_RPS=2.5 -e REACTIONS=500 -e REACTION_AT=60 -e STEADY_SECONDS=300 -e
+  DRAIN_S=0`, with `EXPECTED_ROWS` unset (the browsers run adds a row per
+  edit). The SDK clients already produce the periodic polls, so k6 adds
+  only the page loads and reactions; its admin/burst gates read n/a or
+  FAIL in this mode by construction.
+
+**Harness smoke (2026-10-11, 2 pages + 5 SDK, event 111, dev preview still
+on R1 server and R1 page build).** Every run: primary gate PASS, 0 missing,
+0 monotonicity regressions. Without the `x-snapshot-verify` header every
+answer is `missing`; the R1 server's repair path served the saved rev, so
+the honest saves' notification fetches were satisfied without a recheck.
+
+| Run | Result |
+|---|---|
+| no drill (2 edits) | pairs p95 1,579 ms; SDK: 26 hinted fetches, all `missing` + satisfied, 0 rechecks; pages (R1 build) received the `rev` broadcast 4/4 at p50 456 ms vs postgres_changes 569 ms |
+| `poison` | PASS: 5/5 SDK received the forgery; per client 1 notification fetch + 1 recheck (both inconclusive) → exhausted; 0 clients with serverRev ≥ forged (max held 453) |
+| `spam` (`--spam-secs=20`) | PASS: 40 msgs, all acked `ok`; per client ≤ 0.98 hinted requests/s, smallest gap 1,000 ms; 0 failures; 104 hinted fetches, 1 recheck (new spam hints keep superseding the carried ticket) |
+| `verify-ambiguity` | n/a (by design on R1): 3 priming requests, 5 hinted fetches all `missing` + satisfied; memo needs the R2 server |
+| `lost-final` | PASS: drilled max 21.5 s (gate 26 s); SDK delivered by `periodic` 5/5; proxy dropped 7 frames per page |
+| `silent-loss --drop-via=hook` | PASS: 1 page, hook armed and consumed (0 left), repaired by the periodic poll at 15.5 s |
+| `double-save` | PASS: pages 2/2, SDK 5/5 converged to the final save (rev 480), p95 1,320 ms |
+| `reconnect` | PASS: rejoin p95 pages 1.2 s / SDK 1.24 s, 0 re-creations, 0 handoff regressions |
 
 ## Reading the result
 

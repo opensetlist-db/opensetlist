@@ -2,13 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getLiveSnapshot,
   logSnapshotFailure,
+  parseHint,
   parseMinRev,
   resolveSnapshotForResponse,
 } from "@/lib/liveSnapshot";
 import { INSTANCE_ID } from "@/lib/instanceId";
+import {
+  formatSnapshotVerify,
+  SNAPSHOT_VERIFY_HEADER,
+} from "@/lib/snapshotVerify";
 import { locales, defaultLocale, type Locale } from "@/i18n/routing";
 
 const SLOW_HIT_MS = 500;
+
+/**
+ * `[setlist] hint-fetch …` — exactly one line per request that carried
+ * `?hint=1`, so the load harness can count hint outcomes (satisfied /
+ * fresh / memo / deferred) per save from the Vercel logs. `verify` is
+ * the `x-snapshot-verify` kind (without its `=…` detail), or `error`
+ * for a 503 — that response carries no header, but the request still
+ * happened and must be counted. `minRev=none` when absent/invalid.
+ */
+function logHintFetch(
+  eventId: bigint,
+  locale: Locale,
+  minRev: number | null,
+  verify: string,
+): void {
+  console.log(
+    `[setlist] hint-fetch event=${eventId} locale=${locale} ` +
+      `minRev=${minRev ?? "none"} verify=${verify} instance=${INSTANCE_ID}`,
+  );
+}
 
 /**
  * 503 for a snapshot that could not be built (pool / pooler exhausted,
@@ -45,7 +70,7 @@ function snapshotUnavailable(): NextResponse {
 }
 
 /**
- * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>]
+ * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>][&hint=1]
  *
  * The live event page's snapshot: setlist items, reaction counts, the
  * wish TOP-3 and the event status, all from ONE consistent database
@@ -78,6 +103,17 @@ function snapshotUnavailable(): NextResponse {
  * data cache behind this route does the deduplication.
  * `x-snapshot-source: build | cache | repair | error` is diagnostics
  * only.
+ *
+ * `x-snapshot-verify: none | satisfied | fresh=<dbRev> |
+ * memo=<rev>;age=<ms> | deferred` (200 only) tells the client how its
+ * `minRev` was resolved — see `src/lib/snapshotVerify.ts` for the
+ * grammar and what each value proves.
+ *
+ * `?hint=1` marks a notification fetch (sent because a broadcast hint
+ * arrived). It is accepted and logged (`[setlist] hint-fetch`, and
+ * `hint=` on the revision-read line) and changes nothing else, so old
+ * clients that never send it and new clients against an older server
+ * both keep working.
  */
 export async function GET(req: NextRequest) {
   const started = Date.now();
@@ -106,14 +142,16 @@ export async function GET(req: NextRequest) {
   }
 
   const minRev = parseMinRev(url.searchParams.get("minRev"));
+  const hint = parseHint(url.searchParams.get("hint"));
   let result: Awaited<ReturnType<typeof getLiveSnapshot>>;
   try {
-    result = await getLiveSnapshot(eventId, locale, minRev);
+    result = await getLiveSnapshot(eventId, locale, minRev, { hint });
   } catch (err) {
     logSnapshotFailure(eventId, locale, Date.now() - started, err);
+    if (hint) logHintFetch(eventId, locale, minRev, "error");
     return snapshotUnavailable();
   }
-  const { snapshot, source } = result;
+  const { snapshot, source, verify } = result;
   const resolved = resolveSnapshotForResponse(snapshot);
   const servedAt = new Date().toISOString();
 
@@ -134,6 +172,7 @@ export async function GET(req: NextRequest) {
         `instance=${INSTANCE_ID}`,
     );
   }
+  if (hint) logHintFetch(eventId, locale, minRev, verify.kind);
 
   return NextResponse.json(
     {
@@ -151,6 +190,22 @@ export async function GET(req: NextRequest) {
       headers: {
         "Cache-Control": "public, max-age=0, must-revalidate",
         "x-snapshot-source": source,
+        // Verification is a HEADER, never a body field, on purpose. The
+        // body is the shared snapshot: one data-cache entry per
+        // (event, locale), built once and handed to every request on
+        // every instance (and, if CDN caching is ever enabled for this
+        // route, potentially to other viewers too). The verification
+        // result is not a property of that snapshot — it depends on
+        // this request's `minRev`, on whether this request started or
+        // merely joined the revision read, and on the instance's memo
+        // at this moment. Stored in the body it would leak one
+        // request's evidence (e.g. `fresh=…`) into another request's
+        // answer, where it would be false. `Cache-Control` is left
+        // unchanged: nothing reuses responses today, and the URL
+        // carries `minRev`, so a future CDN experiment must revisit this
+        // header (a cached `fresh` would turn into stale evidence)
+        // before turning reuse on.
+        [SNAPSHOT_VERIFY_HEADER]: formatSnapshotVerify(verify),
       },
     },
   );

@@ -29,6 +29,8 @@ import {
   type LiveFetchReason,
   type PeriodicConfig,
 } from "@/lib/liveScheduler";
+import { isValidRev } from "@/lib/snapshotAcceptance";
+import { LIVE_BROADCAST_EVENT, liveTopic } from "@/lib/liveBroadcast";
 
 export type { ReactionCountsMap };
 
@@ -167,40 +169,68 @@ interface UseRealtimeEventChannelResult<T> {
  * Realtime-push variant of `useSetlistPolling`. Same API, same return
  * shape (`LiveEventLayout` calls this one).
  *
- * Channel: `event:{eventId}` carries SetlistItem changes only. Every
- * slice the page shows — items, reaction counts, wish TOP-3, status —
- * comes from the `/api/setlist` snapshot; a push is just a NOTIFICATION
- * that a new snapshot exists.
+ * Channel: `event:{eventId}` (public) carries ONE thing — the `rev`
+ * broadcast every setlist-affecting save sends inside its transaction
+ * (`src/lib/liveBroadcast.ts`). Every slice the page shows — items,
+ * reaction counts, wish TOP-3, status — comes from the `/api/setlist`
+ * snapshot; a broadcast is just a NOTIFICATION that a newer snapshot
+ * exists, with the revision it claims.
  *
- * n14 (R1) — why the per-row Realtime paths are gone: postgres_changes
- * does not scale past ~100 subscribers on our project (DB-side
- * subscription registration runs at ~3–9/s; a SetlistItem INSERT
- * reached 0/300 subscribers in the n12 probe). The SetlistItemReaction
- * diff-merge (Path A) and the SongWish refetch therefore stopped
- * carrying their weight and only added registrations; reaction counts
- * and wishes now arrive with the snapshot (the periodic repair poll
- * below keeps them ≤ ~24 s fresh), and the tapping viewer's own count
- * is held by `<ReactionButtons>`' ack watermark. EventImpression no
- * longer uses Realtime either (`useImpressionPolling` only).
+ * n14 R2 — why broadcast and not postgres_changes: postgres_changes
+ * needs a DB-side subscription registration per client, which ran at
+ * ~3–9/s on our project (a 150-client audience took 68–73 s at p95 to
+ * register, and n12 saw a SetlistItem INSERT reach 0/300 subscribers);
+ * it also delivered the change later (p50 1.1–1.2 s vs 0.55 s for the
+ * broadcast on the same sockets) and carried no revision. The broadcast
+ * is sent with `realtime.send` inside the writer's transaction, so it
+ * exists only for committed saves and arrives once per save with the
+ * new `rev`. The per-row paths (SetlistItemReaction diff-merge,
+ * SongWish refetch, EventImpression) were already gone in R1: reaction
+ * counts and wishes arrive with the snapshot (the periodic repair poll
+ * keeps them ≤ ~24 s fresh), the tapping viewer's own count is held by
+ * `<ReactionButtons>`' ack watermark, and impressions poll on their own.
  *
- *   - SetlistItem → notification. The handler scope-checks the row's
- *     eventId and asks the shared scheduler (`src/lib/liveScheduler.ts`)
- *     for a fetch: jittered U(0, 500 ms), at most one per second per
- *     client, single-flight with one dirty follow-up. R2 replaces this
- *     source with the transactional `rev` broadcast; the scheduler and
- *     acceptance rule stay.
+ *   - Why every hint is CHECK-ONCE: the channel is public (private
+ *     channels failed the admission probe — one DB transaction per
+ *     join), so anyone with the anon key can publish to the topic. A
+ *     payload is accepted only as `{ kind: "setlist", rev: <non-negative
+ *     safe integer> }`, and even then it is a claim, not a fact: it goes
+ *     into a transient batch (`noteHint`), the next dispatched request
+ *     carries it as `minRev = max(serverRev, H)` (plus `hint=1` on a
+ *     notification fetch), and the server's answer — body `rev` plus the
+ *     `x-snapshot-verify` header — satisfies, disproves or leaves it
+ *     inconclusive. An inconclusive hint gets ONE quiet recheck, then is
+ *     dropped (`hint exhausted` breadcrumb); it never enters the durable
+ *     watermark, never counts as a failure, never shows "delayed". A
+ *     forged `rev: 2^53 − 1` therefore costs each viewer at most two
+ *     cheap requests (see `src/lib/snapshotAcceptance.ts` and
+ *     `src/lib/liveScheduler.ts`). A revision the page already has
+ *     (`rev ≤` the server-observed watermark — the echo of a save this
+ *     page already fetched) does no work at all.
+ *
+ *   - Why one channel owner: this hook is the only subscriber of the
+ *     topic on the page, and the only owner of its lifecycle (the
+ *     recovery state machine below). Two owners would mean two joins per
+ *     viewer on a public topic whose join storm was the measured risk,
+ *     and two schedulers that could each think the other covered a
+ *     notification.
+ *
+ *   - Notification fetches are scheduled by the shared scheduler:
+ *     jittered U(0, 500 ms), at most one per second per client (rechecks
+ *     included), single-flight with one dirty follow-up. A maintenance
+ *     request (seed, catch-up, resume, boundary, periodic) always takes
+ *     the generic path; a pending hint rides along on it.
  *
  *   - Periodic repair poll every 20 s ± 4 s while the tab is visible
  *     (the channel effect — and with it the scheduler — is torn down
- *     while hidden). Before n14 the hook never fetched while "healthy",
- *     so a viewer whose subscription silently never registered sat on
- *     SSR data indefinitely.
+ *     while hidden). It covers a lost broadcast and refreshes the slices
+ *     that have no push of their own.
  *
  *   - Acceptance (`src/lib/snapshotAcceptance.ts`): a response is shown
  *     only if its `(rev, capturedAt)` is not older than what is on
- *     screen; every request sends `?minRev=` with the highest revision
- *     the server has shown us, so the server's repair path can rebuild a
- *     stale cache entry.
+ *     screen; every maintenance request sends `?minRev=` with the
+ *     highest revision the server has shown us, so the server's repair
+ *     path can rebuild a stale cache entry.
  *
  * ONE data source. Every request this hook makes — seed, notification,
  * catch-up, healthy repair poll, polling while disconnected, retry —
@@ -381,6 +411,20 @@ export function useRealtimeEventChannel<T>({
     });
     const scheduler = createLiveScheduler({
       runFetch: runner.runFetch,
+      // The broadcast batch is drained into whichever request dispatches
+      // next (see the hint contract in the JSDoc above).
+      captureHint: runner.captureHint,
+      onHintExhausted: (hint) => {
+        // One breadcrumb per dropped hint. Not a captureMessage: a forged
+        // hint is expected traffic on a public channel, and an honest one
+        // that ends here is still repaired by the periodic poll.
+        Sentry.addBreadcrumb({
+          category: "realtime",
+          message: `event:${eventId} hint exhausted (rev ${hint}): recheck inconclusive, left to the periodic repair`,
+          level: "info",
+          data: { eventId, hint },
+        });
+      },
       periodic: HEALTHY_CADENCE,
       // A Retry-After window opened by the previous session (e.g. a
       // tab re-shown inside it) still holds for this one.
@@ -438,60 +482,33 @@ export function useRealtimeEventChannel<T>({
     };
     scheduleNextStatusBoundary();
 
-    const currentEventIdStr = String(eventId);
-
-    // ──── Notification scope-check ────
+    // ──── Broadcast handler ────
     //
-    // The SetlistItem subscription (the R1 notification source) carries
-    // NO server-side `filter: eventId=eq.X`
-    // — the filter was dropped 2026-05-16 to sidestep Supabase Realtime's
-    // stale filter-validation cache (see the subscription block below
-    // and prisma/post-deploy.sql). Without a server-side filter, a write
-    // to ANY event's SetlistItem row is delivered to EVERY
-    // subscriber of EVERY `event:{id}` channel. The original handlers
-    // refetched unconditionally, on the (then-reasonable) assumption that
-    // cross-event pushes were "a few wasted refetches per minute."
-    //
-    // That assumption broke once the catalog grew to many concurrently-
-    // active events (multi-IP onboarding): bulk-importing or editing one
-    // IP's setlist rows fans a full /api/setlist refetch out to every
-    // live viewer of every OTHER event. Post-F24 each refetch is ~83 KB
-    // on the (uncompressed) Supabase pooler wire, and that pooler hop is
-    // ~99.9% of our Free-tier egress — so the cross-event fan-out, not
-    // the per-call size, is what holds egress flat on live days when
-    // other events are being edited.
-    //
-    // The fix is a client-side scope-check (NOT a server-side filter, so
-    // it's immune to the validator-cache bug): compare the pushed row's
-    // eventId — present on INSERT/UPDATE via `payload.new` and on DELETE
-    // via `payload.old`, both populated because SetlistItem is REPLICA
-    // IDENTITY FULL (prisma/post-deploy.sql) — against this page's
-    // eventId, and only notify the scheduler on a match. If eventId is
-    // absent (REPLICA IDENTITY
-    // misconfigured or an unexpected payload shape) we fall through and
-    // refetch — correctness over efficiency.
-    const scopedRefetch = (payload: {
-      new?: { eventId?: number | string | bigint | null } | null;
-      old?: { eventId?: number | string | bigint | null } | null;
-    }) => {
-      const pushedEventId = payload.new?.eventId ?? payload.old?.eventId;
-      if (
-        pushedEventId != null &&
-        String(pushedEventId) !== currentEventIdStr
-      ) {
-        return;
-      }
+    // The topic is per event, so there is no cross-event fan-out to
+    // filter (the R1 postgres_changes subscription had no server-side
+    // filter and had to scope-check every row client-side). What is left
+    // is validation: the topic is public, so the payload is untrusted.
+    const handleRevBroadcast = (message: unknown) => {
+      const payload = (message as { payload?: unknown } | null)?.payload;
+      if (payload === null || typeof payload !== "object") return;
+      const { kind, rev } = payload as { kind?: unknown; rev?: unknown };
+      if (kind !== "setlist" || !isValidRev(rev)) return;
+      // Silent-loss drill: drop a valid notification before it reaches
+      // the batch, so the periodic repair must converge on its own.
       if (consumeDroppedNotification()) {
         Sentry.addBreadcrumb({
           category: "realtime",
           message: `event:${eventId} notification dropped (__osl.dropNextNotification drill)`,
           level: "info",
-          data: { eventId },
+          data: { eventId, rev },
         });
         return;
       }
-      // A notification only marks the snapshot stale; the scheduler
-      // decides when to fetch (jitter, cooldown, single-flight).
+      // Already shown (or not news): no notification work.
+      if (!runner.noteHint(rev)) return;
+      // The hint only marks the snapshot stale; the scheduler decides
+      // when to fetch (jitter, cooldown, single-flight) and what the
+      // request carries.
       scheduler.requestFetch("notification");
     };
 
@@ -530,39 +547,15 @@ export function useRealtimeEventChannel<T>({
       const seq = ++channelSeq;
       try {
         channel = supabase
-          .channel(`event:${eventId}`)
-          // SetlistItem — notification (scheduler fetches the snapshot).
-          //
-          // No eventId filter despite the channel being per-event. Why:
-          // Supabase Realtime's filter-validation function (`realtime
-          // .check_filters`) maintains a per-table column-filterability
-          // cache that's seeded when a table joins the supabase_realtime
-          // publication and is NOT refreshed by subsequent
-          // `ALTER TABLE ... REPLICA IDENTITY FULL` or project restarts.
-          // On prod we hit the stale-cache case for SongWish (incident
-          // 2026-05-16, [[wiki/log.md#[2026-05-16] incident | SongWish
-          // realtime filter rejected on prod]]) and pre-emptively dropped
-          // the SetlistItem filter too — same refetch-on-push pattern,
-          // same risk surface. The server-side filter is replaced by the
-          // client-side `scopedRefetch` guard (see its comment above):
-          // the handler reads the pushed row's eventId from the WAL
-          // payload we already receive and refetches only on a match, so
-          // cross-event pushes cost an O(1) check instead of a wasted
-          // ~83 KB refetch. Client-side scoping (perf optimization) <
-          // server-side filter risk (subscription rejected by the stale
-          // validator cache).
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "SetlistItem",
-            },
-            (payload) => {
-              if (disposed || seq !== channelSeq) return;
-              scopedRefetch(payload);
-            },
-          )
+          .channel(liveTopic(eventId))
+          // The save's `rev` broadcast — the only subscription. A
+          // broadcast join needs no DB-side registration, so SUBSCRIBED
+          // means delivery is live (unlike postgres_changes, whose
+          // registration lagged the join by tens of seconds under load).
+          .on("broadcast", { event: LIVE_BROADCAST_EVENT }, (message) => {
+            if (disposed || seq !== channelSeq) return;
+            handleRevBroadcast(message);
+          })
           .subscribe((channelStatus) => onStatus(seq, channelStatus));
       } catch (error) {
         // realtime-js returns an existing channel for a topic that is
@@ -714,9 +707,8 @@ export function useRealtimeEventChannel<T>({
         //
         // Jittered + cooled down by the scheduler: realtime-js rejoins a
         // whole audience on the same fixed schedule after a server-side
-        // drop. SUBSCRIBED does not prove postgres_changes delivery
-        // (registration lags join by tens of seconds under load — n12);
-        // the periodic repair poll covers that window.
+        // drop. A catch-up is a GENERIC request (`minRev = serverRev`):
+        // it must discover the head whatever the lost broadcasts said.
         scheduler.requestFetch("catchup");
         return;
       }

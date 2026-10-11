@@ -1,15 +1,15 @@
-# Real browsers + SDK subscribers (task n14, run #2)
+# Real browsers + SDK subscribers (task n14)
 
 Measures what a viewer of the live event page actually experiences when
 the operator edits the setlist: **save → the new row on screen**, for
 real Chromium pages and for a large population of supabase-js clients
-that behave like the R1 page. Dev only (same guard as `../realtime/`).
+that behave like the **R2** page. Dev only (same guard as `../realtime/`).
 
 | File | Role |
 |---|---|
 | `run.mjs` | Orchestrator: populations, edits, drills, measurement, report. |
-| `pages.mjs` | Headless Chromium pages (one browser context each) on `/<locale>/events/111/...`, ja/ko/en 70/20/10. A MutationObserver (init script) reports, with the page's own clock, when each song link `a[href*="/songs/<id>/"]` appears. Websocket frames and `/api/setlist` responses are recorded from CDP for diagnosis; drills use `page.routeWebSocket` on the Realtime endpoint. |
-| `subs-worker.mjs` | Worker thread holding a slice of the SDK population. Each client imports the page's **real** `liveScheduler.ts`, `snapshotAcceptance.ts`, `snapshotFreshness.ts` and `realtimeRecovery.ts` from `src/lib` (Node type stripping) and subscribes like `useRealtimeEventChannel`: `postgres_changes` on `SetlistItem` (no server filter, client-side scope check) → jittered U(0, 500 ms) fetch with `minRev = appliedRev + 1`, ≥ 1 s cooldown, single-flight + dirty follow-up; 20 s ± 4 s repair poll; jittered catch-up on every SUBSCRIBED; `Retry-After` floor; the hook's channel recovery — on CHANNEL_ERROR / TIMED_OUT / CLOSED keep the channel (realtime-js rejoins it), poll at 5 s ± 1 s, re-create only after `REJOIN_GRACE_MS` (60 s) + randomized backoff, max 3 per budget, budget refunded after 5 min healthy. Each client also listens for the server's `rev` broadcast on the same channel and records its arrival (R2 transport, unused by R1 pages). |
+| `pages.mjs` | Headless Chromium pages (one browser context each) on `/<locale>/events/111/...`, ja/ko/en 70/20/10, running whatever build the preview serves (R1 or R2). A MutationObserver (init script) reports, with the page's own clock, when each song link `a[href*="/songs/<id>/"]` appears. Websocket frames (the `rev` broadcast — JSON or the 2.0.0 binary user-broadcast frame — and, on an R1 build, postgres_changes) and `/api/setlist` responses (`minRev`, `hint=1`, `x-snapshot-verify`, body rev) are recorded from CDP; drills use `page.routeWebSocket` on the Realtime endpoint, or the page's own `__osl.dropNextNotification` hook. |
+| `subs-worker.mjs` | Worker thread holding a slice of the SDK population. Each client imports the page's **real** `snapshotAcceptance.ts`, `liveScheduler.ts`, `snapshotVerify.ts`, `snapshotFreshness.ts`, `realtimeRecovery.ts` and `liveBroadcast.ts` from `src/lib` (Node type stripping) and mirrors `useRealtimeEventChannel` + `useLiveSnapshot`: ONE subscription, the `rev` broadcast; the handler validates `{ kind: "setlist", rev }`, `noteHint(rev)` → `requestFetch("notification")`; the scheduler drains the batch at dispatch (`captureHint`) and describes each request (`{reason, generic, hint, notify}`); the URL is `minRev = max(serverRev, H)` (or `serverRev`) with `&hint=1` iff `notify`; `x-snapshot-verify` parsed by the page's parser; `evaluate(gen, body, verify, hint)` → resolved / inconclusive (one recheck, then exhausted); 8 s deadline, n13 retry schedule, `Retry-After` floor; the hook's channel recovery (keep the channel on CHANNEL_ERROR / TIMED_OUT / CLOSED, 5 s ± 1 s polling, re-create only after 60 s + randomized backoff, max 3 per budget). Per client it records every broadcast and what the handler did with it, every request (descriptor, minRev, status, verify kind, body rev, hint resolution), exhausted tickets and the highest `serverRev` ever held. |
 | `admin.mjs` | Admin driver: login, insert-after, PUT, soft-delete, marker-song picking, optional position restore. |
 | `restore.mjs` | Recovery for a hard-killed run: list active rows, soft-delete given ids, optionally compact positions (`--compact --yes`, see below). |
 
@@ -26,9 +26,13 @@ Both saves return the new `rev`.
 (SDK) first applied snapshot with `rev ≥` the PUT's rev. Not seen within
 `--timeout` (30 s) = **missing**. Gate: **p95 ≤ 3 s and 0 missing** over all
 (edit × page) and (edit × client) pairs that no drill degrades on purpose.
-The report also gives insert-start based numbers and the arrival of the
-R1 notification (postgres_changes UPDATE of the row) vs the R2 broadcast
-(`rev`) on the same clients.
+The report gives the gate per population, then **one per-save table for
+pages and one for SDK clients** (p50/p95/max, missing, broadcast arrival,
+the save's notification fetches with their `x-snapshot-verify` kinds, and
+for SDK clients the ticket resolutions, rechecks and exhausted hints), a
+whole-run "Hint outcomes" section, insert-start based numbers, and the
+notification arrival per path (postgres_changes → R1 pages, broadcast →
+pages, broadcast → SDK).
 
 **The clock starts at the first attempt.** A failed save is retried once
 (insert-after only after checking that the failed attempt did not commit;
@@ -60,70 +64,74 @@ stripping); `--no-warnings` only hides the "module type" notice for the
 imported `.ts` files. If Chromium is missing: `npx playwright install chromium`.
 
 ```sh
-# Main measurement: 30 pages + 470 SDK clients, 12 edits 25 s apart.
-# Start the k6 burst from the other stream after the "population:" line
-# (or at any point); the report's UTC timestamps align the two.
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=run2-main
-
-# Drill: silent loss. 10 pages drop every postgres_changes frame from the
-# last edit's insert until they show its marker (socket stays healthy);
-# the 20 s ± 4 s repair poll must bring them there. Gate: max ≤ 24 s, 0 missing.
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=silent-loss --drill-pages=10 --label=run2-silent-loss
-
-# Drill: websocket blocked. 10 pages never get a socket (every attempt is
-# closed before reaching Supabase) → the page's R3 fallback polls every
-# 5 s ± 1 s. Gate (informational): max ≤ 7 s, 0 missing.
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=ws-blocked --drill-pages=10 --label=run2-ws-blocked
-
-# Drill: reconnect storm. Right before edit 2, every page socket and every
-# SDK socket is force-closed at once (unclean close, like a network blip);
-# edit 2 follows 1 s later. Reports catch-up latency and rejoin times.
-# --pause=40: R1 pages fall back to 5 s polling on the socket error and
-# only retry realtime after 30 s, so edit 3 then measures the recovered state.
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=40 --drill=reconnect --drill-edit=2 --label=run2-reconnect
-# The report adds "reconnect handoff: regressions after the drop": no page
-# or client may show an older version across the polling → realtime
-# handoff (an in-flight fallback poll landing after the catch-up).
-
-# Drill: double save (fast correction). On edit --drill-edit (default the
-# middle one) a second PUT with another marker hits the same row
-# --double-gap=300 ms after the first started, without waiting for it.
-# Both take the Event row lock, so the save with the higher rev is the
-# final state. Gate: every page shows the final marker (and not the
-# replaced one) and every SDK client applied ≥ the final rev by the end of
-# the edit window, with 0 monotonicity regressions. Latency of that edit =
-# final save start → final state, inside the primary gate.
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=double-save --label=run2b-double-save
-
-# Drill: lost final notification. The LAST edit's PUT notification is
-# dropped on every page (websocket proxy) and every SDK client (worker
-# drops its notifications) — after the insert's own notification was
-# delivered and its fetches settled (--lost-settle=2000 ms), so exactly the
-# last save is lost and nothing later can rescue it. Only the periodic
-# repair poll (20 s ± 4 s) can deliver it. Gate: max ≤ --lost-gate=26000 ms
-# (24 s + fetch/render), 0 missing. The report lists the repairing fetch
-# per page (a periodic poll sends the applied rev as minRev) and the fetch
-# reason that delivered the save to each SDK client (expect "periodic").
-node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=lost-final --label=run2b-lost-final
+# Main measurement: 30 pages + 470 SDK clients, 12 edits 25 s apart. Run it
+# ALONE — under R2 these 500 clients are the notification burst; a
+# concurrent k6 burst would make it a 1,000-client test (../README.md,
+# "n14 R2 baseline run").
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=12 --pause=25 --label=r2-baseline
 ```
 
-`--drill` also accepts the camelCase names (`doubleSave`, `lostFinal`).
-Small smoke (used to check the harness, ~1 min each, 2 rows created and
-soft-deleted): `--pages=2 --subs=5 --edits=2 --pause=12 --drill=doubleSave`
-/ `--drill=lostFinal`; afterwards `restore.mjs --compact --yes`.
+| Drill | What it does | Gate |
+|---|---|---|
+| `silent-loss` | 10 pages (`--drill-pages`) lose the notification of the last edit: `--drop-via=proxy` (default) drops every notification frame (`rev` broadcast, and postgres_changes on an R1 build) from that edit's insert until they show its marker; `--drop-via=hook` arms the page's `__osl.dropNextNotification` right before the PUT (after the insert's notification arrived), so the hook drops the PUT's notification before `noteHint`; an unconsumed arm is cleared afterwards and counted. The 20 s ± 4 s repair poll must bring them there | max ≤ 24 s, 0 missing |
+| `ws-blocked` | 10 pages never get a socket → the page's fallback polls every 5 s ± 1 s | informational: max ≤ 7 s, 0 missing |
+| `reconnect` | right before `--drill-edit`, every page and SDK socket is force-closed (unclean); the edit follows `--reconnect-lead` ms later | catch-up informational; 0 regressions across the handoff |
+| `double-save` | a second PUT with another marker hits the same row `--double-gap` ms after the first | every client converges to the final save, 0 regressions |
+| `lost-final` | the last PUT's notification is dropped on every page (proxy or hook, as above) and every SDK client (the worker drops valid payloads before `noteHint`), after the insert's notification was delivered and settled (`--lost-settle`) | max ≤ `--lost-gate`=26 s, 0 missing; delivering fetch reason per SDK client (expect `periodic`) |
+| `poison` | a guest anon client sends ONE forged `{ kind: "setlist", rev: --poison-rev }` (default 2^53 − 1) before `--drill-edit` (default 1), then waits `--poison-lead`=4000 ms; the honest saves follow | ≤ 1 recheck of the forged hint per SDK client, no client's `serverRev` ever ≥ the forged rev, forgery received; honest saves under the primary gate |
+| `spam` | the guest sends `--spam-rate`=2 msgs/s for `--spam-secs`=60 alongside the real saves; `--spam-rev=ahead` (latest real rev + 1) / `max` / `stale` | per SDK client, notification + recheck starts ≥ 1 s apart (the shared cooldown), 0 HTTP / network / deadline failures in the window; per-client rates reported |
+| `verify-ambiguity` | after `--drill-edit`'s insert settled, a helper sends `--prime-per-locale`=1 request per locale with `minRev = rev + --prime-offset`=1000 (no hint) so the instances serving them memoise the pre-save revision for 1 s; the PUT starts `--prime-lead`=150 ms later (priming not awaited) | every SDK client answered `memo` for that save resolves it on its one recheck; memo share reported; n/a when no memo was observed (routing is Vercel's) |
+
+```sh
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=silent-loss --drill-pages=10 --label=r2-silent-loss
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=ws-blocked --drill-pages=10 --label=r2-ws-blocked
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=40 --drill=reconnect --drill-edit=2 --label=r2-reconnect
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=double-save --label=r2-double-save
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=lost-final --label=r2-lost-final
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=poison --label=r2-poison
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=spam --label=r2-spam
+node --no-warnings tests/load/browsers/run.mjs --pages=30 --subs=470 --edits=3 --pause=25 --drill=verify-ambiguity --drill-edit=2 --prime-per-locale=20 --label=r2-verify-ambiguity
+```
+
+**Guest-broadcast drills.** `poison` and `spam` open one extra supabase-js
+client with the public anon key (what any visitor has), join the public
+`event:<id>` channel and send forged `rev` broadcasts in the writer's exact
+payload shape (no marker field; the report tells them apart by rev and send
+time). Sends use `ack: true`, so each message's server verdict is in the
+report's "Guest broadcasts" section and the JSON (`guest.sends`). An R1 page
+build ignores broadcasts, so on R1 pages these drills only exercise the SDK
+clients.
+
+**Against an R1 server** (the dev preview before the R2 PR deploys, or
+after a rollback) every response lacks `x-snapshot-verify` → `missing` →
+inconclusive whenever the body is below the hint, so every such
+notification fetch takes exactly one recheck: that is the rollback-
+compatibility path, and a valid smoke. `memo` never appears there.
+
+`--drill` also accepts the camelCase names (`doubleSave`, `lostFinal`,
+`verifyAmbiguity`). Small smoke (~1 min each, 2 rows created and
+soft-deleted): `--pages=2 --subs=5 --edits=2 --pause=12 --drill=<name>`;
+afterwards `restore.mjs --compact --yes`.
 
 Results: `tests/load/results/<UTC date>/<stamp>-browsers[-<drill>].md` (+ `.json`,
-gitignored, with per-page raw data). Exit code 0 = gates passed.
+gitignored, with per-page raw data, `hints`, and the drill's per-client
+detail). Exit code 0 = gates passed; 1 also when a monotonicity
+regression was seen or a drill gate failed.
 
 Other flags: `--event-id`, `--event-path`, `--after-row=2`, `--timeout=30`,
-`--settle=10`, `--join-timeout=120`, `--wait-pg-ready=false` (by default the
-run waits until every page/client has its postgres_changes registration,
-up to `--pg-ready-timeout=180` s, and reports how long that took),
-`--sub-workers=N` (default ⌈subs/120⌉), `--sub-batch=50` (SDK joins per
-second), `--page-concurrency=5`, `--drill-edit=k` (ignored by lost-final:
-always the last edit), `--reconnect-lead=1000`, `--double-gap=300`,
-`--lost-gate=26000`, `--lost-settle=2000`, `--gate-p95=3000`, `--headed`.
-Exit code 1 also when a monotonicity regression was seen.
+`--settle=10`, `--join-timeout=120`, `--wait-pg-ready=true` (only for an R1
+page build: also wait for the pages' postgres_changes registration, up to
+`--pg-ready-timeout=180` s; off by default — an R2 page / SDK client is live
+at SUBSCRIBED), `--sub-workers=N` (default ⌈subs/120⌉), `--sub-batch=50`
+(SDK joins per second), `--page-concurrency=5`, `--drill-edit=k` (ignored
+by lost-final: always the last edit), `--reconnect-lead=1000`,
+`--double-gap=300`, `--lost-gate=26000`, `--lost-settle=2000`,
+`--drop-via=proxy|hook`, `--gate-p95=3000`, `--headed`; guest drills:
+`--poison-rev`, `--poison-lead=4000`, `--spam-rate=2`, `--spam-secs=60`,
+`--spam-rev=ahead|max|stale` (`--drill-edit` defaults to 1 for both; a
+guest that cannot join the channel stops the run, clean-up first);
+verify-ambiguity: `--prime-per-locale=1`, `--prime-offset=1000`,
+`--prime-lead=150`.
 
 ## Positions (read before running repeatedly)
 
@@ -145,4 +153,4 @@ pre-existing rows directly. With the owner's OK:
 
 "Mixed old/new tabs across a deployment change" and "real rollback with
 tabs open" need a deployment (R1 → R2 and back) and belong to the **R2
-rehearsal**, not to this tool.
+rehearsal**, not to this tool (`../README.md`, "n14 R2 baseline run", (c)).
