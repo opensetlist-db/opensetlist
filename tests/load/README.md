@@ -601,6 +601,86 @@ and variables → Actions → Variables → New repository variable:
 The observer refuses any other Supabase project and any base URL other
 than localhost or the dev preview alias.
 
+## Warming fault drills (`LIVE_WARM_FAULT`)
+
+"A warm miss takes the old path" proves a fallback, not capacity when
+misses are widespread. These drills run the 500-viewer load while the
+warm cache is absent, slow, failing or only partly published. Platform
+knobs cannot produce these faults. `RUNTIME_CACHE_TIMEOUT` only
+configures the SDK's fallback HTTP client, and a deployed function
+prefers the request-context cache. A different namespace only moves the
+key prefix. The SDK turns HTTP errors into `null`, which is a plain
+`miss`. So `src/lib/liveWarm.ts` injects the fault itself, around the
+cache `get` / `set` and around the warm job's per-locale step (see
+"Fault injection" there).
+
+**Arming: two server env vars, on a disposable preview deployment
+only.** Set `LIVE_WARM_FAULT_ARMED=1` and `LIVE_WARM_FAULT=<spec>`, plus
+`LIVE_WARM_ENTRIES=1`, because the writer modes need warming on. The
+code refuses to inject when `VERCEL_ENV=production`: it logs
+`[liveWarm] fault-blocked` and the deployment behaves normally. Never
+add these vars to the Production environment anyway. Vercel binds env
+vars at deploy time, so each spec needs its own deployment. Use one of
+these:
+
+```bash
+# one-off CLI deployment (always a preview without --prod; vars apply to it alone)
+vercel deploy -e LIVE_WARM_ENTRIES=1 -e LIVE_WARM_FAULT_ARMED=1 -e LIVE_WARM_FAULT=slow=400
+# or: vars scoped to a throwaway git branch's previews, then push that branch
+vercel env add LIVE_WARM_FAULT_ARMED preview fault/drill-slow   # value 1
+vercel env add LIVE_WARM_FAULT preview fault/drill-slow         # value slow=400
+```
+
+Point `BASE_URL` at that deployment's URL (Deployment Protection bypass
+as usual), never at the shared dev alias. Remove the deployment and the
+branch-scoped vars afterwards. "Saves after the fault" means switching to
+an unarmed deployment of the same commit, because the fault cannot be
+lifted in place.
+
+**Spec.** Modes are comma-separated and combine, e.g. `slow=400,locale=ja`.
+An unknown or malformed token makes the whole spec inert, logged as
+`fault-invalid … injected=none`. **In the logs the spec is encoded as
+one token:** `=` becomes `:` and `,` becomes `+`, with whitespace
+removed. So `LIVE_WARM_FAULT=slow=400,locale=ja` is logged as
+`fault=slow:400+locale:ja`. The encoding keeps an inner `locale=ja`
+from being read as the line's own `locale` field. The input syntax stays
+as written.
+
+| Drill | Spec | Expected in the logs |
+|---|---|---|
+| cache absent (no entry anywhere) | `absent` | every `warm-lookup` → `result=miss`, near-0 ms (the `get` is skipped) |
+| absent, with real cache latency | `getnull` | `result=miss` at the normal lookup ms |
+| one missing locale (partial publication) | `locale=ja` (ja carries ~70 % of the traffic, the worst case); `locale=en` for the sparse case | per job `skip locale=ja reason=fault-locale`; ja lookups `miss`, ko/en `hit` |
+| failed writes, visible | `seterror` | per locale `set … ok=false` + `set-error … injected fault: seterror`; all lookups `miss` |
+| failed writes, silent (what the SDK's swallowed errors look like) | `setskip` | `set … ok=true`, yet all lookups `miss` |
+| reads over the 300 ms deadline | `slow=400` | `result=timeout` at ~300 ms; repeats on that key answer `memo-miss` for 1 s |
+| slow but in time (control) | `slow=150` | `result=hit` at ≥ 150 ms |
+| cache errors | `geterror` | `result=error` + `lookup-error … injected fault: geterror` |
+| slow warming, arrivals before publication | `slowjob=<ms>` (e.g. 1000) | job `done ms` ≥ ⌈3 / concurrency⌉ × ms; `warm-join` shows more first hinted fetches before warm-complete |
+
+**Verify the fault before trusting a run.** A run in which the fault was
+not active is invalid. It is not a pass.
+
+1. After the deploy, make one admin save and send one hinted `curl`
+   (`…&minRev=<rev>&hint=1`). The response must not be
+   `x-snapshot-source: warm` for the faulted modes. In the Vercel logs
+   the request shows `[liveWarm] fault armed mode=<encoded spec>` (for
+   example `mode=slow:400+locale:ja`). It is logged once per instance
+   on first use.
+2. In the run's history capture, check the following. Every
+   `[liveWarm] start` and `[setlist] warm-lookup` line ends in
+   `fault=<encoded spec>`, and that must be exactly the intended spec
+   (e.g. `fault=slow:400+locale:ja`). There are 0 `fault-invalid` and 0
+   `fault-blocked` lines. The result distribution matches the table
+   above. Any of these means the fault leaked: a `hit` under `absent`,
+   `getnull`, `seterror` or `setskip`, or a `hit` on a ja lookup under
+   `locale=ja`.
+3. The summariser needs no change. It tolerates the extra `fault=` key
+   and lists `fault-locale` under the skip reasons, which do not count as
+   warm builds. Quote the `fault armed` line and the result split in the
+   report next to the gates. The gates are the usual 500-viewer ones,
+   including 0 × 5xx, with saves during the fault.
+
 ## Reading the result
 
 - **Achieved rps** must be ≥ 95 % of the target, or the stage doesn't
