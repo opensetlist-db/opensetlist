@@ -284,7 +284,9 @@ export function normaliseResponse(o, pop, client = null) {
   const { path: p, host, query } = pathOf(o);
   const notifyRaw = first(o, ["notify", "hinted"]);
   const notify = notifyRaw != null ? bool(notifyRaw) : query ? query.get("hint") === "1" : false;
-  const pin = o.pin ?? { header: o.pinHeader ?? null, cookie: o.pinCookie ?? null, query: o.pinQuery ?? null };
+  const pin = o.pin != null && typeof o.pin === "object" ? o.pin
+    : o.pinHeader !== undefined || o.pinCookie !== undefined || o.pinQuery !== undefined ? { header: o.pinHeader ?? null, cookie: o.pinCookie ?? null, query: o.pinQuery ?? null }
+      : parsePin(o.pin);
   const cache = o.cache ?? { xVercelCache: o.xVercelCache ?? null, cacheControl: o.cacheControl ?? null, age: o.age ?? null };
   const popName = String(first(o, ["pop", "population"]) ?? pop ?? "?");
   const isSave = popName === "save" || popName === "saves";
@@ -293,6 +295,7 @@ export function normaliseResponse(o, pop, client = null) {
     client: first(o, ["client", "clientId", "idx", "who"]) ?? client,
     subset: o.subset ?? null,
     cohort: o.cohort ?? null,
+    cohortLabel: o.cohortLabel ?? o.cohort ?? null,
     switchIdx: first(o, ["switchIdx", "leg"]),
     vercelId: first(o, ID_KEYS),
     reqId: reqIdOf(first(o, ID_KEYS)),
@@ -303,7 +306,11 @@ export function normaliseResponse(o, pop, client = null) {
     evalAt: num(first(o, ["evalAt", "tEval"])),
     settledAt: num(first(o, ["settledAt", "tSettled"])),
     queuedAt: num(o.queuedAt),
-    method: String(o.method ?? (isSave ? "PUT" : "GET")).toUpperCase(),
+    // A save's HTTP method depends on its op (insert / PUT / soft-delete)
+    // and the harness does not record it: null = not compared.
+    // An explicit `method: null` (smoke sub-requests: POST / GET / DELETE
+    // mixed, not recorded) means "not compared" too.
+    method: o.method != null ? String(o.method).toUpperCase() : isSave || ("method" in o && o.method === null) ? null : "GET",
     path: p, host,
     notify,
     minRev: num(o.minRev),
@@ -317,14 +324,178 @@ export function normaliseResponse(o, pop, client = null) {
     resolution: first(o, ["resolution", "hintRes"]),
     cache, pin,
     clientBuild: o.clientBuild ?? null,
+    // data-dpl-id of an HTML answer (route marker / document): the page's
+    // own statement of which build rendered it — cross-checked against
+    // the log record's deploymentId.
+    dpl: o.dpl ?? null,
+    synthetic: bool(o.synthetic),
+    recheckQueued: bool(o.recheckQueued),
+    heldAt: num(o.heldAt), releasedAt: num(o.releasedAt),
     label: o.label ?? null,
     raw: o,
   };
 }
 
+/**
+ * The harness's pin evidence string → { header, cookie, query }:
+ * "none" | "header=<id>" | "cookie=<id>" | "query=<id>" (several joined by
+ * "|" / "," / ";" / space are accepted).
+ */
+export function parsePin(s) {
+  const out = { header: null, cookie: null, query: null };
+  if (s == null || s === "none" || s === "") return out;
+  for (const part of String(s).split(/[|,; ]+/)) {
+    const m = /^(header|cookie|query)=(.*)$/.exec(part);
+    if (m) out[m[1]] = m[2] || "?";
+  }
+  return out;
+}
+
+// ─── the real `--phase=transition` shape (run.mjs, step 6) ───
+//
+// transition.sdk[] are subs-worker client records whose `reqs` rows are
+// ARRAYS; transition.rows.sdkReqs names the columns. The indices below
+// are the contract the harness wrote (the names are long, human-readable
+// labels, so they are matched by position and sanity-checked by a prefix
+// of the label: a reordered harness fails loudly instead of silently
+// shifting every field).
+export const SDK_REQ_COLS = [
+  [0, "tStart", "tStart"], [1, "reason", "reason"], [2, "generic", "generic"], [3, "hint", "hint"],
+  [4, "notify", "notify"], [5, "minRev", "minRev"], [6, "status", "status"], [7, "verifyKind", "verify kind"],
+  [8, "rev", "body rev"], [9, "resolution", "hint resolution"], [10, "settledAt", "tEnd"], [11, "outcome", "outcome"],
+  [12, "source", "x-snapshot-source"], [13, "capturedAt", "body capturedAt"], [15, "bytes", "body bytes"],
+  [16, "vercelId", "x-vercel-id"], [17, "headersAt", "headersAt"], [18, "bodyAt", "bodyAt"], [19, "evalAt", "evalAt"],
+  [20, "heldAt", "heldAt"], [21, "releasedAt", "releasedAt"], [22, "xVercelCache", "x-vercel-cache"],
+  [23, "cacheControl", "cache-control"], [24, "age", "age"], [25, "verify", "x-snapshot-verify raw"],
+  [26, "pin", "pin evidence"], [27, "recheckQueued", "recheck queued"], [28, "failKind", "fail kind"], [29, "synthetic", "synthetic hint"],
+];
+export const PAGE_FETCH_COLS = [
+  [0, "tEnd", "tResponse"], [1, "minRev", "minRev"], [2, "status", "status"], [3, "source", "x-snapshot-source"],
+  [4, "rev", "body rev"], [5, "verify", "x-snapshot-verify"], [6, "notify", "hint=1"], [7, "tStart", "request start"],
+  [8, "capturedAt", "body capturedAt"], [9, "vercelId", "x-vercel-id"], [10, "xVercelCache", "x-vercel-cache"],
+  [11, "cacheControl", "cache-control"], [12, "age", "age"], [13, "pin", "pin evidence"], [14, "bodyAt", "body complete"],
+  [15, "path", "request path"],
+];
+
+/** Throws when a harness column label no longer starts with what the index map expects. */
+export function checkCols(labels, map, what) {
+  if (!Array.isArray(labels)) return;
+  for (const [i, , prefix] of map) {
+    const l = labels[i];
+    if (typeof l !== "string" || !l.toLowerCase().startsWith(prefix.toLowerCase())) {
+      throw new Error(`transition.rows.${what}[${i}] = ${JSON.stringify(l)}, expected a label starting with "${prefix}" — the harness column order changed; update ${what === "sdkReqs" ? "SDK_REQ_COLS" : "PAGE_FETCH_COLS"}`);
+    }
+  }
+}
+
+const byCols = (row, map) => {
+  const o = {};
+  for (const [i, name] of map) o[name] = row[i];
+  o.cache = { xVercelCache: o.xVercelCache ?? null, cacheControl: o.cacheControl ?? null, age: o.age ?? null };
+  return o;
+};
+
+/**
+ * Harness cohort label → { cohort, subset, switchIdx }:
+ * "incumbent" | "hold" | "ahead" | "arrival-<k>" | "r1-<k>" (k = 1-based
+ * switch number). hold / ahead are controlled subsets of the incumbents.
+ */
+export function cohortOf(label) {
+  const s = String(label ?? "incumbent");
+  if (s === "hold" || s === "ahead") return { cohort: "incumbent", subset: s, switchIdx: null };
+  const m = /^(arrival|r1)-(\d+)$/.exec(s);
+  if (m) return { cohort: m[1], subset: null, switchIdx: Number(m[2]) - 1 };
+  return { cohort: s, subset: null, switchIdx: null };
+}
+
+// A main-thread record (probe, route marker, guard): { pop, k, tStart,
+// tHeaders, tBody, status, vercelId, xVercelCache, cacheControl, age,
+// source, verifyRaw, verifyKind, rev, bodyOk, hint, minRev, locale,
+// resolution, pin, dpl, bytes, error }.
+function mainRec(o, pop, client) {
+  const api = pop === "probe" || pop === "guard";
+  return normaliseResponse({
+    ...o, pop, client,
+    tEnd: o.tBody ?? o.tHeaders ?? null, headersAt: o.tHeaders ?? null, bodyAt: o.tBody ?? null,
+    verify: o.verifyRaw ?? null, bodyValid: o.bodyOk ?? null,
+    // The probe sends `minRev=<head>&hint=1` (hint = the ticket rev); the
+    // guard and the route marker are generic.
+    notify: o.hint != null,
+    path: api ? "/api/setlist" : null,
+    cache: { xVercelCache: o.xVercelCache ?? null, cacheControl: o.cacheControl ?? null, age: o.age ?? null },
+    switchIdx: o.k != null ? Number(o.k) - 1 : null,
+  }, pop, client);
+}
+
+/** Responses of the real step-6 shape (see the section comment above). */
+export function realResponses(tr) {
+  checkCols(tr.rows?.sdkReqs, SDK_REQ_COLS, "sdkReqs");
+  checkCols(tr.rows?.pageFetches, PAGE_FETCH_COLS, "pageFetches");
+  const out = [];
+  const synth = new Set((tr.syntheticRevs ?? []).map(Number));
+  for (const o of tr.probe ?? []) out.push(mainRec(o, "probe", "probe"));
+  for (const sw of tr.switches ?? []) {
+    for (const o of sw.route ?? []) out.push(mainRec(o, "route", "route"));
+    for (const a of sw.guard?.attempts ?? []) if (a?.rec) out.push(mainRec(a.rec, "guard", `guard-${sw.k}`));
+    // Reactions / wishes smoke: every sub-request object that carries an
+    // x-vercel-id (post, counts, wish, …).
+    for (const s of sw.smoke ?? []) {
+      for (const [key, v] of Object.entries(s)) {
+        if (v && typeof v === "object" && v.vercelId) {
+          out.push(normaliseResponse({ ...v, pop: "smoke", client: `smoke-${s.k}-${s.page}`, label: key, method: null, tEnd: v.tBody ?? v.tHeaders, headersAt: v.tHeaders, switchIdx: s.k != null ? Number(s.k) - 1 : null }, "smoke"));
+        }
+      }
+    }
+  }
+  for (const s of tr.saves ?? []) {
+    out.push(normaliseResponse({
+      ...s, pop: "save", client: `save-${s.k}`, tStart: s.startedAt ?? s.putStart, tEnd: s.startedAt != null && s.ms != null ? s.startedAt + s.ms : s.putEnd,
+      headersAt: s.startedAt != null && s.headersMs != null ? s.startedAt + s.headersMs : null, label: `${s.op ?? "save"} ${s.offS ?? ""}s`,
+      switchIdx: s.leg != null ? Number(s.leg) - 1 : null,
+    }, "save"));
+  }
+  for (const c of tr.sdk ?? []) {
+    const co = cohortOf(c.cohort);
+    for (const row of c.reqs ?? []) {
+      if (!Array.isArray(row)) continue;
+      const o = byCols(row, SDK_REQ_COLS);
+      // Synthetic ahead-hint tickets: keyed on the cohort AND the
+      // harness's synthetic flag / syntheticRevs — never on the rev value
+      // alone (a synthetic rev can coincide with a real save's rev).
+      const synthetic = c.cohort === "ahead" && (bool(o.synthetic) || (o.hint != null && synth.has(Number(o.hint)) && o.synthetic == null));
+      out.push(normaliseResponse({
+        ...o, pop: "sdk", client: c.idx, cohort: co.cohort, subset: co.subset, cohortLabel: c.cohort, switchIdx: co.switchIdx,
+        path: "/api/setlist", notify: bool(o.notify), synthetic,
+        // response received = body read (else headers, else the scheduler
+        // settle time for a failure without a response).
+        tEnd: o.bodyAt ?? o.headersAt ?? o.settledAt,
+      }, "sdk", c.idx));
+    }
+  }
+  for (const p of tr.pages ?? []) {
+    const co = cohortOf(p.cohort);
+    const client = `page-${p.idx}`;
+    for (const row of p.fetches ?? []) {
+      if (!Array.isArray(row)) continue;
+      const o = byCols(row, PAGE_FETCH_COLS);
+      out.push(normaliseResponse({ ...o, pop: "page", client, cohort: co.cohort, cohortLabel: p.cohort, switchIdx: co.switchIdx, notify: bool(o.notify), tStart: o.tStart ?? o.tEnd }, "page", client));
+    }
+    // Documents: navs [t, url, status, x-vercel-id, data-dpl-id].
+    for (const n of p.navs ?? []) {
+      if (!Array.isArray(n)) continue;
+      out.push(normaliseResponse({ pop: "document", client, cohort: co.cohort, cohortLabel: p.cohort, switchIdx: co.switchIdx, tStart: n[0], tEnd: n[0], url: n[1], status: n[2], vercelId: n[3], dpl: n[4] ?? null }, "document", client));
+    }
+  }
+  return out;
+}
+
+/** True for the real step-6 harness shape (client records with array rows). */
+export const isRealShape = (tr) => Array.isArray(tr?.sdk) || Array.isArray(tr?.probe) || !!tr?.rows?.sdkReqs;
+
 /** Every response row the harness JSON holds, normalised. */
 export function harnessResponses(json) {
   const tr = json?.transition ?? json ?? {};
+  if (isRealShape(tr)) return realResponses(tr);
   const out = [];
   const push = (o, pop, client) => { const r = normaliseResponse(o, pop, client); if (r) out.push(r); };
   for (const o of tr.responses ?? []) push(rowObject(o, tr.cols), o?.pop ?? null, null);
@@ -371,6 +542,7 @@ export function attribute(responses, logsByDep, { manifest = null } = {}) {
       if (x.status != null && x.status !== 0 && rec.responseStatusCode != null && Number(rec.responseStatusCode) !== x.status) a.mismatch.push(`status ${rec.responseStatusCode} ≠ ${x.status}`);
       if (x.method && rec.requestMethod && rec.requestMethod !== x.method) a.mismatch.push(`method ${rec.requestMethod} ≠ ${x.method}`);
       if (!rec.deploymentId) a.mismatch.push("record has no deploymentId");
+      if (x.dpl && rec.deploymentId && x.dpl !== rec.deploymentId) a.mismatch.push(`data-dpl-id ${x.dpl} ≠ record ${rec.deploymentId}`);
       a.consistent = a.mismatch.length === 0;
       const lines = linesOf(rec);
       a.lines = lines;
@@ -447,13 +619,21 @@ export function resolveSwitches(switches, { manifest = null, initial = null } = 
   let prev = initial;
   return switches.map((s) => {
     const targetId = idOf(s.target);
-    const fromId = idOf(s.from) ?? prev;
+    // The harness records the deployment the alias served before the
+    // switch as `baselineDpl` (the route marker's data-dpl-id).
+    const fromId = idOf(s.from) ?? s.baselineDpl ?? prev;
     prev = targetId ?? prev;
-    return { ...s, targetId, fromId };
+    // A pseudo-switch (T0 control, or any switch whose target is the
+    // deployment already serving) has no "old" deployment: attribution can
+    // only show that the alias stayed put.
+    const pseudo = s.kind === "pseudo" || (targetId != null && targetId === fromId);
+    return { ...s, targetId, fromId, pseudo };
   });
 }
 
-const ALIAS_POPS = new Set(["sdk", "page", "probe"]);
+// Alias traffic — what says where the alias routed. The guard (immutable
+// target URL) and the smoke are attributed but never used for routing.
+const ALIAS_POPS = new Set(["sdk", "page", "probe", "route", "document"]);
 
 /**
  * Propagation profile of one switch, from harness times + attribution.
@@ -471,15 +651,22 @@ const ALIAS_POPS = new Set(["sdk", "page", "probe"]);
  * (started in [cliStart − 10 s, cliEnd + sustainMs]) is REQUIRED: one
  * unmatched probe there and the profile is NOT EXERCISED (behavioural
  * verdicts are unaffected).
+ *
+ * Pseudo-switch (target = the serving deployment): there is no old
+ * deployment, so "first target response" is the first response whose
+ * request STARTED after cliEnd (the harness's own pseudo rule) and the
+ * old-side bounds are n/a; "sustained" then says every probe in the
+ * window stayed on that deployment.
  */
-export function propagation(sw, rows, { sustainMs = 60_000, legEnd = Infinity } = {}) {
+export function propagation(sw, rows, { sustainMs = 60_000, legFrom = -Infinity, legEnd = Infinity } = {}) {
   const lo = (sw.cliStart ?? sw.plannedAt ?? 0) - 10_000;
   const sEnd = (sw.cliEnd ?? sw.cliStart ?? 0) + sustainMs;
-  const inLeg = rows.filter((r) => ALIAS_POPS.has(r.pop) && r.tStart != null && r.tStart >= lo - 50_000 && r.tStart < legEnd);
+  const from = Number.isFinite(legFrom) ? legFrom : lo - 50_000;
+  const inLeg = rows.filter((r) => ALIAS_POPS.has(r.pop) && r.tStart != null && r.tStart >= from && r.tStart < legEnd);
   const per = {};
   const bounds = (rs) => {
-    const tgt = rs.filter((r) => r.attr.deploymentId && r.attr.deploymentId === sw.targetId);
-    const old = rs.filter((r) => r.attr.deploymentId && r.attr.deploymentId === sw.fromId);
+    const tgt = rs.filter((r) => r.attr.deploymentId && r.attr.deploymentId === sw.targetId && (!sw.pseudo || r.tStart >= (sw.cliEnd ?? 0)));
+    const old = sw.pseudo ? [] : rs.filter((r) => r.attr.deploymentId && r.attr.deploymentId === sw.fromId);
     const ft = tgt.reduce((m, r) => (r.tEnd != null && (m == null || r.tEnd < m.tEnd) ? r : m), null);
     const afterCli = old.filter((r) => r.tStart >= (sw.cliStart ?? 0));
     return {
@@ -492,15 +679,20 @@ export function propagation(sw, rows, { sustainMs = 60_000, legEnd = Infinity } 
       oldStartsAfterCliStart: afterCli.length,
     };
   };
-  for (const p of ["probe", "sdk", "page"]) per[p] = bounds(inLeg.filter((r) => r.pop === p));
+  for (const p of ["probe", "route", "sdk", "page", "document"]) per[p] = bounds(inLeg.filter((r) => r.pop === p));
   per.all = bounds(inLeg);
 
-  const probes = inLeg.filter((r) => r.pop === "probe").sort((a, b) => a.tStart - b.tStart);
+  // The probe bounds use EVERY probe request, not only the leg window: the
+  // predeclared sustained window [cliEnd, cliEnd + 60 s] can run past the
+  // harness's leg window (legs overlap), and cutting it would read as a gap.
+  const probes = rows.filter((r) => r.pop === "probe" && r.tStart != null).sort((a, b) => a.tStart - b.tStart);
   const defining = probes.filter((r) => r.tStart >= lo && r.tStart <= sEnd);
   const unattributed = defining.filter((r) => !r.attr.consistent);
   const win = probes.filter((r) => r.tStart >= (sw.cliEnd ?? 0) && r.tStart <= sEnd);
   const ftp = per.probe.firstTarget;
-  const flipBacks = ftp ? win.filter((r) => r.tStart > ftp.tStart && r.attr.deploymentId === sw.fromId).length : null;
+  // Off-target after the first target probe: any attributed deployment
+  // other than the target (the old one = a flip-back).
+  const flipBacks = ftp ? win.filter((r) => r.tStart > ftp.tStart && r.attr.deploymentId && r.attr.deploymentId !== sw.targetId).length : null;
   let maxGap = null;
   const pts = [sw.cliEnd, ...win.map((r) => r.tStart), sEnd].filter((v) => v != null);
   for (let i = 1; i < pts.length; i++) maxGap = Math.max(maxGap ?? 0, pts[i] - pts[i - 1]);
@@ -509,6 +701,7 @@ export function propagation(sw, rows, { sustainMs = 60_000, legEnd = Infinity } 
   const exercised = defining.length > 0 && unattributed.length === 0 && sw.targetId != null;
   return {
     status: exercised ? "EXERCISED" : "NOT EXERCISED",
+    pseudo: !!sw.pseudo,
     why: !sw.targetId ? "target deployment id unknown" : !defining.length ? "no probe requests in the defining window" : unattributed.length ? `${unattributed.length}/${defining.length} defining probe request(s) not attributed` : null,
     cliStart: sw.cliStart ?? null, cliEnd: sw.cliEnd ?? null, sustainMs, window: { from: lo, to: sEnd },
     per, sustained: { ok: sustained, probes: win.length, flipBacks, maxGapMs: maxGap },
@@ -549,7 +742,7 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
   const resolvedAt = (r) => r.settledAt ?? r.evalAt ?? r.bodyAt ?? r.tEnd;
   const sdk = rows.filter((r) => r.pop === "sdk");
   const ph = sdk.filter((r) => r.notify && r.tStart != null && r.tStart < sw.cliStart && (resolvedAt(r) == null || resolvedAt(r) > T));
-  const nat = ph.filter((r) => !r.subset);
+  const nat = ph.filter((r) => !r.subset && !r.synthetic);
   out.pendingHinted = {
     clients: distinct(nat), min: EXPOSURE_MIN.pendingHinted, exercised: distinct(nat) >= EXPOSURE_MIN.pendingHinted,
     requests: nat.length, oldAttributed: nat.filter((r) => r.attr.deploymentId === sw.fromId).length, unmatched: nat.filter((r) => !r.attr.matched).length,
@@ -562,8 +755,29 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
     subsets: Object.fromEntries([...new Set(ph.filter((r) => r.subset).map((r) => r.subset))].map((s) => [s, distinct(ph.filter((r) => r.subset === s))])),
   };
 
-  // Rechecks: explicit records, else recheck responses of the subset.
-  const rc = rechecks ?? sdk.filter((r) => r.reason === "recheck" && r.subset).map((r) => ({ client: r.client, queuedAt: r.queuedAt, dispatchedAt: r.tStart, settledAt: resolvedAt(r), subset: r.subset }));
+  // Rechecks: explicit records, else derived from the subset's rows — the
+  // real harness flags the evaluation that put a ticket into its recheck
+  // phase (`recheckQueued`, column 27; queued at that row's evalAt) and
+  // the recheck is the client's next notification fetch; an older shape
+  // labels the recheck fetch itself (`reason: "recheck"`, `queuedAt`).
+  const rc = rechecks ?? (() => {
+    const out = sdk.filter((r) => r.reason === "recheck" && r.subset).map((r) => ({ client: r.client, queuedAt: r.queuedAt, dispatchedAt: r.tStart, settledAt: resolvedAt(r), subset: r.subset }));
+    const bySub = new Map();
+    for (const r of sdk.filter((x) => x.subset)) {
+      if (!bySub.has(r.client)) bySub.set(r.client, []);
+      bySub.get(r.client).push(r);
+    }
+    for (const [client, rs] of bySub) {
+      rs.sort((a, b) => a.tStart - b.tStart);
+      rs.forEach((r, i) => {
+        if (!r.recheckQueued) return;
+        const queuedAt = r.evalAt ?? r.tEnd;
+        const next = rs.slice(i + 1).find((x) => x.notify && x.tStart >= (queuedAt ?? 0));
+        out.push({ client, queuedAt, dispatchedAt: next?.tStart ?? null, settledAt: next ? resolvedAt(next) : null, subset: r.subset, synthetic: r.synthetic });
+      });
+    }
+    return out;
+  })();
   const spanning = rc.filter((x) => x.queuedAt != null && x.queuedAt < sw.cliStart && (x.settledAt == null || x.settledAt > T));
   const queued = spanning.filter((x) => x.dispatchedAt == null || x.dispatchedAt > T);
   const dispatched = spanning.filter((x) => x.dispatchedAt != null && x.dispatchedAt <= T);
@@ -583,22 +797,29 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
     byClient.get(k).push(r);
   }
   const hits = [];
+  // The client receives an answer when it evaluates it (a held response is
+  // evaluated at its release), else at the response.
+  const answerAt = (r) => r.evalAt ?? r.tEnd;
   for (const [k, rs] of byClient) {
-    const late = rs.filter((r) => r.attr.deploymentId === sw.fromId && r.tEnd != null && r.tEnd > T && r.status === 200);
+    // Pseudo-switch: old = target, so "old answer" = a request that left
+    // BEFORE cliStart and was answered after the boundary (the harness's
+    // pseudo rule); a real switch needs the old deployment's attribution.
+    const late = rs.filter((r) => r.attr.deploymentId === sw.fromId && answerAt(r) != null && answerAt(r) > T && r.status === 200 && (!sw.pseudo || r.tStart < sw.cliStart));
     if (!late.length) continue;
     const o = late[late.length - 1];
-    const follow = rs.find((r) => r.tStart != null && r.tStart >= o.tEnd && r.attr.deploymentId === sw.targetId && r.status === 200 && r.rev != null && (o.rev == null || r.rev >= o.rev));
+    const oAt = answerAt(o);
+    const follow = rs.find((r) => r !== o && r.tStart != null && r.tStart >= oAt && r.attr.deploymentId === sw.targetId && r.status === 200 && r.rev != null && (o.rev == null || r.rev >= o.rev));
     const c = clientRec.get(k);
     let regressions = null;
     if (c?.appliedAll) { regressions = 0; let prev = -Infinity; for (const a of c.appliedAll) { if (a[1] < prev) regressions++; prev = Math.max(prev, a[1]); } }
     else if (c?.regressions != null) regressions = c.regressions;
-    hits.push({ client: k, subset: o.subset, oldRev: o.rev, oldEnd: o.tEnd, followRev: follow?.rev ?? null, followEnd: follow?.tEnd ?? null, converged: !!follow && (regressions == null || regressions === 0), regressions });
+    hits.push({ client: k, subset: o.subset, oldRev: o.rev, oldEnd: oAt, oldVercelId: o.vercelId, followRev: follow?.rev ?? null, followEnd: follow?.tEnd ?? null, converged: !!follow && (regressions == null || regressions === 0), regressions });
   }
   const conv = hits.filter((h) => h.converged);
   out.oldAfterCutover = {
     clients: hits.length, converged: conv.length, min: EXPOSURE_MIN.oldAfterCutover, exercised: conv.length >= EXPOSURE_MIN.oldAfterCutover,
     natural: conv.filter((h) => !h.subset).length, controlled: conv.filter((h) => h.subset).length,
-    regressionCheck: hits.some((h) => h.regressions != null) ? "client appliedAll" : "n/a (no client records)",
+    regressionCheck: hits.some((h) => h.regressions != null) ? "client appliedAll" : "n/a here (no appliedAll in the client records; the harness's monotonicity check covers it)",
     rows: hits.slice(0, 40),
   };
   return out;
@@ -610,7 +831,8 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
  * classified independently.
  */
 export function arrivalExposure(save, sdkClients, pageClients, switchIdx) {
-  const arr = (c) => c.cohort === "arrival" && (c.switchIdx == null || switchIdx == null || c.switchIdx === switchIdx);
+  // Arrival cohorts: "arrival-<k>" and the R1 cohort "r1-<k>" (both join at P + 10 s).
+  const arr = (c) => (c.cohort === "arrival" || c.cohort === "r1") && (c.switchIdx == null || switchIdx == null || c.switchIdx === switchIdx);
   const sdk = sdkClients.filter(arr);
   const pages = pageClients.filter(arr);
   const notJoined = sdk.filter((c) => { const f = firstSub(c); return f == null || f > save.putEnd; }).length;
@@ -749,16 +971,27 @@ const dist = (v) => ({ n: v.length, p50: pct(v, 0.5), p95: pct(v, 0.95), max: v.
 export function continuity(saves, sdkClients) {
   const groups = new Map();
   for (const c of sdkClients) {
-    const k = `${c.cohort ?? "incumbent"}${c.subset ? `/${c.subset}` : ""}`;
+    // The harness's own cohort label when present ("incumbent", "hold",
+    // "ahead", "arrival-2", "r1-1", …), else cohort[/subset].
+    const k = c.cohortLabel ?? `${c.cohort ?? "incumbent"}${c.subset ? `/${c.subset}` : ""}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(c);
   }
   return saves.filter((s) => s.rev != null && s.status >= 200 && s.status < 300).map((s) => {
     const clock = { ...s, putStart: s.firstAttemptAt ?? s.putStart };
-    const per = [...groups.entries()].map(([k, cs]) => {
+    const per = [...groups.entries()].map(([k, all]) => {
+      // A cohort that joined long after the save (a later switch's
+      // arrivals) is not part of that save's population: only clients
+      // subscribed within the 30 s acceptance window count (joined-after
+      // ones are timed from max(join, PUT response)).
+      const cs = all.filter((c) => { const f = firstSub(c); return f == null || f <= (s.putEnd ?? s.putStart) + CONTINUITY_MS; });
+      if (!cs.length) return null;
       const cv = sdkConvergence(cs, clock, { timeoutMs: CONTINUITY_MS });
       const rr = receiptVsReason(cs, s);
-      let regressions = 0;
+      // Needs every applied snapshot (appliedAll); `applied` only records
+      // increases and cannot show a regression → null = not checked here
+      // (the harness's monotonicity check covers it).
+      let regressions = cs.some((c) => Array.isArray(c.appliedAll)) ? 0 : null;
       for (const c of cs) { let prev = -Infinity; for (const a of c.appliedAll ?? []) { if (a[1] < prev) regressions++; prev = Math.max(prev, a[1]); } }
       const b = dist(cv.before.values);
       return {
@@ -769,7 +1002,7 @@ export function continuity(saves, sdkClients) {
         continuity30s: b.n + cv.before.missing === 0 ? "n/a" : cv.before.missing === 0 ? "PASS" : "FAIL", perf3s: b.p95 == null ? "n/a" : b.p95 <= PERF_P95_MS ? "PASS" : "FAIL",
         received: rr.received, population: rr.population, reasons: rr.reasons, regressions,
       };
-    });
+    }).filter(Boolean);
     return { k: s.k ?? null, rev: s.rev, leg: s.leg ?? null, label: s.label ?? null, putStart: s.putStart, per };
   });
 }
@@ -780,12 +1013,12 @@ export function continuity(saves, sdkClients) {
  * /api/setlist fetch and next DOM change. DOM before EARLIEST_REPAIR_MS
  * = driven by the receipt, not by the periodic repair.
  */
-export function r1Cohort(pages, from) {
+export function r1Cohort(pages, from, to = Infinity) {
   const types = new Map();
   for (const p of pages.filter((x) => x.cohort === "r1")) {
     for (const n of p.notes ?? []) {
-      const [t, type, , isDel] = n;
-      if (t < from) continue;
+      const [t, type, rowId, isDel] = n;
+      if (t < from || t >= to) continue;
       const k = type === "U" && bool(isDel) ? "soft-delete" : type === "I" ? "INSERT" : type === "U" ? "UPDATE" : type === "D" ? "DELETE" : String(type);
       if (!types.has(k)) types.set(k, { type: k, receipts: 0, pages: new Set(), fetchMs: [], domMs: [], domBeforeRepair: 0, noFetch: 0, noDom: 0 });
       const g = types.get(k);
@@ -793,8 +1026,11 @@ export function r1Cohort(pages, from) {
       g.pages.add(p.idx);
       const f = (p.fetches ?? []).find((x) => (x[7] ?? x[0]) >= t);
       if (f) g.fetchMs.push((f[7] ?? f[0]) - t); else g.noFetch++;
-      const dm = (p.dom ?? []).find((x) => x[0] >= t);
-      if (dm) { g.domMs.push(dm[0] - t); if (dm[0] - t < EARLIEST_REPAIR_MS) g.domBeforeRepair++; } else g.noDom++;
+      // DOM change: the page's `dom` log when recorded, else the row's own
+      // first-seen / gone time (pages.mjs `seen` / `gone` maps).
+      const domT = Array.isArray(p.dom) ? p.dom.find((x) => x[0] >= t)?.[0] ?? null
+        : [p.seen?.[rowId], p.gone?.[rowId]].filter((x) => x != null && x >= t).sort((a, b) => a - b)[0] ?? null;
+      if (domT != null) { g.domMs.push(domT - t); if (domT - t < EARLIEST_REPAIR_MS) g.domBeforeRepair++; } else g.noDom++;
     }
   }
   return [...types.values()].map((g) => ({ ...g, pages: g.pages.size, fetch: dist(g.fetchMs), dom: dist(g.domMs), fetchMs: undefined, domMs: undefined }));
@@ -833,40 +1069,65 @@ export function staleFirstAnswers(sw, prop, rows, saves) {
 export function join(json, { logsByDep = new Map(), switchFiles = [], manifest = null, sustainMs = 60_000, bucketS = 5, carryS = 5 } = {}) {
   const tr = json?.transition;
   if (!tr) throw new Error("browsers JSON has no `transition` section (not a step-6 run)");
-  const man = manifest ?? tr.manifest ?? null;
+  // `transition.manifest` in the real harness is the FIXTURE manifest
+  // (rows / rev), not the deployment manifest: only a value that lists
+  // deployments is used as one.
+  const man = manifest ?? (Array.isArray(tr.manifest?.deployments) ? tr.manifest : null);
+  const real = isRealShape(tr);
   const responses = harnessResponses(json);
   // Saves are responses too (attributed by their own x-vercel-id):
   // harnessResponses reads transition.saves as the `save` population.
   const rows = attribute(responses, logsByDep, { manifest: man });
-  const saves = (tr.saves ?? []).map((s) => ({ ...s, putStart: num(s.putStart), putEnd: num(s.putEnd), status: num(s.status), rev: num(s.rev) }));
+  // Real saves: { k, leg (1-based switch k), op, offS, startedAt, ms,
+  // status, rev, … } — never retried, so the first attempt = startedAt.
+  const saves = (tr.saves ?? []).map((s) => {
+    const putStart = num(s.putStart ?? s.startedAt);
+    const putEnd = num(s.putEnd ?? (s.startedAt != null && s.ms != null ? s.startedAt + s.ms : null));
+    return {
+      ...s, putStart, putEnd, status: num(s.status), rev: num(s.rev),
+      firstAttemptAt: num(s.firstAttemptAt ?? s.startedAt) ?? putStart,
+      scheduledOffsetMs: s.scheduledOffsetMs ?? (s.offS != null ? Math.round(s.offS * 1000) : null),
+      label: s.label ?? (s.op ? `${s.op} ${s.offS != null ? `${s.offS > 0 ? "+" : ""}${s.offS}s` : ""}` : null),
+    };
+  });
   const switches = resolveSwitches(mergeSwitches(tr.switches ?? [], switchFiles), { manifest: man, initial: tr.initialDeploymentId ?? tr.incumbent?.id ?? null });
-  const sdkClients = tr.sdk?.clients ?? [];
-  const pageClients = tr.pages?.clients ?? [];
+  const withCohort = (c) => ({ ...c, cohortLabel: c.cohort, ...cohortOf(c.cohort) });
+  const sdkClients = real ? (tr.sdk ?? []).map(withCohort) : tr.sdk?.clients ?? [];
+  const pageClients = real ? (tr.pages ?? []).map(withCohort) : tr.pages?.clients ?? [];
   const tAll = rows.flatMap((r) => [r.tStart, r.tEnd]).filter((v) => v != null);
   const runFrom = tAll.length ? Math.min(...tAll) : null;
   const runTo = tAll.length ? Math.max(...tAll) : null;
 
   const legs = switches.map((sw, i) => {
     const next = switches[i + 1];
-    const legTo = next ? (next.cliStart ?? next.plannedAt ?? Infinity) - 30_000 - 5_000 : Infinity;
-    const legFrom = (sw.cliStart ?? sw.plannedAt ?? 0) - 35_000;
-    const prop = propagation(sw, rows, { sustainMs, legEnd: legTo });
+    // The harness's own leg window when it recorded one (switches[].window
+    // {from, to}: −25 s … the leg's end); else derived from the next
+    // switch's −30 s save.
+    const legTo = num(sw.window?.to) ?? (next ? (next.cliStart ?? next.plannedAt ?? Infinity) - 30_000 - 5_000 : Infinity);
+    const legFrom = num(sw.window?.from) ?? (sw.cliStart ?? sw.plannedAt ?? 0) - 35_000;
+    const prop = propagation(sw, rows, { sustainMs, legFrom, legEnd: legTo });
     const rechecks = tr.rechecks ? tr.rechecks.filter((x) => x.switchIdx == null || x.switchIdx === i) : null;
     const exp = exposure(sw, prop, rows.filter((r) => r.tStart == null || (r.tStart >= legFrom - 60_000 && r.tStart < legTo)), { rechecks, clients: sdkClients });
-    const legSaves = saves.filter((s) => (s.leg != null ? s.leg === i : s.putStart >= legFrom && s.putStart < legTo));
+    // Real saves carry `leg` = the 1-based switch number `k`.
+    const legKey = sw.k != null ? Number(sw.k) : i;
+    const legSaves = saves.filter((s) => (s.leg != null ? Number(s.leg) === legKey : s.putStart >= legFrom && s.putStart < legTo));
     const arrivalSaves = legSaves.filter((s) => s.arrival || [11_000, 15_000].includes(s.scheduledOffsetMs)).map((s) => ({ k: s.k ?? null, rev: s.rev, scheduledOffsetMs: s.scheduledOffsetMs ?? null, ...arrivalExposure(s, sdkClients, pageClients, i) }));
     const role = sw.targetId ? roleEvidence(sw, rows, logsByDep.get(sw.targetId), man, { legFrom, legTo }) : null;
     const seenBefore = switches.slice(0, i).some((x) => x.targetId === sw.targetId || x.fromId === sw.targetId);
-    const isReturn = sw.kind === "existing-return" || (sw.targetId != null && seenBefore);
+    const isReturn = !sw.pseudo && (sw.kind === "existing-return" || (sw.targetId != null && seenBefore));
     return {
-      idx: i, name: sw.name ?? `switch ${i + 1}`, kind: sw.kind ?? null, plannedAt: sw.plannedAt ?? null, cliStart: sw.cliStart ?? null, cliEnd: sw.cliEnd ?? null, cliCpuMs: sw.cliCpuMs ?? null,
+      idx: i, k: sw.k ?? i + 1, name: sw.name ?? sw.label ?? `switch ${i + 1}`, kind: sw.kind ?? null, pseudo: !!sw.pseudo, plannedAt: sw.plannedAt ?? null, cliStart: sw.cliStart ?? null, cliEnd: sw.cliEnd ?? null, cliCpuMs: sw.cliCpuMs ?? null,
       targetId: sw.targetId, targetUrl: sw.target?.url ?? null, fromId: sw.fromId, legFrom, legTo: Number.isFinite(legTo) ? legTo : null,
       propagation: prop, exposure: { ...exp, arrivalSaves }, role,
+      // The harness's provisional values (live data-dpl-id route marker,
+      // no logs) — shown next to the log-attributed bounds that replace them.
+      harness: real ? { boundary: sw.boundary ?? null, firstTargetLive: sw.firstTargetLive ?? null, routing: sw.routing ?? null, exposureVerdicts: sw.exposureVerdicts ?? null, verdicts: sw.verdicts ?? null } : null,
       drain: sw.fromId && sw.fromId !== sw.targetId ? drain(sw, logsByDep.get(sw.fromId), { T: prop.firstTargetT, until: Number.isFinite(legTo) ? legTo : (runTo ?? Infinity) }) : null,
       continuity: continuity(legSaves, sdkClients),
       stale: isReturn ? staleFirstAnswers(sw, prop, rows, saves) : null,
       isReturn,
-      r1Cohort: pageClients.some((p) => p.cohort === "r1") && sw.cliStart != null ? r1Cohort(pageClients, sw.cliStart) : null,
+      r1Cohort: pageClients.some((p) => p.cohort === "r1") && sw.cliStart != null ? r1Cohort(pageClients, sw.cliStart, Number.isFinite(legTo) ? legTo : Infinity) : null,
+      smoke: smokeRows(sw, rows),
     };
   });
 
@@ -882,8 +1143,23 @@ export function join(json, { logsByDep = new Map(), switchFiles = [], manifest =
     legs, resources: res,
     smoke: (tr.smoke ?? []).map((s) => { const r = rows.find((x) => x.pop === "smoke" && x.reqId && x.reqId === reqIdOf(first(s, ID_KEYS))); return { ...s, attributedTo: r?.attr.deploymentId ?? null }; }),
     arrivals: tr.arrivals ?? null,
-    harnessVerdicts: tr.verdicts ?? null,
+    harnessVerdicts: tr.verdicts ?? tr.verdict ?? null,
   };
+}
+
+/**
+ * Real smoke entries (switches[].smoke[]): one per old page × switch with
+ * sub-requests (post / counts / wish / …) and the harness's `checks`;
+ * each sub-request's serving deployment comes from the attribution.
+ */
+export function smokeRows(sw, rows) {
+  return (sw.smoke ?? []).map((s) => {
+    const subs = Object.entries(s).filter(([, v]) => v && typeof v === "object" && v.vercelId).map(([key, v]) => {
+      const r = rows.find((x) => x.pop === "smoke" && x.reqId === reqIdOf(v.vercelId));
+      return { key, status: v.status ?? null, dep: r?.attr.deploymentId ?? null, consistent: !!r?.attr.consistent };
+    });
+    return { switchIdx: s.k != null ? Number(s.k) - 1 : null, page: s.page ?? null, locale: s.locale ?? null, kind: s.type ?? s.kind ?? null, checks: s.checks ?? null, pass: s.pass ?? null, subs };
+  });
 }
 
 export function pinSummary(rows) {
@@ -959,13 +1235,20 @@ export function toMarkdown(j, { source = "" } = {}) {
     L.push("");
     L.push("| population | requests | → target | → old | → other | unmatched | first target response (start → end) | last old request start | last old response end | old starts after cliStart |");
     L.push("|---|---|---|---|---|---|---|---|---|---|");
-    for (const k of ["probe", "sdk", "page", "all"]) {
+    for (const k of ["probe", "route", "sdk", "page", "document", "all"]) {
       const b = p.per[k];
       L.push(`| ${k} | ${b.n} | ${b.target} | ${b.old} | ${b.other} | ${b.unmatched} | ${b.firstTarget ? `${hms(b.firstTarget.tStart)} → ${hms(b.firstTarget.tEnd)}` : "—"} | ${hms(b.lastOldStart)} | ${hms(b.lastOldEnd)} | ${b.oldStartsAfterCliStart} |`);
     }
     L.push("");
-    L.push(`- Sustained target routing over [cliEnd, cliEnd + ${p.sustainMs / 1000} s] (probe): ${p.sustained.ok ? "**yes**" : "**no**"} — ${p.sustained.probes} probe request(s), flip-backs to old ${p.sustained.flipBacks ?? "—"}, largest probe gap ${d(p.sustained.maxGapMs)} ms.`);
+    if (p.pseudo) L.push("- Pseudo-switch (target = the serving deployment): no old deployment; \"first target response\" = first response whose request started after cliEnd; old-side bounds n/a.");
+    L.push(`- Sustained target routing over [cliEnd, cliEnd + ${p.sustainMs / 1000} s] (probe): ${p.sustained.ok ? "**yes**" : "**no**"} — ${p.sustained.probes} probe request(s), off-target after the first target probe ${p.sustained.flipBacks ?? "—"}, largest probe gap ${d(p.sustained.maxGapMs)} ms.`);
     if (p.unattributed.length) L.push(`- Defining probe requests not attributed: ${p.unattributed.map((u) => `${hms(u.tStart)} (${u.why})`).join("; ")}`);
+    if (lg.harness) {
+      const h = lg.harness;
+      const ft = h.firstTargetLive;
+      L.push(`- Harness provisional (live data-dpl-id route marker, no logs) — replaced by the bounds above: boundary ${hms(h.boundary?.at)} (${h.boundary?.how ?? "—"}); first target live ${ft ? `${hms(ft.reqStart)} → ${hms(ft.respAt)} (${ft.how ?? ""})` : "—"}; routing ${h.routing ? `sustained ${h.routing.sustained}, in window ${h.routing.inWindow}, off-target ${h.routing.offTarget}, last old start ${hms(h.routing.lastOldReqStart)}, last old response ${hms(h.routing.lastOldResponse)}` : "—"}. Log-attributed first target response (all alias populations): ${hms(p.firstTargetT)}${h.boundary?.at != null && p.firstTargetT != null ? ` (${p.firstTargetT - h.boundary.at > 0 ? "+" : ""}${p.firstTargetT - h.boundary.at} ms vs the harness boundary)` : ""}.`);
+      if (h.verdicts || h.exposureVerdicts) L.push(`- Harness verdicts: ${JSON.stringify(h.verdicts ?? {})}; exposure ${JSON.stringify(h.exposureVerdicts ?? {})}`);
+    }
     L.push("");
     const e = lg.exposure;
     L.push(`### Exposure (first attributed target response ${hms(e.firstTargetT)})`);
@@ -1012,7 +1295,7 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push("");
       L.push("| save rev | label | group | eligible | p50 / p95 / max ms | missing @30 s | continuity | p95 ≤ 3 s | joined after p95 / missing | not joined | broadcast received / pop. | applying fetch reasons | regressions |");
       L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
-      for (const s of lg.continuity) for (const g of s.per) L.push(`| ${s.rev} | ${s.label ?? "—"} | ${g.group} | ${g.eligible} | ${d(g.before.p50)} / ${d(g.before.p95)} / ${d(g.before.max)} | ${g.before.missing} | ${g.continuity30s} | ${g.perf3s} | ${d(g.after.p95)} / ${g.after.missing} | ${g.notJoined} | ${g.received} / ${g.population} | ${JSON.stringify(g.reasons)} | ${g.regressions} |`);
+      for (const s of lg.continuity) for (const g of s.per) L.push(`| ${s.rev} | ${s.label ?? "—"} | ${g.group} | ${g.eligible} | ${d(g.before.p50)} / ${d(g.before.p95)} / ${d(g.before.max)} | ${g.before.missing} | ${g.continuity30s} | ${g.perf3s} | ${d(g.after.p95)} / ${g.after.missing} | ${g.notJoined} | ${g.received} / ${g.population} | ${JSON.stringify(g.reasons)} | ${g.regressions ?? "—"} |`);
       L.push("");
     }
     if (lg.stale) {
@@ -1029,6 +1312,14 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push(`| change | receipts | pages | → fetch p50 / max ms (none) | → DOM p50 / max ms (none) | DOM < ${EARLIEST_REPAIR_MS / 1000} s (before periodic repair) |`);
       L.push("|---|---|---|---|---|---|");
       for (const g of lg.r1Cohort) L.push(`| ${g.type} | ${g.receipts} | ${g.pages} | ${d(g.fetch.p50)} / ${d(g.fetch.max)} (${g.noFetch}) | ${d(g.dom.p50)} / ${d(g.dom.max)} (${g.noDom}) | ${g.domBeforeRepair}/${g.receipts} |`);
+      L.push("");
+    }
+    if (lg.smoke?.length) {
+      L.push("### Reactions / wishes smoke from old pages");
+      L.push("");
+      L.push("| page | locale | type | harness checks | pass | sub-requests (status → serving deployment) |");
+      L.push("|---|---|---|---|---|---|");
+      for (const s of lg.smoke) L.push(`| ${s.page ?? "—"} | ${s.locale ?? "—"} | ${s.kind ?? "—"} | ${s.checks ? Object.entries(s.checks).map(([k, v]) => `${k} ${v ? "✓" : "✕"}`).join(", ") : "—"} | ${s.pass ?? "—"} | ${s.subs.map((x) => `${x.key} ${x.status} → ${x.dep ?? "unattributed"}${x.dep && !x.consistent ? " (inconsistent)" : ""}`).join("; ")} |`);
       L.push("");
     }
   }
