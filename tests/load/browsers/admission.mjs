@@ -161,7 +161,9 @@ export function firstSaveFromFile(text, seenAt) {
 }
 
 export function parseAdmitFile(text) {
-  const t = String(text ?? "").trim();
+  // A BOM (PowerShell 5.1 `Out-File -Encoding utf8` writes one) would
+  // make JSON.parse fail and the binding vanish into `raw`.
+  const t = String(text ?? "").replace(/^﻿/, "").trim();
   if (!t) return { raw: "" };
   try {
     const j = JSON.parse(t);

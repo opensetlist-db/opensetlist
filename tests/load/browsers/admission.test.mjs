@@ -68,6 +68,7 @@ test("admit file and fixture ids", () => {
   assert.equal(parseAdmitFile("redeployed").raw, "redeployed");
   const j = parseAdmitFile('{"base":"https://opensetlist-abc123-opensetlist-projects.vercel.app","measurementId":"dpl_2"}');
   assert.equal(j.measurementId, "dpl_2");
+  assert.equal(parseAdmitFile('﻿{"measurementId":"dpl_3"}').measurementId, "dpl_3");
   assert.ok(j.base.startsWith("https://"));
   const ids = fixtureIdsOf({ clones: [{ id: 5 }, { id: "6" }], createdIds: [7], rows: [{ id: 8, clone: true }, { id: 9 }] });
   assert.deepEqual([...ids].sort(), ["5", "6", "7", "8"]);
