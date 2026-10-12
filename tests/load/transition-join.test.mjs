@@ -443,3 +443,19 @@ test("continuity: 30 s acceptance and p95 per SDK group; arrival exposure counte
   assert.equal(x.pages.exercised, true);
   assert.equal(arrivalExposure(save, sdk, pages, 1).sdk.arrivals, 0, "a later switch's arrivals are excluded");
 });
+
+test("old answer after cutover converges only when the follow-up reaches the LEG HEAD, not merely the old rev", () => {
+  // Codex review: a follow-up at rev 10 after an old answer at rev 10 is not
+  // convergence when the leg's save committed rev 11. Lower every hold
+  // client's follow-up (second row, rev column 8) from 11 to 10.
+  const { json, logsByDep } = fixture();
+  for (const c of json.transition.sdk) if (c.cohort === "hold") c.reqs[1][8] = 10;
+  const rows = attribute(harnessResponses(json), logsByDep, { manifest });
+  const [sw] = resolveSwitches(json.transition.switches, { manifest });
+  const p = propagation(sw, rows);
+  const e = exposure(sw, p, rows, {});
+  assert.ok(e.oldAfterCutover.clients >= 6, "the six held answers are still old answers after the cutover");
+  assert.equal(e.oldAfterCutover.converged, 0, "no follow-up reached the leg head (rev 11)");
+  assert.equal(e.oldAfterCutover.exercised, false);
+  assert.ok(e.oldAfterCutover.rows.some((r) => r.subset === "hold" && r.legHead === 11 && r.reachedHead === false));
+});

@@ -796,6 +796,12 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
     if (!byClient.has(k)) byClient.set(k, []);
     byClient.get(k).push(r);
   }
+  // The leg's 2xx saves (pop "save") in order; legHead = the highest rev
+  // committed in this leg (saves between plannedAt − 60 s and the window end).
+  const legFrom = (sw.plannedAt ?? T) - 60_000;
+  const legTo = sw.window?.to ?? Infinity;
+  const saveRows = rows.filter((r) => r.pop === "save" && r.status != null && r.status >= 200 && r.status < 300 && r.rev != null && r.tStart != null && r.tStart >= legFrom && r.tStart <= legTo);
+  const legHead = saveRows.reduce((m, sv) => (sv.rev > m ? sv.rev : m), -Infinity);
   const hits = [];
   // The client receives an answer when it evaluates it (a held response is
   // evaluated at its release), else at the response.
@@ -808,12 +814,24 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
     if (!late.length) continue;
     const o = late[late.length - 1];
     const oAt = answerAt(o);
-    const follow = rs.find((r) => r !== o && r.tStart != null && r.tStart >= oAt && r.attr.deploymentId === sw.targetId && r.status === 200 && r.rev != null && (o.rev == null || r.rev >= o.rev));
+    // "Converged" means caught up with the LEG'S COMMITTED HEAD, not merely
+    // newer than the delayed old answer: a follow-up at rev 6 after an old
+    // answer at rev 5 is no convergence when the leg's saves reached rev 10.
+    // Head known at a fetch's start = the highest rev of a 2xx save whose
+    // response had arrived by then; the leg head = the highest rev of the
+    // leg's saves (committed before the window ends).
+    const headBefore = (t) => saveRows.reduce((m, sv) => (sv.tEnd != null && sv.tEnd <= t && sv.rev > m ? sv.rev : m), -Infinity);
+    const follow = rs.find((r) => r !== o && r.tStart != null && r.tStart >= oAt && r.attr.deploymentId === sw.targetId && r.status === 200 && r.rev != null && r.rev >= Math.max(o.rev ?? -Infinity, headBefore(r.tStart)));
+    // Did the client reach the leg head at all (responses or its applied records)?
+    const c0 = clientRec.get(k);
+    const appliedMax = Math.max(-Infinity, ...((c0?.applied ?? []).map((a) => (Array.isArray(a) ? a[1] : a.rev)).filter((v) => Number.isFinite(v))));
+    const respMax = Math.max(-Infinity, ...rs.filter((r) => r.tStart != null && r.tStart >= oAt && r.attr.deploymentId === sw.targetId && r.status === 200 && r.rev != null).map((r) => r.rev));
+    const reachedHead = legHead === -Infinity || Math.max(appliedMax, respMax) >= legHead;
     const c = clientRec.get(k);
     let regressions = null;
     if (c?.appliedAll) { regressions = 0; let prev = -Infinity; for (const a of c.appliedAll) { if (a[1] < prev) regressions++; prev = Math.max(prev, a[1]); } }
     else if (c?.regressions != null) regressions = c.regressions;
-    hits.push({ client: k, subset: o.subset, oldRev: o.rev, oldEnd: oAt, oldVercelId: o.vercelId, followRev: follow?.rev ?? null, followEnd: follow?.tEnd ?? null, converged: !!follow && (regressions == null || regressions === 0), regressions });
+    hits.push({ client: k, subset: o.subset, oldRev: o.rev, oldEnd: oAt, oldVercelId: o.vercelId, followRev: follow?.rev ?? null, followEnd: follow?.tEnd ?? null, legHead: legHead === -Infinity ? null : legHead, reachedHead, converged: !!follow && reachedHead && (regressions == null || regressions === 0), regressions });
   }
   const conv = hits.filter((h) => h.converged);
   out.oldAfterCutover = {
