@@ -51,6 +51,25 @@
 // ../warm-join.mjs, which lines it up with the warm job's completion
 // from the Vercel history logs (the harness cannot see those live).
 //
+// n14 qualification step 5 (cold admission): `--phase=admission`
+// replaces the "join everybody, settle, then edit" start with prepare →
+// boundary wait → admit: everything that needs the deployment before
+// the measurement (login, the dedicated anchor row, the run manifest)
+// happens first, then NOTHING is sent until the operator's boundary
+// (`--admit-at` / `--admit-file`, after the `vercel redeploy`), then the
+// pages (concurrency 5) and the SDK clients (50/s) start together at T0
+// and the admission saves run on their own timer from T0
+// (`--admission-saves=5,20,45`), concurrently with the launches. The
+// per-save exposure (SDK / page), the population-split convergence, the
+// stale first answers and the admission gates are in the report's
+// "Admission" section (pure logic: admission.mjs; server side:
+// ../admission-join.mjs). `--final-cohort=20,20` adds the I3 control at
+// the end (20 incumbents kept, 20 fresh clients, save 6 s after they are
+// ready, +40 s save). `--drill=idle-broadcast` (I1 / I2 with `--wake`) is
+// the first-save-after-idle drill: SDK cohorts only, scheduled from
+// `--connect-at` / `--first-save-at`, eligibility computed post hoc.
+// See README.md "Admission phase" / "Idle-broadcast drill".
+//
 // Measurement validity (every run): the main thread and every SDK
 // worker thread run an event-loop lag monitor (100 ms tick), the workers
 // send a heartbeat each second, and the workers time their own 8 s
@@ -70,6 +89,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
+import dc from "node:diagnostics_channel";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient, isDeploymentBaseUrl } from "../realtime/lib.mjs";
@@ -81,6 +101,11 @@ import {
 } from "./overlap.mjs";
 import { REACTION_TYPES, ANON_PREFIX } from "../lib/constants.js";
 import { launchPages } from "./pages.mjs";
+import {
+  parseStep5Flags, parseAdmitFile, fixtureIdsOf, expectedRows, completeAt, connOf, connectedThrough, firstSub,
+  sdkExposure, pageExposure, exposureLabel, sdkConvergence, pageConvergence, staleFirstAnswers, receiptVsReason,
+  admissionVerdict, idleEligibility, idleArrivals, summarizeArrivals,
+} from "./admission.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
 import {
@@ -113,7 +138,11 @@ if (DEPLOYMENT_URL) {
 }
 
 const int = (k, d) => (args[k] === undefined ? d : parseInt(args[k], 10));
-const BASE = process.env.BASE_URL.replace(/\/$/, "");
+// `let`: with --phase=admission --deployment-url the measurement
+// deployment's URL is only known after the redeploy and may arrive in the
+// admit file (see admissionPhase); everything that talks to it reads
+// BASE at call time.
+let BASE = process.env.BASE_URL.replace(/\/$/, "");
 const EVENT_ID = String(args["event-id"] ?? "111");
 const EVENT_PATH = args["event-path"] ?? "/events/111/rehearsal-lovelive-fes-2020-day1";
 const PAGES = int("pages", 30);
@@ -154,7 +183,7 @@ const DEBUG_STALL_MS = int("debug-stall", 0);
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
-if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam", "verify-ambiguity", "overlap"].includes(DRILL)) {
+if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam", "verify-ambiguity", "overlap", "idle-broadcast"].includes(DRILL)) {
   console.error(`unknown --drill=${args.drill}`);
   process.exit(2);
 }
@@ -168,6 +197,32 @@ if (OV_PARSED.error) {
   process.exit(2);
 }
 const OV = OV_PARSED.cfg;
+// n14 step 5 (see the header and admission.mjs `parseStep5Flags`): ADM =
+// the --phase=admission config, IDLE = the --drill=idle-broadcast config;
+// null otherwise. Checked here, before anything is created.
+const PHASE = args.phase === undefined ? null : String(args.phase);
+const S5 = parseStep5Flags(args, { phase: PHASE, drill: DRILL, deploymentUrl: DEPLOYMENT_URL, pages: PAGES });
+if (S5.error) {
+  console.error(S5.error);
+  process.exit(2);
+}
+const ADM = S5.cfg.admission;
+const IDLE = S5.cfg.idle;
+// With a deployment-specific URL the identity guard would fetch a
+// snapshot from the measurement deployment before T0 — exactly the
+// warming this phase must avoid — so it has to run against the
+// precursor instead.
+if (ADM && DEPLOYMENT_URL && !ADM.precursor) {
+  console.error("--phase=admission --deployment-url needs --guard-precursor=<precursor deployment URL>: the identity guard must not touch the measurement deployment before T0");
+  process.exit(2);
+}
+if (ADM?.precursor && !isDeploymentBaseUrl(ADM.precursor)) {
+  console.error("--guard-precursor must be https://opensetlist-<hash>-opensetlist-projects.vercel.app");
+  process.exit(2);
+}
+// Where prepare talks to: the precursor (deployment-URL runs) or the
+// alias, which still points at the precursor until the redeploy.
+const PREP_BASE = ADM?.precursor ?? BASE;
 // Reaction types: the page's ack-hold click uses the LAST type, the raw
 // reactions cycle over the others, so the clicked button's count changes
 // only by the page's own reaction (the ack-hold verdict compares exact
@@ -336,15 +391,26 @@ function startWorkers() {
   const per = Math.ceil(SUBS / SUB_WORKERS);
   const batchPer = Math.max(1, Math.round(SUB_BATCH / SUB_WORKERS));
   for (let w = 0, offset = 0; w < SUB_WORKERS && offset < SUBS; w++, offset += per) {
-    const n = Math.min(per, SUBS - offset);
+    spawnWorker({ offset, n: Math.min(per, SUBS - offset), batch: batchPer });
+  }
+}
+
+// One SDK worker thread with clients [offset, offset + n). `cohort`
+// labels its clients' records (step 5: "incumbent" / "fresh"); worker
+// indices continue across calls, so a cohort spawned later (I2 / I3) is
+// covered by the same validity monitors.
+function spawnWorker({ offset, n, batch, cohort = null }) {
+  const w = workers.length;
+  {
     const worker = new Worker(path.join(HERE, "subs-worker.mjs"), {
       workerData: {
         offset, n, base: BASE, eventId: EVENT_ID,
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        batch: batchPer, every: 1000, localeOf: LOCALE_OF, workerIdx: w,
+        batch, every: 1000, localeOf: LOCALE_OF, workerIdx: w,
         // overlap: record anchor row A's song title per response.
         anchorId: OVERLAP ? ovAnchors.A?.id ?? null : null,
+        cohort,
       },
     });
     workerStarted[w] = Date.now();
@@ -363,8 +429,17 @@ function startWorkers() {
       (waiters[type] ||= []).push(resolve);
       worker.postMessage({ cmd, ...extra });
     });
-    workers.push({ worker, n, ask, idx: w });
+    const entry = { worker, n, ask, idx: w, cohort, offset };
+    workers.push(entry);
+    return entry;
   }
+}
+
+// SDK clients connected right now (current, not "ever subscribed"),
+// optionally only those of the given worker entries.
+async function subsConnected(list = workers) {
+  const all = await Promise.all(list.map((w) => w.ask("progress", "progress")));
+  return all.reduce((a, p) => a + p.joined, 0);
 }
 
 // How many SDK clients have applied a snapshot with rev ≥ `rev`.
@@ -880,33 +955,11 @@ async function controlReloads(n, phase) {
   return out;
 }
 
-// ─── main ───
-async function main() {
-  const runStart = Date.now();
-  await hostGuard();
-  log(`browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}`);
-
-  // DB: recorded starting rows (for the position restore) + marker songs.
-  const pg = pgClient();
-  await pg.connect();
-  let songs;
-  let startRev;
-  try {
-    original = await activeRows(pg, EVENT_ID);
-    // double-save needs one more marker for its second PUT. overlap: one
-    // per save of every group (groups × roles), minus save A's when the
-    // catalog edit is on (A then gets a dedicated song per group).
-    songs = OVERLAP
-      ? await pickMarkerSongs(pg, EDITS * (rolesOf(OV).length - (OV.catalogAtMs > 0 ? 1 : 0)))
-      : await pickMarkerSongs(pg, EDITS + (DRILL === "double-save" ? 1 : 0));
-    startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
-  } finally {
-    await pg.end();
-  }
-  if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
-  const afterPosition = original[AFTER_ROW - 1].position;
-  log(`event ${EVENT_ID}: ${original.length} active rows, rev ${startRev}; inserting after row ${AFTER_ROW} (position ${afterPosition}); markers ${songs.map((s) => s.id).join(",")}`);
-
+// --deployment-url identity guard (see the comment inside). `target` =
+// the deployment it reads from: BASE normally; with --phase=admission the
+// PRECURSOR (--guard-precursor), so the measurement deployment receives
+// no request before T0 (the guard's snapshot read would warm it).
+async function identityGuard(target, startRev) {
   // --deployment-url: before any write, the target must serve THIS event
   // exactly as the dev database has it right now: the same revision AND
   // the same active rows (ids with their positions, in order). A
@@ -922,16 +975,20 @@ async function main() {
   // the BigInt ids as JSON numbers, exact below 2^53; SetlistItem ids
   // are in the thousands, so the string comparison against pg's text
   // ids is exact here.
-  if (DEPLOYMENT_URL) {
-    const snap = await getSnapshot(BASE, EVENT_ID, { locale: "ko", minRev: startRev });
-    const served = (Array.isArray(snap.items) ? snap.items : []).map((it) => `${it.id}@${Number(it.position)}`).join(",");
-    const expected = original.map((r) => `${r.id}@${r.position}`).join(",");
-    if (Number(snap.rev) !== startRev || served !== expected) {
-      throw new Error(`--deployment-url: ${BASE} serves event ${EVENT_ID} at rev ${snap.rev} with rows [${served.slice(0, 120)}], the dev database has rev ${startRev} with rows [${expected.slice(0, 120)}] — not the dev deployment; nothing was created`);
-    }
-    log(`deployment-url check: ${BASE} serves event ${EVENT_ID} at rev ${startRev} with the dev database's ${original.length} rows (ids and positions match)`);
+  const snap = await getSnapshot(target, EVENT_ID, { locale: "ko", minRev: startRev });
+  const served = (Array.isArray(snap.items) ? snap.items : []).map((it) => `${it.id}@${Number(it.position)}`).join(",");
+  const expected = original.map((r) => `${r.id}@${r.position}`).join(",");
+  if (Number(snap.rev) !== startRev || served !== expected) {
+    throw new Error(`--deployment-url: ${target} serves event ${EVENT_ID} at rev ${snap.rev} with rows [${served.slice(0, 120)}], the dev database has rev ${startRev} with rows [${expected.slice(0, 120)}] — not the dev deployment; nothing was created`);
   }
+  log(`deployment-url check: ${target} serves event ${EVENT_ID} at rev ${startRev} with the dev database's ${original.length} rows (ids and positions match)`);
+}
 
+// The standard start (every mode except --phase=admission and
+// --drill=idle-broadcast): identity guard, login, anchors, then the whole
+// population joins and settles before the first edit.
+async function standardJoin({ startRev, afterPosition }) {
+  if (DEPLOYMENT_URL) await identityGuard(BASE, startRev);
   cookie = await adminLogin(BASE);
 
   // standalone / mixed: create the anchor row now, before any viewer
@@ -1030,12 +1087,426 @@ async function main() {
     if (!guest.joined) throw new Error(`guest could not join event:${EVENT_ID} (${guest.status})`);
   }
   await sleep(SETTLE_MS);
+  return { popStart, popSummary, settleStart, drillPageSet, admission: null };
+}
+
+// ─── n14 step 5: shared helpers ───
+const sleepUntil = (t) => sleep(Math.max(0, t - Date.now()));
+// The population stub when no Chromium page runs (or before the launch
+// promise resolved): every method a run touches, all no-ops.
+const emptyPop = () => ({ pages: [], joined: () => 0, pgReady: () => 0, setDropNotify() {}, armHookDrop: async () => 0, disarmHookDrop: async () => 0, hookDropPending: async () => null, dropSockets: () => 0, close: async () => {} });
+
+// The run manifest: every active row of the event with what the page
+// renders from it (songs in order — the page's complete-setlist check
+// compares against these, by order and multiplicity) and what a fixture
+// clone copies (members incl. a nullable realPersonId, artists, the row
+// attributes), plus the event revision — read in ONE repeatable-read
+// transaction so rows and revision belong together.
+async function readManifest(pg) {
+  await pg.query("begin isolation level repeatable read");
+  try {
+    const r = await pg.query(
+      `select si.id::text as id, si.position, si."isEncore" as "isEncore", si.type::text as type, si.status::text as status,
+              si."stageType"::text as "stageType", si."performanceType"::text as "performanceType",
+              coalesce((select json_agg(json_build_object('songId', sis."songId"::text, 'order', sis."order") order by sis."order" asc nulls last, sis.id)
+                          from "SetlistItemSong" sis where sis."setlistItemId" = si.id), '[]'::json) as songs,
+              coalesce((select json_agg(json_build_object('stageIdentityId', m."stageIdentityId", 'realPersonId', m."realPersonId") order by m."stageIdentityId")
+                          from "SetlistItemMember" m where m."setlistItemId" = si.id), '[]'::json) as members,
+              coalesce((select json_agg(a."artistId"::text order by a."artistId")
+                          from "SetlistItemArtist" a where a."setlistItemId" = si.id), '[]'::json) as artists
+         from "SetlistItem" si
+        where si."eventId" = $1 and si."isDeleted" = false
+        order by si."isEncore", si.position, si."createdAt"`,
+      [EVENT_ID],
+    );
+    const rev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
+    await pg.query("commit");
+    return { rev, rows: r.rows.map((x) => ({ ...x, position: Number(x.position) })) };
+  } catch (e) {
+    await pg.query("rollback").catch(() => {});
+    throw e;
+  }
+}
+
+// Outbound-request watch for the boundary wait: every HTTP request this
+// process creates (undici = fetch) and every TCP client socket it opens
+// is recorded. Between the end of prepare and T0 there must be none — no
+// worker thread and no Chromium exist yet, so this main thread is the
+// only possible sender.
+function watchOutbound(into) {
+  const onHttp = (m) => into.push([Date.now(), "http", `${m.request?.method ?? "?"} ${m.request?.origin ?? ""}${String(m.request?.path ?? "").split("?")[0]}`]);
+  const onTcp = (m) => into.push([Date.now(), "tcp", `${m.socket?.remoteAddress ?? "?"}:${m.socket?.remotePort ?? "?"}`]);
+  dc.subscribe("undici:request:create", onHttp);
+  dc.subscribe("net.client.socket", onTcp);
+  return () => {
+    dc.unsubscribe("undici:request:create", onHttp);
+    dc.unsubscribe("net.client.socket", onTcp);
+  };
+}
+
+// Wait until every CONNECTED SDK client has applied rev ≥ `rev` and every
+// open page shows `songId` (or a later marker on the same row), bounded by
+// `until`.
+async function waitConverged(rev, { songIds = [], until }) {
+  while (Date.now() < until) {
+    const pagesDone = !pagePop || pagePop.pages.every((p) => !p || songIds.length === 0 || songIds.some((id) => p.rec.seen[id] != null));
+    const conn = workers.length ? await subsConnected() : 0;
+    const subsDone = !workers.length || (await subsReached(rev)) >= conn;
+    if (pagesDone && subsDone) return true;
+    await sleep(500);
+  }
+  return false;
+}
+
+// ─── n14 step 5: --phase=admission ───
+// prepare → boundary wait → admit (design §1.1). Returns the same shape
+// as standardJoin plus the admission record and the admission saves as
+// edits (mode "admission").
+async function admissionPhase({ startRev, afterPosition, songs }) {
+  const A = { prepBase: PREP_BASE, base: null, saves: [], guardRead: null, boundary: null, prepare: null, manifest: null, manifestFile: null, anchor: null, fixture: null };
+  const prepStart = Date.now();
+  // Identity guard against the PRECURSOR (deployment-URL runs; on the
+  // alias the guard does not exist).
+  if (DEPLOYMENT_URL) await identityGuard(PREP_BASE, startRev);
+  // One login per run (the Vercel firewall rate-limits the login route).
+  cookie = await adminLogin(PREP_BASE);
+  // The ONE dedicated anchor row: every admission save (and every
+  // standalone steady edit, and the I3 saves) PUTs its marker here. A
+  // measured PUT deletes and recreates the row's three junction
+  // collections, so it must never touch an original or fixture row.
+  const a = await insertAfter({ base: PREP_BASE, cookie, eventId: EVENT_ID, afterPosition });
+  created.push(a.id);
+  anchor = { id: a.id, position: a.position };
+  A.anchor = { id: a.id, position: a.position, rev: a.rev };
+  log(`admission prepare: anchor row ${a.id} @${a.position} (rev ${a.rev}) via ${PREP_BASE}`);
+  const m = await withPg((pg) => readManifest(pg));
+  // The fixture (A2 / A4): mark the clone rows.
+  if (ADM.rowsManifest) {
+    const fx = JSON.parse(fs.readFileSync(ADM.rowsManifest, "utf8"));
+    const ids = fixtureIdsOf(fx);
+    for (const r of m.rows) r.fixture = ids.has(r.id);
+    A.fixture = { file: ADM.rowsManifest, label: fx.label ?? null, cloneIds: [...ids], clonesActive: m.rows.filter((r) => r.fixture).length };
+    log(`admission prepare: fixture ${ADM.rowsManifest}: ${A.fixture.clonesActive}/${ids.size} clone rows active`);
+  }
+  for (const r of m.rows) r.anchor = r.id === a.id;
+  A.manifest = m;
+  // The pre-anchor original rows (positions as recorded at the start):
+  // what the clean-up restores to with --restore-positions.
+  A.preAnchor = original.map((r) => ({ ...r }));
+  const now = new Date();
+  const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
+  fs.mkdirSync(dir, { recursive: true });
+  A.manifestFile = path.join(dir, `${now.toISOString().replace(/[:.]/g, "-")}-admission-manifest.json`);
+  fs.writeFileSync(A.manifestFile, JSON.stringify({ eventId: EVENT_ID, prepBase: PREP_BASE, base: BASE, label: args.label ?? null, startRev, rev: m.rev, anchor: A.anchor, preAnchor: A.preAnchor, rows: m.rows, fixture: A.fixture, writtenAt: now.toISOString() }, null, 1));
+  A.prepare = { startedAt: prepStart, endedAt: Date.now(), rows: m.rows.length, rev: m.rev };
+  log(`admission prepare done: ${m.rows.length} active rows at rev ${m.rev}; manifest ${A.manifestFile}`);
+
+  // ── boundary wait: NOTHING goes out until the operator's boundary ──
+  const outbound = [];
+  const unwatch = watchOutbound(outbound);
+  const waitFrom = Date.now();
+  let admit = null;
+  if (ADM.admitAt != null) {
+    log(`boundary: waiting until --admit-at ${iso(ADM.admitAt)} (${Math.round((ADM.admitAt - Date.now()) / 1000)} s); no request until then`);
+    await sleepUntil(ADM.admitAt);
+  } else {
+    log(`boundary: waiting for --admit-file ${ADM.admitFile} (touch it after the redeploy finished and the alias switched); no request until then`);
+    while (!fs.existsSync(ADM.admitFile)) await sleep(100);
+    // The writer may still be writing; a short pause, then read once.
+    await sleep(100);
+    admit = parseAdmitFile(fs.readFileSync(ADM.admitFile, "utf8"));
+  }
+  const T0 = Date.now();
+  unwatch();
+  A.boundary = { waitFrom, T0, waitMs: T0 - waitFrom, outbound, admitFile: admit, admitAt: ADM.admitAt };
+  log(`boundary: T0 ${iso(T0)} after ${A.boundary.waitMs} ms; outbound requests during the wait: ${outbound.length}${outbound.length ? ` (${outbound.slice(0, 3).map((x) => x[2]).join("; ")})` : ""}`);
+  if (admit?.base) {
+    const b = String(admit.base).replace(/\/$/, "");
+    if (!DEPLOYMENT_URL || !isDeploymentBaseUrl(b)) throw new Error(`admit file names base ${b}: only accepted with --deployment-url and a deployment URL`);
+    BASE = b;
+  }
+  if (DEPLOYMENT_URL && BASE === PREP_BASE) throw new Error(`the measurement deployment is the precursor (${BASE}): it received the prepare requests, nothing to measure`);
+  A.base = BASE;
+
+  // ── admit: pages + SDK + saves, all from T0 ──
+  if (SUBS > 0) startWorkers();
+  pagePop = emptyPop();
+  const pagesP = PAGES > 0
+    ? launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode: () => "none", headless: !args.headed, concurrency: PAGE_CONCURRENCY, log, admission: true }).then((p) => { pagePop = p; return p; })
+    : Promise.resolve(pagePop);
+  // Deployment-URL runs: the measurement deployment's identity, checked
+  // with ONE generic read at T0 (part of the admission wave, reported
+  // apart) before the first save may write through it. The alias needs
+  // none (assertDev already pinned it).
+  if (DEPLOYMENT_URL) {
+    const t = Date.now();
+    try {
+      const snap = await getSnapshot(BASE, EVENT_ID, { locale: "ko" });
+      const served = (snap.items || []).map((it) => `${it.id}@${Number(it.position)}`).sort().join(",");
+      const expected = m.rows.map((r) => `${r.id}@${r.position}`).sort().join(",");
+      A.guardRead = { at: t, ms: Date.now() - t, status: 200, rev: snap.rev, ok: served === expected && Number(snap.rev) >= m.rev };
+    } catch (e) {
+      A.guardRead = { at: t, ms: Date.now() - t, status: Number(/HTTP (\d+)/.exec(e.message)?.[1] ?? 0), rev: null, ok: false, error: e.message };
+    }
+    if (!A.guardRead.ok) throw new Error(`measurement deployment ${BASE} does not serve the dev manifest (rev ${A.guardRead.rev ?? "—"}, ${A.guardRead.error ?? "rows differ"}) — no save written`);
+    log(`measurement identity: ${BASE} serves the manifest's ${m.rows.length} rows at rev ${A.guardRead.rev}`);
+  }
+  const saveP = ADM.savesS.map((sec, i) => sleepUntil(T0 + sec * 1000).then(async () => {
+    const song = songs[i];
+    // Not retried (like the overlap drill): the schedule is the
+    // experiment; a failed save is a gate failure, not something to hide.
+    const r = await putSongRaw({ base: BASE, cookie, id: anchor.id, position: anchor.position, songId: song.id });
+    if (r.error) saveFailures.push({ k: `a${i + 1}`, op: "put (admission)", attempt: 1, at: iso(r.startedAt), error: r.error });
+    log(`admission save a${i + 1} (+${sec} s): ${r.status} rev ${r.rev ?? "—"} ${r.ms} ms`);
+    return { k: `a${i + 1}`, i, offsetS: sec, song, ...r };
+  }));
+  // Join wait, concurrently with the saves.
+  let joinedAt = null;
+  let lastPrint = 0;
+  while (true) {
+    const sj = SUBS > 0 ? await subsConnected() : 0;
+    const pj = pagePop.joined();
+    if (sj >= SUBS && pj >= PAGES) { joinedAt = Date.now(); break; }
+    if (Date.now() - T0 > JOIN_TIMEOUT_MS) { log("join timeout — the shortfall fails the join gate"); break; }
+    if (Date.now() - lastPrint > 3000) { lastPrint = Date.now(); log(`  admitted: pages ${pj}/${PAGES} (launching), SDK connected ${sj}/${SUBS}`); }
+    await sleep(250);
+  }
+  A.saves = await Promise.all(saveP);
+  await pagesP;
+  const ok = A.saves.filter((x) => isOkSave(x));
+  if (ok.length) {
+    const last = ok[ok.length - 1];
+    await waitConverged(Math.max(...ok.map((x) => x.rev)), { songIds: [String(last.song.id)], until: last.startedAt + TIMEOUT_MS });
+  }
+  A.end = Date.now();
+  const popSummary = {
+    pagesJoined: pagePop.joined(), pagesPgReady: pagePop.pgReady(),
+    ...(SUBS > 0 ? await subsProgress() : { joined: 0 }),
+    allJoinedSec: joinedAt ? (joinedAt - T0) / 1000 : null, allPgReadySec: null,
+  };
+  log(`admission window done: ${JSON.stringify(popSummary)}`);
+  A.T0 = T0;
+  const admissionEdits = ok.map((x) => ({ k: x.k, mode: "admission", id: anchor.id, song: x.song, ins: null, put: { startedAt: x.startedAt, successAt: x.startedAt, ms: x.ms, rev: x.rev, attempts: 1 }, double: null }));
+  return { popStart: T0, popSummary, settleStart: A.end, drillPageSet: new Set(), admission: A, admissionEdits };
+}
+
+// One save on the anchor row for the step-5 schedules (I1/I2/I3): not
+// retried, recorded, logged. Returns the putSongRaw result + song.
+async function anchorSave(k, song, mode, edits) {
+  const r = await putSongRaw({ base: BASE, cookie, id: anchor.id, position: anchor.position, songId: song.id });
+  if (r.error) saveFailures.push({ k, op: `put (${mode})`, attempt: 1, at: iso(r.startedAt), error: r.error });
+  else edits.push({ k, mode, id: anchor.id, song, ins: null, put: { startedAt: r.startedAt, successAt: r.startedAt, ms: r.ms, rev: r.rev, attempts: 1 }, double: null });
+  log(`save ${k} [${mode}]: ${r.status} rev ${r.rev ?? "—"} ${r.ms} ms`);
+  return { ...r, song };
+}
+
+// Wait until every client of the given workers is connected (or the join
+// timeout); returns the time they were.
+async function waitCohort(list, n) {
+  const from = Date.now();
+  while (Date.now() - from < JOIN_TIMEOUT_MS) {
+    if ((await subsConnected(list)) >= n) return Date.now();
+    await sleep(200);
+  }
+  log(`cohort join timeout: ${await subsConnected(list)}/${n} connected`);
+  return Date.now();
+}
+
+// ─── n14 step 5: I3, the admission run's final phase (--final-cohort) ───
+// The pages leave; of the SDK population, the first `incumbents`
+// connected clients stay connected (NOT stopped — the finalizer would
+// otherwise stop every worker before the control) and every other client
+// is stopped; then `fresh` new clients join at the qualified rate, 6 s
+// after they are all connected a save, +40 s another save. Eligibility of
+// the fresh cohort (connected 6 s … 90 s at the save) is decided post hoc
+// (admission.mjs idleEligibility).
+async function finalCohortPhase({ songs, edits }) {
+  const fc = ADM.finalCohort;
+  const F = { startedAt: Date.now(), wantIncumbents: fc.incumbents, fresh: fc.fresh, incumbents: [], saves: [] };
+  if (PAGES > 0 && pagePop) {
+    await pagePop.close();
+    F.pagesClosedAt = Date.now();
+  }
+  const conn = (await Promise.all(workers.map((w) => w.ask("connected", "connected")))).flatMap((r) => r.idxs).sort((x, y) => x - y);
+  F.incumbents = conn.slice(0, fc.incumbents);
+  if (F.incumbents.length < fc.incumbents) log(`I3: only ${F.incumbents.length}/${fc.incumbents} incumbents connected`);
+  await Promise.all(workers.map((w) => w.ask("retire", "retired", { keep: F.incumbents })));
+  F.retiredAt = Date.now();
+  const fw = spawnWorker({ offset: SUBS, n: fc.fresh, batch: Math.max(1, Math.min(SUB_BATCH, fc.fresh)), cohort: "fresh" });
+  F.freshStartedAt = Date.now();
+  F.freshReadyAt = await waitCohort([fw], fc.fresh);
+  log(`I3: ${F.incumbents.length} incumbents kept, ${fc.fresh} fresh connected after ${F.freshReadyAt - F.freshStartedAt} ms; save in 6 s`);
+  const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position).catch(() => null);
+  if (p != null) anchor.position = Number(p);
+  await sleepUntil(F.freshReadyAt + 6000);
+  const s1 = await anchorSave("f1", songs[0], "final", edits);
+  await sleepUntil(s1.startedAt + 40000);
+  const s2 = await anchorSave("f2", songs[1], "final", edits);
+  F.saves = [s1, s2].map((x) => ({ status: x.status, rev: x.rev, startedAt: x.startedAt, ms: x.ms, song: x.song.id }));
+  if (s2.rev != null) await waitConverged(s2.rev, { until: s2.startedAt + TIMEOUT_MS });
+  F.endedAt = Date.now();
+  return F;
+}
+
+// ─── n14 step 5: --drill=idle-broadcast (I1 / I2) ───
+// SDK cohorts only (design §1.5). Nothing broadcasts before the first
+// save: the login is not a save, and the anchor row is created BY the
+// first measured save (insert-after = one save, one broadcast), so the
+// idle period ends exactly there. I1: incumbents connect at
+// --connect-at, first save at --first-save-at, quiet ≥ 40 s, then the
+// --idle-saves PUTs (marker on the new anchor). I2 (--wake): the first
+// save is the CHECK save — its rev must arrive by broadcast at every
+// connected local client within --wake-check-timeout (else one retry
+// save, then "escalate" is recorded); everyone stays connected; at first
+// save + --wake-gap the fresh cohort joins; 6 s after it is connected a
+// save, +40 s another.
+async function mainIdle(runStart) {
+  const I = IDLE;
+  const pg = pgClient();
+  await pg.connect();
+  let songs;
+  let startRev;
+  try {
+    original = await activeRows(pg, EVENT_ID);
+    songs = await pickMarkerSongs(pg, I.wake ? 3 : I.savesS.length);
+    startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
+  } finally {
+    await pg.end();
+  }
+  if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
+  const afterPosition = original[AFTER_ROW - 1].position;
+  cookie = await adminLogin(BASE);
+  log(`idle-broadcast ${I.wake ? "I2 (wake)" : "I1"}: ${I.incumbents} incumbents connect at ${iso(I.connectAt)}, first save at ${iso(I.firstSaveAt)}${I.wake ? `, fresh ${I.fresh} at +${I.wakeGapS} s` : `, then +${I.savesS.join(" s, +")} s`}; start rev ${startRev}`);
+  await sleepUntil(I.connectAt);
+  const popStart = Date.now();
+  const inc = spawnWorker({ offset: 0, n: I.incumbents, batch: I.incumbents, cohort: "incumbent" });
+  while (Date.now() < I.firstSaveAt - 500) {
+    log(`  incumbents connected ${await subsConnected([inc])}/${I.incumbents}`);
+    await sleep(Math.min(2000, Math.max(0, I.firstSaveAt - 500 - Date.now())));
+  }
+  const connectedAtSave = await subsConnected([inc]);
+  await sleepUntil(I.firstSaveAt);
+  const edits = [];
+  const events = [];
+  // Save 1 = the anchor insert.
+  let first;
+  try {
+    first = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
+  } catch (e) {
+    saveFailures.push({ k: "s1", op: "insert-after (idle first save)", attempt: 1, at: iso(Date.now()), error: e.message });
+    throw new Error(`idle first save failed (${e.message}) — cycle NOT EXERCISED`);
+  }
+  created.push(first.id);
+  anchor = { id: first.id, position: first.position };
+  edits.push({ k: "s1", mode: I.wake ? "idle-check" : "idle-first", id: first.id, song: { id: "blank", title: "(anchor insert: blank row)" }, ins: null, put: { startedAt: first.startedAt, successAt: first.startedAt, ms: first.ms, rev: first.rev, attempts: 1 }, double: null });
+  log(`save s1 (anchor insert): rev ${first.rev} ${first.ms} ms`);
+  let wake = null;
+  let si = 0;
+  if (!I.wake) {
+    for (const [i, off] of I.savesS.entries()) {
+      await sleepUntil(first.startedAt + off * 1000);
+      await anchorSave(`s${i + 2}`, songs[si++], "idle", edits);
+    }
+  } else {
+    wake = { check: [], escalate: null, fresh: null };
+    const verify = async (rev) => {
+      const until = Date.now() + I.wakeCheckS * 1000;
+      let noted = 0;
+      let conn = 0;
+      while (true) {
+        conn = await subsConnected([inc]);
+        noted = await subsNoted(rev);
+        if ((noted >= conn && conn > 0) || Date.now() > until) break;
+        await sleep(200);
+      }
+      return { rev, noted, connected: conn, ok: conn > 0 && noted >= conn, at: Date.now() };
+    };
+    let chk = await verify(first.rev);
+    wake.check.push({ save: "s1", ...chk });
+    log(`wake check: rev ${first.rev} by broadcast at ${chk.noted}/${chk.connected} connected clients → ${chk.ok ? "ok" : "MISSED"}`);
+    if (!chk.ok) {
+      // The runbook rule: one retry save; still missing → escalate.
+      events.push({ k: "s1", what: `check save rev ${first.rev} reached ${chk.noted}/${chk.connected} by broadcast within ${I.wakeCheckS} s — retry save`, at: iso(Date.now()) });
+      const r = await anchorSave("s1r", songs[si++], "idle-check-retry", edits);
+      if (r.rev != null) {
+        chk = await verify(r.rev);
+        wake.check.push({ save: "s1r", ...chk });
+      }
+      if (!chk.ok) {
+        wake.escalate = "check save missed twice — escalate: the clients must be reloaded / reconnected before the show relies on them (README, wake procedure)";
+        events.push({ k: "s1r", what: wake.escalate, at: iso(Date.now()) });
+      }
+    }
+    await sleepUntil(first.startedAt + I.wakeGapS * 1000);
+    const fw = spawnWorker({ offset: I.incumbents, n: I.fresh, batch: I.fresh, cohort: "fresh" });
+    const freshStartedAt = Date.now();
+    const freshReadyAt = await waitCohort([fw], I.fresh);
+    wake.fresh = { n: I.fresh, startedAt: freshStartedAt, readyAt: freshReadyAt };
+    log(`wake: fresh cohort ${I.fresh} connected after ${freshReadyAt - freshStartedAt} ms; save in 6 s`);
+    await sleepUntil(freshReadyAt + 6000);
+    const w1 = await anchorSave("w1", songs[si++], "idle-wake", edits);
+    await sleepUntil(w1.startedAt + 40000);
+    await anchorSave("w2", songs[si++], "idle-wake", edits);
+  }
+  const last = edits[edits.length - 1];
+  if (last?.put.rev != null) await waitConverged(last.put.rev, { until: last.put.startedAt + TIMEOUT_MS });
+  const editsEnd = Date.now();
+  const popSummary = { pagesJoined: 0, pagesPgReady: 0, ...(await subsProgress()), allJoinedSec: null, allPgReadySec: null };
+  return {
+    runStart, popStart, settleStart: I.firstSaveAt, popSummary, edits, drillEvents: events, drillPageSet: new Set(), startRev,
+    editsStart: first.startedAt, editsEnd, afterPosition, admission: null, finalPhase: null,
+    idle: { cfg: I, connectedAtSave, wake },
+  };
+}
+
+// ─── main ───
+async function main() {
+  const runStart = Date.now();
+  await hostGuard();
+  log(IDLE
+    ? `browsers run: base=${BASE} event=${EVENT_ID} drill=idle-broadcast (SDK cohorts only; --pages / --subs / --edits not used)`
+    : `browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}${ADM ? ` phase=admission (prepare via ${PREP_BASE})` : ""}`);
+  if (IDLE) return await mainIdle(runStart);
+
+  // DB: recorded starting rows (for the position restore) + marker songs.
+  const pg = pgClient();
+  await pg.connect();
+  let songs;
+  let startRev;
+  try {
+    original = await activeRows(pg, EVENT_ID);
+    // double-save needs one more marker for its second PUT. overlap: one
+    // per save of every group (groups × roles), minus save A's when the
+    // catalog edit is on (A then gets a dedicated song per group).
+    // admission: one marker per admission save first, then the steady
+    // edits', then the two I3 saves (--final-cohort).
+    songs = OVERLAP
+      ? await pickMarkerSongs(pg, EDITS * (rolesOf(OV).length - (OV.catalogAtMs > 0 ? 1 : 0)))
+      : ADM
+        ? await pickMarkerSongs(pg, ADM.savesS.length + EDITS + (ADM.finalCohort ? 2 : 0))
+        : await pickMarkerSongs(pg, EDITS + (DRILL === "double-save" ? 1 : 0));
+    startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
+  } finally {
+    await pg.end();
+  }
+  if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
+  const afterPosition = original[AFTER_ROW - 1].position;
+  log(`event ${EVENT_ID}: ${original.length} active rows, rev ${startRev}; inserting after row ${AFTER_ROW} (position ${afterPosition}); markers ${songs.map((s) => s.id).join(",")}`);
+
+  // Start: the standard join, or step 5's prepare → boundary → admit.
+  const pop = ADM
+    ? await admissionPhase({ startRev, afterPosition, songs: songs.slice(0, ADM.savesS.length) })
+    : await standardJoin({ startRev, afterPosition });
+  if (ADM) songs = songs.slice(ADM.savesS.length);
+  const { popStart, popSummary, settleStart, drillPageSet } = pop;
   // overlap: 3 control reloads of the admin editor before the first group.
   const ovReloadControls = [];
   if (OVERLAP && OV.reloadAt.length) ovReloadControls.push(...(await controlReloads(3, "before")));
 
-  // Edits.
-  const edits = [];
+  // Edits. Admission: the admission saves are already in (mode
+  // "admission"), so the per-save tables, the hint accounting, the DOM
+  // monotonicity and the warm section cover them unchanged.
+  const edits = [...(pop.admissionEdits ?? [])];
   // overlap: per group the record + its background work (see overlapGroup).
   const ovGroups = [];
   const ovPending = [];
@@ -1335,6 +1806,10 @@ async function main() {
     if (pagesDone && subsDone) break;
     await sleep(500);
   }
+  // I3 (--final-cohort): before the edit window closes, so its saves are
+  // inside the validity window and the monotonicity check.
+  let finalPhase = null;
+  if (ADM?.finalCohort) finalPhase = await finalCohortPhase({ songs: songs.slice(EDITS, EDITS + 2), edits });
   const editsEnd = Date.now();
   // overlap, after the measurement window: 3 control reloads, the quiet
   // tail (--overlap-quiet-tail: sparse probes of the LAST group's keys
@@ -1366,6 +1841,7 @@ async function main() {
   }
   return {
     runStart, popStart, settleStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition,
+    admission: pop.admission, finalPhase,
     ...(OVERLAP ? { overlap: { groups: ovGroups, controls: ovReloadControls, tail: ovTail, reactionPage: ovReactionPage >= 0 ? ovReactionPage : null } } : {}),
   };
 }
@@ -1435,6 +1911,325 @@ async function finalize(state, aborted) {
   const pageRecs = pagePop ? pagePop.pages.filter(Boolean).map((p) => p.rec) : [];
   if (pagePop) await pagePop.close();
   return { clean, verify, subRecs, pageRecs, ovClean };
+}
+
+// ─── n14 step 5: report sections ───
+// Compact per-client records (JSON `admission.sdk` / `idle.sdk`, the
+// input of ../admission-join.mjs): the subscription timeline, the first
+// request and the first successful snapshot, every valid raw broadcast
+// receipt and every applied snapshot. Tiny per client (no bodies).
+function compactSdk(r) {
+  const reqs = r.reqs || [];
+  const q0 = reqs[0] ?? null;
+  const ok = reqs.find((q) => q[6] === 200 && q[11] === "ok") ?? null;
+  return {
+    idx: r.idx, worker: r.worker ?? null, cohort: r.cohort ?? null, locale: r.locale,
+    attemptAt: r.attemptAt, subscribedAt: r.subscribedAt, connLog: r.connLog ?? null, stoppedAt: r.stoppedAt ?? null,
+    fallbacks: r.fallbacks, recreates: r.recreates ?? [],
+    // The client's FIRST request (its `initial` fetch): start, status,
+    // body rev — the "first answer" of the stale-first-answer count.
+    first: q0 ? { reqStart: q0[0], reason: q0[1], status: q0[6], rev: q0[8], source: q0[12], respAt: q0[10], bytes: q0[15] ?? null, outcome: q0[11] } : null,
+    // The first SUCCESSFUL snapshot (time-to-first-snapshot).
+    firstOk: ok ? { reqStart: ok[0], reason: ok[1], respAt: ok[10], rev: ok[8], source: ok[12], bytes: ok[15] ?? null } : null,
+    bcasts: (r.bcasts || []).filter(([, rev]) => rev != null),
+    applied: r.appliedAll || [],
+    http5xx: reqs.filter((q) => q[6] >= 500).length,
+    http503: reqs.filter((q) => q[6] === 503).length,
+    failKinds: r.failKinds || {},
+  };
+}
+
+// Compact per-page record (JSON `admission.pages`). `markers` = the
+// run's marker song ids (only those `seen` times are kept).
+function compactPage(r, expected, until, markers) {
+  const c = completeAt(r.rowsLog, expected, until);
+  let first = null;
+  for (const f of r.fetches) {
+    const st = f[7] ?? f[0];
+    if (!first || st < first.reqStart) first = { reqStart: st, status: f[2], source: f[3], rev: f[4] };
+  }
+  const hyd = [r.firstApiReqAt, r.wsOpenAt].filter((x) => x != null);
+  const seen = {};
+  for (const id of markers) if (r.seen[id] != null) seen[id] = r.seen[id];
+  return {
+    idx: r.idx, locale: r.locale, wave: r.wave ?? null, launchedAt: r.launchedAt ?? r.openedAt,
+    navStart: r.navStart ?? null, ttfbMs: r.ttfbMs ?? null, dclMs: r.dclMs ?? null, docStatus: r.docStatus ?? null, docBytes: r.docBytes ?? null,
+    seed: r.seed ?? { kind: "unknown", rev: null },
+    completeAt: c.t, completeMs: c.t != null && r.navStart != null ? c.t - r.navStart : null, matched: c.matched, total: c.total,
+    hydratedAt: hyd.length ? Math.min(...hyd) : null,
+    hydratedMs: hyd.length && r.navStart != null ? Math.min(...hyd) - r.navStart : null,
+    firstFetch: first, joinAt: r.joinAt, seen,
+    http5xx: (r.docStatus >= 500 ? 1 : 0) + r.fetches.filter((f) => f[2] >= 500).length,
+    http503: (r.docStatus === 503 ? 1 : 0) + r.fetches.filter((f) => f[2] === 503).length,
+    errors: r.errors.slice(0, 5),
+  };
+}
+
+// The step-5 save list (every committed save of the run, in order):
+// putStart = the FIRST attempt's start (the gate's clock), putEnd = the
+// successful attempt's response on this host (the commit's upper bound).
+const saveListOf = (edits) => edits.map((e) => ({
+  k: e.k, mode: e.mode, rev: e.put.rev, songId: String(e.song.id), rowId: e.id,
+  putStart: e.put.startedAt, putEnd: (e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0), putMs: e.put.ms ?? null,
+}));
+
+// One cohort control (I1 / I2 / I3): eligibility of `cohort` for `save`,
+// arrival rows for every client of `clients`, and the verdict: NOT
+// EXERCISED unless the predeclared eligibility holds; then PASS iff
+// every eligible client received the save's raw broadcast AND applied it
+// within the timeout (else FAIL — the idle-broadcast defect, with the
+// repair that brought the client forward measured).
+function cohortCycle(name, save, cohort, clients, { maxAgeS, timeoutMs }) {
+  const elig = idleEligibility(cohort, save, { maxAgeS });
+  const rows = idleArrivals(clients, save, { timeoutMs });
+  const eligSet = new Set(elig.per.filter((p) => p.eligible).map((p) => p.idx));
+  const eligRows = rows.filter((r) => eligSet.has(r.idx));
+  const sum = summarizeArrivals(eligRows);
+  const verdict = !elig.exercised ? "NOT EXERCISED" : sum.received === sum.n && sum.applied === sum.n ? "PASS" : "FAIL";
+  return { name, save, elig, rows, eligible: sum, all: summarizeArrivals(rows), verdict, maxAgeS };
+}
+
+function cycleLines(c) {
+  const out = [];
+  const s = c.save;
+  out.push(`#### ${c.name} — save ${s.k} rev ${s.rev} at ${iso(s.putStart)} (PUT ${s.putMs} ms): **${c.verdict}**`);
+  out.push("");
+  out.push(`- Eligibility (connected 6 s … ${c.maxAgeS} s before the save, without interruption through its response): ${c.elig.eligible}/${c.elig.total} eligible; cohort first-SUBSCRIBED spread ${c.elig.spreadS == null ? "—" : `${c.elig.spreadS.toFixed(1)} s`} (≤ 30 s: ${c.elig.spreadOk ? "yes" : "**no**"})${c.elig.per.filter((p) => !p.eligible).length ? `; not eligible: ${c.elig.per.filter((p) => !p.eligible).slice(0, 6).map((p) => `${p.idx} (${p.why})`).join(", ")}` : ""}`);
+  out.push(`- Eligible clients: raw broadcast received ${c.eligible.received}/${c.eligible.n} (PUT response → receipt p50 / p95 / max ${ms(c.eligible.bcast.p50)} / ${ms(c.eligible.bcast.p95)} / ${ms(c.eligible.bcast.max)} ms); applied ${c.eligible.applied}/${c.eligible.n}, by ${JSON.stringify(c.eligible.reasons)}; repair (applied without the broadcast; healthy periodic poll 20 s ± 4 s — measured, not a bound) p50 / max ${ms(c.eligible.repair.p50)} / ${ms(c.eligible.repair.max)} ms (n ${c.eligible.repair.n})`);
+  out.push(`- All local clients of the run on this save: received ${c.all.received}/${c.all.n}, applied ${c.all.applied}/${c.all.n} by ${JSON.stringify(c.all.reasons)}`);
+  out.push("");
+  out.push("| client | cohort | connected since (UTC) | age at save s | eligible | broadcast ms after PUT response | applying fetch | apply ms after PUT start | repair ms |");
+  out.push("|---|---|---|---|---|---|---|---|---|");
+  for (const r of c.rows) {
+    const e = c.elig.per.find((p) => p.idx === r.idx);
+    out.push(`| ${r.idx} | ${r.cohort ?? "—"} | ${e ? iso(e.since) : "—"} | ${e?.ageS == null ? "—" : e.ageS.toFixed(1)} | ${e ? (e.eligible ? "yes" : `no — ${e.why}`) : "(other cohort)"} | ${ms(r.bcastMs)} | ${r.reason} | ${ms(r.applyMs)} | ${ms(r.repairMs)} |`);
+  }
+  out.push("");
+  return out;
+}
+
+const I3_MAX_AGE_S = 90;
+
+function admissionReport(state, fin, { valid, idx, monotonicPass }) {
+  const A = state.admission;
+  const T0 = A.T0;
+  const markers = [...new Set(state.edits.map((e) => String(e.song.id)))];
+  const anchorMarkers = state.edits.filter((e) => e.id === A.anchor.id).map((e) => String(e.song.id));
+  const expected = expectedRows(A.manifest.rows, { [A.anchor.id]: ["", ...anchorMarkers] });
+  // After the first steady edit the expected rows change (a pair edit
+  // inserts a row): the complete-setlist check only looks before it.
+  const until = EDITS > 0 ? state.editsStart : Infinity;
+  const sdk = fin.subRecs.map(compactSdk);
+  const sdkMain = sdk.filter((c) => c.cohort !== "fresh");
+  const pages = fin.pageRecs.map((r) => compactPage(r, expected, until, markers));
+  const pagesClosedAt = state.finalPhase?.pagesClosedAt ?? Infinity;
+  const saves = saveListOf(state.edits).map((sv) => {
+    const sx = sdkExposure(sdk, sv, { min: ADM.sdkMin });
+    const px = pageExposure(pages, sv, { min: ADM.pagesMin });
+    const lbl = exposureLabel(sx, px);
+    return {
+      ...sv,
+      label: sv.mode === "final" ? `I3 final phase (${lbl})` : lbl,
+      sdkExposure: sx, pageExposure: px,
+      sdkConv: sdkConvergence(sdk, sv, { timeoutMs: TIMEOUT_MS }),
+      pageConv: sv.putStart < pagesClosedAt && pages.length ? pageConvergence(pages, sv, { timeoutMs: TIMEOUT_MS, replacedBy: idx.replacedBy }) : null,
+      stale: staleFirstAnswers(sdkMain, pages, sv),
+      receipt: receiptVsReason(sdk, sv),
+    };
+  });
+  const scheduled = A.saves.map((x) => ({ k: x.k, offsetS: x.offsetS, status: x.status, rev: x.rev, ms: x.ms, startedAt: x.startedAt, lateMs: x.startedAt - (T0 + x.offsetS * 1000), error: x.error ?? null }));
+  const nonFinal = saves.filter((s) => s.mode !== "final");
+  const sdkExercised = nonFinal.some((s) => s.sdkExposure.exposed);
+  const pageExercised = nonFinal.some((s) => s.pageExposure.exposed);
+
+  // ── gates ──
+  const httpFail = (e) => /HTTP 5\d\d/.test(e ?? "");
+  const fivexx = {
+    saves: A.saves.filter((x) => x.status >= 500).length + saveFailures.filter((f) => !String(f.op).includes("admission") && httpFail(f.error)).length,
+    pages: pages.reduce((a, p) => a + p.http5xx, 0),
+    sdk: sdk.reduce((a, c) => a + c.http5xx, 0),
+    guard: A.guardRead && A.guardRead.status >= 500 ? 1 : 0,
+  };
+  const s503 = { pages: pages.reduce((a, p) => a + p.http503, 0), sdk: sdk.reduce((a, c) => a + c.http503, 0), saves: A.saves.filter((x) => x.status === 503).length };
+  const fivexxTotal = Object.values(fivexx).reduce((a, v) => a + v, 0);
+  const s503Total = Object.values(s503).reduce((a, v) => a + v, 0);
+  const transport = A.saves.filter((x) => x.status === 0).length + saveFailures.filter((f) => !/HTTP \d/.test(f.error ?? "") && !String(f.op).includes("admission")).length;
+  const sdkJoined = sdkMain.filter((c) => firstSub(c) != null && firstSub(c) - T0 <= JOIN_TIMEOUT_MS).length;
+  const pagesJoined = pages.filter((p) => p.joinAt?.length && p.joinAt[0] - T0 <= JOIN_TIMEOUT_MS).length;
+  const completeD = dist(pages.map((p) => p.completeMs).filter((v) => v != null));
+  const incomplete = pages.filter((p) => p.completeAt == null);
+  const seedKinds = pages.reduce((a, p) => ((a[p.seed.kind] = (a[p.seed.kind] || 0) + 1), a), {});
+  const degraded = ADM.expectLiveSeed ? pages.filter((p) => p.seed.kind !== "live").length : 0;
+  const firstSnap = dist(sdkMain.map((c) => (c.firstOk ? c.firstOk.respAt - c.attemptAt : null)).filter((v) => v != null));
+  const noFirst = sdkMain.filter((c) => !c.firstOk).length;
+  const pool = (f) => saves.flatMap(f);
+  const convSdkBefore = { ...dist(pool((s) => s.sdkConv.before.values)), missing: saves.reduce((a, s) => a + s.sdkConv.before.missing, 0) };
+  const convSdkAfter = { ...dist(pool((s) => s.sdkConv.after.values)), missing: saves.reduce((a, s) => a + s.sdkConv.after.missing, 0) };
+  const convPgBefore = { ...dist(pool((s) => s.pageConv?.before.values ?? [])), missing: saves.reduce((a, s) => a + (s.pageConv?.before.missing ?? 0), 0) };
+  const convPgAfter = { ...dist(pool((s) => s.pageConv?.after.values ?? [])), missing: saves.reduce((a, s) => a + (s.pageConv?.after.missing ?? 0), 0) };
+  const rc = fin.subRecs.reduce((a, r) => a + subMonotonicityRC(r.appliedAll).regressions.length, 0);
+  const putD = dist(saves.map((s) => s.putMs).filter((v) => v != null));
+  const convPass = (d) => (d.n === 0 && d.missing === 0 ? null : d.missing === 0 && d.p95 != null && d.p95 <= GATE_P95_MS);
+  // Foreign saves between prepare and the first admission save: a first
+  // answer (SDK first read, page SSR seed) that started before our first
+  // save yet carries a rev ABOVE the manifest's means somebody else wrote
+  // the event in between (another stream, a fixture script). The
+  // complete-setlist check compares against the manifest, so such a run
+  // measured a different setlist — it fails here, loudly, instead of as
+  // a mysterious "incomplete".
+  const firstPut = Math.min(...saves.map((s) => s.putStart), Infinity);
+  const headRevs = [
+    ...sdkMain.filter((c) => c.first?.reqStart != null && c.first.reqStart < firstPut && c.first.rev != null).map((c) => c.first.rev),
+    ...pages.filter((p) => p.navStart != null && p.navStart < firstPut && p.seed.rev != null).map((p) => p.seed.rev),
+  ];
+  const headAtT0 = headRevs.length ? Math.max(...headRevs) : null;
+  const gates = [
+    { name: "outbound requests between prepare end and T0", value: `${A.boundary.outbound.length}`, gate: "0", pass: A.boundary.outbound.length === 0 },
+    { name: "event unchanged between prepare and the first admission save (first answers vs manifest rev)", value: `head seen ${headAtT0 ?? "—"}, manifest ${A.manifest.rev}`, gate: "≤ manifest rev", pass: headAtT0 == null ? null : headAtT0 <= A.manifest.rev },
+    { name: "all intended saves committed (admission saves never retried)", value: `${A.saves.filter(isOkSave).length}/${A.saves.length} admission${saveFailures.length ? `; ${saveFailures.length} failed attempt(s) in total` : ""}`, gate: "all 2xx", pass: A.saves.every(isOkSave) && saveFailures.length === 0 },
+    { name: "5xx anywhere (saves, pages incl. the document, SDK, guard read)", value: `${fivexxTotal} (${Object.entries(fivexx).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(", ") || "none"})`, gate: "0", pass: fivexxTotal === 0 },
+    { name: "503 (subset of the above)", value: `${s503Total}`, gate: "0", pass: s503Total === 0 },
+    { name: "transport failures on saves", value: `${transport}`, gate: "0", pass: transport === 0 },
+    { name: `all joined within --join-timeout (${JOIN_TIMEOUT_MS / 1000} s from T0)`, value: `SDK ${sdkJoined}/${sdkMain.length}, pages ${pagesJoined}/${pages.length}`, gate: "all", pass: sdkJoined === sdkMain.length && pagesJoined === pages.length },
+    { name: "pages: complete expected setlist, navigation start →", value: `${dline(completeD)}${incomplete.length ? `; **${incomplete.length} incomplete** (best ordered match ${incomplete.slice(0, 4).map((p) => `p${p.idx} ${p.matched}/${p.total}`).join(", ")})` : ""}`, gate: `p95 ≤ ${GATE_P95_MS}, every page`, pass: pages.length ? incomplete.length === 0 && completeD.p95 != null && completeD.p95 <= GATE_P95_MS : null },
+    { name: "pages: degraded SSR seed (no live seed in the HTML)", value: `${degraded} (seeds ${JSON.stringify(seedKinds)})${ADM.expectLiveSeed ? "" : " — not judged (--expect-live-seed=false)"}`, gate: "0", pass: pages.length ? degraded === 0 : null },
+    { name: "SDK: time to first snapshot (start → first 200 applied)", value: `${dline(firstSnap)}${noFirst ? `; **${noFirst} without one**` : ""}`, gate: `p95 ≤ ${GATE_P95_MS}, all`, pass: sdkMain.length ? noFirst === 0 && firstSnap.p95 != null && firstSnap.p95 <= GATE_P95_MS : null },
+    { name: "convergence SDK joined-before (from PUT start)", value: `${dline(convSdkBefore)}, missing ${convSdkBefore.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: convPass(convSdkBefore) },
+    { name: "convergence SDK joined-after (from max(subscribedAt, PUT response))", value: `${dline(convSdkAfter)}, missing ${convSdkAfter.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: convPass(convSdkAfter) },
+    { name: "convergence pages joined-before (from PUT start; marker or a later one on the anchor)", value: `${dline(convPgBefore)}, missing ${convPgBefore.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: convPass(convPgBefore) },
+    { name: "convergence pages joined-after (from max(channel join, PUT response))", value: `${dline(convPgAfter)}, missing ${convPgAfter.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: convPass(convPgAfter) },
+    { name: "monotonicity (pages: DOM version; SDK: applied rev and (rev, capturedAt))", value: `${monotonicPass ? "0" : "≥ 1"} DOM/rev regressions, ${rc} (rev, capturedAt) regressions`, gate: "0", pass: monotonicPass && rc === 0 },
+    { name: "PUT end-to-end (every save of the run)", value: `${dline(putD)}`, gate: "p95 ≤ 1500", pass: putD.n ? putD.p95 <= 1500 : null },
+  ];
+  const verdict = admissionVerdict({ invalid: valid.invalid, sdkExercised, pageExercised, gates });
+
+  // I3 (--final-cohort).
+  let final = null;
+  if (state.finalPhase) {
+    const F = state.finalPhase;
+    const fresh = sdk.filter((c) => c.cohort === "fresh");
+    const kept = sdk.filter((c) => F.incumbents.includes(c.idx));
+    const local = [...kept, ...fresh];
+    const fs1 = saves.find((s) => s.k === "f1");
+    const fs2 = saves.find((s) => s.k === "f2");
+    final = {
+      phase: F,
+      cycles: [
+        ...(fs1 ? [cohortCycle("I3 — fresh cohort, first save 6 s after join", fs1, fresh, local, { maxAgeS: I3_MAX_AGE_S, timeoutMs: TIMEOUT_MS })] : []),
+        ...(fs2 ? [cohortCycle("I3 — +40 s save", fs2, fresh, local, { maxAgeS: I3_MAX_AGE_S + 40, timeoutMs: TIMEOUT_MS })] : []),
+      ],
+      incumbentsThrough: fs1 ? kept.filter((c) => connectedThrough(connOf(c), F.retiredAt, fs1.putEnd)).length : null,
+    };
+  }
+
+  // ── markdown ──
+  const L = [];
+  const yes = (x) => (x == null ? "n/a" : x ? "**PASS**" : "**FAIL**");
+  L.push("## Admission (n14 step 5)");
+  L.push("");
+  L.push(`**Verdict: ${verdict.verdict}** — SDK aspect: ${verdict.sdk}; page aspect: ${verdict.page}${verdict.failed?.length ? `; failed: ${verdict.failed.join("; ")}` : ""}.`);
+  L.push("");
+  L.push(`- Prepare via ${A.prepBase} (${iso(A.prepare.startedAt)} → ${iso(A.prepare.endedAt)}): anchor row ${A.anchor.id} @${A.anchor.position} (rev ${A.anchor.rev}); manifest ${A.prepare.rows} active rows at rev ${A.prepare.rev}${A.fixture ? `, ${A.fixture.clonesActive} fixture clones (${A.fixture.file})` : ""}; file \`${path.basename(A.manifestFile)}\``);
+  L.push(`- Boundary: waited ${(A.boundary.waitMs / 1000).toFixed(1)} s (${A.boundary.admitAt != null ? `--admit-at ${iso(A.boundary.admitAt)}` : `--admit-file ${ADM.admitFile}`}); **outbound requests during the wait: ${A.boundary.outbound.length}**${A.boundary.outbound.length ? ` — ${A.boundary.outbound.slice(0, 5).map(([t, k, w]) => `${iso(t)} ${k} ${w}`).join("; ")}` : ""}${A.boundary.admitFile?.measurementId || A.boundary.admitFile?.precursorId ? `; admit file: precursor ${A.boundary.admitFile.precursorId ?? "—"} → measurement ${A.boundary.admitFile.measurementId ?? "—"}` : ""}`);
+  L.push(`- T0 ${iso(T0)}; measurement base ${A.base}; pages ${PAGES} at concurrency ${PAGE_CONCURRENCY}, SDK ${SUBS} at ${SUB_BATCH}/s, all started at T0; admission saves at +${ADM.savesS.join(" s, +")} s on their own timer (scheduled vs actual start: ${scheduled.map((x) => `${x.k} +${x.lateMs} ms`).join(", ")})${A.guardRead ? `; measurement identity read at T0: ${A.guardRead.ok ? "ok" : "FAILED"} (rev ${A.guardRead.rev ?? "—"}, ${A.guardRead.ms} ms)` : ""}`);
+  L.push(`- Exposure minimums (predeclared): SDK ≥ ${ADM.sdkMin} connected through the save AND ≥ ${ADM.sdkMin} not yet SUBSCRIBED at its PUT response; pages ≥ ${ADM.pagesMin} navigated by the PUT start and not yet complete. Clocks: this host only (PUT response = upper bound of the commit); the server's commit \`at\` is a cross-check in \`admission-join.mjs\`.`);
+  L.push("- Resource diet: images, fonts and media are aborted on every page (the DOM is all that is measured); analytics and the Sentry tunnel too.");
+  L.push("");
+  L.push("| admission gate | value | gate | verdict |");
+  L.push("|---|---|---|---|");
+  for (const g of gates) L.push(`| ${g.name} | ${String(g.value).replace(/\|/g, "/")} | ${g.gate} | ${yes(g.pass)}${valid.invalid ? " (measurement invalid)" : ""} |`);
+  L.push(`| server side: writer acquire ≤ 500 ms, EMAXCONN 0, Σ < 300 with completeness, builds per minute / instance | — | \`admission-join.mjs\` on the history logs | n/a here |`);
+  L.push("");
+  L.push("### Per save — exposure, convergence, first answers");
+  L.push("");
+  L.push("Convergence: joined-before from the PUT start, joined-after from max(subscribedAt / channel join, PUT response); p95 ms (n) / missing. Stale first answers = clients whose first read started after the PUT response but carried a lower rev (SDK: first request; pages: SSR seed) — counted, not a gate. Broadcast = clients that received this save's raw `rev` broadcast, separate from the reason of the fetch that applied it.");
+  L.push("");
+  L.push("| save | label | rev | PUT start (UTC) | ms | SDK connected / not yet / dropped | pages in flight / future / settled | SDK before | SDK after | pages before | pages after | stale first: SDK / pages | broadcast received / population | applied by |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  const cv = (d) => (d ? `${ms(d.p95)} (${d.n}) / ${d.missing}` : "—");
+  for (const s of saves) {
+    L.push(`| ${s.k} | ${s.label} | ${s.rev} | ${iso(s.putStart)} | ${ms(s.putMs)} | ${s.sdkExposure.connected} / ${s.sdkExposure.notYet} / ${s.sdkExposure.disconnected} | ${s.pageExposure.inflight} / ${s.pageExposure.future} / ${s.pageExposure.settled} | ${cv(s.sdkConv.before)} | ${cv(s.sdkConv.after)} | ${cv(s.pageConv?.before)} | ${cv(s.pageConv?.after)} | ${s.stale.sdk.stale}/${s.stale.sdk.eligible} / ${s.stale.pages.stale}/${s.stale.pages.eligible} | ${s.receipt.received} / ${s.receipt.population} | ${JSON.stringify(s.receipt.reasons)} |`);
+  }
+  L.push("");
+  const srcs = sdkMain.reduce((a, c) => { const k = c.firstOk?.source ?? "none"; a[k] = (a[k] || 0) + 1; return a; }, {});
+  const bytes = dist(sdkMain.map((c) => c.firstOk?.bytes).filter((v) => v != null));
+  L.push(`SDK first snapshot: sources ${JSON.stringify(srcs)}; body bytes p50 / max ${ms(bytes.p50)} / ${ms(bytes.max)}; first-answer revs ${JSON.stringify(sdkMain.reduce((a, c) => { const k = c.first?.rev ?? "—"; a[k] = (a[k] || 0) + 1; return a; }, {}))}.`);
+  L.push("");
+  if (pages.length) {
+    L.push("### Pages (every page)");
+    L.push("");
+    L.push("Times in ms from the page's navigation start (browser timeOrigin) unless noted; launch = navigation start − T0 (scheduled vs actual: wave × concurrency). Complete = the ordered rows match the manifest (multiplicity, per-row song order, medleys, the blank anchor or any run marker on it); matched = best ordered match before the first steady edit. Hydrated = first /api/setlist request or first Realtime socket.");
+    L.push("");
+    L.push("| page | locale | wave | launch ms after T0 | doc | TTFB | DCL | complete | rows matched | hydrated | channel joined | first fetch (source, rev) | SSR seed | errors |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const p of pages) {
+      L.push(`| ${p.idx} | ${p.locale} | ${p.wave ?? "—"} | ${p.navStart != null ? p.navStart - T0 : "—"} | ${p.docStatus ?? "—"} | ${ms(p.ttfbMs)} | ${ms(p.dclMs)} | ${p.completeMs != null ? p.completeMs : "**INCOMPLETE**"} | ${p.matched}/${p.total} | ${ms(p.hydratedMs)} | ${p.joinAt?.length && p.navStart != null ? p.joinAt[0] - p.navStart : "—"} | ${p.firstFetch ? `${p.firstFetch.source ?? p.firstFetch.status}, ${p.firstFetch.rev ?? "—"}` : "—"} | ${p.seed.kind}${p.seed.rev != null ? ` ${p.seed.rev}` : ""} | ${p.errors.length ? p.errors[0].slice(0, 60).replace(/\|/g, "/") : ""} |`);
+    }
+    L.push("");
+  }
+  if (final) {
+    L.push("### I3 — final phase (`--final-cohort`)");
+    L.push("");
+    L.push(`- ${final.phase.incumbents.length}/${final.phase.wantIncumbents} incumbents kept connected (others stopped at ${iso(final.phase.retiredAt)}${final.phase.pagesClosedAt ? `, pages closed at ${iso(final.phase.pagesClosedAt)}` : ""}); ${final.incumbentsThrough ?? "—"} of them continuously connected through the first I3 save; ${final.phase.fresh} fresh clients started ${iso(final.phase.freshStartedAt)}, all connected ${iso(final.phase.freshReadyAt)}.`);
+    L.push("");
+    for (const c of final.cycles) L.push(...cycleLines(c));
+  }
+  const json = {
+    config: ADM, T0, base: A.base, prepBase: A.prepBase, prepare: A.prepare, anchor: A.anchor, fixture: A.fixture, manifestFile: A.manifestFile,
+    boundary: A.boundary, guardRead: A.guardRead, scheduled,
+    expectedRows: expected,
+    saves: saves.map((s) => ({ ...s, sdkConv: { before: { ...s.sdkConv.before, values: undefined }, after: { ...s.sdkConv.after, values: undefined }, notJoined: s.sdkConv.notJoined }, pageConv: s.pageConv ? { before: { ...s.pageConv.before, values: undefined }, after: { ...s.pageConv.after, values: undefined } } : null })),
+    gates, verdict, exercised: { sdk: sdkExercised, page: pageExercised },
+    final: final ? { phase: final.phase, incumbentsThrough: final.incumbentsThrough, cycles: final.cycles.map((c) => ({ name: c.name, save: c.save, verdict: c.verdict, elig: c.elig, eligible: c.eligible, all: c.all, rows: c.rows })) } : null,
+    pages, sdk,
+  };
+  return { lines: L, json, verdict };
+}
+
+function idleReport(state, fin) {
+  const I = state.idle.cfg;
+  const sdk = fin.subRecs.map(compactSdk);
+  const inc = sdk.filter((c) => c.cohort === "incumbent");
+  const fresh = sdk.filter((c) => c.cohort === "fresh");
+  const saves = saveListOf(state.edits);
+  const by = (k) => saves.find((s) => s.k === k);
+  const cycles = [];
+  const s1 = by("s1");
+  if (s1) cycles.push(cohortCycle(I.wake ? "I2 — check save (incumbents)" : "I1 — first save after idle", s1, inc, sdk, { maxAgeS: I.maxAgeS, timeoutMs: TIMEOUT_MS }));
+  // Later saves: arrival tables only (the cohort is older than max-age by
+  // then, so "eligible" would be false by design) — except the wake
+  // cycle's first post-fresh save, which is the fresh cohort's control.
+  const info = [];
+  for (const s of saves.filter((x) => x.k !== "s1")) {
+    if (s.k === "w1") cycles.push(cohortCycle("I2 — fresh cohort, save 6 s after join (incumbents kept)", s, fresh, sdk, { maxAgeS: I.maxAgeS, timeoutMs: TIMEOUT_MS }));
+    else info.push({ save: s, sum: summarizeArrivals(idleArrivals(sdk, s, { timeoutMs: TIMEOUT_MS })) });
+  }
+  const verdict = cycles.some((c) => c.verdict === "FAIL") ? "FAIL" : cycles.every((c) => c.verdict === "NOT EXERCISED") ? "NOT EXERCISED" : cycles.some((c) => c.verdict === "NOT EXERCISED") ? "PARTLY NOT EXERCISED" : "PASS";
+  const L = [];
+  L.push(`## Idle-broadcast drill (${I.wake ? "I2, wake procedure" : "I1"})`);
+  L.push("");
+  L.push(`**Verdict: ${verdict}** (${cycles.map((c) => `${c.name}: ${c.verdict}`).join("; ")}).`);
+  L.push("");
+  L.push(`- Connect at ${iso(I.connectAt)} (${I.incumbents} incumbents; ${state.idle.connectedAtSave}/${I.incumbents} connected just before the first save), first save ${iso(I.firstSaveAt)} (scheduled; actual ${iso(s1?.putStart)}), max-age ${I.maxAgeS} s${I.wake ? `, wake gap ${I.wakeGapS} s, fresh ${I.fresh}` : `, later saves at +${I.savesS.join(" s, +")} s`}.`);
+  L.push("- The idle period itself (≥ 30 min since the last broadcast AND the last client disconnect, incl. the observer) is the operator's precondition; this run cannot see it. The observer's clients are joined in afterwards by `admission-join.mjs --observer=`.");
+  if (state.idle.wake) {
+    const w = state.idle.wake;
+    L.push(`- Wake check: ${w.check.map((c) => `save ${c.save} rev ${c.rev} by broadcast at ${c.noted}/${c.connected} → ${c.ok ? "ok" : "**MISSED**"}`).join("; ")}${w.escalate ? ` — **${w.escalate}**` : ""}; fresh cohort ${w.fresh ? `started ${iso(w.fresh.startedAt)}, connected ${iso(w.fresh.readyAt)}` : "—"}.`);
+  }
+  L.push("");
+  for (const c of cycles) L.push(...cycleLines(c));
+  if (info.length) {
+    L.push("#### Later saves (arrivals, informational)");
+    L.push("");
+    for (const x of info) L.push(`- ${x.save.k} rev ${x.save.rev}: broadcast ${x.sum.received}/${x.sum.n}, applied ${x.sum.applied}/${x.sum.n} by ${JSON.stringify(x.sum.reasons)}; receipt p95 ${ms(x.sum.bcast.p95)} ms`);
+    L.push("");
+  }
+  const json = {
+    config: I, wake: state.idle.wake, connectedAtSave: state.idle.connectedAtSave, verdict,
+    cycles: cycles.map((c) => ({ name: c.name, save: c.save, verdict: c.verdict, elig: c.elig, eligible: c.eligible, all: c.all, rows: c.rows })),
+    later: info, sdk,
+  };
+  return { lines: L, json, verdict };
 }
 
 function report(state, fin) {
@@ -1587,7 +2382,12 @@ function report(state, fin) {
   // the run can't claim the gate for the planned edit count.
   // overlap: `edits` holds one entry per committed SAVE, so "skipped" =
   // groups with at least one save that did not commit.
-  const skippedEdits = OVERLAP ? (state.overlap?.groups ?? []).filter((g) => !g.anchor.allOk).length : EDITS - edits.length;
+  // Step 5: the admission / I3 / idle saves are scheduled, never retried,
+  // and judged by their own section; only the numbered steady edits count
+  // here.
+  const skippedEdits = OVERLAP
+    ? (state.overlap?.groups ?? []).filter((g) => !g.anchor.allOk).length
+    : IDLE ? 0 : ADM ? EDITS - edits.filter((e) => typeof e.k === "number").length : EDITS - edits.length;
   const primaryPass = pass(combined, GATE_P95_MS);
   const verdicts = {
     primary: { gate: `p95 ≤ ${GATE_P95_MS} ms, 0 missing, all ${EDITS} edits saved`, ...combined, skippedEdits, pass: skippedEdits > 0 ? false : primaryPass },
@@ -1600,6 +2400,20 @@ function report(state, fin) {
     subRegressions: monoSubsN, subsWithRegressions: monoSubsBad.length,
     pass: monoPagesN === 0 && monoSubsN === 0,
   };
+
+  // ─── n14 step 5 sections ───
+  // Under --phase=admission / --drill=idle-broadcast the per-save rows
+  // (every client from the PUT start) stay as information: a client that
+  // joined after a save cannot be judged from its start. The step-5
+  // section decides (population-split clocks, exposure, eligibility).
+  const adm = ADM && state.admission ? admissionReport(state, fin, { valid, idx, monotonicPass: verdicts.monotonic.pass }) : null;
+  const idl = IDLE && state.idle ? idleReport(state, fin) : null;
+  if (adm || idl) {
+    verdicts.primary.gate = `informational under ${ADM ? "--phase=admission" : "--drill=idle-broadcast"} (every client from each save's own start); the ${ADM ? "Admission" : "Idle-broadcast"} section decides`;
+    verdicts.primary.pass = null;
+    verdicts.pages.pass = null;
+    verdicts.subs.pass = null;
+  }
 
   // ─── overlap: per-group gates, client side (design §2.6) ───
   // Clock of every gate: the group's LAST original request start (the
@@ -1896,6 +2710,11 @@ function report(state, fin) {
       drill: DRILL, gate: "every SDK client answered `memo` for the drilled save resolves it on its one recheck (n/a when no memo was observed)",
       ...dist([]), missing: 0, ...ambiguity.verdict,
     };
+  } else if (idl) {
+    verdicts.drill = {
+      drill: DRILL, gate: "every exercised cohort control: each eligible client receives the save's raw broadcast and applies it within the timeout (see \"Idle-broadcast drill\")",
+      ...dist([]), missing: 0, pass: idl.verdict === "FAIL" ? false : idl.verdict === "PASS" ? true : null,
+    };
   } else if (DRILL) {
     const gate = DRILL === "silent-loss" ? SILENT_GATE_MS : DRILL === "ws-blocked" ? BLOCKED_GATE_MS : DRILL === "lost-final" ? LOST_GATE_MS : null;
     verdicts.drill = { drill: DRILL, gate: gate == null ? "informational (catch-up after reconnect)" : `max ≤ ${gate} ms, 0 missing`, ...drilled, pass: gate == null ? null : drilled.n > 0 && drilled.missing === 0 && drilled.max <= gate };
@@ -1964,14 +2783,21 @@ function report(state, fin) {
     lines.push("");
   }
   lines.push(`- Target: ${BASE}${EVENT_PATH} (event ${EVENT_ID}, start rev ${state.startRev}, ${original.length} active rows; insert after row ${AFTER_ROW} = position ${state.afterPosition})`);
-  lines.push(`- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)`);
+  lines.push(IDLE
+    ? `- Population: SDK cohorts only — ${IDLE.incumbents} incumbents${IDLE.wake ? ` + ${IDLE.fresh} fresh` : ""} (--drill=idle-broadcast)`
+    : `- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)${ADM?.finalCohort ? ` (+ ${ADM.finalCohort.fresh} fresh in the I3 final phase)` : ""}`);
   const modeTxt = { pair: "(insert-after + PUT marker song) — edit mode pair", standalone: "(ONE PUT swapping the marker song on the anchor row) — edit mode standalone", mixed: "pair on odd edits, standalone on even — edit mode mixed" }[EDIT_MODE];
-  if (OVERLAP) lines.push(`- Edits: ${EDITS} overlap group(s) × ${rolesOf(OV).length} concurrent PUTs (${rolesOf(OV).join(", ")}) on anchor rows ${rolesOf(OV).map((w) => ovAnchors[w]?.id).join(", ")}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: overlap (see "Overlap drill")`);
+  if (IDLE) lines.push(`- Edits: the idle-broadcast schedule (first save = the anchor insert, then PUTs on it; see "Idle-broadcast drill"); timeout ${TIMEOUT_MS / 1000} s`);
+  else if (OVERLAP) lines.push(`- Edits: ${EDITS} overlap group(s) × ${rolesOf(OV).length} concurrent PUTs (${rolesOf(OV).join(", ")}) on anchor rows ${rolesOf(OV).map((w) => ovAnchors[w]?.id).join(", ")}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: overlap (see "Overlap drill")`);
   else lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
   if (hostCheck) lines.push(`- Host guard at start: CPU ${hostCheck.busyPct ?? "—"} % busy (${hostCheck.how}); ${hostCheck.processListOk ? `${hostCheck.competing.length} competing process(es)` : "process list unavailable"}${hostCheck.problems.length ? ` — **${hostCheck.problems.join("; ").replace(/\|/g, "/")}**` : ""}${STRICT_HOST ? " (--strict-host)" : ""}`);
   lines.push("");
+  if (ADM) lines.push(`- Phase: admission — prepare via ${PREP_BASE}, measured on ${BASE}${DEPLOYMENT_URL ? " (deployment URL)" : ""}`);
+  if (adm || idl) lines.push("");
+  if (adm) lines.push(...adm.lines);
+  if (idl) lines.push(...idl.lines);
   lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
   lines.push("");
   lines.push("Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.");
@@ -2310,7 +3136,10 @@ function report(state, fin) {
         "thread.lag.spikes": ["t", "lagMs (> 200)"],
         "thread.heartbeats": ["recvT (main clock)", "sendT (worker clock)", "lagMaxSinceLastMs"],
         "thread.deadlineLate": ["t", "lateMs = fired - armed - 8000", "client idx"],
-        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source", "body capturedAt (epoch ms, PostgreSQL clock)", "anchor A song originalTitle (overlap drill, else null)"],
+        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source", "body capturedAt (epoch ms, PostgreSQL clock)", "anchor A song originalTitle (overlap drill, else null)", "body bytes (200, decoded)"],
+        "sdk.statusLog": ["t", "status", "current channel 1 | retired 0"],
+        "sdk.connLog": ["t", "up 1 | down 0", "status (SUBSCRIBED / CHANNEL_ERROR / TIMED_OUT / CLOSED / STOPPED)"],
+        "page.rowsLog": ["t", "row signatures in DOM order (song ids joined by +, \"\" = no song link) — --phase=admission only"],
         "sdk.applied": ["t", "rev", "fetch reason", "body capturedAt (epoch ms)"],
         "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid"],
         "sdk.exhausted": ["t", "hint"],
@@ -2336,12 +3165,14 @@ function report(state, fin) {
       kind: "sdk", idx: r.idx, worker: r.worker ?? null, locale: r.locale,
       reqs: r.reqs, applied: r.appliedAll, bcasts: r.bcasts, exhausted: r.exhausted,
       subscribedAt: r.subscribedAt, fallbacks: r.fallbacks, recreates: r.recreates, failKinds: r.failKinds,
+      cohort: r.cohort ?? null, attemptAt: r.attemptAt, stoppedAt: r.stoppedAt ?? null, statusLog: r.statusLog ?? null, connLog: r.connLog ?? null,
       lag: { thread: `worker ${r.worker ?? "?"}`, deadlineLate: lateByIdx.get(r.idx) || [] },
     })),
     ...pageRecs.map((r) => ({
       kind: "page", idx: r.idx, worker: null, locale: r.locale, mode: r.mode,
       reqs: r.fetches, applied: r.dom, bcasts: r.bcasts, notes: r.notes,
       openedAt: r.openedAt, loadedAt: r.loadedAt, joinAt: r.joinAt,
+      ...(r.rowsLog ? { rowsLog: r.rowsLog, navStart: r.navStart, ttfbMs: r.ttfbMs, dclMs: r.dclMs, docStatus: r.docStatus, seed: r.seed, wave: r.wave, firstApiReqAt: r.firstApiReqAt, wsOpenAt: r.wsOpenAt } : {}),
       // Page events are timestamped by the browser (DOM) or by Playwright
       // callbacks on the main thread; the main thread's lag is the one
       // that can delay the latter.
@@ -2350,12 +3181,19 @@ function report(state, fin) {
   ].map((o) => JSON.stringify(o));
 
   const json = {
-    config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
+    config: { base: BASE, phase: PHASE, prepBase: ADM ? PREP_BASE : null, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
       ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}),
       ...(OVERLAP ? { overlap: OV, overlapAnchors: ovAnchors, overlapReactionGroup: OV_REACTION_GROUP, runId: RUN_ID } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
     verdicts, popSummary, rejoin, drillEvents,
+    // n14 step 5 (null otherwise): the admission section (config,
+    // boundary, per-save exposure / convergence / stale first answers,
+    // gates, verdict, every page, every SDK client compact) and the
+    // idle-broadcast drill (cohort cycles, eligibility, arrivals). The
+    // input of ../admission-join.mjs.
+    admission: adm ? adm.json : null,
+    idle: idl ? idl.json : null,
     // Measurement validity: the verdict, why, and each thread's lag
     // series (10 s buckets [start, n, p50, p95, p99, max] + every sample
     // > 200 ms), heartbeats and deadline-timer lateness.
@@ -2440,7 +3278,7 @@ function report(state, fin) {
       pages: { lat: s.pages.lat, drilledLat: s.pages.drilledLat, missing: s.pages.missing, drilledMissing: s.pages.drilledMissing, notifPut: s.pages.notifPut, notifIns: s.pages.notifIns },
       subs: { latDist: dist(s.subs.lat), drilledDist: dist(s.subs.drilledLat), missing: s.subs.missing, drilledMissing: s.subs.drilledMissing, notifPut: dist(s.subs.notifPut), bcastPut: dist(s.subs.bcastPut), bcastIns: dist(s.subs.bcastIns) },
     })),
-    pages: pageRecs,
+    pages: ADM ? pageRecs.map(({ rowsLog, ...rest }) => ({ ...rest, rowsLogEntries: rowsLog?.length ?? 0 })) : pageRecs,
   };
   return { md, json, timelines };
 }
@@ -2450,7 +3288,7 @@ function writeResults(md, json, timelines) {
   const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
   fs.mkdirSync(dir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ""}`);
+  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ADM ? "-admission" : ""}`);
   fs.writeFileSync(`${base}.md`, md);
   fs.writeFileSync(`${base}.json`, JSON.stringify(json, null, 1));
   if (timelines) fs.writeFileSync(path.join(dir, `${stamp}-timelines.jsonl`), timelines.join("\n") + "\n");
@@ -2484,6 +3322,17 @@ try {
   if (json.validity.invalid) {
     log(`VERDICT: INVALID — ${json.validity.reasons.length} host stall(s), first: ${json.validity.reasons[0].thread} ${json.validity.reasons[0].what} at ${json.validity.reasons[0].atIso}`);
     process.exit(3);
+  }
+  // Step 5: the section's verdict decides; NOT EXERCISED = exit 4 (the
+  // run measured something else — re-run, do not read it as a pass).
+  if (json.admission) {
+    const vv = json.admission.verdict.verdict;
+    log(`ADMISSION VERDICT: ${vv}`);
+    process.exit(vv === "VALID + PASS" ? 0 : vv === "NOT EXERCISED" ? 4 : 1);
+  }
+  if (json.idle) {
+    log(`IDLE-BROADCAST VERDICT: ${json.idle.verdict}`);
+    process.exit(json.idle.verdict === "PASS" ? 0 : json.idle.verdict === "FAIL" ? 1 : 4);
   }
   // null (nothing in scope, e.g. every pair drilled) is not a failure.
   process.exit(json.verdicts.primary.pass !== false && json.verdicts.drill?.pass !== false && json.verdicts.monotonic.pass !== false ? 0 : 1);
