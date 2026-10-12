@@ -151,6 +151,7 @@ import {
   snapshotRequests,
   getEventPage,
   requireEnv,
+  ssrErrors,
   GATES,
 } from "./lib/config.js";
 import { resultsDir, stamp } from "./lib/report.js";
@@ -162,20 +163,30 @@ import {
   adminLostEdit,
   adminWrites,
 } from "./admin-writes.js";
+import { parseShapeMix, pickShape, parseSaves, arrivalOffsetMs, notificationParams, headCheck, exposure, SHAPES } from "./lib/admission.mjs";
+
+// Admission mode (n14 step 5, run A1) — see the "admission mode" block
+// further down. Decided first: it changes which env vars are required
+// (no ADMIN_PASSWORD: the probe already logged in) and some defaults.
+const ADMISSION = (__ENV.ADMISSION || "0") === "1";
 
 requireEnv("EVENT_ID");
 requireEnv("EVENT_SLUG");
-requireEnv("ADMIN_PASSWORD");
+if (!ADMISSION) requireEnv("ADMIN_PASSWORD");
 
 // ── knobs ─────────────────────────────────────────────────────────
 const num = (name, def) => (__ENV[name] != null && __ENV[name] !== "" ? parseFloat(__ENV[name]) : def);
 
+// Admission mode only changes DEFAULTS here (an explicit env var still
+// wins): SSR at the admission rate, a shorter hold, no admin cycles, no
+// reactions, no cold start — the admission wave must be the first
+// traffic after t=0.
 const POLL_RPS = num("POLL_RPS", 25);
-const SSR_RPS = num("SSR_RPS", POLL_RPS * 0.1);
+const SSR_RPS = num("SSR_RPS", ADMISSION ? 10 : POLL_RPS * 0.1);
 const STEADY_START = num("STEADY_START", 15);
-const STEADY_SECONDS = num("STEADY_SECONDS", 600);
-const ADMIN_CYCLES = num("ADMIN_CYCLES", 6);
-const QUIET_CYCLES = num("QUIET_CYCLES", 2);
+const STEADY_SECONDS = num("STEADY_SECONDS", ADMISSION ? 60 : 600);
+const ADMIN_CYCLES = num("ADMIN_CYCLES", ADMISSION ? 0 : 6);
+const QUIET_CYCLES = num("QUIET_CYCLES", ADMISSION ? 0 : 2);
 const ADMIN_FIRST = num("ADMIN_FIRST", 40);
 const ADMIN_SPACING = num("ADMIN_SPACING", 70);
 const SAVE_GAP = num("SAVE_GAP", 4);
@@ -184,8 +195,8 @@ const JITTER_MS = num("JITTER_MS", 500);
 const OLD_SHARE = num("OLD_SHARE", 0.2);
 const OLD_REPEATS = num("OLD_REPEATS", 1);
 const OLD_REPEAT_MS = num("OLD_REPEAT_MS", 1000);
-const COLD_START = (__ENV.COLD_START || "1") !== "0";
-const REACTIONS = num("REACTIONS", 500);
+const COLD_START = (__ENV.COLD_START || (ADMISSION ? "0" : "1")) !== "0";
+const REACTIONS = num("REACTIONS", ADMISSION ? 0 : 500);
 const REACTION_SECONDS = num("REACTION_SECONDS", 10);
 const REACTION_AT = num("REACTION_AT", 440);
 const ABORT_ERR_RATE = num("ABORT_ERR_RATE", GATES.abortErrorRate);
@@ -217,8 +228,9 @@ const INCONCLUSIVE = new Set(["memo", "deferred", "missing"]);
 // Each admin cycle briefly adds two rows (cold start: one), and the
 // admin VU runs them strictly one after another, so a correct snapshot
 // has between EXPECTED_ROWS and EXPECTED_ROWS + 2 rows. ROW_SLACK below
-// 2 would count our own rows as bad bodies.
-if (EXPECTED_ROWS != null && ROW_SLACK < 2) {
+// 2 would count our own rows as bad bodies. (Admission mode adds no row
+// — its saves edit the probe's anchor — so ROW_SLACK=0 is right there.)
+if (!ADMISSION && EXPECTED_ROWS != null && ROW_SLACK < 2) {
   throw new Error("viewers.js adds up to 2 rows at a time: set ROW_SLACK=2 (or more) with EXPECTED_ROWS");
 }
 
@@ -429,9 +441,209 @@ for (const b of PLAN.bursts) {
   }
 }
 
+// ── admission mode (ADMISSION=1, n14 step 5 run A1) ──────────────
+// The cold-admission model: a fresh deployment (new BUILD_KEY ⇒ empty
+// snapshot + warm namespaces) whose FIRST traffic is the admission wave.
+// Everything the normal start-up does before t=0 is bypassed, because on
+// a fresh deployment it would be the traffic that warms it:
+//   * setup() makes NO request — the clock offset, event sanity, the
+//     admin session cookie, the anchor row and the marker songs come
+//     from PROBE_FILE, written by tests/load/admission-probe.mjs BEFORE
+//     the boundary against the PRECURSOR deployment;
+//   * no admin login, no cold-start save + b00, no admin cycles, no
+//     reactions.
+// Timeline from t=0 (the test start):
+//   0 → ARRIVAL_SECONDS   ARRIVALS generic initial reads (no `hint`, no
+//                         `minRev` — what a page's first fetch sends;
+//                         giving arrivals `hint=1` would hand them the
+//                         notification warming they don't get in
+//                         reality), 70/20/10 ja/ko/en, evenly spread,
+//                         open-loop; each arrival is one viewer whose
+//                         client build (R2 / R1 / pre-R1) is drawn once
+//                         from SHAPE_MIX;
+//   0 → SSR_SECONDS       event-page SSR loads at SSR_RPS (independent
+//                         scenario, 70/20/10 locales);
+//   ADMISSION_SAVES       admin PUTs on the probe's anchor (each a new
+//                         marker song), on their own timer from t=0 —
+//                         concurrent with the wave, not after it. On each
+//                         save, ONLY viewers already admitted at the PUT
+//                         response fetch, by their build:
+//                           R2  minRev=savedRev&hint=1 (one quiet recheck
+//                               when inconclusive and below, like the
+//                               burst model's r2),
+//                           R1  minRev=appliedRev+1,
+//                           pre no minRev, one repeat OLD_REPEAT_MS later
+//                               on the SAME locale (repeats counted apart);
+//                         jitter U(0, JITTER_MS) (pre: U(0, 500 ms));
+//   STEADY_START → +STEADY_SECONDS   the periodic poll (the hold), as today.
+// Exposure evidence per save (k6 cannot see SUBSCRIBED or the DOM): at
+// PUT start and at PUT response, admitted viewers, outstanding arrivals
+// and this VU's in-flight HTTP requests; SSR runs through the saves by
+// construction (0 → 60 s).
+// The whole admission model runs on ONE VU with async requests, for the
+// same reason as the burst model: only the VU that made the save knows
+// when it returned and which viewers were admitted by then.
+const ARRIVALS = num("ARRIVALS", 500);
+const ARRIVAL_SECONDS = num("ARRIVAL_SECONDS", 10);
+const SSR_SECONDS = num("SSR_SECONDS", 60);
+const SHAPE_MIX_RAW = __ENV.SHAPE_MIX || "60/25/15";
+const ADMISSION_SAVES_RAW = __ENV.ADMISSION_SAVES ?? "5,20";
+const WAVE_GATE_P95 = num("WAVE_GATE_P95", 1000);
+const SSR_GATE_P95 = num("SSR_GATE_P95", 3000);
+const ADM_KINDS = ["arrival", "shape", "recheck", "put", "ssr", "poll"];
+const ADM_LOCALES = ["ja", "ko", "en"];
+const ADM_WAVES = ["1", "2", "recheck"];
+const MIX = ADMISSION ? parseShapeMix(SHAPE_MIX_RAW) : null;
+const SAVE_OFFSETS = ADMISSION ? parseSaves(ADMISSION_SAVES_RAW) : [];
+const saveId = (i) => `s${i + 1}`;
+// Submetric name with a FIXED tag order: thresholds and handleSummary
+// must spell the same string.
+const sub = (metric, tags) => `${metric}{${Object.entries(tags).map(([k, v]) => `${k}:${v}`).join(",")}}`;
+
+// The probe file (init context: k6 only allows open() here). k6 resolves
+// a relative open() path against the SCRIPT's directory (tests/load/),
+// not the shell's — so the path is tried as given, then repo-root
+// relative. The file holds the admin cookie; nothing below prints it.
+function loadProbe() {
+  const pf = __ENV.PROBE_FILE;
+  if (!pf) throw new Error("ADMISSION=1 needs PROBE_FILE=<…/admission-probe-<label>.json> (node tests/load/admission-probe.mjs, before the boundary)");
+  let raw = null;
+  for (const p of [pf, `../../${pf}`]) {
+    try {
+      raw = open(p);
+      break;
+    } catch (_) {
+      /* next candidate */
+    }
+  }
+  if (raw == null) throw new Error(`PROBE_FILE not readable: ${pf}`);
+  const p = JSON.parse(raw);
+  if (p.kind !== "admission-probe") throw new Error(`${pf} is not an admission probe file`);
+  if (String(p.eventId) !== String(EVENT_ID)) throw new Error(`probe is for event ${p.eventId}, EVENT_ID=${EVENT_ID}`);
+  if (!p.cookie) throw new Error("probe file has no admin cookie");
+  const anchorId = __ENV.ANCHOR_ID || (p.anchor && p.anchor.id);
+  const anchorPos = __ENV.ANCHOR_ID ? parseInt(__ENV.ANCHOR_POSITION || "", 10) : p.anchor && p.anchor.position;
+  if (SAVE_OFFSETS.length && (!anchorId || !Number.isInteger(anchorPos))) {
+    throw new Error("admission saves need an anchor: the probe's (--anchor=create) or ANCHOR_ID + ANCHOR_POSITION");
+  }
+  if (SAVE_OFFSETS.length && !(Array.isArray(p.markers) && p.markers.length)) throw new Error("probe file has no marker songs");
+  if (EXPECTED_ROWS != null && EXPECTED_ROWS !== p.rows) console.warn(`EXPECTED_ROWS=${EXPECTED_ROWS} but the probe saw ${p.rows} active rows — bodies will be judged against EXPECTED_ROWS`);
+  return { ...p, anchorId: anchorId ? String(anchorId) : null, anchorPos, file: pf };
+}
+const PROBE = ADMISSION ? loadProbe() : null;
+
+const admT0 = new Trend("adm_t0_ms");
+const admArrivalLatency = new Trend("adm_arrival_latency", true);
+const admArrivalLag = new Trend("adm_arrival_start_lag", true);
+const admArrivalErr = new Rate("adm_arrival_errors");
+const admViewers = new Counter("adm_viewers");
+const admPutStart = new Trend("adm_put_start_ms");
+const admPutEnd = new Trend("adm_put_end_ms");
+const admPutMs = new Trend("adm_put_ms", true);
+const admPutLag = new Trend("adm_put_start_lag", true);
+const admSaveRev = new Trend("adm_save_rev");
+const admSaveStatus = new Trend("adm_save_status");
+const admExposure = new Trend("adm_exposure");
+const admShapeViewers = new Counter("adm_shape_viewers");
+const admShapeReqs = new Counter("adm_shape_reqs");
+const admShapeLatency = new Trend("adm_shape_latency", true);
+const admShapeLag = new Trend("adm_shape_start_lag", true);
+const admHeadEq = new Rate("adm_head_eq");
+const admHeadGe = new Rate("adm_head_ge");
+const admHeadFinal = new Rate("adm_head_final");
+const admMarkerOk = new Rate("adm_marker_ok");
+const adm5xx = new Counter("adm_http_5xx");
+const adm503 = new Counter("adm_http_503");
+const adm4xx = new Counter("adm_http_4xx");
+const admTransport = new Counter("adm_transport_errors");
+
+const ADM_SCENARIOS = {
+  admission: {
+    executor: "per-vu-iterations",
+    vus: 1,
+    iterations: 1,
+    startTime: "0s",
+    maxDuration: `${Math.ceil(Math.max(SSR_SECONDS, STEADY_START + STEADY_SECONDS, (SAVE_OFFSETS[SAVE_OFFSETS.length - 1] || 0) + 60, ARRIVAL_SECONDS + 60) + DRAIN_S + 300)}s`,
+    gracefulStop: "2m",
+    exec: "admissionMain",
+  },
+};
+if (SSR_RPS > 0 && SSR_SECONDS > 0) {
+  ADM_SCENARIOS.ssr = {
+    executor: "constant-arrival-rate",
+    rate: perMinute(SSR_RPS),
+    timeUnit: "1m",
+    duration: `${SSR_SECONDS}s`,
+    startTime: "0s",
+    preAllocatedVUs: Math.max(3, Math.ceil(SSR_RPS * 4)),
+    maxVUs: Math.max(10, Math.ceil(SSR_RPS * 20)),
+    exec: "ssrAdmission",
+  };
+}
+if (POLL_RPS > 0 && STEADY_SECONDS > 0) ADM_SCENARIOS.poll = { ...scenarios.poll };
+
+// Gates are judged in handleSummary (several have no samples in a small
+// smoke, which a k6 threshold would misread); the two hard zero-count
+// gates are also thresholds, so k6 exits 99 on them. The rest are
+// placeholders that make the tagged submetrics exist (lib/report.js).
+const ADM_THRESHOLDS = {
+  adm_http_5xx: ["count==0"],
+  adm_transport_errors: ["count==0"],
+  adm_http_503: ["count>=0"],
+  adm_http_4xx: ["count>=0"],
+  adm_t0_ms: ["max>=0"],
+  adm_arrival_latency: ["max>=0"],
+  adm_arrival_start_lag: ["max>=-1e12"],
+  adm_arrival_errors: ["rate>=0"],
+  adm_shape_start_lag: ["max>=-1e12"],
+  adm_marker_ok: ["rate>=0"],
+  drain_start_s: ["max>=0"],
+  snapshot_bad_body: ["rate>=0"],
+  snapshot_rows: ["max>=0"],
+  ssr_errors: ["rate>=0"],
+  "http_req_duration{scenario:ssr}": ["max>=0"],
+  "http_reqs{scenario:ssr}": ["count>=0"],
+  "dropped_iterations{scenario:ssr}": ["count>=0"],
+  "http_req_duration{scenario:poll}": ["max>=0"],
+  "http_reqs{scenario:poll}": ["count>=0"],
+  "dropped_iterations{scenario:poll}": ["count>=0"],
+  "snapshot_errors{scenario:poll}": ["rate>=0"],
+};
+for (const k of ADM_KINDS) {
+  ADM_THRESHOLDS[sub("adm_http_5xx", { kind: k })] = ["count>=0"];
+  ADM_THRESHOLDS[sub("adm_http_503", { kind: k })] = ["count>=0"];
+  ADM_THRESHOLDS[sub("adm_http_4xx", { kind: k })] = ["count>=0"];
+  ADM_THRESHOLDS[sub("adm_transport_errors", { kind: k })] = ["count>=0"];
+}
+for (const l of ADM_LOCALES) ADM_THRESHOLDS[sub("adm_arrival_latency", { locale: l })] = ["max>=0"];
+for (const s of SHAPES) {
+  ADM_THRESHOLDS[sub("adm_viewers", { shape: s })] = ["count>=0"];
+  ADM_THRESHOLDS[sub("adm_shape_start_lag", { shape: s })] = ["max>=-1e12"];
+  ADM_THRESHOLDS[sub("adm_head_final", { shape: s })] = ["rate>=0"];
+}
+for (const ph of ["arrival", "shape", "poll"]) for (const s of Object.keys(SRC)) ADM_THRESHOLDS[sub(`snap_src_${s}`, { phase: ph })] = ["count>=0"];
+SAVE_OFFSETS.forEach((_, i) => {
+  const save = saveId(i);
+  for (const m of ["adm_put_start_ms", "adm_put_end_ms", "adm_put_ms", "adm_put_start_lag", "adm_save_rev", "adm_save_status"]) {
+    ADM_THRESHOLDS[sub(m, { save })] = ["max>=-1e12"];
+  }
+  for (const at of ["start", "end"]) for (const what of ["admitted", "outstanding", "inflight"]) ADM_THRESHOLDS[sub("adm_exposure", { save, at, what })] = ["max>=0"];
+  ADM_THRESHOLDS[sub("adm_marker_ok", { save })] = ["rate>=0"];
+  for (const s of SHAPES) {
+    ADM_THRESHOLDS[sub("adm_shape_viewers", { save, shape: s })] = ["count>=0"];
+    ADM_THRESHOLDS[sub("adm_shape_latency", { save, shape: s })] = ["max>=0"];
+    ADM_THRESHOLDS[sub("adm_head_final", { save, shape: s })] = ["rate>=0"];
+    for (const wave of ADM_WAVES) {
+      ADM_THRESHOLDS[sub("adm_shape_reqs", { save, shape: s, wave })] = ["count>=0"];
+      ADM_THRESHOLDS[sub("adm_head_eq", { save, shape: s, wave })] = ["rate>=0"];
+      ADM_THRESHOLDS[sub("adm_head_ge", { save, shape: s, wave })] = ["rate>=0"];
+    }
+  }
+});
+
 export const options = {
-  scenarios,
-  thresholds,
+  scenarios: ADMISSION ? ADM_SCENARIOS : scenarios,
+  thresholds: ADMISSION ? ADM_THRESHOLDS : thresholds,
   summaryTrendStats: ["count", "avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
   // Setup does a handful of requests; the default 60 s is plenty, but a
   // cold preview can take a while to answer the first one.
@@ -528,6 +740,18 @@ function recordViewerSnapshot(res, tags) {
 
 // ── setup: event sanity + clock offset for the ackAt check ───────
 export function setup() {
+  // Admission mode: NO request before t=0 — everything comes from the
+  // probe file (see the admission block above).
+  if (ADMISSION) {
+    return {
+      items: [],
+      startRev: PROBE.rev,
+      clockOffsetMs: PROBE.clock ? PROBE.clock.offsetMs : null,
+      clockErrMs: PROBE.clock ? PROBE.clock.errMs : null,
+      startedAt: new Date().toISOString(),
+      admission: true,
+    };
+  }
   const items = [];
   let rev = null;
   // Offset = server clock − local clock, from the response's `servedAt`
@@ -575,6 +799,7 @@ export function poll() {
   });
   const r = recordViewerSnapshot(res, tags);
   check(res, { "poll 200": (x) => x.status === 200 });
+  if (ADMISSION) tallyStatus(res, "poll");
   if (r.rev != null && (knownRev == null || r.rev > knownRev)) knownRev = r.rev;
 }
 
@@ -1121,6 +1346,203 @@ async function drain() {
   await delay(DRAIN_S * 1000);
 }
 
+// ── admission mode: runtime ─────────────────────────────────────
+// Status tally for the admission gates: every request of the run (the
+// wave, notification fetches, rechecks, the PUTs, SSR, the hold's
+// polls) — "0 × 5xx and 0 transport failures" is about all of them.
+function tallyStatus(res, kind) {
+  const s = res.status;
+  if (s === 0) admTransport.add(1, { kind });
+  else if (s >= 500) {
+    adm5xx.add(1, { kind });
+    if (s === 503) adm503.add(1, { kind });
+  } else if (s >= 400) adm4xx.add(1, { kind });
+}
+
+// SSR event page for the admission window: like getEventPage() (no
+// redirect following — a 308 means EVENT_SLUG is wrong), but over the
+// 70/20/10 locale mix of the arrivals and with the status tally.
+export function ssrAdmission() {
+  const locale = pickLocale();
+  const res = http.get(`${BASE_URL}/${locale}/events/${EVENT_ID}/${__ENV.EVENT_SLUG}`, {
+    headers: baseHeaders(),
+    redirects: 0,
+    responseType: "none",
+    tags: { name: "ssr_event_page", locale },
+    timeout: "30s",
+  });
+  ssrErrors.add(res.status !== 200);
+  check(res, { "event page 200": (r) => r.status === 200 });
+  tallyStatus(res, "ssr");
+}
+
+// One notification fetch of one admitted viewer for one save. Updates
+// the viewer's applied revision (the R1 shape's next minRev) and
+// returns the response's rev (null on failure).
+async function shapeFetch(save, v, wave, minRev, hint, savedRev, scheduledAt, st) {
+  const startedAt = Date.now();
+  admShapeLag.add(startedAt - scheduledAt, { shape: v.shape });
+  const kind = wave === "recheck" ? "recheck" : "shape";
+  const tags = { name: "snapshot", phase: kind === "recheck" ? "recheck" : "shape", save, shape: v.shape, wave, locale: v.locale };
+  st.inFlight++;
+  const res = await http.asyncRequest("GET", withMinRev(snapshotUrl(v.locale), minRev, hint), null, {
+    headers: viewerHeaders(),
+    responseType: "text",
+    tags,
+    timeout: "30s",
+  });
+  st.inFlight--;
+  const r = recordViewerSnapshot(res, tags);
+  tallyStatus(res, kind);
+  admShapeReqs.add(1, { save, shape: v.shape, wave });
+  if (wave !== "recheck") admShapeLatency.add(res.timings.duration, { save, shape: v.shape });
+  if (!r.ok) return { rev: null, verify: null };
+  if (r.rev != null && (v.appliedRev == null || r.rev > v.appliedRev)) v.appliedRev = r.rev;
+  const h = headCheck(v.shape, r.rev, savedRev);
+  admHeadEq.add(h.eq, { save, shape: v.shape, wave });
+  admHeadGe.add(h.ge, { save, shape: v.shape, wave });
+  // Marker check, sampled: a response AT the saved head must show this
+  // save's marker on the anchor (content consistent with its rev). A
+  // response beyond it may carry a later save's marker, so it is not
+  // judged — "marker checks follow the returned revision".
+  if (h.eq && Math.random() < BODY_SAMPLE_RATE) {
+    const body = jsonParse(res.body);
+    const it = body && Array.isArray(body.items) ? body.items.find((x) => String(x.id) === PROBE.anchorId) : null;
+    admMarkerOk.add(!!it && songIdsOf(it).map(String).includes(String(st.markerOf[save])), { save });
+  }
+  return { rev: r.rev, verify: verifyOf(res) };
+}
+
+// All notification fetches of one admitted viewer for one save; records
+// the per-shape claim on the viewer's FINAL state for this save:
+//   r2  — exact saved head after the (optional) recheck;
+//   r1  — at or beyond the saved head;
+//   pre — at or beyond it on the repeat (the tab's last fetch).
+async function notifyViewer(save, v, savedRev, putEnd, st) {
+  const p = notificationParams(v.shape, { savedRev, appliedRev: v.appliedRev });
+  const at = Math.random() * (v.shape === "pre" ? OLD_JITTER_MS : JITTER_MS);
+  await delay(at);
+  let r = await shapeFetch(save, v, "1", p.minRev, p.hint, savedRev, putEnd + at, st);
+  if (v.shape === "r2" && r.verify && INCONCLUSIVE.has(r.verify.kind) && (r.rev == null || r.rev < p.minRev)) {
+    const wait = RECHECK_BASE_MS + Math.random() * RECHECK_SPREAD_MS;
+    await delay(wait);
+    r = await shapeFetch(save, v, "recheck", p.minRev, false, savedRev, putEnd + at + wait, st);
+  }
+  if (v.shape === "pre") {
+    const due = putEnd + at + OLD_REPEAT_MS;
+    await delay(Math.max(0, due - Date.now()));
+    r = await shapeFetch(save, v, "2", null, false, savedRev, due, st);
+  }
+  admHeadFinal.add(headCheck(v.shape, r.rev, savedRev).claim, { save, shape: v.shape });
+}
+
+async function admissionSave(i, t0, st) {
+  const save = saveId(i);
+  const scheduled = t0 + SAVE_OFFSETS[i] * 1000;
+  await delay(Math.max(0, scheduled - Date.now()));
+  const marker = PROBE.markers[i % PROBE.markers.length];
+  st.markerOf[save] = marker.id;
+  const exp = () => exposure({ admitted: st.viewers.length, arrivalsTotal: ARRIVALS, arrivalsDone: st.arrivalsDone, inFlight: st.inFlight });
+  const e0 = exp();
+  const putStart = Date.now();
+  st.inFlight++;
+  const res = await http.asyncRequest(
+    "PUT",
+    `${BASE_URL}/api/admin/setlist-items/${PROBE.anchorId}`,
+    // Same body as the browsers harness's putSongRaw: the anchor stays an
+    // ordinary row (isEncore false) at its own position, so the whole-
+    // event encore validation passes; only the song changes.
+    JSON.stringify({ position: PROBE.anchorPos, isEncore: false, type: "song", status: "confirmed", songIds: [String(marker.id)] }),
+    {
+      headers: { ...baseHeaders(), "Content-Type": "application/json" },
+      cookies: { [PROBE.cookieName || COOKIE_NAME]: PROBE.cookie },
+      tags: { name: "admission_put", save },
+      timeout: "30s",
+    },
+  );
+  st.inFlight--;
+  const putEnd = Date.now();
+  tallyStatus(res, "put");
+  // Exposure at the response BEFORE the cohort is fixed: the viewers
+  // admitted by now are the ones that receive this save's notification.
+  const e1 = exp();
+  const body = res.status >= 200 && res.status < 300 ? jsonParse(res.body) : null;
+  const savedRev = body && Number.isSafeInteger(body.rev) ? body.rev : null;
+  admPutStart.add(putStart, { save });
+  admPutEnd.add(putEnd, { save });
+  admPutMs.add(res.timings.duration, { save });
+  admPutLag.add(putStart - scheduled, { save });
+  admSaveStatus.add(res.status, { save });
+  if (savedRev != null) admSaveRev.add(savedRev, { save });
+  for (const [at, e] of [["start", e0], ["end", e1]]) {
+    admExposure.add(e.admitted, { save, at, what: "admitted" });
+    admExposure.add(e.outstanding, { save, at, what: "outstanding" });
+    admExposure.add(e.inFlight, { save, at, what: "inflight" });
+  }
+  console.log(
+    `[admission ${save}] @${((putStart - t0) / 1000).toFixed(2)}s (scheduled ${SAVE_OFFSETS[i]}s) PUT ${res.status} ${Math.round(res.timings.duration)}ms rev=${savedRev} ` +
+      `marker=${marker.id}; at response: admitted ${e1.admitted}, outstanding arrivals ${e1.outstanding}, in flight ${e1.inFlight}`,
+  );
+  if (savedRev == null) {
+    console.warn(`[admission ${save}] save failed (HTTP ${res.status} ${String(res.body).slice(0, 160)}) — no notification fetches`);
+    return;
+  }
+  const cohort = st.viewers.slice();
+  for (const s of SHAPES) {
+    const n = cohort.filter((v) => v.shape === s).length;
+    if (n) admShapeViewers.add(n, { save, shape: s });
+  }
+  await Promise.all(cohort.map((v) => notifyViewer(save, v, savedRev, putEnd, st)));
+}
+
+async function admissionArrival(i, t0, st) {
+  const scheduled = t0 + arrivalOffsetMs(i, ARRIVALS, ARRIVAL_SECONDS);
+  await delay(Math.max(0, scheduled - Date.now()));
+  const locale = pickLocale();
+  const shape = pickShape(MIX, Math.random());
+  const startedAt = Date.now();
+  admArrivalLag.add(startedAt - scheduled);
+  const tags = { name: "snapshot", phase: "arrival", locale, shape };
+  st.inFlight++;
+  const res = await http.asyncRequest("GET", snapshotUrl(locale), null, {
+    headers: viewerHeaders(),
+    responseType: "text",
+    tags,
+    timeout: "30s",
+  });
+  st.inFlight--;
+  st.arrivalsDone++;
+  const r = recordViewerSnapshot(res, tags);
+  tallyStatus(res, "arrival");
+  admArrivalLatency.add(res.timings.duration, { locale });
+  admArrivalErr.add(!r.ok);
+  if (!r.ok) return; // not admitted: no snapshot, no notification handling (no retry modelled)
+  st.viewers.push({ locale, shape, appliedRev: r.rev });
+  admViewers.add(1, { shape });
+}
+
+export async function admissionMain() {
+  const t0 = Date.now();
+  admT0.add(t0);
+  const st = { viewers: [], arrivalsDone: 0, inFlight: 0, markerOf: {} };
+  console.log(`[admission] t0=${new Date(t0).toISOString()} arrivals ${ARRIVALS}/${ARRIVAL_SECONDS}s, saves @${SAVE_OFFSETS.join(",") || "none"}s, mix ${SHAPE_MIX_RAW}`);
+  const work = [];
+  for (let i = 0; i < ARRIVALS; i++) work.push(admissionArrival(i, t0, st));
+  SAVE_OFFSETS.forEach((_, i) => work.push(admissionSave(i, t0, st)));
+  await Promise.all(work);
+  console.log(`[admission] wave + saves done at ${elapsedS().toFixed(1)}s: ${st.viewers.length}/${ARRIVALS} admitted`);
+  // Hold until the SSR and poll windows are over, then the quiet drain
+  // (see drain() — same purpose: the side-car samplers see the pools
+  // drain with no traffic of ours).
+  const end = Math.max(SSR_RPS > 0 ? SSR_SECONDS : 0, POLL_RPS > 0 && STEADY_SECONDS > 0 ? STEADY_START + STEADY_SECONDS : 0);
+  if (end > elapsedS()) await delay((end - elapsedS()) * 1000);
+  if (DRAIN_S > 0) {
+    drainStartS.add(elapsedS());
+    console.log(`[admission] drain: no requests from ${elapsedS().toFixed(1)}s for ${DRAIN_S}s`);
+    await delay(DRAIN_S * 1000);
+  }
+}
+
 // ── report ──────────────────────────────────────────────────────
 const M = (data, key) => data.metrics[key];
 // null (rendered "—", judged n/a or FAIL) when the metric has no
@@ -1150,7 +1572,220 @@ function srcCells(data, sel) {
   return { ...n, total };
 }
 
+// ── admission mode: summary ─────────────────────────────────────
+// Markdown (gates + the "Admission" section + the hold's steady streams)
+// and `<stamp>-k6-admission.json`, the machine-readable record that
+// tests/load/admission-join.mjs may read (optional input there). Epoch
+// ms are LAPTOP clock (k6 host); `probe.clock` is the precursor's
+// servedAt offset (server − laptop, ±errMs) for converting them — only
+// an estimate for the fresh deployment's instances (design §0).
+const rateNP = (data, key) => {
+  const m = M(data, key);
+  if (!m || !m.values) return { n: 0, ok: 0, rate: null };
+  const n = (m.values.passes || 0) + (m.values.fails || 0);
+  return { n, ok: m.values.passes || 0, rate: n ? m.values.passes / n : null };
+};
+const trendStats = (data, key) => ({
+  n: val(data, key, "count") ?? 0,
+  p50: val(data, key, "med"),
+  p95: val(data, key, "p(95)"),
+  p99: val(data, key, "p(99)"),
+  max: val(data, key, "max"),
+});
+const r0 = (v) => (v == null ? null : Math.round(v));
+
+function admissionSummary(data) {
+  const sd = data.setup_data || {};
+  const t0 = val(data, "adm_t0_ms", "max");
+  const saves = SAVE_OFFSETS.map((off, i) => {
+    const save = saveId(i);
+    const g = (m) => val(data, sub(m, { save }), "max");
+    const expo = (at) => ({
+      admitted: val(data, sub("adm_exposure", { save, at, what: "admitted" }), "max"),
+      outstanding: val(data, sub("adm_exposure", { save, at, what: "outstanding" }), "max"),
+      inFlight: val(data, sub("adm_exposure", { save, at, what: "inflight" }), "max"),
+    });
+    const shapes = {};
+    for (const s of SHAPES) {
+      const waves = {};
+      for (const wave of ADM_WAVES) {
+        const reqs = cnt(data, sub("adm_shape_reqs", { save, shape: s, wave }));
+        if (!reqs) continue;
+        waves[wave] = { requests: reqs, eq: rateNP(data, sub("adm_head_eq", { save, shape: s, wave })), ge: rateNP(data, sub("adm_head_ge", { save, shape: s, wave })) };
+      }
+      shapes[s] = {
+        viewers: cnt(data, sub("adm_shape_viewers", { save, shape: s })),
+        waves,
+        latency: trendStats(data, sub("adm_shape_latency", { save, shape: s })),
+        claim: s === "r2" ? "rev === savedRev (after recheck)" : s === "r1" ? "rev >= savedRev" : "rev >= savedRev on the repeat",
+        final: rateNP(data, sub("adm_head_final", { save, shape: s })),
+      };
+    }
+    return {
+      id: save,
+      offsetS: off,
+      scheduledAt: t0 != null ? t0 + off * 1000 : null,
+      putStart: g("adm_put_start_ms"),
+      putEnd: g("adm_put_end_ms"),
+      putMs: r0(g("adm_put_ms")),
+      startLagMs: r0(g("adm_put_start_lag")),
+      status: g("adm_save_status"),
+      rev: g("adm_save_rev"),
+      marker: PROBE.markers && PROBE.markers.length ? String(PROBE.markers[i % PROBE.markers.length].id) : null,
+      exposure: { atPutStart: expo("start"), atPutEnd: expo("end") },
+      marker_ok: rateNP(data, sub("adm_marker_ok", { save })),
+      shapes,
+    };
+  });
+  const byShape = Object.fromEntries(SHAPES.map((s) => [s, cnt(data, sub("adm_viewers", { shape: s }))]));
+  const arrivalSrc = srcCells(data, "phase:arrival");
+  const arrErr = rateNP(data, "adm_arrival_errors");
+  const arrivals = {
+    total: ARRIVALS,
+    seconds: ARRIVAL_SECONDS,
+    completed: val(data, "adm_arrival_latency", "count") ?? 0,
+    admitted: SHAPES.reduce((a, s) => a + byShape[s], 0),
+    errors: arrErr.ok,
+    byShape,
+    byLocale: Object.fromEntries(ADM_LOCALES.map((l) => [l, trendStats(data, sub("adm_arrival_latency", { locale: l }))])),
+    latency: trendStats(data, "adm_arrival_latency"),
+    startLag: trendStats(data, "adm_arrival_start_lag"),
+    sources: arrivalSrc,
+  };
+  const kinds = (m) => Object.fromEntries(ADM_KINDS.map((k) => [k, cnt(data, sub(m, { kind: k }))]));
+  const errors = {
+    http5xx: { total: cnt(data, "adm_http_5xx"), byKind: kinds("adm_http_5xx") },
+    http503: { total: cnt(data, "adm_http_503"), byKind: kinds("adm_http_503") },
+    transport: { total: cnt(data, "adm_transport_errors"), byKind: kinds("adm_transport_errors") },
+    http4xx: { total: cnt(data, "adm_http_4xx"), byKind: kinds("adm_http_4xx") },
+  };
+  const ssr = {
+    rps: SSR_RPS,
+    seconds: SSR_SECONDS,
+    requests: cnt(data, "http_reqs{scenario:ssr}"),
+    latency: trendStats(data, "http_req_duration{scenario:ssr}"),
+    errorRate: val(data, "ssr_errors", "rate"),
+    dropped: cnt(data, "dropped_iterations{scenario:ssr}"),
+  };
+  const poll = {
+    rps: POLL_RPS,
+    window: [STEADY_START, STEADY_START + STEADY_SECONDS],
+    requests: cnt(data, "http_reqs{scenario:poll}"),
+    latency: trendStats(data, "http_req_duration{scenario:poll}"),
+    errorRate: val(data, "snapshot_errors{scenario:poll}", "rate"),
+    dropped: cnt(data, "dropped_iterations{scenario:poll}"),
+    sources: srcCells(data, "phase:poll"),
+  };
+  const badM = M(data, "snapshot_bad_body");
+  const bad = badM ? badM.values.passes : 0;
+  const sampled = badM ? badM.values.passes + badM.values.fails : 0;
+  const shapeFinal = Object.fromEntries(SHAPES.map((s) => [s, rateNP(data, sub("adm_head_final", { shape: s }))]));
+  const savesOk = saves.filter((s) => s.status != null && s.status >= 200 && s.status < 300 && s.rev != null).length;
+
+  const gates = [];
+  const gate = (name, measured, threshold, ok, soft = false) => gates.push({ gate: name, measured, threshold, verdict: ok == null ? "n/a" : ok ? "PASS" : soft ? "SOFT FAIL" : "FAIL", soft });
+  gate("5xx, all requests", `${errors.http5xx.total} (${ADM_KINDS.filter((k) => errors.http5xx.byKind[k]).map((k) => `${k} ${errors.http5xx.byKind[k]}`).join(", ") || "none"})`, "0", errors.http5xx.total === 0);
+  gate("503, all requests", `${errors.http503.total}`, "0", errors.http503.total === 0);
+  gate("transport failures, all requests", `${errors.transport.total} (${ADM_KINDS.filter((k) => errors.transport.byKind[k]).map((k) => `${k} ${errors.transport.byKind[k]}`).join(", ") || "none"})`, "0", errors.transport.total === 0);
+  gate("admission saves committed", `${savesOk} / ${SAVE_OFFSETS.length}`, "all", savesOk === SAVE_OFFSETS.length);
+  gate("arrival wave p95 (soft)", `${r0(arrivals.latency.p95) ?? "—"} ms (n=${arrivals.completed}, max ${r0(arrivals.latency.max) ?? "—"} ms)`, `≤ ${WAVE_GATE_P95} ms`, arrivals.latency.p95 == null ? null : arrivals.latency.p95 <= WAVE_GATE_P95, true);
+  gate("all arrivals admitted", `${arrivals.admitted} / ${ARRIVALS}`, "all", arrivals.admitted === ARRIVALS);
+  gate("SSR p95", `${r0(ssr.latency.p95) ?? "—"} ms (n=${ssr.requests}, errors ${pct(ssr.errorRate, 3)})`, `≤ ${SSR_GATE_P95} ms, 0 errors`, ssr.latency.p95 == null ? null : ssr.latency.p95 <= SSR_GATE_P95 && !ssr.errorRate);
+  for (const s of SHAPES) {
+    const f = shapeFinal[s];
+    gate(`saved head, ${s} (${s === "r2" ? "rev = savedRev after recheck" : s === "r1" ? "rev ≥ savedRev" : "rev ≥ savedRev on the repeat"})`, `${f.ok} / ${f.n}`, "100 %", f.n ? f.ok === f.n : null);
+  }
+  gate("bad bodies / sampled", `${bad} / ${sampled} (rows ${val(data, "snapshot_rows", "min") ?? "—"}–${val(data, "snapshot_rows", "max") ?? "—"})`, "0, ≥ 1 sampled", sampled > 0 && bad === 0);
+  gate("generator: SSR + poll dropped iterations", `${ssr.dropped + poll.dropped}`, "0", ssr.dropped + poll.dropped === 0);
+
+  const summary = {
+    kind: "k6-admission",
+    version: 1,
+    label: PROBE.label,
+    base: BASE_URL,
+    eventId: String(EVENT_ID),
+    t0,
+    t0Iso: t0 != null ? new Date(t0).toISOString() : null,
+    clocks: "epoch ms on the k6 host (laptop); probe.clock = precursor servedAt offset (server − laptop)",
+    probe: {
+      file: PROBE.file,
+      label: PROBE.label,
+      at: PROBE.at,
+      precursorBase: PROBE.precursorBase,
+      revAtProbe: PROBE.revAtProbe,
+      rev: PROBE.rev,
+      rows: PROBE.rows,
+      clock: PROBE.clock ? { offsetMs: PROBE.clock.offsetMs, errMs: PROBE.clock.errMs } : null,
+    },
+    fixture: PROBE.fixture || null,
+    anchor: { id: PROBE.anchorId, position: PROBE.anchorPos },
+    knobs: {
+      ARRIVALS, ARRIVAL_SECONDS, SHAPE_MIX: SHAPE_MIX_RAW, ADMISSION_SAVES: ADMISSION_SAVES_RAW, SSR_RPS, SSR_SECONDS,
+      POLL_RPS, STEADY_START, STEADY_SECONDS, JITTER_MS, OLD_JITTER_MS, OLD_REPEAT_MS, DRAIN_S, ACCEPT_ENCODING, BODY_SAMPLE_RATE,
+    },
+    saves,
+    arrivals,
+    ssr,
+    poll,
+    errors,
+    shapeFinal,
+    gates,
+    runSeconds: data.state ? Math.round(data.state.testRunDurationMs / 1000) : null,
+  };
+
+  const n = (v) => (v == null ? "—" : String(v));
+  const saveRows = saves.map((s) => {
+    const sh = (k) => {
+      const x = s.shapes[k];
+      const w = Object.entries(x.waves).map(([wave, o]) => `${wave === "1" ? "" : `${wave}: `}${o.requests} req, = ${o.eq.ok}/${o.eq.n}, ≥ ${o.ge.ok}/${o.ge.n}`).join("; ");
+      return `${x.viewers} viewers · ${w || "—"} · final ${x.final.ok}/${x.final.n} · p95 ${ms(x.latency.p95)}`;
+    };
+    const e0 = s.exposure.atPutStart;
+    const e1 = s.exposure.atPutEnd;
+    return (
+      `| ${s.id} | ${s.offsetS}s (+${n(s.startLagMs)} ms) | ${n(s.status)} · ${ms(s.putMs)} · rev ${n(s.rev)} | ` +
+      `${n(e0.admitted)} / ${n(e0.outstanding)} / ${n(e0.inFlight)} → ${n(e1.admitted)} / ${n(e1.outstanding)} / ${n(e1.inFlight)} | ` +
+      `${sh("r2")} | ${sh("r1")} | ${sh("pre")} | ${s.marker_ok.ok}/${s.marker_ok.n} |`
+    );
+  });
+  const md =
+    `## Viewers — admission mode (A1) — ${new Date().toISOString()}\n\n` +
+    `BASE_URL=${BASE_URL} EVENT_ID=${EVENT_ID} EXPECTED_ROWS=${EXPECTED_ROWS ?? "—"} probe=${PROBE.label} (precursor ${PROBE.precursorBase}, rev ${PROBE.rev}, ` +
+    `${PROBE.rows} rows${PROBE.fixture ? `, fixture ${PROBE.fixture.label}` : ""}) anchor ${PROBE.anchorId}@${PROBE.anchorPos}\n\n` +
+    `- t0 ${summary.t0Iso ?? "—"}; arrivals ${ARRIVALS} over ${ARRIVAL_SECONDS}s (generic reads, 70/20/10), SHAPE_MIX ${SHAPE_MIX_RAW} (r2/r1/pre), ` +
+    `saves @${ADMISSION_SAVES_RAW || "none"}s; SSR ${SSR_RPS} rps 0→${SSR_SECONDS}s; poll ${POLL_RPS} rps ${STEADY_START}→${STEADY_START + STEADY_SECONDS}s; drain ${DRAIN_S}s\n` +
+    `- probe clock offset ${sd.clockOffsetMs != null ? Math.round(sd.clockOffsetMs) : "—"} ms (±${sd.clockErrMs != null ? Math.round(sd.clockErrMs) : "—"} ms, precursor) — run ${summary.runSeconds ?? "—"}s\n` +
+    "\n### Gates\n\n| Gate | measured | gate | verdict |\n|---|---|---|---|\n" +
+    gates.map((x) => `| ${x.gate} | ${x.measured} | ${x.threshold} | **${x.verdict}** |`).join("\n") +
+    `\n| Σ pool estimate / builds per instance (vercel-logs-summary.mjs) | ___ | < 300, completeness stated | _orchestrator_ |\n` +
+    "\n## Admission\n\n" +
+    `- **wave**: ${arrivals.completed}/${ARRIVALS} answered, ${arrivals.admitted} admitted (r2 ${byShape.r2} / r1 ${byShape.r1} / pre ${byShape.pre}), ` +
+    `${arrivals.errors} errors; latency p50 ${ms(arrivals.latency.p50)} / p95 ${ms(arrivals.latency.p95)} / p99 ${ms(arrivals.latency.p99)} / max ${ms(arrivals.latency.max)}\n` +
+    `- per locale p95: ${ADM_LOCALES.map((l) => `${l} ${ms(arrivals.byLocale[l].p95)} (n=${arrivals.byLocale[l].n})`).join(", ")}\n` +
+    `- scheduled → actual start lag: p50 ${ms(arrivals.startLag.p50)} / p95 ${ms(arrivals.startLag.p95)} / max ${ms(arrivals.startLag.max)} (generator health; latency is measured from the actual start)\n` +
+    `- first-read source build/cache/repair/warm: ${arrivalSrc.build} / ${arrivalSrc.cache} / ${arrivalSrc.repair} / ${arrivalSrc.warm}${arrivalSrc.other ? ` (+${arrivalSrc.other} other)` : ""} (header proxy — count builds from the logs)\n` +
+    `- notification fetch start lag (scheduled → actual): ${SHAPES.map((s) => `${s} p95 ${ms(val(data, sub("adm_shape_start_lag", { shape: s }), "p(95)"))}`).join(", ")}\n` +
+    `- 4xx (not gated, read them): ${errors.http4xx.total}\n\n` +
+    "Exposure columns: admitted / outstanding arrivals / this VU's in-flight requests, at PUT start → at PUT response. " +
+    "Shape cells: viewers notified · per wave requests, `=` exact saved head, `≥` at or beyond (wave 1 unlabeled; `2` = pre-R1 repeat; `recheck` = R2 recheck) · final claim · p95.\n\n" +
+    "| Save | at (start lag) | PUT status · ms · rev | exposure | R2 | R1 | pre-R1 | marker ok (sampled) |\n|---|---|---|---|---|---|---|---|\n" +
+    saveRows.join("\n") +
+    "\n\n### Steady streams (hold)\n\n" +
+    `- poll: ${poll.requests} req, p50 ${ms(poll.latency.p50)} / p95 ${ms(poll.latency.p95)} / p99 ${ms(poll.latency.p99)}, errors ${pct(poll.errorRate, 3)}, ` +
+    `source build/cache/repair/warm ${poll.sources.build} / ${poll.sources.cache} / ${poll.sources.repair} / ${poll.sources.warm}\n` +
+    `- SSR event page (0→${SSR_SECONDS}s): ${ssr.requests} req, p50 ${ms(ssr.latency.p50)} / p95 ${ms(ssr.latency.p95)} / p99 ${ms(ssr.latency.p99)} / max ${ms(ssr.latency.max)}, errors ${pct(ssr.errorRate, 3)}\n`;
+
+  const base = `${resultsDir()}/${stamp()}`;
+  return {
+    stdout: md,
+    [`${base}-viewers.md`]: md,
+    [`${base}-viewers.json`]: JSON.stringify({ admission: true, setup: sd, metrics: data.metrics }, null, 2),
+    [`${base}-k6-admission.json`]: JSON.stringify(summary, null, 2),
+  };
+}
+
 export function handleSummary(data) {
+  if (ADMISSION) return admissionSummary(data);
   const sd = data.setup_data || {};
   const runS = data.state ? data.state.testRunDurationMs / 1000 : null;
 

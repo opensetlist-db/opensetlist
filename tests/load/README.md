@@ -188,6 +188,140 @@ tests/load/run.sh viewers.js -e POLL_RPS=1 -e SSR_RPS=0.2 -e STEADY_START=8 \
   -e REACTIONS=5 -e REACTION_SECONDS=5 -e REACTION_AT=40 -e BODY_SAMPLE_RATE=1
 ```
 
+### Step 5 fixture (`fixtures/fes-rows.mjs`) and k6 admission mode (`ADMISSION=1`)
+
+n14 qualification step 5 (cold admission). Two tools, both dev only:
+
+**Fes-size fixture.** `fixtures/fes-rows.mjs` grows event 111 to a
+synthetic largest-Fes setlist by cloning its own active rows (scalars,
+songs with `order`, members incl. the nullable `realPersonId`, artists),
+so the snapshot has a real show's structure, just more of it. The clone
+count comes from the live row count: `--target=70 --anchor-reserve=1` on
+23 rows = 46 clones (two full copies), and the harness's / probe's blank
+anchor is the 70th row. Ordinary clones go **before** the encore block
+and encore clones after it (every admin PUT validates the whole event's
+encore order); the shifted encore originals are recorded. One
+transaction locks the Event row first, parks/moves positions around the
+partial unique index, and bumps `setlistRevision` **without**
+`realtime.send` and without a cache purge: quarantined preparation, run
+with **no client of ours connected** (no SDK cohort, no observer, no tab),
+before the redeploy that gives the run fresh cache namespaces. It refuses
+when the row count is not `--expect-rows` or when any row of the event was
+created/deleted in the last `--quiet-s` (120) s — never run it while
+another stream works on the event. The manifest
+`results/<UTC date>/fixture-<label>.json` is written before COMMIT (ids)
+and finalised after; every clone's `createdAt` is the transaction's
+`now()` (`txNow` in the manifest) as a last-resort recovery key.
+
+```bash
+node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A2 --expect-rows=23
+```
+
+Clean-up order after the run (the probe's/harness's anchor first):
+
+1. `node tests/load/admission-probe.mjs --cleanup=<probe file>` (k6 runs)
+   or the harness's own clean-up — the anchor must be gone, otherwise
+   step 2 refuses (a foreign active row on a recorded position);
+2. `node tests/load/fixtures/fes-rows.mjs --cleanup=<manifest> --publish`:
+   soft-deletes the clones (junctions stay with the soft-deleted parent),
+   restores every original row to its recorded pre-fixture position,
+   bumps the revision (no broadcast), then `--publish` publishes through
+   the writer path (one admin login; a no-op re-delete of an
+   already-deleted clone bumps, broadcasts and purges) and the
+   verification table runs (ids in order, positions, encore flags, scalar
+   + junction content, link counts, event status/startTime, clones
+   deleted, revision strictly above the fixture's — never rewound);
+3. `node tests/load/fixtures/fes-rows.mjs --verify=<manifest>` any time
+   later. `node tests/load/browsers/restore.mjs --compact --yes` is the
+   recovery tool only when a position check FAILED: it publishes only
+   when it actually moves rows, so after an exact restore it is a no-op.
+
+Sizes (**after** a run, never before a cold boundary — the reads build
+and cache snapshots on the target):
+`node tests/load/fixtures/fes-rows.mjs --sizes --base=<url> [--out=<file>]`
+prints, per locale (ja/ko/en), the API JSON bytes, the identity wire
+bytes and `content-length`, and the compressed `content-encoding` / wire
+bytes / `content-length`. The warm codec payload is not visible over
+HTTP: read `bytes=` from the run's `[liveWarm] set event=111 locale=<l> …`
+lines (and `[liveWarm] skip … reason=oversize`) and compare max per locale
+with `WARM_MAX_BYTES` = 1,000,000 (`src/lib/liveWarm.ts`).
+
+**k6 admission mode (A1).** `ADMISSION=1` makes `viewers.js` send
+**nothing** before t=0: no `setup()` reads, no admin login, no
+cold-start save / `b00`, no admin cycles, no reactions. The clock offset,
+event sanity, the admin cookie, the anchor row and the marker songs come
+from `PROBE_FILE`, written by `admission-probe.mjs` **before** the
+boundary against the **precursor** deployment (never the measurement
+one). After t=0:
+
+| t | what |
+|---|---|
+| 0 → `ARRIVAL_SECONDS` | `ARRIVALS` generic initial reads (no `hint`, no `minRev`), 70/20/10 ja/ko/en, evenly spread, open-loop; each arrival is one viewer whose build (R2 / R1 / pre-R1) is drawn once from `SHAPE_MIX` |
+| 0 → `SSR_SECONDS` | event-page SSR at `SSR_RPS` (independent scenario, 70/20/10 locales, redirects not followed) |
+| `ADMISSION_SAVES` | PUT on the probe's anchor (next marker song), on its own timer from t=0. At the PUT response, only the viewers admitted by then fetch: R2 `minRev=savedRev&hint=1` (+ one quiet recheck when inconclusive and below), R1 `minRev=appliedRev+1`, pre-R1 no `minRev` + one repeat `OLD_REPEAT_MS` later on the same locale |
+| `STEADY_START` → +`STEADY_SECONDS` | the periodic poll (the hold), as in the normal model |
+
+| Knob | Default (admission mode) | Meaning |
+|---|---|---|
+| `ADMISSION` | `0` | `1` = this mode |
+| `PROBE_FILE` | — (required) | the probe JSON (absolute, or repo-root relative). Holds the admin cookie: gitignored, never commit/upload |
+| `ARRIVALS` / `ARRIVAL_SECONDS` | 500 / 10 | the admission wave |
+| `SSR_RPS` / `SSR_SECONDS` | 10 / 60 | SSR window from t=0 |
+| `ADMISSION_SAVES` | `5,20` | save offsets (s from t=0); empty = none |
+| `SHAPE_MIX` | `60/25/15` | R2 / R1 / pre-R1 weights (normalised); per-save counts are recorded |
+| `ANCHOR_ID` + `ANCHOR_POSITION` | probe's anchor | edit another dedicated anchor instead (never a fixture/original row — the PUT recreates its junctions) |
+| `STEADY_SECONDS` | 60 | hold length (`POLL_RPS`, `STEADY_START` as above) |
+| `WAVE_GATE_P95` / `SSR_GATE_P95` | 1000 / 3000 ms | soft wave gate / SSR gate |
+| `EXPECTED_ROWS`, `ROW_SLACK` | — / 0 | set `EXPECTED_ROWS` to the probe's `rows` (anchor included); admission adds no rows |
+
+Gates (handleSummary; `adm_http_5xx` and `adm_transport_errors` are also
+`count==0` thresholds): 0 × 5xx and 0 transport failures over **every**
+request (arrivals, notification fetches, rechecks, PUTs, SSR, polls), 0 ×
+503, every save committed, wave p95 ≤ 1 s (soft), all arrivals admitted,
+SSR p95 ≤ 3 s with 0 errors, saved head per shape on each viewer's final
+fetch (R2 `rev === savedRev` after its recheck, R1 `rev ≥ savedRev`,
+pre-R1 `rev ≥ savedRev` on the repeat — the first and repeat requests are
+counted apart), 0 bad bodies, 0 dropped iterations. Per save the report
+gives exposure at PUT start → response (admitted viewers / outstanding
+arrivals / this VU's in-flight requests; k6 has no SUBSCRIBED/DOM
+signal), PUT status/ms/rev and its scheduled-vs-actual start, and per
+shape the viewers, requests per wave, exact (`=`) and at-or-beyond (`≥`)
+counts, the final claim and p95; arrivals also show scheduled-vs-actual
+start lag and the first-read source split. Σ / builds per instance come
+from the logs (`vercel-logs-summary.mjs`). Output:
+`results/<UTC date>/<stamp>-viewers.md` (+ `-viewers.json` metrics) and
+`<stamp>-k6-admission.json` — `{ kind: "k6-admission", t0, probe,
+fixture, anchor, knobs, saves: [{ id, offsetS, scheduledAt, putStart,
+putEnd, putMs, status, rev, marker, exposure: { atPutStart, atPutEnd },
+shapes: { r2, r1, pre } }], arrivals: { total, completed, admitted,
+errors, byShape, byLocale, latency, startLag, sources }, ssr, poll,
+errors, shapeFinal, gates }` (epoch ms on the k6 host;
+`probe.clock.offsetMs` = precursor server − laptop, ±`errMs`), the
+optional k6 input of `admission-join.mjs`.
+
+Operator sequence (A1):
+
+```bash
+# 0. (A2/A4 only) fixture, with no client of ours connected
+node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A1 --expect-rows=23
+# 1. probe the PRECURSOR deployment (identity check, 5 clock reads, 1 login, anchor)
+node tests/load/admission-probe.mjs --base=https://opensetlist-<hash>-opensetlist-projects.vercel.app --label=A1 \
+  [--fixture=tests/load/results/<date>/fixture-A1.json]
+# 2. redeploy (same commit, new BUILD_KEY); no request to the new deployment
+# 3. k6 against the measurement URL — its first request is the wave
+ADMISSION=1 PROBE_FILE=<abs path printed by the probe> EVENT_ID=111 EVENT_SLUG=rehearsal-lovelive-fes-2020-day1 \
+  EXPECTED_ROWS=<probe rows> BASE_URL=<measurement url> tests/load/run.sh viewers.js
+# 4. after: sizes, then anchor clean-up, then fixture clean-up (+ publish) and verify
+node tests/load/fixtures/fes-rows.mjs --sizes --base=<measurement url>
+node tests/load/admission-probe.mjs --cleanup=tests/load/results/<date>/admission-probe-A1.json
+node tests/load/fixtures/fes-rows.mjs --cleanup=tests/load/results/<date>/fixture-A1.json --publish
+```
+
+Knobs can be shell env vars (k6 reads the process environment) or `-e`
+flags after `run.sh viewers.js`. Smoke:
+`-e ADMISSION=1 -e PROBE_FILE=… -e ARRIVALS=10 -e SSR_RPS=1 -e SSR_SECONDS=15
+-e ADMISSION_SAVES=5 -e POLL_RPS=1 -e STEADY_SECONDS=10 -e DRAIN_S=0 -e BODY_SAMPLE_RATE=1`.
+
 ## n14 run #2b-1 — 500 cold burst + nearby repeats, with pooler measurement
 
 Same event and env as run #2 above. What is new is the measurement around
