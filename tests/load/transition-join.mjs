@@ -524,7 +524,7 @@ export function harnessResponses(json) {
  * hinted /api/setlist read on an R2 deployment (ON / OFF / unknown-R2)
  * must carry a `[setlist] hint-fetch` line; R1 never logs hint-fetch.
  */
-export function attribute(responses, logsByDep, { manifest = null } = {}) {
+export function attribute(responses, logsByDep, { manifest = null, coverage = null } = {}) {
   const idx = new Map();
   for (const [, recs] of logsByDep) for (const r of recs) {
     if (!r?.id) continue;
@@ -534,12 +534,26 @@ export function attribute(responses, logsByDep, { manifest = null } = {}) {
   const man = manifestIndex(manifest);
   return responses.map((x) => {
     const rec = x.reqId ? idx.get(x.reqId) ?? null : null;
-    const a = { matched: !!rec, deploymentId: rec?.deploymentId ?? null, recordTs: rec?.timestamp ?? null, consistent: false, mismatch: [], instrumented: null, expected: [], lines: null };
+    const a = { matched: !!rec, deploymentId: rec?.deploymentId ?? null, recordTs: rec?.timestamp ?? null, consistent: false, mismatch: [], instrumented: null, expected: [], lines: null, notExported: false };
     if (!x.reqId) a.mismatch.push("no request id recorded");
-    else if (!rec) a.mismatch.push("no log record with this id");
+    else if (!rec) {
+      // Outside every exported window → "not exported", reported apart
+      // from the honest in-window misses. The edge's own request time is
+      // inside the id (`<pfx>-<epoch ms>-<hex>`, equal to the record's
+      // `timestamp`), so the test does not depend on this host's clock.
+      const t = reqIdTs(x.reqId) ?? x.tStart;
+      if (coverage && coverage.length && !inWindows(coverage, t)) { a.notExported = true; a.mismatch.push("outside the exported log windows"); }
+      else a.mismatch.push("no log record with this id");
+    }
     if (rec) {
       if (x.path && rec.requestPath && rec.requestPath !== x.path) a.mismatch.push(`path ${rec.requestPath} ≠ ${x.path}`);
-      if (x.status != null && x.status !== 0 && rec.responseStatusCode != null && Number(rec.responseStatusCode) !== x.status) a.mismatch.push(`status ${rec.responseStatusCode} ≠ ${x.status}`);
+      // An INCOMPLETE record: Vercel sometimes logs a request with
+      // responseStatusCode 0 and empty environment / branch / cache fields
+      // and no nested lines (6 of 30 988 records in T1, every one answered
+      // 200 to the client). Its id, deployment and path still attribute the
+      // request; the status is unknown, not contradictory — counted apart.
+      if (Number(rec.responseStatusCode) === 0 && x.status) a.incompleteRecord = true;
+      else if (x.status != null && x.status !== 0 && rec.responseStatusCode != null && Number(rec.responseStatusCode) !== x.status) a.mismatch.push(`status ${rec.responseStatusCode} ≠ ${x.status}`);
       if (x.method && rec.requestMethod && rec.requestMethod !== x.method) a.mismatch.push(`method ${rec.requestMethod} ≠ ${x.method}`);
       if (!rec.deploymentId) a.mismatch.push("record has no deploymentId");
       if (x.dpl && rec.deploymentId && x.dpl !== rec.deploymentId) a.mismatch.push(`data-dpl-id ${x.dpl} ≠ record ${rec.deploymentId}`);
@@ -558,11 +572,52 @@ export function attribute(responses, logsByDep, { manifest = null } = {}) {
   });
 }
 
+/** `<pfx>-<epoch ms>-<hex>` → the epoch ms (the edge's request time), else null. */
+export function reqIdTs(id) {
+  const m = /-(\d{13})-/.exec(String(id ?? ""));
+  return m ? Number(m[1]) : null;
+}
+
+export const inWindows = (wins, t) => t != null && wins.some(([a, b]) => t >= a && t <= b);
+
+/**
+ * The time windows the log export covers. Explicit `--windows` (the
+ * operator's per-leg export windows) win; otherwise they are inferred from
+ * the UNION of every deployment's records — blocks of records separated
+ * by more than `gapMs`. The union, not each deployment alone: a deployment
+ * that served nothing for a while has no records there although the
+ * window was exported (its absence is then real, not a coverage gap).
+ * Inferred windows are only as wide as the first / last record of each
+ * block, so they slightly under-cover the real export windows.
+ */
+export function inferCoverage(logsByDep, { gapMs = 30_000 } = {}) {
+  const ts = [...logsByDep.values()].flat().map((r) => r.timestamp).filter(Number.isFinite).sort((a, b) => a - b);
+  const out = [];
+  for (const t of ts) {
+    const last = out[out.length - 1];
+    if (last && t - last[1] <= gapMs) last[1] = t;
+    else out.push([t, t]);
+  }
+  return out;
+}
+
+/** `--windows=<from>,<to>[;<from>,<to>…]` (ISO or epoch ms) → [[from, to], …]. */
+export function parseWindows(s) {
+  return String(s ?? "").split(";").filter((x) => x.trim()).map((w) => {
+    const [a, b] = w.split(",").map((v) => toMs(v.trim()));
+    if (a == null || b == null || b < a) throw new Error(`--windows entry "${w}" is not <from>,<to>`);
+    return [a, b];
+  });
+}
+
 export function attributionSummary(rows) {
   const groups = new Map();
   const add = (k, r) => {
-    if (!groups.has(k)) groups.set(k, { key: k, n: 0, withId: 0, matched: 0, consistent: 0, unmatched: 0, inconsistent: 0, instrExpected: 0, instrumented: 0, byDep: {} });
+    if (!groups.has(k)) groups.set(k, { key: k, n: 0, notExported: 0, withId: 0, matched: 0, consistent: 0, unmatched: 0, inconsistent: 0, instrExpected: 0, instrumented: 0, byDep: {} });
     const g = groups.get(k);
+    // Responses outside the exported windows are counted apart and left
+    // out of every other column (coverage is over the exported windows).
+    if (r.attr.notExported) { g.notExported++; return; }
     g.n++;
     if (r.reqId) g.withId++;
     if (r.attr.matched) g.matched++; else g.unmatched++;
@@ -596,13 +651,32 @@ export function clockOffsets(rows) {
 
 // ─── switches ───
 
+/** Epoch ms from a number (ms) or a date string (ISO, with or without ms); null otherwise. */
+export function toMs(v) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (/^\d+(\.\d+)?$/.test(String(v))) return Number(v);
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : null;
+}
+
+// Every instant a switch record can carry. The operator's switch files
+// write them as ISO strings ("2026-10-12T17:51:13.058Z"), the harness
+// JSON as epoch ms — normalised at merge time so no comparison ever sees
+// a string (a string cliStart made every `cliStart − 10 s` NaN and
+// emptied the propagation windows).
+const SWITCH_TIME_FIELDS = ["plannedAt", "cliStart", "cliEnd", "seenAt", "fileWrittenAt", "completeSeenAt", "endedAt"];
+
 export function mergeSwitches(fromJson = [], files = []) {
   const n = Math.max(fromJson.length, files.length);
   const out = [];
   for (let i = 0; i < n; i++) {
     const a = fromJson[i] ?? {};
     const b = files[i] ?? {};
-    out.push({ ...a, ...b, target: { ...(a.target ?? {}), ...(b.target ?? {}) }, idx: i });
+    const m = { ...a, ...b, target: { ...(a.target ?? {}), ...(b.target ?? {}) }, idx: i };
+    for (const f of SWITCH_TIME_FIELDS) if (f in m) m[f] = toMs(m[f]);
+    if (m.window) m.window = { from: toMs(m.window.from), to: toMs(m.window.to) };
+    out.push(m);
   }
   return out;
 }
@@ -672,7 +746,8 @@ export function propagation(sw, rows, { sustainMs = 60_000, legFrom = -Infinity,
     return {
       n: rs.length, target: tgt.length, old: old.length,
       other: rs.filter((r) => r.attr.deploymentId && r.attr.deploymentId !== sw.targetId && r.attr.deploymentId !== sw.fromId).length,
-      unmatched: rs.filter((r) => !r.attr.matched).length,
+      unmatched: rs.filter((r) => !r.attr.matched && !r.attr.notExported).length,
+      notExported: rs.filter((r) => r.attr.notExported).length,
       firstTarget: ft ? { tStart: ft.tStart, tEnd: ft.tEnd, client: ft.client } : null,
       lastOldStart: afterCli.length ? Math.max(...afterCli.map((r) => r.tStart)) : null,
       lastOldEnd: old.some((r) => r.tEnd != null) ? Math.max(...old.filter((r) => r.tEnd != null).map((r) => r.tEnd)) : null,
@@ -692,7 +767,13 @@ export function propagation(sw, rows, { sustainMs = 60_000, legFrom = -Infinity,
   const ftp = per.probe.firstTarget;
   // Off-target after the first target probe: any attributed deployment
   // other than the target (the old one = a flip-back).
-  const flipBacks = ftp ? win.filter((r) => r.tStart > ftp.tStart && r.attr.deploymentId && r.attr.deploymentId !== sw.targetId).length : null;
+  const offRows = ftp ? win.filter((r) => r.tStart > ftp.tStart && r.attr.deploymentId && r.attr.deploymentId !== sw.targetId) : [];
+  const flipBacks = ftp ? offRows.length : null;
+  // Mixed routing: after the first target probe, how long the old one kept
+  // answering, and from when on every probe went to the target ("steady
+  // from" = the first target probe after the last off-target one).
+  const lastOff = offRows.length ? offRows[offRows.length - 1] : null;
+  const steadyFrom = ftp ? (lastOff ? win.find((r) => r.tStart > lastOff.tStart && r.attr.deploymentId === sw.targetId)?.tStart ?? null : ftp.tStart) : null;
   let maxGap = null;
   const pts = [sw.cliEnd, ...win.map((r) => r.tStart), sEnd].filter((v) => v != null);
   for (let i = 1; i < pts.length; i++) maxGap = Math.max(maxGap ?? 0, pts[i] - pts[i - 1]);
@@ -704,7 +785,12 @@ export function propagation(sw, rows, { sustainMs = 60_000, legFrom = -Infinity,
     pseudo: !!sw.pseudo,
     why: !sw.targetId ? "target deployment id unknown" : !defining.length ? "no probe requests in the defining window" : unattributed.length ? `${unattributed.length}/${defining.length} defining probe request(s) not attributed` : null,
     cliStart: sw.cliStart ?? null, cliEnd: sw.cliEnd ?? null, sustainMs, window: { from: lo, to: sEnd },
-    per, sustained: { ok: sustained, probes: win.length, flipBacks, maxGapMs: maxGap },
+    per, sustained: {
+      ok: sustained, probes: win.length, flipBacks, maxGapMs: maxGap,
+      offTarget: offRows.map((r) => ({ tStart: r.tStart, dep: r.attr.deploymentId })),
+      mixedMs: lastOff && ftp ? lastOff.tStart - ftp.tStart : 0, steadyFrom,
+      steadyAfterCliEndMs: steadyFrom != null && sw.cliEnd != null ? steadyFrom - sw.cliEnd : null,
+    },
     unattributed: unattributed.map((r) => ({ tStart: r.tStart, reqId: r.reqId, why: r.attr.mismatch.join("; ") })),
     // The instant exposure is measured against: the first attributed target
     // response over ALL alias populations (the moment target routing
@@ -902,14 +988,23 @@ export function roleEvidence(sw, rows, depRecs, manifest, { legFrom, legTo }) {
     saves: saves.length, savesAttributedToTarget: savesOnDep.length,
     savesWithWriterLine: savesOnDep.filter((r) => r.attr.lines?.writer.length > 0).length,
     savesUnattributed: saves.filter((r) => !r.attr.consistent).length,
-    hinted: hinted.length, hintedUnattributed: hinted.filter((r) => !r.attr.consistent).length,
+    // Which deployment served each save of the leg: the −30 / −1 s saves are
+    // served by the OLD deployment by design (the alias has not moved yet).
+    savesByDeployment: saves.map((r) => ({ k: r.raw?.k ?? null, label: r.label, rev: r.rev, tStart: r.tStart, dep: r.attr.deploymentId, writer: (r.attr.lines?.writer.length ?? 0) > 0 })),
+    hinted: hinted.length, hintedUnattributed: hinted.filter((r) => !r.attr.consistent && !r.attr.notExported).length,
+    hintedNotExported: hinted.filter((r) => r.attr.notExported).length,
   };
   if (kind === "OFF") {
     const envOk = String(base.effectiveFlag) === "0";
-    const writerFull = base.saves > 0 && base.savesUnattributed === 0 && base.savesWithWriterLine === base.saves;
+    // Writer-log coverage = every save the OFF deployment served carries its
+    // `[liveWriter]` line (its warm job, had one run, would log in the same
+    // record). Saves on the old deployment are not evidence about the
+    // target; an UNATTRIBUTED save of the leg could have been on the target,
+    // so it still blocks the claim.
+    const writerFull = base.savesAttributedToTarget > 0 && base.savesWithWriterLine === base.savesAttributedToTarget && base.savesUnattributed === 0;
     const reads = base.hintedUnattributed === 0;
     const zero = base.warmStart === 0 && base.warmLookups === 0 && base.warmResponses === 0;
-    const missing = [!envOk && "manifest env LIVE_WARM_ENTRIES=0", !writerFull && "full writer-log coverage of the leg's saves", !reads && "attribution of every hinted read"].filter(Boolean);
+    const missing = [!envOk && "manifest env LIVE_WARM_ENTRIES=0", !writerFull && "writer-log coverage of the saves served by the target (and no unattributed save in the leg)", !reads && "attribution of every hinted read inside the exported windows"].filter(Boolean);
     return { ...base, claim: "OFF absence", status: missing.length ? "NOT EXERCISED" : zero ? "PASS" : "FAIL", missing };
   }
   if (kind === "R1") {
@@ -1062,6 +1157,69 @@ export function r1Cohort(pages, from, to = Infinity) {
 }
 
 /**
+ * R1 cohort per save (real harness shape): for each after-switch save of
+ * the leg (`op` insert / update / delete; the leg's PUTs when it has
+ * none), every R1-build page (`build: "r1"` — the client code it actually
+ * runs, whatever cohort it joined with):
+ *   note   the first postgres_changes receipt for the save's row at or
+ *          after its PUT start (−50 ms tolerance, as the harness), with
+ *          its type checked against the op (insert → I, update → U,
+ *          delete → U with isDeleted = true — a soft delete is an UPDATE);
+ *   fetch  the page's first /api/setlist request started at or after the
+ *          receipt, and the deployment that served it (log attribution —
+ *          the point of the cohort: R1 tabs fetching through an R2 target);
+ *   DOM    the harness's own per-op DOM time (`switches[].r1Cohort.ops`,
+ *          from the page's rows log, which the JSON does not carry), else
+ *          the song marker's first-seen / gone time.
+ * DOM < EARLIEST_REPAIR_MS after the PUT start = receipt-driven, not the
+ * periodic repair.
+ */
+export function r1Ops(sw, pages, legSaves, rows) {
+  const r1 = pages.filter((p) => p.build === "r1" || (p.build == null && p.cohort === "r1"));
+  if (!r1.length) return null;
+  const isOk = (s) => s.status >= 200 && s.status < 300;
+  let ops = legSaves.filter((s) => isOk(s) && ["insert", "update", "delete"].includes(s.op));
+  if (!ops.length) ops = legSaves.filter((s) => isOk(s) && s.putStart >= (sw.cliStart ?? 0));
+  const byReq = new Map(rows.filter((r) => r.pop === "page" && r.reqId).map((r) => [r.reqId, r]));
+  const harnessOps = new Map();
+  for (const p of sw.r1Cohort?.ops ?? []) for (const o of p.ops ?? []) harnessOps.set(`${p.idx}:${o.k}`, o);
+  // The song shown on a row before its delete: the latest earlier save on that row with a songId.
+  const songBefore = (s) => [...legSaves].filter((x) => String(x.rowId) === String(s.rowId) && x.songId && x.putStart < s.putStart).sort((a, b) => b.putStart - a.putStart)[0]?.songId ?? null;
+  return ops.map((s) => {
+    const want = s.op === "insert" ? ["I"] : s.op === "delete" ? ["U+del", "D"] : ["U"];
+    // The receipt belongs to THIS save only until the next save on the
+    // same row (the PUT timeline edits one row over and over), and at most
+    // the 30 s acceptance window; a page counts only when its postgres
+    // subscription was ready by the PUT start (an R1 arrival that joined
+    // later cannot receive it).
+    const next = legSaves.filter((x) => String(x.rowId) === String(s.rowId) && x.putStart > s.putStart).sort((a, b) => a.putStart - b.putStart)[0];
+    const until = Math.min(next ? next.putStart - 50 : Infinity, s.putStart + CONTINUITY_MS);
+    const eligible = r1.filter((p) => { const ready = Array.isArray(p.pgReadyAt) ? p.pgReadyAt[0] : p.pgReadyAt; return ready != null && ready <= s.putStart; });
+    const per = eligible.map((p) => {
+      const note = (p.notes ?? []).find((n) => String(n[2]) === String(s.rowId) && n[0] >= s.putStart - 50 && n[0] < until);
+      const ntype = note ? (note[1] === "U" && bool(note[3]) ? "U+del" : note[1]) : null;
+      const f = note ? (p.fetches ?? []).find((x) => (x[7] ?? x[0]) >= note[0]) : null;
+      const fr = f ? byReq.get(reqIdOf(f[9])) : null;
+      const h = harnessOps.get(`${p.idx}:${s.k}`);
+      const song = s.op === "delete" ? songBefore(s) : s.songId;
+      const domAt = h?.domAt ?? (song == null ? null : s.op === "delete" ? p.gone?.[song] ?? null : p.seen?.[song] ?? null);
+      return { idx: p.idx, noteAt: note?.[0] ?? null, typeOk: note ? want.includes(ntype) : null, ntype, fetchStart: f ? f[7] ?? f[0] : null, fetchDep: fr?.attr.deploymentId ?? null, domAt: domAt != null && domAt >= s.putStart - 50 ? domAt : null };
+    });
+    const withNote = per.filter((x) => x.noteAt != null);
+    const deps = {};
+    for (const x of per) if (x.fetchStart != null) deps[x.fetchDep ?? "unattributed"] = (deps[x.fetchDep ?? "unattributed"] || 0) + 1;
+    const domMs = per.filter((x) => x.domAt != null).map((x) => x.domAt - s.putStart);
+    return {
+      k: s.k ?? null, op: s.op ?? "put", rev: s.rev, rowId: s.rowId ?? null, putStart: s.putStart, pages: eligible.length, r1Pages: r1.length,
+      notes: withNote.length, typeOk: withNote.filter((x) => x.typeOk).length, types: [...new Set(withNote.map((x) => x.ntype))],
+      noteMs: dist(withNote.map((x) => x.noteAt - s.putStart)), fetchMs: dist(per.filter((x) => x.fetchStart != null).map((x) => x.fetchStart - x.noteAt)),
+      fetches: per.filter((x) => x.fetchStart != null).length, fetchDeps: deps,
+      domMs: dist(domMs), dom: domMs.length, domBeforeRepair: domMs.filter((v) => v < EARLIEST_REPAIR_MS).length,
+    };
+  });
+}
+
+/**
  * Existing-ON return: each alias client's FIRST response from the target
  * after target routing began, against the committed head at its request
  * start (highest 2xx save rev whose PUT response preceded it). Recorded,
@@ -1091,7 +1249,7 @@ export function staleFirstAnswers(sw, prop, rows, saves) {
 
 // ─── the join ───
 
-export function join(json, { logsByDep = new Map(), switchFiles = [], manifest = null, sustainMs = 60_000, bucketS = 5, carryS = 5 } = {}) {
+export function join(json, { logsByDep = new Map(), switchFiles = [], manifest = null, sustainMs = 60_000, bucketS = 5, carryS = 5, windows = null } = {}) {
   const tr = json?.transition;
   if (!tr) throw new Error("browsers JSON has no `transition` section (not a step-6 run)");
   // `transition.manifest` in the real harness is the FIXTURE manifest
@@ -1102,7 +1260,8 @@ export function join(json, { logsByDep = new Map(), switchFiles = [], manifest =
   const responses = harnessResponses(json);
   // Saves are responses too (attributed by their own x-vercel-id):
   // harnessResponses reads transition.saves as the `save` population.
-  const rows = attribute(responses, logsByDep, { manifest: man });
+  const coverage = windows && windows.length ? { source: "--windows", windows } : { source: "inferred from the records (union, 30 s gaps)", windows: inferCoverage(logsByDep) };
+  const rows = attribute(responses, logsByDep, { manifest: man, coverage: coverage.windows });
   // Real saves: { k, leg (1-based switch k), op, offS, startedAt, ms,
   // status, rev, … } — never retried, so the first attempt = startedAt.
   const saves = (tr.saves ?? []).map((s) => {
@@ -1151,19 +1310,26 @@ export function join(json, { logsByDep = new Map(), switchFiles = [], manifest =
       continuity: continuity(legSaves, sdkClients),
       stale: isReturn ? staleFirstAnswers(sw, prop, rows, saves) : null,
       isReturn,
-      r1Cohort: pageClients.some((p) => p.cohort === "r1") && sw.cliStart != null ? r1Cohort(pageClients, sw.cliStart, Number.isFinite(legTo) ? legTo : Infinity) : null,
+      r1Cohort: !real && pageClients.some((p) => p.cohort === "r1") && sw.cliStart != null ? r1Cohort(pageClients, sw.cliStart, Number.isFinite(legTo) ? legTo : Infinity) : null,
+      r1Ops: real ? r1Ops(sw, pageClients, legSaves, rows) : null,
       smoke: smokeRows(sw, rows),
     };
   });
 
   const res = runFrom != null ? resources(logsByDep, { from: runFrom - 10_000, to: runTo + 30_000, bucketS, carryS }) : null;
-  const unmatched = rows.filter((r) => !r.attr.consistent).map((r) => {
+  const unmatched = rows.filter((r) => !r.attr.consistent && !r.attr.notExported).map((r) => {
     const near = switches.map((s) => (s.cliStart != null && r.tStart != null ? { i: s.idx, dt: r.tStart - s.cliStart } : null)).filter(Boolean).sort((a, b) => Math.abs(a.dt) - Math.abs(b.dt))[0] ?? null;
-    return { pop: r.pop, subset: r.subset, client: r.client, tStart: r.tStart, status: r.status, path: r.path, reqId: r.reqId, why: r.attr.mismatch.join("; "), nearestSwitch: near };
+    const idT = reqIdTs(r.reqId);
+    // Distance of the edge request time to the nearest exported-window
+    // edge: a miss within a few seconds of an edge is an edge effect of the
+    // export (inferred windows end at the last record), not a lost record.
+    const edgeMs = idT == null ? null : Math.min(...coverage.windows.flatMap(([a, b]) => [Math.abs(idT - a), Math.abs(idT - b)]));
+    return { pop: r.pop, subset: r.subset, client: r.client, tStart: r.tStart, idTs: idT, edgeMs, status: r.status, path: r.path, reqId: r.reqId, why: r.attr.mismatch.join("; "), nearestSwitch: near };
   });
   return {
     label: json.config?.label ?? tr.config?.label ?? null, base: json.config?.base ?? null, runFrom, runTo,
     deployments: manifestIndex(man).deps.map((x) => ({ id: x.id, role: x.role ?? null, kind: roleKind(x), commit: x.commit ?? null, url: x.url ?? null, flag: x.effectiveFlag ?? x.env?.LIVE_WARM_ENTRIES ?? null })),
+    coverage: { ...coverage, notExported: rows.filter((r) => r.attr.notExported).length, incompleteRecords: rows.filter((r) => r.attr.incompleteRecord).map((r) => ({ pop: r.pop, client: r.client, reqId: r.reqId, status: r.status })) },
     attribution: { summary: attributionSummary(rows), perDeployment: perDeployment(rows, logsByDep), clock: clockOffsets(rows), unmatched, pins: pinSummary(rows) },
     legs, resources: res,
     smoke: (tr.smoke ?? []).map((s) => { const r = rows.find((x) => x.pop === "smoke" && x.reqId && x.reqId === reqIdOf(first(s, ID_KEYS))); return { ...s, attributedTo: r?.attr.deploymentId ?? null }; }),
@@ -1227,9 +1393,14 @@ export function toMarkdown(j, { source = "" } = {}) {
   L.push("");
   L.push("Request attribution = request id matched to a log record whose deployment / path / status / method agree with the response. Function instrumentation = the record also carries the lines the serving deployment must log (2xx save → `[liveWriter]`; hinted read on an R2 deployment → `[setlist] hint-fetch`).");
   L.push("");
-  L.push("| population | responses | with request id | matched | consistent (coverage) | inconsistent | unmatched | instrumentation (expected → present) | by deployment |");
-  L.push("|---|---|---|---|---|---|---|---|---|");
-  for (const g of j.attribution.summary) L.push(`| ${g.key} | ${g.n} | ${g.withId} | ${g.matched} | ${g.consistent} (${pctS(g.coverage)}) | ${g.inconsistent} | ${g.unmatched} | ${g.instrExpected ? `${g.instrExpected} → ${g.instrumented}` : "—"} | ${Object.entries(g.byDep).map(([k, v]) => `${k} ${v}`).join(", ")} |`);
+  if (j.coverage) {
+    L.push(`Exported log windows (${j.coverage.source}): ${j.coverage.windows.map(([a, b]) => `${hms(a)} → ${hms(b)}`).join("; ") || "—"}. Responses whose edge request time (from the request id) lies outside them are **not exported** (${j.coverage.notExported}) — counted apart, outside every other column; coverage is over the exported windows only.`);
+    if (j.coverage.incompleteRecords?.length) L.push(`Incomplete log records (responseStatusCode 0, empty environment / cache, no nested lines; attributed by id / deployment / path, status not compared): ${j.coverage.incompleteRecords.length} — ${j.coverage.incompleteRecords.slice(0, 10).map((x) => `${x.pop} ${x.client} ${x.reqId} (client saw ${x.status})`).join("; ")}.`);
+    L.push("");
+  }
+  L.push("| population | not exported | responses (in windows) | with request id | matched | consistent (coverage) | inconsistent | unmatched | instrumentation (expected → present) | by deployment |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|");
+  for (const g of j.attribution.summary) L.push(`| ${g.key} | ${g.notExported} | ${g.n} | ${g.withId} | ${g.matched} | ${g.consistent} (${pctS(g.coverage)}) | ${g.inconsistent} | ${g.unmatched} | ${g.instrExpected ? `${g.instrExpected} → ${g.instrumented}` : "—"} | ${Object.entries(g.byDep).map(([k, v]) => `${k} ${v}`).join(", ")} |`);
   L.push("");
   L.push("| deployment | log records | matched responses | consistent | first record | last record |");
   L.push("|---|---|---|---|---|---|");
@@ -1244,10 +1415,16 @@ export function toMarkdown(j, { source = "" } = {}) {
   if (j.attribution.unmatched.length) {
     L.push(`### Not attributed (${j.attribution.unmatched.length})`);
     L.push("");
-    L.push("| population | client | request start | Δ to nearest cliStart | status | path | request id | why |");
-    L.push("|---|---|---|---|---|---|---|---|");
-    for (const u of j.attribution.unmatched.slice(0, 60)) L.push(`| ${u.pop}${u.subset ? `/${u.subset}` : ""} | ${u.client ?? "—"} | ${hms(u.tStart)} | ${u.nearestSwitch ? `switch ${u.nearestSwitch.i + 1}: ${u.nearestSwitch.dt > 0 ? "+" : ""}${d(u.nearestSwitch.dt)} ms` : "—"} | ${u.status ?? "—"} | ${u.path ?? "—"} | ${u.reqId ?? "—"} | ${u.why} |`);
-    if (j.attribution.unmatched.length > 60) L.push(`| … ${j.attribution.unmatched.length - 60} more (JSON) | | | | | | | |`);
+    const um = j.attribution.unmatched;
+    const byWhy = {};
+    for (const u of um) byWhy[u.why] = (byWhy[u.why] || 0) + 1;
+    const nearEdge = um.filter((u) => u.edgeMs != null && u.edgeMs <= 5_000).length;
+    L.push(`By reason: ${Object.entries(byWhy).map(([k, v]) => `${k} ${v}`).join("; ")}. Within 5 s of an exported-window edge: ${nearEdge}/${um.length}.`);
+    L.push("");
+    L.push("| population | client | request start | edge time (id) | Δ to window edge | Δ to nearest cliStart | status | path | request id | why |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|");
+    for (const u of um.slice(0, 60)) L.push(`| ${u.pop}${u.subset ? `/${u.subset}` : ""} | ${u.client ?? "—"} | ${hms(u.tStart)} | ${hms(u.idTs)} | ${d(u.edgeMs)} ms | ${u.nearestSwitch ? `switch ${u.nearestSwitch.i + 1}: ${u.nearestSwitch.dt > 0 ? "+" : ""}${d(u.nearestSwitch.dt)} ms` : "—"} | ${u.status ?? "—"} | ${u.path ?? "—"} | ${u.reqId ?? "—"} | ${u.why} |`);
+    if (um.length > 60) L.push(`| … ${um.length - 60} more (JSON) | | | | | | | | | |`);
     L.push("");
   }
   for (const lg of j.legs) {
@@ -1258,15 +1435,15 @@ export function toMarkdown(j, { source = "" } = {}) {
     L.push("");
     L.push(`### Propagation — **${p.status}**${p.why ? ` (${p.why})` : ""}`);
     L.push("");
-    L.push("| population | requests | → target | → old | → other | unmatched | first target response (start → end) | last old request start | last old response end | old starts after cliStart |");
-    L.push("|---|---|---|---|---|---|---|---|---|---|");
+    L.push("| population | requests | → target | → old | → other | unmatched (in windows) | not exported | first target response (start → end) | last old request start | last old response end | old starts after cliStart |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|");
     for (const k of ["probe", "route", "sdk", "page", "document", "all"]) {
       const b = p.per[k];
-      L.push(`| ${k} | ${b.n} | ${b.target} | ${b.old} | ${b.other} | ${b.unmatched} | ${b.firstTarget ? `${hms(b.firstTarget.tStart)} → ${hms(b.firstTarget.tEnd)}` : "—"} | ${hms(b.lastOldStart)} | ${hms(b.lastOldEnd)} | ${b.oldStartsAfterCliStart} |`);
+      L.push(`| ${k} | ${b.n} | ${b.target} | ${b.old} | ${b.other} | ${b.unmatched} | ${b.notExported} | ${b.firstTarget ? `${hms(b.firstTarget.tStart)} → ${hms(b.firstTarget.tEnd)}` : "—"} | ${hms(b.lastOldStart)} | ${hms(b.lastOldEnd)} | ${b.oldStartsAfterCliStart} |`);
     }
     L.push("");
     if (p.pseudo) L.push("- Pseudo-switch (target = the serving deployment): no old deployment; \"first target response\" = first response whose request started after cliEnd; old-side bounds n/a.");
-    L.push(`- Sustained target routing over [cliEnd, cliEnd + ${p.sustainMs / 1000} s] (probe): ${p.sustained.ok ? "**yes**" : "**no**"} — ${p.sustained.probes} probe request(s), off-target after the first target probe ${p.sustained.flipBacks ?? "—"}, largest probe gap ${d(p.sustained.maxGapMs)} ms.`);
+    L.push(`- Sustained target routing over [cliEnd, cliEnd + ${p.sustainMs / 1000} s] (probe): ${p.sustained.ok ? "**yes**" : "**no**"} — ${p.sustained.probes} probe request(s), off-target after the first target probe ${p.sustained.flipBacks ?? "—"}${p.sustained.offTarget?.length ? ` (${p.sustained.offTarget.map((o) => `${hms(o.tStart)} → ${o.dep}`).join(", ")}; mixed routing for ${d(p.sustained.mixedMs)} ms after the first target probe)` : ""}, steady on the target from ${hms(p.sustained.steadyFrom)}${p.sustained.steadyAfterCliEndMs != null ? ` (cliEnd ${p.sustained.steadyAfterCliEndMs >= 0 ? "+" : ""}${d(p.sustained.steadyAfterCliEndMs)} ms)` : ""}, largest probe gap ${d(p.sustained.maxGapMs)} ms.`);
     if (p.unattributed.length) L.push(`- Defining probe requests not attributed: ${p.unattributed.map((u) => `${hms(u.tStart)} (${u.why})`).join("; ")}`);
     if (lg.harness) {
       const h = lg.harness;
@@ -1296,7 +1473,8 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push(`### Target role evidence — ${r.claim}: **${r.status}**${r.missing.length ? ` (missing: ${r.missing.join("; ")})` : ""}`);
       L.push("");
       L.push(`- manifest role ${r.role ?? "—"}, LIVE_WARM_ENTRIES ${r.effectiveFlag ?? "—"}; ${r.logRecords} log record(s) for the deployment`);
-      L.push(`- saves in the leg ${r.saves}: attributed to the target ${r.savesAttributedToTarget}, with writer line ${r.savesWithWriterLine}, not attributed ${r.savesUnattributed}; hinted reads ${r.hinted}, not attributed ${r.hintedUnattributed}`);
+      L.push(`- saves in the leg ${r.saves}: served by the target ${r.savesAttributedToTarget} (with writer line ${r.savesWithWriterLine}), not attributed ${r.savesUnattributed}; hinted reads ${r.hinted}, not attributed inside the exported windows ${r.hintedUnattributed}, outside them ${r.hintedNotExported}`);
+      if (r.savesByDeployment?.length) L.push(`- saves → serving deployment: ${r.savesByDeployment.map((s) => `${s.label ?? s.k ?? "?"} rev ${s.rev ?? "—"} → ${s.dep ?? "unattributed"}${s.dep ? (s.writer ? " ✓writer" : " ✕writer") : ""}`).join("; ")}`);
       L.push(`- \`[liveWarm] start\` ${r.warmStart}; any \`[liveWarm]\` ${r.warmAny}; warm-lookup lines ${r.warmLookups}; \`source=warm\` responses ${r.warmResponses}; responses with a verify header ${r.verifyResponses}`);
       L.push("");
     }
@@ -1337,6 +1515,16 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push(`| change | receipts | pages | → fetch p50 / max ms (none) | → DOM p50 / max ms (none) | DOM < ${EARLIEST_REPAIR_MS / 1000} s (before periodic repair) |`);
       L.push("|---|---|---|---|---|---|");
       for (const g of lg.r1Cohort) L.push(`| ${g.type} | ${g.receipts} | ${g.pages} | ${d(g.fetch.p50)} / ${d(g.fetch.max)} (${g.noFetch}) | ${d(g.dom.p50)} / ${d(g.dom.max)} (${g.noDom}) | ${g.domBeforeRepair}/${g.receipts} |`);
+      L.push("");
+    }
+    if (lg.r1Ops?.length) {
+      L.push("### R1 cohort — per save: postgres_changes receipt → fetch (serving deployment) → DOM");
+      L.push("");
+      L.push(`R1-build pages ${lg.r1Ops[0].r1Pages}; per save only those whose postgres subscription was ready by the PUT start (receipts / pages). A receipt is this save's until the next save on the same row (≤ 30 s). Times from the save's PUT start (receipt, DOM) and from the receipt (fetch). Soft delete = UPDATE with isDeleted (U+del). DOM < ${EARLIEST_REPAIR_MS / 1000} s = before the earliest periodic repair.`);
+      L.push("");
+      L.push("| save | op | rev | row | receipts / pages (type ok) | receipt types | PUT → receipt p50 / max ms | receipt → fetch p50 / max ms | fetches → deployment | PUT → DOM p50 / max ms (n) | DOM < 16 s |");
+      L.push("|---|---|---|---|---|---|---|---|---|---|---|");
+      for (const o of lg.r1Ops) L.push(`| ${o.k ?? "—"} | ${o.op} | ${o.rev ?? "—"} | ${o.rowId ?? "—"} | ${o.notes} / ${o.pages} (${o.typeOk}) | ${o.types.join(", ") || "—"} | ${d(o.noteMs.p50)} / ${d(o.noteMs.max)} | ${d(o.fetchMs.p50)} / ${d(o.fetchMs.max)} | ${Object.entries(o.fetchDeps).map(([k, v]) => `${k} ${v}`).join(", ") || "—"} | ${d(o.domMs.p50)} / ${d(o.domMs.max)} (${o.dom}) | ${o.domBeforeRepair}/${o.pages} |`);
       L.push("");
     }
     if (lg.smoke?.length) {
@@ -1429,7 +1617,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     try { return JSON.parse(txt); } catch { return parseJsonl(txt).reduce((a, o) => ({ ...a, ...o, target: { ...(a.target ?? {}), ...(o.target ?? {}) } }), {}); }
   }) : [];
   const manifest = opt.manifest ? JSON.parse(fs.readFileSync(String(opt.manifest), "utf8")) : null;
-  const j = join(json, { logsByDep, switchFiles, manifest, sustainMs: (parseFloat(opt["sustain-s"] ?? "60") || 60) * 1000, bucketS: parseFloat(opt.bucket ?? "5") || 5, carryS: parseFloat(opt.carry ?? "5") || 5 });
+  const j = join(json, { logsByDep, switchFiles, manifest, windows: opt.windows ? parseWindows(opt.windows) : null, sustainMs: (parseFloat(opt["sustain-s"] ?? "60") || 60) * 1000, bucketS: parseFloat(opt.bucket ?? "5") || 5, carryS: parseFloat(opt.carry ?? "5") || 5 });
   const md = toMarkdown(j, { source: [pos[0], opt.logs, opt["switch-files"], opt.manifest].filter(Boolean).join(", ") });
   if (opt.out) fs.writeFileSync(String(opt.out), md);
   if (opt.json) {

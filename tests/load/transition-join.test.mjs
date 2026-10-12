@@ -9,6 +9,7 @@ import {
   mergeLogRecords, reqIdOf, parseJsonl, attribute, harnessResponses, attributionSummary,
   propagation, resolveSwitches, exposure, roleEvidence, join, toMarkdown, recordsToHistoryText,
   linesOf, roleKind, staleFirstAnswers, r1Cohort, continuity, arrivalExposure, checkCols, SDK_REQ_COLS, cohortOf, parsePin,
+  mergeSwitches, toMs, inferCoverage, reqIdTs, parseWindows, r1Ops,
 } from "./transition-join.mjs";
 
 const T0 = Date.UTC(2026, 9, 12, 10, 0, 0); // cliStart
@@ -459,3 +460,120 @@ test("old answer after cutover converges only when the follow-up reaches the LEG
   assert.equal(e.oldAfterCutover.exercised, false);
   assert.ok(e.oldAfterCutover.rows.some((r) => r.subset === "hold" && r.legHead === 11 && r.reachedHead === false));
 });
+
+test("switch files with ISO cliStart / cliEnd are normalised to epoch ms (propagation + sustained see the probes)", () => {
+  assert.equal(toMs("2026-10-12T17:51:13.058Z"), Date.UTC(2026, 9, 12, 17, 51, 13, 58));
+  assert.equal(toMs(1791827473058), 1791827473058);
+  assert.equal(toMs("1791827473058"), 1791827473058);
+  assert.equal(toMs("not a date"), null);
+  const { json, logsByDep } = fixture();
+  // The operator's switch file: ISO strings, overriding the harness's ms.
+  const file = { plannedAt: new Date(T0).toISOString(), kind: "off", target: { id: NEW }, cliStart: new Date(T0).toISOString(), cliEnd: new Date(T0 + 2000).toISOString(), cliCpuMs: 242, cliRc: 0 };
+  const [m] = mergeSwitches(json.transition.switches, [file]);
+  assert.equal(m.cliStart, T0);
+  assert.equal(m.cliEnd, T0 + 2000);
+  assert.equal(typeof m.plannedAt, "number");
+  const j = join(json, { logsByDep, switchFiles: [file], manifest });
+  const p = j.legs[0].propagation;
+  assert.equal(p.status, "EXERCISED");
+  assert.equal(p.sustained.probes, 61);
+  assert.equal(p.sustained.ok, true);
+  assert.equal(p.sustained.steadyFrom, T0 + 2000);
+});
+
+test("sustained routing: off-target probes after the first target probe are listed with the mixed-routing span", () => {
+  const { json, logsByDep } = fixture();
+  // Probes at +3 s and +4 s still answered by OLD.
+  for (const id of ["prb103-1-a", "prb104-1-a"]) {
+    const recs = logsByDep.get(NEW);
+    const i = recs.findIndex((r) => r.id === id);
+    logsByDep.get(OLD).push({ ...recs[i], deploymentId: OLD });
+    recs.splice(i, 1);
+  }
+  const rows = attribute(harnessResponses(json), logsByDep, { manifest });
+  const p = propagation(resolveSwitches(json.transition.switches, { manifest })[0], rows);
+  assert.equal(p.sustained.flipBacks, 2);
+  assert.deepEqual(p.sustained.offTarget.map((o) => o.tStart), [T0 + 3000, T0 + 4000]);
+  assert.equal(p.sustained.mixedMs, 2000);
+  assert.equal(p.sustained.steadyFrom, T0 + 5000);
+  assert.equal(p.sustained.steadyAfterCliEndMs, 3000);
+  assert.equal(p.sustained.ok, false);
+});
+
+test("OFF evidence counts the saves the OFF deployment served; old-deployment saves of the leg do not block it", () => {
+  const { json, logsByDep } = fixture();
+  // A −1 s save served by the OLD deployment (by design) next to the target's save.
+  json.transition.saves.unshift({ k: "1.1", leg: 1, i: 1, op: "put", offS: -1, startedAt: T0 - 1000, ms: 300, status: 200, rev: 10, vercelId: "save0-1-e" });
+  logsByDep.get(OLD).push(rec("save0-1-e", T0 - 990, OLD, "/api/admin/setlist-items/5", 200, ["[liveWriter] route=setlist-item-put acquireMs=3 execMs=20 rev=10 ok=true at=1 instance=o", "[liveWarm] start event=111 rev=10 at=1 instance=o"], "PUT"));
+  const j = join(json, { logsByDep, manifest });
+  const r = j.legs[0].role;
+  assert.equal(r.status, "PASS", JSON.stringify(r.missing));
+  assert.equal(r.saves, 2);
+  assert.equal(r.savesAttributedToTarget, 1);
+  assert.deepEqual(r.savesByDeployment.map((s) => s.dep), [OLD, NEW]);
+  assert.match(toMarkdown(j), /saves → serving deployment: put -1s rev 10 → dpl_OLD ✓writer; put 3s rev 11 → dpl_NEW ✓writer/);
+});
+
+test("exported coverage: responses outside the export windows are 'not exported', not unmatched", () => {
+  assert.equal(reqIdTs("sfo1::icn1::6nzdl-1791827764444-9276278766f0".split("::")[2]), 1791827764444);
+  assert.equal(reqIdTs("ghost-1-d"), null);
+  const recs = [{ id: "a", timestamp: 1000 }, { id: "b", timestamp: 20_000 }, { id: "c", timestamp: 100_000 }, { id: "d", timestamp: 110_000 }];
+  assert.deepEqual(inferCoverage(new Map([["x", recs.slice(0, 2)], ["y", recs.slice(2)]])), [[1000, 20_000], [100_000, 110_000]]);
+  assert.deepEqual(parseWindows("1970-01-01T00:00:01Z,2000;100000,110000"), [[1000, 2000], [100_000, 110_000]]);
+  assert.throws(() => parseWindows("5,1"));
+  const { json, logsByDep } = fixture();
+  // A response whose edge time (from its id) lies far outside the records' span.
+  json.transition.sdk.push({ idx: 400, cohort: "incumbent", subscribedAt: [T0 - 59_000], reqs: [sdkRowFor(`late-${T0 + 900_000}-ab`, T0 + 900_000)], applied: [], bcasts: [] });
+  const j = join(json, { logsByDep, manifest });
+  assert.equal(j.coverage.notExported, 1);
+  const all = j.attribution.summary.find((g) => g.key === "ALL");
+  assert.equal(all.notExported, 1);
+  assert.equal(all.unmatched, 1, "only the in-window ghost stays unmatched");
+  assert.ok(!j.attribution.unmatched.some((u) => u.reqId.startsWith("late-")));
+  // Explicit windows that exclude the ghost's time make it not exported too.
+  const j2 = join(json, { logsByDep, manifest, windows: [[T0 - 60_000, T0 + 7_000]] });
+  assert.equal(j2.attribution.summary.find((g) => g.key === "ALL").unmatched, 0);
+});
+
+test("an incomplete log record (status 0, no nested lines) attributes the request without a status mismatch", () => {
+  const { json, logsByDep } = fixture();
+  const recs = logsByDep.get(NEW);
+  const i = recs.findIndex((r) => r.id === "mism-1-d");
+  recs[i] = { ...recs[i], responseStatusCode: 0, environment: "", logs: [] };
+  const j = join(json, { logsByDep, manifest });
+  assert.equal(j.attribution.summary.find((g) => g.key === "ALL").inconsistent, 0);
+  assert.equal(j.coverage.incompleteRecords.length, 1);
+  assert.match(toMarkdown(j), /Incomplete log records/);
+});
+
+test("R1 cohort per save: receipt typed against the op, fetch attributed, only pages ready by the PUT", () => {
+  const sw = { cliStart: T0, r1Cohort: { ops: [{ idx: 1, ops: [{ k: "2.9-update", domAt: T0 + 31_500 }] }] } };
+  const saves = [
+    { k: "2.8-insert", op: "insert", status: 200, rev: 20, rowId: "9", songId: null, putStart: T0 + 30_000 },
+    { k: "2.9-update", op: "update", status: 200, rev: 21, rowId: "9", songId: "77", putStart: T0 + 31_000 },
+    { k: "2.10-delete", op: "delete", status: 200, rev: 22, rowId: "9", songId: null, putStart: T0 + 32_000 },
+  ];
+  const page = (idx, ready) => ({ idx, build: "r1", cohort: "r1", pgReadyAt: [ready],
+    notes: [[T0 + 30_400, "I", "9", false, "SetlistItem"], [T0 + 31_200, "U", "9", false, "SetlistItem"], [T0 + 32_300, "U", "9", true, "SetlistItem"]],
+    fetches: [[T0 + 30_700, null, 200, "build", 20, null, false, T0 + 30_500, null, "sfo1::icn1::f1-1-x", null, null, null, "none", null, "/api/setlist?x"]],
+    seen: { 77: T0 + 31_600 }, gone: { 77: T0 + 32_900 } });
+  const rows = [{ pop: "page", reqId: "f1-1-x", attr: { deploymentId: NEW } }];
+  const out = r1Ops(sw, [page(1, T0), page(2, T0 + 31_500)], saves, rows);
+  const [ins, upd, del] = out;
+  assert.equal(ins.pages, 1, "page 2 was not ready at the insert");
+  assert.equal(ins.typeOk, 1);
+  assert.equal(ins.noteMs.p50, 400);
+  assert.deepEqual(ins.fetchDeps, { [NEW]: 1 });
+  assert.equal(upd.types[0], "U");
+  assert.equal(upd.domMs.p50, 500, "the harness's own DOM time wins");
+  assert.equal(del.pages, 2);
+  assert.deepEqual(del.types, ["U+del"]);
+  assert.equal(del.domMs.p50, 900, "delete → the marker of the row's last song disappears");
+});
+
+// One SDK row with a given request id (test helper for the coverage test).
+function sdkRowFor(id, t) {
+  const r = new Array(30).fill(null);
+  Object.assign(r, { 0: t, 1: "periodic", 6: 200, 11: "ok", 16: id, 17: t + 100, 18: t + 120, 19: t + 120, 10: t + 120, 26: "none" });
+  return r;
+}
