@@ -168,6 +168,40 @@ export function faultEvidence(logText, mode = "getnull") {
 }
 
 // ─── the join ───
+/**
+ * Normalise a k6 admission summary to the shape toMarkdown renders. Two
+ * producers exist: the documented minimal shape (`T0`, `arrivals.p95Ms`,
+ * `saves[].admitted`, …) and the file `viewers.js` writes in `ADMISSION=1`
+ * mode (`kind: "k6-admission"`, `t0`, `arrivals.latency.p95`,
+ * `saves[].exposure.atPutEnd.admitted`, `errors.http5xx.total`, …). The
+ * k6 side is the richer record and is kept verbatim under `raw`; the join
+ * only needs the handful of fields below, so the mapping lives here rather
+ * than forcing k6 to emit two files. Unknown shapes pass through untouched.
+ */
+export function normaliseK6(k) {
+  if (!k || k.kind !== "k6-admission") return k;
+  const ex = (s) => s?.exposure?.atPutEnd ?? s?.exposure?.atPutStart ?? {};
+  return {
+    T0: k.t0 ?? null,
+    arrivals: {
+      total: k.arrivals?.total ?? null,
+      byShape: k.arrivals?.byShape ?? {},
+      p95Ms: k.arrivals?.latency?.p95 != null ? Math.round(k.arrivals.latency.p95) : null,
+      fivexx: k.errors?.http5xx?.total ?? null,
+      s503: k.errors?.http503?.total ?? null,
+      transport: k.errors?.transport?.total ?? null,
+    },
+    saves: (k.saves ?? []).map((s) => ({
+      rev: s.rev, putStart: s.putStart, putEnd: s.putEnd, status: s.status,
+      admitted: ex(s).admitted ?? null, outstanding: ex(s).outstanding ?? null, httpInFlight: ex(s).inFlight ?? null,
+    })),
+    shapes: k.shapeFinal ?? null,
+    ssr: k.ssr ? { rps: k.ssr.rps, requests: k.ssr.requests, p95Ms: k.ssr.latency?.p95 != null ? Math.round(k.ssr.latency.p95) : null, errorRate: k.ssr.errorRate ?? null } : null,
+    gates: k.gates ?? null,
+    raw: k,
+  };
+}
+
 export function join(json, { logText = null, observerText = null, k6 = null, addHours = 0, bucketS = 5, carryS = 5, fault = null } = {}) {
   const adm = json?.admission ?? null;
   const idle = json?.idle ?? null;
@@ -226,7 +260,7 @@ export function join(json, { logText = null, observerText = null, k6 = null, add
   out.observer = obs ? { meta: obs.meta, clients: obs.clients, withTimelines: obs.withTimelines, receipts: obs.receipts } : null;
   out.server = srv;
   out.fault = logText && (fault || /\[liveWarm\] fault/.test(logText)) ? faultEvidence(logText, fault ?? "getnull") : null;
-  out.k6 = k6;
+  out.k6 = normaliseK6(k6);
   out.harness = adm
     ? { verdict: adm.verdict, gates: adm.gates, exercised: adm.exercised, boundary: { outbound: adm.boundary?.outbound?.length ?? null, waitMs: adm.boundary?.waitMs ?? null } }
     : { verdict: idle.verdict };

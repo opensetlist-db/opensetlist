@@ -8,7 +8,7 @@
 // the observer's clients judged by the same idle eligibility rule.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { join, toMarkdown, faultEvidence, observerClients } from "./admission-join.mjs";
+import { join, normaliseK6, toMarkdown, faultEvidence, observerClients } from "./admission-join.mjs";
 
 const T = Date.UTC(2026, 9, 12, 14, 10, 0, 0);
 // History header at T + sec (log clock = UTC here, --add-hours 0).
@@ -151,4 +151,26 @@ test("k6 summary (A1) is optional and rendered when given; a non-step-5 JSON is 
   assert.match(md, /arrivals 500 by shape \{"generic":500\}; wave p95 640 ms/);
   assert.match(md, /admitted 300, outstanding arrivals 200, HTTP in flight 40/);
   assert.throws(() => join({ config: {} }), /neither an `admission` nor an `idle` section/);
+});
+
+test("the viewers.js ADMISSION=1 summary (kind k6-admission) is normalised to the rendered shape", () => {
+  const k6 = {
+    kind: "k6-admission", version: 1, t0: T,
+    arrivals: { total: 500, byShape: { r2: 300, r1: 125, pre: 75 }, latency: { p95: 641.6 } },
+    errors: { http5xx: { total: 0 }, http503: { total: 0 }, transport: { total: 1 } },
+    saves: [{ rev: 50, putStart: T + 5000, putEnd: T + 5400, status: 200, exposure: { atPutStart: { admitted: 200, outstanding: 300, inFlight: 40 }, atPutEnd: { admitted: 230, outstanding: 270, inFlight: 35 } } }],
+    shapeFinal: { r2: { n: 300, ok: 300, rate: 1 } },
+    ssr: { rps: 10, requests: 600, latency: { p95: 1200.2 }, errorRate: 0 },
+  };
+  const n = normaliseK6(k6);
+  assert.equal(n.T0, T);
+  assert.equal(n.arrivals.p95Ms, 642);
+  assert.equal(n.arrivals.transport, 1);
+  assert.deepEqual(n.saves[0], { rev: 50, putStart: T + 5000, putEnd: T + 5400, status: 200, admitted: 230, outstanding: 270, httpInFlight: 35 });
+  assert.equal(n.ssr.p95Ms, 1200);
+  const md = toMarkdown(join(ADM_JSON, { k6 }));
+  assert.match(md, /admitted 230, outstanding arrivals 270, HTTP in flight 35/);
+  assert.match(md, /transport 1/);
+  // The minimal documented shape passes through untouched.
+  assert.deepEqual(normaliseK6({ T0: 1 }), { T0: 1 });
 });
