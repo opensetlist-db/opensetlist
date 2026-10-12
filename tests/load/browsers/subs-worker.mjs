@@ -107,7 +107,7 @@ import { startLagMonitor, HEARTBEAT_MS } from "./hostmon.mjs";
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null } = workerData;
+const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null, cohort = null } = workerData;
 // --drill=overlap: the id of anchor row A. When set, every response's
 // title for that row's song is recorded (`anchorTitle`, see `reqs`) so a
 // stale snapshot can be proven by CONTENT (the catalog-edit race: a warm
@@ -178,6 +178,20 @@ function makeSub(idx) {
     worker: workerIdx,
     locale: localeOf[idx % localeOf.length],
     subscribedAt: [], // every SUBSCRIBED (initial + rejoins)
+    // n14 step 5 — the full subscription timeline, so "continuously
+    // connected through instant t" is derivable afterwards (admission.mjs
+    // `connectedThrough`):
+    //   statusLog [t, status, current 0/1] — EVERY status callback,
+    //     including those of a retired channel (current 0: ignored by the
+    //     state machine, like the hook does);
+    //   connLog   [t, up 1|0, status] — each transition of the client's
+    //     connection state (subscribed ↔ disconnected), plus a final
+    //     [t, 0, "STOPPED"] at teardown. Starts implicitly "down" at
+    //     attemptAt (joining).
+    statusLog: [],
+    connLog: [],
+    stoppedAt: null,
+    cohort,
     statuses: {},
     errors: {},
     // [t, status] each time the client ENTERED the disconnected state
@@ -197,10 +211,12 @@ function makeSub(idx) {
     bcasts: [],
     // [tStart, reason, generic 0/1, hint, notify 0/1, minRev, status,
     //  verify kind, body rev, hint resolution, tEnd, outcome, source,
-    //  capturedAt, anchorTitle]
+    //  capturedAt, anchorTitle, bytes]
     // capturedAt = the body's (epoch ms, PostgreSQL clock), anchorTitle =
     // anchor row A's song originalTitle (overlap drill only, else null);
     // both appended in step 4, after every pre-existing column.
+    // bytes = the 200 body's UTF-8 length (decoded, i.e. after any
+    // content-encoding), appended in step 5 (first-snapshot size).
     // status 0 = network error / deadline; outcome ok | failed | cancelled;
     // source = the `x-snapshot-source` header of a 200 (build | cache |
     // repair | warm; "none" when absent), null otherwise. `warm` = the
@@ -243,7 +259,7 @@ function makeSub(idx) {
       const hint = request?.hint ?? null;
       const notify = request?.notify === true;
       const minRev = acceptance.minRevFor(hint);
-      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null, null, null];
+      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null, null, null, null];
       rec.reqs.push(row);
       bump(rec.fetches, reason);
       let settled = false;
@@ -286,7 +302,11 @@ function makeSub(idx) {
           }
           row[12] = res.headers.get("x-snapshot-source") || "none";
           bump(rec.sources, row[12]);
-          const body = await res.json();
+          // text + parse (not res.json()) so the body size is known: the
+          // first snapshot's bytes are part of the admission record.
+          const txt = await res.text();
+          row[15] = Buffer.byteLength(txt);
+          const body = JSON.parse(txt);
           if (settled) return;
           if (stopped) return finish(CANCELLED);
           if (!body || !Array.isArray(body.items)) return fail("body", null);
@@ -407,6 +427,9 @@ function makeSub(idx) {
   const enterDisconnected = (status) => {
     clearHealthyTimer();
     if (connection !== "disconnected") {
+      // "joining" → disconnected is no transition of the up/down log
+      // (the client was never up), but it is still a fallback episode.
+      if (connection === "subscribed") rec.connLog.push([Date.now(), 0, status]);
       connection = "disconnected";
       rec.fallbacks.push([Date.now(), status]);
       scheduler.setPeriodic(DISCONNECTED_CADENCE);
@@ -416,6 +439,7 @@ function makeSub(idx) {
 
   const onStatus = (seq, status, err) => {
     rec.statuses[status] = (rec.statuses[status] || 0) + 1;
+    rec.statusLog.push([Date.now(), status, !stopped && seq === channelSeq ? 1 : 0]);
     if (err) {
       const m = String(err.message || err).slice(0, 120);
       rec.errors[m] = (rec.errors[m] || 0) + 1;
@@ -426,6 +450,7 @@ function makeSub(idx) {
       connection = "subscribed";
       clearRecoveryTimer();
       rec.subscribedAt.push(Date.now());
+      if (previous !== "subscribed") rec.connLog.push([Date.now(), 1, status]);
       if (previous === "disconnected") scheduler.setPeriodic(HEALTHY_CADENCE);
       if (healthyTimer === null) {
         healthyTimer = setTimeout(() => {
@@ -443,6 +468,8 @@ function makeSub(idx) {
     rec,
     acceptance,
     scheduler,
+    // Up right now (the hook's healthy state), and since when.
+    isConnected: () => connection === "subscribed" && !stopped,
     start() {
       rec.attemptAt = Date.now();
       scheduler.start();
@@ -462,7 +489,10 @@ function makeSub(idx) {
     async stop() {
       // `stopped` first: removing the channels reports CLOSED, which must
       // not look like a disconnect.
+      if (stopped) return;
       stopped = true;
+      rec.stoppedAt = Date.now();
+      if (connection === "subscribed") rec.connLog.push([rec.stoppedAt, 0, "STOPPED"]);
       rec.serverRevFinal = acceptance.serverRev;
       clearRecoveryTimer();
       clearHealthyTimer();
@@ -473,15 +503,34 @@ function makeSub(idx) {
   };
 }
 
+// `joined` = clients CONNECTED right now (SUBSCRIBED and not since
+// disconnected or stopped) — not "ever subscribed": a client that
+// subscribed and then dropped must not count as live (n14 step 5;
+// readiness and exposure depend on it). `everJoined` keeps the old
+// meaning; `since` = when each connected client's current connection
+// began (the observer prints these as its readiness signal).
 function progress() {
   let joined = 0;
-  for (const s of subs) if (s.rec.subscribedAt.length) joined++;
-  return { joined, total: n };
+  let everJoined = 0;
+  const since = [];
+  for (const s of subs) {
+    if (s.rec.subscribedAt.length) everJoined++;
+    if (s.isConnected()) {
+      joined++;
+      const up = s.rec.connLog.filter(([, u]) => u === 1).pop();
+      if (up) since.push(up[0]);
+    }
+  }
+  return { joined, everJoined, since, total: n };
 }
 
 parentPort.on("message", async (msg) => {
   if (msg.cmd === "progress") {
     parentPort.postMessage({ type: "progress", ...progress() });
+  } else if (msg.cmd === "connected") {
+    // idxs of the clients connected right now (I3: who can be kept as
+    // an incumbent).
+    parentPort.postMessage({ type: "connected", idxs: subs.filter((s) => s.isConnected()).map((s) => s.rec.idx) });
   } else if (msg.cmd === "reached") {
     // How many clients have applied a snapshot with rev ≥ msg.rev.
     let count = 0;
@@ -520,6 +569,14 @@ parentPort.on("message", async (msg) => {
     // end. No reply: a stalled thread could not send one in time anyway.
     const until = Date.now() + Number(msg.ms || 0);
     while (Date.now() < until) { /* busy */ }
+  } else if (msg.cmd === "retire") {
+    // n14 step 5, I3 final phase: stop every client of this worker except
+    // `keep` (client idxs), which stay connected as the incumbents. The
+    // stopped clients keep their records (returned at `stop`).
+    const keep = new Set(msg.keep || []);
+    const victims = subs.filter((s) => !keep.has(s.rec.idx));
+    await Promise.allSettled(victims.map((s) => s.stop()));
+    parentPort.postMessage({ type: "retired", stopped: victims.length, kept: subs.length - victims.length });
   } else if (msg.cmd === "stop") {
     await Promise.allSettled(subs.map((s) => s.stop()));
     lagMon.stop();

@@ -188,6 +188,140 @@ tests/load/run.sh viewers.js -e POLL_RPS=1 -e SSR_RPS=0.2 -e STEADY_START=8 \
   -e REACTIONS=5 -e REACTION_SECONDS=5 -e REACTION_AT=40 -e BODY_SAMPLE_RATE=1
 ```
 
+### Step 5 fixture (`fixtures/fes-rows.mjs`) and k6 admission mode (`ADMISSION=1`)
+
+n14 qualification step 5 (cold admission). Two tools, both dev only:
+
+**Fes-size fixture.** `fixtures/fes-rows.mjs` grows event 111 to a
+synthetic largest-Fes setlist by cloning its own active rows (scalars,
+songs with `order`, members incl. the nullable `realPersonId`, artists),
+so the snapshot has a real show's structure, just more of it. The clone
+count comes from the live row count: `--target=70 --anchor-reserve=1` on
+23 rows = 46 clones (two full copies), and the harness's / probe's blank
+anchor is the 70th row. Ordinary clones go **before** the encore block
+and encore clones after it (every admin PUT validates the whole event's
+encore order); the shifted encore originals are recorded. One
+transaction locks the Event row first, parks/moves positions around the
+partial unique index, and bumps `setlistRevision` **without**
+`realtime.send` and without a cache purge: quarantined preparation, run
+with **no client of ours connected** (no SDK cohort, no observer, no tab),
+before the redeploy that gives the run fresh cache namespaces. It refuses
+when the row count is not `--expect-rows` or when any row of the event was
+created/deleted in the last `--quiet-s` (120) s — never run it while
+another stream works on the event. The manifest
+`results/<UTC date>/fixture-<label>.json` is written before COMMIT (ids)
+and finalised after; every clone's `createdAt` is the transaction's
+`now()` (`txNow` in the manifest) as a last-resort recovery key.
+
+```bash
+node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A2 --expect-rows=23
+```
+
+Clean-up order after the run (the probe's/harness's anchor first):
+
+1. `node tests/load/admission-probe.mjs --cleanup=<probe file>` (k6 runs)
+   or the harness's own clean-up — the anchor must be gone, otherwise
+   step 2 refuses (a foreign active row on a recorded position);
+2. `node tests/load/fixtures/fes-rows.mjs --cleanup=<manifest> --publish`:
+   soft-deletes the clones (junctions stay with the soft-deleted parent),
+   restores every original row to its recorded pre-fixture position,
+   bumps the revision (no broadcast), then `--publish` publishes through
+   the writer path (one admin login; a no-op re-delete of an
+   already-deleted clone bumps, broadcasts and purges) and the
+   verification table runs (ids in order, positions, encore flags, scalar
+   + junction content, link counts, event status/startTime, clones
+   deleted, revision strictly above the fixture's — never rewound);
+3. `node tests/load/fixtures/fes-rows.mjs --verify=<manifest>` any time
+   later. `node tests/load/browsers/restore.mjs --compact --yes` is the
+   recovery tool only when a position check FAILED: it publishes only
+   when it actually moves rows, so after an exact restore it is a no-op.
+
+Sizes (**after** a run, never before a cold boundary — the reads build
+and cache snapshots on the target):
+`node tests/load/fixtures/fes-rows.mjs --sizes --base=<url> [--out=<file>]`
+prints, per locale (ja/ko/en), the API JSON bytes, the identity wire
+bytes and `content-length`, and the compressed `content-encoding` / wire
+bytes / `content-length`. The warm codec payload is not visible over
+HTTP: read `bytes=` from the run's `[liveWarm] set event=111 locale=<l> …`
+lines (and `[liveWarm] skip … reason=oversize`) and compare max per locale
+with `WARM_MAX_BYTES` = 1,000,000 (`src/lib/liveWarm.ts`).
+
+**k6 admission mode (A1).** `ADMISSION=1` makes `viewers.js` send
+**nothing** before t=0: no `setup()` reads, no admin login, no
+cold-start save / `b00`, no admin cycles, no reactions. The clock offset,
+event sanity, the admin cookie, the anchor row and the marker songs come
+from `PROBE_FILE`, written by `admission-probe.mjs` **before** the
+boundary against the **precursor** deployment (never the measurement
+one). After t=0:
+
+| t | what |
+|---|---|
+| 0 → `ARRIVAL_SECONDS` | `ARRIVALS` generic initial reads (no `hint`, no `minRev`), 70/20/10 ja/ko/en, evenly spread, open-loop; each arrival is one viewer whose build (R2 / R1 / pre-R1) is drawn once from `SHAPE_MIX` |
+| 0 → `SSR_SECONDS` | event-page SSR at `SSR_RPS` (independent scenario, 70/20/10 locales, redirects not followed) |
+| `ADMISSION_SAVES` | PUT on the probe's anchor (next marker song), on its own timer from t=0. At the PUT response, only the viewers admitted by then fetch: R2 `minRev=savedRev&hint=1` (+ one quiet recheck when inconclusive and below), R1 `minRev=appliedRev+1`, pre-R1 no `minRev` + one repeat `OLD_REPEAT_MS` later on the same locale |
+| `STEADY_START` → +`STEADY_SECONDS` | the periodic poll (the hold), as in the normal model |
+
+| Knob | Default (admission mode) | Meaning |
+|---|---|---|
+| `ADMISSION` | `0` | `1` = this mode |
+| `PROBE_FILE` | — (required) | the probe JSON (absolute, or repo-root relative). Holds the admin cookie: gitignored, never commit/upload |
+| `ARRIVALS` / `ARRIVAL_SECONDS` | 500 / 10 | the admission wave |
+| `SSR_RPS` / `SSR_SECONDS` | 10 / 60 | SSR window from t=0 |
+| `ADMISSION_SAVES` | `5,20` | save offsets (s from t=0); empty = none |
+| `SHAPE_MIX` | `60/25/15` | R2 / R1 / pre-R1 weights (normalised); per-save counts are recorded |
+| `ANCHOR_ID` + `ANCHOR_POSITION` | probe's anchor | edit another dedicated anchor instead (never a fixture/original row — the PUT recreates its junctions) |
+| `STEADY_SECONDS` | 60 | hold length (`POLL_RPS`, `STEADY_START` as above) |
+| `WAVE_GATE_P95` / `SSR_GATE_P95` | 1000 / 3000 ms | soft wave gate / SSR gate |
+| `EXPECTED_ROWS`, `ROW_SLACK` | — / 0 | set `EXPECTED_ROWS` to the probe's `rows` (anchor included); admission adds no rows |
+
+Gates (handleSummary; `adm_http_5xx` and `adm_transport_errors` are also
+`count==0` thresholds): 0 × 5xx and 0 transport failures over **every**
+request (arrivals, notification fetches, rechecks, PUTs, SSR, polls), 0 ×
+503, every save committed, wave p95 ≤ 1 s (soft), all arrivals admitted,
+SSR p95 ≤ 3 s with 0 errors, saved head per shape on each viewer's final
+fetch (R2 `rev === savedRev` after its recheck, R1 `rev ≥ savedRev`,
+pre-R1 `rev ≥ savedRev` on the repeat — the first and repeat requests are
+counted apart), 0 bad bodies, 0 dropped iterations. Per save the report
+gives exposure at PUT start → response (admitted viewers / outstanding
+arrivals / this VU's in-flight requests; k6 has no SUBSCRIBED/DOM
+signal), PUT status/ms/rev and its scheduled-vs-actual start, and per
+shape the viewers, requests per wave, exact (`=`) and at-or-beyond (`≥`)
+counts, the final claim and p95; arrivals also show scheduled-vs-actual
+start lag and the first-read source split. Σ / builds per instance come
+from the logs (`vercel-logs-summary.mjs`). Output:
+`results/<UTC date>/<stamp>-viewers.md` (+ `-viewers.json` metrics) and
+`<stamp>-k6-admission.json` — `{ kind: "k6-admission", t0, probe,
+fixture, anchor, knobs, saves: [{ id, offsetS, scheduledAt, putStart,
+putEnd, putMs, status, rev, marker, exposure: { atPutStart, atPutEnd },
+shapes: { r2, r1, pre } }], arrivals: { total, completed, admitted,
+errors, byShape, byLocale, latency, startLag, sources }, ssr, poll,
+errors, shapeFinal, gates }` (epoch ms on the k6 host;
+`probe.clock.offsetMs` = precursor server − laptop, ±`errMs`), the
+optional k6 input of `admission-join.mjs`.
+
+Operator sequence (A1):
+
+```bash
+# 0. (A2/A4 only) fixture, with no client of ours connected
+node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A1 --expect-rows=23
+# 1. probe the PRECURSOR deployment (identity check, 5 clock reads, 1 login, anchor)
+node tests/load/admission-probe.mjs --base=https://opensetlist-<hash>-opensetlist-projects.vercel.app --label=A1 \
+  [--fixture=tests/load/results/<date>/fixture-A1.json]
+# 2. redeploy (same commit, new BUILD_KEY); no request to the new deployment
+# 3. k6 against the measurement URL — its first request is the wave
+ADMISSION=1 PROBE_FILE=<abs path printed by the probe> EVENT_ID=111 EVENT_SLUG=rehearsal-lovelive-fes-2020-day1 \
+  EXPECTED_ROWS=<probe rows> BASE_URL=<measurement url> tests/load/run.sh viewers.js
+# 4. after: sizes, then anchor clean-up, then fixture clean-up (+ publish) and verify
+node tests/load/fixtures/fes-rows.mjs --sizes --base=<measurement url>
+node tests/load/admission-probe.mjs --cleanup=tests/load/results/<date>/admission-probe-A1.json
+node tests/load/fixtures/fes-rows.mjs --cleanup=tests/load/results/<date>/fixture-A1.json --publish
+```
+
+Knobs can be shell env vars (k6 reads the process environment) or `-e`
+flags after `run.sh viewers.js`. Smoke:
+`-e ADMISSION=1 -e PROBE_FILE=… -e ARRIVALS=10 -e SSR_RPS=1 -e SSR_SECONDS=15
+-e ADMISSION_SAVES=5 -e POLL_RPS=1 -e STEADY_SECONDS=10 -e DRAIN_S=0 -e BODY_SAMPLE_RATE=1`.
+
 ## n14 run #2b-1 — 500 cold burst + nearby repeats, with pooler measurement
 
 Same event and env as run #2 above. What is new is the measurement around
@@ -629,6 +763,160 @@ taught about running it:
 
 Tests (Node's runner, like the other harness tests):
 `node --test tests/load/*.test.mjs tests/load/browsers/*.test.mjs tests/load/realtime/*.test.mjs`.
+
+## n14 qualification step 5 — cold admission (`--phase=admission`, `--drill=idle-broadcast`)
+
+Step 5 qualifies the candidate when the audience ARRIVES: 30 pages + 470
+SDK clients admitted onto a **fresh deployment** while saves happen
+(A0 / A0′, A2 with the 70-row fixture and the I3 final phase, A4 with
+warm lookups returning null), the k6 fetch-shape mix (A1, its own
+section), and the first save after an idle period plus the runbook's wake
+procedure (I1 / I2, with the independent observer as a second vantage
+point). The harness side — prepare → boundary → admit, exposure, gates,
+cohorts, eligibility, record formats — is in `browsers/README.md`,
+"Admission phase" and "Idle-broadcast drill"; the server / observer /
+k6 join is `admission-join.mjs`.
+
+**Cold trigger = a fresh deployment**: `vercel redeploy` of the
+deployment the dev alias serves (same commit, same settings) → a new
+`BUILD_KEY`, so new generic-snapshot and warm namespaces, and no request
+of ours reaches it before T0 (the harness proves its side: 0 outbound
+requests in the boundary wait). It does NOT prove every function process
+was cold; the first-arrival `x-snapshot-source` mix is reported instead.
+
+**A0 / A0′ — operator sequence (dev alias):**
+
+```powershell
+$out = "tests/load/results/<UTC date>"
+# 0. host isolation (nothing else on the laptop); the observer is optional for A runs
+# 1. the precursor = what the alias serves now (keep the output)
+npx vercel inspect opensetlist-git-dev-opensetlist-projects.vercel.app --scope opensetlist-projects
+# 2. start the harness: prepare (login, anchor row, manifest), then it WAITS for the admit file
+node --no-warnings tests/load/browsers/run.mjs --phase=admission --pages=30 --subs=470 --edits=0 `
+  --admit-file="$out/admit-A0.json" --strict-host --restore-positions --label=step5-A0
+# 3. when it logs "boundary: waiting for --admit-file": redeploy the precursor and wait for Ready
+npx vercel redeploy <precursor URL> --scope opensetlist-projects
+#    the alias must now point at the NEW deployment (if not: npx vercel alias set <new URL> opensetlist-git-dev-opensetlist-projects.vercel.app)
+npx vercel inspect opensetlist-git-dev-opensetlist-projects.vercel.app --scope opensetlist-projects
+# 4. T0 = the moment this file appears (the harness polls every 100 ms); the binding goes into the run record
+'{"precursorId":"dpl_…","measurementId":"dpl_…"}' | Out-File -Encoding utf8 "$out/admit-A0.json"
+```
+
+Nothing else may touch the measurement deployment between the redeploy
+and the admit file — no browser tab, no `curl`, no `vercel logs
+--follow` against it (log capture reads Vercel's log API, not the
+deployment; start it, if at all, against the project). A0′ repeats the
+whole sequence with a second redeploy.
+
+**A2** (70 rows + steady tail + I3): run the fixture script first
+(`tests/load/fixtures/fes-rows.mjs`, see its section), then the harness
+with `--rows-manifest=<fixture json> --edits=8 --edit-mode=mixed
+--pause=25 --final-cohort=20,20`; the fixture's own clean-up after the
+harness's. **A4** (warm lookups return null, 70 rows): a one-off
+deployment pair — the precursor deployed with `LIVE_WARM_FAULT=getnull`
+and `LIVE_WARM_FAULT_ARMED=1` ("Warming fault drills"), verified by the
+harness's identity guard, then `vercel redeploy` of it = the measurement
+deployment:
+
+```powershell
+$env:BASE_URL = "<precursor URL>"
+node --no-warnings tests/load/browsers/run.mjs --deployment-url --guard-precursor=<precursor URL> --phase=admission `
+  --pages=30 --subs=470 --edits=0 --rows-manifest=<fixture json> --admit-file="$out/admit-A4.json" --strict-host --restore-positions --label=step5-A4
+# after `vercel redeploy <precursor URL>` is Ready — the admit file names the measurement deployment:
+'{"base":"https://opensetlist-<new hash>-opensetlist-projects.vercel.app","precursorId":"dpl_…","measurementId":"dpl_…"}' | Out-File -Encoding utf8 "$out/admit-A4.json"
+```
+
+The harness refuses a measurement base equal to the precursor, and one
+generic read at T0 must show the dev manifest before the first save
+writes through the new deployment. Delete the pair afterwards; the
+evidence comes from `admission-join.mjs --fault=getnull` (armed line,
+zero warm hits, tagged miss / memo-miss, no invalid / blocked fault).
+
+**I1 / I2 — operator sequence.** The idle clock starts at max(the last
+restore broadcast, the last disconnect of ANY client of ours, the
+observer included) and needs ≥ 30 min; never open the Supabase Realtime
+Inspector as a subscriber during it. Pick the connect instant `T` far
+enough ahead for the workflow to start (≥ 3 min):
+
+```powershell
+gh workflow run n14-observer.yml --ref <branch with connect_at> `
+  -f base=https://opensetlist-git-dev-opensetlist-projects.vercel.app -f minutes=6 -f clients=5 `
+  -f connect_at=<T> -f label=step5-I1a
+node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 --cohort-incumbents=20 `
+  --connect-at=<T> --first-save-file="$out/first-save-I1a.txt" --strict-host --restore-positions --timeout=60 --label=step5-I1a
+# watch the observer's live log; at `[observer] ready clients=5/5 subscribed_at=… at=<R>` release the save:
+'<R + 6 s, ISO>' | Out-File -Encoding ascii "$out/first-save-I1a.txt"     # empty file = 6 s after it appears
+# afterwards
+gh run download <run id> -n n14-observer-<run id> -D "$out/observer-I1a"
+```
+
+I2 adds `--wake --cohort-fresh=20` (the check save is verified by
+broadcast at every connected local client; a miss → one retry save, a
+second miss → "escalate" in the report; the fresh cohort joins at
++`--wake-gap`=600 s). Two cycles each of I1 and I2, plus I3 inside A2
+(design: five controls).
+
+**Reading the observer while it runs.** `gh run view --log` (and
+`--log-failed`) only returns a run's logs once it has COMPLETED — for an
+in-progress run the CLI answers that the logs will be available when it
+is complete (the per-job logs download, `GET
+/repos/{owner}/{repo}/actions/jobs/{job_id}/logs`, is the same archive).
+The live stream is the GitHub web UI: `gh run list --workflow
+n14-observer.yml -L 1`, then `gh run view <run id> --web`, open the
+"Observe event broadcasts" job and watch the "Run observer" step, which
+streams the `[observer] ready …` / `[observer] connected …` lines as they
+are printed. (Checked against the documented CLI / API behaviour, not
+exercised live from this branch.) If the live view is not available,
+release the save at a fixed `connect_at + 8 s` (`--first-save-at=<T+8 s>`
+instead of the file); the post-hoc eligibility in `admission-join.mjs
+--observer=` decides for the observer's clients either way — the report
+must say which of the two happened. Until this branch is merged, the
+`connect_at` input exists only on it: dispatch with `--ref <branch>`.
+
+**Afterwards, per run** (history re-fetch of the window as usual; nothing
+else on the host while the run is live):
+
+```powershell
+node tests/load/vercel-logs-summary.mjs <history.txt> --add-hours=7 --out="$out/vercel-logs-history-summary-<run>.md"
+node tests/load/admission-join.mjs <stamp>-browsers-admission.json <history.txt> --add-hours=7 `
+  [--observer="$out/observer-<run>/<stamp>-observer-<label>.jsonl"] [--k6=<k6 summary json>] [--fault=getnull] --out="$out/admission-join-<run>.md"
+node tests/load/viewers-check.mjs
+node --no-warnings tests/load/browsers/restore.mjs --compact --yes
+```
+
+`admission-join.mjs` puts per save the harness's exposure, stale first
+answers, convergence per population and broadcast receipt vs reason next
+to the server's commit `at` (inside [PUT start, PUT response] /
+indeterminate below 100 ms / a clock offset) and the writer acquire
+(gate ≤ 500 ms); the admission window (builds per minute and per
+instance, warm-job vs reader builds, instances by first appearance, 503
+hint fetches, EMAXCONN); **Σ** (sum of per-instance pool totals) with its
+completeness — log coverage of the window, the largest gap between
+entries, instances that never logged a pool line, the bucket-maxima
+caveat; the A4 fault evidence; and the I-cycle eligibility + arrival
+tables for the harness's cohorts and the observer's clients (same rule).
+
+**k6 summary shape for admission-join (A1, optional).** `--k6=<file>`
+expects one JSON object; every field is optional and rendered when
+present:
+
+```json
+{
+  "T0": 1791784076509,
+  "arrivals": { "total": 500, "byShape": { "generic": 500 }, "p95Ms": 640, "fivexx": 0, "s503": 0, "transport": 0 },
+  "saves": [{ "rev": 1574, "putStart": 1791784081521, "putEnd": 1791784082013, "status": 200,
+              "admitted": 300, "outstanding": 200, "httpInFlight": 40 }],
+  "shapes": { "R2": { "notified": 180, "exactHead": 180 }, "R1": { "notified": 75 }, "preR1": { "notified": 45 } },
+  "ssr": { "requests": 600, "p95Ms": 900 }
+}
+```
+
+Times are epoch ms of the k6 host; `saves[].admitted` / `outstanding` /
+`httpInFlight` are the k6 side's exposure evidence at the save's
+response (k6 has no SUBSCRIBED or DOM to count). The file `viewers.js`
+writes in `ADMISSION=1` mode (`kind: "k6-admission"`, see the k6 section) is
+accepted as-is: `admission-join.mjs` maps it onto these fields
+(`normaliseK6`) and keeps the original under `raw`.
 
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
