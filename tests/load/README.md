@@ -1005,6 +1005,53 @@ node tests/load/browsers/restore.mjs --compact --yes
   result is kept. A failed identity guard aborts the timeline (exit 2)
   before any further write.
 
+## n14 qualification step 7 — 5-minute spam + real saves + background k6 (`--phase=spam7`)
+
+Step 7 qualifies the live path **under a sustained guest spammer**:
+forged `rev` broadcasts at 2 msgs/s for 300 s (≈ 1,000 deliveries/s at
+500 receivers), `ahead` and `max`, while 12 mixed edits (18 measured
+writes + the anchor) land and a background-only k6 runs. Small,
+warming ON, 30 pages + 470 SDK, dev DB event 111, no server change.
+Release rule: pass → no new machinery; fail → fix or explicit
+acceptance of the degraded target (the report gives the worst per-save /
+per-population p95, max, share > 3 s, affected saves). Harness side —
+timeline, sender, receivers, predeclared gates, verdicts, JSON shape —
+in `browsers/README.md`, "Spam phase"; server logs, k6 summary and
+side-cars: `spam7-join.mjs`.
+
+| run | flags (besides `--phase=spam7 --pages=30 --subs=470 --strict-host --declared-process=<k6 pid>`) | notes |
+|---|---|---|
+| P0 | `--spam-rev=none` | control: same save schedule, recovery from the scheduled attack end |
+| P1 | `--spam-rev=ahead` | primary |
+| P2 | `--spam-rev=max` | primary |
+| P1r | `--spam-rev=ahead --save-offsets=12.25,37.25,…,287.25` | repeat, shifted against the 2/s sender phase |
+| P3 | `--spam-rev=stale --spam-secs=60 --save-offsets=-20,70` | ignore-path control, head held fixed in the block |
+| P4 | `--spam-rate=10` with the worse of ahead/max | optional stress, informational |
+
+**Background k6** (on the load laptop, started BEFORE the harness, its
+pid passed as `--declared-process`): `viewers.js` with `POLL_RPS=1
+SSR_RPS=2.5 REACTIONS=500 ADMIN_CYCLES=0 QUIET_CYCLES=0 COLD_START=0
+HINT_MODE=r2 DRAIN_S=0 STEADY_START=0`, a steady window covering
+baseline → recovery (≥ 420 s after the harness's readiness), the 500
+reaction POST+DELETE pairs aligned with the save at spam + 135 s (P1r:
++137.25 s). The harness accepts exactly that pid (+ descendants);
+anything else unknown still refuses, and is re-checked mid-spam and at
+the measurement end (INVALID if found). If k6 exits before the recovery
+end the background aspect is NOT EXERCISED.
+
+**Order per run:** fixture (70 rows) → side-cars → k6 (pid) → harness →
+`node tests/load/browsers/restore.mjs --compact --yes` → log fetch
+(after the measurement only) → `spam7-join.mjs`. Exit codes: 0 VALID +
+PASS, 1 VALID + FAIL, 3 INVALID (host corruption), 4 NOT EXERCISED
+(insufficient declared load: exposure below the predeclared minimums,
+fixture not served, background ended early, no eligible stale receipt).
+A FAIL outranks NOT EXERCISED: service failures under an under-driven
+attack are still failures.
+
+```bash
+node --no-warnings tests/load/browsers/run.mjs --phase=spam7 --pages=30 --subs=470 --spam-rev=ahead --strict-host --declared-process=12345 --label=step7-P1
+```
+
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
 The browsers harness stamps every broadcast arrival on the laptop that
