@@ -1,0 +1,9 @@
+[19:51:12.664] host guard WARNING: pid 3892: another tests/load node process — "C:\Program Files\nodejs\node.exe" tests/load/results/2026-10-11/supavisor-backends.mjs 
+[19:51:12.692] ERROR: Error: --strict-host: the load host is not isolated (1 problem(s)); nothing was created
+    at hostGuard (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:704:26)
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at process.processTimers (node:internal/timers:538:9)
+    at async main (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:711:3)
+    at async file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:1951:15
+[19:51:12.693] aborting (error: --strict-host: the load host is not isolated (1 problem(s)); nothing was created) — cleaning up
+[19:51:13.932] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":1063,"startRows":null,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}

@@ -1,0 +1,10 @@
+getnull exit=0 url=https://opensetlist-btbpyb8yz-opensetlist-projects.vercel.app
+locale=en exit=0 url=https://opensetlist-qrv4xw3uw-opensetlist-projects.vercel.app
+absent exit=0 url=https://opensetlist-6xes4uqg9-opensetlist-projects.vercel.app
+seterror exit=0 url=https://opensetlist-6vcim3di5-opensetlist-projects.vercel.app
+locale=ja exit=0 url=https://opensetlist-9n2ccy6g6-opensetlist-projects.vercel.app
+slow=150 exit=0 url=https://opensetlist-mg0kqiajd-opensetlist-projects.vercel.app
+setskip exit=0 url=https://opensetlist-avr79hbyf-opensetlist-projects.vercel.app
+geterror exit=0 url=https://opensetlist-e0zx4uza4-opensetlist-projects.vercel.app
+slowjob=1000 exit=0 url=https://opensetlist-puz1w5x4v-opensetlist-projects.vercel.app
+slow=400 exit=0 url=https://opensetlist-4bckyeslw-opensetlist-projects.vercel.app

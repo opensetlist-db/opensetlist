@@ -631,8 +631,17 @@ vercel env add LIVE_WARM_FAULT_ARMED preview fault/drill-slow   # value 1
 vercel env add LIVE_WARM_FAULT preview fault/drill-slow         # value slow=400
 ```
 
-Point `BASE_URL` at that deployment's URL (Deployment Protection bypass
-as usual), never at the shared dev alias. Remove the deployment and the
+Point `BASE_URL` at that deployment's URL and pass `--deployment-url` to
+`browsers/run.mjs` (Deployment Protection bypass as usual), never at the
+shared dev alias. The harness refuses deployment-specific URLs by default
+because the same URL shape serves production deployments; the flag
+accepts the shape and, before the first admin write, checks that the
+target serves event 111 at the dev database's current revision with
+exactly its active rows (ids and positions — a production deployment
+cannot reproduce that list). `vercel-logs-capture.mjs` has
+no such flag: skip the live capture and rely on the history re-fetch
+(`vercel logs <deployment url> --since … --until …`). The side-car
+samplers read the database and need no URL. Remove the deployment and the
 branch-scoped vars afterwards. "Saves after the fault" means switching to
 an unarmed deployment of the same commit, because the fault cannot be
 lifted in place.

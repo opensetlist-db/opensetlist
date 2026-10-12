@@ -68,7 +68,7 @@ import os from "node:os";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
-import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient } from "../realtime/lib.mjs";
+import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient, isDeploymentBaseUrl } from "../realtime/lib.mjs";
 import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSongs, cleanup, findUnacknowledgedInsert } from "./admin.mjs";
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
@@ -82,9 +82,26 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 loadEnv();
 process.env.BASE_URL = process.env.BASE_URL || "https://opensetlist-git-dev-opensetlist-projects.vercel.app";
-assertDev({ requireBase: true });
-
 const args = parseArgs(process.argv.slice(2));
+// --deployment-url: run against ONE preview deployment's own URL instead
+// of the dev alias. The fault drills need this (LIVE_WARM_FAULT is bound
+// to a deployment at deploy time, so each fault is its own deployment and
+// the shared alias never carries one). The URL shape alone cannot tell a
+// preview from a production deployment, which is why assertDev refuses
+// it by default; with the flag, the shape is checked here and main()
+// additionally proves — before the first admin write — that the target's
+// snapshot of the event carries the dev database's current revision.
+const DEPLOYMENT_URL = args["deployment-url"] === true || args["deployment-url"] === "true";
+if (DEPLOYMENT_URL) {
+  assertDev({ requireBase: false });
+  if (!isDeploymentBaseUrl(process.env.BASE_URL)) {
+    console.error("refusing: --deployment-url needs BASE_URL = https://opensetlist-<hash>-opensetlist-projects.vercel.app");
+    process.exit(2);
+  }
+} else {
+  assertDev({ requireBase: true });
+}
+
 const int = (k, d) => (args[k] === undefined ? d : parseInt(args[k], 10));
 const BASE = process.env.BASE_URL.replace(/\/$/, "");
 const EVENT_ID = String(args["event-id"] ?? "111");
@@ -710,6 +727,31 @@ async function main() {
   if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
   const afterPosition = original[AFTER_ROW - 1].position;
   log(`event ${EVENT_ID}: ${original.length} active rows, rev ${startRev}; inserting after row ${AFTER_ROW} (position ${afterPosition}); markers ${songs.map((s) => s.id).join(",")}`);
+
+  // --deployment-url: before any write, the target must serve THIS event
+  // exactly as the dev database has it right now: the same revision AND
+  // the same active rows (ids with their positions, in order). A
+  // production deployment of the same URL shape reads the production
+  // database; its event 111, if the id exists at all, has rows created
+  // by a different autoincrement sequence at different positions and a
+  // revision counter on its own trajectory, so it cannot reproduce this
+  // id/position list at this revision — revision + row count alone could
+  // coincide, the id list cannot. Read-only: a mismatch stops the run
+  // with nothing created. The minRev fetch bypasses cached snapshots; a
+  // concurrent dev save between the pg read and the fetch shows up as a
+  // revision mismatch, which also aborts (re-run). The API serialises
+  // the BigInt ids as JSON numbers, exact below 2^53; SetlistItem ids
+  // are in the thousands, so the string comparison against pg's text
+  // ids is exact here.
+  if (DEPLOYMENT_URL) {
+    const snap = await getSnapshot(BASE, EVENT_ID, { locale: "ko", minRev: startRev });
+    const served = (Array.isArray(snap.items) ? snap.items : []).map((it) => `${it.id}@${Number(it.position)}`).join(",");
+    const expected = original.map((r) => `${r.id}@${r.position}`).join(",");
+    if (Number(snap.rev) !== startRev || served !== expected) {
+      throw new Error(`--deployment-url: ${BASE} serves event ${EVENT_ID} at rev ${snap.rev} with rows [${served.slice(0, 120)}], the dev database has rev ${startRev} with rows [${expected.slice(0, 120)}] — not the dev deployment; nothing was created`);
+    }
+    log(`deployment-url check: ${BASE} serves event ${EVENT_ID} at rev ${startRev} with the dev database's ${original.length} rows (ids and positions match)`);
+  }
 
   cookie = await adminLogin(BASE);
 
