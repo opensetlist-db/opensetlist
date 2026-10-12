@@ -918,6 +918,93 @@ writes in `ADMISSION=1` mode (`kind: "k6-admission"`, see the k6 section) is
 accepted as-is: `admission-join.mjs` maps it onto these fields
 (`normaliseK6`) and keeps the original under `raw`.
 
+## n14 qualification step 6 — deployment transitions (`--phase=transition`)
+
+Step 6 qualifies **switching the dev alias between deployments while
+tabs stay open**: rollback 1 (ON → OFF, `LIVE_WARM_ENTRIES=0`), rollback
+2 (ON → R1 = `385e5f0`, no warming, no `x-snapshot-verify`,
+`postgres_changes` pages), and the returns (to an EXISTING ON deployment
+and to a FRESH one). No server change; dev DB only, event 111. The
+harness side — switch-file protocol, timeline, identity guard, route
+marker, probe, controlled subsets, arrivals, smoke, exposure, verdicts,
+record formats — is in `browsers/README.md`, "Transition phase"; the
+attribution of every recorded `x-vercel-id` to a deployment is
+`transition-join.mjs` (its own section).
+
+**Rules for the whole run day.** Nobody merges or pushes to `dev` while
+the runs are on (a push redeploys and MOVES the alias on its own). Every
+deployment is `vercel deploy -e …` from the tree — never `vercel
+redeploy`, which drops deployment-level `-e` env. The alias moves only
+with `vercel alias set`. After the last run: alias back to the dev HEAD
+deployment and verified, tabs closed, logs exported — only then delete
+the run's deployments.
+
+**Deployments (8; record commit, env, role, twin, ids):** ON-A (dev HEAD,
+Preview env, the incumbent), OFF-1 + its twin OFF-1t (`-e
+LIVE_WARM_ENTRIES=0`; the twin is verified — save + hinted fetch → no
+`[liveWarm]` lines — so the measurement target stays untouched), ON-B
+(fresh return target), ON-A′ (T2's incumbent), R1-1 + twin R1-1t
+(`385e5f0`: no `x-snapshot-verify`, `postgres_changes` page), ON-C
+(fresh return target for T2).
+
+```powershell
+$alias = "opensetlist-git-dev-opensetlist-projects.vercel.app"
+# deploy (from the matching tree; never `redeploy`)
+npx vercel deploy --scope opensetlist-projects                                  # ON-x
+npx vercel deploy --scope opensetlist-projects -e LIVE_WARM_ENTRIES=0           # OFF-1 / OFF-1t
+npx vercel inspect <url> --scope opensetlist-projects                           # id, env, state — keep the output
+```
+
+**Operator sequence for one run (e.g. T1: ON-A → OFF-1 → ON-A → ON-B):**
+
+```powershell
+$out = "tests/load/results/<UTC date>"
+# 0. host isolation (side-cars allowed: pooler samplers, log capture); the alias serves the incumbent
+# 1. start the harness; it prepares, joins 30 pages + 470 SDK, settles, then polls switch file 1
+node --no-warnings tests/load/browsers/run.mjs --phase=transition --pages=30 --subs=470 `
+  --switch-files="$out/t1-a.json,$out/t1-b.json,$out/t1-c.json" --strict-host --label=step6-T1
+# 2. per switch, ≥ 60 s ahead: write the plan (P on a whole second; leave ≥ --leg-gap 90 s after
+#    the previous leg's last save before P - 30 s)
+$P = (Get-Date).ToUniversalTime().AddSeconds(75).ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+@{ plannedAt = $P; kind = "off"; label = "ON-A→OFF-1" } | ConvertTo-Json | Out-File -Encoding utf8 "$out/t1-a.json"
+#    (kind: pseudo | off | return | fresh | r1 | return-from-r1;
+#     after a return from R1 add  afterSwitchSaves = "insert,update,delete")
+# 3. at P: move the alias, timing the CLI process, then MERGE the result into the same file
+$s = (Get-Date).ToUniversalTime()
+$p = Start-Process npx -ArgumentList "vercel alias set <OFF-1 url> $alias --scope opensetlist-projects" -NoNewWindow -PassThru -Wait
+$e = (Get-Date).ToUniversalTime()
+$j = Get-Content "$out/t1-a.json" -Raw | ConvertFrom-Json
+$j | Add-Member cliStart $s.ToString("o"); $j | Add-Member cliEnd $e.ToString("o")
+$j | Add-Member cliCpuMs ([int]$p.TotalProcessorTime.TotalMilliseconds)
+$j | Add-Member target @{ url = "https://<OFF-1 hash>-opensetlist-projects.vercel.app"; id = "dpl_…" }
+$j | ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 "$out/t1-a.json"
+# 4. the harness runs the leg on its own: saves at P-30 … P+60 s, the identity guard through
+#    target.url, the route marker, the subsets, arrivals at P+10 s, the smoke at P+20 s.
+#    Repeat 2–3 for the next switch file.
+# 5. after the run: alias back to the dev HEAD deployment, verify, then
+node tests/load/browsers/restore.mjs --compact --yes
+# 6. export the Vercel request logs per deployment (bounded windows) and join:
+#    transition-join.mjs (its own section)
+```
+
+- **T0** (control): ON-A only, three `kind: "pseudo"` switch files; at
+  each P run comparable read-only CLI work (e.g. `vercel inspect`) and
+  write the CURRENT deployment as `target` — same timeline, same
+  arrivals, same CLI overhead.
+- **T1**: ON-A → OFF-1 (`off`) → ON-A (`return`: stale-first-answer
+  check) → ON-B (`fresh`); the hold subset acts at every switch.
+- **T2**: ON-A′ → R1-1 (`r1`: the arrival's page part is the 15-page R1
+  cohort) → ON-C (`return-from-r1` + `afterSwitchSaves:
+  "insert,update,delete"`: the ahead-hint subset is armed before it and
+  the R1 tabs see all three change types).
+- The alias CLI runs on the load laptop as a recorded exception: its
+  start / end and process CPU go into the switch file; the INVALID
+  thresholds apply to the whole window as in every run.
+- Re-runs only for NOT EXERCISED exposure (exit 4) or INVALID (exit 3);
+  a reduced population is a separate configuration and the original
+  result is kept. A failed identity guard aborts the timeline (exit 2)
+  before any further write.
+
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
 The browsers harness stamps every broadcast arrival on the laptop that
