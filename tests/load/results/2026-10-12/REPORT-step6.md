@@ -46,9 +46,46 @@ Every run: validity valid; every switch: guard ok (1.7–3.0 s through the targe
 
 ## Join (attribution, propagation bounds, OFF/R1 evidence, resources)
 
-_pending — the per-leg exports are being joined; the join's sustained-routing / OFF-evidence / not-exported classification are being corrected on the T1 data before the final numbers are entered here._
+Per-leg JSON log exports ([P − 40 s, P + 75 s], limit 5000, 30 s slices, no slice saturated) joined by request id (`transition-join-step6-T*.md`). Responses outside the exported windows are classified "not exported" (T1 11,691, mostly between legs) and excluded from coverage.
 
-## Rollback acceptance for the runbook (draft)
+**Attribution inside the exported windows**: T1 29,874 / 29,874 consistent (0 unmatched; 6 Vercel records were incomplete — `responseStatusCode: 0`, empty `logs[]` — attributed by id/deployment/path, status not compared); T2 18,259 / 18,259; T0 29,451 / 29,571 (120 unmatched = no log record with that id, none within 5 s of a window edge — the only unexplained gap of the day, 0.4 %). Function instrumentation complete wherever expected (T1 17,235 → 17,235; T2 5,362 → 5,362; T0 16,803 → 16,803): every save has its `[liveWriter]` line, every hinted read its `hint-fetch` line. Pins: 0 on every API request in every run.
+
+**Propagation (log-attributed; the harness's live route-marker boundary was within −0.75 … +0 s of it)**
+
+| run / switch | first target response (all traffic) | first target probe | last old response | old still answering after the first target probe | steady on target | off-target probes after | 60 s sustained |
+|---|---|---|---|---|---|---|---|
+| T1-1 ON-A → OFF-1 | cliStart + 6.2 s (17:51:19.278) | +6.9 s | +15.2 s (last old request started +14.1 s) | 1.0 s | cliEnd + 5.1 s | 1 (→ ON-A) | no (the 1 off-target) |
+| T1-2 OFF-1 → ON-A | +4.1 s | +5.9 s | +13.5 s | 1.0 s | cliEnd + 3.9 s | 1 | no |
+| T1-3 ON-A → ON-B | +6.5 s | +4.9 s | +13.9 s | 3.0 s | cliEnd + 4.3 s | 3 (→ ON-A) | no |
+| T2-1 ON-B → R1-1 | +6.2 s | +7.4 s | +14.6 s | 0.2 s | cliEnd + 3.5 s | 0 | **yes** |
+| T2-2 R1-1 → ON-C | +4.8 s | +5.5 s | +14.6 s | 3.0 s | — | 3 (→ R1-1 at +6.5 / +8.5 / +12.5 s) | no |
+| T0-1 / -3 pseudo | cliEnd + 0.03 / 0.37 s | — | — | — | — | 0 | yes |
+| T0-2 pseudo (28 s CLI) | cliEnd + 0.24 s | — | — | — | — | 0 | NOT EXERCISED (13 / 98 defining probes unattributed) |
+
+Reading: after `vercel alias set` returns (3.8–4.6 s), the first target answer arrives 0–3 s later, and the old deployment keeps answering some requests for a further 1–3 s (up to +14 s for responses whose requests had started before); in that interval 1–3 of the 1/s probes and 840–1,281 of all requests (T2) were still served by the old deployment. "Sustained target routing over 60 s" is therefore "no" on 4 of 5 real switches by the strict rule (any off-target probe after the first target one) — the mixed interval is the propagation cost, not a routing fault.
+
+**Target role evidence**: OFF-1 (T1-1): manifest `LIVE_WARM_ENTRIES=0`; the leg's 8 saves were served 4 by ON-A (−30 … +5 s, before the alias moved) and 4 by OFF-1 (+11 … +60 s), all with writer lines; on OFF-1 0 `[liveWarm]` lines, 0 warm lookups, 0 `source=warm` across 4,364 hinted reads → **OFF proven in force**; the return to ON-A shows 12 warm-job starts again. R1-1 (T2-1): 9,208 records, 4 saves served with writer lines, 4,329 hinted reads, 0 `[liveWarm]` lines, 0 verify headers → **R1 proven**. ON-B / ON-C: warm jobs seen.
+
+**Exposure (log-attributed)**: pending hinted fetch 0 clients on every switch (NOT EXERCISED, as the harness said); pending recheck 0 by the join's rule on T2-2 (the harness counted 20 queued tickets at P from the ahead-hint subset; the join requires a dispatched recheck spanning the boundary and found none — the rechecks dispatched after the first target answer) → NOT EXERCISED in the stricter reading; **old answer after cutover → converged: T1 179 / 353 / 262 natural clients + 22 / 33 / 23 hold, T2 178 + 7 and 308 + 25, all converged to the leg head** — the natural count the harness could not see without logs.
+
+**Resources across deployments** (Σ = per-instance pool totals, bucket maxima, estimate): T1 combined peak 154 (ON-A 90 / OFF-1 119 / ON-B 93; 95 instances at 17:55:25, the OFF→ON-A return), writer acquire max 1,686 ms on OFF-1 (its first write, +11 s save) and 963 ms on ON-B; T2 combined 183 (ON-B 33 / R1-1 111 / ON-C 129; 109 instances), acquire max 472 ms on R1-1; T0 103 (67 instances), acquire max 210 ms; EMAXCONN 0 everywhere.
+
+**R1 cohort (T2-2, join)**: insert / update / soft-delete each reached 18 / 18 R1 pages (15 cohort + 3 arrival pages that had loaded R1) with the correct change type (I, U, U + `isDeleted`), follow-up fetches attributed to ON-C, DOM updated < 16 s (the harness's own table: 0.9–3.1 s).
+
+## Verdict of step 6
+
+| question | answer | verdict |
+|---|---|---|
+| open tabs across ON→OFF→ON and ON→R1→ON | continuity on all 8 switches: saves 2xx, 0 missing, broadcasts received, no errors/reloads/regressions, ≤ 30 s (in practice ≤ 7 s; R1 pages' own poll 17 s once) | **PASS** |
+| convergence right after a switch | saves within −1 … +15 s of a real switch: SDK p95 3.2–6.7 s, pages up to 6.6 s (cold target + OFF warm-miss at 70 rows + 610–830 clients); T0 pseudo ≤ 3.1 s | **VALID + FAIL** (3 s) — the measured rollback cost |
+| propagation of an alias move | first target answer 4–7 s after the CLI start; old deployment still answering for 1–3 s after that; attribution 100 % inside the windows | measured (compatibility rehearsal, not production promotion) |
+| R1 tabs against the R2 server | 18 real R1 pages received insert / update / soft-delete via postgres_changes and updated the DOM | **PASS** |
+| existing-deployment return | 0 / 791 stale first answers | **PASS** |
+| OFF / R1 in force on the targets | proven from the targets' own logs | **PASS** |
+| arrivals on a just-promoted deployment | 3–7 s to usable at 70 rows, 0 unusable | FAIL (3 s) — known from step 5 |
+| in-flight exposure | pending hinted fetch never occurred naturally (NOT EXERCISED); old-answer-after-cutover exercised with 178–353 natural clients per switch; pending recheck exercised only in the harness's reading | partial, stated |
+
+## Rollback acceptance for the runbook
 
 - **Rollback 1 (promote the OFF deployment of the same commit)**: open tabs keep updating; saves made within ~30 s of the promotion converge in 3–7 s (warm-miss cost at Fes size), later saves normally; arrivals in the first minute take up to ~7 s to usable. Return promotion to ON: clean (0 stale first answers).
 - **Rollback 2 (promote the last R1)**: open R2 tabs keep updating (R1 writers broadcast; reads without a verify header satisfy at/above the hint, below-hint inconclusive answers recheck once); new arrivals get R1 pages (postgres_changes), which also keep working after the return to R2; the first save after an R1 page loads may reach it by its poll (~17 s).
