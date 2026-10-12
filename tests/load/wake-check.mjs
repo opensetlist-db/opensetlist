@@ -4,7 +4,7 @@
 //
 //   node tests/load/wake-check.mjs --base=<origin> --event-id=<n>
 //        [--prod-readonly] [--event-path=/events/<id>/<slug>]
-//        [--locales=ja,ko,en] [--pages=2] [--poll-only=1] [--wait-s=600]
+//        [--locales=ja,ko,en] [--pages=2] [--poll-only=1] [--expect-saves=2] [--wait-s=600]
 //        [--deployment=<dpl_… | deployment URL>] [--stop-file=<path>]
 //        [--out=<dir>] [--label=<name>] [--headed]
 //
@@ -159,7 +159,7 @@ function firstFrame(pr) {
 // `recs` = page records (pages.mjs, snapshotted BEFORE the pages close —
 // closing them closes the websockets) with `role` set; `baselineRev`,
 // `readyAt`.
-export function wakeVerdict({ recs, baselineRev, readyAt, deployment = null }) {
+export function wakeVerdict({ recs, baselineRev, readyAt, deployment = null, expectSaves = 2 }) {
   const revs = observedRevs(recs, baselineRev);
   const [r1, r2] = revs;
   const roleOf = (r) => r.role ?? "live";
@@ -209,7 +209,8 @@ export function wakeVerdict({ recs, baselineRev, readyAt, deployment = null }) {
     const pr = pageRev(r, r1, readyAt);
     return { idx: r.idx, locale: r.locale, ...pr, frames: (r.bcasts ?? []).length, saveToVisibleMs: saveProxy != null && pr.domAt != null ? pr.domAt - saveProxy : null };
   });
-  if (poll.length) {
+  if (!poll.length) checks.pollOnly = check("NOT EXERCISED", "no websocket-blocked page (--poll-only=0)");
+  else {
     if (r1 == null) checks.pollOnly = check("NOT EXERCISED", "no save observed");
     else {
       const ok = pollRows.filter((x) => x.saveToVisibleMs != null && x.saveToVisibleMs <= POLL_REPAIR_BUDGET_MS && x.frames === 0).length;
@@ -284,8 +285,20 @@ export function wakeVerdict({ recs, baselineRev, readyAt, deployment = null }) {
   const f1 = perRev[0] ? firstFrame(perRev[0]) : null;
   const f2 = perRev[1] ? firstFrame(perRev[1]) : null;
   const info = { blockedWrites: sum("blockedWrites"), failedReqs: sum("failedReqs"), revsObserved: revs, gapMs: f1 != null && f2 != null ? f2 - f1 : null };
+  // Overall: any FAIL → FAIL. Otherwise PASS only when the run exercised
+  // what a PASS claims — `expectSaves` distinct revs observed (the check
+  // save, and by default the "stays connected" second save) AND at least
+  // one websocket-blocked page (the poll repair path). Anything less is
+  // NOT EXERCISED, never PASS: a run where the second save never came
+  // proves nothing about listeners staying connected.
   const statuses = Object.values(checks).map((c) => c.status);
-  const overall = statuses.includes("FAIL") ? "FAIL" : r1 == null ? "NOT EXERCISED" : "PASS";
+  info.savesObserved = revs.slice(0, 2);
+  info.expectSaves = expectSaves;
+  const why = [];
+  if (revs.length < expectSaves) why.push(`${revs.length} of ${expectSaves} expected save(s) observed`);
+  if (!poll.length) why.push("no websocket-blocked page");
+  info.notExercised = why;
+  const overall = statuses.includes("FAIL") ? "FAIL" : why.length ? "NOT EXERCISED" : "PASS";
   return { overall, checks, pages, perRev, pollRows, postRows, warm, baselineRev, readyAt, info };
 }
 
@@ -306,6 +319,8 @@ export function wakeMarkdown(v, meta) {
   L.push("- clock: this host's clock (UTC); page-side DOM times use the same OS clock");
   if (meta.deployment) L.push(`- expected deployment ${meta.deployment}`);
   L.push(`- revs observed above the baseline: ${v.info.revsObserved.join(", ") || "none"}${v.info.gapMs != null ? ` · R1→R2 gap ${Math.round(v.info.gapMs / 1000)} s` : ""}`);
+  L.push(`- saves observed: ${v.info.savesObserved.length} of ${v.info.expectSaves} expected (${["check save R1", "second save R2"].slice(0, v.info.expectSaves).map((n, i) => `${n}: ${v.info.savesObserved[i] != null ? `rev ${v.info.savesObserved[i]}` : "**not observed**"}`).join(" · ")})`);
+  if (v.overall === "NOT EXERCISED") L.push(`- **NOT EXERCISED because:** ${v.info.notExercised.join("; ")}`);
   L.push(`- informational: non-GET requests the pages tried (aborted) ${v.info.blockedWrites} · failed /api or /_next requests ${v.info.failedReqs}`);
   L.push("", "## Verdict", "", "| check | result | detail |", "|---|---|---|");
   for (const [k, c] of Object.entries(v.checks)) L.push(`| ${NAMES[k] ?? k} | ${c.status === "PASS" ? "PASS" : `**${c.status}**`} | ${c.detail} |`);
@@ -402,7 +417,7 @@ async function main() {
   }
   const meta = {
     host: os.hostname(), base: cfg.base, baseKind: cfg.baseKind, prod: cfg.prod, eventId: cfg.eventId, eventPath,
-    locales: cfg.locales, pagesPerLocale: cfg.pages, pollOnly: cfg.pollOnly, waitS: cfg.waitS, deployment: cfg.deployment, label: cfg.label,
+    locales: cfg.locales, pagesPerLocale: cfg.pages, pollOnly: cfg.pollOnly, expectSaves: cfg.expectSaves, waitS: cfg.waitS, deployment: cfg.deployment, label: cfg.label,
     stopFile, startedAt: now.toISOString(), endedAt: null, endReason: null,
   };
   const plan = pagePlan(cfg);
@@ -458,13 +473,15 @@ async function main() {
   meta.endedAt = new Date().toISOString();
   meta.endReason = endReason;
   await pop.close();
-  const v = wakeVerdict({ recs: snap, baselineRev, readyAt, deployment: cfg.deployment });
+  const v = wakeVerdict({ recs: snap, baselineRev, readyAt, deployment: cfg.deployment, expectSaves: cfg.expectSaves });
   fs.writeFileSync(`${outBase}.json`, JSON.stringify({ meta, verdict: v, pages: snap }, null, 2));
   const md = wakeMarkdown(v, meta);
   fs.writeFileSync(`${outBase}.md`, md);
   console.log(md);
   log(`wrote ${outBase}.{json,md}`);
-  process.exit(v.overall === "FAIL" ? 1 : 0);
+  // 0 PASS · 1 FAIL · 4 NOT EXERCISED (never mistaken for a pass by a
+  // script that only checks for non-zero).
+  process.exit(v.overall === "FAIL" ? 1 : v.overall === "NOT EXERCISED" ? 4 : 0);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

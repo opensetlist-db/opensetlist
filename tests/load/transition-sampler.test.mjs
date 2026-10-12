@@ -32,3 +32,17 @@ test("verdicts: not switched / already switched / not sustained / no data", () =
   assert.equal(samplerSummary([doc(0, "dpl_OLD"), doc(250, "dpl_NEW"), doc(500, "dpl_OLD")], "dpl_NEW").verdict, "NOT SUSTAINED");
   assert.equal(samplerSummary([doc(0, null, 500), api(10)], "dpl_NEW").verdict, "NO DATA");
 });
+
+test("unattributed document answers are counted; > 20 % → INSUFFICIENT ATTRIBUTION, never (ALREADY) SWITCHED", () => {
+  // 3 of 10 documents without data-dpl-id (30 %): would read ALREADY SWITCHED otherwise
+  const many = [...Array.from({ length: 7 }, (_, i) => doc(i * 250, "dpl_NEW")), doc(1750, null, 500), doc(2000, null), doc(2250, null, 0)];
+  const s = samplerSummary(many, "dpl_NEW");
+  assert.equal(s.docs.unattributed, 3);
+  assert.equal(s.docs.unattributedShare, 0.3);
+  assert.equal(s.verdict, "INSUFFICIENT ATTRIBUTION");
+  assert.match(samplerMarkdown(s, { base: "b", baseKind: "prod", path: "/ja/events/1/x", eventId: "1", host: "h", startedAt: "a", endedAt: "b", endReason: "duration", intervalMs: 250 }), /\*\*unattributed 3\*\* = 30 %/);
+  // 2 of 10 (20 %) is still within the bound
+  const few = [...Array.from({ length: 8 }, (_, i) => doc(i * 250, "dpl_NEW")), doc(2000, null, 502), doc(2250, null)];
+  assert.equal(samplerSummary(few, "dpl_NEW").verdict, "ALREADY SWITCHED");
+  assert.equal(samplerSummary(few, "dpl_NEW").docs.unattributed, 2);
+});

@@ -115,6 +115,31 @@ test("a 308 hop is not a reload; a poll page that got a frame fails", () => {
   assert.equal(v.checks.pollOnly.status, "FAIL");
 });
 
+test("only the check save observed → NOT EXERCISED (exit 4), never PASS; --expect-saves=1 → PASS", () => {
+  const one = () => recs().map((x) => ({
+    ...x,
+    bcasts: x.bcasts.filter((b) => b[1] !== 42),
+    fetches: x.fetches.filter((q) => q[4] !== 42),
+    rowTextLog: x.rowTextLog.filter((t) => t[0] < T + 300000),
+  }));
+  const v = wakeVerdict({ recs: one(), baselineRev: 40, readyAt: T });
+  assert.equal(v.checks.firstBudget.status, "PASS");
+  assert.equal(v.checks.secondSeen.status, "NOT EXERCISED");
+  assert.equal(v.overall, "NOT EXERCISED");
+  assert.deepEqual(v.info.savesObserved, [41]);
+  const md = wakeMarkdown(v, { base: "b", baseKind: "dev", eventId: "111", eventPath: "/events/111", locales: ["ja", "ko"], pagesPerLocale: 1, pollOnly: 1, host: "h", startedAt: "s", endedAt: "e", endReason: "wait-s" });
+  assert.match(md, /saves observed: 1 of 2 expected \(check save R1: rev 41 · second save R2: \*\*not observed\*\*\)/);
+  assert.match(md, /NOT EXERCISED because:\*\* 1 of 2 expected save\(s\) observed/);
+  assert.equal(wakeVerdict({ recs: one(), baselineRev: 40, readyAt: T, expectSaves: 1 }).overall, "PASS");
+});
+
+test("no websocket-blocked page → poll check and overall NOT EXERCISED", () => {
+  const v = wakeVerdict({ recs: recs().filter((x) => x.role !== "poll"), baselineRev: 40, readyAt: T });
+  assert.equal(v.checks.pollOnly.status, "NOT EXERCISED");
+  assert.equal(v.overall, "NOT EXERCISED");
+  assert.deepEqual(v.info.notExercised, ["no websocket-blocked page"]);
+});
+
 test("no save in the window → NOT EXERCISED (not FAIL), timing out gracefully", () => {
   const r = recs().filter((x) => x.role !== "postsave").map((x) => ({ ...x, bcasts: [], fetches: [x.fetches[0]], rowTextLog: [x.rowTextLog[0]] }));
   const v = wakeVerdict({ recs: r, baselineRev: 40, readyAt: T });
