@@ -1343,9 +1343,40 @@ with a section-level `cols` / `reqCols` list):
 | clients | `transition.sdk.clients[]` in subs-worker.mjs's record shape (+ `cohort`, `subset`, `switchIdx`); `transition.pages.clients[]` in pages.mjs's shape (+ `cohort`, `notes` rows `[t, type, rowId, isDeleted]`) |
 | optional | `transition.rechecks[] {client, queuedAt, dispatchedAt, settledAt, subset, switchIdx}`, `transition.smoke[]` (reactions / wishes: `switchIdx, locale, kind, submitStatus, persisted, refreshed, identityRetained, vercelId`), `transition.arrivals`, `transition.verdicts` (printed verbatim) |
 
+**The real harness shape** (`run.mjs --phase=transition`, detected by
+`transition.sdk` / `transition.probe` being arrays) is read as follows —
+the table above stays as the fallback for other producers:
+
+| source | population | notes |
+|---|---|---|
+| `transition.probe[]` | `probe` | main-thread record `{tStart, tHeaders, tBody, status, vercelId, verifyRaw, hint, minRev, pin, …}`; response = `tBody`; `hint` present → hinted (`hint=1`); path `/api/setlist` |
+| `switches[].route[]` | `route` | route marker (HTML); its `dpl` (data-dpl-id) must equal the record's deploymentId, else inconsistent |
+| `switches[].guard.attempts[].rec` | `guard` | immutable target URL — attributed, never used for routing |
+| `switches[].smoke[]` | `smoke` | every sub-request object with a `vercelId` (`post`, `counts`, `wish`); method not compared |
+| `transition.saves[]` | `save` | `startedAt` → `startedAt + ms`; `leg` = 1-based switch `k`; `offS` 11 / 15 = arrival saves; method not compared (op-dependent) |
+| `transition.sdk[].reqs` | `sdk` | ARRAY rows by `SDK_REQ_COLS` (checked against `transition.rows.sdkReqs` label prefixes — a reordered harness throws); response = `bodyAt` (col 18), settled = col 10; `cohort` `incumbent` / `hold` / `ahead` / `arrival-<k>` / `r1-<k>` → cohort + subset + switch; a synthetic ahead-hint row = cohort `ahead` AND col 29 (never the rev alone) |
+| `transition.pages[].fetches` / `.navs` | `page` / `document` | rows by `PAGE_FETCH_COLS`; navs `[t, url, status, x-vercel-id, data-dpl-id]` |
+
+Per switch the join uses `baselineDpl` as the old deployment, the
+harness's `window {from, to}` as the leg window, and prints the
+harness's provisional `boundary` / `firstTargetLive` / `routing` (live
+route marker, no logs) next to the log-attributed bounds that replace
+them. A switch whose target is its baseline (or `kind: "pseudo"`) is a
+**pseudo-switch**: no old side; the first target response is the first
+response whose request started after `cliEnd`, and "old answer after
+cutover" means a request sent before `cliStart` and evaluated after the
+boundary (a held answer). Pending rechecks are derived from the ahead
+subset's rows: `recheckQueued` (col 27) queues the ticket at that row's
+`evalAt`; the recheck is the client's next notification fetch.
+Regressions need `appliedAll`, which the real client records do not
+carry — the column reads `—` and the harness's monotonicity check
+covers it. First end-to-end run:
+`results/2026-10-12/2026-10-12T15-58-05-326Z-transition-join.md`.
+
 The identity guard (`pop: "guard"`, through the immutable target URL) and
 the smoke are attributed but excluded from propagation: only alias
-traffic (`sdk`, `page`, `probe`) says where the alias routed.
+traffic (`sdk`, `page`, `probe`, `route`, `document`) says where the
+alias routed.
 
 ### `transition-join.mjs` — how to read the report
 
