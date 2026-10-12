@@ -31,11 +31,23 @@
 //     start → done ms, every locale's `set` (rev, bytes, buildMs, setMs,
 //     ok) and `skip` (reason), and `schedule-failed` / `job-failed` /
 //     `set-error` counts; the reader's `[setlist] warm-lookup` results
-//     (hit / miss / stale / invalid / error / timeout) with ms p50 / p95,
+//     (hit / miss / stale / invalid / error / timeout / memo-miss / capped) with ms p50 / p95,
 //     per minute and per save rev (`minRev`); per save rev the builds
 //     split into **warm builds** (the warm job's own `[liveSnapshot]
 //     build` lines) and **reader builds** (all the others); and the
 //     run-level "warm hit rate = hits ÷ hinted fetches";
+//   - explicit server timestamps (step 4, src/lib/liveWarm.ts field
+//     contract): every `[liveWriter]` / `[liveWarm]` line carries `at=`
+//     (the function's Date.now() epoch ms — history-mode logs stamp a
+//     request's lines with its START time, so the entry time cannot time
+//     a warm job), the `set` / `skip` lines also `buildStartAt` /
+//     `buildEndAt` / `txStartAt` / `txEndAt` / `holdMs` / `captureAt` /
+//     `setStartAt`. They are parsed into the job records (additive; older
+//     logs without them still parse) and the writer section lists every
+//     save's `at` when a route has ≤ 12 saves;
+//   - "Warm expiry": `[dataCache] expire-warm phase=start|done` lines (the
+//     warm-tag expiry of a catalog edit), with the request path they
+//     belong to;
 //   - distinct function instances per minute (any line with `instance=`);
 //   - the SUM of per-instance Prisma pool sizes per time bucket, from
 //     `[prisma] pool total= idle= waiting= instance=` lines — the best
@@ -191,6 +203,8 @@ export function parseLog(text) {
     else if (/\[liveWarm\] job-failed\b/.test(line)) kind = "warmJobFailed";
     else if (/\[liveWarm\] lookup-error\b/.test(line)) kind = "warmLookupError";
     else if (/\[setlist\] warm-lookup\b/.test(line)) kind = "warmLookup";
+    // The warm-tag expiry of revalidatePublicData() (catalog edits).
+    else if (/\[dataCache\] expire-warm\b/.test(line)) kind = "expireWarm";
     else if (/EMAXCONN/.test(line)) kind = "emaxconn";
     if (kind) {
       recs.push({ kind, ...base, f, api: (entry?.path ?? "").startsWith("/api/"), emax: /EMAXCONN/.test(line) });
@@ -211,8 +225,11 @@ export function parseLog(text) {
 }
 
 // The reader's warm-lookup results, in report order (src/lib/liveWarm.ts
-// `warmLookup`). Anything else goes to "other".
-export const WARM_RESULTS = ["hit", "miss", "stale", "invalid", "error", "timeout"];
+// `warmLookup`). Anything else goes to "other". `memo-miss` (a repeat of
+// a key that just missed, answered from the 250 ms / 1 s miss memo
+// without a cache get) and `capped` were added by the fault-drill work;
+// they used to land in "other", which hid the memo share of a miss storm.
+export const WARM_RESULTS = ["hit", "miss", "stale", "invalid", "error", "timeout", "memo-miss", "capped"];
 
 // Writer warming, from the typed records (see the header). Exported for
 // the test.
@@ -254,19 +271,26 @@ export function warming(recs) {
     }
     return j;
   };
-  for (const r of by("warmStart")) jobOf(r.f, "rev").start = { t: r.t, eid: r.eid };
-  for (const r of by("warmDone")) jobOf(r.f, "rev").done = { t: r.t, eid: r.eid, ms: num(r.f.ms) };
+  // `at` (and the other *At fields) = the server function's Date.now()
+  // epoch ms (null on a log that predates them); `fault` / `source` = a
+  // drill fault the job applied (`source=header|env`).
+  for (const r of by("warmStart")) jobOf(r.f, "rev").start = { t: r.t, eid: r.eid, at: num(r.f.at), fault: r.f.fault ?? null, source: r.f.source ?? null };
+  for (const r of by("warmDone")) jobOf(r.f, "rev").done = { t: r.t, eid: r.eid, ms: num(r.f.ms), at: num(r.f.at) };
   for (const r of by("warmJobFailed")) jobOf(r.f, "rev").jobFailed.push(String(r.f.err ?? "?").split(":")[0]);
   for (const r of by("warmSet")) {
     jobOf(r.f, "atLeastRev").sets.push({
       locale: r.f.locale ?? "?", rev: num(r.f.rev), bytes: num(r.f.bytes), buildMs: num(r.f.buildMs),
       setMs: num(r.f.setMs), ok: r.f.ok === "true", t: r.t, eid: r.eid,
+      at: num(r.f.at), setStartAt: num(r.f.setStartAt), captureAt: num(r.f.captureAt),
+      buildStartAt: num(r.f.buildStartAt), buildEndAt: num(r.f.buildEndAt),
+      txStartAt: num(r.f.txStartAt), txEndAt: num(r.f.txEndAt), holdMs: num(r.f.holdMs),
     });
   }
   for (const r of by("warmSkip")) {
     jobOf(r.f, "atLeastRev").skips.push({
       locale: r.f.locale ?? "?", reason: r.f.reason ?? "?", rev: num(r.f.rev), bytes: num(r.f.bytes),
       buildMs: num(r.f.buildMs), t: r.t, eid: r.eid,
+      at: num(r.f.at), buildStartAt: num(r.f.buildStartAt), buildEndAt: num(r.f.buildEndAt),
     });
   }
 
@@ -467,8 +491,11 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
   for (const r of by("writer")) {
     const route = r.f.route ?? "?";
     let g = writerRoutes.get(route);
-    if (!g) writerRoutes.set(route, (g = { route, n: 0, acquire: [], exec: [], failed: 0 }));
+    if (!g) writerRoutes.set(route, (g = { route, n: 0, acquire: [], exec: [], failed: 0, values: [] }));
     g.n++;
+    // Every save, in log order, with the explicit commit time `at`
+    // (epoch ms; null on an older log) — listed when n ≤ 12.
+    g.values.push({ rev: r.f.rev ?? null, acquireMs: num(r.f.acquireMs), execMs: num(r.f.execMs), ok: r.f.ok === "true", at: num(r.f.at), instance: r.f.instance ?? null });
     const a = num(r.f.acquireMs);
     const e = num(r.f.execMs);
     if (a != null) g.acquire.push(a);
@@ -483,17 +510,27 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     const kinds = writerFailedKinds.get(route) ?? new Map();
     kinds.set(r.f.kind ?? "?", (kinds.get(r.f.kind ?? "?") || 0) + 1);
     writerFailedKinds.set(route, kinds);
-    if (!writerRoutes.has(route)) writerRoutes.set(route, { route, n: 0, acquire: [], exec: [], failed: 0 });
+    if (!writerRoutes.has(route)) writerRoutes.set(route, { route, n: 0, acquire: [], exec: [], failed: 0, values: [] });
   }
   const writers = [...writerRoutes.values()].map((g) => ({
     route: g.route, n: g.n, failed: g.failed,
     failedKinds: [...(writerFailedKinds.get(g.route) ?? new Map()).entries()].map(([k, v]) => `${k} ${v}`).join(", "),
     acquireP50: pct(g.acquire, 0.5), acquireP95: pct(g.acquire, 0.95),
     execP50: pct(g.exec, 0.5), execP95: pct(g.exec, 0.95),
+    acquireMax: g.acquire.length ? Math.max(...g.acquire) : null,
+    values: g.n <= 12 ? [...g.values].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)) : null,
   }));
   const revReadErrors = by("revReadError").length;
 
   const slow = by("slowHit").map((r) => num(r.f.ms)).filter((v) => v != null);
+
+  // Warm-tag expiry (`[dataCache] expire-warm phase=start|done`), with the
+  // request each line belongs to (method + path of its log entry).
+  const entryOf = new Map(requests.map((r) => [r.eid, r]));
+  const expireWarm = by("expireWarm").map((r) => ({
+    phase: r.f.phase ?? "?", ok: r.f.ok ?? null, ms: num(r.f.ms), at: num(r.f.at), instance: r.f.instance ?? null,
+    t: r.t, method: entryOf.get(r.eid)?.method ?? null, path: r.path,
+  })).sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 
   // instances per minute (any record that names an instance)
   const minutes = new Map();
@@ -558,7 +595,7 @@ export function summarise(text, { bucketS = 5, carryS = 5 } = {}) {
     hint,
     warm: warming(recs),
     coalesced: { lines: coalesced.length, waitersSum: waiters.reduce((a, b) => a + b, 0), waitersMax: waiters.length ? Math.max(...waiters) : null },
-    emaxconn, writers,
+    emaxconn, writers, expireWarm,
     slowHit: { total: slow.length, maxMs: slow.length ? Math.max(...slow) : null },
     perMinute, poolBuckets,
     poolPeak: poolBuckets.reduce((m, b) => Math.max(m, b.carried), 0),
@@ -669,6 +706,27 @@ export function toMarkdown(s, { addHours = 0, bucketS = 5, carryS = 5, source = 
     L.push("| route | saves | acquire ms p50 / p95 | exec ms p50 / p95 | ok=false | failed kinds |");
     L.push("|---|---|---|---|---|---|");
     for (const w of s.writers) L.push(`| ${w.route} | ${w.n} | ${d(w.acquireP50)} / ${d(w.acquireP95)} | ${d(w.execP50)} / ${d(w.execP95)} | ${w.failed} | ${w.failedKinds || "—"} |`);
+    L.push("");
+    // Every save of a route with ≤ 12 saves (a drill's handful): rev,
+    // acquire / exec ms, ok, and the explicit commit time `at`.
+    const listed = s.writers.filter((w) => w.values && w.values.some((x) => x.at != null));
+    if (listed.length) {
+      L.push("Every save (routes with ≤ 12 saves; `at` = the server's commit time, epoch ms → UTC):");
+      L.push("");
+      L.push("| route | rev | acquire ms | exec ms | ok | at (UTC) | instance |");
+      L.push("|---|---|---|---|---|---|---|");
+      for (const w of listed) for (const x of w.values) L.push(`| ${w.route} | ${d(x.rev)} | ${d(x.acquireMs)} | ${d(x.execMs)} | ${x.ok} | ${x.at != null ? new Date(x.at).toISOString() : "—"} | ${d(x.instance)} |`);
+      L.push("");
+    }
+  }
+  if (s.expireWarm.length) {
+    L.push(`### Warm expiry (\`[dataCache] expire-warm\` lines: ${s.expireWarm.length})`);
+    L.push("");
+    L.push("The warm-tag expiry run by `revalidatePublicData()` (catalog edits). start = before `expireTag`, done = when it settled. `at` = server epoch ms.");
+    L.push("");
+    L.push("| request | phase | ok | ms | at (UTC) | instance |");
+    L.push("|---|---|---|---|---|---|");
+    for (const x of s.expireWarm) L.push(`| ${x.method ?? ""} ${d(x.path)} | ${x.phase} | ${d(x.ok)} | ${d(x.ms)} | ${x.at != null ? new Date(x.at).toISOString() : "—"} | ${d(x.instance)} |`);
     L.push("");
   }
   L.push("### Per minute");

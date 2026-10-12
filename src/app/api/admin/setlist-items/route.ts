@@ -7,6 +7,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -16,12 +17,23 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // Drill-only per-save warm fault (`x-live-warm-fault`). Read here —
+  // after the admin check, so an unauthenticated request never gets its
+  // header parsed — and validated BEFORE the body is read and the
+  // transaction starts, so a malformed or unsupported spec is a 400 with
+  // nothing written (the drill must not run a save that silently lacks
+  // its fault). The shared `liveWriterTransaction` also serves the
+  // public writers, which is why it never reads headers itself; the
+  // parsed fault is passed to it by value. Unarmed or production: one
+  // env compare, header ignored (see `requestWarmFault`).
+  const warm = requestWarmFault(request.headers);
+  if (!warm.ok) return NextResponse.json({ error: warm.error }, { status: 400 });
   // A save the database could not even start answers 503 + Retry-After
   // (see `withAdminLiveWriterBusy`); every other outcome is unchanged.
-  return withAdminLiveWriterBusy(() => createItem(request));
+  return withAdminLiveWriterBusy(() => createItem(request, warm.fault));
 }
 
-async function createItem(request: NextRequest) {
+async function createItem(request: NextRequest, warmFault: WarmFault | null) {
   const body = await request.json();
   const {
     eventId,
@@ -120,7 +132,7 @@ async function createItem(request: NextRequest) {
     });
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
     return { kind: "ok" as const, item, rev };
-  }, (r) => (r.kind === "ok" ? r.rev : null));
+  }, (r) => (r.kind === "ok" ? r.rev : null), { warmFault });
 
   if (result.kind === "not_found") {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });

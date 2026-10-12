@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // n14 writer contract for the admin setlist routes, with the database
 // mocked: every save is ONE interactive transaction ordered
@@ -14,6 +16,14 @@ vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }))
 
 vi.mock("@/lib/dataCache", () => ({
   revalidateEventData: vi.fn(() => log.push("revalidate")),
+}));
+
+// The real `requestWarmFault` (the routes' header parsing is under
+// test); only the post-commit scheduler is a spy, so the plumbing
+// route → liveWriterTransaction → scheduleWarm can be observed.
+vi.mock("@/lib/liveWarm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveWarm")>()),
+  scheduleWarm: vi.fn(),
 }));
 
 vi.mock("@/lib/liveBroadcast", () => ({
@@ -65,6 +75,12 @@ import { POST as INSERT_AFTER } from "@/app/api/admin/setlist-items/insert-after
 import { POST as SWAP } from "@/app/api/admin/setlist-items/swap/route";
 import { prisma } from "@/lib/prisma";
 import { bumpSetlistRevisionAndBroadcast } from "@/lib/liveBroadcast";
+import {
+  scheduleWarm,
+  WARM_FAULT_HEADER,
+  WARM_FAULT_HEADER_UNPARSEABLE,
+  WARM_FAULT_HEADER_UNSUPPORTED,
+} from "@/lib/liveWarm";
 import { jsonRequest } from "../helpers/requestFactory";
 import type { NextRequest } from "next/server";
 
@@ -325,5 +341,139 @@ describe("admin setlist writers — busy database (503, nothing written, no retr
     await expect(
       CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 })),
     ).rejects.toThrow("boom");
+  });
+});
+
+// n14 step 4: the drill-only per-save warm fault header. Read by the
+// ADMIN writers only, after auth, validated before anything is read or
+// written, and handed to the warm job by value.
+describe("admin setlist writers — x-live-warm-fault header", () => {
+  const ENV = ["LIVE_WARM_FAULT_ARMED", "LIVE_WARM_FAULT", "VERCEL_ENV"];
+  afterEach(() => {
+    for (const k of ENV) delete process.env[k];
+  });
+
+  const withFault = (url: string, body: unknown, spec: string, method = "POST") =>
+    new Request(url, {
+      method,
+      headers: { "content-type": "application/json", [WARM_FAULT_HEADER]: spec },
+      body: JSON.stringify(body),
+    }) as unknown as NextRequest;
+
+  // One call per admin live writer that accepts the header.
+  const writers = (spec: string) => [
+    () => CREATE(withFault("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }, spec)),
+    () =>
+      PUT(
+        withFault("http://x/api/admin/setlist-items/900", { position: 1 }, spec, "PUT"),
+        params("900"),
+      ),
+    () =>
+      INSERT_AFTER(
+        withFault(
+          "http://x/api/admin/setlist-items/insert-after",
+          { eventId: 5, afterPosition: 1 },
+          spec,
+        ),
+      ),
+    () =>
+      SWAP(withFault("http://x/api/admin/setlist-items/swap", { itemIdA: 1, itemIdB: 2 }, spec)),
+  ];
+
+  it("armed: an unparseable spec → 400 with the Korean message, nothing read or written, on every writer", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    for (const call of writers("slowset=abc")) {
+      const res = await call();
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: WARM_FAULT_HEADER_UNPARSEABLE });
+    }
+    expect(log).toEqual([]);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(scheduleWarm).not.toHaveBeenCalled();
+  });
+
+  it("armed: a lookup-side mode → 400 unsupported, nothing written", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    for (const spec of ["absent", "slow=100", "getnull", "geterror,locale=ja"]) {
+      for (const call of writers(spec)) {
+        const res = await call();
+        expect(res.status, spec).toBe(400);
+        expect(await res.json()).toEqual({ error: WARM_FAULT_HEADER_UNSUPPORTED });
+      }
+    }
+    expect(log).toEqual([]);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("armed: a valid spec reaches THIS save's warm job (create)", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const res = await writers("slowset=1500,locale=ja")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledTimes(1);
+    expect(scheduleWarm).toHaveBeenCalledWith(
+      BigInt(5),
+      BigInt(12),
+      expect.objectContaining({ label: "slowset:1500+locale:ja", slowSetMs: 1500 }),
+    );
+  });
+
+  it("armed: a valid spec reaches the warm job of update, insert-after and swap", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const [, put, insertAfter, swap] = writers("slowbuild=1500");
+    expect((await put()).status).toBe(200);
+    expect((await insertAfter()).status).toBe(200);
+    vi.mocked(prisma.setlistItem.findMany)
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), eventId: BigInt(5) },
+          { id: BigInt(2), eventId: BigInt(5) },
+        ]),
+      )
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), position: 4 },
+          { id: BigInt(2), position: 7 },
+        ]),
+      );
+    expect((await swap()).status).toBe(200);
+    const faults = vi.mocked(scheduleWarm).mock.calls.map((c) => c[2]?.label);
+    expect(faults).toEqual(["slowbuild:1500", "slowbuild:1500", "slowbuild:1500"]);
+  });
+
+  it("unarmed: the header is ignored — even a malformed one — and the save warms without a fault", async () => {
+    const res = await writers("garbage")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("production: ignored even when armed", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    process.env.VERCEL_ENV = "production";
+    const res = await writers("absent")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("armed, no header: the save warms without a request fault", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const res = await CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }));
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("the public writers and the shared wrapper have no header path (source check)", () => {
+    const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
+    for (const p of [
+      "src/app/api/events/[id]/setlist-items/route.ts",
+      "src/app/api/setlist-items/[id]/confirm/route.ts",
+    ]) {
+      const src = read(p);
+      expect(src, p).toContain("liveWriterTransaction");
+      expect(src, p).not.toMatch(/requestWarmFault|x-live-warm-fault|warmFault/);
+    }
+    // The shared wrapper and the scheduler never read request headers.
+    for (const p of ["src/lib/liveWriterTx.ts", "src/lib/liveWarm.ts"]) {
+      expect(read(p), p).not.toMatch(/from "next\/headers"/);
+    }
   });
 });

@@ -44,8 +44,12 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
 }));
 
 import { after, type NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { __resetLiveSnapshotStateForTests } from "@/lib/liveSnapshot";
+import { poolStats, prisma } from "@/lib/prisma";
+import {
+  __resetLiveSnapshotStateForTests,
+  __setSnapshotEstablishedHookForTests,
+} from "@/lib/liveSnapshot";
+import { parseWarmFault, runWarmJob } from "@/lib/liveWarm";
 import { warmEntryCache, WARM_PUBLIC_DATA_TAG } from "@/lib/dataCache";
 import { GET as SETLIST_GET } from "@/app/api/setlist/route";
 import { POST as ADMIN_CREATE } from "@/app/api/admin/setlist-items/route";
@@ -212,5 +216,88 @@ describe("writer warming OFF (flag unset)", () => {
     expect(r.source).toBe("build");
     expect(r.verify).toBe("satisfied");
     expect(r.body.rev).toBe(rev);
+  });
+});
+
+// n14 step 4 — the `slowbuild` drill hold against the real local pool
+// (`src/lib/prisma.ts`, max 2). What the deployed drills cannot force
+// deterministically: a warm job at concurrency 2 with a DB-held slow
+// build occupies BOTH of the instance's connections, so a third
+// transaction on the instance cannot even start. Chosen assertion: the
+// third transaction's `maxWait` (500 ms) is shorter than the remaining
+// hold, so it FAILS with Prisma's "Unable to start a transaction in the
+// given time" — rather than measuring a wait ≥ the remaining hold.
+describe("slowbuild drill hold (dev DB, pool max 2)", () => {
+  it("a slowbuild=1500 job holds both pool connections; a third transaction cannot start within maxWait", async () => {
+    const rev = await save(4);
+    const log = vi.spyOn(console, "log");
+
+    // Barrier: both concurrent builds have run their snapshot-establishing
+    // first statement, i.e. both are inside their transactions holding a
+    // connection, and the 1500 ms hold starts right after.
+    let established = 0;
+    let bothEstablished!: () => void;
+    const both = new Promise<void>((r) => (bothEstablished = r));
+    __setSnapshotEstablishedHookForTests(async (id) => {
+      if (id === eventId && ++established === 2) bothEstablished();
+    });
+    try {
+      const job = runWarmJob(eventId, BigInt(rev), parseWarmFault("slowbuild=1500"));
+      await both;
+      const t0 = Date.now();
+      await expect(
+        prisma.$transaction(async (tx) => tx.$queryRaw`SELECT 1`, {
+          maxWait: 500,
+          timeout: 2_000,
+        }),
+      ).rejects.toThrow(/Unable to start a transaction in the given time/);
+      const waited = Date.now() - t0;
+      // Gave up on its own maxWait, while the hold was still running.
+      expect(waited).toBeGreaterThanOrEqual(450);
+      expect(waited).toBeLessThan(1_500);
+      await job;
+    } finally {
+      __setSnapshotEstablishedHookForTests(null);
+    }
+
+    // The abandoned acquisition is served once a holder lets go and is
+    // discarded by Prisma; wait for the pool to settle so later suites
+    // start from an idle pool.
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const s = poolStats();
+      if (s.waiting === 0 && s.idle === s.total) break;
+      if (Date.now() > deadline) throw new Error("pool did not settle");
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    const sets = log.mock.calls
+      .map((c) => String(c[0]))
+      .filter(
+        (l) =>
+          l.startsWith("[liveWarm] set ") &&
+          l.includes(` event=${eventId} `) &&
+          l.includes(` atLeastRev=${rev} `),
+      );
+    log.mockRestore();
+    expect(sets).toHaveLength(locales.length);
+    const num = (l: string, k: string) => Number(l.match(new RegExp(` ${k}=(\\d+)(?: |$)`))?.[1]);
+    const iv = sets
+      .map((l) => {
+        expect(l).toMatch(/ ok=true /);
+        expect(l).toMatch(/ holdMs=1500 /);
+        return { start: num(l, "txStartAt"), end: num(l, "txEndAt"), buildStart: num(l, "buildStartAt") };
+      })
+      .sort((a, b) => a.start - b.start);
+    for (const i of iv) {
+      expect(i.end - i.start).toBeGreaterThanOrEqual(1_500);
+      // Queueing for a connection happens before the transaction starts.
+      expect(i.start).toBeGreaterThanOrEqual(i.buildStart);
+    }
+    // The first two held their connections at the same time …
+    expect(Math.max(iv[0].start, iv[1].start)).toBeLessThan(Math.min(iv[0].end, iv[1].end));
+    // … and the third locale's build only got a connection after one of
+    // them was released.
+    expect(iv[2].start).toBeGreaterThanOrEqual(Math.min(iv[0].end, iv[1].end));
   });
 });

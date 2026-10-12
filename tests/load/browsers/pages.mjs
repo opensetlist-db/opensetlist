@@ -209,7 +209,11 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         hint = sp.get("hint") === "1";
       } catch { /* keep defaults */ }
       // [t, minRev, status, x-snapshot-source, body rev, x-snapshot-verify
-      //  (raw; null = absent), hint=1 sent, request start]
+      //  (raw; null = absent), hint=1 sent, request start, body capturedAt]
+      // capturedAt (epoch ms, the snapshot transaction's PostgreSQL now())
+      // is appended after every pre-existing column (step 4); null when the
+      // body is unreadable or predates the field. Page application stays
+      // DOM-based: this records what arrived, not what React applied.
       // `t` is when the response arrived; request start (epoch ms, from
       // the browser's resource timing; null if unavailable) is the
       // "request arrival − commit" side of warm-join.mjs: whether a
@@ -221,12 +225,20 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         const st = r.request().timing().startTime;
         if (Number.isFinite(st) && st > 0) reqStart = Math.round(st);
       } catch { /* timing not available */ }
-      const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint, reqStart];
+      const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint, reqStart, null];
       rec.fetches.push(entry);
       try {
         const txt = await r.text();
         const i = txt.lastIndexOf('"rev":');
         if (i >= 0) entry[4] = parseInt(txt.slice(i + 6), 10);
+        // String scan, not JSON.parse: 30 pages × ~80 KB bodies per save
+        // on the main thread. `capturedAt` is a top-level field written
+        // after `items`, so the LAST occurrence is the body's own.
+        const j = txt.lastIndexOf('"capturedAt":"');
+        if (j >= 0) {
+          const v = Date.parse(txt.slice(j + 14, txt.indexOf('"', j + 14)));
+          if (Number.isFinite(v)) entry[8] = v;
+        }
       } catch { /* body gone (navigation/close) */ }
     });
 
@@ -336,9 +348,175 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       }
       return n;
     },
+    // --drill=overlap --overlap-page-reaction=1: the reaction ack-hold
+    // test on page i (see armAckHold below).
+    armAckHold: (i, opts) => armAckHold(pages[i], opts),
     async close() {
       await Promise.allSettled(pages.filter(Boolean).map((p) => p.context.close()));
       await browser.close().catch(() => {});
     },
   };
+}
+
+// ─── reaction ack-hold test (run.mjs --drill=overlap --overlap-page-reaction=1) ───
+// What it must expose (design §2.4): the acknowledgement of this page's
+// own reaction succeeds; THEN a snapshot that was read BEFORE the
+// reaction committed (capturedAt ≤ ackAt, a lower count for that item)
+// reaches <ReactionButtons> while the acknowledged display is held; THEN
+// a snapshot captured after the ack releases the hold. Without a server
+// fault the only way to make an older snapshot land after the ack is to
+// hold one genuine response back in this page:
+//
+//   arm   page.route on /api/setlist: the FIRST hinted request (`hint=1`,
+//         the page's notification fetch of the group's save A) is sent to
+//         the server for real (route.fetch) and its response is held;
+//   run   once a response is held: click the reaction button on anchor
+//         row A (in the page, element.click() — React's onClick), wait
+//         for the POST /api/reactions response (reactionId, counts,
+//         ackAt), then release the held response (route.fulfill), let
+//         everything after it through, and sample the button's displayed
+//         count every 20 ms in the page until a snapshot with capturedAt
+//         > ackAt has arrived (+2 s) or the window ends.
+//
+// The held response was requested before the click and fully received
+// before it, so its snapshot predates the reaction. The page's own 8 s
+// fetch deadline bounds the hold: it is released after `holdMaxMs` at the
+// latest even if the click or the ack failed (the trace then says why
+// the test was not exercised). The row is found by its marker song link
+// (`a[href*="/songs/<id>/"]` inside the row's <li>) — any of the run's A
+// markers, since save A swaps the song on the row — and the button by
+// its position among the row's `button[aria-pressed]` (REACTION_TYPES
+// order, src/lib/reactions.ts). A DOM change that breaks this shows up as
+// "button not found" in the trace and the verdict reads "not exercised",
+// never a pass.
+async function armAckHold(p, { anchorId, markerIds, typeIndex, reactionType, holdMaxMs = 5000, waitHintMs = 10000, windowMs = 30000 }) {
+  if (!p) return { run: async () => ({ error: "page not open" }) };
+  const { page } = p;
+  const responses = []; // [t, capturedAtMs, count, rev]
+  const countOf = (body) => Number(body?.reactionCounts?.[String(anchorId)]?.[reactionType] ?? 0);
+  const capOf = (body) => {
+    const v = typeof body?.capturedAt === "string" ? Date.parse(body.capturedAt) : NaN;
+    return Number.isFinite(v) ? v : null;
+  };
+  const onResp = async (r) => {
+    if (!r.url().includes("/api/setlist?")) return;
+    const t = Date.now();
+    try {
+      const body = await r.json();
+      responses.push([t, capOf(body), countOf(body), Number.isSafeInteger(body?.rev) ? body.rev : null]);
+    } catch { /* body gone */ }
+  };
+  page.on("response", onResp);
+  let held = null;
+  let captured;
+  const capturedP = new Promise((res) => { captured = res; });
+  let release;
+  const releasedP = new Promise((res) => { release = res; });
+  let taken = false;
+  const handler = async (route) => {
+    const u = route.request().url();
+    if (taken || !u.includes("/api/setlist?") || !/[?&]hint=1(?:&|$)/.test(u)) return route.fallback();
+    taken = true;
+    const reqAt = Date.now();
+    let resp;
+    try {
+      resp = await route.fetch();
+    } catch (e) {
+      captured({ error: `held fetch failed: ${String(e?.message || e).slice(0, 80)}` });
+      return route.abort().catch(() => {});
+    }
+    let body = null;
+    try { body = JSON.parse(await resp.text()); } catch { /* not JSON */ }
+    held = { reqAt, gotAt: Date.now(), status: resp.status(), rev: Number.isSafeInteger(body?.rev) ? body.rev : null, capturedAtMs: capOf(body), count: body ? countOf(body) : null, releasedAt: null };
+    captured(held);
+    await Promise.race([releasedP, new Promise((r) => setTimeout(r, holdMaxMs))]);
+    held.releasedAt = Date.now();
+    await route.fulfill({ response: resp }).catch((e) => { held.fulfillError = String(e?.message || e).slice(0, 80); });
+  };
+  await page.route("**/api/setlist*", handler);
+  const disarm = async () => {
+    release();
+    await page.unroute("**/api/setlist*", handler).catch(() => {});
+  };
+
+  async function run() {
+    const trace = { anchorId: String(anchorId), reactionType, armedAt: Date.now(), held: null, ack: null, clickAt: null, samples: [], responses, error: null };
+    try {
+      const c = await Promise.race([capturedP, new Promise((r) => setTimeout(() => r(null), waitHintMs))]);
+      if (!c) { trace.error = `no hinted fetch within ${waitHintMs} ms`; return trace; }
+      if (c.error) { trace.error = c.error; return trace; }
+      // Sampler first, so the display before the click is on record too.
+      await page.evaluate(({ ids, idx }) => {
+        const out = [];
+        window.__oslRx = out;
+        let last = null;
+        const find = () => {
+          for (const id of ids) {
+            for (const a of document.querySelectorAll(`a[href*="/songs/${id}/"]`)) {
+              const li = a.closest("li");
+              const b = li ? li.querySelectorAll("button[aria-pressed]")[idx] : null;
+              if (b) return { b, id };
+            }
+          }
+          return null;
+        };
+        window.__oslRxFind = find;
+        const tick = () => {
+          const f = find();
+          const digits = f ? (f.b.textContent || "").replace(/\D/g, "") : null;
+          const v = f ? [digits === "" ? 0 : Number(digits), f.b.getAttribute("aria-pressed"), f.id] : [null, null, null];
+          const key = v.join("|");
+          if (key !== last) { last = key; out.push([Date.now(), ...v]); }
+        };
+        tick();
+        window.__oslRxTimer = setInterval(tick, 20);
+      }, { ids: markerIds.map(String), idx: typeIndex });
+      const ackP = page.waitForResponse((r) => r.url().includes("/api/reactions") && r.request().method() === "POST", { timeout: 10000 })
+        .then(async (r) => {
+          const recvAt = Date.now();
+          let body = null;
+          try { body = await r.json(); } catch { /* not JSON */ }
+          const ackAtMs = typeof body?.ackAt === "string" ? Date.parse(body.ackAt) : NaN;
+          return { recvAt, status: r.status(), reactionId: body?.reactionId ?? null, ackAt: body?.ackAt ?? null, ackAtMs: Number.isFinite(ackAtMs) ? ackAtMs : null, count: body?.counts ? Number(body.counts[reactionType] ?? 0) : null };
+        })
+        .catch((e) => ({ error: String(e?.message || e).slice(0, 80) }));
+      trace.clickAt = await page.evaluate(() => {
+        const f = window.__oslRxFind();
+        if (!f) return null;
+        f.b.click();
+        return Date.now();
+      });
+      if (trace.clickAt == null) { trace.error = "reaction button not found in the DOM (selector unstable?)"; return trace; }
+      const ack = await ackP;
+      trace.ack = ack;
+      // Release only now: the held, pre-click snapshot must reach the
+      // component AFTER the acknowledgement.
+      release();
+      if (ack.error) { trace.error = `no POST /api/reactions response: ${ack.error}`; return trace; }
+      const end = Date.now() + windowMs;
+      let relAt = null;
+      while (Date.now() < end) {
+        if (relAt == null && ack.ackAtMs != null) {
+          const rel = responses.find((x) => x[0] >= ack.recvAt && x[1] != null && x[1] > ack.ackAtMs);
+          if (rel) relAt = rel[0];
+        }
+        if (relAt != null && Date.now() > relAt + 2000) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return trace;
+    } catch (e) {
+      trace.error = trace.error ?? `ack-hold: ${String(e?.message || e).slice(0, 120)}`;
+      return trace;
+    } finally {
+      await disarm();
+      page.off("response", onResp);
+      trace.held = held;
+      trace.samples = await page.evaluate(() => {
+        clearInterval(window.__oslRxTimer);
+        return window.__oslRx || [];
+      }).catch(() => []);
+      trace.endedAt = Date.now();
+    }
+  }
+  return { run };
 }

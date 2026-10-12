@@ -6,6 +6,7 @@ import {
 import { serializeBigInt } from "@/lib/utils";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -15,12 +16,17 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // Drill-only per-save warm fault: after auth, before anything is read
+  // or written; 400 on an unsupported spec (see the create route and
+  // `requestWarmFault`).
+  const warm = requestWarmFault(request.headers);
+  if (!warm.ok) return NextResponse.json({ error: warm.error }, { status: 400 });
   // A save the database could not even start answers 503 + Retry-After
   // (see `withAdminLiveWriterBusy`); every other outcome is unchanged.
-  return withAdminLiveWriterBusy(() => insertAfter(request));
+  return withAdminLiveWriterBusy(() => insertAfter(request, warm.fault));
 }
 
-async function insertAfter(request: NextRequest) {
+async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
   const { eventId, afterPosition } = await request.json();
 
   if (!eventId) {
@@ -127,7 +133,7 @@ async function insertAfter(request: NextRequest) {
     // rows were shifted above — clients refetch the snapshot once.
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
     return { item, rev };
-  }, (r) => r?.rev);
+  }, (r) => r?.rev, { warmFault });
 
   if (!result) {
     return NextResponse.json({ error: "Event not found" }, { status: 404 });

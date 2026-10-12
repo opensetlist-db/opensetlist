@@ -226,15 +226,15 @@ describe("runWarmJob", () => {
       });
     }
     const out = lines();
-    expect(out[0]).toMatch(/^\[liveWarm\] start event=111 rev=5 instance=[0-9a-f]{8}$/);
+    expect(out[0]).toMatch(/^\[liveWarm\] start event=111 rev=5 at=\d+ instance=[0-9a-f]{8}$/);
     const setLines = out.filter((l) => l.startsWith("[liveWarm] set "));
     expect(setLines).toHaveLength(3);
     for (const l of setLines) {
       expect(l).toMatch(
-        /^\[liveWarm\] set event=111 locale=(ko|ja|en) atLeastRev=5 rev=6 bytes=\d+ buildMs=\d+ setMs=\d+ ok=true instance=[0-9a-f]{8}$/,
+        /^\[liveWarm\] set event=111 locale=(ko|ja|en) atLeastRev=5 rev=6 bytes=\d+ buildMs=\d+ setMs=\d+ ok=true buildStartAt=\d+ buildEndAt=\d+ txStartAt=- txEndAt=- holdMs=0 captureAt=1794643200123 setStartAt=\d+ at=\d+ instance=[0-9a-f]{8}$/,
       );
     }
-    expect(out.at(-1)).toMatch(/^\[liveWarm\] done event=111 rev=5 ms=\d+ instance=[0-9a-f]{8}$/);
+    expect(out.at(-1)).toMatch(/^\[liveWarm\] done event=111 rev=5 ms=\d+ at=\d+ instance=[0-9a-f]{8}$/);
 
     // And the reader finds them.
     process.env.LIVE_WARM_ENTRIES = "1";
@@ -273,7 +273,7 @@ describe("runWarmJob", () => {
     const out = lines();
     expect(out).toContainEqual(
       expect.stringMatching(
-        /^\[liveWarm\] skip event=111 locale=ja atLeastRev=5 reason=build-error rev=- bytes=- buildMs=\d+ instance=[0-9a-f]{8}$/,
+        /^\[liveWarm\] skip event=111 locale=ja atLeastRev=5 reason=build-error rev=- bytes=- buildMs=\d+ buildStartAt=\d+ buildEndAt=\d+ at=\d+ instance=[0-9a-f]{8}$/,
       ),
     );
     expect(out.filter((l) => l.startsWith("[liveWarm] set "))).toHaveLength(2);
@@ -289,7 +289,7 @@ describe("runWarmJob", () => {
     await runWarmJob(EVENT, BigInt(5));
     const skips = lines().filter((l) => l.startsWith("[liveWarm] skip "));
     expect(skips).toHaveLength(3);
-    expect(skips[0]).toMatch(/reason=oversize rev=6 bytes=\d+ buildMs=\d+ instance=/);
+    expect(skips[0]).toMatch(/reason=oversize rev=6 bytes=\d+ buildMs=\d+ buildStartAt=\d+ buildEndAt=\d+ at=\d+ instance=/);
     process.env.LIVE_WARM_ENTRIES = "1";
     expect((await warmLookup(EVENT, "ko", 5)).result).toBe("miss");
   });

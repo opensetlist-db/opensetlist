@@ -59,8 +59,8 @@ test("arrivals split at warm-complete; other minRev kept apart", () => {
   const j = join(JSON_IN, LOG);
   // ko: 50 before (miss), 200 after (hit); ja: 300 after (hit); en: 100
   // before (miss), and one with minRev 21 (another key).
-  assert.deepEqual(j.sdk, { n: 5, after: 2, afterHits: 2, before: 2, beforeHits: 0, hits: 2, otherKey: 1 });
-  assert.deepEqual(j.pages, { n: 1, after: 1, afterHits: 0, before: 0, beforeHits: 0, hits: 0, otherKey: 0 });
+  assert.deepEqual(j.sdk, { n: 5, after: 2, afterHits: 2, before: 2, beforeHits: 0, hits: 2, otherKey: 1, newer: 0 });
+  assert.deepEqual(j.pages, { n: 1, after: 1, afterHits: 0, before: 0, beforeHits: 0, hits: 0, otherKey: 0, newer: 0 });
   const md = toMarkdown(j);
   assert.match(md, /\*\*SDK\*\*: first hinted fetches 5; arrived after warm-complete 2\/4 \(50 %\); hit rate after 2\/2 \(100 %\), before 0\/2 \(0 %\)/);
   assert.match(md, /\| ko \| stored \| 110 \|/);

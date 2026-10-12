@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { INSTANCE_ID } from "@/lib/instanceId";
-import { scheduleWarm } from "@/lib/liveWarm";
+import { scheduleWarm, type WarmFault } from "@/lib/liveWarm";
 import {
   classifyPreExecutionFailure,
   describeError,
@@ -28,7 +28,7 @@ import {
  * connect timeout so a contended save fails into the 503 below first.
  *
  * Timing, logged once per transaction:
- *   `[liveWriter] route=<tag> acquireMs=<n> execMs=<n> rev=<n|-> ok=<bool> instance=<id>`
+ *   `[liveWriter] route=<tag> acquireMs=<n> execMs=<n> rev=<n|-> ok=<bool> at=<ms> instance=<id>`
  *   - acquireMs: `$transaction` call → the callback being entered. Prisma
  *     enters the callback after it obtained a pool connection and ran
  *     BEGIN, so this is pool acquisition (+ one BEGIN round trip). It is
@@ -45,6 +45,12 @@ import {
  *     it as a side effect: `liveBroadcast.ts` stays free of server-only
  *     imports (pg, async_hooks), so its topic/event constants remain
  *     importable from anywhere.
+ *   - at: `Date.now()` epoch ms when `$transaction` settled (resolved =
+ *     committed, or rejected). Explicit because Vercel's history-mode
+ *     logs stamp every line of a request with the request's START time,
+ *     which for a save that waited on a lock or the pool is not when it
+ *     committed; the overlap drills order commits against warm jobs
+ *     (`[liveWarm] … at=`) by this field.
  * Failures additionally log
  *   `[liveWriter] failed route=<tag> kind=<pre-execution kind|other> err=<class>:<msg> instance=<id>`.
  *
@@ -105,6 +111,14 @@ const executedFailures = new WeakSet<object>();
  * that changed nothing (`rev` null) has no new revision to warm. The
  * CSV import route does not use this wrapper and so never warms (an
  * off-peak bulk replace, not a live save).
+ *
+ * `opts.warmFault`: a drill fault for THIS save's warm job, parsed and
+ * validated by the calling ADMIN route (`requestWarmFault`, after its
+ * auth check and before this transaction) and handed through by value
+ * to `scheduleWarm`. This wrapper never reads request headers itself:
+ * the public writers use it too, and they must have no way to select a
+ * fault. Omitted (every public writer, every unarmed admin save) = null
+ * = the job uses the env fault, if any.
  */
 export async function liveWriterTransaction<T>(
   route: string,
@@ -112,8 +126,13 @@ export async function liveWriterTransaction<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   revOf: (result: T) => bigint | null | undefined = (r) =>
     typeof r === "bigint" ? r : null,
+  opts?: { warmFault?: WarmFault | null },
 ): Promise<T> {
-  const t = { called: Date.now(), entered: null as number | null };
+  const t = {
+    called: Date.now(),
+    entered: null as number | null,
+    settled: null as number | null,
+  };
   let rev: bigint | null = null;
   let ok = false;
   let result: T;
@@ -125,9 +144,11 @@ export async function liveWriterTransaction<T>(
       },
       { maxWait: LIVE_WRITER_MAX_WAIT_MS, timeout: LIVE_WRITER_TIMEOUT_MS },
     );
+    t.settled = Date.now();
     ok = true;
     rev = revOf(result) ?? null;
   } catch (err) {
+    t.settled ??= Date.now();
     const kind =
       t.entered === null ? classifyPreExecutionFailure(err) : null;
     if (t.entered !== null && err !== null && typeof err === "object") {
@@ -140,18 +161,20 @@ export async function liveWriterTransaction<T>(
     if (kind) throw new LiveWriterBusyError(kind, route, err);
     throw err;
   } finally {
-    const end = Date.now();
+    // `settled` is always set by now (success path or catch); the
+    // fallback only satisfies the type.
+    const end = t.settled ?? Date.now();
     const acquireMs = (t.entered ?? end) - t.called;
     const execMs = t.entered === null ? 0 : end - t.entered;
     console.log(
       `[liveWriter] route=${route} acquireMs=${acquireMs} execMs=${execMs} ` +
-        `rev=${rev ?? "-"} ok=${ok} instance=${INSTANCE_ID}`,
+        `rev=${rev ?? "-"} ok=${ok} at=${end} instance=${INSTANCE_ID}`,
     );
   }
   // Only reached when the transaction resolved (the catch rethrows).
   // After the `[liveWriter]` line, so the harness's commit timestamp
   // precedes the job's `[liveWarm] start`. `scheduleWarm` never throws.
-  if (rev !== null) scheduleWarm(eventId, rev);
+  if (rev !== null) scheduleWarm(eventId, rev, opts?.warmFault ?? null);
   return result;
 }
 

@@ -24,7 +24,12 @@
 //     server sees it about half a round trip later; the lookup happens
 //     right on arrival.
 //   - warm-complete − commit, per locale: when that locale's entry was
-//     stored, measured from the job start. A history-mode log stamps
+//     stored. Preferred source (step 4 servers): the explicit server
+//     timestamps — the `set` line's `at` (the set settled) minus the
+//     save's `[liveWriter] … at=` (its transaction settled = the commit),
+//     both the same function clock family (Date.now() on Vercel; across
+//     instances they may differ by tens of ms). Labelled "at". Older
+//     logs fall back to the reconstruction below. A history-mode log stamps
 //     every line of the save request (the warm job's lines included)
 //     with the request's START time, so the per-locale offsets are
 //     REBUILT from the job's own numbers: the job runs the locales from a
@@ -63,10 +68,22 @@ function pct(values, p) {
 const d = (v) => (v == null ? "—" : String(Math.round(v)));
 const share = (a, b) => (b ? `${a}/${b} (${((a / b) * 100).toFixed(0)} %)` : "0/0");
 
-// Per-locale completion offsets (ms from job start) — see the header.
-// Returns { offsets: {locale: ms}, how: "log" | "rebuilt", unaccounted }.
-export function localeOffsets(job, { concurrency = 2, order = ["ko", "ja", "en"] } = {}) {
+// Per-locale completion offsets — see the header. Returns { offsets:
+// {locale: ms}, how: "at" | "log" | "rebuilt", unaccounted }.
+//   at       `at` of each set / skip − `commitAt` (the save's writer
+//            `at`); without a writer line, − the job's own start `at`;
+//   log      follow mode: line time − start line time (job-start based);
+//   rebuilt  history mode on an older log: buildMs + setMs over the
+//            workers (job-start based).
+export function localeOffsets(job, { concurrency = 2, order = ["ko", "ja", "en"], commitAt = null } = {}) {
   const lines = [...job.sets.map((x) => ({ ...x, kind: "set" })), ...job.skips.map((x) => ({ ...x, kind: "skip" }))];
+  const base = commitAt ?? job.start?.at ?? null;
+  if (base != null && lines.length > 0 && lines.every((x) => x.at != null)) {
+    const offsets = {};
+    for (const x of lines) offsets[x.locale] = x.at - base;
+    const last = Math.max(...Object.values(offsets));
+    return { offsets, how: "at", unaccounted: job.done?.at != null ? job.done.at - base - last : null };
+  }
   const t0 = job.start?.t ?? null;
   // Follow mode: every line has its own time, distinct from the start's.
   const ownTimes = t0 != null && lines.length > 0 && lines.every((x) => x.t != null && x.eid !== job.start.eid && x.t >= t0);
@@ -94,6 +111,10 @@ export function localeOffsets(job, { concurrency = 2, order = ["ko", "ja", "en"]
 export function join(json, logText, { addHours = 0, concurrency = 2, order = ["ko", "ja", "en"] } = {}) {
   const saves = json?.warm?.saves;
   if (!Array.isArray(saves)) throw new Error("browsers JSON has no `warm.saves` section (written by an older run.mjs?)");
+  // Overlap runs: `warm.groups` (every intended save of a group with its
+  // gate anchors). The per-save rows above carry `k` + `who`, so the join
+  // itself stays per save; the groups only add the group header lines.
+  const groups = Array.isArray(json?.warm?.groups) ? json.warm.groups : null;
   const { recs } = parseLog(logText);
   const w = warming(recs);
   const writers = recs.filter((r) => r.kind === "writer" && r.f.ok === "true");
@@ -102,10 +123,15 @@ export function join(json, logText, { addHours = 0, concurrency = 2, order = ["k
     const rev = String(s.rev);
     const jobs = w.jobs.filter((j) => String(j.rev) === rev);
     const job = jobs[0] ?? null;
-    const off = job ? localeOffsets(job, { concurrency, order }) : null;
-    const stored = new Set(job ? job.sets.filter((x) => x.ok).map((x) => x.locale) : []);
     // Sanity: log writer time (UTC seconds of day) − harness PUT start.
     const wr = writers.find((r) => String(r.f.rev) === rev);
+    const commitAt = wr && Number.isFinite(Number(wr.f.at)) ? Number(wr.f.at) : null;
+    const off = job ? localeOffsets(job, { concurrency, order, commitAt }) : null;
+    const stored = new Set(job ? job.sets.filter((x) => x.ok).map((x) => x.locale) : []);
+    // Key identity is (event, atLeastRev) — never content. A job for key R
+    // may store a NEWER snapshot (a later save committed before its
+    // build): "entry rev ≠ key rev" lists those locales with the stored rev.
+    const entryNewer = job ? job.sets.filter((x) => x.ok && x.rev != null && String(x.rev) !== rev).map((x) => `${x.locale}→${x.rev}`) : [];
     let skewMs = null;
     if (wr && wr.t != null && s.putStart != null) {
       const logTod = (((wr.t + addHours * 3600) % 86400) + 86400) % 86400;
@@ -127,8 +153,11 @@ export function join(json, logText, { addHours = 0, concurrency = 2, order = ["k
         const after = complete == null ? [] : sameKey.filter((x) => x[2] > complete);
         const before = complete == null ? sameKey : sameKey.filter((x) => x[2] <= complete);
         const hits = (xs) => xs.filter((x) => x[4] === "warm").length;
+        // "served newer than key": a warm answer for this key whose body
+        // rev (column 7, step-4 JSON) is above the key's rev.
+        const newer = sameKey.filter((x) => x[4] === "warm" && x[7] != null && Number(x[7]) > Number(rev)).length;
         return {
-          n: mine.length, otherKey: mine.length - sameKey.length,
+          n: mine.length, otherKey: mine.length - sameKey.length, newer,
           arrivalP50: pct(mine.map((x) => x[2]), 0.5), arrivalP95: pct(mine.map((x) => x[2]), 0.95),
           after: after.length, afterHits: hits(after), before: before.length, beforeHits: hits(before),
           hits: hits(mine),
@@ -137,7 +166,7 @@ export function join(json, logText, { addHours = 0, concurrency = 2, order = ["k
       return { locale, stored: stored.has(locale), complete, sdk: pop(s.sdk), pages: pop(s.pages) };
     });
     out.push({
-      k: s.k, rev, putEndIso: s.putEndIso, job: job ? { instance: job.instance, doneMs: job.done?.ms ?? null, jobs: jobs.length } : null,
+      k: s.k, who: s.who ?? null, rev, putEndIso: s.putEndIso, entryNewer, job: job ? { instance: job.instance, doneMs: job.done?.ms ?? null, jobs: jobs.length } : null,
       how: off?.how ?? null, unaccounted: off?.unaccounted ?? null, skewMs,
       logLookups: perRev ? { lookups: perRev.lookups, hits: perRev.results.hit, hinted: perRev.hinted, reader: perRev.readerBuilds, warm: perRev.warmBuilds } : null,
       rows,
@@ -145,11 +174,11 @@ export function join(json, logText, { addHours = 0, concurrency = 2, order = ["k
   }
   // Run level, per population.
   const total = (pop) => {
-    const t = { n: 0, after: 0, afterHits: 0, before: 0, beforeHits: 0, hits: 0, otherKey: 0 };
+    const t = { n: 0, after: 0, afterHits: 0, before: 0, beforeHits: 0, hits: 0, otherKey: 0, newer: 0 };
     for (const s of out) for (const r of s.rows) for (const k of Object.keys(t)) t[k] += r[pop][k];
     return t;
   };
-  return { saves: out, sdk: total("sdk"), pages: total("pages"), jobsInLogs: w.jobs.length };
+  return { saves: out, sdk: total("sdk"), pages: total("pages"), jobsInLogs: w.jobs.length, groups };
 }
 
 export function toMarkdown(j, { source = "" } = {}) {
@@ -159,22 +188,27 @@ export function toMarkdown(j, { source = "" } = {}) {
   L.push("Per save and locale: warm-complete − commit (commit proxy = the PUT's response), and each client's FIRST notification fetch of the save split by whether it left after that locale's entry existed. hit = `x-snapshot-source: warm`.");
   L.push("");
   for (const [name, t] of [["SDK", j.sdk], ["pages", j.pages]]) {
-    L.push(`- **${name}**: first hinted fetches ${t.n}; arrived after warm-complete ${share(t.after, t.n - t.otherKey)}; hit rate after ${share(t.afterHits, t.after)}, before ${share(t.beforeHits, t.before)}; all hits ${t.hits}; minRev ≠ rev ${t.otherKey}`);
+    L.push(`- **${name}**: first hinted fetches ${t.n}; arrived after warm-complete ${share(t.after, t.n - t.otherKey)}; hit rate after ${share(t.afterHits, t.after)}, before ${share(t.beforeHits, t.before)}; all hits ${t.hits}; minRev ≠ rev ${t.otherKey}; served newer than key ${t.newer}`);
   }
   L.push(`- warm jobs in the logs: ${j.jobsInLogs}`);
+  if (j.groups) {
+    L.push(`- overlap groups (head = highest committed rev; the gate clock is the last save start): ${j.groups.map((g) => `${g.k}: ${(g.saves || []).map((x) => `${x.who} ${x.rev ?? x.status}`).join(", ")} → head ${g.head ?? "—"}`).join("; ")}`);
+  }
+  L.push("- offsets: `at` = server timestamps (set `at` − writer `at`); `log` / `rebuilt` = job-start based (older logs).");
   L.push("");
-  L.push("| # | rev | warm job (start → done ms) | offsets | log PUT − harness PUT ms | log: lookups / hits / hinted; builds warm / reader | locale | entry | warm-complete − commit ms | SDK: n, arrival p50 / p95, after (hits) / before (hits) | pages: same |");
-  L.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  L.push("| # | rev | warm job (start → done ms) | offsets | log PUT − harness PUT ms | log: lookups / hits / hinted; builds warm / reader | entry rev ≠ key rev | locale | entry | warm-complete − commit ms | SDK: n, arrival p50 / p95, after (hits) / before (hits) | pages: same |");
+  L.push("|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of j.saves) {
     const job = s.job ? `${s.job.instance} (${d(s.job.doneMs)})${s.job.jobs > 1 ? ` +${s.job.jobs - 1} more` : ""}` : "none in the logs";
     const how = s.how ? `${s.how}${s.unaccounted != null ? `, unaccounted ${d(s.unaccounted)} ms` : ""}` : "—";
     const lg = s.logLookups ? `${s.logLookups.lookups} / ${s.logLookups.hits} / ${s.logLookups.hinted}; ${s.logLookups.warm} / ${s.logLookups.reader}` : "—";
-    const cell = (p) => `${p.n}, ${d(p.arrivalP50)} / ${d(p.arrivalP95)}, ${p.after} (${p.afterHits}) / ${p.before} (${p.beforeHits})${p.otherKey ? `, minRev ≠ rev ${p.otherKey}` : ""}`;
+    const cell = (p) => `${p.n}, ${d(p.arrivalP50)} / ${d(p.arrivalP95)}, ${p.after} (${p.afterHits}) / ${p.before} (${p.beforeHits})${p.otherKey ? `, minRev ≠ rev ${p.otherKey}` : ""}${p.newer ? `, served newer ${p.newer}` : ""}`;
+    const en = s.entryNewer.length ? s.entryNewer.join(", ") : "—";
     s.rows.forEach((r, i) => {
-      const head = i === 0 ? `| ${s.k} | ${s.rev} | ${job} | ${how} | ${d(s.skewMs)} | ${lg} ` : "| | | | | | ";
+      const head = i === 0 ? `| ${s.k}${s.who ?? ""} | ${s.rev} | ${job} | ${how} | ${d(s.skewMs)} | ${lg} | ${en} ` : "| | | | | | | ";
       L.push(`${head}| ${r.locale} | ${r.stored ? "stored" : "—"} | ${d(r.complete)} | ${cell(r.sdk)} | ${cell(r.pages)} |`);
     });
-    if (!s.rows.length) L.push(`| ${s.k} | ${s.rev} | ${job} | ${how} | ${d(s.skewMs)} | ${lg} | — | — | — | — | — |`);
+    if (!s.rows.length) L.push(`| ${s.k}${s.who ?? ""} | ${s.rev} | ${job} | ${how} | ${d(s.skewMs)} | ${lg} | ${en} | — | — | — | — | — |`);
   }
   L.push("");
   return L.join("\n");

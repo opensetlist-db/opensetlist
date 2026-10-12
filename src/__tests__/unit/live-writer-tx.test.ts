@@ -17,7 +17,7 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { prisma } from "@/lib/prisma";
-import { scheduleWarm } from "@/lib/liveWarm";
+import { scheduleWarm, type WarmFault } from "@/lib/liveWarm";
 
 const EV = BigInt(111);
 
@@ -59,7 +59,7 @@ const maxWait = () =>
 
 const lines = () => vi.mocked(console.log).mock.calls.map((c) => String(c[0]));
 const LINE =
-  /^\[liveWriter\] route=(\S+) acquireMs=(\d+) execMs=(\d+) rev=(\S+) ok=(true|false) instance=[0-9a-f]{8}$/;
+  /^\[liveWriter\] route=(\S+) acquireMs=(\d+) execMs=(\d+) rev=(\S+) ok=(true|false) at=\d+ instance=[0-9a-f]{8}$/;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -114,7 +114,7 @@ describe("liveWriterTransaction", () => {
       return BigInt(1);
     });
     vi.useRealTimers();
-    expect(lines()[0]).toMatch(/ acquireMs=300 execMs=45 rev=1 ok=true /);
+    expect(lines()[0]).toMatch(/ acquireMs=300 execMs=45 rev=1 ok=true at=345 /);
   });
 
   it.each([
@@ -165,7 +165,7 @@ describe("liveWriterTransaction → writer warming hook", () => {
     });
     await liveWriterTransaction("admin-swap", EV, async () => BigInt(7));
     expect(scheduleWarm).toHaveBeenCalledTimes(1);
-    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(7));
+    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(7), null);
   });
 
   it("uses the revision read by revOf", async () => {
@@ -176,7 +176,42 @@ describe("liveWriterTransaction → writer warming hook", () => {
       async () => ({ kind: "ok", rev: BigInt(41) }),
       (r) => r.rev,
     );
-    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(41));
+    expect(scheduleWarm).toHaveBeenCalledWith(EV, BigInt(41), null);
+  });
+
+  it("opts.warmFault is handed to scheduleWarm by value; omitted → null", async () => {
+    const fault = { label: "slowset:1500" } as unknown as WarmFault;
+    enters();
+    await liveWriterTransaction(
+      "admin-update",
+      EV,
+      async () => ({ kind: "ok", rev: BigInt(41) }),
+      (r) => r.rev,
+      { warmFault: fault },
+    );
+    // `undefined` revOf keeps the default (the result is the revision).
+    enters();
+    await liveWriterTransaction("admin-swap", EV, async () => BigInt(42), undefined, {
+      warmFault: fault,
+    });
+    enters();
+    await liveWriterTransaction("admin-swap", EV, async () => BigInt(43), undefined, {});
+    expect(vi.mocked(scheduleWarm).mock.calls).toEqual([
+      [EV, BigInt(41), fault],
+      [EV, BigInt(42), fault],
+      [EV, BigInt(43), null],
+    ]);
+  });
+
+  it("a fault never schedules anything for a save without a revision or a failed one", async () => {
+    const fault = { label: "seterror" } as unknown as WarmFault;
+    enters();
+    await liveWriterTransaction("admin-x", EV, async () => null, undefined, { warmFault: fault });
+    enters(new Error("commit failed"));
+    await liveWriterTransaction("admin-x", EV, async () => BigInt(2), undefined, {
+      warmFault: fault,
+    }).catch(() => {});
+    expect(scheduleWarm).not.toHaveBeenCalled();
   });
 
   it("a save that changed nothing (no revision) never warms", async () => {

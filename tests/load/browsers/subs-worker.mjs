@@ -107,7 +107,26 @@ import { startLagMonitor, HEARTBEAT_MS } from "./hostmon.mjs";
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0 } = workerData;
+const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null } = workerData;
+// --drill=overlap: the id of anchor row A. When set, every response's
+// title for that row's song is recorded (`anchorTitle`, see `reqs`) so a
+// stale snapshot can be proven by CONTENT (the catalog-edit race: a warm
+// entry captured before the song's title changed, published after the
+// expiry). The snapshot carries the song's raw `originalTitle` plus a
+// locale-filtered translation; the catalog edit changes `originalTitle`
+// only, so that is the field recorded. null = not an overlap run.
+const ANCHOR_ID = anchorId == null ? null : String(anchorId);
+const anchorTitleOf = (body) => {
+  if (ANCHOR_ID === null) return null;
+  const it = body.items.find((x) => String(x?.id) === ANCHOR_ID);
+  return it?.songs?.[0]?.song?.originalTitle ?? null;
+};
+// The body's `capturedAt` (ISO, the snapshot transaction's PostgreSQL
+// now()) as epoch ms; null when absent (an older server).
+const capturedAtOf = (body) => {
+  const v = typeof body?.capturedAt === "string" ? Date.parse(body.capturedAt) : NaN;
+  return Number.isFinite(v) ? v : null;
+};
 const EVENT = String(eventId);
 // The writer's own topic and event name, so a rename on either side
 // cannot silently leave the population listening to nothing.
@@ -166,16 +185,22 @@ function makeSub(idx) {
     fallbacks: [],
     recreates: [], // [t, attempt] channel re-creations by the recovery timer
     applied: [], // [t, rev] whenever the applied rev increases
-    // [t, rev, reason] for EVERY snapshot the acceptance rule applied, in
-    // order — not only increases — so the run can prove the applied rev
-    // never went backwards and say which fetch reason delivered a rev.
+    // [t, rev, reason, capturedAt] for EVERY snapshot the acceptance rule
+    // applied, in order — not only increases — so the run can prove the
+    // applied (rev, capturedAt) never went backwards and say which fetch
+    // reason delivered a rev. capturedAt = the body's, epoch ms (null
+    // from an older server); appended column (step 4).
     appliedAll: [],
     // [t, rev, what] per `rev` broadcast: "n" = news (noteHint true →
     // notification requested), "d" = not news (rev ≤ serverRev), "x" =
     // dropped by the drill, "i" = invalid payload (rev null then).
     bcasts: [],
     // [tStart, reason, generic 0/1, hint, notify 0/1, minRev, status,
-    //  verify kind, body rev, hint resolution, tEnd, outcome, source]
+    //  verify kind, body rev, hint resolution, tEnd, outcome, source,
+    //  capturedAt, anchorTitle]
+    // capturedAt = the body's (epoch ms, PostgreSQL clock), anchorTitle =
+    // anchor row A's song originalTitle (overlap drill only, else null);
+    // both appended in step 4, after every pre-existing column.
     // status 0 = network error / deadline; outcome ok | failed | cancelled;
     // source = the `x-snapshot-source` header of a 200 (build | cache |
     // repair | warm; "none" when absent), null otherwise. `warm` = the
@@ -218,7 +243,7 @@ function makeSub(idx) {
       const hint = request?.hint ?? null;
       const notify = request?.notify === true;
       const minRev = acceptance.minRevFor(hint);
-      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null];
+      const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null, null, null];
       rec.reqs.push(row);
       bump(rec.fetches, reason);
       let settled = false;
@@ -268,13 +293,15 @@ function makeSub(idx) {
           const verify = parseSnapshotVerify(res.headers.get(SNAPSHOT_VERIFY_HEADER));
           row[7] = verify.kind;
           row[8] = isValidRev(body.rev) ? body.rev : null;
+          row[13] = capturedAtOf(body);
+          row[14] = anchorTitleOf(body);
           bump(rec.verifyKinds, verify.kind);
           const v = acceptance.evaluate(generation, body, verify, hint);
           if (v.kind === "stale-generation") return finish(CANCELLED);
           noteServerRev();
           row[9] = v.hint;
           if (v.hint !== "none") bump(rec.hintRes, v.hint);
-          if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason]);
+          if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason, row[13]]);
           if (v.apply && v.version && (lastAppliedRev === null || v.version.rev > lastAppliedRev)) {
             lastAppliedRev = v.version.rev;
             rec.applied.push([Date.now(), v.version.rev]);
