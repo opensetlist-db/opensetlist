@@ -8,6 +8,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -40,7 +41,12 @@ async function findItemEventId(itemId: bigint): Promise<bigint | null> {
 export async function PUT(request: NextRequest, props: Props) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
-  return withAdminLiveWriterBusy(() => updateItem(request, props));
+  // Drill-only per-save warm fault: after auth, before anything is read
+  // or written; 400 on an unsupported spec (see the create route and
+  // `requestWarmFault`).
+  const warm = requestWarmFault(request.headers);
+  if (!warm.ok) return NextResponse.json({ error: warm.error }, { status: 400 });
+  return withAdminLiveWriterBusy(() => updateItem(request, props, warm.fault));
 }
 
 export async function DELETE(_request: NextRequest, props: Props) {
@@ -49,7 +55,11 @@ export async function DELETE(_request: NextRequest, props: Props) {
   return withAdminLiveWriterBusy(() => deleteItem(props));
 }
 
-async function updateItem(request: NextRequest, { params }: Props) {
+async function updateItem(
+  request: NextRequest,
+  { params }: Props,
+  warmFault: WarmFault | null,
+) {
   const { id } = await params;
   const itemId = BigInt(id);
   const body = await request.json();
@@ -149,7 +159,7 @@ async function updateItem(request: NextRequest, { params }: Props) {
     });
     const rev = await bumpSetlistRevisionAndBroadcast(tx, eventId);
     return { kind: "ok" as const, item, rev };
-  }, (r) => (r.kind === "ok" ? r.rev : null));
+  }, (r) => (r.kind === "ok" ? r.rev : null), { warmFault });
 
   if (result.kind === "invalid") {
     return NextResponse.json({ error: result.error }, { status: 400 });

@@ -100,7 +100,11 @@ vi.mock("@/lib/liveWarm", async (importOriginal) => ({
   warmLookup: vi.fn(async () => ({ result: "miss" })),
 }));
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
+  buildEventSnapshot,
+  type SnapshotBuildTiming,
   getLiveSnapshot,
   parseHint,
   parseMinRev,
@@ -631,5 +635,66 @@ describe("getLiveSnapshot — writer-warmed entries (LIVE_WARM_ENTRIES)", () => 
     process.env.LIVE_WARM_ENTRIES = "0";
     await getLiveSnapshot(BigInt(1), "ja", 5, { hint: true });
     expect(warmLookup).not.toHaveBeenCalled();
+  });
+});
+
+// n14 step 4: the warm job's `slowbuild` drill hold and the timing
+// out-param. The hold must sit INSIDE the REPEATABLE READ transaction,
+// after the first (snapshot-establishing) statement, and the reader path
+// must never apply one.
+describe("buildEventSnapshot — drill hold + timing (warm job only)", () => {
+  it("holdMs sleeps after the first statement, inside the transaction, and is reported in timing", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const timing: SnapshotBuildTiming = {};
+    const built = buildEventSnapshot(BigInt(1), "ja", { holdMs: 1500, timing });
+    await vi.advanceTimersByTimeAsync(0);
+    // First statement ran (snapshot established, connection held) …
+    expect(db.builds).toBe(1);
+    expect(timing.txStartAt).toBe(10_000);
+    // … and nothing after it until the hold is over.
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(timing.txEndAt).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    const snap = await built;
+    expect(snap.rev).toBe(BigInt(5));
+    expect(timing.holdMs).toBe(1500);
+    expect(timing.txEndAt! - timing.txStartAt!).toBeGreaterThanOrEqual(1500);
+    // The transaction limits are unchanged by the hold.
+    expect(vi.mocked(prisma.$transaction).mock.calls[0][1]).toMatchObject({
+      maxWait: 5_000,
+      timeout: 10_000,
+    });
+  });
+
+  it("clamps the hold to SLOWBUILD_MAX_MS (5 s) and ignores non-positive / non-finite values", async () => {
+    vi.useFakeTimers();
+    const big: SnapshotBuildTiming = {};
+    const p = buildEventSnapshot(BigInt(1), "ja", { holdMs: 60_000, timing: big });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await p;
+    expect(big.holdMs).toBe(5_000);
+    for (const holdMs of [0, -5, Number.NaN]) {
+      const t: SnapshotBuildTiming = {};
+      await buildEventSnapshot(BigInt(1), "ja", { holdMs, timing: t });
+      expect(t.holdMs).toBe(0);
+    }
+  });
+
+  it("without options (the reader path) there is no hold and no timing work", async () => {
+    vi.useFakeTimers();
+    // Would never settle under fake timers if a hold were applied.
+    await expect(getLiveSnapshot(BigInt(1), "ja")).resolves.toMatchObject({ source: "build" });
+    await expect(buildEventSnapshot(BigInt(1), "ko")).resolves.toMatchObject({ rev: BigInt(5) });
+  });
+
+  it("the reader-side callers in liveSnapshot.ts pass no options (source check)", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/lib/liveSnapshot.ts"), "utf8");
+    // Every call site (the definition is `buildEventSnapshot(\n`).
+    const calls = src.match(/buildEventSnapshot\([^\r\n]+/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const c of calls) {
+      expect(c.trim()).toBe("buildEventSnapshot(BigInt(eventIdKey), locale as Locale),");
+    }
   });
 });

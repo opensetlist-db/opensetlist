@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getCache, waitUntil, type RuntimeCache } from "@vercel/functions";
+import { INSTANCE_ID } from "@/lib/instanceId";
 
 /**
  * Cross-request data cache for public SSR reads.
@@ -302,15 +303,43 @@ export function warmEntryCache(): RuntimeCache {
  * its 90 s TTL. A warm job that was already building when this runs
  * can still store a pre-edit snapshot after the expiry (late fill);
  * that window is accepted.
+ *
+ * Logged as two lines with explicit server-clock timestamps:
+ *   [dataCache] expire-warm phase=start at=<ms> instance=<id>
+ *   [dataCache] expire-warm phase=done ok=<bool> ms=<n> at=<ms> instance=<id>
+ * `start` is right before the `expireTag` call (the catalog write has
+ * committed by then — this runs after it), `done` when its promise
+ * settled. The overlap drills place a catalog edit between a warm job's
+ * capture and its `set` from these (the late-fill race above); Vercel's
+ * history-mode logs stamp a request's lines with the request START, so
+ * the line's own timestamp cannot tell when the expiry actually ran.
  */
 function expireWarmPublicData(): void {
+  const startedAt = Date.now();
+  console.log(`[dataCache] expire-warm phase=start at=${startedAt} instance=${INSTANCE_ID}`);
+  const settled = (ok: boolean) => {
+    const at = Date.now();
+    console.log(
+      `[dataCache] expire-warm phase=done ok=${ok} ms=${at - startedAt} at=${at} ` +
+        `instance=${INSTANCE_ID}`,
+    );
+  };
   const fail = (err: unknown) =>
     console.error(`[dataCache] expireTag(${WARM_PUBLIC_DATA_TAG}) failed`, err);
   let pending: Promise<void>;
   try {
-    pending = warmEntryCache().expireTag(WARM_PUBLIC_DATA_TAG).catch(fail);
+    pending = warmEntryCache()
+      .expireTag(WARM_PUBLIC_DATA_TAG)
+      .then(
+        () => settled(true),
+        (err: unknown) => {
+          fail(err);
+          settled(false);
+        },
+      );
   } catch (err) {
     fail(err);
+    settled(false);
     return;
   }
   try {

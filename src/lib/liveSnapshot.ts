@@ -10,6 +10,7 @@ import { revToNumber } from "@/lib/liveBroadcast";
 import {
   __resetLiveWarmStateForTests,
   liveWarmEnabled,
+  SLOWBUILD_MAX_MS,
   warmLookup,
 } from "@/lib/liveWarm";
 import type { ServerSnapshotVerify } from "@/lib/snapshotVerify";
@@ -99,19 +100,83 @@ export function __setSnapshotEstablishedHookForTests(
 const buildContext = new AsyncLocalStorage<{ builtIds: string[] }>();
 
 /**
+ * Timing a caller can ask the builder to record (an out-param, filled
+ * in place). Used by the writer warm job (`src/lib/liveWarm.ts`) for its
+ * `[liveWarm] set` line; all values `Date.now()` epoch ms of this
+ * server.
+ *   txStartAt — the transaction callback was entered: Prisma obtained a
+ *               pool connection and ran BEGIN. Waiting for a connection
+ *               happens BEFORE this, so `txStartAt − <call time>` is
+ *               queueing, and `[txStartAt, txEndAt]` is the interval a
+ *               connection was actually held by this build.
+ *   txEndAt   — the callback returned or threw (COMMIT follows).
+ *   holdMs    — the `holdMs` actually applied (after clamping); 0 when
+ *               none.
+ * Not set at all when the transaction never started.
+ */
+export type SnapshotBuildTiming = {
+  txStartAt?: number;
+  txEndAt?: number;
+  holdMs?: number;
+};
+
+export type BuildSnapshotOptions = {
+  /**
+   * Drill only (`slowbuild` warm fault): sleep this long INSIDE the
+   * REPEATABLE READ transaction, right after the snapshot-establishing
+   * first statement — the capture is fixed and the pool connection is
+   * held for the whole sleep. Clamped to `SLOWBUILD_MAX_MS` (5 s) so it
+   * stays well inside this transaction's 10 s `timeout`; the limits
+   * below are deliberately NOT raised for it. The reader path
+   * (`cachedSnapshot`, `cachedSnapshotAtRev`) never passes it.
+   */
+  holdMs?: number;
+  /** Out-param, see `SnapshotBuildTiming`. */
+  timing?: SnapshotBuildTiming;
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Wrap a transaction callback so it stamps entry/exit into `timing`.
+// Without a timing record (every reader build) the callback is passed
+// through untouched — no extra closure, no extra work.
+function withTxTiming<R>(
+  timing: SnapshotBuildTiming | undefined,
+  fn: (tx: Prisma.TransactionClient) => Promise<R>,
+): (tx: Prisma.TransactionClient) => Promise<R> {
+  if (!timing) return fn;
+  return async (tx) => {
+    timing.txStartAt = Date.now();
+    try {
+      return await fn(tx);
+    } finally {
+      timing.txEndAt = Date.now();
+    }
+  };
+}
+
+/**
  * Build one snapshot from the database. Uncached; exported for the
  * integration tests and wrapped by `getLiveSnapshot` for everything
- * else.
+ * else. `options` is for the writer warm job only (timing out-param,
+ * drill hold); readers call it with two arguments.
  */
 export async function buildEventSnapshot(
   eventId: bigint,
   locale: Locale,
+  options: BuildSnapshotOptions = {},
 ): Promise<EventSnapshot> {
   const started = Date.now();
   const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
+  const { timing } = options;
+  const requestedHold = options.holdMs ?? 0;
+  const holdMs =
+    Number.isFinite(requestedHold) && requestedHold > 0
+      ? Math.min(Math.floor(requestedHold), SLOWBUILD_MAX_MS)
+      : 0;
 
   const raw = await prisma.$transaction(
-    async (tx) => {
+    withTxTiming(timing, async (tx) => {
       // FIRST statement — establishes the REPEATABLE READ snapshot.
       // LEFT JOIN from a one-row relation so a missing event still
       // yields `now()` (and found = false) instead of zero rows.
@@ -137,6 +202,11 @@ export async function buildEventSnapshot(
       `;
       const row = head[0];
       if (onSnapshotEstablished) await onSnapshotEstablished(eventId);
+      // Drill hold (`slowbuild`): after the first statement, so the
+      // snapshot is already established and the connection is held —
+      // exactly a build that is slow while occupying the database.
+      if (holdMs > 0) await sleep(holdMs);
+      if (timing) timing.holdMs = holdMs;
       if (!row.found) {
         return { row, items: [], reactionGroups: [], top3Wishes: [] };
       }
@@ -269,7 +339,7 @@ export async function buildEventSnapshot(
       });
       const top3Wishes = await fetchEventWishlistTop3(eventId, locale, tx);
       return { row, items, reactionGroups, top3Wishes };
-    },
+    }),
     {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
       // Reads only; a build that takes longer than this is a symptom

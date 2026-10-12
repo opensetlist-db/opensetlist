@@ -13,7 +13,11 @@ import { revToNumber } from "@/lib/liveBroadcast";
 import { locales, type Locale } from "@/i18n/routing";
 // Type-only: erased at compile time, so it adds no runtime import edge.
 // The builder itself is loaded lazily inside the job (see `runWarmJob`).
-import type { EventSnapshot } from "@/lib/liveSnapshot";
+import type {
+  BuildSnapshotOptions,
+  EventSnapshot,
+  SnapshotBuildTiming,
+} from "@/lib/liveSnapshot";
 
 /**
  * n14 writer warming — a FLAGGED optimisation of the live path.
@@ -293,10 +297,49 @@ export function decodeWarmEnvelope(
 //                 (`skip reason=fault-locale`) → partial publication;
 //                 repeatable for several locales
 //   slowjob=<ms>  each locale's build starts <ms> later → warm-complete
-//                 − commit grows; hinted fetches arrive before publication
+//                 − commit grows; hinted fetches arrive before publication.
+//                 The sleep happens BEFORE the build and holds nothing
+//                 (no snapshot captured, no pool connection), so it can
+//                 produce neither of the two races below
+//   slowset=<ms>  each locale is built + encoded normally, then the job
+//                 sleeps <ms> before its `set`: the snapshot is already
+//                 captured, its publication is late. This is the "stale
+//                 late fill" race — a later save (or a catalog edit's
+//                 tag expiry) can land between capture and `set`, so an
+//                 older state is published after a newer one
+//   slowbuild=<ms> the builder sleeps <ms> INSIDE its REPEATABLE READ
+//                 transaction, right after the first (snapshot-
+//                 establishing) statement: the capture is fixed and a
+//                 pool connection is held for the whole sleep — the
+//                 "DB-held slow build" that competes with readers, the
+//                 admin SSR and a third writer for this instance's 2
+//                 pool connections. Capped at `SLOWBUILD_MAX_MS` (5 s),
+//                 not the general 10 s: the builder's own transaction
+//                 `timeout` is 10 s (`buildEventSnapshot`), and a hold
+//                 near it would make the drill measure Prisma's
+//                 transaction expiry instead of a slow-but-successful
+//                 build. 5 s leaves the remaining statements (normally
+//                 tens of ms, seconds under pool pressure) a 5 s margin.
+//                 Larger values make the whole spec invalid
 // An unparseable spec injects NOTHING (one `fault-invalid` line): a
 // drill must not run on a half-understood fault, and the missing
 // `fault=` on the log lines makes the mistake visible.
+//
+// Per-request faults (`x-live-warm-fault` header, `requestWarmFault`).
+// The env spec above is fixed per deployment and so applies to EVERY
+// save's job; a drill that needs the fault on ONE of two overlapping
+// saves (reversed completion, partial failure, a slow job next to a
+// normal one) cannot express that with it. The admin setlist-item
+// writers therefore accept the job-side subset of the same grammar in a
+// request header, under the same arming rule (`LIVE_WARM_FAULT_ARMED=1`
+// and not production; `LIVE_WARM_FAULT` itself is not needed). The
+// parsed fault travels BY VALUE: route → `liveWriterTransaction` opts →
+// `scheduleWarm` → `runWarmJob`, and the job uses it instead of the env
+// fault (`source=header` on its start line). Lookup-side modes are
+// refused in the header: a lookup has no request that carries the
+// header (it is a reader's request, on any instance), so they stay
+// env-only and global. See `requestWarmFault` for why the header is read
+// in the routes and never inside the shared scheduler.
 // ---------------------------------------------------------------------
 
 export type WarmFault = {
@@ -311,12 +354,26 @@ export type WarmFault = {
   setSkip: boolean;
   skipLocales: ReadonlySet<Locale>;
   slowJobMs: number;
+  /** `slowset=<ms>`: sleep between build+encode and `set` (0 = off). */
+  slowSetMs: number;
+  /** `slowbuild=<ms>`: hold inside the builder's transaction (0 = off). */
+  slowBuildMs: number;
 };
 
 // Upper bound for the delay modes: well past every deadline they are
 // meant to cross (300 ms lookup; a warm job's whole budget is seconds),
 // low enough that a typo like `slow=40000` cannot pin a function.
 const FAULT_MAX_DELAY_MS = 10_000;
+
+/**
+ * Upper bound for `slowbuild`. The hold happens inside the builder's
+ * REPEATABLE READ transaction, whose `timeout` is 10 s
+ * (`buildEventSnapshot`); a hold close to that would turn the drill into
+ * a transaction-expiry test. 5 s keeps half the budget for the real
+ * statements. The builder clamps to this as well, so even a caller that
+ * bypassed the parser could not push a build past it.
+ */
+export const SLOWBUILD_MAX_MS = 5_000;
 
 /** Parse a fault spec. `null` = unparseable (nothing is injected). */
 export function parseWarmFault(spec: string): WarmFault | null {
@@ -335,11 +392,13 @@ export function parseWarmFault(spec: string): WarmFault | null {
     setSkip: false,
     skipLocales: new Set<Locale>(),
     slowJobMs: 0,
+    slowSetMs: 0,
+    slowBuildMs: 0,
   };
-  const delay = (v: string): number | null => {
+  const delay = (v: string, max = FAULT_MAX_DELAY_MS): number | null => {
     if (!/^\d+$/.test(v)) return null;
     const ms = Number(v);
-    return ms > 0 && ms <= FAULT_MAX_DELAY_MS ? ms : null;
+    return ms > 0 && ms <= max ? ms : null;
   };
   for (const t of tokens) {
     const eq = t.indexOf("=");
@@ -352,11 +411,16 @@ export function parseWarmFault(spec: string): WarmFault | null {
       else if (name === "seterror") f.setError = true;
       else if (name === "setskip") f.setSkip = true;
       else return null;
-    } else if (name === "slow" || name === "slowjob") {
+    } else if (name === "slow" || name === "slowjob" || name === "slowset") {
       const ms = delay(value);
       if (ms === null) return null;
       if (name === "slow") f.slowMs = ms;
-      else f.slowJobMs = ms;
+      else if (name === "slowjob") f.slowJobMs = ms;
+      else f.slowSetMs = ms;
+    } else if (name === "slowbuild") {
+      const ms = delay(value, SLOWBUILD_MAX_MS);
+      if (ms === null) return null;
+      f.slowBuildMs = ms;
     } else if (name === "locale") {
       if (!(locales as readonly string[]).includes(value)) return null;
       f.skipLocales.add(value as Locale);
@@ -413,6 +477,69 @@ export function activeWarmFault(): WarmFault | null {
   return fault;
 }
 
+/** Header carrying a per-request (per-save) job fault. */
+export const WARM_FAULT_HEADER = "x-live-warm-fault";
+
+// Korean-only: returned as the 400 body of the admin writers (operator
+// surface, see CLAUDE.md "Admin UI exemption").
+export const WARM_FAULT_HEADER_UNPARSEABLE = "x-live-warm-fault: 해석할 수 없는 사양";
+export const WARM_FAULT_HEADER_UNSUPPORTED =
+  "x-live-warm-fault: 지원하지 않는 모드 (slowjob, slowset, slowbuild, seterror, setskip, locale만 가능)";
+
+export type RequestWarmFault =
+  | { ok: true; fault: WarmFault | null }
+  | { ok: false; error: string };
+
+/**
+ * The per-request job fault of an admin live save, from the
+ * `x-live-warm-fault` header (grammar: see "Fault injection" above,
+ * job-side modes only).
+ *
+ *   unarmed (`LIVE_WARM_FAULT_ARMED` ≠ "1") or `VERCEL_ENV=production`
+ *       → `{ ok: true, fault: null }` WITHOUT reading the header. The
+ *         unarmed check is the first thing done — one env compare, the
+ *         whole cost on every normal save — and a stray header on a
+ *         production or unarmed deployment is simply ignored (not an
+ *         error: the save must behave exactly as without it)
+ *   header absent / empty → `{ ok: true, fault: null }`
+ *   unparseable → `{ ok: false, error: WARM_FAULT_HEADER_UNPARSEABLE }`
+ *   any lookup-side mode (`absent`, `slow`, `getnull`, `geterror`)
+ *       → `{ ok: false, error: WARM_FAULT_HEADER_UNSUPPORTED }`
+ *
+ * Note the rule differs from the env spec on purpose: an off-grammar ENV
+ * spec injects nothing and logs `fault-invalid` (there is no request to
+ * answer), while an off-grammar HEADER is a 400 BEFORE anything is
+ * written — the harness sent it, so the harness must hear immediately
+ * that its scenario would not have been exercised, instead of a save
+ * that silently ran without the fault.
+ *
+ * Why the routes call this, and never the scheduler: only the ADMIN
+ * setlist-item writers may select a fault, and only after
+ * `verifyAdminAPI()` succeeded, so an unauthenticated request cannot
+ * even get its header parsed. `liveWriterTransaction` / `scheduleWarm`
+ * are shared with the PUBLIC writers (`/api/events/[id]/setlist-items`,
+ * `/api/setlist-items/[id]/confirm`); reading `headers()` in there would
+ * let any fan's request on an armed preview choose a fault. So the
+ * fault is parsed here, validated before the transaction starts, and
+ * passed down by value — no `headers()` in shared code and no
+ * process-wide mutable state that one request could leak into another
+ * request's job (two overlapping saves on one instance each keep their
+ * own fault).
+ */
+export function requestWarmFault(headers: Headers): RequestWarmFault {
+  // Unarmed fast path: one env compare, header never consulted.
+  if (process.env.LIVE_WARM_FAULT_ARMED !== "1") return { ok: true, fault: null };
+  if (process.env.VERCEL_ENV === "production") return { ok: true, fault: null };
+  const spec = headers.get(WARM_FAULT_HEADER) ?? "";
+  if (spec === "") return { ok: true, fault: null };
+  const fault = parseWarmFault(spec);
+  if (!fault) return { ok: false, error: WARM_FAULT_HEADER_UNPARSEABLE };
+  if (fault.absent || fault.slowMs > 0 || fault.getNull || fault.getError) {
+    return { ok: false, error: WARM_FAULT_HEADER_UNSUPPORTED };
+  }
+  return { ok: true, fault };
+}
+
 /** ` fault=<label>` for a log line while a fault is active, else "". */
 function faultTag(fault: WarmFault | null): string {
   return fault ? ` fault=${fault.label}` : "";
@@ -459,11 +586,21 @@ async function faultySet(
  * `after()` runs the job once the writer's response has been sent, under
  * the route's own duration limit; outside a Next request scope it
  * throws, which is caught and logged here.
+ *
+ * `requestFault`: the save's own drill fault (`requestWarmFault`, already
+ * parsed and validated by the admin route BEFORE its transaction), or
+ * null. Captured by value in the closure, so the job of THIS save uses
+ * it no matter what other saves on the instance do meanwhile. Nothing is
+ * parsed here: the post-commit path has nothing left that could fail.
  */
-export function scheduleWarm(eventId: bigint, rev: bigint): void {
+export function scheduleWarm(
+  eventId: bigint,
+  rev: bigint,
+  requestFault: WarmFault | null = null,
+): void {
   if (!liveWarmEnabled()) return;
   try {
-    after(() => runWarmJob(eventId, rev));
+    after(() => runWarmJob(eventId, rev, requestFault));
   } catch (err) {
     console.log(
       `[liveWarm] schedule-failed event=${eventId} rev=${rev} ` +
@@ -477,23 +614,59 @@ export function scheduleWarm(eventId: bigint, rev: bigint): void {
  * builds at a time. Exported so tests can run it without `after()`.
  * Never rejects; every outcome is a log line:
  *
- *   [liveWarm] start event=<id> rev=<R> instance=<id>[ fault=<spec>]
- *   [liveWarm] set event=<id> locale=<l> atLeastRev=<R> rev=<n> bytes=<n> buildMs=<n> setMs=<n> ok=<true|false> instance=<id>
- *   [liveWarm] skip event=<id> locale=<l> atLeastRev=<R> reason=<build-error|oversize|fault-locale> rev=<n|-> bytes=<n|-> buildMs=<n> instance=<id>
- *   [liveWarm] done event=<id> rev=<R> ms=<n> instance=<id>
+ *   [liveWarm] start event=<id> rev=<R> at=<ms> instance=<id>[ fault=<label> source=header|env]
+ *   [liveWarm] set event=<id> locale=<l> atLeastRev=<R> rev=<n> bytes=<n> buildMs=<n> setMs=<n> ok=<true|false> buildStartAt=<ms> buildEndAt=<ms> txStartAt=<ms|-> txEndAt=<ms|-> holdMs=<n> captureAt=<ms> setStartAt=<ms> at=<ms> instance=<id>
+ *   [liveWarm] skip event=<id> locale=<l> atLeastRev=<R> reason=<build-error|oversize|fault-locale> rev=<n|-> bytes=<n|-> buildMs=<n> buildStartAt=<ms> buildEndAt=<ms> at=<ms> instance=<id>
+ *   [liveWarm] done event=<id> rev=<R> ms=<n> at=<ms> instance=<id>
  *
  * `set` is logged only when a `set` was attempted (ok=false = it
  * threw); `skip` when the locale was not stored at all. A build failure
  * additionally produces the builder's own `[liveSnapshot] build-failed`
  * line.
+ *
+ * Why explicit timestamps (`at`, `buildStartAt`, …; all `Date.now()`
+ * epoch ms on THIS server): Vercel's history-mode logs stamp every line
+ * of a request with the request's START time, and a job registered with
+ * `after()` belongs to the writer's request — so all its lines carry the
+ * writer's start, and the per-locale publication times had to be
+ * rebuilt from buildMs + setMs (missing every sleep and queue wait). The
+ * overlap drills classify races (B committed during A's job, builds
+ * overlapping, reversed publication) from these fields directly.
+ *   buildStartAt / buildEndAt — around the builder call + envelope
+ *       encode (= the `buildMs` interval). Includes waiting for a pool
+ *       connection.
+ *   txStartAt / txEndAt — the builder's transaction callback entry / exit
+ *       (`SnapshotBuildTiming`): the time a pool connection was actually
+ *       held. A build queued for a connection (`buildStartAt` →
+ *       `txStartAt`) holds none, so DB-occupancy overlap must use these.
+ *       `-` only if the builder did not report them.
+ *   holdMs — the `slowbuild` hold the builder applied (0 otherwise).
+ *   captureAt — the snapshot's `capturedAt` as epoch ms: PostgreSQL
+ *       `now()` at the builder's transaction start — the DATABASE clock,
+ *       not this server's; compare it with the other fields only with
+ *       that in mind.
+ *   setStartAt / at — the `set` call / its settlement (after any
+ *       `slowset` sleep, so `setStartAt − buildEndAt` ≥ the sleep).
+ *
+ * `requestFault` (from the save's `x-live-warm-fault` header) replaces
+ * the env fault for this job entirely — one fault per job, so the start
+ * line's `fault=`/`source=` describes exactly what every step applied.
+ * Lookups (`warmLookup`) never see it; they stay on the env fault.
  */
-export async function runWarmJob(eventId: bigint, rev: bigint): Promise<void> {
+export async function runWarmJob(
+  eventId: bigint,
+  rev: bigint,
+  requestFault: WarmFault | null = null,
+): Promise<void> {
   const started = Date.now();
   // Read once per job: on a deployment it cannot change mid-job anyway,
   // and one value keeps the start line and the per-locale steps agreeing.
-  const fault = activeWarmFault();
+  // The env lookup only happens without a request fault.
+  const fault = requestFault ?? activeWarmFault();
+  const source = requestFault ? "header" : "env";
   console.log(
-    `[liveWarm] start event=${eventId} rev=${rev} instance=${INSTANCE_ID}${faultTag(fault)}`,
+    `[liveWarm] start event=${eventId} rev=${rev} at=${started} instance=${INSTANCE_ID}` +
+      (fault ? `${faultTag(fault)} source=${source}` : ""),
   );
   try {
     // Loaded here rather than imported at the top: `liveSnapshot.ts`
@@ -511,9 +684,14 @@ export async function runWarmJob(eventId: bigint, rev: bigint): Promise<void> {
           // matching (which only claims `set` / `oversize` locales)
           // and the drill report can tell it from a real failure.
           if (fault.skipLocales.has(locale)) {
+            // No build ran: a zero-width build interval at the skip
+            // instant (consistent with buildMs=0), so the line keeps the
+            // same numeric fields as every other skip.
+            const now = Date.now();
             console.log(
               `[liveWarm] skip event=${eventId} locale=${locale} atLeastRev=${rev} ` +
-                `reason=fault-locale rev=- bytes=- buildMs=0 instance=${INSTANCE_ID}`,
+                `reason=fault-locale rev=- bytes=- buildMs=0 buildStartAt=${now} ` +
+                `buildEndAt=${now} at=${now} instance=${INSTANCE_ID}`,
             );
             continue;
           }
@@ -533,9 +711,10 @@ export async function runWarmJob(eventId: bigint, rev: bigint): Promise<void> {
         `err=${describeError(err)} instance=${INSTANCE_ID}`,
     );
   }
+  const doneAt = Date.now();
   console.log(
-    `[liveWarm] done event=${eventId} rev=${rev} ms=${Date.now() - started} ` +
-      `instance=${INSTANCE_ID}`,
+    `[liveWarm] done event=${eventId} rev=${rev} ms=${doneAt - started} ` +
+      `at=${doneAt} instance=${INSTANCE_ID}`,
   );
 }
 
@@ -543,34 +722,57 @@ async function warmOneLocale(
   eventId: bigint,
   locale: Locale,
   atLeastRev: bigint,
-  build: (eventId: bigint, locale: Locale) => Promise<EventSnapshot>,
+  build: (
+    eventId: bigint,
+    locale: Locale,
+    options: BuildSnapshotOptions,
+  ) => Promise<EventSnapshot>,
   fault: WarmFault | null,
 ): Promise<void> {
   const head = `event=${eventId} locale=${locale} atLeastRev=${atLeastRev}`;
-  const buildStarted = Date.now();
+  // Out-param the builder fills from inside its transaction (see the
+  // field list on `runWarmJob`). `holdMs` is passed only when a
+  // `slowbuild` fault asks for it, so an unfaulted job calls the
+  // builder exactly as before plus the timing record.
+  const timing: SnapshotBuildTiming = {};
+  const holdMs = fault?.slowBuildMs ?? 0;
+  const buildStartAt = Date.now();
   let envelope: WarmEnvelope;
   try {
-    const snapshot = await build(eventId, locale);
+    const snapshot = await build(
+      eventId,
+      locale,
+      holdMs > 0 ? { holdMs, timing } : { timing },
+    );
     envelope = encodeWarmEnvelope(eventId, locale, atLeastRev, snapshot, new Date());
   } catch {
     // The builder already logged `[liveSnapshot] build-failed` with the
     // cause; an encode failure (non-safe-integer rev) is equally a
     // "nothing stored".
+    const at = Date.now();
     console.log(
       `[liveWarm] skip ${head} reason=build-error rev=- bytes=- ` +
-        `buildMs=${Date.now() - buildStarted} instance=${INSTANCE_ID}`,
+        `buildMs=${at - buildStartAt} buildStartAt=${buildStartAt} buildEndAt=${at} ` +
+        `at=${at} instance=${INSTANCE_ID}`,
     );
     return;
   }
-  const buildMs = Date.now() - buildStarted;
+  const buildEndAt = Date.now();
+  const buildMs = buildEndAt - buildStartAt;
   if (envelope.bytes > WARM_MAX_BYTES) {
     console.log(
       `[liveWarm] skip ${head} reason=oversize rev=${envelope.rev} ` +
-        `bytes=${envelope.bytes} buildMs=${buildMs} instance=${INSTANCE_ID}`,
+        `bytes=${envelope.bytes} buildMs=${buildMs} buildStartAt=${buildStartAt} ` +
+        `buildEndAt=${buildEndAt} at=${Date.now()} instance=${INSTANCE_ID}`,
     );
     return;
   }
-  const setStarted = Date.now();
+  // `slowset`: the snapshot is captured and encoded; only its
+  // publication is delayed (the stale-late-fill race). After the
+  // oversize check, because an entry that will never be stored has no
+  // publication to delay.
+  if (fault && fault.slowSetMs > 0) await sleep(fault.slowSetMs);
+  const setStartAt = Date.now();
   let ok = true;
   try {
     await faultySet(
@@ -583,14 +785,20 @@ async function warmOneLocale(
     ok = false;
     console.error(`[liveWarm] set-error ${head} err=${describeError(err)}`);
   }
+  // The `set` settled (publication time, if ok) — taken before anything
+  // else so the field means exactly that.
+  const at = Date.now();
   // A reader on this instance may have memoised a miss for this key
   // while the job was building; the entry exists now (or at least was
   // just offered to the cache), so let the next lookup ask again.
   clearMissMemo(lookupKey(eventId, locale, atLeastRev));
   console.log(
     `[liveWarm] set ${head} rev=${envelope.rev} bytes=${envelope.bytes} ` +
-      `buildMs=${buildMs} setMs=${Date.now() - setStarted} ok=${ok} ` +
-      `instance=${INSTANCE_ID}`,
+      `buildMs=${buildMs} setMs=${at - setStartAt} ok=${ok} ` +
+      `buildStartAt=${buildStartAt} buildEndAt=${buildEndAt} ` +
+      `txStartAt=${timing.txStartAt ?? "-"} txEndAt=${timing.txEndAt ?? "-"} ` +
+      `holdMs=${timing.holdMs ?? 0} captureAt=${Date.parse(envelope.capturedAt)} ` +
+      `setStartAt=${setStartAt} at=${at} instance=${INSTANCE_ID}`,
   );
 }
 

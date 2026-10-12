@@ -6,6 +6,7 @@ import {
 } from "@/lib/liveWriterTx";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
 import {
   bumpSetlistRevisionAndBroadcast,
   lockEvent,
@@ -15,13 +16,18 @@ import {
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // Drill-only per-save warm fault: after auth, before anything is read
+  // or written; 400 on an unsupported spec (see the create route and
+  // `requestWarmFault`).
+  const warm = requestWarmFault(request.headers);
+  if (!warm.ok) return NextResponse.json({ error: warm.error }, { status: 400 });
   // A save the database could not even start — including the
   // pre-transaction owner lookup — answers 503 + Retry-After (see
   // `withAdminLiveWriterBusy`); every other outcome is unchanged.
-  return withAdminLiveWriterBusy(() => swapItems(request));
+  return withAdminLiveWriterBusy(() => swapItems(request, warm.fault));
 }
 
-async function swapItems(request: NextRequest) {
+async function swapItems(request: NextRequest, warmFault: WarmFault | null) {
   const { itemIdA, itemIdB } = await request.json();
 
   if (!itemIdA || !itemIdB) {
@@ -92,7 +98,8 @@ async function swapItems(request: NextRequest) {
       data: { position: itemB.position },
     });
     return bumpSetlistRevisionAndBroadcast(tx, eventId);
-  });
+    // `undefined` keeps the default revOf (the result IS the revision).
+  }, undefined, { warmFault });
 
   revalidateEventData(eventId);
   return NextResponse.json({ success: true, rev: revToNumber(rev) });
