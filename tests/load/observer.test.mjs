@@ -7,7 +7,7 @@
 // from subs-worker.mjs to pin the row decoding.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { summarize, toMarkdown, recordToLines } from "./observer.mjs";
+import { summarize, toMarkdown, recordToLines, readinessLine } from "./observer.mjs";
 
 const T = Date.UTC(2026, 9, 11, 14, 10, 0, 0);
 const JSONL = [
@@ -119,6 +119,27 @@ test("a first save whose broadcast was lost is reported, not mistaken for the st
   const md = toMarkdown(s);
   assert.match(md, /rev 11: .*broadcast did not reach them/);
   assert.match(md, /rev 10: .*starting state/);
+});
+
+test("step 5: client lines keep the full subscription timeline; readiness line format", () => {
+  const rec = {
+    idx: 2, locale: "en", attemptAt: T - 2000, stoppedAt: T + 60000,
+    subscribedAt: [T - 1500, T + 30000], statuses: { SUBSCRIBED: 2, CHANNEL_ERROR: 1 }, errors: {},
+    statusLog: [[T - 1500, "SUBSCRIBED", 1], [T + 20000, "CHANNEL_ERROR", 1], [T + 30000, "SUBSCRIBED", 1]],
+    connLog: [[T - 1500, 1, "SUBSCRIBED"], [T + 20000, 0, "CHANNEL_ERROR"], [T + 30000, 1, "SUBSCRIBED"], [T + 60000, 0, "STOPPED"]],
+    fallbacks: [[T + 20000, "CHANNEL_ERROR"]], recreates: [], bcasts: [], reqs: [], appliedAll: [], failKinds: {}, exhausted: [],
+  };
+  const c = recordToLines(rec).find((l) => l.kind === "client");
+  assert.equal(c.firstSubscribedAt, T - 1500);
+  assert.deepEqual(c.subscribedAtAll, [T - 1500, T + 30000]);
+  assert.equal(c.connLog.length, 4);
+  assert.equal(c.statusLog[1][1], "CHANNEL_ERROR");
+  assert.deepEqual(c.fallbacksAll, [[T + 20000, "CHANNEL_ERROR"]]);
+  assert.equal(c.attemptAt, T - 2000);
+  assert.equal(
+    readinessLine({ joined: 2, total: 2, since: [T + 500, T] }, "2026-10-11T14:10:01.000Z"),
+    "[observer] ready clients=2/2 subscribed_at=2026-10-11T14:10:00.000Z,2026-10-11T14:10:00.500Z at=2026-10-11T14:10:01.000Z",
+  );
 });
 
 test("jsonl ordering: client records (no t) never scramble the timed records", () => {

@@ -630,6 +630,157 @@ taught about running it:
 Tests (Node's runner, like the other harness tests):
 `node --test tests/load/*.test.mjs tests/load/browsers/*.test.mjs tests/load/realtime/*.test.mjs`.
 
+## n14 qualification step 5 — cold admission (`--phase=admission`, `--drill=idle-broadcast`)
+
+Step 5 qualifies the candidate when the audience ARRIVES: 30 pages + 470
+SDK clients admitted onto a **fresh deployment** while saves happen
+(A0 / A0′, A2 with the 70-row fixture and the I3 final phase, A4 with
+warm lookups returning null), the k6 fetch-shape mix (A1, its own
+section), and the first save after an idle period plus the runbook's wake
+procedure (I1 / I2, with the independent observer as a second vantage
+point). The harness side — prepare → boundary → admit, exposure, gates,
+cohorts, eligibility, record formats — is in `browsers/README.md`,
+"Admission phase" and "Idle-broadcast drill"; the server / observer /
+k6 join is `admission-join.mjs`.
+
+**Cold trigger = a fresh deployment**: `vercel redeploy` of the
+deployment the dev alias serves (same commit, same settings) → a new
+`BUILD_KEY`, so new generic-snapshot and warm namespaces, and no request
+of ours reaches it before T0 (the harness proves its side: 0 outbound
+requests in the boundary wait). It does NOT prove every function process
+was cold; the first-arrival `x-snapshot-source` mix is reported instead.
+
+**A0 / A0′ — operator sequence (dev alias):**
+
+```powershell
+$out = "tests/load/results/<UTC date>"
+# 0. host isolation (nothing else on the laptop); the observer is optional for A runs
+# 1. the precursor = what the alias serves now (keep the output)
+npx vercel inspect opensetlist-git-dev-opensetlist-projects.vercel.app --scope opensetlist-projects
+# 2. start the harness: prepare (login, anchor row, manifest), then it WAITS for the admit file
+node --no-warnings tests/load/browsers/run.mjs --phase=admission --pages=30 --subs=470 --edits=0 `
+  --admit-file="$out/admit-A0.json" --strict-host --restore-positions --label=step5-A0
+# 3. when it logs "boundary: waiting for --admit-file": redeploy the precursor and wait for Ready
+npx vercel redeploy <precursor URL> --scope opensetlist-projects
+#    the alias must now point at the NEW deployment (if not: npx vercel alias set <new URL> opensetlist-git-dev-opensetlist-projects.vercel.app)
+npx vercel inspect opensetlist-git-dev-opensetlist-projects.vercel.app --scope opensetlist-projects
+# 4. T0 = the moment this file appears (the harness polls every 100 ms); the binding goes into the run record
+'{"precursorId":"dpl_…","measurementId":"dpl_…"}' | Out-File -Encoding utf8 "$out/admit-A0.json"
+```
+
+Nothing else may touch the measurement deployment between the redeploy
+and the admit file — no browser tab, no `curl`, no `vercel logs
+--follow` against it (log capture reads Vercel's log API, not the
+deployment; start it, if at all, against the project). A0′ repeats the
+whole sequence with a second redeploy.
+
+**A2** (70 rows + steady tail + I3): run the fixture script first
+(`tests/load/fixtures/fes-rows.mjs`, see its section), then the harness
+with `--rows-manifest=<fixture json> --edits=8 --edit-mode=mixed
+--pause=25 --final-cohort=20,20`; the fixture's own clean-up after the
+harness's. **A4** (warm lookups return null, 70 rows): a one-off
+deployment pair — the precursor deployed with `LIVE_WARM_FAULT=getnull`
+and `LIVE_WARM_FAULT_ARMED=1` ("Warming fault drills"), verified by the
+harness's identity guard, then `vercel redeploy` of it = the measurement
+deployment:
+
+```powershell
+$env:BASE_URL = "<precursor URL>"
+node --no-warnings tests/load/browsers/run.mjs --deployment-url --guard-precursor=<precursor URL> --phase=admission `
+  --pages=30 --subs=470 --edits=0 --rows-manifest=<fixture json> --admit-file="$out/admit-A4.json" --strict-host --restore-positions --label=step5-A4
+# after `vercel redeploy <precursor URL>` is Ready — the admit file names the measurement deployment:
+'{"base":"https://opensetlist-<new hash>-opensetlist-projects.vercel.app","precursorId":"dpl_…","measurementId":"dpl_…"}' | Out-File -Encoding utf8 "$out/admit-A4.json"
+```
+
+The harness refuses a measurement base equal to the precursor, and one
+generic read at T0 must show the dev manifest before the first save
+writes through the new deployment. Delete the pair afterwards; the
+evidence comes from `admission-join.mjs --fault=getnull` (armed line,
+zero warm hits, tagged miss / memo-miss, no invalid / blocked fault).
+
+**I1 / I2 — operator sequence.** The idle clock starts at max(the last
+restore broadcast, the last disconnect of ANY client of ours, the
+observer included) and needs ≥ 30 min; never open the Supabase Realtime
+Inspector as a subscriber during it. Pick the connect instant `T` far
+enough ahead for the workflow to start (≥ 3 min):
+
+```powershell
+gh workflow run n14-observer.yml --ref <branch with connect_at> `
+  -f base=https://opensetlist-git-dev-opensetlist-projects.vercel.app -f minutes=6 -f clients=5 `
+  -f connect_at=<T> -f label=step5-I1a
+node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 --cohort-incumbents=20 `
+  --connect-at=<T> --first-save-file="$out/first-save-I1a.txt" --strict-host --restore-positions --timeout=60 --label=step5-I1a
+# watch the observer's live log; at `[observer] ready clients=5/5 subscribed_at=… at=<R>` release the save:
+'<R + 6 s, ISO>' | Out-File -Encoding ascii "$out/first-save-I1a.txt"     # empty file = 6 s after it appears
+# afterwards
+gh run download <run id> -n n14-observer-<run id> -D "$out/observer-I1a"
+```
+
+I2 adds `--wake --cohort-fresh=20` (the check save is verified by
+broadcast at every connected local client; a miss → one retry save, a
+second miss → "escalate" in the report; the fresh cohort joins at
++`--wake-gap`=600 s). Two cycles each of I1 and I2, plus I3 inside A2
+(design: five controls).
+
+**Reading the observer while it runs.** `gh run view --log` (and
+`--log-failed`) only returns a run's logs once it has COMPLETED — for an
+in-progress run the CLI answers that the logs will be available when it
+is complete (the per-job logs download, `GET
+/repos/{owner}/{repo}/actions/jobs/{job_id}/logs`, is the same archive).
+The live stream is the GitHub web UI: `gh run list --workflow
+n14-observer.yml -L 1`, then `gh run view <run id> --web`, open the
+"Observe event broadcasts" job and watch the "Run observer" step, which
+streams the `[observer] ready …` / `[observer] connected …` lines as they
+are printed. (Checked against the documented CLI / API behaviour, not
+exercised live from this branch.) If the live view is not available,
+release the save at a fixed `connect_at + 8 s` (`--first-save-at=<T+8 s>`
+instead of the file); the post-hoc eligibility in `admission-join.mjs
+--observer=` decides for the observer's clients either way — the report
+must say which of the two happened. Until this branch is merged, the
+`connect_at` input exists only on it: dispatch with `--ref <branch>`.
+
+**Afterwards, per run** (history re-fetch of the window as usual; nothing
+else on the host while the run is live):
+
+```powershell
+node tests/load/vercel-logs-summary.mjs <history.txt> --add-hours=7 --out="$out/vercel-logs-history-summary-<run>.md"
+node tests/load/admission-join.mjs <stamp>-browsers-admission.json <history.txt> --add-hours=7 `
+  [--observer="$out/observer-<run>/<stamp>-observer-<label>.jsonl"] [--k6=<k6 summary json>] [--fault=getnull] --out="$out/admission-join-<run>.md"
+node tests/load/viewers-check.mjs
+node --no-warnings tests/load/browsers/restore.mjs --compact --yes
+```
+
+`admission-join.mjs` puts per save the harness's exposure, stale first
+answers, convergence per population and broadcast receipt vs reason next
+to the server's commit `at` (inside [PUT start, PUT response] /
+indeterminate below 100 ms / a clock offset) and the writer acquire
+(gate ≤ 500 ms); the admission window (builds per minute and per
+instance, warm-job vs reader builds, instances by first appearance, 503
+hint fetches, EMAXCONN); **Σ** (sum of per-instance pool totals) with its
+completeness — log coverage of the window, the largest gap between
+entries, instances that never logged a pool line, the bucket-maxima
+caveat; the A4 fault evidence; and the I-cycle eligibility + arrival
+tables for the harness's cohorts and the observer's clients (same rule).
+
+**k6 summary shape for admission-join (A1, optional).** `--k6=<file>`
+expects one JSON object; every field is optional and rendered when
+present:
+
+```json
+{
+  "T0": 1791784076509,
+  "arrivals": { "total": 500, "byShape": { "generic": 500 }, "p95Ms": 640, "fivexx": 0, "s503": 0, "transport": 0 },
+  "saves": [{ "rev": 1574, "putStart": 1791784081521, "putEnd": 1791784082013, "status": 200,
+              "admitted": 300, "outstanding": 200, "httpInFlight": 40 }],
+  "shapes": { "R2": { "notified": 180, "exactHead": 180 }, "R1": { "notified": 75 }, "preR1": { "notified": 45 } },
+  "ssr": { "requests": 600, "p95Ms": 900 }
+}
+```
+
+Times are epoch ms of the k6 host; `saves[].admitted` / `outstanding` /
+`httpInFlight` are the k6 side's exposure evidence at the save's
+response (k6 has no SUBSCRIBED or DOM to count).
+
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
 The browsers harness stamps every broadcast arrival on the laptop that

@@ -16,6 +16,12 @@ name: n14 — independent observer
 # p95 across saves of one run — not its absolute latency with a laptop
 # in Korea.
 #
+# n14 step 5: `connect_at` lets the job start early and connect at a
+# planned instant; the observer prints `[observer] ready …` /
+# `[observer] connected …` lines the operator reads from the job's LIVE
+# log in the GitHub web UI (`gh run view --log` only returns logs once the
+# run has completed). See tests/load/README.md "n14 qualification step 5".
+#
 # Cost: it burns Actions minutes for the whole window (minutes + ~2 for
 # setup), on the free-tier allowance of the repository's owner. Run it
 # only alongside a load run that needs attributing.
@@ -51,6 +57,14 @@ on:
         required: false
         default: "ci"
         type: string
+      # n14 step 5: start the workflow early and connect at a planned
+      # instant (the harness's local cohort uses the same --connect-at).
+      # Empty = connect as soon as the job is up (the old behaviour).
+      connect_at:
+        description: "Optional ISO UTC instant to connect at (e.g. 2026-10-12T06:30:00Z); the observer holds all network activity until then. ≤ 60 min ahead."
+        required: false
+        default: ""
+        type: string
 
 # One observer at a time: two overlapping observers would double the
 # Actions bill without adding a vantage point (same runner pool). A
@@ -78,14 +92,27 @@ jobs:
     env:
       OBS_MINUTES: ${{ inputs.minutes }}
       OBS_CLIENTS: ${{ inputs.clients }}
+      OBS_CONNECT_AT: ${{ inputs.connect_at }}
     steps:
       - id: t
+        # The job timeout = window + 5 min + the hold until connect_at
+        # (rounded up to whole minutes); connect_at must parse and be at
+        # most 60 min ahead. A connect_at already in the past is allowed
+        # (the observer then connects at once; eligibility is decided post
+        # hoc from the artifact).
         run: |
           case "$OBS_MINUTES" in ''|*[!0-9]*) echo "::error::minutes must be an integer"; exit 1;; esac
           case "$OBS_CLIENTS" in ''|*[!0-9]*) echo "::error::clients must be an integer"; exit 1;; esac
           if [ "$OBS_MINUTES" -lt 1 ] || [ "$OBS_MINUTES" -gt 60 ]; then echo "::error::minutes must be 1–60"; exit 1; fi
           if [ "$OBS_CLIENTS" -lt 1 ] || [ "$OBS_CLIENTS" -gt 50 ]; then echo "::error::clients must be 1–50"; exit 1; fi
-          echo "timeout=$((OBS_MINUTES + 5))" >> "$GITHUB_OUTPUT"
+          HOLD=0
+          if [ -n "$OBS_CONNECT_AT" ]; then
+            AT=$(date -u -d "$OBS_CONNECT_AT" +%s 2>/dev/null) || { echo "::error::connect_at must be an ISO timestamp"; exit 1; }
+            NOW=$(date -u +%s)
+            if [ "$AT" -gt $((NOW + 3600)) ]; then echo "::error::connect_at is more than 60 min ahead"; exit 1; fi
+            if [ "$AT" -gt "$NOW" ]; then HOLD=$(( (AT - NOW + 59) / 60 )); fi
+          fi
+          echo "timeout=$((OBS_MINUTES + 5 + HOLD))" >> "$GITHUB_OUTPUT"
 
   observe:
     name: Observe event broadcasts
@@ -102,6 +129,7 @@ jobs:
       OBS_MINUTES: ${{ inputs.minutes }}
       OBS_CLIENTS: ${{ inputs.clients }}
       OBS_LABEL: ${{ inputs.label }}
+      OBS_CONNECT_AT: ${{ inputs.connect_at }}
     steps:
       # The job runs installed dependencies after checkout but never
       # needs Git credentials again; do not leave the token in .git/config.
@@ -139,7 +167,8 @@ jobs:
           node --no-warnings tests/load/observer.mjs \
             --base="$OBS_BASE" --event=111 \
             --clients="$OBS_CLIENTS" --minutes="$OBS_MINUTES" \
-            --out=observer-out --label="$OBS_LABEL"
+            --out=observer-out --label="$OBS_LABEL" \
+            --connect-at="$OBS_CONNECT_AT"
 
       # `always()`: a run stopped by the job timeout or a failed worker
       # still uploads whatever was written.

@@ -84,6 +84,54 @@ const INIT_SCRIPT = `(() => {
   document.addEventListener("DOMContentLoaded", scan);
 })();`;
 
+// n14 step 5 (`run.mjs --phase=admission` only): the ordered setlist
+// rows as rendered. <SetlistRow> is the only component that renders an
+// <li> with the `grid-cols-[28px_1fr]` grid (src/components/SetlistRow.tsx;
+// <ActualSetlist> renders the main rows, then the encore rows, each in
+// its own <ol>), and inside a row every song is ONE link
+// `/<locale>/songs/<id>[/<slug>]` in SetlistItemSong order (a medley =
+// several links; a blank "song TBC" or non-song row = no link; the unit
+// badges link to /artists/, not /songs/). So a row's signature is its
+// ordered song-id list joined with "+", "" for a row without a song, and
+// the page's signature is the list of row signatures in DOM order. React
+// keys are not in the DOM; nothing is added to the app for this. Checked
+// against the live page of event 111 (23/23 rows incl. the medley and
+// the encore row, ja and ko) when the scan was written; if the markup
+// changes, the report's "ordered rows matched n/m" column drops instead
+// of a false "complete". Reported only when the signature changes.
+const ROWS_SCRIPT = `(() => {
+  let last = null;
+  const scan = () => {
+    const rows = [];
+    for (const li of document.querySelectorAll('li[class*="grid-cols-[28px_1fr]"]')) {
+      const ids = [];
+      for (const a of li.querySelectorAll('a[href*="/songs/"]')) {
+        const m = /\\/songs\\/(\\d+)(?:[/?#]|$)/.exec(a.getAttribute("href") || "");
+        if (m) ids.push(m[1]);
+      }
+      rows.push(ids.join("+"));
+    }
+    const key = rows.join("|");
+    if (key === last) return;
+    last = key;
+    if (typeof window.__oslRows === "function") window.__oslRows({ t: Date.now(), rows });
+  };
+  new MutationObserver(scan).observe(document, { childList: true, subtree: true, characterData: false });
+  document.addEventListener("DOMContentLoaded", scan);
+})();`;
+
+// The SSR seed in the page HTML: the RSC payload carries LiveEventLayout's
+// `initialRev` prop — a number when the page was rendered from the live
+// snapshot, null when the live seed was unavailable (the page's degraded
+// path, `[eventPage] live seed unavailable`) or the event is not ongoing.
+// Inside the flight script the quotes are escaped (`\"initialRev\":123`).
+export function seedOf(html) {
+  if (typeof html !== "string") return { kind: "unknown", rev: null };
+  const m = /\\?"initialRev\\?":(null|\d+)/.exec(html);
+  if (!m) return { kind: "unknown", rev: null };
+  return m[1] === "null" ? { kind: "absent", rev: null } : { kind: "live", rev: Number(m[1]) };
+}
+
 const BLOCK_HOST = /(^|\.)(google-analytics\.com|googletagmanager\.com|doubleclick\.net|googlesyndication\.com|sentry\.io)$/;
 
 // Binary user broadcast (protocol 2.0.0), see the header. Returns null
@@ -129,7 +177,14 @@ function parseFrame(payload) {
 const isNotification = (f) =>
   f.event === "postgres_changes" || (f.event === "broadcast" && f.body?.event === "rev");
 
-export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log }) {
+// `admission` (n14 step 5, run.mjs --phase=admission): additionally
+// record per page the ordered setlist rows (ROWS_SCRIPT, `rowsLog`), the
+// navigation timing (navigation start = the browser's timeOrigin, TTFB,
+// DOMContentLoaded), the document's HTTP status, the SSR seed (`seed`,
+// see seedOf), the launch wave, the first /api/setlist request and the
+// first Realtime websocket (hydration readiness: the live hook only opens
+// either once React has mounted it). Off: the record is unchanged.
+export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false }) {
   const browser = await chromium.launch({
     headless,
     args: [
@@ -177,6 +232,13 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       seen: {}, gone: {}, dom: [], notes: [], bcasts: [], fetches: [], errors: [],
       dropNotify: false, droppedFrames: 0, blockedAttempts: 0,
     };
+    if (admission) {
+      Object.assign(rec, {
+        wave: Math.floor(idx / concurrency), launchedAt: Date.now(),
+        rowsLog: [], navStart: null, ttfbMs: null, dclMs: null, docStatus: null, docBytes: null,
+        seed: { kind: "unknown", rev: null }, firstApiReqAt: null, wsOpenAt: null,
+      });
+    }
     const context = await browser.newContext({ viewport: { width: 800, height: 900 }, locale: locale === "ko" ? "ko-KR" : locale === "en" ? "en-US" : "ja-JP" });
     await context.route("**/*", (route) => {
       const req = route.request();
@@ -196,6 +258,22 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       rec.dom.push([t, added, removed]);
     });
     await page.addInitScript(INIT_SCRIPT);
+    if (admission) {
+      await page.exposeFunction("__oslRows", ({ t, rows }) => { rec.rowsLog.push([t, rows]); });
+      await page.addInitScript(ROWS_SCRIPT);
+      page.on("request", (q) => {
+        if (rec.firstApiReqAt == null && q.url().includes("/api/setlist?")) rec.firstApiReqAt = Date.now();
+      });
+      page.on("response", async (r) => {
+        if (!r.request().isNavigationRequest() || r.frame() !== page.mainFrame()) return;
+        rec.docStatus = r.status();
+        try {
+          const html = await r.text();
+          rec.docBytes = Buffer.byteLength(html);
+          rec.seed = seedOf(html);
+        } catch { /* body gone */ }
+      });
+    }
     page.on("pageerror", (e) => { if (rec.errors.length < 20) rec.errors.push(String(e.message).slice(0, 200)); });
     page.on("response", async (r) => {
       const u = r.url();
@@ -245,6 +323,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     if (mode === "none") {
       page.on("websocket", (ws) => {
         if (!ws.url().includes("/realtime/")) return;
+        if (admission && rec.wsOpenAt == null) rec.wsOpenAt = Date.now();
         rec.wsOpens++;
         ws.on("framereceived", (f) => onFrame(rec, f.payload));
         ws.on("close", () => { rec.wsCloses++; });
@@ -287,9 +366,25 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     }
 
     try {
-      await page.goto(rec.url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      const resp = await page.goto(rec.url, { waitUntil: "domcontentloaded", timeout: 60000 });
       rec.loadedAt = Date.now();
       rec.visibility = await page.evaluate(() => document.visibilityState);
+      if (admission) {
+        if (resp && rec.docStatus == null) rec.docStatus = resp.status();
+        // Navigation Timing (page clock = this host's clock): navigation
+        // start = timeOrigin + startTime (0), TTFB = responseStart,
+        // DOMContentLoaded = its event end (start if the end is not yet
+        // stamped).
+        const nt = await page.evaluate(() => {
+          const n = performance.getEntriesByType("navigation")[0];
+          return { origin: performance.timeOrigin, start: n?.startTime ?? 0, resp: n?.responseStart ?? null, dcl: n?.domContentLoadedEventEnd || n?.domContentLoadedEventStart || null };
+        }).catch(() => null);
+        if (nt) {
+          rec.navStart = Math.round(nt.origin + nt.start);
+          rec.ttfbMs = nt.resp == null ? null : Math.round(nt.resp - nt.start);
+          rec.dclMs = nt.dcl == null ? null : Math.round(nt.dcl - nt.start);
+        }
+      }
     } catch (e) {
       rec.errors.push(`goto: ${e.message.slice(0, 200)}`);
     }
