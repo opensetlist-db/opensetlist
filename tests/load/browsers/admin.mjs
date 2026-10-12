@@ -255,7 +255,9 @@ async function settle(label, url, init, { timeoutMs = 30000 } = {}) {
     const endAt = ms0();
     let body = null;
     try { body = JSON.parse(buf.toString("utf8")); } catch { /* HTML or empty */ }
-    return { startedAt, headersMs: headersAt - startedAt, ms: endAt - startedAt, status: res.status, buf, body };
+    // vercelId: the response's full `x-vercel-id` (`<edge>::<region>::<reqid>`)
+    // — n14 step 6 joins every save to the Vercel request log by it.
+    return { startedAt, headersMs: headersAt - startedAt, ms: endAt - startedAt, status: res.status, buf, body, vercelId: res.headers.get("x-vercel-id") };
   } catch (e) {
     return { startedAt, headersMs: null, ms: ms0() - startedAt, status: 0, buf: null, body: null, error: `${label}: ${String(e?.message || e).slice(0, 120)}` };
   }
@@ -276,7 +278,35 @@ export async function putSongRaw({ base, cookie, id, position, songId, fault = n
   });
   const rev = r.body && Number.isSafeInteger(r.body.rev) ? r.body.rev : null;
   const error = r.error ?? (r.status >= 200 && r.status < 300 ? null : `HTTP ${r.status} ${JSON.stringify(r.body)?.slice(0, 160) ?? ""}`);
-  return { startedAt: r.startedAt, ms: r.ms, status: r.status, rev, error };
+  return { startedAt: r.startedAt, ms: r.ms, status: r.status, rev, error, vercelId: r.vercelId ?? null, headersMs: r.headersMs };
+}
+
+// n14 step 6 (run.mjs --phase=transition): the INSERT and the soft-
+// delete of the after-return saves, recorded like putSongRaw (never
+// throw on a status, never retried — the schedule is the experiment).
+export async function insertAfterRaw({ base, cookie, eventId, afterPosition }) {
+  const r = await settle("insert-after", `${base}/api/admin/setlist-items/insert-after`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ eventId: String(eventId), afterPosition }),
+  });
+  const ok = r.status >= 200 && r.status < 300 && r.body?.id != null;
+  return {
+    startedAt: r.startedAt, ms: r.ms, status: r.status, vercelId: r.vercelId ?? null, headersMs: r.headersMs,
+    id: ok ? String(r.body.id) : null, position: ok ? r.body.position : null,
+    rev: r.body && Number.isSafeInteger(r.body.rev) ? r.body.rev : null,
+    error: r.error ?? (ok ? null : `HTTP ${r.status} ${JSON.stringify(r.body)?.slice(0, 160) ?? ""}`),
+  };
+}
+
+export async function softDeleteRaw({ base, cookie, id }) {
+  const r = await settle("delete", `${base}/api/admin/setlist-items/${id}`, { method: "DELETE", headers: { cookie } });
+  const ok = r.status >= 200 && r.status < 300;
+  return {
+    startedAt: r.startedAt, ms: r.ms, status: r.status, vercelId: r.vercelId ?? null, headersMs: r.headersMs,
+    rev: r.body && Number.isSafeInteger(r.body.rev) ? r.body.rev : null,
+    error: r.error ?? (ok ? null : `HTTP ${r.status} ${JSON.stringify(r.body)?.slice(0, 160) ?? ""}`),
+  };
 }
 
 // The COMPLETE song payload for POST /api/admin/songs and PUT

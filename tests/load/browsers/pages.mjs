@@ -62,6 +62,7 @@
 // — a drill that pushes pages into the fallback would otherwise file
 // "Realtime fallback to polling" events into the dev Sentry project.
 import { chromium } from "playwright";
+import { dplIdOf, pinEvidence } from "./transition.mjs";
 
 const INIT_SCRIPT = `(() => {
   const seen = new Set();
@@ -184,7 +185,22 @@ const isNotification = (f) =>
 // see seedOf), the launch wave, the first /api/setlist request and the
 // first Realtime websocket (hydration readiness: the live hook only opens
 // either once React has mounted it). Off: the record is unchanged.
-export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false }) {
+//
+// `transition` (n14 step 6, run.mjs --phase=transition): additionally
+// record per page the document's `data-dpl-id` (the build the tab runs —
+// Skew Protection stamps the serving deployment on <html>) and the
+// document's x-vercel-id; per /api/setlist response the extended row
+// (x-vercel-id, cache headers, age, pin evidence from the request as
+// sent incl. its Cookie header, body-complete time, request URL); every
+// framework asset response (`/_next/…`: status, `dpl` query pin) so "no
+// chunk 404 after the switch" is only claimed for assets old tabs
+// actually fetched after it; failed setlist requests; main-frame
+// navigations (an unexpected reload is a continuity failure); page
+// errors with their time; and the postgres_changes receipts with the
+// row's `isDeleted` (a soft-delete is an UPDATE). `cohort` labels every
+// page of this call; `extend()` opens more pages (arrivals) in the same
+// browser. Off: the record is unchanged.
+export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false, transition = false, cohort = null }) {
   const browser = await chromium.launch({
     headless,
     args: [
@@ -207,7 +223,12 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     const now = Date.now();
     if (f.event === "postgres_changes") {
       const d = f.body?.data;
-      rec.notes.push([now, String(d?.type || "?")[0], String(d?.record?.id ?? d?.old_record?.id ?? "")]);
+      const note = [now, String(d?.type || "?")[0], String(d?.record?.id ?? d?.old_record?.id ?? "")];
+      // transition: + the row's isDeleted (true / false / null when the
+      // payload carries no record) and the table — a soft-delete is an
+      // UPDATE with isDeleted true, never a DELETE frame.
+      if (transition) note.push(typeof d?.record?.isDeleted === "boolean" ? d.record.isDeleted : null, d?.table ?? null);
+      rec.notes.push(note);
     } else if (f.event === "broadcast" && f.body?.event === "rev") {
       const rev = f.body?.payload?.rev;
       rec.bcasts.push([now, typeof rev === "number" ? rev : null, rec.dropNotify ? "x" : "n"]);
@@ -219,7 +240,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     return f;
   };
 
-  async function openOne(idx) {
+  async function openOne(idx, { cohortLabel = cohort, wave = Math.floor(idx / concurrency) } = {}) {
     const locale = localeOf[idx % localeOf.length];
     const mode = routeMode(idx); // "none" | "proxy" | "blocked"
     const rec = {
@@ -232,9 +253,23 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       seen: {}, gone: {}, dom: [], notes: [], bcasts: [], fetches: [], errors: [],
       dropNotify: false, droppedFrames: 0, blockedAttempts: 0,
     };
+    if (transition) {
+      Object.assign(rec, {
+        cohort: cohortLabel, docDplId: null, docVercelId: null,
+        // [t, status, dpl query (null = unpinned), path (≤ 80 chars)]
+        assets: [],
+        // [t, url path+query (≤ 120), failure text]
+        reqFailed: [],
+        // [t, url, status, x-vercel-id, data-dpl-id] main-frame DOCUMENT
+        // loads (the first is the load; later ones are reloads)
+        navs: [],
+        // [t, message]
+        pageErrs: [],
+      });
+    }
     if (admission) {
       Object.assign(rec, {
-        wave: Math.floor(idx / concurrency), launchedAt: Date.now(),
+        wave, launchedAt: Date.now(),
         rowsLog: [], navStart: null, ttfbMs: null, dclMs: null, docStatus: null, docBytes: null,
         seed: { kind: "unknown", rev: null }, firstApiReqAt: null, wsOpenAt: null,
       });
@@ -274,7 +309,40 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         } catch { /* body gone */ }
       });
     }
-    page.on("pageerror", (e) => { if (rec.errors.length < 20) rec.errors.push(String(e.message).slice(0, 200)); });
+    page.on("pageerror", (e) => {
+      if (rec.errors.length < 20) rec.errors.push(String(e.message).slice(0, 200));
+      if (transition && rec.pageErrs.length < 50) rec.pageErrs.push([Date.now(), String(e.message).slice(0, 200)]);
+    });
+    if (transition) {
+      page.on("requestfailed", (q) => {
+        const u = q.url();
+        if (!u.includes("/api/") && !u.includes("/_next/")) return;
+        if (rec.reqFailed.length < 200) rec.reqFailed.push([Date.now(), u.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), String(q.failure()?.errorText ?? "").slice(0, 80)]);
+      });
+      page.on("response", async (r) => {
+        const u = r.url();
+        let url;
+        try { url = new URL(u); } catch { return; }
+        if (url.hostname !== baseHost) return;
+        if (r.request().isNavigationRequest() && r.frame() === page.mainFrame()) {
+          // A DOCUMENT load (the first one is the page's own load; any
+          // later one is a reload). Same-document navigations (the app's
+          // history.replaceState) fetch no document and are not counted —
+          // `framenavigated` would count them.
+          // [t, url, status, x-vercel-id, data-dpl-id]; the page's build
+          // (docDplId / docVercelId) is its FIRST document's.
+          const nav = [Date.now(), u.slice(0, 160), r.status(), r.headers()["x-vercel-id"] ?? null, null];
+          rec.navs.push(nav);
+          if (rec.docVercelId == null) rec.docVercelId = nav[3];
+          try { nav[4] = dplIdOf(await r.text()); } catch { /* body gone */ }
+          if (rec.docDplId == null) rec.docDplId = nav[4];
+          return;
+        }
+        if (url.pathname.startsWith("/_next/") && rec.assets.length < 2000) {
+          rec.assets.push([Date.now(), r.status(), url.searchParams.get("dpl"), url.pathname.slice(0, 80)]);
+        }
+      });
+    }
     page.on("response", async (r) => {
       const u = r.url();
       if (!u.includes("/api/setlist?")) return;
@@ -304,9 +372,18 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         if (Number.isFinite(st) && st > 0) reqStart = Math.round(st);
       } catch { /* timing not available */ }
       const entry = [t, minRev === null ? null : Number(minRev), r.status(), h["x-snapshot-source"] || null, null, h["x-snapshot-verify"] ?? null, hint, reqStart, null];
+      // transition: 9 x-vercel-id, 10 x-vercel-cache, 11 cache-control,
+      // 12 age, 13 pin evidence (from the request AS SENT, incl. the
+      // Cookie header — allHeaders() below), 14 body complete, 15 path +
+      // query of the request.
+      if (transition) entry.push(h["x-vercel-id"] ?? null, h["x-vercel-cache"] ?? null, h["cache-control"] ?? null, h.age ?? null, null, null, u.replace(/^https?:\/\/[^/]+/, "").slice(0, 160));
       rec.fetches.push(entry);
+      if (transition) {
+        try { entry[13] = pinEvidence(u, await r.request().allHeaders()); } catch { entry[13] = pinEvidence(u, r.request().headers()); }
+      }
       try {
         const txt = await r.text();
+        if (transition) entry[14] = Date.now();
         const i = txt.lastIndexOf('"rev":');
         if (i >= 0) entry[4] = parseInt(txt.slice(i + 6), 10);
         // String scan, not JSON.parse: 30 pages × ~80 KB bodies per save
@@ -390,6 +467,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     }
     pages[idx] = { rec, page, context, routes };
   }
+  // (arrivals: see `extend` below; openOne fills pages[idx] in place)
 
   // Open in small parallel waves: 30 simultaneous SSR renders + 30
   // hydrations would mostly measure this laptop's CPU.
@@ -400,6 +478,27 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
 
   return {
     pages,
+    // n14 step 6 arrivals: `count` more pages in this browser, indices
+    // continuing after the existing ones, in waves of `concurrency`
+    // (wave numbers restart at 0 for the arrival), labelled `cohort`.
+    // Resolves when every page of the arrival has navigated (or failed).
+    async extend({ count: more, cohort: label }) {
+      const from = pages.length;
+      // Reserve the slots first so a concurrent extend cannot reuse them.
+      for (let i = 0; i < more; i++) pages.push(undefined);
+      const firstIdx = from;
+      for (let i = 0; i < more; i += concurrency) {
+        await Promise.all(Array.from({ length: Math.min(concurrency, more - i) }, (_, k) => openOne(from + i + k, { cohortLabel: label, wave: Math.floor((i + k) / concurrency) })));
+        log(`  pages (${label}): ${Math.min(more, i + concurrency)}/${more} opened`);
+      }
+      return { firstIdx, count: more };
+    },
+    // Run `fn(arg)` inside page i (the page's own origin, cookies and
+    // localStorage); null when the page is gone.
+    async evaluate(i, fn, arg) {
+      if (!pages[i]) return null;
+      return pages[i].page.evaluate(fn, arg);
+    },
     joined: () => pages.filter((p) => p && (p.rec.mode === "blocked" ? p.rec.loadedAt : p.rec.joinAt.length)).length,
     // R1 page builds only (an R2 page registers no postgres_changes).
     pgReady: () => pages.filter((p) => p && p.rec.pgReadyAt.length).length,

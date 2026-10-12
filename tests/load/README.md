@@ -918,6 +918,93 @@ writes in `ADMISSION=1` mode (`kind: "k6-admission"`, see the k6 section) is
 accepted as-is: `admission-join.mjs` maps it onto these fields
 (`normaliseK6`) and keeps the original under `raw`.
 
+## n14 qualification step 6 — deployment transitions (`--phase=transition`)
+
+Step 6 qualifies **switching the dev alias between deployments while
+tabs stay open**: rollback 1 (ON → OFF, `LIVE_WARM_ENTRIES=0`), rollback
+2 (ON → R1 = `385e5f0`, no warming, no `x-snapshot-verify`,
+`postgres_changes` pages), and the returns (to an EXISTING ON deployment
+and to a FRESH one). No server change; dev DB only, event 111. The
+harness side — switch-file protocol, timeline, identity guard, route
+marker, probe, controlled subsets, arrivals, smoke, exposure, verdicts,
+record formats — is in `browsers/README.md`, "Transition phase"; the
+attribution of every recorded `x-vercel-id` to a deployment is
+`transition-join.mjs` (its own section).
+
+**Rules for the whole run day.** Nobody merges or pushes to `dev` while
+the runs are on (a push redeploys and MOVES the alias on its own). Every
+deployment is `vercel deploy -e …` from the tree — never `vercel
+redeploy`, which drops deployment-level `-e` env. The alias moves only
+with `vercel alias set`. After the last run: alias back to the dev HEAD
+deployment and verified, tabs closed, logs exported — only then delete
+the run's deployments.
+
+**Deployments (8; record commit, env, role, twin, ids):** ON-A (dev HEAD,
+Preview env, the incumbent), OFF-1 + its twin OFF-1t (`-e
+LIVE_WARM_ENTRIES=0`; the twin is verified — save + hinted fetch → no
+`[liveWarm]` lines — so the measurement target stays untouched), ON-B
+(fresh return target), ON-A′ (T2's incumbent), R1-1 + twin R1-1t
+(`385e5f0`: no `x-snapshot-verify`, `postgres_changes` page), ON-C
+(fresh return target for T2).
+
+```powershell
+$alias = "opensetlist-git-dev-opensetlist-projects.vercel.app"
+# deploy (from the matching tree; never `redeploy`)
+npx vercel deploy --scope opensetlist-projects                                  # ON-x
+npx vercel deploy --scope opensetlist-projects -e LIVE_WARM_ENTRIES=0           # OFF-1 / OFF-1t
+npx vercel inspect <url> --scope opensetlist-projects                           # id, env, state — keep the output
+```
+
+**Operator sequence for one run (e.g. T1: ON-A → OFF-1 → ON-A → ON-B):**
+
+```powershell
+$out = "tests/load/results/<UTC date>"
+# 0. host isolation (side-cars allowed: pooler samplers, log capture); the alias serves the incumbent
+# 1. start the harness; it prepares, joins 30 pages + 470 SDK, settles, then polls switch file 1
+node --no-warnings tests/load/browsers/run.mjs --phase=transition --pages=30 --subs=470 `
+  --switch-files="$out/t1-a.json,$out/t1-b.json,$out/t1-c.json" --strict-host --label=step6-T1
+# 2. per switch, ≥ 60 s ahead: write the plan (P on a whole second; leave ≥ --leg-gap 90 s after
+#    the previous leg's last save before P - 30 s)
+$P = (Get-Date).ToUniversalTime().AddSeconds(75).ToString("yyyy-MM-ddTHH:mm:ss.000Z")
+@{ plannedAt = $P; kind = "off"; label = "ON-A→OFF-1" } | ConvertTo-Json | Out-File -Encoding utf8 "$out/t1-a.json"
+#    (kind: pseudo | off | return | fresh | r1 | return-from-r1;
+#     after a return from R1 add  afterSwitchSaves = "insert,update,delete")
+# 3. at P: move the alias, timing the CLI process, then MERGE the result into the same file
+$s = (Get-Date).ToUniversalTime()
+$p = Start-Process npx -ArgumentList "vercel alias set <OFF-1 url> $alias --scope opensetlist-projects" -NoNewWindow -PassThru -Wait
+$e = (Get-Date).ToUniversalTime()
+$j = Get-Content "$out/t1-a.json" -Raw | ConvertFrom-Json
+$j | Add-Member cliStart $s.ToString("o"); $j | Add-Member cliEnd $e.ToString("o")
+$j | Add-Member cliCpuMs ([int]$p.TotalProcessorTime.TotalMilliseconds)
+$j | Add-Member target @{ url = "https://<OFF-1 hash>-opensetlist-projects.vercel.app"; id = "dpl_…" }
+$j | ConvertTo-Json -Depth 4 | Out-File -Encoding utf8 "$out/t1-a.json"
+# 4. the harness runs the leg on its own: saves at P-30 … P+60 s, the identity guard through
+#    target.url, the route marker, the subsets, arrivals at P+10 s, the smoke at P+20 s.
+#    Repeat 2–3 for the next switch file.
+# 5. after the run: alias back to the dev HEAD deployment, verify, then
+node tests/load/browsers/restore.mjs --compact --yes
+# 6. export the Vercel request logs per deployment (bounded windows) and join:
+#    transition-join.mjs (its own section)
+```
+
+- **T0** (control): ON-A only, three `kind: "pseudo"` switch files; at
+  each P run comparable read-only CLI work (e.g. `vercel inspect`) and
+  write the CURRENT deployment as `target` — same timeline, same
+  arrivals, same CLI overhead.
+- **T1**: ON-A → OFF-1 (`off`) → ON-A (`return`: stale-first-answer
+  check) → ON-B (`fresh`); the hold subset acts at every switch.
+- **T2**: ON-A′ → R1-1 (`r1`: the arrival's page part is the 15-page R1
+  cohort) → ON-C (`return-from-r1` + `afterSwitchSaves:
+  "insert,update,delete"`: the ahead-hint subset is armed before it and
+  the R1 tabs see all three change types).
+- The alias CLI runs on the load laptop as a recorded exception: its
+  start / end and process CPU go into the switch file; the INVALID
+  thresholds apply to the whole window as in every run.
+- Re-runs only for NOT EXERCISED exposure (exit 4) or INVALID (exit 3);
+  a reduced population is a separate configuration and the original
+  result is kept. A failed identity guard aborts the timeline (exit 2)
+  before any further write.
+
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
 The browsers harness stamps every broadcast arrival on the laptop that
@@ -1119,3 +1206,255 @@ The admin loop appends rows after the current last position and
 soft-deletes them again, so no existing row is moved or edited. The
 event keeps its visible rows plus some `isDeleted` rows. Remove the
 `ongoing` override once testing is done.
+
+## n14 qualification step 6 — joins, attribution smoke, JSON log export
+
+Step 6 switches the dev alias between deployments while tabs stay open
+(design: ON → OFF → ON, ON → R1 → ON). The harness side
+(`run.mjs --phase=transition`, section above) records what every client
+saw; the three tools here establish **which deployment answered each
+request** and what that means for the switch. Harness / tooling only — no
+`src/` change.
+
+| tool | what it does |
+|---|---|
+| `vercel-logs-json.sh <deployment> <since ISO> <until ISO> <out.jsonl> [limit=1000]` | complete JSON Lines export of one deployment's request logs for a window |
+| `attribution-smoke.mjs --base=<alias> --deployment=<immutable url \| dpl_id>` | pre-run proof that responses join to log records (10 SDK reads + 1 page load) |
+| `transition-join.mjs <browsers-transition.json> --logs=<dpl>=<a.jsonl>,…` | the step-6 join: attribution, propagation, exposure, OFF / R1 evidence, resources, continuity |
+
+### Attribution: `X-Vercel-Id` ↔ `vercel logs --json`
+
+Every response carries `X-Vercel-Id: sfo1::icn1::<reqid>`; the record that
+`vercel logs <deployment> --json` emits for that request has `id = <reqid>`
+plus `deploymentId`, `requestPath` (no query string), `requestMethod`,
+`responseStatusCode`, `domain`, `source` (`serverless` for API routes,
+`serverless-middleware` for pages), `timestamp` (epoch ms, request start at
+the edge) and the nested function lines in `logs[]` (`[liveWriter]`,
+`[liveWarm]`, `[setlist] warm-lookup` / `hint-fetch`, `[liveSnapshot]
+build`, `[prisma] pool`, EMAXCONN). The top-level `message` is only the
+first nested line. One record per request id (verified 1:1 on the alias,
+2026-10-12, CLI 63.1.2).
+
+The join reports two things separately:
+
+- **request attribution** — the id matched a record AND the record's
+  deployment / path / status / method agree with the response;
+- **function instrumentation** — the record also carries the lines the
+  serving deployment must log for that request: a 2xx save → a
+  `[liveWriter]` line (every role); a hinted `/api/setlist` read on an R2
+  deployment (ON / OFF) → a `[setlist] hint-fetch` line (R1 logs none).
+  A request can be attributed while its nested lines are still missing:
+  background (`after()`) lines land in the record later — hence the
+  second export pass.
+
+### `vercel-logs-json.sh` — export caveats
+
+- **`--limit` defaults to 100** and, when a window holds more, the CLI
+  returns the NEWEST records: the oldest part of the window disappears
+  silently (50 req/s fills 100 records in 2 s). The script cuts the window
+  into `SLICE_S` (60 s) slices fetched with a high limit and splits any
+  slice that returns ≥ limit records in half, recursively (down to
+  `MIN_SLICE_MS`, 1 s). A slice still saturated there, or one the CLI
+  never answered after 3 attempts, is reported (`saturated=` /
+  `failed=`) and the script exits 3: an export is never silently short.
+- `--since` / `--until` are both inclusive at ms precision, so adjacent
+  slices share a millisecond: records are deduplicated by `id`; of two
+  copies the one with more `logs[]` lines wins.
+- **Second pass**: the output is merged by id into an existing file, so
+  re-running the same command a few minutes after the run adds the
+  background-job lines that arrived late (`new=` / `enriched=` in the
+  coverage line). Run it once right after the run and once ~5 min later.
+- **Retention**: runtime logs are kept for a limited, plan-dependent time,
+  and a deleted deployment's logs are gone — export every deployment
+  (both passes) before the cleanup deletes it.
+- The CLI's banner goes to STDERR (kept in a temp file, its tail printed
+  when a call fails); JSON goes to STDOUT. In a git worktree (no
+  `.vercel/`) the script passes `--project opensetlist` (`VERCEL_PROJECT`).
+- Coverage line: `slices= splits= saturated= failed= maxPerSlice=
+  hitLimit= limit= sliceS= records= raw= dupes= existing= new= enriched=
+  deployments= span=`. Live check:
+  `results/2026-10-12/2026-10-12T15-40Z-logs-export-check.md` (a 57-record
+  window exported at `limit=20` recovers the same 57 ids as `limit=1000`).
+
+### `attribution-smoke.mjs` — before every run day
+
+```bash
+node tests/load/attribution-smoke.mjs \
+  --base=https://<dev alias> --deployment=https://opensetlist-<hash>-opensetlist-projects.vercel.app
+```
+
+10 SDK-style reads on the alias (5 generic, 5 `minRev=<head>&hint=1`, plain
+`fetch` like subs-worker.mjs) + 1 Playwright load of the event page; the
+page's document and **every** `/api/setlist` request it actually issues
+are kept (the denominator is what the page sent). Per request: status,
+`x-vercel-id`, source / verify, `x-vercel-cache` / `cache-control` / `age`,
+request-side pin evidence (`x-deployment-id` header, `__vdpl` cookie, `dpl`
+query) — framework assets' pins are counted apart (Skew Protection pins
+assets; the custom setlist fetch is expected unpinned). After `--wait-s`
+(15 s) it exports the deployment's logs for the window (a second pass 20 s
+later if anything is unmatched) and joins. Writes
+`results/<UTC date>/<stamp>-attribution-smoke.{json,md}` (+ the `.jsonl`
+export, gitignored); exit 0 only when every request matched a record of
+the expected deployment with path / status / method consistent. First
+run: `results/2026-10-12/2026-10-12T15-34-00Z-attribution-smoke.md` —
+13/13 (10 SDK + document + 2 page `/api/setlist`) on
+`dpl_FAt2Sp33CvHnRohZyHkH5bUHZ4X5`; page API requests 0/2 pinned; 58 of
+103 framework assets carried `?dpl=`, 44 an `x-deployment-id` header.
+
+### `transition-join.mjs` — inputs
+
+```bash
+node tests/load/transition-join.mjs <stamp>-browsers-transition.json \
+  --logs=dpl_A=a.jsonl,dpl_B=b.jsonl,dpl_C=c.jsonl \
+  [--switch-files=s1.json,s2.json,s3.json] [--manifest=deployments.json] \
+  [--sustain-s=60] [--bucket=5] [--carry=5] --out=<md> [--json[=<file>]]
+```
+
+- `--logs`: one export per deployment that served anything in the run
+  (incumbent, every target, twins if they were hit). The record's own
+  `deploymentId` is the attribution; the key only labels the file.
+- `--switch-files`: the operator's switch records, in switch order; a file
+  may be one JSON object or JSON Lines (`{"plannedAt"}` first, then the
+  CLI record appended) — merged per switch, and they win over the
+  harness's copy for `cliStart` / `cliEnd` / `target`.
+- `--windows=<from>,<to>[;<from>,<to>…]` (ISO or epoch ms): the log
+  export windows (e.g. the per-leg windows [plannedAt − 40 s, plannedAt
+  + 75 s]). Without it they are inferred from the union of every
+  deployment's records (blocks split at 30 s gaps — slightly narrower
+  than the real windows). A response whose edge request time (the epoch
+  ms inside its request id, `<pfx>-<ms>-<hex>`) lies outside them is
+  **not exported**: counted apart, never as unmatched; attribution
+  coverage is computed inside the windows. Log records with
+  `responseStatusCode: 0` and empty response fields (Vercel logs a few
+  incomplete records — 6 of 30 988 in T1, every one a 200 to the client)
+  attribute by id / deployment / path and are listed as incomplete.
+- Switch times may be ISO strings (operator files) or epoch ms (harness);
+  every instant is normalised to epoch ms when the switch records merge.
+- `--manifest`: the deployment manifest written by the deploy script —
+  `{ "deployments": [{ "id": "dpl_…", "url": "https://…", "role":
+  "ON-A|OFF-1|ON-B|ON-A′|R1-1|ON-C|OFF-1t|R1-1t", "commit": "5475bf2",
+  "env": { "LIVE_WARM_ENTRIES": "0" }, "effectiveFlag": "0", "twin":
+  "…", "identity": "…" }] }`. Role kind: `R1…` or commit `385e5f0` → R1;
+  `OFF…` or flag `0` → OFF; `ON…` or flag `1` → ON. Roles are never
+  inferred from logs — the OFF / R1 evidence is exactly the check that
+  the logs match the declared role.
+
+**Harness JSON contract** (`transition` section; read defensively — the
+first present alias of each field wins, rows may be objects or arrays
+with a section-level `cols` / `reqCols` list):
+
+| what | where / fields |
+|---|---|
+| switches | `transition.switches[]`: `name?, kind?` (`pseudo`, `off`, `r1`, `existing-return`, `fresh`, …), `plannedAt, cliStart, cliEnd, cliCpuMs, target {url, id}, from? {url, id}`; `transition.initialDeploymentId` (or `incumbent.id`) names the first switch's old deployment when `from` is absent |
+| saves | `transition.saves[]`: `k?, who?, rev, status, putStart, putEnd, firstAttemptAt?, method?, path?, leg?` (switch index), `label?, scheduledOffsetMs?, actualOffsetMs?, offsetFromCliEndMs?, arrival?, songId?,` **`vercelId`** |
+| responses | `transition.responses[]` (flat, with `pop`) and/or `transition.{sdk,pages,probe,saves,smoke,guard,documents}.{responses\|reqs\|rows}[]` and `transition.{sdk,pages}.clients[].reqs[]` |
+| request id | `vercelId` \| `xVercelId` \| `reqId` \| `x-vercel-id` — full header or bare `<reqid>` |
+| timing | `tStart` \| `reqStart` \| `start` \| `sentAt`; `tEnd` \| `end` \| `respAt` \| `receivedAt` \| `t`; exposure stages `headersAt`, `bodyAt`, `evalAt`, `settledAt` |
+| who | `pop` (`sdk`, `page`, `probe`, `save`, `smoke`, `guard`, `document`), `client` \| `clientId` \| `idx`, `subset` (`hold`, `aheadHint`, null), `cohort` (`incumbent`, `arrival`, `r1`), `switchIdx` |
+| request | `method`, `path` \| `url`, `host`, `notify` (hint=1 sent; else read from the URL), `minRev`, `hint`, `reason` (`initial`, `notify`, `recheck`, `periodic`, …), `queuedAt` (recheck ticket queued) |
+| response | `status` (0 = network / deadline), `bodyValid`, `rev`, `source`, `verify` (null = header absent), `resolution`, `cache {xVercelCache, cacheControl, age}`, `pin {header, cookie, query}`, `clientBuild` (document `data-dpl-id`) |
+| clients | `transition.sdk.clients[]` in subs-worker.mjs's record shape (+ `cohort`, `subset`, `switchIdx`); `transition.pages.clients[]` in pages.mjs's shape (+ `cohort`, `notes` rows `[t, type, rowId, isDeleted]`) |
+| optional | `transition.rechecks[] {client, queuedAt, dispatchedAt, settledAt, subset, switchIdx}`, `transition.smoke[]` (reactions / wishes: `switchIdx, locale, kind, submitStatus, persisted, refreshed, identityRetained, vercelId`), `transition.arrivals`, `transition.verdicts` (printed verbatim) |
+
+**The real harness shape** (`run.mjs --phase=transition`, detected by
+`transition.sdk` / `transition.probe` being arrays) is read as follows —
+the table above stays as the fallback for other producers:
+
+| source | population | notes |
+|---|---|---|
+| `transition.probe[]` | `probe` | main-thread record `{tStart, tHeaders, tBody, status, vercelId, verifyRaw, hint, minRev, pin, …}`; response = `tBody`; `hint` present → hinted (`hint=1`); path `/api/setlist` |
+| `switches[].route[]` | `route` | route marker (HTML); its `dpl` (data-dpl-id) must equal the record's deploymentId, else inconsistent |
+| `switches[].guard.attempts[].rec` | `guard` | immutable target URL — attributed, never used for routing |
+| `switches[].smoke[]` | `smoke` | every sub-request object with a `vercelId` (`post`, `counts`, `wish`); method not compared |
+| `transition.saves[]` | `save` | `startedAt` → `startedAt + ms`; `leg` = 1-based switch `k`; `offS` 11 / 15 = arrival saves; method not compared (op-dependent) |
+| `transition.sdk[].reqs` | `sdk` | ARRAY rows by `SDK_REQ_COLS` (checked against `transition.rows.sdkReqs` label prefixes — a reordered harness throws); response = `bodyAt` (col 18), settled = col 10; `cohort` `incumbent` / `hold` / `ahead` / `arrival-<k>` / `r1-<k>` → cohort + subset + switch; a synthetic ahead-hint row = cohort `ahead` AND col 29 (never the rev alone) |
+| `transition.pages[].fetches` / `.navs` | `page` / `document` | rows by `PAGE_FETCH_COLS`; navs `[t, url, status, x-vercel-id, data-dpl-id]` |
+
+Per switch the join uses `baselineDpl` as the old deployment, the
+harness's `window {from, to}` as the leg window, and prints the
+harness's provisional `boundary` / `firstTargetLive` / `routing` (live
+route marker, no logs) next to the log-attributed bounds that replace
+them. A switch whose target is its baseline (or `kind: "pseudo"`) is a
+**pseudo-switch**: no old side; the first target response is the first
+response whose request started after `cliEnd`, and "old answer after
+cutover" means a request sent before `cliStart` and evaluated after the
+boundary (a held answer). Pending rechecks are derived from the ahead
+subset's rows: `recheckQueued` (col 27) queues the ticket at that row's
+`evalAt`; the recheck is the client's next notification fetch.
+Regressions need `appliedAll`, which the real client records do not
+carry — the column reads `—` and the harness's monotonicity check
+covers it. First end-to-end run:
+`results/2026-10-12/2026-10-12T15-58-05-326Z-transition-join.md`.
+
+The identity guard (`pop: "guard"`, through the immutable target URL) and
+the smoke are attributed but excluded from propagation: only alias
+traffic (`sdk`, `page`, `probe`, `route`, `document`) says where the
+alias routed.
+
+### `transition-join.mjs` — how to read the report
+
+- **Attribution** — per population (controlled subsets apart) and per
+  deployment: responses, with request id, matched, consistent (= request
+  attribution coverage), inconsistent, unmatched, instrumentation
+  expected → present; pin evidence per population; every unattributed
+  response with its offset to the nearest `cliStart`.
+- **Propagation per switch** (harness clock only): CLI start / end; per
+  population (probe, SDK, pages, all) the first target response (start →
+  end), last old-deployment request START, last old response END (an old
+  request finishing after a target response is not continued old
+  routing), old starts after `cliStart`; **sustained target routing**
+  over the predeclared window [cliEnd, cliEnd + 60 s]: 0 probe flip-backs
+  to the old deployment after the first target probe, probe gaps ≤ 3 s,
+  last probe on the target. Complete attribution of the probe requests
+  started in [cliStart − 10 s, cliEnd + 60 s] is **required** — one
+  unattributed and the profile is **NOT EXERCISED** (behavioural verdicts
+  stand). The record − harness offset distribution in the header is
+  latency plus clock offset: bounds closer than its spread are
+  indeterminate.
+- **Exposure** (measured against the first attributed target response
+  over all alias populations, T): pending hinted fetch — natural SDK
+  hinted fetches dispatched before `cliStart`, unresolved after T
+  (`settledAt`, else `evalAt` / `bodyAt` / `tEnd`), ≥ 20 distinct
+  clients, with stage counts and old-deployment attribution; pending
+  recheck — ahead-hint subset tickets queued before `cliStart` and
+  resolved after T, ≥ 5, split into *queued* (recheck dispatched after
+  T) and *dispatched* (in flight across T); old answer after cutover —
+  clients with an old-deployment 200 completing after T followed by a
+  target answer at ≥ that rev without regression (client `appliedAll`),
+  ≥ 5, natural vs controlled; arrival saves (+11 / +15 s or
+  `arrival: true`) — SDK arrivals not joined at the PUT response ≥ 20 and
+  arrival pages incomplete ≥ 3, independently. Each **EXERCISED** /
+  **NOT EXERCISED**.
+- **Target role evidence** — OFF absence is **PASS** only with positive
+  evidence: manifest `LIVE_WARM_ENTRIES=0`, every 2xx save of the leg
+  attributed and carrying its writer line, every hinted read of the leg
+  attributed, then 0 `[liveWarm] start`, 0 warm-lookup lines, 0
+  `source=warm` responses on that deployment; anything missing → **NOT
+  EXERCISED**, a warm trace → **FAIL**. R1: 0 `[liveWarm]` lines of any
+  kind and 0 responses with a verify header. ON targets show whether a
+  warm job was seen.
+- **Drain** — the old deployment after T in 10 s buckets: requests, pool
+  lines, max pool total, instances logging. An instance that stops
+  logging has not necessarily closed its pooler connections.
+- **Continuity / performance** per save × SDK group (cohort × subset):
+  eligible incumbents (subscribed by the first save attempt), p50 / p95 /
+  max, missing at 30 s → continuity PASS / FAIL (proposed operational
+  acceptance; supersession counts), p95 ≤ 3 s kept visible, joined-after
+  clients timed from max(join, PUT response), broadcast receipts, the
+  applying fetch's reasons (satisfied first fetch / recheck / periodic
+  repair …), regressions. A group with no eligible client reads `n/a`.
+- **Existing-deployment return** (switch `kind: existing-return`, or a
+  target already seen in the run): each alias client's first target
+  answer against the committed head at its request start, by source.
+- **R1 cohort**: per change type (INSERT / UPDATE / soft-delete = UPDATE
+  with `isDeleted` / DELETE) the receipts after the switch, the page's
+  next `/api/setlist` fetch and next DOM change, and how many DOM
+  updates came before the earliest periodic repair (16 s).
+- **Resources across deployments** — Σ per deployment and combined
+  (vercel-logs-summary's estimator run on the JSON export: per-instance
+  maxima per bucket, carried ≤ `--carry` s, silent instances invisible,
+  record times are request starts; an app-side estimate, not the
+  pooler's count), writer lines / acquire max, EMAXCONN, requests and
+  builds per deployment per minute.
+- **Reactions / wishes smoke** and the harness's provisional verdicts
+  (verbatim) close the report.

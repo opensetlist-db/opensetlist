@@ -1,0 +1,367 @@
+[18:38:50.512] host guard: ok (CPU 21.2 % busy, 2 s CPU sample over 12 cores; no competing processes)
+[18:38:50.513] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=12 pause=25000ms drill=none
+[18:38:50.514] phase=transition: 2 switch file(s) tests/load/results/2026-10-12/switch-T2-1.json, tests/load/results/2026-10-12/switch-T2-2.json; saves at P-30,-1,+1,+5,+11,+15,+30,+60 s; arrivals 10 pages + 100 SDK at P+10 s (R1 cohort 15); subsets hold 20, ahead-hint 20 (of --subs); --edits not used
+[18:38:56.759] transition prepare: anchor row 2660 @3 (rev 1803); manifest 70 rows at rev 1803
+[18:39:02.963]   pages: 5/30 opened
+[18:39:09.686]   pages: 10/30 opened
+[18:39:11.329]   pages: 15/30 opened
+[18:39:12.826]   pages: 20/30 opened
+[18:39:14.360]   pages: 25/30 opened
+[18:39:16.016]   pages: 30/30 opened
+[18:39:16.019]   joined: pages 26/30 subs 470/470
+[18:39:16.526] population: {"pagesJoined":30,"pagesPgReady":0,"joined":470,"allJoinedSec":19.764,"allPgReadySec":null}; settling 20s
+[18:39:36.545] switch 1: waiting for tests/load/results/2026-10-12/switch-T2-1.json (its plannedAt, ≥ 60 s ahead)
+[18:39:36.545] switch 1: r1  planned at 2026-10-12T18:41:12.000Z (in 95.5 s; written 145.8 s ahead)
+[18:40:42.463] switch 1 save 1.0 [put] P-30s: 200 rev 1804 456 ms (late 5 ms)
+[18:41:11.452] switch 1 save 1.1 [put] P-1s: 200 rev 1805 453 ms (late -1 ms)
+[18:41:13.430] switch 1 save 1.2 [put] P+1s: 200 rev 1806 429 ms (late 1 ms)
+[18:41:16.457] switch 1: file complete — cli 2026-10-12T18:41:12.147Z → 2026-10-12T18:41:16.080Z (334 ms CPU), target dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd https://opensetlist-meqyujqe8-opensetlist-projects.vercel.app
+[18:41:19.510] switch 1: identity guard through https://opensetlist-meqyujqe8-opensetlist-projects.vercel.app: ok (3053 ms)
+[18:41:19.963] switch 1 save 1.3 [put] P+5s: 200 rev 1807 453 ms (late 2510 ms, gated 2509 ms by the guard)
+[18:41:20.287] switch 1: first target response seen live (marker served by the target id): dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd at +8.3 s
+[18:41:20.488] switch 1: hold subset released (target+200ms); 22 response(s) were held
+[18:41:24.446] switch 1 save 1.4 [put] P+11s: 200 rev 1808 1434 ms (late 11 ms)
+[18:41:27.781] switch 1 save 1.5 [put] P+15s: 200 rev 1809 770 ms (late 11 ms)
+[18:41:28.432]   pages (r1-1): 5/15 opened
+[18:41:31.325]   pages (r1-1): 10/15 opened
+[18:41:33.400]   pages (r1-1): 15/15 opened
+[18:41:33.400] switch 1: arrivals r1-1: 15 page(s) + 100 SDK; population now 45 pages + 570 SDK
+[18:41:34.139] switch 1: smoke page 0 (ja): reaction 200, wish 403 → ok
+[18:41:35.764] switch 1: smoke page 1 (ko): reaction 200, wish 403 → ok
+[18:41:37.436] switch 1: smoke page 3 (en): reaction 200, wish 403 → ok
+[18:41:42.452] switch 1 save 1.6 [put] P+30s: 200 rev 1810 450 ms (late 2 ms)
+[18:42:12.467] switch 1 save 1.7 [put] P+60s: 200 rev 1811 456 ms (late 11 ms)
+[18:42:12.467] switch 2: waiting for tests/load/results/2026-10-12/switch-T2-2.json (its plannedAt, ≥ 60 s ahead)
+[18:42:12.468] switch 2: return-from-r1  planned at 2026-10-12T18:45:12.000Z (in 179.5 s; written 383.4 s ahead); after-switch saves insert, update, delete
+[18:44:42.508] switch 2 save 2.0 [put] P-30s: 200 rev 1812 505 ms (late 3 ms)
+[18:45:11.613] switch 2 save 2.1 [put] P-1s: 200 rev 1813 607 ms (late 6 ms)
+[18:45:11.997] switch 2: ahead-hint rev 1817 injected (20/20 news); at P 20/20 tickets queued for a recheck
+[18:45:14.407] switch 2 save 2.2 [put] P+1s: 200 rev 1814 1400 ms (late 7 ms)
+[18:45:16.572] switch 2: file complete — cli 2026-10-12T18:45:12.058Z → 2026-10-12T18:45:16.117Z (165 ms CPU), target dpl_5nR6mGHXsx2z1TsgChikER9ZHB5q https://opensetlist-e7i9t0p57-opensetlist-projects.vercel.app
+[18:45:19.380] switch 2: first target response seen live (marker served by the target id): dpl_5nR6mGHXsx2z1TsgChikER9ZHB5q at +7.4 s
+[18:45:19.589] switch 2: hold subset released (target+200ms); 20 response(s) were held
+[18:45:19.624] switch 2: identity guard through https://opensetlist-e7i9t0p57-opensetlist-projects.vercel.app: ok (3052 ms)
+[18:45:20.257] switch 2 save 2.3 [put] P+5s: 200 rev 1815 632 ms (late 2625 ms, gated 2618 ms by the guard)
+[18:45:24.081] switch 2 save 2.4 [put] P+11s: 200 rev 1816 1077 ms (late 4 ms)
+[18:45:26.693]   pages (arrival-2): 5/10 opened
+[18:45:27.728] switch 2 save 2.5 [put] P+15s: 200 rev 1817 722 ms (late 5 ms)
+[18:45:29.486]   pages (arrival-2): 10/10 opened
+[18:45:29.486] switch 2: arrivals arrival-2: 10 page(s) + 100 SDK; population now 55 pages + 670 SDK
+[18:45:33.683] switch 2: smoke page 0 (ja): reaction 200, wish 403 → ok
+[18:45:35.313] switch 2: smoke page 1 (ko): reaction 200, wish 403 → ok
+[18:45:36.925] switch 2: smoke page 3 (en): reaction 200, wish 403 → ok
+[18:45:42.490] switch 2 save 2.6 [put] P+30s: 200 rev 1818 490 ms (late 0 ms)
+[18:46:12.485] switch 2 save 2.7 [put] P+60s: 200 rev 1819 484 ms (late 1 ms)
+[18:46:22.872] switch 2 save 2.8-insert [insert] P+70s: 200 rev 1820 866 ms (late 5 ms)
+[18:46:32.356] switch 2 save 2.9-update [update] P+80s: 200 rev 1821 350 ms (late 6 ms)
+[18:46:42.415] switch 2 save 2.10-delete [delete] P+90s: 200 rev 1822 407 ms (late 8 ms)
+[18:46:45.548] cleaning up
+[18:46:48.014] cleanup: deleted 1/1; restore {"restored":67}
+[18:46:49.927] verify: {"dbActive":69,"snapshotItems":69,"snapshotRev":1824,"startRows":69,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}
+
+# Browsers run — 2026-10-12T18:38:47.830Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 1802, 69 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 12 × (insert-after + PUT marker song) — edit mode pair (anchor row 2660), every 25 s; timeout 30 s; drill: none
+- Window (UTC): run start 2026-10-12T18:38:47.830Z, first edit 2026-10-12T18:39:36.545Z, last edit settled 2026-10-12T18:46:45.547Z, end 2026-10-12T18:46:51.310Z
+- Label: step6-T2
+- Host guard at start: CPU 21.2 % busy (2 s CPU sample over 12 cores); 0 competing process(es) (--strict-host)
+
+- Phase: transition — 2 switch(es) on https://opensetlist-git-dev-opensetlist-projects.vercel.app
+
+## Transition (n14 step 6)
+
+**Verdict: VALID + FAIL** — failed: switch 1 performance; switch 1 arrivals; switch 2 performance; switch 2 arrivals — not exercised: switch 1 pendingHinted; switch 1 oldAnswer; switch 1 arrivalSdk; switch 2 pendingHinted; switch 2 arrivalSdk.
+
+- Anchor row 2660 (rev 1803); manifest 70 rows at rev 1803 (`2026-10-12T18-38-56-756Z-transition-manifest.json`). Population: 30 pages + 470 SDK (430 natural, hold 20, ahead-hint 20); growth initial: 30p + 470s → r1-1: 45p + 570s → arrival-2: 55p + 670s.
+- Saves at P-30, -1, +1, +5, +11, +15, +30, +60 s on the anchor (never retried); continuity 30 s from the first save attempt; performance p95 ≤ 3000 ms per save per population; leg gap 90 s; probe every 1000 ms (429 requests); route marker 2/s over P-10…+70 s.
+- The boundary ("first target response") is PROVISIONAL here: the route marker's live identification (`data-dpl-id`), else cliEnd. `../transition-join.mjs` attributes every recorded `x-vercel-id` to its deployment from the Vercel logs.
+
+| switch | kind | P (UTC) | CLI (s) | target | first target live | guard | continuity | performance | arrivals | smoke | exposure |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1  | r1 | 2026-10-12T18:41:12.000Z | 0.1…4.1 (334 ms CPU) | dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd | +8.3 s | **PASS** | **PASS** | **FAIL** | **FAIL** | **PASS** | pendingHinted NOT, oldAnswer NOT, arrivalSdk NOT, arrivalPages ✓ |
+| 2  | return-from-r1 | 2026-10-12T18:45:12.000Z | 0.1…4.1 (165 ms CPU) | dpl_5nR6mGHXsx2z1TsgChikER9ZHB5q | +7.4 s | **PASS** | **PASS** | **FAIL** | **FAIL** | **PASS** | pendingHinted NOT, pendingRecheck ✓, oldAnswer ✓, arrivalSdk NOT, arrivalPages ✓ |
+
+### Switch 1 (r1)
+
+- File `switch-T2-1.json` seen 2026-10-12T18:39:36.545Z (notice 145.8 s), complete 2026-10-12T18:41:16.457Z; target https://opensetlist-meqyujqe8-opensetlist-projects.vercel.app; baseline dpl_F5VocFcajvm1wf2aFqdMaBNhHvaK.
+- Live routing (route marker): first target 2026-10-12T18:41:20.287Z (marker served by the target id); last old request start 2026-10-12T18:41:20.002Z, last old response 2026-10-12T18:41:20.486Z; sustained target routing over 60 s: **no** (2 off-target). Boundary: 2026-10-12T18:41:20.287Z (route marker (data-dpl-id)).
+- Identity guard through https://opensetlist-meqyujqe8-opensetlist-projects.vercel.app: ok (3053 ms, 1 attempt(s), started 0 ms after the file completed).
+- Saves: 1.0 put P-30s 200 rev 1804 456 ms (late 5, cliEnd-34.1 s); 1.1 put P-1s 200 rev 1805 453 ms (late -1, cliEnd-5.1 s); 1.2 put P+1s 200 rev 1806 429 ms (late 1, cliEnd-3.1 s); 1.3 put P+5s 200 rev 1807 453 ms (late 2510, cliEnd+3.4 s, gated 2509); 1.4 put P+11s 200 rev 1808 1434 ms (late 11, cliEnd+6.9 s); 1.5 put P+15s 200 rev 1809 770 ms (late 11, cliEnd+10.9 s); 1.6 put P+30s 200 rev 1810 450 ms (late 2, cliEnd+25.9 s); 1.7 put P+60s 200 rev 1811 456 ms (late 11, cliEnd+55.9 s).
+
+| check (continuity) | value | verdict |
+|---|---|---|
+| every planned save 2xx (never retried) | 8/8 | **PASS** |
+| every eligible client ≥ the saved rev within 30 s of the first save attempt (incumbents from the PUT start, arrivals from max(join, PUT response)) | 0 missing | **PASS** |
+| every continuously connected eligible R2 client received the committed broadcast | SDK 0 missed, R2 pages 0 missed | **PASS** |
+| 5xx (saves, SDK, pages incl. documents, probe, route marker, guard, smoke) | 0 {"saves":0,"sdk":0,"pages":0,"probe":0,"route":0,"guard":0,"smoke":0} | **PASS** |
+| transport failures (held hold-subset deadlines excluded, listed apart) | 0 {"saves":0,"sdk":0,"pages":0,"probe":0}; held → deadline 20 | **PASS** |
+| malformed bodies | 0 {"sdk":0,"pages":0,"probe":0} | **PASS** |
+| unexpected reloads (pages) | 0 | **PASS** |
+| page errors | 0 | **PASS** |
+| monotonicity regressions (SDK applied rev, pages DOM version) | SDK 0, pages 0 | **PASS** |
+
+| save | op | rev | SDK before p95 (n) / miss | SDK after p95 (n) / miss | pages before | pages after | pages DOM rows (structural) | broadcast SDK recv / eligible | R2 pages recv / eligible | outcomes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0 | put | 1804 | 1863 (430) / 0 | 1689 (200) / 0 | 1662 (30) / 0 | — (0) / 0 | — | 430 / 430 | 30 / 30 | {"satisfied-first-fetch":420,"periodic-repaired":10,"initial":200,"(superseded)":200} |
+| 1.1 | put | 1805 | 1798 (430) / 0 | 1689 (200) / 0 | 1300 (30) / 0 | 0 (15) / 0 | — | 430 / 430 | 30 / 30 | {"satisfied-first-fetch":421,"periodic-repaired":9,"initial":200,"(superseded)":200} |
+| 1.2 | put | 1806 | 1318 (430) / 0 | 1689 (200) / 0 | 1292 (30) / 0 | 0 (15) / 0 | — | 430 / 430 | 30 / 30 | {"satisfied-first-fetch":420,"periodic-repaired":10,"initial":200,"(superseded)":200} |
+| 1.3 | put | 1807 | 3407 (430) / 0 | 1689 (200) / 0 | 2497 (30) / 0 | 0 (15) / 0 | — | 430 / 430 | 30 / 30 | {"satisfied-first-fetch":415,"periodic-repaired":15,"initial":200,"(superseded)":100} |
+| 1.4 | put | 1808 | 4778 (480) / 0 | 3192 (150) / 0 | 4859 (30) / 0 | 0 (15) / 0 | — | 480 / 480 | 30 / 30 | {"satisfied-first-fetch":478,"periodic-repaired":3,"catchup":49,"initial":100,"(superseded)":100} |
+| 1.5 | put | 1809 | 2995 (530) / 0 | 1245 (100) / 0 | 17011 (33) / 0 | 1161 (12) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":517,"periodic-repaired":13,"initial":100,"(superseded)":100} |
+| 1.6 | put | 1810 | 2960 (530) / 0 | 1245 (100) / 0 | 2762 (45) / 0 | — (0) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":519,"periodic-repaired":11,"initial":100,"(superseded)":100} |
+| 1.7 | put | 1811 | 2808 (530) / 0 | 1245 (100) / 0 | 2217 (45) / 0 | — (0) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":519,"periodic-repaired":11,"initial":100,"(superseded)":100} |
+
+- Performance: **FAIL** — 1.3 sdkBefore p95 3407; 1.4 sdkBefore p95 4778; 1.4 sdkAfter p95 3192; 1.4 pagesBefore p95 4859; 1.5 pagesBefore p95 17011.
+- Exposure (provisional boundary): pending hinted fetch 0 (≥ 20) → NOT EXERCISED; old answer after cutover, converged without regression: natural 0/0, hold 0/0 (≥ 5) → NOT EXERCISED; arrival saves 1.4 (P+11): SDK unjoined 0, pages incomplete 5 ✓; 1.5 (P+15): SDK unjoined 0, pages incomplete 2.
+- Hold subset: armed 2026-10-12T18:41:10.501Z, triggers P-1s 7, P+1s 7, P+3s 6, released 2026-10-12T18:41:20.488Z (target+200ms); 22 response(s) held; held → deadline 20.
+- Arrivals r1-1 (R1 cohort) at 2026-10-12T18:41:22.001Z: pages 15 (builds {"r1":15}), time to usable (later of complete setlist and readiness) p50 / p95 / max 3130 / 7309 / 7309 ms, wave 0 p95 7309, unusable 0; SDK 100, first snapshot p50 / p95 1151 / 2917 ms, without 0.
+- Reaction / wish smoke (old pages): p0 ja: reaction 200, wish 403 → ok; p1 ko: reaction 200, wish 403 → ok; p3 en: reaction 200, wish 403 → ok.
+- R1 pages (postgres_changes registered): 18 — p30 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p31 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p32 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p33 en dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p34 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p35 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p36 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p37 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p38 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p39 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p40 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p41 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p42 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p43 en dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p44 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p46 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p48 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p49 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd.
+- Pins: SDK 0/7497 requests pinned, page API 0/526, probe 0; framework assets after the switch 500 (pinned 500, 404 0) — "no chunk 404 after the switch": holds for the assets fetched. Update gaps (natural SDK, max interval between successful responses in the window) p50 / max 20242 / 24284 ms.
+
+### Switch 2 (return-from-r1)
+
+- File `switch-T2-2.json` seen 2026-10-12T18:42:12.468Z (notice 383.4 s), complete 2026-10-12T18:45:16.572Z; target https://opensetlist-e7i9t0p57-opensetlist-projects.vercel.app; baseline dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd.
+- Live routing (route marker): first target 2026-10-12T18:45:19.380Z (marker served by the target id); last old request start 2026-10-12T18:45:22.000Z, last old response 2026-10-12T18:45:22.339Z; sustained target routing over 60 s: **no** (2 off-target). Boundary: 2026-10-12T18:45:19.380Z (route marker (data-dpl-id)).
+- Identity guard through https://opensetlist-e7i9t0p57-opensetlist-projects.vercel.app: ok (3052 ms, 1 attempt(s), started 0 ms after the file completed).
+- Saves: 2.0 put P-30s 200 rev 1812 505 ms (late 3, cliEnd-34.1 s); 2.1 put P-1s 200 rev 1813 607 ms (late 6, cliEnd-5.1 s); 2.2 put P+1s 200 rev 1814 1400 ms (late 7, cliEnd-3.1 s); 2.3 put P+5s 200 rev 1815 632 ms (late 2625, cliEnd+3.5 s, gated 2618); 2.4 put P+11s 200 rev 1816 1077 ms (late 4, cliEnd+6.9 s); 2.5 put P+15s 200 rev 1817 722 ms (late 5, cliEnd+10.9 s); 2.6 put P+30s 200 rev 1818 490 ms (late 0, cliEnd+25.9 s); 2.7 put P+60s 200 rev 1819 484 ms (late 1, cliEnd+55.9 s); 2.8-insert insert P+70s 200 rev 1820 866 ms (late 5, cliEnd+65.9 s); 2.9-update update P+80s 200 rev 1821 350 ms (late 6, cliEnd+75.9 s); 2.10-delete delete P+90s 200 rev 1822 407 ms (late 8, cliEnd+85.9 s).
+
+| check (continuity) | value | verdict |
+|---|---|---|
+| every planned save 2xx (never retried) | 11/11 | **PASS** |
+| every eligible client ≥ the saved rev within 30 s of the first save attempt (incumbents from the PUT start, arrivals from max(join, PUT response)) | 0 missing | **PASS** |
+| every continuously connected eligible R2 client received the committed broadcast | SDK 0 missed, R2 pages 0 missed | **PASS** |
+| 5xx (saves, SDK, pages incl. documents, probe, route marker, guard, smoke) | 0 {"saves":0,"sdk":0,"pages":0,"probe":0,"route":0,"guard":0,"smoke":0} | **PASS** |
+| transport failures (held hold-subset deadlines excluded, listed apart) | 0 {"saves":0,"sdk":0,"pages":0,"probe":0}; held → deadline 8 | **PASS** |
+| malformed bodies | 0 {"sdk":0,"pages":0,"probe":0} | **PASS** |
+| unexpected reloads (pages) | 0 | **PASS** |
+| page errors | 0 | **PASS** |
+| monotonicity regressions (SDK applied rev, pages DOM version) | SDK 0, pages 0 | **PASS** |
+
+| save | op | rev | SDK before p95 (n) / miss | SDK after p95 (n) / miss | pages before | pages after | pages DOM rows (structural) | broadcast SDK recv / eligible | R2 pages recv / eligible | outcomes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2.0 | put | 1812 | 2834 (530) / 0 | 1245 (100) / 0 | 2160 (45) / 0 | — (0) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":513,"periodic-repaired":17,"initial":100,"(superseded)":100} |
+| 2.1 | put | 1813 | 3220 (530) / 0 | 1245 (100) / 0 | 2090 (45) / 0 | 0 (10) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":516,"periodic-repaired":14,"initial":100,"(superseded)":100} |
+| 2.2 | put | 1814 | 3503 (530) / 0 | 1245 (100) / 0 | 3604 (45) / 0 | 0 (10) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":515,"periodic-repaired":15,"initial":100,"(superseded)":100} |
+| 2.3 | put | 1815 | 3778 (530) / 0 | 1245 (100) / 0 | 2597 (45) / 0 | 0 (10) / 0 | — | 530 / 530 | 30 / 30 | {"satisfied-first-fetch":522,"periodic-repaired":8,"initial":100,"(superseded)":31} |
+| 2.4 | put | 1816 | 3370 (579) / 0 | 1866 (51) / 0 | 4341 (45) / 0 | 2312 (10) / 0 | — | 579 / 579 | 30 / 30 | {"satisfied-first-fetch":544,"periodic-repaired":9,"rechecked":1,"catchup":45,"initial":31} |
+| 2.5 | put | 1817 | 1902 (630) / 0 | — (0) / 0 | 2304 (50) / 0 | 270 (5) / 0 | — | 630 / 630 | 32 / 32 | {"satisfied-first-fetch":614,"periodic-repaired":15,"rechecked":1} |
+| 2.6 | put | 1818 | 2441 (630) / 0 | — (0) / 0 | 1864 (55) / 0 | — (0) / 0 | — | 630 / 630 | 37 / 37 | {"satisfied-first-fetch":611,"periodic-repaired":19} |
+| 2.7 | put | 1819 | 2424 (630) / 0 | — (0) / 0 | 1772 (55) / 0 | — (0) / 0 | — | 630 / 630 | 37 / 37 | {"satisfied-first-fetch":618,"periodic-repaired":12} |
+| 2.8-insert | insert | 1820 | 3232 (630) / 0 | — (0) / 0 | — | — | 2806 (55) / 0 | 630 / 630 | 37 / 37 | {"satisfied-first-fetch":615,"periodic-repaired":15} |
+| 2.9-update | update | 1821 | 2483 (630) / 0 | — (0) / 0 | 1866 (55) / 0 | — (0) / 0 | — | 630 / 630 | 37 / 37 | {"satisfied-first-fetch":620,"periodic-repaired":10} |
+| 2.10-delete | delete | 1822 | 2470 (630) / 0 | — (0) / 0 | — | — | 1876 (55) / 0 | 0 / 0 | 37 / 37 | {"satisfied-first-fetch":609,"periodic-repaired":21} |
+
+- Performance: **FAIL** — 2.1 sdkBefore p95 3220; 2.2 sdkBefore p95 3503; 2.2 pagesBefore p95 3604; 2.3 sdkBefore p95 3778; 2.4 sdkBefore p95 3370; 2.4 pagesBefore p95 4341; 2.8-insert sdkBefore p95 3232.
+- Exposure (provisional boundary): pending hinted fetch 0 (≥ 20) → NOT EXERCISED; pending recheck 19 (queued 19, dispatched 0; ≥ 5) → EXERCISED; old answer after cutover, converged without regression: natural 0/0, hold 14/14 (≥ 5) → EXERCISED; arrival saves 2.4 (P+11): SDK unjoined 0, pages incomplete 5 ✓; 2.5 (P+15): SDK unjoined 0, pages incomplete 5 ✓.
+- Hold subset: armed 2026-10-12T18:45:10.506Z, triggers P-1s 7, P+1s 7, P+3s 6, released 2026-10-12T18:45:19.589Z (target+200ms); 20 response(s) held; held → deadline 8.
+- Ahead-hint subset: synthetic rev 1817 (P-1.2s 20/20 news); at P 20 ticket(s) queued for a recheck.
+- Arrivals arrival-2 at 2026-10-12T18:45:21.996Z: pages 10 (builds {"r2":7,"r1":3}), time to usable (later of complete setlist and readiness) p50 / p95 / max 2883 / 5162 / 5162 ms, wave 0 p95 5162, unusable 0; SDK 100, first snapshot p50 / p95 1172 / 1702 ms, without 0.
+- Reaction / wish smoke (old pages): p0 ja: reaction 200, wish 403 → ok; p1 ko: reaction 200, wish 403 → ok; p3 en: reaction 200, wish 403 → ok.
+- R1 pages (postgres_changes registered): 18 — p30 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p31 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p32 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p33 en dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p34 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p35 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p36 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p37 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p38 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p39 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p40 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p41 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p42 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p43 en dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p44 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p46 ko dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p48 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd, p49 ja dpl_GN57F4UStRok7DRsu9bJ4bn7Yzcd.
+
+| R1 page | op | rev | change received (ms after save) | type / isDeleted | fetch start (ms) | DOM updated (ms) |
+|---|---|---|---|---|---|---|
+| 30 | insert | 1820 | 2405 | I / false | 3044 | 2687 |
+| 30 | update | 1821 | 468 | U / false | 1399 | 883 |
+| 30 | delete | 1822 | 1143 | U / true | 1317 | 1722 |
+| 31 | insert | 1820 | 2398 | I / false | 3065 | 2915 |
+| 31 | update | 1821 | 470 | U / false | 519 | 968 |
+| 31 | delete | 1822 | 1142 | U / true | 1340 | 1852 |
+| 32 | insert | 1820 | 2397 | I / false | 3045 | 2654 |
+| 32 | update | 1821 | 469 | U / false | 570 | 1028 |
+| 32 | delete | 1822 | 1143 | U / true | 1276 | 1008 |
+| 33 | insert | 1820 | 2405 | I / false | 3044 | 2707 |
+| 33 | update | 1821 | 469 | U / false | 1317 | 1623 |
+| 33 | delete | 1822 | 1142 | U / true | 1317 | 1207 |
+| 34 | insert | 1820 | 2405 | I / false | 3043 | 1033 |
+| 34 | update | 1821 | 467 | U / false | 792 | 1133 |
+| 34 | delete | 1822 | 1142 | U / true | 1241 | 1831 |
+| 35 | insert | 1820 | 2398 | I / false | 3065 | 2806 |
+| 35 | update | 1821 | 468 | U / false | 604 | 1068 |
+| 35 | delete | 1822 | 1142 | U / true | 1277 | 1658 |
+| 36 | insert | 1820 | 2405 | I / false | 3118 | 1782 |
+| 36 | update | 1821 | 468 | U / false | 536 | 1012 |
+| 36 | delete | 1822 | 1140 | U / true | 1317 | 1654 |
+| 37 | insert | 1820 | 2405 | I / false | 3064 | 2778 |
+| 37 | update | 1821 | 470 | U / false | 498 | 867 |
+| 37 | delete | 1822 | 1142 | U / true | 1265 | 1833 |
+| 38 | insert | 1820 | 2398 | I / false | 3065 | 2788 |
+| 38 | update | 1821 | 470 | U / false | 771 | 1239 |
+| 38 | delete | 1822 | 1143 | U / true | 1316 | 1917 |
+| 39 | insert | 1820 | 2405 | I / false | 3045 | 2607 |
+| 39 | update | 1821 | 469 | U / false | 1317 | 1599 |
+| 39 | delete | 1822 | 1142 | U / true | 1188 | 1617 |
+| 40 | insert | 1820 | 2394 | I / false | 3062 | 2784 |
+| 40 | update | 1821 | 470 | U / false | 549 | 1104 |
+| 40 | delete | 1822 | 1142 | U / true | 1277 | 1836 |
+| 41 | insert | 1820 | 2404 | I / false | 3023 | 2525 |
+| 41 | update | 1821 | 468 | U / false | 1399 | 2019 |
+| 41 | delete | 1822 | 1142 | U / true | 1277 | 1680 |
+| 42 | insert | 1820 | 2398 | I / false | 3063 | 2790 |
+| 42 | update | 1821 | 469 | U / false | 486 | 782 |
+| 42 | delete | 1822 | 1143 | U / true | 1243 | 1894 |
+| 43 | insert | 1820 | 2405 | I / false | 3065 | 2841 |
+| 43 | update | 1821 | 469 | U / false | 1401 | 1867 |
+| 43 | delete | 1822 | 1142 | U / true | 1316 | 1876 |
+| 44 | insert | 1820 | 2404 | I / false | 3046 | 2619 |
+| 44 | update | 1821 | 470 | U / false | 583 | 1026 |
+| 44 | delete | 1822 | 1142 | U / true | 1382 | 1577 |
+| 46 | insert | 1820 | 2398 | I / false | 3064 | 2557 |
+| 46 | update | 1821 | 468 | U / false | 1400 | 1735 |
+| 46 | delete | 1822 | 1142 | U / true | 1393 | 1773 |
+| 48 | insert | 1820 | 2405 | I / false | 3063 | 2581 |
+| 48 | update | 1821 | 473 | U / false | 1358 | 1806 |
+| 48 | delete | 1822 | 1142 | U / true | 1243 | 1840 |
+| 49 | insert | 1820 | 2398 | I / false | 3044 | 2685 |
+| 49 | update | 1821 | 470 | U / false | 1400 | 1737 |
+| 49 | delete | 1822 | 1140 | U / true | 1277 | 1832 |
+
+- Pins: SDK 0/12440 requests pinned, page API 0/1034, probe 0; framework assets after the switch 200 (pinned 200, 404 0) — "no chunk 404 after the switch": holds for the assets fetched. Update gaps (natural SDK, max interval between successful responses in the window) p50 / max 19700 / 24949 ms.
+
+## Gate verdicts
+
+Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 11131 | 1893 | 5028 | 16354 | 1194 | p95 ≤ 3000, 0 missing | n/a |
+| edit × page | 741 | 1580 | 3689 | 5619 | 194 | same | n/a |
+| edit × SDK client | 10390 | 1915 | 5323 | 16354 | 1000 | same | n/a |
+| monotonic DOM (pages: version shown never decreases) | 55 pages, 796 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 670 clients, 25710 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| warming: warm hits ÷ hinted fetches (`x-snapshot-source: warm`) | SDK 6854/11973 (57.2 %), pages 391/662 (59.1 %) | — | — | — | — | informational; reader builds per save: `vercel-logs-summary.mjs` "Warming" on the history logs; arrival vs warm-complete: `warm-join.mjs` | n/a |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker; pair edits only), non-drilled: pages 55 | 11033 | 11867 | 12020 · SDK 670 | 11741 | 12536 | 13301 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 234 / 935 | 1092 | 23584 | 23587 |
+| broadcast `rev` → pages | 713 / 935 | 545 | 1457 | 1498 |
+| broadcast `rev` → SDK | 9790 / 11390 | 542 | 1487 | 1726 |
+
+## Per edit
+
+| # | mode | row | marker song | insert start (UTC) | ins ms | rev | save (PUT) start (UTC) | save ms | save rev |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.0 | transition | 2660 | 1997 LOVE♡YOU♡Save the EARTH!! | — | — | — | 2026-10-12T18:40:42.005Z | 456 | 1804 |
+| 1.1 | transition | 2660 | 2030 Wish Song | — | — | — | 2026-10-12T18:41:10.999Z | 453 | 1805 |
+| 1.2 | transition | 2660 | 2032 ノンフィクション!! | — | — | — | 2026-10-12T18:41:13.001Z | 429 | 1806 |
+| 1.3 | transition | 2660 | 2033 Starlight Prologue | — | — | — | 2026-10-12T18:41:19.510Z | 453 | 1807 |
+| 1.4 | transition | 2660 | 2039 だいすきのうた | — | — | — | 2026-10-12T18:41:23.011Z | 1434 | 1808 |
+| 1.5 | transition | 2660 | 2040 Tiny Stars | — | — | — | 2026-10-12T18:41:27.011Z | 770 | 1809 |
+| 1.6 | transition | 2660 | 2041 未来は風のように | — | — | — | 2026-10-12T18:41:42.002Z | 450 | 1810 |
+| 1.7 | transition | 2660 | 2044 グソクムシのうた | — | — | — | 2026-10-12T18:42:12.011Z | 456 | 1811 |
+| 2.0 | transition | 2660 | 2046 未来は風のように | — | — | — | 2026-10-12T18:44:42.003Z | 505 | 1812 |
+| 2.1 | transition | 2660 | 2047 未来は風のように | — | — | — | 2026-10-12T18:45:11.006Z | 607 | 1813 |
+| 2.2 | transition | 2660 | 2050 未来は風のように | — | — | — | 2026-10-12T18:45:13.007Z | 1400 | 1814 |
+| 2.3 | transition | 2660 | 2061 Memories | — | — | — | 2026-10-12T18:45:19.625Z | 632 | 1815 |
+| 2.4 | transition | 2660 | 2062 Memories | — | — | — | 2026-10-12T18:45:23.004Z | 1077 | 1816 |
+| 2.5 | transition | 2660 | 2063 Anniversary | — | — | — | 2026-10-12T18:45:27.005Z | 722 | 1817 |
+| 2.6 | transition | 2660 | 2064 Anniversary | — | — | — | 2026-10-12T18:45:42.000Z | 490 | 1818 |
+| 2.7 | transition | 2660 | 2065 Message | — | — | — | 2026-10-12T18:46:12.001Z | 484 | 1819 |
+| 2.9-update | transition-after | 2661 | 2066 Message | 2026-10-12T18:46:22.005Z | 866 | 1820 | 2026-10-12T18:46:32.006Z | 350 | 1821 |
+
+### Per save — pages (save start → marker in the DOM)
+
+| # | save rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0 | 1804 | 30/55 | 1018 / 1662 / 1684 | 25 | 509 / 513 (30) | 0 | 30 | satisfied 30 | 30/30 | 246 / 677 |
+| 1.1 | 1805 | 30/55 | 1081 / 1300 / 1364 | 25 | 462 / 473 (30) | 0 | 28 | satisfied 28 | 28/28 | 349 / 490 |
+| 1.2 | 1806 | 30/55 | 1020 / 1292 / 1310 | 25 | 480 / 488 (30) | 0 | 28 | satisfied 28 | 28/28 | 244 / 514 |
+| 1.3 | 1807 | 30/55 | 1066 / 2497 / 2621 | 25 | 506 / 512 (30) | 15 | 29 | satisfied 14, missing 15 | 14/29 | 303 / 584 |
+| 1.4 | 1808 | 35/55 | 3689 / 4923 / 5010 | 20 | 1493 / 1498 (30) | 15 | 28 | missing 27, satisfied 1 | 0/28 | 355 / 559 |
+| 1.5 | 1809 | 42/55 | 1921 / 5449 / 5619 | 13 | 863 / 877 (33) | 15 | 29 | missing 29 | 0/29 | 252 / 527 |
+| 1.6 | 1810 | 45/55 | 1571 / 2762 / 2992 | 10 | 501 / 508 (45) | 15 | 30 | missing 30 | 0/30 | 256 / 521 |
+| 1.7 | 1811 | 45/55 | 1592 / 2217 / 2352 | 10 | 513 / 520 (45) | 15 | 30 | missing 30 | 0/30 | 321 / 551 |
+| 2.0 | 1812 | 45/55 | 1507 / 2160 / 2377 | 10 | 515 / 529 (45) | 15 | 29 | missing 29 | 0/29 | 286 / 487 |
+| 2.1 | 1813 | 45/55 | 1664 / 2090 / 2158 | 10 | 613 / 619 (45) | 18 | 30 | missing 30 | 0/30 | 259 / 499 |
+| 2.2 | 1814 | 45/55 | 3020 / 3604 / 3743 | 10 | 1455 / 1459 (45) | 18 | 28 | missing 28 | 0/28 | 287 / 514 |
+| 2.3 | 1815 | 47/55 | 1727 / 3551 / 5059 | 8 | 636 / 643 (45) | 18 | 29 | missing 3, satisfied 26 | 0/29 | 286 / 489 |
+| 2.4 | 1816 | 52/55 | 2894 / 4733 / 5256 | 3 | 1140 / 1148 (45) | 18 | 30 | satisfied 27, missing 3 | 8/30 | 275 / 528 |
+| 2.5 | 1817 | 55/55 | 1473 / 2310 / 2375 | 0 | 763 / 770 (50) | 18 | 32 | satisfied 32 | 31/32 | 285 / 972 |
+| 2.6 | 1818 | 55/55 | 1336 / 1864 / 1930 | 0 | 546 / 548 (55) | 18 | 37 | satisfied 37 | 37/37 | 409 / 749 |
+| 2.7 | 1819 | 55/55 | 1282 / 1772 / 1800 | 0 | 541 / 554 (55) | 18 | 35 | satisfied 35 | 35/35 | 412 / 548 |
+| 2.9-update | 1821 | 55/55 | 1032 / 1866 / 2019 | 0 | 413 / 421 (55) | 18 | 37 | satisfied 37 | 37/37 | 321 / 1050 |
+
+### Per save — SDK clients (save start → applied rev ≥ save rev)
+
+| # | save rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0 | 1804 | 470/670 | 1415 / 1861 / 2066 | 200 | 509 / 515 (470) | 457 | satisfied 457 | satisfied 461 | 0 (0) | 0 | 457/457 | 298 / 574 |
+| 1.1 | 1805 | 570/670 | 1432 / 14060 / 16354 | 100 | 466 / 477 (470) | 454 | satisfied 441 | satisfied 446 | 0 (0) | 0 | 454/454 | 244 / 490 |
+| 1.2 | 1806 | 570/670 | 1132 / 12058 / 14352 | 100 | 482 / 488 (470) | 439 | satisfied 439 | satisfied 446 | 0 (0) | 0 | 438/439 | 316 / 518 |
+| 1.3 | 1807 | 570/670 | 1535 / 5549 / 7843 | 100 | 507 / 512 (470) | 435 | missing 299, satisfied 136 | satisfied 465 | 0 (0) | 0 | 136/435 | 287 / 535 |
+| 1.4 | 1808 | 570/670 | 3612 / 4778 / 5023 | 100 | 1492 / 1498 (570) | 517 | missing 509, satisfied 8 | satisfied 564 | 0 (0) | 0 | 0/517 | 336 / 554 |
+| 1.5 | 1809 | 570/670 | 1938 / 3033 / 3321 | 100 | 825 / 832 (570) | 553 | missing 553 | satisfied 560 | 0 (0) | 0 | 0/553 | 320 / 537 |
+| 1.6 | 1810 | 570/670 | 1888 / 2955 / 3169 | 100 | 502 / 509 (570) | 558 | missing 558 | satisfied 562 | 0 (0) | 0 | 0/558 | 295 / 523 |
+| 1.7 | 1811 | 570/670 | 2028 / 2804 / 3184 | 100 | 514 / 519 (570) | 559 | missing 559 | satisfied 564 | 0 (0) | 0 | 0/559 | 312 / 530 |
+| 2.0 | 1812 | 570/670 | 1848 / 2834 / 3018 | 100 | 516 / 528 (570) | 551 | missing 551 | satisfied 561 | 0 (0) | 0 | 0/551 | 246 / 490 |
+| 2.1 | 1813 | 670/670 | 2319 / 13451 / 14022 | 0 | 614 / 623 (570) | 547 | missing 547 | satisfied 555 | 0 (0) | 0 | 0/547 | 273 / 495 |
+| 2.2 | 1814 | 670/670 | 2725 / 11450 / 12021 | 0 | 1453 / 1459 (570) | 525 | missing 525 | satisfied 546 | 0 (0) | 0 | 0/525 | 300 / 530 |
+| 2.3 | 1815 | 670/670 | 2472 / 4832 / 5403 | 0 | 637 / 644 (570) | 555 | missing 235, satisfied 320 | satisfied 565 | 0 (0) | 0 | 0/555 | 261 / 489 |
+| 2.4 | 1816 | 670/670 | 2504 / 3360 / 4619 | 0 | 1142 / 1149 (670) | 585 | satisfied 511, missing 72, deferred 2 | satisfied 608, inconclusive 2 | 2 (2) | 0 | 158/585 | 325 / 537 |
+| 2.5 | 1817 | 670/670 | 1557 / 1890 / 2222 | 0 | 762 / 774 (670) | 671 | satisfied 652, missing 19 | satisfied 661, inconclusive 40 | 19 (0) | 20 | 644/671 | 292 / 533 |
+| 2.6 | 1818 | 670/670 | 1791 / 2441 / 3048 | 0 | 542 / 551 (670) | 651 | satisfied 651 | satisfied 660 | 0 (0) | 0 | 651/651 | 305 / 645 |
+| 2.7 | 1819 | 670/670 | 1871 / 2418 / 3253 | 0 | 543 / 556 (670) | 657 | satisfied 657 | satisfied 666 | 0 (0) | 0 | 657/657 | 316 / 541 |
+| 2.9-update | 1821 | 670/670 | 1740 / 2535 / 3300 | 0 | 412 / 421 (670) | 660 | satisfied 660 | satisfied 664 | 0 (0) | 0 | 660/660 | 308 / 879 |
+
+## Hint outcomes (whole run)
+
+- SDK: 26150 requests; notification fetches (hint=1) 11973, their x-snapshot-verify: satisfied 7531, missing 4427, deferred 2; all 200 responses: none 568, satisfied 14095, missing 11445, deferred 3
+  - ticket resolutions: satisfied 12190, inconclusive 42; rechecks 21 (0.2 % of notification fetches), resolved on the recheck 2; hints exhausted 20; highest serverRev held 1824
+  - request shapes (reason / generic / ticket): initial generic 670, catchup generic 607, periodic generic 12613, notification +hint=1 11973, periodic generic +H 156, recheck +H 21, resume generic 14, retry generic +H 10, resume generic +H 21, catchup generic +H 64, retry generic 1; failures by kind: deadline 28, gap 1
+  - notification fetches by x-snapshot-source: warm 6854, cache 366, build 4741, repair 12 (warm 6854/11973 (57.2 %))
+- Pages: 1993 /api/setlist responses; notification fetches (hint=1) 662, their x-snapshot-verify: satisfied 438, missing 224; all 200 responses: satisfied 1094, missing 853, fresh 38, memo 8 (an R1 page build sends no hint=1)
+  - notification fetches by x-snapshot-source: warm 391, build 265, cache 6 (warm 391/662 (59.1 %))
+
+## Measurement validity (load host)
+
+Event-loop lag = how late a 100 ms interval tick ran, per thread, inside the measurement window 2026-10-12T18:38:56.760Z → 2026-10-12T18:46:45.547Z (p50 = median of the 10 s buckets' p50, p95 / p99 / max = the worst bucket). Heartbeats: one per second per worker, from its own loop. Deadline timers: fired − armed − 8,000 ms for every SDK request that hit the 8 s deadline. INVALID if any lag sample > 1000 ms or any heartbeat gap > 3000 ms.
+
+| thread | lag p50 / p95 / p99 / max ms | samples > 1 s | heartbeats (max gap ms) | deadline timers fired: n, late p50 / p95 / max ms |
+|---|---|---|---|---|
+| main | 3 / 74 / 724 / 724 | 0 | — | — |
+| worker 0 | 4 / 156 / 910 / 910 | 0 | 448 (1611) | 0, — / — / — |
+| worker 1 | 3 / 20 / 54 / 54 | 0 | 449 (1100) | 0, — / — / — |
+| worker 2 | 3 / 15 / 132 / 132 | 0 | 450 (1110) | 0, — / — / — |
+| worker 3 | 3 / 27 / 680 / 680 | 0 | 449 (1192) | 0, — / — / — |
+| worker 4 | 3 / 15 / 26 / 26 | 0 | 448 (1094) | 28, 7 / 14 / 15 |
+| worker 5 | 4 / 16 / 734 / 734 | 0 | 446 (1709) | 0, — / — / — |
+| worker 6 | 4 / 72 / 984 / 984 | 0 | 309 (1684) | 0, — / — / — |
+| worker 7 | 3 / 30 / 140 / 140 | 0 | 83 (1132) | 0, — / — / — |
+
+Verdict: valid.
+
+Host (1 s samples; 12 logical cores, 65370 MB): host CPU = busy share of all cores; process CPU = this process (main + SDK workers) as a share of all cores; Chromium is in the host figure only. load1 is always 0 on Windows.
+
+| phase | s | host CPU p50 / max % | process CPU p50 / max % | RSS max MB | free mem min MB | load1 max | threads |
+|---|---|---|---|---|---|---|---|
+| join | 19.8 | 42.4 / 82.9 | 6.5 / 27.7 | 845 | 32709 | 0 | 7 |
+| settle | 20.0 | 26.2 / 56.4 | 1.5 / 5.3 | 666 | 32588 | 0 | 7 |
+| edits | 429.0 | 28.1 / 100 | 2.1 / 32.8 | 2277 | 30447 | 0 | 9 |
+
+## Population
+
+- Pages: 55/55 loaded; channel joined 55; pg_changes registered 18 (R1 build); visibility {"visible":55}; locales {"ja":38,"ko":11,"en":6}
+  - open → join ms: n=55 p50=2735 p95=6338 max=6945; open → pg_changes ready: n=18 p50=3492 p95=7400 max=7400
+  - /api/setlist responses seen: 1993 ({"cache":1016,"warm":391,"build":582,"repair":4}); page errors: 0; ws opens 55, closes 0; rev broadcasts seen 933; dropped notification frames 0, blocked attempts 0
+- SDK: 670/670 joined; all joined after 19.764 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=670 p50=406 p95=1891 max=2686
+  - statuses {"SUBSCRIBED":671,"CLOSED":670,"CHANNEL_ERROR":1}; disconnected episodes (polling while realtime-js rejoins) 1; channel re-creations 0; fetch failures 29 (with Retry-After 0); fetches by reason {"initial":670,"catchup":671,"periodic":12769,"notification":11973,"recheck":21,"resume":35,"retry":11}; X-Snapshot-Source {"build":6316,"cache":12936,"warm":6854,"repair":34}
+  - channel errors: {"channel error: transport failure":1}
+
+## Clean-up
+
+- Soft-deleted 1/1 created rows; position restore: {"restored":67}
+- Verify: {"dbActive":69,"snapshotItems":69,"snapshotRev":1824,"startRows":69,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}
+
+[18:46:51.719] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-12\2026-10-12T18-46-51-402Z-browsers-transition.md
+[18:46:51.719] TRANSITION VERDICT: VALID + FAIL — failed: switch 1 performance; switch 1 arrivals; switch 2 performance; switch 2 arrivals — not exercised: switch 1 pendingHinted; switch 1 oldAnswer; switch 1 arrivalSdk; switch 2 pendingHinted; switch 2 arrivalSdk
