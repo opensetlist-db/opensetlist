@@ -200,7 +200,18 @@ const isNotification = (f) =>
 // row's `isDeleted` (a soft-delete is an UPDATE). `cohort` labels every
 // page of this call; `extend()` opens more pages (arrivals) in the same
 // browser. Off: the record is unchanged.
-export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false, transition = false, cohort = null }) {
+//
+// `spam7` (n14 step 7, run.mjs --phase=spam7): additionally record per
+// page every main-frame DOCUMENT load (`docLoads` [t, status]: the first
+// is the page's own load, any later one an unexpected reload), every
+// failed /api/setlist request (`reqFailed` [t, path+query, failure] —
+// transport failures never produce a response row) and page errors with
+// their time (`pageErrs` [t, message]). Independently of the option, a
+// `rev` broadcast whose payload carries the step-7 sender's `runId`
+// gets the correlation columns [runId, k] appended to its `bcasts` row,
+// recorded at the frame (before the page's own handler sees it); no
+// other run sends a `runId`, so their rows are unchanged.
+export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false, transition = false, cohort = null, spam7 = false }) {
   const browser = await chromium.launch({
     headless,
     args: [
@@ -230,8 +241,11 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       if (transition) note.push(typeof d?.record?.isDeleted === "boolean" ? d.record.isDeleted : null, d?.table ?? null);
       rec.notes.push(note);
     } else if (f.event === "broadcast" && f.body?.event === "rev") {
-      const rev = f.body?.payload?.rev;
-      rec.bcasts.push([now, typeof rev === "number" ? rev : null, rec.dropNotify ? "x" : "n"]);
+      const p = f.body?.payload;
+      const rev = p?.rev;
+      const row = [now, typeof rev === "number" ? rev : null, rec.dropNotify ? "x" : "n"];
+      if (p && typeof p.runId === "string") row.push(p.runId, Number.isSafeInteger(p.k) ? p.k : null);
+      rec.bcasts.push(row);
     } else if (f.event === "phx_reply" && f.ref != null && f.ref === f.joinRef && f.body?.status === "ok") {
       rec.joinAt.push(now);
     } else if (f.event === "system" && f.body?.extension === "postgres_changes" && f.body?.status === "ok") {
@@ -267,6 +281,7 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
         pageErrs: [],
       });
     }
+    if (spam7 && !transition) Object.assign(rec, { docLoads: [], reqFailed: [], pageErrs: [] });
     if (admission) {
       Object.assign(rec, {
         wave, launchedAt: Date.now(),
@@ -311,8 +326,18 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
     }
     page.on("pageerror", (e) => {
       if (rec.errors.length < 20) rec.errors.push(String(e.message).slice(0, 200));
-      if (transition && rec.pageErrs.length < 50) rec.pageErrs.push([Date.now(), String(e.message).slice(0, 200)]);
+      if ((transition || spam7) && rec.pageErrs.length < 50) rec.pageErrs.push([Date.now(), String(e.message).slice(0, 200)]);
     });
+    if (spam7 && !transition) {
+      page.on("requestfailed", (q) => {
+        const u = q.url();
+        if (!u.includes("/api/setlist?")) return;
+        if (rec.reqFailed.length < 200) rec.reqFailed.push([Date.now(), u.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), String(q.failure()?.errorText ?? "").slice(0, 80)]);
+      });
+      page.on("response", (r) => {
+        if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && rec.docLoads.length < 50) rec.docLoads.push([Date.now(), r.status()]);
+      });
+    }
     if (transition) {
       page.on("requestfailed", (q) => {
         const u = q.url();
