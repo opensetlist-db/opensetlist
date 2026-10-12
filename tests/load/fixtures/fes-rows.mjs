@@ -8,7 +8,7 @@
 // rows, `--target=70 --anchor-reserve=1` = 23 originals + 46 clones (two
 // full copies), and the harness's blank anchor makes the 70th row.
 //
-//   node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A2
+//   node tests/load/fixtures/fes-rows.mjs --target=70 --anchor-reserve=1 --label=A2 --expect-rows=23 [--quiet-s=120]
 //   node tests/load/fixtures/fes-rows.mjs --cleanup=<manifest> [--publish]
 //   node tests/load/fixtures/fes-rows.mjs --verify=<manifest>
 //   node tests/load/fixtures/fes-rows.mjs --sizes --base=<url>      (AFTER a run only)
@@ -196,6 +196,29 @@ async function create() {
     if (!lock.rows.length) throw new Error(`event ${EVENT_ID} not found`);
     const txNow = (await pg.query(`select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') as t`)).rows[0].t;
     const before = await readState(pg, EVENT_ID);
+    // Concurrency guards. The fixture is quarantined preparation: it must
+    // never land in the middle of someone else's run on the shared event
+    // (a harness smoke inserting an anchor would have its rows cloned and
+    // its encore order broken by the restore of its own positions). Two
+    // checks, both before anything is written:
+    //   * --expect-rows=<n>: the operator states the row count they
+    //     reconciled; anything else refuses;
+    //   * a quiet window: no row of the event created or soft-deleted in
+    //     the last --quiet-s seconds (default 120), measured on the DB
+    //     clock (both sides UTC timestamps written by the DB/Prisma).
+    if (args["expect-rows"] != null && Number(args["expect-rows"]) !== before.rows.length) {
+      throw new Error(`event has ${before.rows.length} active rows, --expect-rows=${args["expect-rows"]} — another stream may be running on it; reconcile first`);
+    }
+    const quietS = args["quiet-s"] != null ? Number(args["quiet-s"]) : 120;
+    const recent = await pg.query(
+      `select count(*)::int as n from "SetlistItem" where "eventId" = $1
+          and ("createdAt" > (now() at time zone 'UTC') - make_interval(secs => $2)
+               or "deletedAt" > (now() at time zone 'UTC') - make_interval(secs => $2))`,
+      [EVENT_ID, quietS],
+    );
+    if (recent.rows[0].n > 0) {
+      throw new Error(`${recent.rows[0].n} row(s) of event ${EVENT_ID} created/deleted in the last ${quietS}s — another stream may be running; wait for quiet (or --quiet-s=0 if it was you)`);
+    }
     const n = cloneCount({ active: before.rows.length, target, reserve });
     const plan = planFixture(before.rows, { clones: n });
     log(`event ${EVENT_ID}: ${before.rows.length} active rows, rev ${before.event.setlistRevision}, status ${before.event.status}`);
