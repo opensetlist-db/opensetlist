@@ -278,6 +278,29 @@ export function summarizeHost(samples, phases) {
 // cores and is exactly what stalled the workers before.
 const ALLOWED_LOAD_SCRIPTS = ["vercel-logs-capture.mjs", "pooler-clients.mjs", "pg-connections.mjs", "supavisor-backends.mjs"];
 
+// Command lines are RECORDED (declared process, descendants, competing
+// processes — in the JSON result, the markdown and the log). A command
+// line can carry a credential: `k6 run -e ADMIN_PASSWORD=…`, a `--token`
+// flag, a `postgres://user:pass@host` URL. Secrets must never reach a
+// result artifact (the results directory is committed), so every recorded
+// command line goes through this first. Value-blind on purpose: any
+// `NAME=value` whose NAME looks like a secret is redacted whatever the
+// value, and so is any `--password/--token/--secret/--key value` pair and
+// the password part of a connection URL. Over-redacting a harmless
+// `-e HINT_MODE=r2` is impossible (no secret-like word), and over-
+// redacting a harmless `API_KEY_MODE=x` is the acceptable side.
+const SECRET_NAME = /(PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|SERVICE[_-]?ROLE|ANON[_-]?KEY|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|AUTH)/i;
+export function redactCmd(cmd) {
+  let s = String(cmd ?? "");
+  // NAME=value (quoted or bare); the name may be prefixed by -e / --env.
+  s = s.replace(/([A-Za-z0-9_.-]+)=("[^"]*"|'[^']*'|[^\s"']+)/g, (m, name) => (SECRET_NAME.test(name) ? `${name}=<redacted>` : m));
+  // --password value, --token=value, -p value forms.
+  s = s.replace(/(--?(?:password|passwd|token|secret|api-?key|auth|credentials?)(?:\s+|=))("[^"]*"|'[^']*'|[^\s"']+)/gi, (m, flag) => `${flag}<redacted>`);
+  // scheme://user:password@host — keep the user, drop the password.
+  s = s.replace(/(\w+:\/\/[^\s/:@"']+:)([^\s@"']+)@/g, (m, head) => `${head}<redacted>@`);
+  return s;
+}
+
 // procs: [{ pid, name, cmd }]. Returns the competing ones with a reason.
 // `allow` (n14 step 7, `run.mjs --declared-process=<pid>`): a Set of pids
 // declared as part of the experiment — the declared process and its

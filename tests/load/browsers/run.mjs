@@ -129,7 +129,7 @@ import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
 import {
   startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW,
-  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT, listAllProcessesAsync, pidAlive,
+  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT, listAllProcessesAsync, pidAlive, redactCmd,
 } from "./hostmon.mjs";
 import {
   parseSpam7Flags, slotSchedule, forgedRev, exposure as spamExposure, staleEligibility, pageServerRevAt, classifyStratum, STRATA, latSummary,
@@ -910,7 +910,7 @@ async function recheckHost(label) {
   if (!all) return { label, at, ok: null, competing: null, declaredAlive: DECLARED_PID ? pidAlive(DECLARED_PID) : null };
   const allow = DECLARED_PID ? processTree(all, DECLARED_PID) : null;
   const nodeK6 = all.filter((p) => /^(node|k6)(\.exe)?$/i.test(String(p.name || "")));
-  const competing = competingProcesses(nodeK6, process.pid, process.ppid, allow).map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) }));
+  const competing = competingProcesses(nodeK6, process.pid, process.ppid, allow).map(({ pid, why, cmd }) => ({ pid, why, cmd: redactCmd(cmd).slice(0, 300) }));
   const out = { label, at, ok: competing.length === 0, competing, declaredAlive: DECLARED_PID ? pidAlive(DECLARED_PID) : null, declaredTree: allow ? [...allow] : null };
   if (declared) declared.checks.push(out);
   return out;
@@ -925,8 +925,8 @@ async function hostGuard() {
     const me = all?.find((p) => p.pid === DECLARED_PID) ?? null;
     allow = tree;
     declared = {
-      pid: DECLARED_PID, name: me?.name ?? null, cmd: me ? String(me.cmd).slice(0, 1000) : null, startedAt: me?.startedAt ?? null,
-      tree: [...tree], descendants: (all || []).filter((p) => tree.has(p.pid) && p.pid !== DECLARED_PID).map((p) => ({ pid: p.pid, name: p.name, cmd: String(p.cmd).slice(0, 300) })),
+      pid: DECLARED_PID, name: me?.name ?? null, cmd: me ? redactCmd(me.cmd).slice(0, 1000) : null, startedAt: me?.startedAt ?? null,
+      tree: [...tree], descendants: (all || []).filter((p) => tree.has(p.pid) && p.pid !== DECLARED_PID).map((p) => ({ pid: p.pid, name: p.name, cmd: redactCmd(p.cmd).slice(0, 300) })),
       seenAt: new Date().toISOString(), endedAt: null, checks: [],
     };
     log(`declared process ${DECLARED_PID} (${declared.name ?? "?"}, started ${declared.startedAt ?? "?"}): ${String(declared.cmd ?? "").slice(0, 160)}${tree.size > 1 ? ` (+ ${tree.size - 1} descendant(s))` : ""}`);
@@ -934,8 +934,8 @@ async function hostGuard() {
   const competing = procs ? competingProcesses(procs, process.pid, process.ppid, allow) : null;
   const problems = [];
   if (busy.pct != null && busy.pct > HOST_BUSY_LIMIT_PCT) problems.push(`host CPU ${busy.pct} % busy (${busy.how}) > ${HOST_BUSY_LIMIT_PCT} %`);
-  for (const p of competing || []) problems.push(`pid ${p.pid}: ${p.why} — ${String(p.cmd).slice(0, 120)}`);
-  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST, declaredPid: DECLARED_PID };
+  for (const p of competing || []) problems.push(`pid ${p.pid}: ${p.why} — ${redactCmd(p.cmd).slice(0, 120)}`);
+  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: redactCmd(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST, declaredPid: DECLARED_PID };
   if (procs == null) log("host guard: could not list processes (not checked)");
   if (!problems.length) {
     log(`host guard: ok (CPU ${busy.pct} % busy, ${busy.how}; no competing processes)`);

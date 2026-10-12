@@ -5,7 +5,7 @@
 // themselves are timers and are exercised by every smoke run.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createLagRecorder, lagOver, validity, summarizeHost, competingProcesses, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
+import { createLagRecorder, lagOver, validity, summarizeHost, competingProcesses, redactCmd, LAG_INVALID_MS, SILENT_INVALID_MS } from "./hostmon.mjs";
 
 test("competingProcesses: side-cars allowed, offenders named", () => {
   const procs = [
@@ -130,3 +130,15 @@ test("validity: a heartbeat's own lag max counts even when the worker's summary 
   assert.equal(validity({ lags: [], heartbeats: { 1: beats }, from: 0, to: 10_000 }).invalid, false);
 });
 
+
+// Recorded command lines (declared process, descendants, competitors) go
+// into committed result artifacts; a credential passed on a command line
+// must never survive the recording (Codex step-7 review).
+test("redactCmd: secret-like NAME=value, --flag value and URL passwords are redacted; harmless args are kept", () => {
+  const cmd = 'k6.exe run tests/load/viewers.js -e HINT_MODE=r2 -e ADMIN_PASSWORD=hunter2 --env SUPABASE_SERVICE_ROLE_KEY="eyJ.abc" -e POLL_RPS=1 --token tok123 --api-key=k9 DATABASE_URL=postgres://u:pw@host:6543/db';
+  const out = redactCmd(cmd);
+  for (const leaked of ["hunter2", "eyJ.abc", "tok123", "k9", ":pw@"]) assert.ok(!out.includes(leaked), `leaked ${leaked}: ${out}`);
+  for (const kept of ["HINT_MODE=r2", "POLL_RPS=1", "tests/load/viewers.js", "ADMIN_PASSWORD=<redacted>", "SUPABASE_SERVICE_ROLE_KEY=<redacted>", "postgres://u:<redacted>@host:6543/db", "--token <redacted>", "--api-key=<redacted>"]) assert.ok(out.includes(kept), `missing ${kept}: ${out}`);
+  assert.equal(redactCmd(null), "");
+  assert.equal(redactCmd("node tests/load/pooler-clients.mjs --out-dir=x"), "node tests/load/pooler-clients.mjs --out-dir=x");
+});
