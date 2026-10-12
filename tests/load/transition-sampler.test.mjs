@@ -1,7 +1,7 @@
 // node --test tests/load/transition-sampler.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { samplerSummary, samplerMarkdown } from "./transition-sampler.mjs";
+import { samplerSummary, samplerMarkdown, samplerExitCode } from "./transition-sampler.mjs";
 
 const T = Date.UTC(2026, 10, 1, 3, 0, 0, 0);
 const doc = (dt, dpl, status = 200) => ({ kind: "doc", tStart: T + dt, tEnd: T + dt + 120, status, dpl, vercelId: "icn1::icn1::x", error: null });
@@ -45,4 +45,12 @@ test("unattributed document answers are counted; > 20 % → INSUFFICIENT ATTRIBU
   const few = [...Array.from({ length: 8 }, (_, i) => doc(i * 250, "dpl_NEW")), doc(2000, null, 502), doc(2250, null)];
   assert.equal(samplerSummary(few, "dpl_NEW").verdict, "ALREADY SWITCHED");
   assert.equal(samplerSummary(few, "dpl_NEW").docs.unattributed, 2);
+});
+
+// Exit codes follow the harness vocabulary: only a witnessed switch is 0.
+test("samplerExitCode: 0 only for SWITCHED, 1 for a failed switch, 4 for no evidence", () => {
+  assert.equal(samplerExitCode("SWITCHED"), 0);
+  assert.equal(samplerExitCode("NOT SWITCHED"), 1);
+  assert.equal(samplerExitCode("NOT SUSTAINED"), 1);
+  for (const v of ["ALREADY SWITCHED", "INSUFFICIENT ATTRIBUTION", "NO DATA", undefined]) assert.equal(samplerExitCode(v), 4, v);
 });

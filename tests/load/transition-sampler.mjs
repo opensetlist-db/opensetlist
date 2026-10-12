@@ -98,6 +98,19 @@ export function samplerSummary(samples, expect) {
   };
 }
 
+// Process exit code per verdict, so a caller (the step 8 operator script,
+// a CI job) cannot mistake "the sampler ran" for "the switch happened":
+// 0 only for SWITCHED; 1 when the switch was observed to fail (NOT
+// SWITCHED, NOT SUSTAINED); 4 (NOT EXERCISED) when the run holds no
+// evidence either way — ALREADY SWITCHED (the target was serving before
+// sampling started), INSUFFICIENT ATTRIBUTION, NO DATA. The same 0/1/4
+// vocabulary as wake-check.mjs and run.mjs.
+export function samplerExitCode(verdict) {
+  if (verdict === "SWITCHED") return 0;
+  if (verdict === "NOT SWITCHED" || verdict === "NOT SUSTAINED") return 1;
+  return 4;
+}
+
 export function samplerMarkdown(s, meta) {
   const L = [];
   L.push(`# Transition sampler${meta.label ? ` — ${meta.label}` : ""} — ${s.verdict}`, "");
@@ -206,7 +219,7 @@ async function main() {
   fs.writeFileSync(`${outBase}.md`, md);
   console.log(md);
   log(`wrote ${outBase}.{json,md}`);
-  process.exit(0);
+  process.exit(samplerExitCode(s.verdict));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

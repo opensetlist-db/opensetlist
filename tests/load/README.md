@@ -1855,7 +1855,7 @@ from", flips, the per-deployment timeline, statuses and 5xx / transport
 errors per loop, and the **unattributed** document answers (no
 `data-dpl-id`: errors, 5xx, error pages). Verdict SWITCHED / NOT SUSTAINED
 / NOT SWITCHED / ALREADY SWITCHED / NO DATA (no attributed answer) /
-INSUFFICIENT ATTRIBUTION (more than 20 % of document answers
+INSUFFICIENT ATTRIBUTION (more than 20 % of document answers Exit code: 0 only for SWITCHED, 1 for NOT SWITCHED / NOT SUSTAINED, 4 (NOT EXERCISED) for ALREADY SWITCHED / INSUFFICIENT ATTRIBUTION / NO DATA — a caller must not read "the sampler ran" as "the switch happened".
 unattributed — the gaps could hide the old deployment's tail, so no
 switch is claimed). Switch latency = first expected answer − the
 click time the operator writes down. Dev smoke: 20 s on the dev alias,
