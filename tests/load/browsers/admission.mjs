@@ -40,7 +40,7 @@ const pair = (v, name) => {
 };
 
 const ADMISSION_KEYS = ["admit-at", "admit-file", "admission-saves", "guard-precursor", "rows-manifest", "final-cohort", "exposure-sdk-min", "exposure-pages-min", "expect-live-seed"];
-const IDLE_KEYS = ["cohort-incumbents", "cohort-fresh", "connect-at", "first-save-at", "idle-saves", "wake", "wake-gap", "wake-check-timeout", "max-age"];
+const IDLE_KEYS = ["cohort-incumbents", "cohort-fresh", "connect-at", "first-save-at", "first-save-file", "idle-saves", "wake", "wake-gap", "wake-check-timeout", "max-age"];
 
 // Parse and validate the step-5 flags. `args` = parseArgs() output.
 // Returns { cfg } or { error }; run.mjs prints the error and exits 2
@@ -122,17 +122,24 @@ export function parseStep5Flags(args, { phase, drill, deploymentUrl, pages, now 
     if ([incumbents, fresh, maxAge, wakeGap, wakeCheck].some(Number.isNaN)) return { error: "--cohort-incumbents (1–200), --cohort-fresh (0–200), --max-age (7–3600 s), --wake-gap (10–3600 s), --wake-check-timeout (1–120 s) must be integers in range" };
     const connectAt = isoMs(args["connect-at"]);
     const firstSaveAt = isoMs(args["first-save-at"]);
+    // --first-save-file: the operator learns the observer's readiness only
+    // AFTER the connect instant, so the first save can also be released
+    // at run time: the harness waits for the file; its content is the
+    // ISO instant of the first save (readiness + 6 s), or empty = 6 s
+    // after the file appeared. Exactly one of the two.
+    const firstSaveFile = args["first-save-file"] === undefined || args["first-save-file"] === true ? null : String(args["first-save-file"]);
     if (connectAt == null || Number.isNaN(connectAt)) return { error: "--drill=idle-broadcast needs --connect-at=<ISO UTC> (when every local client connects)" };
-    if (firstSaveAt == null || Number.isNaN(firstSaveAt)) return { error: "--drill=idle-broadcast needs --first-save-at=<ISO UTC> (= observer readiness + 6 s)" };
+    if ((firstSaveAt == null) === (firstSaveFile == null)) return { error: "--drill=idle-broadcast needs exactly one of --first-save-at=<ISO UTC> (= observer readiness + 6 s) or --first-save-file=<path>" };
+    if (Number.isNaN(firstSaveAt)) return { error: "--first-save-at must be an ISO timestamp (UTC)" };
     if (connectAt <= now) return { error: "--connect-at is in the past" };
-    if (firstSaveAt - connectAt < 6000) return { error: "--first-save-at must be ≥ 6 s after --connect-at (the clients must be ≥ 6 s old at the save)" };
-    if (firstSaveAt - connectAt > maxAge * 1000) return { error: `--first-save-at is more than --max-age (${maxAge} s) after --connect-at: no client could be eligible` };
+    if (firstSaveAt != null && firstSaveAt - connectAt < 6000) return { error: "--first-save-at must be ≥ 6 s after --connect-at (the clients must be ≥ 6 s old at the save)" };
+    if (firstSaveAt != null && firstSaveAt - connectAt > maxAge * 1000) return { error: `--first-save-at is more than --max-age (${maxAge} s) after --connect-at: no client could be eligible` };
     const saves = secList(args["idle-saves"] ?? "40,100", "idle-saves");
     if (saves.error) return { error: saves.error };
     if (saves.list[0] < 40) return { error: "the first save must be followed by ≥ 40 s of quiet: --idle-saves must start at ≥ 40" };
     const wake = flagTrue(args.wake);
     if (!wake && args["cohort-fresh"] !== undefined) return { error: "--cohort-fresh is only used by --wake (I2); I1 connects --cohort-incumbents clients only" };
-    out.idle = { incumbents, fresh: wake ? fresh : 0, connectAt, firstSaveAt, savesS: saves.list, wake, wakeGapS: wakeGap, wakeCheckS: wakeCheck, maxAgeS: maxAge };
+    out.idle = { incumbents, fresh: wake ? fresh : 0, connectAt, firstSaveAt, firstSaveFile, savesS: saves.list, wake, wakeGapS: wakeGap, wakeCheckS: wakeCheck, maxAgeS: maxAge };
   }
   return { cfg: out };
 }
@@ -146,6 +153,13 @@ export function parseStep5Flags(args, { phase, drill, deploymentUrl, pages, now 
 //     "measurementId": "dpl_…", "precursorId": "dpl_…", "inspect": "<vercel inspect output>" }
 // An empty file (plain `touch`) or non-JSON text is accepted: then only
 // the file's appearance is the boundary.
+// The --first-save-file content → the first save's instant: an ISO
+// instant, or (empty / unparsable) `seenAt` + 6 s.
+export function firstSaveFromFile(text, seenAt) {
+  const t = Date.parse(String(text ?? "").trim());
+  return Number.isFinite(t) ? t : seenAt + 6000;
+}
+
 export function parseAdmitFile(text) {
   const t = String(text ?? "").trim();
   if (!t) return { raw: "" };
@@ -486,8 +500,19 @@ export function idleEligibility(clients, save, { maxAgeS = 90, minAgeS = 6, spre
 // repair time (apply − PUT start) when it was NOT applied by its own
 // notification. Healthy repair is the periodic poll, 20 s ± 4 s — a
 // measured value, never a bound.
+//
+// Population: clients that existed and had subscribed by the save's PUT
+// response and were not stopped before it — a client created (or first
+// SUBSCRIBED) after the save would otherwise show up as a "repair" that
+// is really its own join.
 export function idleArrivals(clients, save, { timeoutMs = 60000 } = {}) {
-  return clients.map((c) => {
+  const inPop = (c) => {
+    if (c.stoppedAt != null && c.stoppedAt <= save.putStart) return false;
+    if (c.attemptAt != null && c.attemptAt > save.putEnd) return false;
+    const fs = firstSub(c);
+    return !(fs != null && fs > save.putEnd);
+  };
+  return clients.filter(inPop).map((c) => {
     const b = (c.bcasts || []).find(([t, rev, w]) => rev === save.rev && w !== "x" && t >= save.putStart - 50);
     const a = firstApplied(c.applied, save.rev);
     const applied = a && a[0] <= save.putStart + timeoutMs ? a : null;

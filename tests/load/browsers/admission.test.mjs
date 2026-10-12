@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  parseStep5Flags, parseAdmitFile, fixtureIdsOf, expectedRows, matchRows, completeAt, connOf, connectedAt, connectedThrough, upSince,
+  parseStep5Flags, parseAdmitFile, firstSaveFromFile, fixtureIdsOf, expectedRows, matchRows, completeAt, connOf, connectedAt, connectedThrough, upSince,
   sdkExposure, pageExposure, exposureLabel, sdkConvergence, pageSeenFor, pageConvergence, staleFirstAnswers, receiptVsReason,
   admissionVerdict, idleEligibility, idleArrivals, summarizeArrivals,
 } from "./admission.mjs";
@@ -53,6 +53,14 @@ test("flags: idle-broadcast", () => {
   assert.equal(i2.fresh, 20);
   assert.equal(i2.wakeGapS, 600);
   assert.match(parseStep5Flags({ "cohort-incumbents": "5" }, { ...base, drill: null }).error, /need\(s\) --drill=idle-broadcast/);
+  // the first save released at run time instead
+  assert.match(parseStep5Flags({ "connect-at": at(60) }, base).error, /exactly one of --first-save-at/);
+  assert.match(parseStep5Flags({ "connect-at": at(60), "first-save-at": at(70), "first-save-file": "f" }, base).error, /exactly one/);
+  const f = parseStep5Flags({ "connect-at": at(60), "first-save-file": "go.txt" }, base).cfg.idle;
+  assert.equal(f.firstSaveFile, "go.txt");
+  assert.equal(f.firstSaveAt, null);
+  assert.equal(firstSaveFromFile("2026-10-12T05:01:10Z\n", 0), Date.parse("2026-10-12T05:01:10Z"));
+  assert.equal(firstSaveFromFile("", NOW), NOW + 6000);
 });
 
 test("admit file and fixture ids", () => {
@@ -271,6 +279,11 @@ test("idle arrivals: broadcast receipt, applying reason, repair time", () => {
     { idx: 0, bcasts: [[T0 + 500, 60, "n"]], applied: [[T0 + 900, 60, "notification"]] },
     { idx: 1, bcasts: [], applied: [[T0 + 21000, 60, "periodic"]] },
     { idx: 2, bcasts: [], applied: [] },
+    // joined after the save: its catch-up is not a repair — out
+    { idx: 3, attemptAt: T0 + 5000, subscribedAt: [T0 + 5300], bcasts: [], applied: [[T0 + 5400, 60, "initial"]] },
+    { idx: 4, subscribedAt: [T0 + 400], bcasts: [], applied: [[T0 + 5400, 60, "catchup"]] },
+    // stopped before the save — out
+    { idx: 5, stoppedAt: T0 - 1, subscribedAt: [T0 - 9000], bcasts: [], applied: [] },
   ], S, { timeoutMs: 60000 });
   assert.deepEqual(rows.map((r) => [r.bcastMs, r.reason, r.repairMs]), [[200, "notification", null], [null, "periodic", 21000], [null, "never", null]]);
   const s = summarizeArrivals(rows);

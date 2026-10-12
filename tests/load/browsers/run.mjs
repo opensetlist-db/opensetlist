@@ -102,7 +102,7 @@ import {
 import { REACTION_TYPES, ANON_PREFIX } from "../lib/constants.js";
 import { launchPages } from "./pages.mjs";
 import {
-  parseStep5Flags, parseAdmitFile, fixtureIdsOf, expectedRows, completeAt, connOf, connectedThrough, firstSub,
+  parseStep5Flags, parseAdmitFile, firstSaveFromFile, fixtureIdsOf, expectedRows, completeAt, connOf, connectedThrough, firstSub,
   sdkExposure, pageExposure, exposureLabel, sdkConvergence, pageConvergence, staleFirstAnswers, receiptVsReason,
   admissionVerdict, idleEligibility, idleArrivals, summarizeArrivals,
 } from "./admission.mjs";
@@ -1376,10 +1376,25 @@ async function mainIdle(runStart) {
   if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
   const afterPosition = original[AFTER_ROW - 1].position;
   cookie = await adminLogin(BASE);
-  log(`idle-broadcast ${I.wake ? "I2 (wake)" : "I1"}: ${I.incumbents} incumbents connect at ${iso(I.connectAt)}, first save at ${iso(I.firstSaveAt)}${I.wake ? `, fresh ${I.fresh} at +${I.wakeGapS} s` : `, then +${I.savesS.join(" s, +")} s`}; start rev ${startRev}`);
+  log(`idle-broadcast ${I.wake ? "I2 (wake)" : "I1"}: ${I.incumbents} incumbents connect at ${iso(I.connectAt)}, first save at ${I.firstSaveFile ? `the instant in --first-save-file ${I.firstSaveFile}` : iso(I.firstSaveAt)}${I.wake ? `, fresh ${I.fresh} at +${I.wakeGapS} s` : `, then +${I.savesS.join(" s, +")} s`}; start rev ${startRev}`);
   await sleepUntil(I.connectAt);
   const popStart = Date.now();
   const inc = spawnWorker({ offset: 0, n: I.incumbents, batch: I.incumbents, cohort: "incumbent" });
+  if (I.firstSaveFile) {
+    // Released at run time (see admission.mjs parseStep5Flags). Bounded:
+    // past connect + max-age no client can be eligible any more.
+    const giveUp = I.connectAt + I.maxAgeS * 1000;
+    let lastLog = 0;
+    while (!fs.existsSync(I.firstSaveFile)) {
+      if (Date.now() > giveUp) throw new Error(`--first-save-file ${I.firstSaveFile} did not appear within --max-age of --connect-at — cycle NOT EXERCISED`);
+      if (Date.now() - lastLog > 2000) { lastLog = Date.now(); log(`  incumbents connected ${await subsConnected([inc])}/${I.incumbents}; waiting for --first-save-file`); }
+      await sleep(100);
+    }
+    const seenAt = Date.now();
+    await sleep(50);
+    I.firstSaveAt = firstSaveFromFile(fs.readFileSync(I.firstSaveFile, "utf8"), seenAt);
+    log(`first save released for ${iso(I.firstSaveAt)}`);
+  }
   while (Date.now() < I.firstSaveAt - 500) {
     log(`  incumbents connected ${await subsConnected([inc])}/${I.incumbents}`);
     await sleep(Math.min(2000, Math.max(0, I.firstSaveAt - 500 - Date.now())));
