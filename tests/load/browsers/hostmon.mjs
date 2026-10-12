@@ -21,7 +21,7 @@
 // import it cheaply and `hostmon.test.mjs` can pin the pure parts.
 
 import os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
 
 // Lag monitor tick and bucket width. 100 ms is fine-grained enough to
 // see a 1 s stall as ~10 missing ticks folded into one large sample, and
@@ -279,10 +279,16 @@ export function summarizeHost(samples, phases) {
 const ALLOWED_LOAD_SCRIPTS = ["vercel-logs-capture.mjs", "pooler-clients.mjs", "pg-connections.mjs", "supavisor-backends.mjs"];
 
 // procs: [{ pid, name, cmd }]. Returns the competing ones with a reason.
-export function competingProcesses(procs, selfPid = process.pid, parentPid = process.ppid) {
+// `allow` (n14 step 7, `run.mjs --declared-process=<pid>`): a Set of pids
+// declared as part of the experiment — the declared process and its
+// descendants by parent PID (spam7.mjs `processTree`) — which never
+// compete. An exact-pid exception, not a category: a second k6 or any
+// other unknown process still competes.
+export function competingProcesses(procs, selfPid = process.pid, parentPid = process.ppid, allow = null) {
   const out = [];
   for (const p of procs) {
     if (p.pid === selfPid || p.pid === parentPid) continue;
+    if (allow && allow.has(p.pid)) continue;
     const cmd = String(p.cmd || "").replace(/\\/g, "/");
     const name = String(p.name || "").toLowerCase();
     if (/(^|\/)k6(\.exe)?$/.test(name) || /(^|[\s/"])k6(\.exe)?"?\s+run\b/.test(cmd)) {
@@ -329,6 +335,51 @@ export function listProcesses() {
     }).filter((p) => p && (/node|k6/.test(p.name)));
   } catch {
     return null;
+  }
+}
+
+// n14 step 7: EVERY process with its parent pid, start time (UTC ISO)
+// and command line — the declared process's tree and record need
+// non-node processes too (k6, or a harmless stand-in for a smoke).
+// ASYNC (execFile, not execFileSync): it also runs mid-measurement, and
+// a synchronous PowerShell call would block the main thread — whose lag
+// is itself a validity signal — for a second or more. Errors → null.
+export function listAllProcessesAsync() {
+  return new Promise((resolve) => {
+    const done = (err, out) => {
+      if (err) return resolve(null);
+      try {
+        if (process.platform === "win32") {
+          const j = out.trim() ? JSON.parse(out) : [];
+          return resolve((Array.isArray(j) ? j : [j]).map((x) => ({ pid: x.ProcessId, ppid: x.ParentProcessId ?? null, name: x.Name, cmd: x.CommandLine ?? "", startedAt: x.Start ?? null })));
+        }
+        const now = Date.now();
+        resolve(out.split("\n").filter(Boolean).map((l) => {
+          const m = l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
+          return m ? { pid: Number(m[1]), ppid: Number(m[2]), name: m[4], cmd: m[5], startedAt: new Date(now - Number(m[3]) * 1000).toISOString() } : null;
+        }).filter(Boolean));
+      } catch {
+        resolve(null);
+      }
+    };
+    if (process.platform === "win32") {
+      execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,@{n='Start';e={if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { $null }}} | ConvertTo-Json -Compress"],
+      { encoding: "utf8", timeout: 30000, windowsHide: true, maxBuffer: 64 * 1024 * 1024 }, done);
+    } else {
+      execFile("ps", ["-eo", "pid=,ppid=,etimes=,comm=,args="], { encoding: "utf8", timeout: 15000, maxBuffer: 64 * 1024 * 1024 }, done);
+    }
+  });
+}
+
+// Whether a pid is alive right now (signal 0 = existence check, nothing
+// is delivered; EPERM = alive but not ours). Cheap enough to poll.
+export function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e?.code === "EPERM";
   }
 }
 

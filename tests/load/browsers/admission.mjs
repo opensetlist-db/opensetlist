@@ -67,7 +67,7 @@ export function parseStep5Flags(args, { phase, drill, deploymentUrl, pages, now 
   const idleGiven = IDLE_KEYS.filter((k) => args[k] !== undefined);
   // "transition" (n14 step 6) is parsed by transition.mjs
   // parseTransitionFlags; here it only means "not admission".
-  if (phase !== undefined && phase !== null && phase !== "admission" && phase !== "transition") return { error: `unknown --phase=${phase} (admission | transition)` };
+  if (phase !== undefined && phase !== null && phase !== "admission" && phase !== "transition" && phase !== "spam7") return { error: `unknown --phase=${phase} (admission | transition | spam7)` };
   const admission = phase === "admission";
   const idle = drill === "idle-broadcast";
   if (!admission && admGiven.length) return { error: `${admGiven.map((k) => `--${k}`).join(", ")} need(s) --phase=admission` };

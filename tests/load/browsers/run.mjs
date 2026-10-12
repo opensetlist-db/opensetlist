@@ -70,6 +70,19 @@
 // `--connect-at` / `--first-save-at`, eligibility computed post hoc.
 // See README.md "Admission phase" / "Idle-broadcast drill".
 //
+// n14 qualification step 7 (5-minute spam + real saves + background
+// k6): `--phase=spam7` runs the standard join, then baseline
+// (--baseline-secs) → guest spam (--spam-secs, `{ kind, rev, runId, k }`
+// at --spam-rate, --spam-rev ahead|max|stale|none) → recovery
+// (--recovery-secs) → measurement end → clean-up, with one never-retried
+// mixed edit per --save-offsets entry on its own timer from the spam
+// start. The "Spam (n14 step 7)" section judges exposure, honest latency
+// per save per population, writes, errors, drain, cooldown, the durable
+// watermark and the stale control (pure logic: spam7.mjs; server side:
+// ../spam7-join.mjs). `--declared-process=<pid>` lets the host guard
+// accept that one process (the background k6) and its descendants.
+// See README.md "Spam phase".
+//
 // Measurement validity (every run): the main thread and every SDK
 // worker thread run an event-loop lag monitor (100 ms tick), the workers
 // send a heartbeat each second, and the workers time their own 8 s
@@ -116,8 +129,13 @@ import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
 import {
   startLagMonitor, lagOver, validity, LAG_INVALID_MS, SILENT_INVALID_MS, startHostSampler, summarizeHost, HOST_SAMPLE_ROW,
-  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT,
+  hostBusy, listProcesses, competingProcesses, HOST_BUSY_LIMIT_PCT, listAllProcessesAsync, pidAlive,
 } from "./hostmon.mjs";
+import {
+  parseSpam7Flags, slotSchedule, forgedRev, exposure as spamExposure, staleEligibility, pageServerRevAt, classifyStratum, STRATA, latSummary,
+  sdkReqCategory, rateBuckets, rolling, baselineStats, drainThreshold, confirmDrain, aggregateState, sampleAt, reboundRequests, cooldownCheck,
+  watermarkViolations, ticketDropRecovery, processTree, spam7Verdict, EXPOSURE_MIN, TIMELY_MS,
+} from "./spam7.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -153,13 +171,24 @@ const EVENT_ID = String(args["event-id"] ?? "111");
 const EVENT_PATH = args["event-path"] ?? "/events/111/rehearsal-lovelive-fes-2020-day1";
 const PAGES = int("pages", 30);
 const SUBS = int("subs", 470);
-const EDITS = int("edits", 12);
+// n14 step 7 (see the spam7 section below and spam7.mjs
+// `parseSpam7Flags`): S7 = the --phase=spam7 config, null otherwise.
+// Parsed this early because it decides the edit count (one edit per
+// --save-offsets entry) and the edit mode (mixed). Checked here, before
+// anything is created.
+const S7P = parseSpam7Flags(args, { phase: args.phase === undefined ? null : String(args.phase), drill: args.drill ? String(args.drill) : null });
+if (S7P.error) {
+  console.error(S7P.error);
+  process.exit(2);
+}
+const S7 = S7P.cfg;
+const EDITS = S7 ? S7.edits : int("edits", 12);
 const PAUSE_MS = Math.round(parseFloat(args.pause ?? "25") * 1000);
 const AFTER_ROW = int("after-row", 2);
 // See the header. insert-after cannot carry a song (the route takes only
 // { eventId, afterPosition }), so a single-save edit is a PUT that swaps
 // the marker song on a row the run created up front.
-const EDIT_MODE = String(args["edit-mode"] ?? "pair");
+const EDIT_MODE = String(args["edit-mode"] ?? (S7 ? "mixed" : "pair"));
 if (!["pair", "standalone", "mixed"].includes(EDIT_MODE)) {
   console.error("--edit-mode must be pair|standalone|mixed");
   process.exit(2);
@@ -181,6 +210,17 @@ const RESTORE = !!args["restore-positions"]; // opt-in, see admin.mjs "Position 
 // Host isolation guard (see hostGuard()): warn by default, refuse to
 // start with --strict-host.
 const STRICT_HOST = args["strict-host"] === true || args["strict-host"] === "true";
+// --declared-process=<pid> (n14 step 7): ONE process that is part of the
+// experiment (the background k6 on this laptop). The host guard accepts
+// exactly that pid plus its descendants by parent PID; every other
+// unknown process still counts as competing (and refuses under
+// --strict-host). Its command line, start and end are recorded in the
+// JSON; it is re-checked mid-spam and at the measurement end.
+const DECLARED_PID = args["declared-process"] === undefined ? null : Number(args["declared-process"]);
+if (DECLARED_PID !== null && !(Number.isSafeInteger(DECLARED_PID) && DECLARED_PID > 0)) {
+  console.error(`--declared-process must be a pid (got ${args["declared-process"]})`);
+  process.exit(2);
+}
 // Self-test of the INVALID path: `--debug-stall=<ms>` makes SDK worker 0
 // busy-wait that long right before the first edit, i.e. exactly the
 // failure the validity monitors exist to catch. Expect exit code 3 and
@@ -251,7 +291,7 @@ const OV_REACTION_GROUP = 2;
 // A short run id for the drill's dedicated song titles and raw reaction
 // anonIds (`n14run2-<run>-<k>-<i>`: the prefix viewers-check.mjs knows).
 const RUN_ID = Date.now().toString(36);
-const GUEST_DRILL = DRILL === "poison" || DRILL === "spam";
+const GUEST_DRILL = DRILL === "poison" || DRILL === "spam" || (S7 != null && S7.spamRev !== "none");
 // silent-loss: a subset of pages loses the notification for ONE edit.
 // ws-blocked: pages with the websocket blocked for the whole run.
 // reconnect: every socket (pages + SDK) is force-closed right before ONE edit.
@@ -428,6 +468,8 @@ function spawnWorker({ offset, n, batch, cohort = null }) {
         cohort,
         // n14 step 6: per-response evidence columns + subset commands.
         transition: !!TXC,
+        // n14 step 7: the watermark history (serverRevLog).
+        spam7: !!S7,
       },
     });
     workerStarted[w] = Date.now();
@@ -557,6 +599,22 @@ async function openGuest() {
       }
       g.sends.push([t, rev, r, label]);
       return r;
+    },
+    // n14 step 7: one message with the step-7 payload (`{ kind, rev,
+    // runId, k }`), NOT awaited by the sender loop — the loop keeps its
+    // slot schedule while acks are outstanding (an attacker does not wait
+    // for acks either); the caller records the ack result and latency
+    // per message. Same `closed` guard as send().
+    async fire(payload) {
+      if (g.closed) return { result: "closed", ms: 0 };
+      const t = Date.now();
+      let r;
+      try {
+        r = await ch.send({ type: "broadcast", event: "rev", payload });
+      } catch (e) {
+        r = `threw: ${String(e?.message || e).slice(0, 80)}`;
+      }
+      return { result: r, ms: Date.now() - t };
     },
     async close() {
       g.closed = true;
@@ -830,14 +888,54 @@ function subMonotonicity(r) {
 // and the pooler samplers are allowed). Warn, or with --strict-host
 // refuse. The result goes into the report and the JSON either way.
 let hostCheck = null;
+// --declared-process (see DECLARED_PID): the declared process's record —
+// pid, name, command line, start (OS creation time, UTC), the descendant
+// pids accepted with it, its end (first poll that found it gone), and
+// every re-check of the host during the run (`checks`).
+let declared = null;
+// The pids the guard accepts as declared: the declared pid + descendants,
+// recomputed at every check (k6 may spawn children later).
+async function declaredTree() {
+  const all = await listAllProcessesAsync();
+  if (!all) return { all: null, tree: new Set([DECLARED_PID]) };
+  return { all, tree: processTree(all, DECLARED_PID) };
+}
+// Mid-run / end-of-measurement re-check (async: never blocks the main
+// thread). Records undeclared competing node / k6 processes and whether
+// the declared one is still alive; the step-7 report turns a competing
+// process into an INVALID reason (undeclared competing work).
+async function recheckHost(label) {
+  const at = Date.now();
+  const all = await listAllProcessesAsync();
+  if (!all) return { label, at, ok: null, competing: null, declaredAlive: DECLARED_PID ? pidAlive(DECLARED_PID) : null };
+  const allow = DECLARED_PID ? processTree(all, DECLARED_PID) : null;
+  const nodeK6 = all.filter((p) => /^(node|k6)(\.exe)?$/i.test(String(p.name || "")));
+  const competing = competingProcesses(nodeK6, process.pid, process.ppid, allow).map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) }));
+  const out = { label, at, ok: competing.length === 0, competing, declaredAlive: DECLARED_PID ? pidAlive(DECLARED_PID) : null, declaredTree: allow ? [...allow] : null };
+  if (declared) declared.checks.push(out);
+  return out;
+}
 async function hostGuard() {
   const busy = await hostBusy(2000);
   const procs = listProcesses();
-  const competing = procs ? competingProcesses(procs) : null;
+  let allow = null;
+  if (DECLARED_PID) {
+    if (!pidAlive(DECLARED_PID)) throw new Error(`--declared-process=${DECLARED_PID}: no such process; nothing was created`);
+    const { all, tree } = await declaredTree();
+    const me = all?.find((p) => p.pid === DECLARED_PID) ?? null;
+    allow = tree;
+    declared = {
+      pid: DECLARED_PID, name: me?.name ?? null, cmd: me ? String(me.cmd).slice(0, 1000) : null, startedAt: me?.startedAt ?? null,
+      tree: [...tree], descendants: (all || []).filter((p) => tree.has(p.pid) && p.pid !== DECLARED_PID).map((p) => ({ pid: p.pid, name: p.name, cmd: String(p.cmd).slice(0, 300) })),
+      seenAt: new Date().toISOString(), endedAt: null, checks: [],
+    };
+    log(`declared process ${DECLARED_PID} (${declared.name ?? "?"}, started ${declared.startedAt ?? "?"}): ${String(declared.cmd ?? "").slice(0, 160)}${tree.size > 1 ? ` (+ ${tree.size - 1} descendant(s))` : ""}`);
+  }
+  const competing = procs ? competingProcesses(procs, process.pid, process.ppid, allow) : null;
   const problems = [];
   if (busy.pct != null && busy.pct > HOST_BUSY_LIMIT_PCT) problems.push(`host CPU ${busy.pct} % busy (${busy.how}) > ${HOST_BUSY_LIMIT_PCT} %`);
   for (const p of competing || []) problems.push(`pid ${p.pid}: ${p.why} — ${String(p.cmd).slice(0, 120)}`);
-  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST };
+  hostCheck = { busyPct: busy.pct, how: busy.how, competing: competing?.map(({ pid, why, cmd }) => ({ pid, why, cmd: String(cmd).slice(0, 300) })) ?? null, processListOk: procs != null, problems, strict: STRICT_HOST, declaredPid: DECLARED_PID };
   if (procs == null) log("host guard: could not list processes (not checked)");
   if (!problems.length) {
     log(`host guard: ok (CPU ${busy.pct} % busy, ${busy.how}; no competing processes)`);
@@ -1026,7 +1124,9 @@ async function standardJoin({ startRev, afterPosition }) {
   if (NEEDS_ANCHOR && !OVERLAP) {
     const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
     created.push(a.id);
-    anchor = { id: a.id, position: a.position };
+    // rev / startedAt / ms: step 7 reports the anchor as the preparation
+    // write next to the measured ones (nothing else reads them).
+    anchor = { id: a.id, position: a.position, rev: a.rev, startedAt: a.startedAt, ms: a.ms };
     log(`anchor row ${a.id} @${a.position} created (rev ${a.rev}) for ${EDIT_MODE} edits`);
   }
 
@@ -1066,7 +1166,7 @@ async function standardJoin({ startRev, afterPosition }) {
   const popStart = Date.now();
   if (SUBS > 0) startWorkers();
   pagePop = PAGES > 0
-    ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode, headless: !args.headed, concurrency: PAGE_CONCURRENCY, log })
+    ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode, headless: !args.headed, concurrency: PAGE_CONCURRENCY, log, spam7: !!S7 })
     : { pages: [], joined: () => 0, pgReady: () => 0, setDropNotify() {}, armHookDrop: async () => 0, disarmHookDrop: async () => 0, hookDropPending: async () => null, dropSockets: () => 0, close: async () => {} };
   const realtimePages = pagePop.pages.filter((p) => p && p.rec.mode !== "blocked").length;
 
@@ -2128,6 +2228,278 @@ async function mainTransition(runStart) {
   };
 }
 
+// ─── n14 step 7: 5-minute spam + real saves (--phase=spam7) ───
+// Timeline after readiness (the standard join + settle, anchor and guest
+// included): baseline (--baseline-secs) → spam (--spam-secs) → recovery
+// (--recovery-secs) → measurement end → clean-up. Every phase boundary is
+// an explicit instant on THIS host's clock (state.spam7.phases) so the
+// k6 background, the side-cars and the server logs can be lined up with
+// it; the validity window, the failure accounting and the monotonicity
+// check all run from the baseline start to the measurement end, and
+// nothing is cleaned up before it (Codex round 1 item 3: the old spam
+// drill closed its window before the spam finished, then cleaned up
+// while measuring).
+//
+// The honest saves run on their own timer from the spam start
+// (--save-offsets, P0 keeps the same schedule without a sender), each
+// edit an independent task: a slow save never shifts the next one, and
+// none is retried (a retried save would change which write the clock
+// and the server logs refer to; a failure is recorded and gates the
+// run). Pair edits (odd k): insert-after, then the PUT on the new row;
+// standalone (even k): the PUT on the anchor row, its position re-read
+// from the DB 2 s before the due time (pair inserts above it shift it).
+const SPAM7_MAX_OUTSTANDING_ACKS = 20;
+// Browser responsiveness: a page round trip (CDP → renderer → back)
+// slower than this is a demonstrated browser stall (the DOM timestamps
+// of every page are then suspect) → INVALID, like a Node thread's lag.
+const SPAM7_BROWSER_INVALID_MS = LAG_INVALID_MS;
+const SPAM7_BROWSER_EVERY_MS = 5000;
+
+async function mainSpam7(runStart) {
+  const C = S7;
+  const pg = pgClient();
+  await pg.connect();
+  let songs;
+  let startRev;
+  try {
+    original = await activeRows(pg, EVENT_ID);
+    songs = await pickMarkerSongs(pg, C.edits);
+    startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
+  } finally {
+    await pg.end();
+  }
+  if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
+  const afterPosition = original[AFTER_ROW - 1].position;
+  log(`event ${EVENT_ID}: ${original.length} active rows, rev ${startRev}; markers ${songs.map((s) => s.id).join(",")}`);
+
+  const pop = await standardJoin({ startRev, afterPosition });
+
+  // The post-preparation committed head: the `ahead` base and the
+  // watermark check's "pre-existing" bound (NOT startRev — the anchor
+  // insert already moved it). Plus the fixture as served: the snapshot at
+  // that head must carry exactly the DB's active rows (ids in order), so
+  // the declared population really reads the declared fixture.
+  const prep = await withPg(async (pg2) => ({
+    rev: Number((await pg2.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r),
+    rows: await activeRows(pg2, EVENT_ID),
+  }));
+  let fixture;
+  try {
+    const snap = await getSnapshot(BASE, EVENT_ID, { locale: "ko", minRev: prep.rev });
+    const served = (Array.isArray(snap.items) ? snap.items : []).map((it) => String(it.id));
+    const db = prep.rows.map((r) => String(r.id));
+    fixture = { startRows: original.length, dbRows: db.length, servedItems: served.length, servedRev: Number(snap.rev), head: prep.rev, match: Number(snap.rev) === prep.rev && served.join(",") === db.join(",") };
+  } catch (e) {
+    fixture = { startRows: original.length, dbRows: prep.rows.length, head: prep.rev, match: false, error: e.message };
+  }
+  log(`spam7 prepare: head ${prep.rev} (start ${startRev}); fixture ${JSON.stringify(fixture)}`);
+
+  const S = {
+    cfg: C, runId: RUN_ID, initialHead: prep.rev, fixture, afterPosition,
+    sends: [], writes: [], edits: [], strata: [], stateSamples: [], browserProbe: [], hostChecks: [], headObserved: null, phases: {},
+  };
+  let latestRev = prep.rev;
+  const noteRev = (r) => {
+    if (Number.isSafeInteger(r) && r > latestRev) latestRev = r;
+  };
+
+  const baselineStart = Date.now();
+  const spamStart = baselineStart + Math.round(C.baselineSecs * 1000);
+  const attackEnd = spamStart + Math.round(C.spamSecs * 1000);
+  // spamEnd = the scheduled attack end (also for P0, which sends nothing);
+  // attackEndScheduled is the older alias.
+  S.phases = { baselineStart, spamStart, spamEnd: attackEnd, attackEndScheduled: attackEnd };
+  log(`spam7: baseline from ${iso(baselineStart)}, spam ${iso(spamStart)} → ${iso(attackEnd)} (scheduled)`);
+
+  // Samplers (all stop at the measurement end).
+  let sampling = true;
+  // 1 Hz aggregated SDK worker state: pending batches, carried tickets,
+  // in-flight ticket requests (the drain gate's "outstanding work").
+  const stateLoop = (async () => {
+    while (sampling && SUBS > 0) {
+      const t0 = Date.now();
+      try {
+        S.stateSamples.push(aggregateState(t0, await subsState()));
+      } catch { /* a worker gone: the sample is missing, the gate then sees "unknown" */ }
+      await sleep(Math.max(0, 1000 - (Date.now() - t0)));
+    }
+  })();
+  // Browser responsiveness: one page round trip every 5 s, rotating over
+  // the pages ([t, page idx, rtt ms | null = no answer within 10 s]).
+  const browserLoop = (async () => {
+    let i = 0;
+    while (sampling && PAGES > 0) {
+      const t0 = Date.now();
+      const idx = i++ % PAGES;
+      const r = await Promise.race([pagePop.evaluate(idx, () => Date.now()).catch(() => null), sleep(10000).then(() => "timeout")]);
+      S.browserProbe.push([t0, idx, r === "timeout" ? null : Date.now() - t0]);
+      await sleep(Math.max(0, SPAM7_BROWSER_EVERY_MS - (Date.now() - t0)));
+    }
+  })();
+  // The declared process: alive poll every 2 s (its end is recorded).
+  const declaredLoop = (async () => {
+    while (sampling && declared) {
+      if (declared.endedAt == null && !pidAlive(DECLARED_PID)) {
+        declared.endedAt = new Date().toISOString();
+        log(`declared process ${DECLARED_PID} ended at ${declared.endedAt}`);
+      }
+      await sleep(2000);
+    }
+  })();
+
+  // The honest saves.
+  const saveTasks = C.offsets.map((off, i) => spam7Edit(S, i + 1, off, spamStart + Math.round(off * 1000), songs[i], noteRev));
+
+  // stale (P3): just before the block, record whether every client has
+  // observed the head the block will hold (SDK serverRev; pages: the
+  // highest body rev they fetched). Not blocking — the eligibility rule
+  // (rev ≤ the client's own serverRev at receipt) judges each receipt
+  // regardless; this says how clean the control was.
+  const headCheck = C.spamRev === "stale"
+    ? sleepUntil(spamStart - 1500).then(async () => {
+      const head = latestRev;
+      const st = SUBS > 0 ? await subsState() : [];
+      const now = Date.now();
+      const pagesOk = pagePop.pages.filter((p) => p && (pageServerRevAt(p.rec.fetches, now) ?? -1) >= head).length;
+      S.headObserved = { at: now, head, sdk: st.filter((c) => c.serverRev != null && c.serverRev >= head).length, sdkDeclared: SUBS, pages: pagesOk, pagesDeclared: PAGES };
+      S.headObserved.verified = S.headObserved.sdk === SUBS && pagesOk === PAGES;
+      log(`stale control: head ${head} observed by SDK ${S.headObserved.sdk}/${SUBS}, pages ${pagesOk}/${PAGES} (body-rev proxy)`);
+    })
+    : Promise.resolve();
+
+  const midCheck = sleepUntil(spamStart + Math.round(C.spamSecs * 500)).then(() => recheckHost("mid-spam")).then((c) => S.hostChecks.push(c));
+
+  // The sender.
+  if (guest) {
+    await sleepUntil(spamStart);
+    log(`spam7: sender ${C.spamRev} ${C.spamRate}/s for ${C.spamSecs} s`);
+    await spam7Sender(S, guest, () => latestRev);
+  }
+  const sent = S.sends.filter((s) => s.sentAt != null);
+  S.phases.firstSend = sent.length ? sent[0].sentAt : null;
+  // P0 (no sender) / nothing sent: the recovery boundary is the
+  // scheduled attack end (design §0).
+  S.phases.lastSend = sent.length ? sent[sent.length - 1].sentAt : attackEnd;
+  const recoveryEnd = Math.max(attackEnd, S.phases.lastSend) + Math.round(C.recoverySecs * 1000);
+  S.phases.recoveryEnd = recoveryEnd;
+  if (guest) log(`spam7: sender done — ${sent.length}/${S.sends.length} sent, last ${iso(S.phases.lastSend)}; recovery until ${iso(recoveryEnd)}`);
+
+  await Promise.all([...saveTasks, headCheck]);
+  // Never cut the last save's arrivals off: the measurement ends at the
+  // recovery end or the last PUT's timeout, whichever is later.
+  const lastPut = S.edits.reduce((a, e) => Math.max(a, e.put.startedAt), 0);
+  const measurementEnd = Math.max(recoveryEnd, lastPut ? lastPut + TIMEOUT_MS : 0);
+  await sleepUntil(measurementEnd);
+  S.phases.measurementEnd = measurementEnd;
+  await midCheck;
+  S.hostChecks.push(await recheckHost("measurement end"));
+  sampling = false;
+  await Promise.all([stateLoop, browserLoop, declaredLoop]);
+  S.edits.sort((a, b) => a.k - b.k);
+  log(`spam7: measurement end ${iso(measurementEnd)}`);
+  return {
+    runStart, popStart: pop.popStart, settleStart: pop.settleStart, popSummary: pop.popSummary, edits: S.edits, drillEvents: [], drillPageSet: new Set(),
+    startRev, editsStart: baselineStart, editsEnd: measurementEnd, afterPosition, admission: null, finalPhase: null, spam7: S,
+  };
+}
+
+// The sender (design §1): slot k due at spamStart + (k − 1) / rate; the
+// payload `{ kind: "setlist", rev, runId, k }`. Per message: slot time,
+// actual send time, forged rev, ack result + latency, or why the slot was
+// skipped ("late" = the loop itself was > one interval behind — it never
+// bursts to catch up; "acks outstanding" = more than
+// SPAM7_MAX_OUTSTANDING_ACKS unanswered sends, i.e. Realtime stopped
+// acknowledging; "closed" = the guest was closed by the clean-up).
+async function spam7Sender(S, g, latest) {
+  const C = S.cfg;
+  const slots = slotSchedule(S.phases.spamStart, C.spamRate, C.spamSecs);
+  const interval = 1000 / C.spamRate;
+  const acks = [];
+  let outstanding = 0;
+  for (const s of slots) {
+    if (Date.now() < s.slotAt) await sleep(s.slotAt - Date.now());
+    const row = { k: s.k, slotAt: s.slotAt, sentAt: null, rev: null, ack: null, ackMs: null, skip: null };
+    S.sends.push(row);
+    if (g.closed) { row.skip = "closed"; continue; }
+    if (Date.now() > s.slotAt + interval) { row.skip = "late"; continue; }
+    if (outstanding >= SPAM7_MAX_OUTSTANDING_ACKS) { row.skip = "acks outstanding"; continue; }
+    row.rev = forgedRev(C.spamRev, latest());
+    row.sentAt = Date.now();
+    outstanding++;
+    acks.push(g.fire({ kind: "setlist", rev: row.rev, runId: RUN_ID, k: s.k }).then(({ result, ms: m }) => {
+      row.ack = result;
+      row.ackMs = m;
+      outstanding--;
+    }));
+  }
+  await Promise.all(acks);
+}
+
+// One step-7 edit (see the section header). Writes are recorded in
+// S.writes ([every attempt, failed ones included]); a committed edit goes
+// to S.edits in the shape the per-save code expects. The SDK strata are
+// sampled at the PUT dispatch: the state request is posted right before
+// the PUT and answered by the worker threads while it runs (a few ms
+// after its start), so the PUT itself is not delayed.
+async function spam7Edit(S, k, off, due, song, noteRev) {
+  const mode = modeOf(k);
+  if (mode === "standalone") {
+    await sleepUntil(due - 2000);
+    const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position)
+      .catch((e) => { log(`  anchor position read failed (${e.message}); using tracked ${anchor.position}`); return null; });
+    if (p != null) anchor.position = Number(p);
+  }
+  await sleepUntil(due);
+  const rec = (op, r, extra = {}) => {
+    const w = { k, op, mode, offsetS: off, due, startedAt: r.startedAt, lateMs: r.startedAt - due, ms: r.ms, status: r.status, rev: r.rev ?? null, error: r.error ?? null, vercelId: r.vercelId ?? null, ...extra };
+    S.writes.push(w);
+    if (w.error) saveFailures.push({ k, op, attempt: 1, at: iso(r.startedAt), error: w.error });
+    return w;
+  };
+  let ins = null;
+  if (mode === "pair") {
+    const r = await insertAfterRaw({ base: BASE, cookie, eventId: EVENT_ID, afterPosition: S.afterPosition });
+    rec("insert", r, { rowId: r.id });
+    if (r.error || !r.id) {
+      log(`edit ${k}: insert-after FAILED (${r.error}) — not retried; the edit is lost`);
+      // A 5xx can come after the commit: adopt such a row for the clean-up
+      // (never for the measurement).
+      const orphan = await withPg((pg) => findUnacknowledgedInsert(pg, EVENT_ID, {
+        sinceMs: r.startedAt, position: S.afterPosition + 1, knownIds: new Set([...created, ...original.map((x) => x.id)]),
+      })).catch(() => null);
+      if (orphan) {
+        created.push(orphan.id);
+        S.writes[S.writes.length - 1].orphanRowId = orphan.id;
+      }
+      return;
+    }
+    created.push(r.id);
+    noteRev(r.rev);
+    if (anchor && anchor.position >= r.position) anchor.position++;
+    ins = { startedAt: r.startedAt, successAt: r.startedAt, ms: r.ms, id: r.id, position: r.position, rev: r.rev, attempts: 1 };
+  }
+  const target = mode === "pair" ? ins : anchor;
+  const stateAsked = Date.now();
+  const stP = SUBS > 0 ? subsState().then((cl) => ({ at: Date.now(), cl })).catch(() => null) : Promise.resolve(null);
+  const r = await putSongRaw({ base: BASE, cookie, id: target.id, position: target.position, songId: song.id });
+  const w = rec("put", r, { rowId: target.id, songId: String(song.id) });
+  const st = await stP;
+  if (r.error) {
+    log(`edit ${k}: PUT FAILED (${r.error}) — not retried; the edit is lost`);
+    return;
+  }
+  if (r.rev == null) w.rev = r.rev = (await getSnapshot(BASE, EVENT_ID)).rev;
+  noteRev(r.rev);
+  // Strata rows: [client idx, stratum, carried phase, in-flight reason].
+  S.strata.push({
+    k, rev: r.rev, putStart: r.startedAt, askedAt: stateAsked, answeredAt: st?.at ?? null,
+    clients: st ? st.cl.map((c) => [c.idx, classifyStratum(c), c.carriedHintPhase ?? null, c.inFlight ? c.inFlightReq?.reason ?? "untracked" : null]) : null,
+  });
+  const edit = { k, mode, id: target.id, song, ins, put: { startedAt: r.startedAt, successAt: r.startedAt, ms: r.ms, rev: r.rev, attempts: 1 }, double: null, offsetS: off, due };
+  S.edits.push(edit);
+  log(`edit ${k} [${mode}] @${off >= 0 ? "+" : ""}${off} s: row ${target.id}${ins ? ` insert ${ins.ms} ms (rev ${ins.rev})` : ""} → song ${song.id} put ${r.ms} ms (rev ${r.rev})`);
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
@@ -2136,6 +2508,10 @@ async function main() {
     ? `browsers run: base=${BASE} event=${EVENT_ID} drill=idle-broadcast (SDK cohorts only; --pages / --subs / --edits not used)`
     : `browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}${ADM ? ` phase=admission (prepare via ${PREP_BASE})` : ""}`);
   if (IDLE) return await mainIdle(runStart);
+  if (S7) {
+    log(`phase=spam7: baseline ${S7.baselineSecs} s → spam ${S7.spamRev} ${S7.spamRate}/s × ${S7.spamSecs} s → recovery ${S7.recoverySecs} s; ${S7.edits} mixed edit(s) at spam ${S7.offsets.map((o) => (o >= 0 ? `+${o}` : `${o}`)).join(",")} s; declared process ${DECLARED_PID ?? "none"}; --edits / --pause not used`);
+    return await mainSpam7(runStart);
+  }
   if (TXC) {
     log(`phase=transition: ${TXC.files.length} switch file(s) ${TXC.files.join(", ")}; saves at P${TXC.savesS.map((s) => (s >= 0 ? `+${s}` : `${s}`)).join(",")} s; arrivals ${TXC.arrivals.pages} pages + ${TXC.arrivals.sdk} SDK at P+${TXC.arrivals.atS} s (R1 cohort ${TXC.r1Cohort}); subsets hold ${TXC.hold.n}, ahead-hint ${TXC.ahead.n} (of --subs); --edits not used`);
     return await mainTransition(runStart);
@@ -3280,6 +3656,363 @@ function transitionReport(state, fin, { valid, pageMono, subMono }) {
   return { lines: M, json, verdict };
 }
 
+// ─── n14 step 7: the "Spam (n14 step 7)" section ───
+// Everything judged here runs on the records the run kept (sender rows,
+// receipts, request rows, the 1 Hz worker-state samples), through the
+// pure functions of spam7.mjs. `valid` is the run's validity object; the
+// step-7 extras (a browser round trip over the limit, an undeclared
+// competing process found by a mid-run re-check) are ADDED to it here,
+// so the banner, the JSON and the exit code all see one verdict.
+function spam7Report(state, fin, { valid, monotonicPass }) {
+  const S = state.spam7;
+  const C = S.cfg;
+  const P = S.phases;
+  const { pageRecs, subRecs } = fin;
+  const from = P.baselineStart;
+  const to = P.measurementEnd;
+  const pageBy = new Map(pageRecs.map((r) => [r.idx, r]));
+  const subBy = new Map(subRecs.map((r) => [r.idx, r]));
+  const sendsByK = new Map(S.sends.map((s) => [s.k, s]));
+  const pct1 = (x) => (x == null ? "—" : `${(x * 100).toFixed(1)} %`);
+
+  // ── validity extras (INVALID = host corruption only) ──
+  const extra = [];
+  for (const [t, idx, rtt] of S.browserProbe) {
+    if (t < from || t > P.recoveryEnd) continue;
+    if (rtt == null || rtt > SPAM7_BROWSER_INVALID_MS) extra.push({ thread: `browser (page ${idx})`, what: rtt == null ? "no answer to a page round trip within 10 s" : `page round trip ${rtt} ms`, at: t, ms: rtt });
+  }
+  for (const c of S.hostChecks || []) {
+    if (c.competing?.length) extra.push({ thread: "host", what: `undeclared competing process(es) at the ${c.label} re-check: ${c.competing.map((p) => `${p.pid} ${p.why}`).join("; ")}`, at: c.at, ms: null });
+  }
+  if (extra.length) {
+    valid.reasons.push(...extra);
+    valid.reasons.sort((a, b) => a.at - b.at);
+    valid.invalid = true;
+  }
+
+  // ── genuine committed revisions (by this run) ──
+  const okW = (w) => w.status >= 200 && w.status < 300 && !w.error;
+  const genuine = new Map();
+  for (const w of S.writes) if (okW(w) && w.rev != null && !genuine.has(w.rev)) genuine.set(w.rev, w.startedAt);
+  const isGenuine = (h, t) => h <= S.initialHead || (genuine.has(h) && t >= genuine.get(h));
+  const commitList = S.writes.filter((w) => okW(w) && w.rev != null).map((w) => ({ rev: w.rev, start: w.startedAt, commitAt: w.startedAt + (w.ms ?? 0) }));
+
+  // ── exposure ──
+  const sdkRc = subRecs.map((r) => ({ idx: r.idx, rows: (r.bcasts || []).filter((b) => b[3] === RUN_ID).map((b) => [b[4], b[0], b[2], b[5] ?? null]) }));
+  const pageRc = pageRecs.map((r) => ({ idx: r.idx, rows: (r.bcasts || []).filter((b) => b[3] === RUN_ID).map((b) => [b[4], b[0], b[2] === "x" ? "x" : "?", pageServerRevAt(r.fetches, b[0])]) }));
+  const exp = spamExposure({ sends: S.sends, receipts: { sdk: sdkRc, pages: pageRc }, declared: { sdk: SUBS, pages: PAGES }, spamStart: P.spamStart, spamSecs: C.spamSecs });
+  const stale = C.spamRev === "stale" ? staleEligibility(sdkRc, sendsByK) : null;
+  const pagesStaleEligible = C.spamRev === "stale" ? staleEligibility(pageRc, sendsByK) : null;
+
+  // ── honest latency per save per population (+ SDK strata) ──
+  const saves = S.edits.map((e) => {
+    const tPut = e.put.startedAt;
+    const deadline = tPut + TIMEOUT_MS;
+    const sid = String(e.song.id);
+    const pl = [];
+    let pm = 0;
+    for (let i = 0; i < PAGES; i++) {
+      const seen = pageBy.get(i)?.seen[sid];
+      if (seen != null && seen <= deadline) pl.push(seen - tPut);
+      else pm++;
+    }
+    const sl = [];
+    let sm = 0;
+    const byIdx = new Map();
+    for (let i = 0; i < SUBS; i++) {
+      const r = subBy.get(i);
+      const a = r ? firstAfter(r.applied, ([, rev]) => rev >= e.put.rev) : null;
+      if (a && a[0] <= deadline) { sl.push(a[0] - tPut); byIdx.set(i, a[0] - tPut); } else { sm++; byIdx.set(i, null); }
+    }
+    const st = S.strata.find((x) => x.k === e.k);
+    const strata = Object.fromEntries(STRATA.map((n) => [n, { lat: [], missing: 0 }]));
+    let unclassified = SUBS;
+    if (st?.clients) {
+      unclassified = 0;
+      for (const [idx, cls] of st.clients) {
+        if (!cls) { unclassified++; continue; }
+        const v = byIdx.get(idx);
+        if (v == null) strata[cls].missing++;
+        else strata[cls].lat.push(v);
+      }
+    }
+    return {
+      k: e.k, mode: e.mode, offsetS: e.offsetS, rev: e.put.rev, putStart: tPut, putMs: e.put.ms, sampleLagMs: st?.answeredAt != null ? st.answeredAt - st.askedAt : null,
+      pages: latSummary(pl, pm, GATE_P95_MS), sdk: latSummary(sl, sm, GATE_P95_MS),
+      strata: Object.fromEntries(STRATA.map((n) => [n, { n: strata[n].lat.length + strata[n].missing, ...latSummary(strata[n].lat, strata[n].missing, GATE_P95_MS) }])),
+      strataUnclassified: unclassified,
+      raw: { pl, pm, sl, sm, strata },
+    };
+  });
+  const failedEdits = C.edits - S.edits.length;
+  const aggPages = latSummary(saves.flatMap((x) => x.raw.pl), saves.reduce((a, x) => a + x.raw.pm, 0), GATE_P95_MS);
+  const aggSdk = latSummary(saves.flatMap((x) => x.raw.sl), saves.reduce((a, x) => a + x.raw.sm, 0), GATE_P95_MS);
+  const strataAgg = Object.fromEntries(STRATA.map((n) => {
+    const lat = saves.flatMap((x) => x.raw.strata[n].lat);
+    const miss = saves.reduce((a, x) => a + x.raw.strata[n].missing, 0);
+    return [n, { n: lat.length + miss, exercised: lat.length + miss > 0, ...latSummary(lat, miss, GATE_P95_MS) }];
+  }));
+  const worstOf = (pop) => saves.reduce((w, x) => (w == null || (x[pop].p95 ?? -1) > (w[pop].p95 ?? -1) ? x : w), null);
+
+  // ── writes ──
+  const expectedWrites = Array.from({ length: C.edits }, (_, i) => (modeOf(i + 1) === "pair" ? 2 : 1)).reduce((a, v) => a + v, 0);
+  const okWrites = S.writes.filter(okW);
+  const putMs = S.writes.filter((w) => w.op === "put" && okW(w)).map((w) => w.ms);
+  const putD = dist(putMs);
+  const allD = dist(okWrites.map((w) => w.ms));
+  const writes = {
+    expected: expectedWrites, attempted: S.writes.length, ok: okWrites.length, failed: S.writes.filter((w) => !okW(w)),
+    put: putD, all: allD, anchor: anchor ? { id: anchor.id, rev: anchor.rev ?? null, ms: anchor.ms ?? null, startedAt: anchor.startedAt ?? null } : null,
+    pass: okWrites.length === expectedWrites && S.writes.length === expectedWrites,
+    putPass: putD.n > 0 && putD.p95 <= 1500,
+  };
+
+  // ── failures (baseline start → measurement end) ──
+  const inWin = (t) => t != null && t >= from && t <= to;
+  const errs = { sdk: { s5xx: 0, transport: 0, malformed: 0, http4xx: 0, gap: 0 }, pages: { s5xx: 0, failedRequests: 0, reloads: 0, pageErrors: 0, http4xx: 0 }, saves: 0 };
+  for (const r of subRecs) {
+    for (const q of r.reqs || []) {
+      if (!inWin(q[0])) continue;
+      if (q[6] >= 500) errs.sdk.s5xx++;
+      else if (q[11] === "failed" && q[7] == null) {
+        if (q[6] === 0) errs.sdk.transport++;
+        else if (q[6] === 200) errs.sdk.malformed++;
+        else errs.sdk.http4xx++;
+      } else if (q[11] === "failed") errs.sdk.gap++;
+    }
+  }
+  for (const r of pageRecs) {
+    for (const f of r.fetches) {
+      if (!inWin(f[7] ?? f[0])) continue;
+      if (f[2] >= 500) errs.pages.s5xx++;
+      else if (f[2] >= 400) errs.pages.http4xx++;
+    }
+    errs.pages.failedRequests += (r.reqFailed || []).filter(([t]) => inWin(t)).length;
+    errs.pages.reloads += (r.docLoads || []).slice(1).filter(([t]) => inWin(t)).length;
+    errs.pages.pageErrors += (r.pageErrs || []).filter(([t]) => inWin(t)).length;
+  }
+  errs.saves = S.writes.filter((w) => w.status >= 500 || w.status === 0).length;
+  errs.total = errs.sdk.s5xx + errs.sdk.transport + errs.sdk.malformed + errs.pages.s5xx + errs.pages.failedRequests + errs.pages.reloads + errs.pages.pageErrors + errs.saves;
+  errs.pass = errs.total === 0;
+
+  // ── request rate, baseline, drain ──
+  const sdkRows = [];
+  for (const r of subRecs) for (const q of r.reqs || []) sdkRows.push([q[0], sdkReqCategory(q), q[6]]);
+  const pageRows = pageRecs.flatMap((r) => r.fetches.map((f) => [f[7] ?? f[0], f[2], !!f[6]]));
+  const buckets = rateBuckets({ from: P.baselineStart, to: P.recoveryEnd, sdk: sdkRows, pages: pageRows });
+  const totals = buckets.map((b) => b.total);
+  const roll = rolling(totals);
+  buckets.forEach((b, i) => { b.roll10 = roll[i]; });
+  const base = baselineStats(totals.slice(0, Math.round(C.baselineSecs)));
+  const threshold = drainThreshold(base.mu, base.s10);
+  const stateAt = (t) => (SUBS === 0 ? { t, pending: 0, carried: 0, inFlightTicket: 0 } : sampleAt(S.stateSamples, t));
+  const dr = confirmDrain({ totals, from: P.baselineStart, lastSend: P.lastSend, threshold, stateAt });
+  const rebound = dr.confirm ? reboundRequests(subRecs, { from: dr.confirm.to, to: P.recoveryEnd, isGenuine }) : null;
+  let later = null;
+  if (dr.confirm) {
+    const ci = Math.round((dr.confirm.to - P.baselineStart) / 1000);
+    const after = roll.slice(ci).filter((v) => v != null);
+    const st = S.stateSamples.filter((x) => x.t > dr.confirm.to && x.t <= P.recoveryEnd);
+    later = {
+      maxRoll10: after.length ? Math.max(...after) : null, overThreshold: after.filter((v) => v > threshold).length,
+      maxPending: st.reduce((a, x) => Math.max(a, x.pending), 0), maxCarried: st.reduce((a, x) => Math.max(a, x.carried), 0), maxInFlightTicket: st.reduce((a, x) => Math.max(a, x.inFlightTicket), 0),
+    };
+  }
+  const drain = { mu: base.mu, s10: base.s10, baselineWindows: base.windows, threshold, ...dr, rebound, later, pass: !!dr.confirm && dr.withinDeadline && rebound != null && rebound.count === 0 };
+  const pagesHinted = new Map();
+  for (const r of pageRecs) for (const f of r.fetches) {
+    const t = f[7] ?? f[0];
+    if (!f[6] || t < P.baselineStart || t >= P.recoveryEnd) continue;
+    const s = Math.floor((t - P.baselineStart) / 1000);
+    pagesHinted.set(s, (pagesHinted.get(s) || 0) + 1);
+  }
+  const peaks = {
+    sdkNotificationPerS: buckets.reduce((a, b) => Math.max(a, b.notification), 0),
+    sdkRecheckPerS: buckets.reduce((a, b) => Math.max(a, b.recheck), 0),
+    pagesHintedPerS: [...pagesHinted.values()].reduce((a, v) => Math.max(a, v), 0),
+    totalPerS: buckets.reduce((a, b) => Math.max(a, b.total), 0),
+    roll10Max: roll.reduce((a, v) => (v == null ? a : Math.max(a, v)), 0),
+    s503: buckets.reduce((a, b) => a + b.s503, 0),
+  };
+  const phaseRate = (a, b) => {
+    const xs = buckets.filter((x) => x.t >= a && x.t < b);
+    return xs.length ? xs.reduce((s, x) => s + x.total, 0) / xs.length : null;
+  };
+  const rates = { baseline: phaseRate(P.baselineStart, P.spamStart), spam: phaseRate(P.spamStart, P.lastSend), recovery: phaseRate(P.lastSend, P.recoveryEnd) };
+
+  const cool = cooldownCheck(subRecs, { from: P.baselineStart, to: P.recoveryEnd, cooldownMs: COOLDOWN_MS });
+  const wm = watermarkViolations(subRecs, { genuine, initialHead: S.initialHead, until: P.measurementEnd });
+  const td = ticketDropRecovery(subRecs, { saves: commitList, initialHead: S.initialHead, isForged: (h, t) => !isGenuine(h, t), until: P.measurementEnd });
+  const probeRtt = dist(S.browserProbe.map((x) => x[2]).filter((x) => x != null));
+
+  // ── gates, aspects, verdict ──
+  const gates = [
+    { name: `honest latency per save — pages (p95 ≤ ${GATE_P95_MS} ms, 0 missing, every save)`, value: `${saves.filter((x) => x.pages.pass === false).length} save(s) failing; aggregate p95 ${ms(aggPages.p95)} max ${ms(aggPages.max)} missing ${aggPages.missing}${failedEdits ? `; **${failedEdits} edit(s) not saved**` : ""}`, pass: PAGES === 0 ? null : failedEdits === 0 && saves.every((x) => x.pages.pass !== false) },
+    { name: `honest latency per save — SDK (p95 ≤ ${GATE_P95_MS} ms, 0 missing, every save)`, value: `${saves.filter((x) => x.sdk.pass === false).length} save(s) failing; aggregate p95 ${ms(aggSdk.p95)} max ${ms(aggSdk.max)} missing ${aggSdk.missing}${failedEdits ? `; **${failedEdits} edit(s) not saved**` : ""}`, pass: SUBS === 0 ? null : failedEdits === 0 && saves.every((x) => x.sdk.pass !== false) },
+    { name: "writes: every measured write 2xx, never retried", value: `${writes.ok}/${writes.expected} (attempted ${writes.attempted})`, pass: writes.pass },
+    { name: "PUT end-to-end p95 ≤ 1500 ms", value: `n ${putD.n}, p95 ${ms(putD.p95)}, max ${ms(putD.max)}`, pass: writes.putPass },
+    { name: "0 × 5xx / transport / malformed / reloads / page errors (baseline → measurement end)", value: `${errs.total} (SDK 5xx ${errs.sdk.s5xx}, transport ${errs.sdk.transport}, malformed ${errs.sdk.malformed}; pages 5xx ${errs.pages.s5xx}, failed ${errs.pages.failedRequests}, reloads ${errs.pages.reloads}, errors ${errs.pages.pageErrors}; saves ${errs.saves})`, pass: errs.pass },
+    { name: "drain: a 10 s interval ≤ threshold completed ≤ 30 s after the last send, 0 outstanding tickets then, no rebound after", value: dr.confirm ? `${iso(dr.confirm.from)} → ${iso(dr.confirm.to)} (${(dr.confirm.completedAfterLastSendMs / 1000).toFixed(1)} s after the last send), ${dr.confirm.avg.toFixed(1)} req/s ≤ ${threshold.toFixed(1)}; rebound ${rebound?.count ?? "—"}` : `not confirmed before the recovery end (threshold ${threshold.toFixed(1)} req/s)`, pass: drain.pass },
+    { name: `cooldown: ticket-carrying requests ≥ ${COOLDOWN_MS} ms apart per SDK client`, value: `${cool.tooClose} too close on ${cool.clientsBad} client(s); min gap ${ms(cool.minGap)}`, pass: SUBS === 0 ? null : cool.pass },
+    { name: "durable watermark: serverRev only ever a genuine committed revision", value: `${wm.violations} violation(s) on ${wm.clients} client(s) (${wm.checked} watermark changes checked)`, pass: SUBS === 0 ? null : wm.pass },
+    { name: "monotonic (pages DOM version / SDK applied rev)", value: monotonicPass ? "0 regressions" : "regressions (see the gate table)", pass: monotonicPass },
+    ...(stale ? [{ name: "stale control: every ELIGIBLE stale hint ignored (rev ≤ the client's serverRev at receipt; SDK)", value: `${stale.notedEligible} noted of ${stale.eligible} eligible; ${stale.nonEligible} not eligible (${stale.nonEligibleNoted} noted, correctly)`, pass: stale.pass }] : []),
+  ];
+  const notExercised = [];
+  if (C.spamRev !== "none" && !exp.exercised) notExercised.push(`spam exposure ${C.spamRev} ${C.spamRate}/s: ${exp.reasons.join("; ")}`);
+  if (!S.fixture.match) notExercised.push(`fixture not verified in the served snapshot (${JSON.stringify(S.fixture)})`);
+  if (declared?.endedAt && Date.parse(declared.endedAt) < P.recoveryEnd) notExercised.push(`declared background process ${declared.pid} ended at ${declared.endedAt}, before the recovery end`);
+  if (stale && stale.eligible === 0) notExercised.push("stale control: no eligible receipt (no client had the forged rev ≤ its serverRev)");
+  const diagnostics = [
+    ...STRATA.filter((n) => !strataAgg[n].exercised).map((n) => `stratum ${n}: NOT EXERCISED (no SDK client in it at any PUT start)`),
+    ...(td.exercised ? [] : ["ticket-drop recovery: NOT EXERCISED (no forged ticket exhausted while its client was behind, then converged by a generic request without a save)"]),
+  ];
+  const verdict = spam7Verdict({ invalid: valid.invalid, gates, notExercised });
+
+  // ── markdown ──
+  const vv = (x) => (x == null ? "n/a" : x ? "**PASS**" : "**FAIL**");
+  const L = [];
+  L.push("## Spam (n14 step 7)");
+  L.push("");
+  L.push(`**VERDICT: ${verdict.verdict}**${verdict.failed.length ? ` — failed: ${verdict.failed.join("; ")}` : ""}${verdict.notExercised.length ? ` — not exercised: ${verdict.notExercised.join("; ")}` : ""}`);
+  L.push("");
+  L.push(`- Spam: \`${C.spamRev}\` at ${C.spamRate}/s for ${C.spamSecs} s (payload \`{ kind: "setlist", rev, runId: "${RUN_ID}", k }\`); baseline ${C.baselineSecs} s, recovery ${C.recoverySecs} s; saves at spam ${C.offsets.map((o) => (o >= 0 ? `+${o}` : `${o}`)).join(", ")} s (${C.edits} mixed edits = ${expectedWrites} measured writes + the anchor)`);
+  L.push(`- Phases (UTC): baseline ${iso(P.baselineStart)} · spam ${iso(P.spamStart)} · first send ${iso(P.firstSend)} · last send ${iso(P.lastSend)} (scheduled attack end ${iso(P.attackEndScheduled)}) · recovery end ${iso(P.recoveryEnd)} · measurement end ${iso(P.measurementEnd)}`);
+  L.push(`- Post-preparation head ${S.initialHead}; fixture: ${S.fixture.startRows} rows at start, ${S.fixture.dbRows} active after preparation, served ${S.fixture.servedItems ?? "—"} items at rev ${S.fixture.servedRev ?? "—"} → ${S.fixture.match ? "match" : "**MISMATCH**"}`);
+  L.push(`- Declared populations: ${SUBS} SDK, ${PAGES} pages; declared process: ${declared ? `${declared.pid} ${declared.name ?? ""} started ${declared.startedAt ?? "?"}, ended ${declared.endedAt ?? "after the run"} — \`${String(declared.cmd ?? "").slice(0, 160).replace(/\|/g, "/")}\`` : "none"}`);
+  L.push(`- Host re-checks: ${(S.hostChecks || []).map((c) => `${c.label} ${c.ok == null ? "not checked" : c.ok ? "clean" : `**${c.competing.length} competing**`}`).join("; ") || "—"}; browser round trips ${dist(S.browserProbe.map((x) => x[2]).filter((x) => x != null)).n}/${S.browserProbe.length} answered, p50 ${ms(probeRtt.p50)} / max ${ms(probeRtt.max)} ms (INVALID > ${SPAM7_BROWSER_INVALID_MS} ms)`);
+  if (S.headObserved) L.push(`- Stale control head check (${iso(S.headObserved.at)}): head ${S.headObserved.head} observed by SDK ${S.headObserved.sdk}/${S.headObserved.sdkDeclared}, pages ${S.headObserved.pages}/${S.headObserved.pagesDeclared} (body-rev proxy) → ${S.headObserved.verified ? "verified" : "**not all**"}`);
+  L.push("");
+  L.push("| Gate | value | verdict |");
+  L.push("|---|---|---|");
+  for (const g of gates) L.push(`| ${g.name} | ${String(g.value).replace(/\|/g, "/")} | ${vv(g.pass)}${valid.invalid ? " (measurement invalid)" : ""} |`);
+  L.push(`| exposure (predeclared: sends ≥ ${EXPOSURE_MIN.send * 100} % per 10 s, ack ≥ ${EXPOSURE_MIN.ack * 100} %, timely ≤ ${TIMELY_MS} ms ≥ ${EXPOSURE_MIN.timely * 100} % of planned per 10 s and ≥ ${EXPOSURE_MIN.perClient * 100} % per client) | ${C.spamRev === "none" ? "no sender (control)" : exp.exercised ? "exercised" : exp.reasons.join("; ").replace(/\|/g, "/")} | ${C.spamRev === "none" ? "n/a" : exp.exercised ? "EXERCISED" : "**NOT EXERCISED**"} |`);
+  L.push("");
+  if (C.spamRev !== "none") {
+    L.push("### Exposure");
+    L.push("");
+    L.push(`Sender: ${exp.sent}/${exp.planned} sent, ${exp.skipped} skipped (${Object.entries(S.sends.reduce((o, s) => { if (s.skip) o[s.skip] = (o[s.skip] || 0) + 1; return o; }, {})).map(([k, v]) => `${k} ${v}`).join(", ") || "none"}); ack ok ${exp.ackOk}/${exp.sent} (${pct1(exp.ackShare)}), ack ms p50/p95/max ${ms(exp.ackMs.p50)}/${ms(exp.ackMs.p95)}/${ms(exp.ackMs.max)}; send − slot ms p95/max ${ms(exp.sendLateMs.p95)}/${ms(exp.sendLateMs.max)}.`);
+    L.push("");
+    L.push("| 10 s bucket (from spam start) | planned | sent | skipped | ack ok | achieved /s | timely SDK (of planned) | timely pages (of planned) |");
+    L.push("|---|---|---|---|---|---|---|---|");
+    for (const b of exp.buckets) {
+      if (!b.planned) continue;
+      const sh = (pop, n) => (n > 0 ? pct1(b.timely[pop] / (b.planned * n)) : "—");
+      L.push(`| +${b.i * 10} s | ${b.planned} | ${b.sent} | ${b.skipped} | ${b.ackOk} | ${(b.sent / 10).toFixed(1)} | ${sh("sdk", SUBS)} | ${sh("pages", PAGES)} |`);
+    }
+    L.push("");
+    L.push("| population | declared | recorded | timely / planned deliveries | worst bucket | per-client min | clients < 95 % | late (> 2 s) | duplicates | delivery ms p50/p95/max |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|");
+    for (const [pop, x] of Object.entries(exp.populations)) L.push(`| ${pop} | ${x.declared} | ${x.recorded} | ${x.timelyTotal}/${x.plannedDeliveries} | ${pct1(x.bucketMin)} | ${pct1(x.perClientMin)} | ${x.clientsBelow} | ${x.late} | ${x.duplicates} | ${ms(x.delivery.p50)}/${ms(x.delivery.p95)}/${ms(x.delivery.max)} |`);
+    L.push("");
+    if (stale) {
+      L.push(`Stale control (SDK, eligible = forged rev ≤ the client's serverRev at receipt): eligible ${stale.eligible}, ignored ${stale.ignored}, **noted ${stale.notedEligible}**; not eligible ${stale.nonEligible} (noted ${stale.nonEligibleNoted} — a lagging client noting news is correct); unknown serverRev ${stale.unknown}.${pagesStaleEligible ? ` Pages (body-rev proxy, outcome not observable): eligible ${pagesStaleEligible.eligible}, not eligible ${pagesStaleEligible.nonEligible}.` : ""}`);
+      L.push("");
+    }
+  }
+  L.push("### Honest latency per save (PUT first-attempt start → page DOM marker / SDK applied rev ≥ PUT rev)");
+  L.push("");
+  L.push(`Every edit × client pair of the declared populations counts (no exclusions). Missing = not within ${TIMEOUT_MS / 1000} s. Strata = the SDK client's state at the PUT dispatch.`);
+  L.push("");
+  L.push("| save | offset s | mode | rev | PUT ms | pages p95 / max / missing / > 3 s | SDK p95 / max / missing / > 3 s | strata n (none / queued / in-flight ticket / other ticket fetch) | SDK p95 per stratum |");
+  L.push("|---|---|---|---|---|---|---|---|---|");
+  const cell = (x) => `${ms(x.p95)} / ${ms(x.max)} / ${x.missing} / ${pct1(x.overShare)} ${vv(x.pass)}`;
+  for (const x of saves) L.push(`| ${x.k} | ${x.offsetS} | ${x.mode} | ${x.rev} | ${x.putMs} | ${cell(x.pages)} | ${cell(x.sdk)} | ${STRATA.map((n) => x.strata[n].n).join(" / ")}${x.strataUnclassified ? ` (+${x.strataUnclassified} unsampled)` : ""} | ${STRATA.map((n) => ms(x.strata[n].p95)).join(" / ")} |`);
+  L.push(`| **all** | | | | | ${cell(aggPages)} | ${cell(aggSdk)} | ${STRATA.map((n) => strataAgg[n].n).join(" / ")} | ${STRATA.map((n) => ms(strataAgg[n].p95)).join(" / ")} |`);
+  L.push("");
+  const wp = worstOf("pages");
+  const ws = worstOf("sdk");
+  if (wp || ws) L.push(`Worst save: pages ${wp ? `save ${wp.k} p95 ${ms(wp.pages.p95)} max ${ms(wp.pages.max)} > 3 s ${pct1(wp.pages.overShare)}` : "—"}; SDK ${ws ? `save ${ws.k} p95 ${ms(ws.sdk.p95)} max ${ms(ws.sdk.max)} > 3 s ${pct1(ws.sdk.overShare)}` : "—"}; saves failing: pages ${saves.filter((x) => x.pages.pass === false).length}, SDK ${saves.filter((x) => x.sdk.pass === false).length} (the degraded target, should the gate fail).`);
+  if (diagnostics.length) L.push(`Diagnostics: ${diagnostics.join("; ")}.`);
+  L.push("");
+  L.push("### Writes (never retried)");
+  L.push("");
+  L.push(`Anchor (preparation): row ${writes.anchor?.id ?? "—"} rev ${writes.anchor?.rev ?? "—"} ${writes.anchor?.ms ?? "—"} ms. Measured: ${writes.ok}/${writes.expected} 2xx; PUT ms p50/p95/max ${ms(putD.p50)}/${ms(putD.p95)}/${ms(putD.max)}; all writes p95 ${ms(allD.p95)}. Writer acquire (≤ 500 ms) is in the server logs (spam7-join.mjs).`);
+  L.push("");
+  L.push("| save | op | due offset s | start late ms | ms | status | rev | x-vercel-id |");
+  L.push("|---|---|---|---|---|---|---|---|");
+  for (const w of S.writes) L.push(`| ${w.k} | ${w.op} | ${w.offsetS} | ${w.lateMs} | ${w.ms} | ${w.status}${w.error ? ` **${String(w.error).slice(0, 60).replace(/\|/g, "/")}**` : ""} | ${w.rev ?? "—"} | ${w.vercelId ?? "—"} |`);
+  L.push("");
+  L.push("### Request rate and drain");
+  L.push("");
+  L.push(`Snapshot requests (SDK + pages) per second by request start, each counted once (k6 traffic excluded). Baseline μ ${base.mu.toFixed(2)} req/s, s₁₀ ${base.s10.toFixed(2)} (SD of ${base.windows.length} non-overlapping 10 s averages) → threshold μ + max(0.5 μ, 2, 2 s₁₀) = **${threshold.toFixed(2)} req/s**. Phase means: baseline ${rates.baseline?.toFixed(1) ?? "—"}, spam ${rates.spam?.toFixed(1) ?? "—"}, recovery ${rates.recovery?.toFixed(1) ?? "—"} req/s.`);
+  L.push("");
+  L.push(`- First rate-quiet interval: ${dr.firstQuiet ? `${iso(dr.firstQuiet.from)} → ${iso(dr.firstQuiet.to)} (${dr.firstQuiet.avg.toFixed(1)} req/s; tickets then: pending ${dr.firstQuiet.state?.pending ?? "?"}, carried ${dr.firstQuiet.state?.carried ?? "?"}, in-flight ${dr.firstQuiet.state?.inFlightTicket ?? "?"})` : "none"}`);
+  L.push(`- Confirming interval: ${dr.confirm ? `${iso(dr.confirm.from)} → ${iso(dr.confirm.to)}, completed ${(dr.confirm.completedAfterLastSendMs / 1000).toFixed(1)} s after the last send (${dr.withinDeadline ? "≤ 30 s" : "**> 30 s**"}), ${dr.confirm.avg.toFixed(1)} req/s; outstanding at its end: pending ${dr.confirm.state.pending}, carried ${dr.confirm.state.carried}, in-flight ticket ${dr.confirm.state.inFlightTicket}` : "**none before the recovery end**"}`);
+  L.push(`- After it (to the recovery end): forged ticket / recheck rebound ${rebound ? `**${rebound.count}**${rebound.count ? ` (${JSON.stringify(rebound.byReason)})` : ""}, genuine-ticket requests ${rebound.genuine}` : "—"}; ${later ? `max rolling 10 s ${later.maxRoll10?.toFixed(1) ?? "—"} req/s (${later.overThreshold} s over the threshold), max outstanding pending/carried/in-flight ${later.maxPending}/${later.maxCarried}/${later.maxInFlightTicket}` : ""}`);
+  L.push(`- Peaks: SDK notification fetches ${peaks.sdkNotificationPerS}/s, rechecks ${peaks.sdkRecheckPerS}/s, page hinted fetches ${peaks.pagesHintedPerS}/s, all snapshot requests ${peaks.totalPerS}/s (rolling 10 s max ${peaks.roll10Max.toFixed(1)}); 503s ${peaks.s503}. Cooldown: min gap ${ms(cool.minGap)} ms.`);
+  L.push("");
+  L.push("| 10 s from baseline start | notification | recheck | generic | other SDK | pages | 503 | total req/s |");
+  L.push("|---|---|---|---|---|---|---|---|");
+  for (let i = 0; i < buckets.length; i += 10) {
+    const xs = buckets.slice(i, i + 10);
+    const sum = (k) => xs.reduce((a, b) => a + b[k], 0);
+    L.push(`| +${i} s | ${sum("notification")} | ${sum("recheck")} | ${sum("generic")} | ${sum("other")} | ${sum("pages")} | ${sum("s503")} | ${(sum("total") / xs.length).toFixed(1)} |`);
+  }
+  L.push("");
+  L.push("### Durable state and ticket-drop recovery");
+  L.push("");
+  L.push(`- Watermark: ${wm.checked} serverRev changes checked against the post-preparation head ${S.initialHead} and this run's ${genuine.size} committed revisions → ${wm.violations} violation(s)${wm.examples.length ? `: ${wm.examples.slice(0, 3).map((x) => `client ${x.idx} rev ${x.rev} (${x.why})`).join("; ")}` : ""}`);
+  L.push(`- Forged tickets exhausted: ${td.counts.forgedExhausted} (expected under spam, not failures) — client current ${td.counts.current}, recovered by a generic request without a save ${td.counts.recovered}, repaired by a later save ${td.counts["repaired-by-save"]}, via a ticket path ${td.counts["ticket-path"]}, not converged ${td.counts["not-converged"]} → ${td.exercised ? "EXERCISED" : "NOT EXERCISED"}`);
+  for (const r of td.rows.filter((x) => x.cls === "recovered").slice(0, 5)) L.push(`  - client ${r.idx}: exhausted ${r.hint} at ${iso(r.exhaustedAt)} with rev ${r.appliedRev} < head ${r.head}; converged ${r.delayMs} ms later by ${r.reason}`);
+  L.push("");
+
+  // ── JSON (README "spam7 JSON") ──
+  const rel = (t) => (t == null ? null : t - P.spamStart);
+  const json = {
+    config: { ...C, label: args.label ?? null, base: BASE, runId: RUN_ID, timelyMs: TIMELY_MS, exposureMin: EXPOSURE_MIN, declared: { sdk: SUBS, pages: PAGES }, gateP95Ms: GATE_P95_MS, putGateMs: 1500, drainDeadlineMs: 30000, timeoutMs: TIMEOUT_MS, maxOutstandingAcks: SPAM7_MAX_OUTSTANDING_ACKS, browserInvalidMs: SPAM7_BROWSER_INVALID_MS },
+    phases: P, phasesIso: Object.fromEntries(Object.entries(P).map(([k, v]) => [k, iso(v)])),
+    initialHead: S.initialHead, fixture: S.fixture, headObserved: S.headObserved,
+    declaredProcess: declared, hostChecks: S.hostChecks || [],
+    // sends: the detailed sender rows plus the canonical aliases the join
+    // reads (ackOk boolean, skipped boolean; `skip` keeps the reason).
+    sends: S.sends.map((s) => ({ ...s, ackOk: s.ack === "ok", skipped: s.sentAt == null })),
+    receipts: {
+      row: ["k", "receivedAt − spamStart ms", "outcome (SDK: n noted | d ignored | x dropped | i invalid; pages: x dropped by a proxy | ? not observable)", "serverRev at receipt (SDK: the acceptance watermark; pages: highest body rev fetched before — a proxy)"],
+      sdk: sdkRc.map((c) => ({ idx: c.idx, rows: c.rows.map(([k, t, o, s]) => [k, rel(t), o, s]) })),
+      pages: pageRc.map((c) => ({ idx: c.idx, rows: c.rows.map(([k, t, o, s]) => [k, rel(t), o, s]) })),
+    },
+    exposure: { ...exp, populations: Object.fromEntries(Object.entries(exp.populations || {}).map(([k, v]) => [k, v])) },
+    stale, pagesStale: pagesStaleEligible,
+    saves: saves.map((x) => ({ ...x, raw: undefined, pagesLat: x.raw.pl, sdkLat: dist(x.raw.sl) })),
+    latency: { pages: aggPages, sdk: aggSdk, gateP95Ms: GATE_P95_MS, failedEdits },
+    strata: {
+      row: ["client idx", "stratum (none | queued-ticket | inflight-ticket | other-ticket-fetch)", "carried ticket phase", "in-flight request reason"],
+      aggregate: strataAgg,
+      saves: S.strata.map((x) => ({ k: x.k, rev: x.rev, putStart: x.putStart, askedAt: x.askedAt, answeredAt: x.answeredAt, clients: x.clients })),
+    },
+    // writes: the canonical list for the join — the anchor (preparation)
+    // and every measured write incl. the pair INSERTs, one row each
+    // (never retried → attempts 1); putStart / putEnd = the request's
+    // start / response on this host (any op, not only PUTs).
+    writes: [
+      ...(anchor?.startedAt != null ? [{ k: 0, op: "anchor", rev: anchor.rev ?? null, putStart: anchor.startedAt, putEnd: anchor.startedAt + (anchor.ms ?? 0), status: 200, attempts: 1, rowId: anchor.id }] : []),
+      ...S.writes.map((w) => ({ k: w.k, op: w.op, rev: w.rev, putStart: w.startedAt, putEnd: w.startedAt + (w.ms ?? 0), status: w.status, attempts: 1, rowId: w.rowId ?? null, error: w.error })),
+    ],
+    writesDetail: S.writes,
+    writesSummary: { expected: writes.expected, attempted: writes.attempted, ok: writes.ok, put: putD, all: allD, anchor: writes.anchor, pass: writes.pass, putPass: writes.putPass },
+    // Request-START epoch ms of every hint=1 request (SDK + pages) in the
+    // measurement window — reconciled by the join against the server's
+    // hint-fetch lines.
+    hintedStarts: [
+      ...subRecs.flatMap((r) => (r.reqs || []).filter((q) => q[4] === 1 && q[0] >= from && q[0] <= to).map((q) => q[0])),
+      ...pageRecs.flatMap((r) => r.fetches.filter((f) => f[6] && (f[7] ?? f[0]) >= from && (f[7] ?? f[0]) <= to).map((f) => f[7] ?? f[0])),
+    ].sort((a, b) => a - b),
+    errors: errs,
+    // 1 s buckets: the canonical names (sdkNotification, sdkRecheck,
+    // sdkGeneric, pagesHinted, pagesGeneric, s503) plus sdkOther, total
+    // and the trailing 10 s average.
+    buckets: buckets.map((b) => ({ t: b.t, sdkNotification: b.notification, sdkRecheck: b.recheck, sdkGeneric: b.generic, sdkOther: b.other, pagesHinted: b.pagesHinted, pagesGeneric: b.pagesGeneric, s503: b.s503, total: b.total, roll10: b.roll10 })),
+    rates, peaks,
+    drain: { ...drain, rebound },
+    workerState: S.stateSamples,
+    cooldown: cool, watermark: wm, ticketDrop: td,
+    browserProbe: { row: ["t", "page idx", "round trip ms (null = no answer in 10 s)"], samples: S.browserProbe, rtt: probeRtt },
+    gates, notExercised, diagnostics, verdict,
+  };
+  return { lines: L, json, verdict };
+}
+
 function report(state, fin) {
   const { edits, popSummary, drillEvents, drillPageSet } = state;
   const { pageRecs, subRecs, clean, verify } = fin;
@@ -3289,7 +4022,9 @@ function report(state, fin) {
   // Window: from the population start (the first SDK client's first
   // request) to the end of the edit window. Clean-up, worker shutdown
   // and this report run after it and cannot move a measured timestamp.
-  const vFrom = state.popStart ?? state.runStart;
+  // Step 7: baseline start → measurement end (design §0: validity covers
+  // baseline → recovery; the join before it is not measured).
+  const vFrom = state.spam7 ? state.spam7.phases.baselineStart : state.popStart ?? state.runStart;
   const vTo = state.editsEnd;
   const mainSummary = mainLag.recorder.summary();
   const lagThreads = [{ thread: "main", summary: mainSummary }, ...workerMeta.map((m) => ({ thread: `worker ${m.worker}`, summary: m.lag }))];
@@ -3304,6 +4039,14 @@ function report(state, fin) {
     { name: "settle", from: state.settleStart, to: state.editsStart },
     { name: "edits", from: state.editsStart, to: state.editsEnd },
   ];
+  if (state.spam7) {
+    const P = state.spam7.phases;
+    phases.push(
+      { name: "spam7 baseline", from: P.baselineStart, to: P.spamStart },
+      { name: "spam7 spam", from: P.spamStart, to: P.lastSend },
+      { name: "spam7 recovery", from: P.lastSend, to: P.recoveryEnd },
+    );
+  }
   if (DRILL) {
     let from = null;
     let to = null;
@@ -3457,6 +4200,15 @@ function report(state, fin) {
   const adm = ADM && state.admission ? admissionReport(state, fin, { valid, idx, monotonicPass: verdicts.monotonic.pass }) : null;
   const idl = IDLE && state.idle ? idleReport(state, fin) : null;
   const trn = TXC && state.transition ? transitionReport(state, fin, { valid, pageMono, subMono }) : null;
+  // Step 7: the "Spam (n14 step 7)" section decides (per save, per
+  // population, plus exposure / drain / writes / errors / watermark).
+  const s7 = S7 && state.spam7 ? spam7Report(state, fin, { valid, monotonicPass: verdicts.monotonic.pass }) : null;
+  if (s7) {
+    verdicts.primary.gate = "informational under --phase=spam7 (pooled); the Spam (n14 step 7) section decides per save and per population";
+    verdicts.primary.pass = null;
+    verdicts.pages.pass = null;
+    verdicts.subs.pass = null;
+  }
   if (trn) {
     verdicts.primary.gate = "informational under --phase=transition (every client from each save's own start, arrivals included); the Transition section decides";
     verdicts.primary.pass = null;
@@ -3851,7 +4603,9 @@ function report(state, fin) {
   lines.push("");
   if (ADM) lines.push(`- Phase: admission — prepare via ${PREP_BASE}, measured on ${BASE}${DEPLOYMENT_URL ? " (deployment URL)" : ""}`);
   if (TXC) lines.push(`- Phase: transition — ${TXC.files.length} switch(es) on ${BASE}`);
-  if (adm || idl || trn) lines.push("");
+  if (S7) lines.push(`- Phase: spam7 — ${S7.spamRev} ${S7.spamRate}/s × ${S7.spamSecs} s, baseline ${S7.baselineSecs} s, recovery ${S7.recoverySecs} s on ${BASE}`);
+  if (adm || idl || trn || s7) lines.push("");
+  if (s7) lines.push(...s7.lines);
   if (trn) lines.push(...trn.lines);
   if (adm) lines.push(...adm.lines);
   if (idl) lines.push(...idl.lines);
@@ -4098,7 +4852,8 @@ function report(state, fin) {
     for (const m of monoPagesBad.slice(0, 10)) lines.push(`- page ${m.r.idx} (${m.r.locale}): ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
     for (const m of monoSubsBad.slice(0, 10)) lines.push(`- SDK ${m.r.idx}: ${m.regressions.slice(0, 3).map((x) => `${iso(x.t)} ${x.what}`).join("; ")}`);
   }
-  if (guest) {
+  // Step 7 records its sends per slot in the spam7 section (sender table).
+  if (guest && !S7) {
     // Send results by the server's verdict, and the time span, so a
     // Realtime rate limit (results other than "ok") is visible.
     const results = {};
@@ -4198,7 +4953,8 @@ function report(state, fin) {
         "sdk.connLog": ["t", "up 1 | down 0", "status (SUBSCRIBED / CHANNEL_ERROR / TIMED_OUT / CLOSED / STOPPED)"],
         "page.rowsLog": ["t", "row signatures in DOM order (song ids joined by +, \"\" = no song link) — --phase=admission only"],
         "sdk.applied": ["t", "rev", "fetch reason", "body capturedAt (epoch ms)"],
-        "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid"],
+        "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid", "+ runId, k, serverRev at receipt — only on a step-7 forged message (payload with runId)"],
+        ...(S7 ? { "sdk.serverRevLog": ["t", "serverRev (the acceptance watermark, on every change)"], "page.bcasts (step 7)": ["t", "rev", "n | x", "runId (forged only)", "k (forged only)"] } : {}),
         "sdk.exhausted": ["t", "hint"],
         "sdk.lag.deadlineLate": ["t", "lateMs"],
         "page.reqs": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start", "body capturedAt (epoch ms)"],
@@ -4229,6 +4985,7 @@ function report(state, fin) {
       subscribedAt: r.subscribedAt, fallbacks: r.fallbacks, recreates: r.recreates, failKinds: r.failKinds,
       cohort: r.cohort ?? null, attemptAt: r.attemptAt, stoppedAt: r.stoppedAt ?? null, statusLog: r.statusLog ?? null, connLog: r.connLog ?? null,
       ...(TXC ? { trig: r.trig ?? [] } : {}),
+      ...(S7 ? { serverRevLog: r.serverRevLog ?? [] } : {}),
       lag: { thread: `worker ${r.worker ?? "?"}`, deadlineLate: lateByIdx.get(r.idx) || [] },
     })),
     ...pageRecs.map((r) => ({
@@ -4237,6 +4994,7 @@ function report(state, fin) {
       openedAt: r.openedAt, loadedAt: r.loadedAt, joinAt: r.joinAt,
       ...(r.rowsLog ? { rowsLog: r.rowsLog, navStart: r.navStart, ttfbMs: r.ttfbMs, dclMs: r.dclMs, docStatus: r.docStatus, seed: r.seed, wave: r.wave, firstApiReqAt: r.firstApiReqAt, wsOpenAt: r.wsOpenAt } : {}),
       ...(TXC ? { cohort: r.cohort ?? null, docDplId: r.docDplId ?? null, docVercelId: r.docVercelId ?? null, pgReadyAt: r.pgReadyAt, assets: r.assets, navs: r.navs, reqFailed: r.reqFailed, pageErrs: r.pageErrs } : {}),
+      ...(S7 ? { docLoads: r.docLoads ?? [], reqFailed: r.reqFailed ?? [], pageErrs: r.pageErrs ?? [] } : {}),
       // Page events are timestamped by the browser (DOM) or by Playwright
       // callbacks on the main thread; the main thread's lag is the one
       // that can delay the latter.
@@ -4248,6 +5006,8 @@ function report(state, fin) {
     config: { base: BASE, phase: PHASE, prepBase: ADM ? PREP_BASE : null, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
       ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}),
+      ...(S7 ? { spam7: S7, runId: RUN_ID } : {}),
+      ...(DECLARED_PID ? { declaredPid: DECLARED_PID } : {}),
       ...(OVERLAP ? { overlap: OV, overlapAnchors: ovAnchors, overlapReactionGroup: OV_REACTION_GROUP, runId: RUN_ID } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
     verdicts, popSummary, rejoin, drillEvents,
@@ -4264,6 +5024,13 @@ function report(state, fin) {
     // rows (README "Transition phase"). The input of
     // ../transition-join.mjs.
     transition: trn ? trn.json : null,
+    // n14 step 7 (null otherwise): the spam7 section — phases, sender
+    // rows, receipts (compact), exposure, per-save latency and strata,
+    // writes, errors, 1 s request buckets, drain, worker state, cooldown,
+    // watermark, ticket-drop recovery, gates and verdict (README "spam7
+    // JSON"). The input of ../spam7-join.mjs.
+    spam7: s7 ? s7.json : null,
+    declaredProcess: declared,
     // Measurement validity: the verdict, why, and each thread's lag
     // series (10 s buckets [start, n, p50, p95, p99, max] + every sample
     // > 200 ms), heartbeats and deadline-timer lateness.
@@ -4360,7 +5127,7 @@ function writeResults(md, json, timelines) {
   const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
   fs.mkdirSync(dir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ADM ? "-admission" : TXC ? "-transition" : ""}`);
+  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ADM ? "-admission" : TXC ? "-transition" : S7 ? "-spam7" : ""}`);
   fs.writeFileSync(`${base}.md`, md);
   fs.writeFileSync(`${base}.json`, JSON.stringify(json, null, 1));
   if (timelines) fs.writeFileSync(path.join(dir, `${stamp}-timelines.jsonl`), timelines.join("\n") + "\n");
@@ -4407,6 +5174,13 @@ try {
     const tv = json.transition.verdict;
     log(`TRANSITION VERDICT: ${tv.verdict}${tv.failed?.length ? ` — failed: ${tv.failed.join("; ")}` : ""}${tv.notExercised?.length ? ` — not exercised: ${tv.notExercised.join("; ")}` : ""}`);
     process.exit(tv.exit);
+  }
+  // Step 7: the spam7 verdict decides (FAIL 1 > NOT EXERCISED 4 > PASS 0;
+  // INVALID 3 was handled above).
+  if (json.spam7) {
+    const sv = json.spam7.verdict;
+    log(`SPAM7 VERDICT: ${sv.verdict}${sv.failed.length ? ` — failed: ${sv.failed.join("; ")}` : ""}${sv.notExercised.length ? ` — not exercised: ${sv.notExercised.join("; ")}` : ""}`);
+    process.exit(sv.exit);
   }
   if (json.idle) {
     log(`IDLE-BROADCAST VERDICT: ${json.idle.verdict}`);
