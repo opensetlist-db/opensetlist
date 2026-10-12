@@ -278,6 +278,163 @@ unchanged: it is decided afterwards from the host telemetry and
 independent evidence (SDK clients on the same save, the observer), never
 an automatic INVALID.
 
+## Admission phase (`--phase=admission`, n14 qualification step 5)
+
+Qualifies **cold admission**: 30 pages + 470 SDK clients arriving on a
+fresh deployment while saves happen. The standard start (join everybody,
+settle, then edit) is replaced by three steps:
+
+1. **prepare** — the identity guard (only with `--deployment-url`, and
+   then against `--guard-precursor`), ONE admin login, ONE dedicated
+   **anchor row** (inserted after row 2; every admission save, every
+   standalone steady edit and the I3 saves PUT their marker here — a
+   measured PUT deletes and recreates the row's three junction
+   collections, so it never touches an original or fixture row), then
+   the **run manifest** (`<stamp>-admission-manifest.json` in the
+   results dir, written before the boundary): every active row with its
+   songs in order, members (incl. a nullable `realPersonId`), artists,
+   row attributes, the event revision (one repeatable-read read), the
+   pre-anchor original rows (what `--restore-positions` restores), and
+   with `--rows-manifest=<fixture json>` which rows are fixture clones
+   (accepted shapes: `clones: [{ id }]`, `createdIds: [id]`,
+   `created: [...]`, or `items` / `rows` entries flagged `clone: true`).
+   Prepare talks to the precursor (deployment-URL runs) or to the alias,
+   which still points at the precursor until the redeploy.
+2. **boundary wait** — `--admit-at=<ISO UTC>` or `--admit-file=<path>`
+   (exactly one). Nothing is sent: every HTTP request (undici) and TCP
+   socket this process opens in the wait is recorded and the report
+   prints the count (gate 0). The admit file may be empty (`touch`) or
+   JSON naming the measurement deployment and the binding:
+   `{ "base": "https://opensetlist-<hash>-opensetlist-projects.vercel.app", "precursorId": "dpl_…", "measurementId": "dpl_…", "inspect": "<vercel inspect output>" }`
+   (`base` is accepted only with `--deployment-url`; a measurement base
+   equal to the precursor aborts the run before T0).
+3. **admit** at T0 — pages (`--page-concurrency`, 5) and SDK clients
+   (`--sub-batch`, 50/s) start together; the admission saves run on
+   their own timer from T0 (`--admission-saves=5,20,45` s), concurrent
+   with the launches, never retried; with `--deployment-url` one generic
+   read at T0 proves the measurement deployment serves the manifest
+   before the first save may write through it. Then the normal edit loop
+   (`--edits`, `--edit-mode`, `--pause`; A2: `--edits=8
+   --edit-mode=mixed`), then the optional **I3 final phase**
+   (`--final-cohort=20,20`): the pages close, the first 20 connected SDK
+   clients stay connected (the others are stopped — the finalizer would
+   otherwise stop everybody), 20 fresh clients join, 6 s after they are
+   all connected a save, +40 s another; then teardown.
+
+Per-client records (JSON `admission.sdk` / `admission.pages`, timelines):
+SDK — `attemptAt`, every SUBSCRIBED, the full `statusLog` /
+`connLog` (so "continuously connected through instant t" is derivable),
+the first request and the first successful snapshot (request start,
+response, rev, `x-snapshot-source`, body bytes), every raw broadcast
+receipt, every applied snapshot (rev, capturedAt, fetch reason); pages —
+launch wave, navigation start (the browser's timeOrigin), TTFB,
+DOMContentLoaded, the document's status and bytes, the **SSR seed**
+(`initialRev` in the HTML: `live <rev>`, `absent` = the degraded path
+`[eventPage] live seed unavailable`, `unknown`), hydration readiness
+(first `/api/setlist` request or first Realtime socket), the first fetch
+(source, rev), the channel join, and the **complete expected setlist**
+time: the setlist rows as rendered (every `<li>` with `<SetlistRow>`'s
+`grid-cols-[28px_1fr]` grid, in DOM order: main rows, then encore rows;
+per row its song links `/songs/<id>` in order — a medley is several, a
+blank / non-song row none) compared with the manifest by **order and
+multiplicity** (a fixture's clones repeat song ids; a set comparison
+would pass with only the originals rendered); the anchor row may show
+blank or any of the run's markers. Checked against the live page (23/23
+rows incl. the medley and the encore, ja and ko). If the markup changes
+the "rows matched n/m" column drops — a page is never "complete" by
+accident. Only rows before the first steady edit are judged (a pair edit
+changes the expected rows). Images, fonts and media stay aborted.
+
+**Exposure (predeclared, per save, this host's clock only).** SDK: at
+the PUT response, ≥ `--exposure-sdk-min` (100) clients SUBSCRIBED and
+continuously connected through the save AND ≥ 100 not yet SUBSCRIBED →
+"SDK admission save". Pages, separately: ≥ `--exposure-pages-min` (5)
+pages navigated by the PUT start whose complete setlist came later →
+"page admission save" (unlaunched pages are future arrivals). Neither →
+"after admission" (still gated). No SDK-admission save in the run → the
+SDK aspect is **NOT EXERCISED**; no page-admission save → the page aspect
+is; neither → the run is (exit 4).
+
+**Gates** ("Admission" section; the per-save tables stay as
+information): 0 outbound requests in the boundary wait; the event
+unchanged between prepare and the first save (no first answer above the
+manifest's rev — a foreign save would make every page "incomplete");
+every save 2xx; 0 × 5xx anywhere (saves, page documents and fetches, SDK,
+the T0 identity read), 0 × 503, 0 transport failures; everybody joined
+within `--join-timeout` from T0; pages: complete setlist p95 ≤ 3 s from
+navigation start, every page complete, 0 degraded seeds
+(`--expect-live-seed=false` only for a deliberately non-live event); SDK
+time to first snapshot p95 ≤ 3 s, everybody got one; convergence per
+population — **joined-before** (SUBSCRIBED / channel joined ≤ PUT start)
+from the PUT start, **joined-after** from max(subscribedAt / join, PUT
+response) — p95 ≤ 3 s, 0 missing, pages following the returned revision
+(a later marker on the anchor counts); 0 monotonicity regressions (DOM
+version, applied rev, (rev, capturedAt)); PUT p95 ≤ 1.5 s. **Stale first
+answers** (a first read that started after the PUT response but carried
+a lower rev: SDK first request, page SSR seed) are counted per save, not a
+gate. The raw broadcast receipt of each save is reported next to the
+reason of the fetch that applied it. Verdict: **VALID + PASS / VALID +
+FAIL / INVALID** (host stall, as before) **/ NOT EXERCISED**; SUSPECT
+stays a banner. Exit codes: 0 pass, 1 fail, 3 invalid, 4 not exercised.
+Server side (acquire ≤ 500 ms, EMAXCONN, Σ with completeness, builds per
+minute / instance, A4 fault evidence): `../admission-join.mjs`.
+
+```sh
+# smoke on the dev alias (no redeploy), ~2.5 min, 1 anchor row created and removed
+AT=$(node -e "console.log(new Date(Date.now()+45000).toISOString())")
+node --no-warnings tests/load/browsers/run.mjs --phase=admission --pages=2 --subs=5 --sub-workers=1 --edits=1 --edit-mode=standalone --admit-at=$AT --admission-saves=5,15 --exposure-sdk-min=1 --exposure-pages-min=1 --final-cohort=2,2 --restore-positions --label=smoke-admission
+# A0 (dev alias; the operator touches the admit file after the redeploy — ../README.md "n14 qualification step 5")
+node --no-warnings tests/load/browsers/run.mjs --phase=admission --pages=30 --subs=470 --edits=0 --admit-file=admit-A0.json --strict-host --restore-positions --label=step5-A0
+```
+
+## Idle-broadcast drill (`--drill=idle-broadcast`, n14 step 5 I-cycles)
+
+The first save after an idle period, and the runbook's **wake
+procedure**. SDK cohorts only (`--pages=0`, required; `--subs` /
+`--edits` are not used). Nothing broadcasts before the first save: the
+login is not a save and the anchor row is created BY the first measured
+save (an insert-after = one save, one broadcast), so the idle period
+ends exactly there.
+
+- **I1**: `--cohort-incumbents` (20) clients connect at `--connect-at`
+  (the observer's `connect_at` — same instant); the first save at
+  `--first-save-at` (= observer readiness + 6 s) or released at run time
+  through `--first-save-file=<path>` (content = the ISO instant; empty =
+  6 s after the file appeared; nothing by `--connect-at + --max-age` →
+  aborted, NOT EXERCISED); ≥ 40 s of quiet; then PUTs on the anchor at
+  `--idle-saves=40,100` s after the first save.
+- **I2** (`--wake`): the first save is the **check save** — its rev must
+  arrive by broadcast at every connected local client within
+  `--wake-check-timeout` (10 s); a miss is recorded, one retry save is
+  made and verified, a second miss records "escalate" (the clients must
+  be reloaded / reconnected before the show relies on them); everyone
+  stays connected; at first save + `--wake-gap` (600 s) the fresh cohort
+  (`--cohort-fresh`, 20) joins; 6 s after it is all connected a save,
+  +40 s another.
+- **Eligibility, post hoc** (per client, per cycle save): connected 6 s …
+  `--max-age` (90) s before the save, without interruption through its
+  PUT response, cohort first-SUBSCRIBED spread ≤ 30 s. The predeclared
+  rule needs EVERY cohort client eligible — otherwise the cycle is **NOT
+  EXERCISED** (a longer readiness period or a reconnect is a different
+  experiment), never silently reported as this one.
+- **Per client, per save**: the raw broadcast receipt (ms after the PUT
+  response), the reason of the fetch that applied the save, the repair
+  time (applied without the broadcast) — healthy repair is the periodic
+  poll, 20 s ± 4 s: reported as measured, never as a bound. The
+  population of a save = clients that had subscribed by its response.
+- Verdict per cycle: PASS = every eligible client received the raw
+  broadcast and applied the save; FAIL = the idle-broadcast defect (with
+  the repair that brought the client forward); exit 0 / 1 / 4 (any FAIL
+  / all NOT EXERCISED). The observer's clients are judged by the same
+  rule in `../admission-join.mjs --observer=<artifact>`.
+
+```sh
+# I1 (after ≥ 30 min idle: no broadcast and no client of ours, incl. the observer)
+node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 --cohort-incumbents=20 --connect-at=<T> --first-save-file=first-save.txt --strict-host --restore-positions --timeout=60 --label=step5-I1a
+# I2 (wake procedure)
+node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 --wake --cohort-incumbents=20 --cohort-fresh=20 --connect-at=<T> --first-save-at=<T+8s> --strict-host --restore-positions --timeout=60 --label=step5-I2a
+```
+
 ## Row formats (timelines `.jsonl` and JSON)
 
 The timelines' first line documents every layout. Columns added in step
@@ -291,6 +448,11 @@ The timelines' first line documents every layout. Columns added in step
 | `save` | + `who` (overlap: A / B / C) |
 | JSON `warm.saves[].sdk` / `.pages` | 0 idx, 1 locale, 2 start − commit, 3 end − commit, 4 source, 5 verify, 6 minRev, **7 body rev**; saves + `who`; new `warm.groups` (overlap: every intended save with its anchors) |
 | JSON `probe` (overlap) | `row`: 0 tStart, 1 locale, 2 minRev, 3 status, 4 source, 5 body rev, 6 capturedAt, 7 anchorTitle, 8 tEnd; `groups[].probes[]` = `{ off, who, head, row }`, `tail[]` |
+| `sdk.reqs` (step 5) | **15 body bytes** (a 200's body, UTF-8 after decoding) |
+| `sdk` line (step 5) | + `cohort`, `attemptAt`, `stoppedAt`, **`statusLog`** [t, status, current channel 1 / retired 0], **`connLog`** [t, up 1 / down 0, status] (up/down transitions incl. a final `STOPPED`) |
+| `page` line (admission) | + `rowsLog` [t, row signatures in DOM order: song ids joined by `+`, `""` = no song link], `navStart`, `ttfbMs`, `dclMs`, `docStatus`, `seed` { kind live / absent / unknown, rev }, `wave`, `firstApiReqAt`, `wsOpenAt` |
+| JSON `admission` | `config`, `T0`, `base`, `prepBase`, `prepare`, `anchor`, `fixture`, `manifestFile`, `boundary` { waitFrom, T0, waitMs, outbound [t, http / tcp, target], admitFile }, `guardRead`, `scheduled` (scheduled vs actual save start), `expectedRows`, `saves[]` (k, mode, rev, putStart, putEnd, putMs, label, sdkExposure, pageExposure, sdkConv, pageConv, stale, receipt), `gates`, `verdict`, `exercised`, `final` (I3), `pages[]`, `sdk[]` (compact per client: subscription timeline, first / firstOk, bcasts, applied) — the input of `../admission-join.mjs` |
+| JSON `idle` | `config`, `wake` (check results, escalation, fresh cohort times), `connectedAtSave`, `verdict`, `cycles[]` (name, save, verdict, elig, eligible, all, rows), `later[]`, `sdk[]` |
 | JSON `overlap` | `gates`, `pass`, `fivexx`, `roles`, `reloads`, `reactions`, `ackHold`, `convergence`, `controls`, `groups[]` (`saves {k, who, startedAt, ms, status, rev, attempts, fault}`, `reloads {k, off, at, ms, status, bytes, contentOk}`, `catalog {k, startedAt, ackAt, status, from, to}`, `reactions`, `pageReaction` trace) |
 
 ## Positions (read before running repeatedly)
