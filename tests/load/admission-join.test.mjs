@@ -135,7 +135,8 @@ test("observer clients judged by the same eligibility rule; receipts per save", 
   const j = join(IDLE_JSON, { observerText: OBS });
   const c = j.cycles[0].observer;
   assert.equal(c.elig.eligible, 1);
-  assert.match(c.elig.per.find((p) => p.idx === "obs-1").why, /< 6 s/);
+  // 6 s rule + the 1 s cross-host clock margin ⇒ observer bound 7 s.
+  assert.match(c.elig.per.find((p) => p.idx === "obs-1").why, /< 7 s/);
   assert.deepEqual([c.sum.n, c.sum.received, c.sum.applied], [1, 1, 1]);
   const r = j.observer.receipts[0];
   assert.deepEqual([r.n, r.received, r.applied], [2, 1, 2]);
@@ -173,4 +174,28 @@ test("the viewers.js ADMISSION=1 summary (kind k6-admission) is normalised to th
   assert.match(md, /transport 1/);
   // The minimal documented shape passes through untouched.
   assert.deepEqual(normaliseK6({ T0: 1 }), { T0: 1 });
+});
+
+test("observer clients get a cross-host clock margin: early-stamped receipts count, the 6 s / max-age bounds tighten", () => {
+  // Client 2 is 6.5 s old at the save: eligible under the plain 6 s rule,
+  // NOT eligible once the 1 s margin is applied (bound 7 s). Its receipt is
+  // stamped 600 ms BEFORE the PUT start (runner clock behind) and must
+  // still be matched to rev 60 instead of being dropped as "never".
+  const obs = OBS + "\n" + [
+    { kind: "broadcast", client: 2, t: T + 100_000 - 600, rev: 60, what: "n" },
+    { kind: "applied", client: 2, t: T + 100_200, rev: 60, reason: "notification" },
+    { kind: "client", client: 2, locale: "en", subscribedAtAll: [T + 93_500], connLog: [[T + 93_500, 1, "SUBSCRIBED"]], fallbacksAll: [] },
+  ].map((o) => JSON.stringify(o)).join("\n");
+  const j = join(IDLE_JSON, { observerText: obs });
+  const c = j.cycles[0].observer;
+  assert.equal(c.clockMarginMs, 1000);
+  assert.deepEqual(c.boundsS, { minAgeS: 7, maxAgeS: 89 });
+  const p2 = c.elig.per.find((p) => p.idx === "obs-2");
+  assert.equal(p2.eligible, false);
+  assert.match(p2.why, /< 7 s/);
+  const r2 = c.rows.find((r) => r.idx === "obs-2");
+  assert.equal(r2.bcastMs, -900); // 600 ms before PUT start = 900 ms before the PUT response
+  const rec = j.observer.receipts[0];
+  assert.equal(rec.received, 2);
+  assert.match(toMarkdown(j), /1000 ms cross-host clock margin: age must be within \[7 s, 89 s\]/);
 });

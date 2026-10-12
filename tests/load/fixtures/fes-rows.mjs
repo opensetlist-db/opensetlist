@@ -199,6 +199,7 @@ async function create() {
   const pg = pgClient();
   await pg.connect();
   let manifest = null;
+  let committing = false; // true only while the COMMIT statement is in flight
   try {
     await pg.query("begin");
     const lock = await pg.query(`select id from "Event" where id = $1 for update`, [EVENT_ID]);
@@ -324,7 +325,14 @@ async function create() {
     };
     writeJson(file, manifest);
     log(`manifest (pending-commit): ${path.relative(REPO, file)}`);
+    // COMMIT is the one statement whose failure is AMBIGUOUS: the server may
+    // have committed and the acknowledgment been lost (connection drop,
+    // pooler hiccup). The catch below therefore checks the database for the
+    // planned clone IDs before it writes `rolled-back` — a manifest that
+    // wrongly says rolled-back would make --cleanup skip 46 live clones.
+    committing = true;
     await pg.query("commit");
+    committing = false;
     manifest.state = "committed";
     manifest.committedAt = new Date().toISOString();
     const post = await readState(pg, EVENT_ID);
@@ -339,11 +347,32 @@ async function create() {
   } catch (e) {
     try { await pg.query("rollback"); } catch { /* connection gone */ }
     if (manifest && manifest.state === "pending-commit") {
-      // The rollback ran (or the session died, which also rolls back):
-      // say so in the manifest so --cleanup does not chase phantom rows.
-      manifest.state = "rolled-back";
-      manifest.error = e.message;
+      // Before COMMIT was issued the rollback (explicit, or implicit when the
+      // session died) is certain. AFTER it was issued the outcome is unknown
+      // until the database is asked: a fresh connection looks for the planned
+      // clone IDs; any present ⇒ the fixture is live and the manifest must say
+      // `committed` (with `commitAmbiguous`) so --cleanup removes it.
+      let live = 0;
+      if (committing) {
+        try {
+          const probe = pgClient();
+          await probe.connect();
+          try {
+            const r = await probe.query(`select count(*)::int as n from "SetlistItem" where id = any($1::bigint[])`, [manifest.created.map((c) => c.id)]);
+            live = r.rows[0].n;
+          } finally { await probe.end(); }
+        } catch (e2) {
+          manifest.state = "unknown";
+          manifest.error = `commit outcome unknown: ${e.message}; re-check failed: ${e2.message}; run --verify or inspect with manifest.recovery before --cleanup`;
+          writeJson(file, manifest);
+          throw e;
+        }
+      }
+      manifest.state = live > 0 ? "committed" : "rolled-back";
+      if (live > 0) manifest.commitAmbiguous = `COMMIT acknowledgment lost (${e.message}); ${live}/${manifest.created.length} planned clones found in the database`;
+      else manifest.error = e.message;
       writeJson(file, manifest);
+      if (live > 0) log(`WARNING: COMMIT acknowledgment lost but ${live} clone rows exist — manifest marked committed; run --cleanup`);
     }
     throw e;
   } finally {

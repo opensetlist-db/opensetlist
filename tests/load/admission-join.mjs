@@ -51,6 +51,17 @@ const num = (v) => {
 };
 
 // ─── observer artifact → client records in the harness's compact shape ───
+// The observer runs on another host. Its timestamps are NTP-close to this
+// host's, not identical: step 2 saw ~0.4 s of unexplained cross-host
+// discrepancy. Every comparison of an observer time with a harness PUT
+// time therefore carries this margin — receipts may be stamped up to this
+// much before the PUT start and still belong to the save, and the 6 s /
+// max-age eligibility bounds are tightened by it on both sides, so an
+// observer client is called eligible only when it would be under any
+// offset within the margin. Without it the join emitted definite counts
+// from an indeterminate comparison.
+export const OBSERVER_CLOCK_MARGIN_MS = 1000;
+
 export function observerClients(jsonlText) {
   const lines = [];
   for (const l of String(jsonlText).split(/\r?\n/)) {
@@ -238,7 +249,7 @@ export function join(json, { logText = null, observerText = null, k6 = null, add
     obs = {
       meta: o.meta, clients: o.clients.length, withTimelines: o.clients.filter((c) => c.timelines).length,
       receipts: out.saves.map((s) => {
-        const rows = idleArrivals(o.clients, s, { timeoutMs: 60_000 });
+        const rows = idleArrivals(o.clients, s, { timeoutMs: 60_000, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS });
         return { k: s.k, rev: s.rev, ...summarizeArrivals(rows) };
       }),
       raw: o,
@@ -250,9 +261,10 @@ export function join(json, { logText = null, observerText = null, k6 = null, add
   const cycles = (idle?.cycles ?? adm?.final?.cycles ?? []).map((c) => {
     const ob = obs ? (() => {
       const maxAgeS = idle?.config?.maxAgeS ?? 90;
-      const elig = idleEligibility(obs.raw.clients, c.save, { maxAgeS });
-      const rows = idleArrivals(obs.raw.clients, c.save, { timeoutMs: 60_000 });
-      return { elig, rows, sum: summarizeArrivals(rows.filter((r) => elig.per.find((p) => p.idx === r.idx)?.eligible)) };
+      const marginS = OBSERVER_CLOCK_MARGIN_MS / 1000;
+      const elig = idleEligibility(obs.raw.clients, c.save, { maxAgeS: maxAgeS - marginS, minAgeS: 6 + marginS });
+      const rows = idleArrivals(obs.raw.clients, c.save, { timeoutMs: 60_000, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS });
+      return { elig, rows, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS, boundsS: { minAgeS: 6 + marginS, maxAgeS: maxAgeS - marginS }, sum: summarizeArrivals(rows.filter((r) => elig.per.find((p) => p.idx === r.idx)?.eligible)) };
     })() : null;
     return { ...c, observer: ob };
   });
@@ -329,7 +341,7 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push(`- Harness: eligible ${c.elig.eligible}/${c.elig.total} (spread ${c.elig.spreadS == null ? "—" : c.elig.spreadS.toFixed(1)} s); eligible clients received the broadcast ${c.eligible.received}/${c.eligible.n}, applied ${c.eligible.applied}/${c.eligible.n} by ${JSON.stringify(c.eligible.reasons)}; repair max ${d(c.eligible.repair.max)} ms (healthy periodic repair 20 s ± 4 s — measured, not a bound)`);
       if (c.observer) {
         const o = c.observer;
-        L.push(`- Observer (runner clock — ±the cross-host offset is indeterminate at the 6 s / max-age boundaries): eligible ${o.elig.eligible}/${o.elig.total} (spread ${o.elig.spreadS == null ? "—" : o.elig.spreadS.toFixed(1)} s, exercised ${o.elig.exercised ? "yes" : "**no**"}); eligible received ${o.sum.received}/${o.sum.n}, applied ${o.sum.applied}/${o.sum.n} by ${JSON.stringify(o.sum.reasons)}${o.elig.per.filter((p) => !p.eligible).length ? `; not eligible: ${o.elig.per.filter((p) => !p.eligible).map((p) => `${p.idx} (${p.why})`).join(", ")}` : ""}`);
+        L.push(`- Observer (runner clock; judged with a ${o.clockMarginMs} ms cross-host clock margin: age must be within [${o.boundsS.minAgeS} s, ${o.boundsS.maxAgeS} s], receipts up to ${o.clockMarginMs} ms before the PUT start still count): eligible ${o.elig.eligible}/${o.elig.total} (spread ${o.elig.spreadS == null ? "—" : o.elig.spreadS.toFixed(1)} s, exercised ${o.elig.exercised ? "yes" : "**no**"}); eligible received ${o.sum.received}/${o.sum.n}, applied ${o.sum.applied}/${o.sum.n} by ${JSON.stringify(o.sum.reasons)}${o.elig.per.filter((p) => !p.eligible).length ? `; not eligible: ${o.elig.per.filter((p) => !p.eligible).map((p) => `${p.idx} (${p.why})`).join(", ")}` : ""}`);
         L.push("");
         L.push("| observer client | connected since | age s | eligible | broadcast ms after PUT response | applying fetch | repair ms |");
         L.push("|---|---|---|---|---|---|---|");

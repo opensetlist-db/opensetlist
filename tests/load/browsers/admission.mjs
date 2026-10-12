@@ -507,7 +507,11 @@ export function idleEligibility(clients, save, { maxAgeS = 90, minAgeS = 6, spre
 // response and were not stopped before it — a client created (or first
 // SUBSCRIBED) after the save would otherwise show up as a "repair" that
 // is really its own join.
-export function idleArrivals(clients, save, { timeoutMs = 60000 } = {}) {
+// `clockMarginMs`: how far BEFORE the save's PUT start a receipt may be
+// stamped and still count as this save's broadcast. 50 ms for clients on
+// the harness host (one clock); the join passes a larger margin for the
+// observer's clients, whose runner clock is only NTP-close to this one.
+export function idleArrivals(clients, save, { timeoutMs = 60000, clockMarginMs = 50 } = {}) {
   const inPop = (c) => {
     if (c.stoppedAt != null && c.stoppedAt <= save.putStart) return false;
     if (c.attemptAt != null && c.attemptAt > save.putEnd) return false;
@@ -515,7 +519,7 @@ export function idleArrivals(clients, save, { timeoutMs = 60000 } = {}) {
     return !(fs != null && fs > save.putEnd);
   };
   return clients.filter(inPop).map((c) => {
-    const b = (c.bcasts || []).find(([t, rev, w]) => rev === save.rev && w !== "x" && t >= save.putStart - 50);
+    const b = (c.bcasts || []).find(([t, rev, w]) => rev === save.rev && w !== "x" && t >= save.putStart - clockMarginMs);
     const a = firstApplied(c.applied, save.rev);
     const applied = a && a[0] <= save.putStart + timeoutMs ? a : null;
     return {
