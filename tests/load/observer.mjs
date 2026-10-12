@@ -49,6 +49,30 @@
 //     fetch duration p50/p95 + sources, applied time), poller latency,
 //     lag p95/max, host.
 //
+// n14 step 5 (idle-broadcast cycles, cold admission):
+//   --connect-at=<ISO UTC>  the workflow starts early (checkout, npm ci)
+//     and the observer holds ALL network activity — no SDK client, no
+//     poller — until this instant, then connects its clients and starts
+//     the poller; the --minutes window starts there. The harness's local
+//     cohort connects at the same instant (run.mjs --connect-at), so the
+//     observer's clients are part of the same "joined together" cohort.
+//   readiness on stdout (control plane, never a tenant message): once
+//     every client is SUBSCRIBED,
+//       [observer] ready clients=5/5 subscribed_at=<ISO>,<ISO>,… at=<ISO>
+//     then a connection count whenever it changes and every 15 s,
+//       [observer] connected clients=n/N at=<ISO>
+//     The operator reads them from the job's live log (GitHub web UI;
+//     `gh run view --log` only works once the job has finished — see
+//     tests/load/README.md) and sets the harness's --first-save-at =
+//     readiness + 6 s; eligibility is decided post hoc from the artifact
+//     either way.
+//   artifact: every `client` line carries the FULL subscription timeline
+//     (every SUBSCRIBED, every status callback, the up/down transitions,
+//     the disconnected episodes and channel re-creations, attempt and
+//     stop times) next to the raw `broadcast` receipts, so
+//     admission-join.mjs can decide "connected 6 … 90 s and continuously
+//     through the save" for the observer's clients too.
+//
 // Usage:
 //   node --no-warnings tests/load/observer.mjs \
 //     --base=https://opensetlist-git-dev-opensetlist-projects.vercel.app \
@@ -242,8 +266,22 @@ export function recordToLines(rec) {
     firstSubscribedAt: rec.subscribedAt[0] ?? null, statuses: rec.statuses,
     errors: rec.errors, fallbacks: rec.fallbacks.length, recreates: rec.recreates.length,
     failKinds: rec.failKinds, exhausted: rec.exhausted.length,
+    // Full timelines (step 5; layouts in subs-worker.mjs makeSub):
+    // subscribedAtAll [t], statusLog [t, status, current 0/1], connLog
+    // [t, up 1|0, status], fallbacksAll [t, status], recreatesAll
+    // [t, attempt]. null from a worker that predates them.
+    attemptAt: rec.attemptAt ?? null, stoppedAt: rec.stoppedAt ?? null,
+    subscribedAtAll: rec.subscribedAt, statusLog: rec.statusLog ?? null, connLog: rec.connLog ?? null,
+    fallbacksAll: rec.fallbacks, recreatesAll: rec.recreates,
   });
   return out;
+}
+
+// The readiness line (exported for the test): `p` = the worker's
+// progress() answer ({ joined, total, since: [epoch ms] }).
+export function readinessLine(p, atIso) {
+  const since = [...(p.since || [])].sort((a, b) => a - b).map((t) => new Date(t).toISOString());
+  return `[observer] ready clients=${p.joined}/${p.total} subscribed_at=${since.join(",")} at=${atIso}`;
 }
 
 // ─── runner ───
@@ -274,6 +312,14 @@ async function main() {
   if (!/^\d+$/.test(eventId)) return fail("--event must be a numeric id");
   if (!Number.isInteger(clients) || clients < 1 || clients > 50) return fail("--clients must be 1..50");
   if (!(minutes > 0 && minutes <= 60)) return fail("--minutes must be in (0, 60]");
+  let connectAt = null;
+  if (args["connect-at"] !== undefined && args["connect-at"] !== true && String(args["connect-at"]).trim() !== "") {
+    connectAt = Date.parse(String(args["connect-at"]));
+    if (!Number.isFinite(connectAt)) return fail("--connect-at must be an ISO timestamp (UTC)");
+    if (connectAt - Date.now() > 3600000) return fail("--connect-at is more than 60 min ahead");
+    // In the past (the job started late): connect at once; the readiness
+    // line carries the real times and the post-hoc eligibility decides.
+  }
 
   const now = new Date();
   const outDir = args.out ? String(args.out) : path.join(HERE, "results", now.toISOString().slice(0, 10));
@@ -285,6 +331,7 @@ async function main() {
     kind: "meta", host: os.hostname(), platform: `${os.platform()} ${os.release()} ${os.arch()}`, node: process.version,
     base, event: eventId, clients, minutes, label, startedAt: now.toISOString(), endedAt: null, interrupted: false,
     workerError: null, workerElu: null,
+    connectAt: connectAt == null ? null : new Date(connectAt).toISOString(), connectedAt: null, readyAt: null,
   };
   const lines = [];
   const log = (m) => console.log(`${new Date().toISOString().slice(11, 23)} ${m}`);
@@ -302,6 +349,14 @@ async function main() {
     lagTimer = setTimeout(lagTick, LAG_MS);
   };
   lagTimer = setTimeout(lagTick, LAG_MS);
+
+  // --connect-at: nothing on the network before it (the lag sampler
+  // above is local). SIGINT during the hold simply ends the process.
+  if (connectAt != null && connectAt > Date.now()) {
+    log(`holding all network activity until --connect-at ${new Date(connectAt).toISOString()} (${Math.round((connectAt - Date.now()) / 1000)} s)`);
+    await new Promise((r) => setTimeout(r, connectAt - Date.now()));
+  }
+  meta.connectedAt = new Date().toISOString();
 
   // Plain poller: fixed 5 s schedule from the start (not from the end of
   // the previous poll), single request at a time — a hung poll delays
@@ -365,12 +420,30 @@ async function main() {
   });
   const eluStart = worker.performance.eventLoopUtilization();
 
-  // Progress line once a minute (joined / total), so a CI log shows the
-  // clients are actually subscribed.
+  // Readiness + connection counts on stdout (see the header). `joined` is
+  // the worker's CURRENT connected count; `since` the start of each
+  // connected client's current connection. Polled once a second; a line
+  // when the count changes and every 15 s; the `ready` line once, the
+  // first time every client is connected. Plus the old once-a-minute
+  // progress line.
+  let lastCount = null;
+  let lastPrintAt = 0;
+  let pollTick = 0;
   const progressTimer = setInterval(async () => {
-    const p = await ask("progress", "progress", 5000);
-    if (p) log(`joined ${p.joined}/${p.total} · polls ${lines.filter((l) => l.kind === "poll").length}`);
-  }, 60000);
+    const p = await ask("progress", "progress", 900);
+    if (!p) return;
+    const nowIso = new Date().toISOString();
+    if (meta.readyAt == null && p.joined >= p.total) {
+      meta.readyAt = nowIso;
+      console.log(readinessLine(p, nowIso));
+    }
+    if (p.joined !== lastCount || Date.now() - lastPrintAt >= 15000) {
+      console.log(`[observer] connected clients=${p.joined}/${p.total} at=${nowIso}`);
+      lastCount = p.joined;
+      lastPrintAt = Date.now();
+    }
+    if (++pollTick % 60 === 0) log(`joined ${p.joined}/${p.total} (ever ${p.everJoined ?? "?"}) · polls ${lines.filter((l) => l.kind === "poll").length}`);
+  }, 1000);
 
   let finished = false;
   const finish = async (interrupted) => {
