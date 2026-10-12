@@ -121,6 +121,42 @@ const ROWS_SCRIPT = `(() => {
   document.addEventListener("DOMContentLoaded", scan);
 })();`;
 
+// n14 step 8 (`wake-check.mjs`, option `rowText`): a fingerprint of the
+// visible setlist rows' TEXT, reported on every change. The song-id
+// signature above (ROWS_SCRIPT) only moves when a row's songs change; a
+// check save on production may instead touch a row's status, unit or
+// performers, and the wake check must still see "the save became
+// visible". So: the text of every <SetlistRow> <li> (same selector as
+// ROWS_SCRIPT), EXCLUDING text inside <button> elements — the reaction
+// buttons live inside the rows and their counts move whenever any
+// viewer reacts, which on production would read as a phantom update.
+// A cheap 32-bit FNV-1a hash of the joined text plus the row count is
+// enough to say "changed / not changed"; the text itself is not kept.
+const ROW_TEXT_SCRIPT = `(() => {
+  let last = null;
+  const textOf = (li) => {
+    let out = "";
+    const w = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      if (n.parentElement && n.parentElement.closest("button")) continue;
+      out += n.nodeValue;
+    }
+    return out.replace(/\\s+/g, " ").trim();
+  };
+  const scan = () => {
+    const lis = document.querySelectorAll('li[class*="grid-cols-[28px_1fr]"]');
+    let h = 0x811c9dc5;
+    const all = Array.from(lis, textOf).join("\\u0001");
+    for (let i = 0; i < all.length; i++) { h ^= all.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    const key = lis.length + ":" + h.toString(16);
+    if (key === last) return;
+    last = key;
+    if (typeof window.__oslRowText === "function") window.__oslRowText({ t: Date.now(), n: lis.length, h: key });
+  };
+  new MutationObserver(scan).observe(document, { childList: true, subtree: true, characterData: true });
+  document.addEventListener("DOMContentLoaded", scan);
+})();`;
+
 // The SSR seed in the page HTML: the RSC payload carries LiveEventLayout's
 // `initialRev` prop — a number when the page was rendered from the live
 // snapshot, null when the live seed was unavailable (the page's degraded
@@ -211,7 +247,20 @@ const isNotification = (f) =>
 // gets the correlation columns [runId, k] appended to its `bcasts` row,
 // recorded at the frame (before the page's own handler sees it); no
 // other run sends a `runId`, so their rows are unchanged.
-export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false, transition = false, cohort = null, spam7 = false }) {
+//
+// n14 step 8 (`wake-check.mjs`):
+//   `rowText` — record `rowTextLog` [t, row count, fingerprint] from
+//     ROW_TEXT_SCRIPT on every change of the rows' visible text;
+//   `readOnly` — the page may only READ: every request whose method is
+//     not GET / HEAD / OPTIONS is aborted before it leaves the browser
+//     and recorded in `blockedWrites` [t, method, host+path (≤ 120)]. A
+//     wake check on production must not file an impression, reaction or
+//     wish (or a Sentry event) on the operator's behalf, even if an app
+//     change one day makes the page POST on load. Websockets are not
+//     HTTP requests and are untouched (the Realtime subscription is the
+//     thing being checked).
+// Both off: the record and the routing are unchanged.
+export async function launchPages({ count, base, eventPath, eventId, localeOf, routeMode, headless = true, concurrency = 5, log = console.log, admission = false, transition = false, cohort = null, spam7 = false, rowText = false, readOnly = false }) {
   const browser = await chromium.launch({
     headless,
     args: [
@@ -282,6 +331,8 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       });
     }
     if (spam7 && !transition) Object.assign(rec, { docLoads: [], reqFailed: [], pageErrs: [] });
+    if (rowText) rec.rowTextLog = [];
+    if (readOnly) rec.blockedWrites = [];
     if (admission) {
       Object.assign(rec, {
         wave, launchedAt: Date.now(),
@@ -294,6 +345,12 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       const req = route.request();
       const type = req.resourceType();
       let u;
+      if (readOnly && !["GET", "HEAD", "OPTIONS"].includes(req.method())) {
+        let where = req.url();
+        try { const x = new URL(where); where = x.host + x.pathname; } catch { /* keep raw */ }
+        if (rec.blockedWrites.length < 100) rec.blockedWrites.push([Date.now(), req.method(), where.slice(0, 120)]);
+        return route.abort();
+      }
       try { u = new URL(req.url()); } catch { return route.continue(); }
       if (type === "image" || type === "media" || type === "font") return route.abort();
       if (BLOCK_HOST.test(u.hostname)) return route.abort();
@@ -308,6 +365,10 @@ export async function launchPages({ count, base, eventPath, eventId, localeOf, r
       rec.dom.push([t, added, removed]);
     });
     await page.addInitScript(INIT_SCRIPT);
+    if (rowText) {
+      await page.exposeFunction("__oslRowText", ({ t, n, h }) => { rec.rowTextLog.push([t, n, h]); });
+      await page.addInitScript(ROW_TEXT_SCRIPT);
+    }
     if (admission) {
       await page.exposeFunction("__oslRows", ({ t, rows }) => { rec.rowsLog.push([t, rows]); });
       await page.addInitScript(ROWS_SCRIPT);

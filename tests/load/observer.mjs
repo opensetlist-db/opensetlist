@@ -78,6 +78,11 @@
 //     --base=https://opensetlist-git-dev-opensetlist-projects.vercel.app \
 //     --event=111 --clients=5 --minutes=10 --out=tests/load/results --label=laptop
 //
+// Production (n14 step 8): `--prod-readonly` switches to a separate,
+// read-only observer (observer-prod.mjs; flags and refusals in
+// prod-readonly.mjs; tests/load/README.md "Production read-only
+// observer"). Without that flag this file stays dev-only.
+//
 // Env: NEXT_PUBLIC_SUPABASE_URL (must be the dev project) and
 // NEXT_PUBLIC_SUPABASE_ANON_KEY — both public values, no DB URL, no
 // admin password. Read from the environment, else .env.local / .env
@@ -288,7 +293,30 @@ export function readinessLine(p, atIso) {
 
 async function main() {
   loadEnv();
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
+
+  // n14 step 8: the production read-only mode (observer-prod.mjs). It is
+  // the ONLY way this file reaches a non-dev target, and only when asked
+  // for by name: the flag inverts the guard below — instead of "dev
+  // targets only", it is "any target of this project, but only an
+  // allow-list of read-only flags, and only the anon key" (validation in
+  // prod-readonly.mjs; any write-capable or unknown flag is refused
+  // before a socket opens). Without the flag, everything below is
+  // unchanged: dev project + dev alias / localhost or refuse.
+  if (args["prod-readonly"] !== undefined) {
+    const { validateObserverProd } = await import("./prod-readonly.mjs");
+    const { errors, config } = validateObserverProd(args, process.env, argv.filter((a) => !a.startsWith("--")));
+    if (errors.length) return fail(errors.join("\n"));
+    const { runObserverProd } = await import("./observer-prod.mjs");
+    return runObserverProd(config);
+  }
+  // The prod-mode flags mean nothing here; refusing them stops a command
+  // line that LOOKS like a production observation from silently
+  // observing dev (or failing on the dev guard with a confusing message).
+  for (const k of ["supabase-url", "anon-key-env", "duration-s", "listeners", "add-listener-after-s", "event-id"]) {
+    if (args[k] !== undefined) return fail(`refusing: --${k} only exists with --prod-readonly`);
+  }
   const base = String(args.base || process.env.BASE_URL || "https://opensetlist-git-dev-opensetlist-projects.vercel.app").replace(/\/$/, "");
   const eventId = String(args.event ?? "111");
   const clients = Number(args.clients ?? 5);
