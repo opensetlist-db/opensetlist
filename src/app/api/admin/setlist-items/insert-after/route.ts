@@ -1,13 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  liveWriterTransaction,
+  withAdminLiveWriterBusy,
+} from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
+import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+  revToNumber,
+} from "@/lib/liveBroadcast";
 
 export async function POST(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
+  // Drill-only per-save warm fault: after auth, before anything is read
+  // or written; 400 on an unsupported spec (see the create route and
+  // `requestWarmFault`).
+  const warm = requestWarmFault(request.headers);
+  if (!warm.ok) return NextResponse.json({ error: warm.error }, { status: 400 });
+  // A save the database could not even start answers 503 + Retry-After
+  // (see `withAdminLiveWriterBusy`); every other outcome is unchanged.
+  return withAdminLiveWriterBusy(() => insertAfter(request, warm.fault));
+}
 
+async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
   const { eventId, afterPosition } = await request.json();
 
   if (!eventId) {
@@ -35,7 +54,14 @@ export async function POST(request: NextRequest) {
   }
   const newPosition = afterPosition + 1;
 
-  const item = await prisma.$transaction(async (tx) => {
+  const result = await liveWriterTransaction("admin-insert-after", eid, async (tx) => {
+    // n14: lock the event FIRST so the position read below sees every
+    // previously committed save and no concurrent same-event save can
+    // shift rows between our read and our updates (before the lock, two
+    // overlapping insert-afters could both read the same tail and the
+    // second would trip the partial unique on (eventId, position)).
+    if (!(await lockEvent(tx, eid))) return null;
+
     // Find items that need to shift, ordered by position DESC
     // to avoid unique constraint violations on [eventId, position].
     // Skip soft-deleted rows: the partial unique in post-deploy.sql
@@ -72,7 +98,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Create a blank item at the new position
-    return tx.setlistItem.create({
+    const item = await tx.setlistItem.create({
       data: {
         eventId: eid,
         position: newPosition,
@@ -102,8 +128,19 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-  });
 
+    // One bump + one broadcast for the whole logical save, however many
+    // rows were shifted above — clients refetch the snapshot once.
+    const rev = await bumpSetlistRevisionAndBroadcast(tx, eid);
+    return { item, rev };
+  }, (r) => r?.rev, { warmFault });
+
+  if (!result) {
+    return NextResponse.json({ error: "Event not found" }, { status: 404 });
+  }
   revalidateEventData(eid);
-  return NextResponse.json(serializeBigInt(item));
+  return NextResponse.json({
+    ...serializeBigInt(result.item),
+    rev: revToNumber(result.rev),
+  });
 }

@@ -1,0 +1,2642 @@
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+TIME         HOST                                                 LEVEL                       
+22:35:39.90  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist   
+
+22:35:39.73  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist   
+
+22:35:39.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist   
+
+22:35:39.07  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist   
+[liveSnapshot] build event=111 locale=ja rev=695 items=23 ms=69 instance=14c92be2
+[prisma] pool total=1 idle=1 waiting=0 instance=14c92be2 tag=build
+
+Fetched 4 logs for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+TIME         HOST                                                 LEVEL                                           
+22:35:48.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info     DELETE /api/admin/setlist-items/1944   
+[liveWriter] route=admin-delete acquireMs=3 execMs=25 rev=697 ok=true instance=3a0bc8f7
+
+22:35:43.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=835 instance=8d87c5fc
+[prisma] pool total=2 idle=2 waiting=0 instance=8d87c5fc tag=build
+
+22:35:43.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=939 instance=254fca35
+[prisma] pool total=2 idle=2 waiting=0 instance=254fca35 tag=build
+
+22:35:43.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2326 instance=376fba90
+[prisma] pool total=1 idle=1 waiting=0 instance=376fba90 tag=build
+
+22:35:43.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=289 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=baff8952
+
+22:35:43.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1378 instance=5d2a7dc8
+[prisma] pool total=2 idle=2 waiting=0 instance=5d2a7dc8 tag=build
+
+22:35:43.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1365 instance=131fc9fc
+[prisma] pool total=1 idle=1 waiting=0 instance=131fc9fc tag=build
+
+22:35:43.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=787 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=4 event=111 locale=ja instance=14c92be2
+
+22:35:43.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1003 instance=626923e7
+[prisma] pool total=2 idle=2 waiting=0 instance=626923e7 tag=build
+
+22:35:43.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1249 instance=cac12a87
+[prisma] pool total=2 idle=2 waiting=0 instance=cac12a87 tag=build
+
+22:35:43.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=283 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=a640b264
+
+22:35:43.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=215 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=3b99767c
+
+22:35:43.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1105 instance=91633739
+[prisma] pool total=2 idle=2 waiting=0 instance=91633739 tag=build
+
+22:35:43.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1656 instance=5d2a7dc8
+[prisma] pool total=2 idle=1 waiting=0 instance=5d2a7dc8 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=5d2a7dc8
+
+22:35:43.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=0bcffb39
+
+22:35:43.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1451 instance=c279d303
+[prisma] pool total=1 idle=1 waiting=0 instance=c279d303 tag=build
+
+22:35:43.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1872 instance=8d49b9d8
+[prisma] pool total=1 idle=1 waiting=0 instance=8d49b9d8 tag=build
+
+22:35:43.44  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1693 instance=f7967e08
+[prisma] pool total=1 idle=1 waiting=0 instance=f7967e08 tag=build
+
+22:35:43.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=208 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=d7092b5a
+
+22:35:43.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1570 instance=1d333826
+[prisma] pool total=1 idle=1 waiting=0 instance=1d333826 tag=build
+
+22:35:43.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1684 instance=ab9585ba
+[prisma] pool total=1 idle=1 waiting=0 instance=ab9585ba tag=build
+
+22:35:43.42  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1063 instance=85328576
+[prisma] pool total=2 idle=2 waiting=0 instance=85328576 tag=build
+
+22:35:43.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1787 instance=82f51ecb
+[prisma] pool total=1 idle=1 waiting=0 instance=82f51ecb tag=build
+
+22:35:43.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=303 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c2eb5f89
+
+22:35:43.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1183 instance=626923e7
+[prisma] pool total=2 idle=1 waiting=0 instance=626923e7 tag=build
+
+22:35:43.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=259 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=965a654a
+
+22:35:43.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=281 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=071f8a98
+
+22:35:43.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=43 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+22:35:43.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1081 instance=539d9e8f
+[prisma] pool total=2 idle=2 waiting=0 instance=539d9e8f tag=build
+
+22:35:43.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=871 instance=fb7aafe7
+[prisma] pool total=2 idle=2 waiting=0 instance=fb7aafe7 tag=build
+
+22:35:43.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=417 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=45bb373a
+
+22:35:43.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=281 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=9f02c7d3
+
+22:35:43.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.26  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1262 instance=d2de960f
+[prisma] pool total=1 idle=1 waiting=0 instance=d2de960f tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=d2de960f
+
+22:35:43.25  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=217 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=a759aaca
+
+22:35:43.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.24  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=266 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=299f48f9
+
+22:35:43.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1625 instance=c44080ef
+[prisma] pool total=1 idle=1 waiting=0 instance=c44080ef tag=build
+
+22:35:43.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1221 instance=28c7dd90
+[prisma] pool total=1 idle=1 waiting=0 instance=28c7dd90 tag=build
+
+22:35:43.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=220 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=15efe666
+
+22:35:43.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=51 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=en instance=14c92be2
+
+22:35:43.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=51 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+
+22:35:43.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1359 instance=85328576
+[prisma] pool total=2 idle=1 waiting=0 instance=85328576 tag=build
+
+22:35:43.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=263 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=bfdff88b
+
+22:35:43.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=299 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=4292ce09
+
+22:35:43.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1337 instance=cac12a87
+[prisma] pool total=2 idle=1 waiting=0 instance=cac12a87 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=cac12a87
+
+22:35:43.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=303 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=fdf52954
+
+22:35:43.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=43 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+
+22:35:43.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=51 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ko instance=14c92be2
+
+22:35:43.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=297 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e9177345
+
+22:35:43.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=839 instance=b6e95807
+[prisma] pool total=2 idle=2 waiting=0 instance=b6e95807 tag=build
+
+22:35:43.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=210 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c175ac82
+
+22:35:43.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=219 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=f1881a52
+
+22:35:43.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=296 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=575e1dec
+
+22:35:43.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=269 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=fdbe07cf
+
+22:35:43.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=271 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=9a6e8939
+
+22:35:43.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=296 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=1219e95c
+
+22:35:43.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=270 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=b602aaa8
+
+22:35:43.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=44 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+
+22:35:43.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:43.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=230 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=1b623ae3
+
+22:35:43.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=230 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e76602f6
+
+22:35:43.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2892 instance=535de7f2
+[prisma] pool total=1 idle=1 waiting=0 instance=535de7f2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=535de7f2
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=222 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=bf5c9b75
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=error instance=bf5c9b75
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=265 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=8faba2cf
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=290 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=cb3e7d2d
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=cb3e7d2d
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=13c76062
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2825 instance=771b1ecc
+[prisma] pool total=1 idle=1 waiting=0 instance=771b1ecc tag=build
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=301 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=a085791e
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2771 instance=04cb57a0
+[prisma] pool total=1 idle=1 waiting=0 instance=04cb57a0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=04cb57a0
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=53 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ko instance=14c92be2
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=247 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=aaa7ded6
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=aaa7ded6
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=260 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=64cfd0fb
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=272 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e0c7a205
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=error instance=e0c7a205
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=302 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2a54f028
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2363 instance=f0ef48bc
+[prisma] pool total=1 idle=1 waiting=0 instance=f0ef48bc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f0ef48bc
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=293 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2f6bc952
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=2f6bc952
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=449530d7
+
+22:35:42.60  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=253 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=3ed8405a
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=3ed8405a
+
+22:35:42.59  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=12ee2f9e
+
+22:35:42.58  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=308 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2654f83d
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2909 instance=db9e335a
+[prisma] pool total=1 idle=1 waiting=0 instance=db9e335a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=db9e335a
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=3012 instance=29f55b24
+[prisma] pool total=1 idle=1 waiting=0 instance=29f55b24 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=29f55b24
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=331 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=408f2dc9
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=408f2dc9
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2340 instance=b545ae68
+[prisma] pool total=1 idle=1 waiting=0 instance=b545ae68 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b545ae68
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=290 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=8e37d495
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=8e37d495
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=283 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=390862cf
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=390862cf
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2226 instance=f6897241
+[prisma] pool total=1 idle=1 waiting=0 instance=f6897241 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f6897241
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=232 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=5c7b19da
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=390 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=f08730be
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=f08730be
+
+22:35:42.56  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2541 instance=24629df3
+[prisma] pool total=1 idle=1 waiting=0 instance=24629df3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=24629df3
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=273 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=b36dc330
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2929 instance=a28d98a6
+[prisma] pool total=1 idle=1 waiting=0 instance=a28d98a6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a28d98a6
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2785 instance=a2a5b16f
+[prisma] pool total=1 idle=1 waiting=0 instance=a2a5b16f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a2a5b16f
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=278 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=5d730e83
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=5d730e83
+
+22:35:42.55  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=202 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e882e01b
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=error instance=e882e01b
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2632 instance=7d7dc253
+[prisma] pool total=1 idle=1 waiting=0 instance=7d7dc253 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7d7dc253
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2904 instance=2b072865
+[prisma] pool total=1 idle=1 waiting=0 instance=2b072865 tag=build
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2354 instance=a3699a17
+[prisma] pool total=1 idle=1 waiting=0 instance=a3699a17 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a3699a17
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2859 instance=88e4ac13
+[prisma] pool total=1 idle=1 waiting=0 instance=88e4ac13 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=88e4ac13
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=7b55b1e7
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=307 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=8bd981cf
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=44 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2162 instance=9b69638a
+[prisma] pool total=1 idle=1 waiting=0 instance=9b69638a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=9b69638a
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2091 instance=ce8befde
+[prisma] pool total=1 idle=1 waiting=0 instance=ce8befde tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ce8befde
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2301 instance=ae76ce49
+[prisma] pool total=1 idle=1 waiting=0 instance=ae76ce49 tag=build
+
+22:35:42.54  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2255 instance=b1591cd8
+[prisma] pool total=1 idle=1 waiting=0 instance=b1591cd8 tag=build
+
+22:35:42.53  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2434 instance=67afa094
+[prisma] pool total=1 idle=1 waiting=0 instance=67afa094 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=67afa094
+
+22:35:42.53  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2795 instance=8a68f5e8
+[prisma] pool total=1 idle=1 waiting=0 instance=8a68f5e8 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=8a68f5e8
+
+22:35:42.53  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2529 instance=33d5c8f4
+[prisma] pool total=1 idle=1 waiting=0 instance=33d5c8f4 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=33d5c8f4
+
+22:35:42.53  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=266 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=669a2e03
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=669a2e03
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=284 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c06b2301
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=c06b2301
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2010 instance=9fde8a2d
+[prisma] pool total=1 idle=1 waiting=0 instance=9fde8a2d tag=build
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2513 instance=5289c89b
+[prisma] pool total=1 idle=1 waiting=0 instance=5289c89b tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=5289c89b
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2932 instance=d9958484
+[prisma] pool total=1 idle=1 waiting=0 instance=d9958484 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d9958484
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2788 instance=2774d8d0
+[prisma] pool total=1 idle=1 waiting=0 instance=2774d8d0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2774d8d0
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2574 instance=25c06676
+[prisma] pool total=1 idle=1 waiting=0 instance=25c06676 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=25c06676
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=61 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2727 instance=b8827e71
+[prisma] pool total=1 idle=1 waiting=0 instance=b8827e71 tag=build
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=66 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=en instance=14c92be2
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=250 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=6d621a7e
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=262 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=68a87923
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=68a87923
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2910 instance=92c9ea9e
+[prisma] pool total=1 idle=1 waiting=0 instance=92c9ea9e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=92c9ea9e
+
+22:35:42.52  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=274 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=546a360c
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=546a360c
+
+22:35:42.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2787 instance=27539fa6
+[prisma] pool total=1 idle=1 waiting=0 instance=27539fa6 tag=build
+
+22:35:42.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2932 instance=d4d1676c
+[prisma] pool total=1 idle=1 waiting=0 instance=d4d1676c tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=d4d1676c
+
+22:35:42.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2573 instance=52ff4e08
+[prisma] pool total=1 idle=1 waiting=0 instance=52ff4e08 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=52ff4e08
+
+22:35:42.51  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=238 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=f2f33398
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=f2f33398
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2778 instance=ab383680
+[prisma] pool total=1 idle=1 waiting=0 instance=ab383680 tag=build
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2900 instance=5ac2bb0a
+[prisma] pool total=1 idle=1 waiting=0 instance=5ac2bb0a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5ac2bb0a
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2833 instance=6cd4d686
+[prisma] pool total=1 idle=1 waiting=0 instance=6cd4d686 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6cd4d686
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2492 instance=eaf6b26f
+[prisma] pool total=1 idle=1 waiting=0 instance=eaf6b26f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=eaf6b26f
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2348 instance=f148d0f6
+[prisma] pool total=1 idle=1 waiting=0 instance=f148d0f6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f148d0f6
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2944 instance=a410121d
+[prisma] pool total=1 idle=1 waiting=0 instance=a410121d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a410121d
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=d8c3c815
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=a14b461a
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=264 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c8efa218
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=c8efa218
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1785 instance=cdf0dafb
+[prisma] pool total=1 idle=1 waiting=0 instance=cdf0dafb tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cdf0dafb
+
+22:35:42.50  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2595 instance=c4ca3736
+[prisma] pool total=1 idle=1 waiting=0 instance=c4ca3736 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c4ca3736
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2676 instance=cc86ec3c
+[prisma] pool total=1 idle=1 waiting=0 instance=cc86ec3c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cc86ec3c
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2744 instance=9b2aa9ea
+[prisma] pool total=1 idle=1 waiting=0 instance=9b2aa9ea tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=9b2aa9ea
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2964 instance=7d4aca26
+[prisma] pool total=1 idle=1 waiting=0 instance=7d4aca26 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=7d4aca26
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2322 instance=9eeb2a4d
+[prisma] pool total=1 idle=1 waiting=0 instance=9eeb2a4d tag=build
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2061 instance=3bfd6675
+[prisma] pool total=1 idle=1 waiting=0 instance=3bfd6675 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3bfd6675
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2889 instance=6acda913
+[prisma] pool total=1 idle=1 waiting=0 instance=6acda913 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6acda913
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2720 instance=38553ca0
+[prisma] pool total=1 idle=1 waiting=0 instance=38553ca0 tag=build
+
+22:35:42.49  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2676 instance=8abde269
+[prisma] pool total=1 idle=1 waiting=0 instance=8abde269 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8abde269
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2445 instance=112562b2
+[prisma] pool total=1 idle=1 waiting=0 instance=112562b2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=112562b2
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2915 instance=b6518002
+[prisma] pool total=1 idle=1 waiting=0 instance=b6518002 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b6518002
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2227 instance=1611b08e
+[prisma] pool total=1 idle=1 waiting=0 instance=1611b08e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1611b08e
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=246 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=f33cbf29
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=f33cbf29
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2759 instance=a43a7da5
+[prisma] pool total=1 idle=1 waiting=0 instance=a43a7da5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a43a7da5
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=306 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=c4ce65a4
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=c4ce65a4
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=acc1f182
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2940 instance=5075758c
+[prisma] pool total=1 idle=1 waiting=0 instance=5075758c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=5075758c
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2749 instance=1bd7cef3
+[prisma] pool total=1 idle=1 waiting=0 instance=1bd7cef3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1bd7cef3
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=a2a9ab6f
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=291 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=a9f6ff49
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2580 instance=dc6b2420
+[prisma] pool total=1 idle=1 waiting=0 instance=dc6b2420 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=dc6b2420
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1937 instance=a083b444
+[prisma] pool total=1 idle=1 waiting=0 instance=a083b444 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a083b444
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2197 instance=9986e37c
+[prisma] pool total=1 idle=1 waiting=0 instance=9986e37c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=9986e37c
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2946 instance=e78b2ce2
+[prisma] pool total=1 idle=1 waiting=0 instance=e78b2ce2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e78b2ce2
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=1809ff16
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2774 instance=e1574091
+[prisma] pool total=1 idle=1 waiting=0 instance=e1574091 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e1574091
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2300 instance=eb6cb194
+[prisma] pool total=1 idle=1 waiting=0 instance=eb6cb194 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=eb6cb194
+
+22:35:42.48  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2524 instance=f79034c8
+[prisma] pool total=1 idle=1 waiting=0 instance=f79034c8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f79034c8
+
+22:35:42.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=d941bb03
+
+22:35:42.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=285 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=03cfa8d7
+
+22:35:42.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2241 instance=ef36b087
+[prisma] pool total=1 idle=1 waiting=0 instance=ef36b087 tag=build
+
+22:35:42.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=266 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=9bc38817
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=9bc38817
+
+22:35:42.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=279 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2eb190e3
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1606 instance=e693d371
+[prisma] pool total=1 idle=1 waiting=0 instance=e693d371 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e693d371
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2625 instance=0593f520
+[prisma] pool total=1 idle=1 waiting=0 instance=0593f520 tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=349 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=db28c6d2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=db28c6d2
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2587 instance=47014645
+[prisma] pool total=1 idle=1 waiting=0 instance=47014645 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=47014645
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=249 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=872d087e
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=872d087e
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2442 instance=40d9f308
+[prisma] pool total=1 idle=1 waiting=0 instance=40d9f308 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=40d9f308
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2577 instance=0c74849c
+[prisma] pool total=1 idle=1 waiting=0 instance=0c74849c tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2123 instance=f4630365
+[prisma] pool total=1 idle=1 waiting=0 instance=f4630365 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f4630365
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=3e40ebb6
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2415 instance=6e83dd5c
+[prisma] pool total=1 idle=1 waiting=0 instance=6e83dd5c tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2904 instance=3794e66e
+[prisma] pool total=1 idle=1 waiting=0 instance=3794e66e tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2433 instance=4eaff97a
+[prisma] pool total=1 idle=1 waiting=0 instance=4eaff97a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=4eaff97a
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2218 instance=8b6d7450
+[prisma] pool total=1 idle=1 waiting=0 instance=8b6d7450 tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2379 instance=e333ab03
+[prisma] pool total=1 idle=1 waiting=0 instance=e333ab03 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=e333ab03
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2923 instance=a85f8092
+[prisma] pool total=1 idle=1 waiting=0 instance=a85f8092 tag=build
+
+22:35:42.46  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2535 instance=e6124928
+[prisma] pool total=1 idle=1 waiting=0 instance=e6124928 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e6124928
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=305 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2e8dccb8
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=2e8dccb8
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2048 instance=551bb567
+[prisma] pool total=1 idle=1 waiting=0 instance=551bb567 tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=339 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=5d47d4c5
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=5d47d4c5
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=67 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2459 instance=81498189
+[prisma] pool total=1 idle=1 waiting=0 instance=81498189 tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2424 instance=c6f56503
+[prisma] pool total=1 idle=1 waiting=0 instance=c6f56503 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c6f56503
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1865 instance=93f993e5
+[prisma] pool total=1 idle=1 waiting=0 instance=93f993e5 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=93f993e5
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2417 instance=28121e53
+[prisma] pool total=1 idle=1 waiting=0 instance=28121e53 tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1725 instance=f486d640
+[prisma] pool total=1 idle=1 waiting=0 instance=f486d640 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f486d640
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2672 instance=476948b2
+[prisma] pool total=1 idle=1 waiting=0 instance=476948b2 tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=282 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=13ed2356
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=ba16c8a2
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2157 instance=67e18f7a
+[prisma] pool total=1 idle=1 waiting=0 instance=67e18f7a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=67e18f7a
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2454 instance=f25a194f
+[prisma] pool total=1 idle=1 waiting=0 instance=f25a194f tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=42 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2722 instance=1861d54b
+[prisma] pool total=1 idle=1 waiting=0 instance=1861d54b tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2738 instance=cd3a3985
+[prisma] pool total=1 idle=1 waiting=0 instance=cd3a3985 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cd3a3985
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1791 instance=d2771a7b
+[prisma] pool total=1 idle=1 waiting=0 instance=d2771a7b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d2771a7b
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2295 instance=dda54f12
+[prisma] pool total=1 idle=1 waiting=0 instance=dda54f12 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=dda54f12
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=d5c7f7a3
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2515 instance=1c787890
+[prisma] pool total=1 idle=1 waiting=0 instance=1c787890 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=1c787890
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=352 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=d4bf484d
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2487 instance=cdf7953f
+[prisma] pool total=1 idle=1 waiting=0 instance=cdf7953f tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1601 instance=5f835ff5
+[prisma] pool total=1 idle=1 waiting=0 instance=5f835ff5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5f835ff5
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=259 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=adfbca8d
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=adfbca8d
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2711 instance=b985bdad
+[prisma] pool total=1 idle=1 waiting=0 instance=b985bdad tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b985bdad
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=e5d9cc1a
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2891 instance=2e560d26
+[prisma] pool total=1 idle=1 waiting=0 instance=2e560d26 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2e560d26
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2616 instance=73b230c1
+[prisma] pool total=1 idle=1 waiting=0 instance=73b230c1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=73b230c1
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2282 instance=6e5d6034
+[prisma] pool total=1 idle=1 waiting=0 instance=6e5d6034 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6e5d6034
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2841 instance=b6a6f50f
+[prisma] pool total=1 idle=1 waiting=0 instance=b6a6f50f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b6a6f50f
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=264 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=52c882ae
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=52c882ae
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=181fbeb3
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=2d3c837f
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=63 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=6 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=en ms=264 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=33680ab0
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=error instance=33680ab0
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1784 instance=10835a27
+[prisma] pool total=1 idle=1 waiting=0 instance=10835a27 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=10835a27
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2755 instance=a72c3898
+[prisma] pool total=1 idle=1 waiting=0 instance=a72c3898 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a72c3898
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1719 instance=8de76179
+[prisma] pool total=1 idle=1 waiting=0 instance=8de76179 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8de76179
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2578 instance=2c4026e4
+[prisma] pool total=1 idle=1 waiting=0 instance=2c4026e4 tag=build
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=3a1f5c99
+
+22:35:42.45  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=310 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=95fe9340
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=95fe9340
+
+22:35:42.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2980 instance=dbb54543
+[prisma] pool total=1 idle=1 waiting=0 instance=dbb54543 tag=build
+
+22:35:42.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2678 instance=33d76544
+[prisma] pool total=1 idle=1 waiting=0 instance=33d76544 tag=build
+
+22:35:42.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=387 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=4485a812
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=4485a812
+
+22:35:42.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2483 instance=0ce1682d
+[prisma] pool total=1 idle=1 waiting=0 instance=0ce1682d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0ce1682d
+
+22:35:42.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1819 instance=767de7e0
+[prisma] pool total=1 idle=1 waiting=0 instance=767de7e0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=767de7e0
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=f77f141c
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2160 instance=56691f31
+[prisma] pool total=1 idle=1 waiting=0 instance=56691f31 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=56691f31
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2968 instance=7eaab755
+[prisma] pool total=1 idle=1 waiting=0 instance=7eaab755 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7eaab755
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.39  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=b774e0a1
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2816 instance=f239c1ef
+[prisma] pool total=1 idle=1 waiting=0 instance=f239c1ef tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f239c1ef
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2151 instance=bf91be5f
+[prisma] pool total=1 idle=1 waiting=0 instance=bf91be5f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=bf91be5f
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2308 instance=8775eabe
+[prisma] pool total=1 idle=1 waiting=0 instance=8775eabe tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=8775eabe
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2269 instance=1f742447
+[prisma] pool total=1 idle=1 waiting=0 instance=1f742447 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1f742447
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2592 instance=82a341ee
+[prisma] pool total=1 idle=1 waiting=0 instance=82a341ee tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=82a341ee
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=45 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=4 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1899 instance=c5b7bbea
+[prisma] pool total=1 idle=1 waiting=0 instance=c5b7bbea tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c5b7bbea
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2452 instance=0288f264
+[prisma] pool total=1 idle=1 waiting=0 instance=0288f264 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0288f264
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=365 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=1f959971
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=1f959971
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=3002 instance=ee8a25ab
+[prisma] pool total=1 idle=1 waiting=0 instance=ee8a25ab tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ee8a25ab
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2047 instance=947c19c3
+[prisma] pool total=1 idle=1 waiting=0 instance=947c19c3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=947c19c3
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1836 instance=da46b6e6
+[prisma] pool total=1 idle=1 waiting=0 instance=da46b6e6 tag=build
+
+22:35:42.38  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1956 instance=2d5951cb
+[prisma] pool total=1 idle=1 waiting=0 instance=2d5951cb tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=2d5951cb
+
+22:35:42.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2760 instance=84e06b28
+[prisma] pool total=1 idle=1 waiting=0 instance=84e06b28 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=84e06b28
+
+22:35:42.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2890 instance=6fdf0034
+[prisma] pool total=1 idle=1 waiting=0 instance=6fdf0034 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6fdf0034
+
+22:35:42.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1602 instance=2fdda32e
+[prisma] pool total=1 idle=1 waiting=0 instance=2fdda32e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2fdda32e
+
+22:35:42.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1686 instance=3a0bc8f7
+[prisma] pool total=1 idle=1 waiting=0 instance=3a0bc8f7 tag=build
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1955 instance=578ad818
+[prisma] pool total=1 idle=1 waiting=0 instance=578ad818 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=578ad818
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1935 instance=60ebe2b4
+[prisma] pool total=1 idle=1 waiting=0 instance=60ebe2b4 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=60ebe2b4
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2875 instance=3e4c7484
+[prisma] pool total=1 idle=1 waiting=0 instance=3e4c7484 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=3e4c7484
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1957 instance=617eaf85
+[prisma] pool total=1 idle=1 waiting=0 instance=617eaf85 tag=build
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2218 instance=8206923e
+[prisma] pool total=1 idle=1 waiting=0 instance=8206923e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8206923e
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=da4f9e6c
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1742 instance=58e516a3
+[prisma] pool total=1 idle=1 waiting=0 instance=58e516a3 tag=build
+
+22:35:42.36  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2406 instance=a5cdc3aa
+[prisma] pool total=1 idle=1 waiting=0 instance=a5cdc3aa tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a5cdc3aa
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1979 instance=ddc586b4
+[prisma] pool total=1 idle=1 waiting=0 instance=ddc586b4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ddc586b4
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1890 instance=cbf684c7
+[prisma] pool total=1 idle=1 waiting=0 instance=cbf684c7 tag=build
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2169 instance=b23b5514
+[prisma] pool total=1 idle=1 waiting=0 instance=b23b5514 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b23b5514
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2882 instance=4bd5660d
+[prisma] pool total=1 idle=1 waiting=0 instance=4bd5660d tag=build
+
+22:35:42.35  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=2840 instance=14be57bc
+[prisma] pool total=1 idle=1 waiting=0 instance=14be57bc tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14be57bc
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1458 instance=d6ce5afe
+[prisma] pool total=1 idle=1 waiting=0 instance=d6ce5afe tag=build
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2031 instance=4b0178e6
+[prisma] pool total=1 idle=1 waiting=0 instance=4b0178e6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=4b0178e6
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2604 instance=ea251014
+[prisma] pool total=1 idle=1 waiting=0 instance=ea251014 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ea251014
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1791 instance=d4d25c22
+[prisma] pool total=1 idle=1 waiting=0 instance=d4d25c22 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=d4d25c22
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2128 instance=05d4fccf
+[prisma] pool total=1 idle=1 waiting=0 instance=05d4fccf tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=05d4fccf
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1753 instance=cd509fc7
+[prisma] pool total=1 idle=1 waiting=0 instance=cd509fc7 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=cd509fc7
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2331 instance=9bebcfaa
+[prisma] pool total=1 idle=1 waiting=0 instance=9bebcfaa tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=9bebcfaa
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2521 instance=5b1383b4
+[prisma] pool total=1 idle=1 waiting=0 instance=5b1383b4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5b1383b4
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1929 instance=2bb4d4d6
+[prisma] pool total=1 idle=1 waiting=0 instance=2bb4d4d6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2bb4d4d6
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2215 instance=bebb335b
+[prisma] pool total=1 idle=1 waiting=0 instance=bebb335b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=bebb335b
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ko ms=350 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=959e738a
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=error instance=959e738a
+
+22:35:42.34  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2028 instance=f324c98c
+[prisma] pool total=1 idle=1 waiting=0 instance=f324c98c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f324c98c
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1579 instance=4cded800
+[prisma] pool total=1 idle=1 waiting=0 instance=4cded800 tag=build
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1442 instance=398351d4
+[prisma] pool total=1 idle=1 waiting=0 instance=398351d4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=398351d4
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2217 instance=ed72ba49
+[prisma] pool total=1 idle=1 waiting=0 instance=ed72ba49 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ed72ba49
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1650 instance=f77dd6ef
+[prisma] pool total=1 idle=1 waiting=0 instance=f77dd6ef tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f77dd6ef
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1432 instance=1c278264
+[prisma] pool total=1 idle=1 waiting=0 instance=1c278264 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1c278264
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2277 instance=27554e07
+[prisma] pool total=1 idle=1 waiting=0 instance=27554e07 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=27554e07
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=58 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2398 instance=5480731a
+[prisma] pool total=1 idle=1 waiting=0 instance=5480731a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5480731a
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1808 instance=0fa73277
+[prisma] pool total=1 idle=1 waiting=0 instance=0fa73277 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=0fa73277
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1816 instance=3e5235b8
+[prisma] pool total=1 idle=1 waiting=0 instance=3e5235b8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3e5235b8
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2776 instance=bc4afc63
+[prisma] pool total=1 idle=1 waiting=0 instance=bc4afc63 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=bc4afc63
+
+22:35:42.33  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2127 instance=9a0e2430
+[prisma] pool total=1 idle=1 waiting=0 instance=9a0e2430 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=9a0e2430
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1624 instance=60292315
+[prisma] pool total=1 idle=1 waiting=0 instance=60292315 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=60292315
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2093 instance=ea55e505
+[prisma] pool total=1 idle=1 waiting=0 instance=ea55e505 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ea55e505
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2397 instance=8675dd14
+[prisma] pool total=1 idle=1 waiting=0 instance=8675dd14 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8675dd14
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2702 instance=db4e6fcb
+[prisma] pool total=1 idle=1 waiting=0 instance=db4e6fcb tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=db4e6fcb
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2223 instance=7fad15b7
+[prisma] pool total=1 idle=1 waiting=0 instance=7fad15b7 tag=build
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1726 instance=1e6044a7
+[prisma] pool total=1 idle=1 waiting=0 instance=1e6044a7 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=1e6044a7
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1853 instance=99adb038
+[prisma] pool total=1 idle=1 waiting=0 instance=99adb038 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=99adb038
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2855 instance=40bf3a0f
+[prisma] pool total=1 idle=1 waiting=0 instance=40bf3a0f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=40bf3a0f
+
+22:35:42.32  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1913 instance=2bd0bd0c
+[prisma] pool total=1 idle=1 waiting=0 instance=2bd0bd0c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2bd0bd0c
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2668 instance=846b0415
+[prisma] pool total=1 idle=1 waiting=0 instance=846b0415 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=846b0415
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2202 instance=74484ac5
+[prisma] pool total=1 idle=1 waiting=0 instance=74484ac5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=74484ac5
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2206 instance=9b1b8f21
+[prisma] pool total=1 idle=1 waiting=0 instance=9b1b8f21 tag=build
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=1d333826
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1707 instance=7dadd728
+[prisma] pool total=1 idle=1 waiting=0 instance=7dadd728 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7dadd728
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=ece064b8
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=297 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=2ed9d6b7
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=2ed9d6b7
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1943 instance=7bd1f4b0
+[prisma] pool total=1 idle=1 waiting=0 instance=7bd1f4b0 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=7bd1f4b0
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2699 instance=3ece8e72
+[prisma] pool total=1 idle=1 waiting=0 instance=3ece8e72 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3ece8e72
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=56 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1574 instance=996a251a
+[prisma] pool total=1 idle=1 waiting=0 instance=996a251a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=996a251a
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2504 instance=536a6ed0
+[prisma] pool total=1 idle=1 waiting=0 instance=536a6ed0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=536a6ed0
+
+22:35:42.31  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1735 instance=e10a095d
+[prisma] pool total=1 idle=1 waiting=0 instance=e10a095d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e10a095d
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1853 instance=f64eed86
+[prisma] pool total=1 idle=1 waiting=0 instance=f64eed86 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f64eed86
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2033 instance=f69c2cd3
+[prisma] pool total=1 idle=1 waiting=0 instance=f69c2cd3 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f69c2cd3
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1579 instance=4f42a367
+[prisma] pool total=1 idle=1 waiting=0 instance=4f42a367 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=4f42a367
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1751 instance=122bd924
+[prisma] pool total=1 idle=1 waiting=0 instance=122bd924 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=122bd924
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1712 instance=91736b5e
+[prisma] pool total=1 idle=1 waiting=0 instance=91736b5e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=91736b5e
+
+22:35:42.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2056 instance=4bae5f07
+[prisma] pool total=1 idle=1 waiting=0 instance=4bae5f07 tag=build
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1698 instance=1dec5d5b
+[prisma] pool total=1 idle=1 waiting=0 instance=1dec5d5b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1dec5d5b
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=c44080ef
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1674 instance=ea3498d4
+[prisma] pool total=1 idle=1 waiting=0 instance=ea3498d4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ea3498d4
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1840 instance=efdf50a9
+[prisma] pool total=1 idle=1 waiting=0 instance=efdf50a9 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=efdf50a9
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2704 instance=a35eab13
+[prisma] pool total=1 idle=1 waiting=0 instance=a35eab13 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a35eab13
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1658 instance=482b11a8
+[prisma] pool total=1 idle=1 waiting=0 instance=482b11a8 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=482b11a8
+
+22:35:42.29  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2096 instance=750995d5
+[prisma] pool total=1 idle=1 waiting=0 instance=750995d5 tag=build
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2721 instance=47db19a1
+[prisma] pool total=1 idle=1 waiting=0 instance=47db19a1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=47db19a1
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1910 instance=de3660ca
+[prisma] pool total=1 idle=1 waiting=0 instance=de3660ca tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=de3660ca
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=88 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=2848 instance=3666e7b5
+[prisma] pool total=1 idle=1 waiting=0 instance=3666e7b5 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=3666e7b5
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1952 instance=2788b265
+[prisma] pool total=1 idle=1 waiting=0 instance=2788b265 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=2788b265
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1479 instance=35062348
+[prisma] pool total=1 idle=1 waiting=0 instance=35062348 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=35062348
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1533 instance=378a00c8
+[prisma] pool total=1 idle=1 waiting=0 instance=378a00c8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=378a00c8
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1277 instance=ef758a72
+[prisma] pool total=1 idle=1 waiting=0 instance=ef758a72 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ef758a72
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1371 instance=7b912cad
+[prisma] pool total=1 idle=1 waiting=0 instance=7b912cad tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7b912cad
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=8d49b9d8
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1939 instance=a4ebe4fa
+[prisma] pool total=1 idle=1 waiting=0 instance=a4ebe4fa tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a4ebe4fa
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2072 instance=f032aec4
+[prisma] pool total=1 idle=1 waiting=0 instance=f032aec4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f032aec4
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=3036 instance=8e2af4fc
+[prisma] pool total=1 idle=1 waiting=0 instance=8e2af4fc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8e2af4fc
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2100 instance=17b6dce5
+[prisma] pool total=1 idle=1 waiting=0 instance=17b6dce5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=17b6dce5
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=45 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1306 instance=3ac87651
+[prisma] pool total=1 idle=1 waiting=0 instance=3ac87651 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3ac87651
+
+22:35:42.28  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2381 instance=516692c1
+[prisma] pool total=1 idle=1 waiting=0 instance=516692c1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=516692c1
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2502 instance=8b2844b9
+[prisma] pool total=1 idle=1 waiting=0 instance=8b2844b9 tag=build
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1738 instance=dcfc45ca
+[prisma] pool total=1 idle=1 waiting=0 instance=dcfc45ca tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=dcfc45ca
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1901 instance=abe712b8
+[prisma] pool total=1 idle=1 waiting=0 instance=abe712b8 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=abe712b8
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1016 instance=8d87c5fc
+[prisma] pool total=2 idle=1 waiting=0 instance=8d87c5fc tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=8d87c5fc
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1422 instance=381fc48f
+[prisma] pool total=1 idle=1 waiting=0 instance=381fc48f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=381fc48f
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1708 instance=6447890b
+[prisma] pool total=1 idle=1 waiting=0 instance=6447890b tag=build
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1395 instance=ee59d601
+[prisma] pool total=1 idle=1 waiting=0 instance=ee59d601 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ee59d601
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1665 instance=d5b993a6
+[prisma] pool total=1 idle=1 waiting=0 instance=d5b993a6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d5b993a6
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1646 instance=212c6391
+[prisma] pool total=1 idle=1 waiting=0 instance=212c6391 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=212c6391
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=3a79bb34
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1184 instance=7672b4af
+[prisma] pool total=1 idle=1 waiting=0 instance=7672b4af tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7672b4af
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2349 instance=0269e89f
+[prisma] pool total=1 idle=1 waiting=0 instance=0269e89f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0269e89f
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1750 instance=1844a2ba
+[prisma] pool total=1 idle=1 waiting=0 instance=1844a2ba tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1844a2ba
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2194 instance=f16fee01
+[prisma] pool total=1 idle=1 waiting=0 instance=f16fee01 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f16fee01
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1187 instance=ad54e1c1
+[prisma] pool total=1 idle=1 waiting=0 instance=ad54e1c1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ad54e1c1
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1509 instance=6c912258
+[prisma] pool total=1 idle=1 waiting=0 instance=6c912258 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6c912258
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build-failed event=111 locale=ja ms=389 err=PrismaClientKnownRequestError:Database error. Code: `XX000`. Message: `(EMAXCONN) max client connections reached, limit: 400` instance=e2a3266b
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=error instance=e2a3266b
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2075 instance=50435bbf
+[prisma] pool total=1 idle=1 waiting=0 instance=50435bbf tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=50435bbf
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1794 instance=082a8fc4
+[prisma] pool total=1 idle=1 waiting=0 instance=082a8fc4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=082a8fc4
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1219 instance=3c15b406
+[prisma] pool total=1 idle=1 waiting=0 instance=3c15b406 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=3c15b406
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1432 instance=a64895f0
+[prisma] pool total=1 idle=1 waiting=0 instance=a64895f0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a64895f0
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1104 instance=10e74b7d
+[prisma] pool total=1 idle=1 waiting=0 instance=10e74b7d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=10e74b7d
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1277 instance=1444a9dd
+[prisma] pool total=1 idle=1 waiting=0 instance=1444a9dd tag=build
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1199 instance=c76022a9
+[prisma] pool total=1 idle=1 waiting=0 instance=c76022a9 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c76022a9
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=5d2a7dc8
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1872 instance=28bf7500
+[prisma] pool total=1 idle=1 waiting=0 instance=28bf7500 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=28bf7500
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1833 instance=e2502c5d
+[prisma] pool total=1 idle=1 waiting=0 instance=e2502c5d tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=e2502c5d
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1631 instance=a9cd7ff6
+[prisma] pool total=1 idle=1 waiting=0 instance=a9cd7ff6 tag=build
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1899 instance=bdd49b01
+[prisma] pool total=1 idle=1 waiting=0 instance=bdd49b01 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=bdd49b01
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1427 instance=f46ee0c1
+[prisma] pool total=1 idle=1 waiting=0 instance=f46ee0c1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f46ee0c1
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2592 instance=0ac21b8e
+[prisma] pool total=1 idle=1 waiting=0 instance=0ac21b8e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0ac21b8e
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1737 instance=70558708
+[prisma] pool total=1 idle=1 waiting=0 instance=70558708 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=70558708
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1301 instance=0ff02e94
+[prisma] pool total=1 idle=1 waiting=0 instance=0ff02e94 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0ff02e94
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1724 instance=b2305efe
+[prisma] pool total=1 idle=1 waiting=0 instance=b2305efe tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b2305efe
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1462 instance=ad565d05
+[prisma] pool total=1 idle=1 waiting=0 instance=ad565d05 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ad565d05
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1582 instance=68ac5da5
+[prisma] pool total=1 idle=1 waiting=0 instance=68ac5da5 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=68ac5da5
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1256 instance=d46631ab
+[prisma] pool total=1 idle=1 waiting=0 instance=d46631ab tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d46631ab
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2310 instance=d135ac80
+[prisma] pool total=1 idle=1 waiting=0 instance=d135ac80 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d135ac80
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2299 instance=95666726
+[prisma] pool total=1 idle=1 waiting=0 instance=95666726 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=95666726
+
+22:35:42.27  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1424 instance=cdab2f54
+[prisma] pool total=1 idle=1 waiting=0 instance=cdab2f54 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cdab2f54
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=28c7dd90
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1562 instance=6843813a
+[prisma] pool total=1 idle=1 waiting=0 instance=6843813a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6843813a
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=987 instance=66014bc4
+[prisma] pool total=1 idle=1 waiting=0 instance=66014bc4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=66014bc4
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1219 instance=7730b404
+[prisma] pool total=1 idle=1 waiting=0 instance=7730b404 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7730b404
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=a4937a0a
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1179 instance=7037eecf
+[prisma] pool total=1 idle=1 waiting=0 instance=7037eecf tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=7037eecf
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1239 instance=acf11e10
+[prisma] pool total=1 idle=1 waiting=0 instance=acf11e10 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=acf11e10
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1658 instance=00f324f1
+[prisma] pool total=1 idle=1 waiting=0 instance=00f324f1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=00f324f1
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1238 instance=81d99c36
+[prisma] pool total=1 idle=1 waiting=0 instance=81d99c36 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=81d99c36
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2013 instance=eb301230
+[prisma] pool total=1 idle=1 waiting=0 instance=eb301230 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=eb301230
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1179 instance=d26694b9
+[prisma] pool total=1 idle=1 waiting=0 instance=d26694b9 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d26694b9
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=938 instance=e89df644
+[prisma] pool total=1 idle=1 waiting=0 instance=e89df644 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=e89df644
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=856 instance=96ceb431
+[prisma] pool total=1 idle=1 waiting=0 instance=96ceb431 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=96ceb431
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=729 instance=dfdf89a8
+[prisma] pool total=1 idle=1 waiting=0 instance=dfdf89a8 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=dfdf89a8
+
+22:35:42.22  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1109 instance=cec1fc9d
+[prisma] pool total=1 idle=1 waiting=0 instance=cec1fc9d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cec1fc9d
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1068 instance=8e1c3939
+[prisma] pool total=1 idle=1 waiting=0 instance=8e1c3939 tag=build
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1314 instance=add36976
+[prisma] pool total=1 idle=1 waiting=0 instance=add36976 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=add36976
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1227 instance=87be3402
+[prisma] pool total=1 idle=1 waiting=0 instance=87be3402 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=87be3402
+
+22:35:42.21  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1071 instance=98955874
+[prisma] pool total=1 idle=1 waiting=0 instance=98955874 tag=build
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=1de581a1
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2184 instance=9c0d7f2c
+[prisma] pool total=1 idle=1 waiting=0 instance=9c0d7f2c tag=build
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1697 instance=dbf6d54c
+[prisma] pool total=1 idle=1 waiting=0 instance=dbf6d54c tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=dbf6d54c
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1901 instance=2d62ebca
+[prisma] pool total=1 idle=1 waiting=0 instance=2d62ebca tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=2d62ebca
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1244 instance=f7662015
+[prisma] pool total=1 idle=1 waiting=0 instance=f7662015 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f7662015
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1179 instance=254fca35
+[prisma] pool total=2 idle=1 waiting=0 instance=254fca35 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=254fca35
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1007 instance=a16c82e6
+[prisma] pool total=1 idle=1 waiting=0 instance=a16c82e6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=a16c82e6
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=cac12a87
+
+22:35:42.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2017 instance=175131be
+[prisma] pool total=1 idle=1 waiting=0 instance=175131be tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=175131be
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1936 instance=e2855e87
+[prisma] pool total=1 idle=1 waiting=0 instance=e2855e87 tag=build
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1115 instance=1877738c
+[prisma] pool total=1 idle=1 waiting=0 instance=1877738c tag=build
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1553 instance=49f0996c
+[prisma] pool total=1 idle=1 waiting=0 instance=49f0996c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=49f0996c
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1215 instance=299f785c
+[prisma] pool total=1 idle=1 waiting=0 instance=299f785c tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=299f785c
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1131 instance=e3d5466b
+[prisma] pool total=1 idle=1 waiting=0 instance=e3d5466b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e3d5466b
+
+22:35:42.19  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1488 instance=31df4cee
+[prisma] pool total=1 idle=1 waiting=0 instance=31df4cee tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=31df4cee
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1543 instance=db0785a1
+[prisma] pool total=1 idle=1 waiting=0 instance=db0785a1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=db0785a1
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1246 instance=e7b3c89b
+[prisma] pool total=1 idle=1 waiting=0 instance=e7b3c89b tag=build
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1808 instance=41072825
+[prisma] pool total=1 idle=1 waiting=0 instance=41072825 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=41072825
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1126 instance=c30b9df0
+[prisma] pool total=1 idle=1 waiting=0 instance=c30b9df0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c30b9df0
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1758 instance=9de761f4
+[prisma] pool total=1 idle=1 waiting=0 instance=9de761f4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=9de761f4
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1657 instance=5c08612e
+[prisma] pool total=1 idle=1 waiting=0 instance=5c08612e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5c08612e
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1476 instance=0f2777e6
+[prisma] pool total=1 idle=1 waiting=0 instance=0f2777e6 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0f2777e6
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1228 instance=b2d93694
+[prisma] pool total=1 idle=1 waiting=0 instance=b2d93694 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=b2d93694
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1145 instance=ee06f4d4
+[prisma] pool total=1 idle=1 waiting=0 instance=ee06f4d4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=ee06f4d4
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=707 instance=e44fdc30
+[prisma] pool total=1 idle=1 waiting=0 instance=e44fdc30 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e44fdc30
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=691 instance=e54b06b2
+[prisma] pool total=1 idle=1 waiting=0 instance=e54b06b2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e54b06b2
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=911 instance=643d97a0
+[prisma] pool total=1 idle=1 waiting=0 instance=643d97a0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=643d97a0
+
+22:35:42.18  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=8a0dac89
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=785 instance=38f2ad9f
+[prisma] pool total=1 idle=1 waiting=0 instance=38f2ad9f tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=38f2ad9f
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=901 instance=15cea619
+[prisma] pool total=1 idle=1 waiting=0 instance=15cea619 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=15cea619
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1345 instance=c2e92cea
+[prisma] pool total=1 idle=1 waiting=0 instance=c2e92cea tag=build
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1606 instance=e8fd82a0
+[prisma] pool total=1 idle=1 waiting=0 instance=e8fd82a0 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e8fd82a0
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1146 instance=31aefda6
+[prisma] pool total=1 idle=1 waiting=0 instance=31aefda6 tag=build
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=542 instance=6a9ce00f
+[prisma] pool total=1 idle=1 waiting=0 instance=6a9ce00f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6a9ce00f
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1714 instance=9c553118
+[prisma] pool total=1 idle=1 waiting=0 instance=9c553118 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=9c553118
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=55680588
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=85328576
+
+22:35:42.17  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1079 instance=18098340
+[prisma] pool total=1 idle=1 waiting=0 instance=18098340 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=18098340
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=851 instance=c33d7904
+[prisma] pool total=1 idle=1 waiting=0 instance=c33d7904 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=c33d7904
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=968 instance=3877246e
+[prisma] pool total=1 idle=1 waiting=0 instance=3877246e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3877246e
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1341 instance=7b83a195
+[prisma] pool total=1 idle=1 waiting=0 instance=7b83a195 tag=build
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1142 instance=5c6d8ccc
+[prisma] pool total=1 idle=1 waiting=0 instance=5c6d8ccc tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5c6d8ccc
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=1753 instance=b5e28f94
+[prisma] pool total=1 idle=1 waiting=0 instance=b5e28f94 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=b5e28f94
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1079 instance=c3c92f4e
+[prisma] pool total=1 idle=1 waiting=0 instance=c3c92f4e tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=c3c92f4e
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=522 instance=76c43001
+[prisma] pool total=1 idle=1 waiting=0 instance=76c43001 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=76c43001
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1149 instance=0e87021f
+[prisma] pool total=1 idle=1 waiting=0 instance=0e87021f tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0e87021f
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1529 instance=6fd6a1a1
+[prisma] pool total=1 idle=1 waiting=0 instance=6fd6a1a1 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6fd6a1a1
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=994 instance=4de5e20d
+[prisma] pool total=1 idle=1 waiting=0 instance=4de5e20d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=4de5e20d
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=985 instance=1a01d171
+[prisma] pool total=1 idle=1 waiting=0 instance=1a01d171 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1a01d171
+
+22:35:42.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1201 instance=34077f54
+[prisma] pool total=1 idle=1 waiting=0 instance=34077f54 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=34077f54
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1648 instance=05658fe8
+[prisma] pool total=1 idle=1 waiting=0 instance=05658fe8 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=05658fe8
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=585 instance=468318da
+[prisma] pool total=1 idle=1 waiting=0 instance=468318da tag=build
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=853 instance=d841c9ba
+[prisma] pool total=1 idle=1 waiting=0 instance=d841c9ba tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d841c9ba
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=612 instance=f00b38da
+[prisma] pool total=1 idle=1 waiting=0 instance=f00b38da tag=build
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=804 instance=4b278750
+[prisma] pool total=1 idle=1 waiting=0 instance=4b278750 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=4b278750
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=692 instance=8be6b82e
+[prisma] pool total=1 idle=1 waiting=0 instance=8be6b82e tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=8be6b82e
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8be6b82e
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1626 instance=7fa3d7a2
+[prisma] pool total=1 idle=1 waiting=0 instance=7fa3d7a2 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=7fa3d7a2
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=547 instance=f314d782
+[prisma] pool total=1 idle=1 waiting=0 instance=f314d782 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f314d782
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=850 instance=5389832f
+[prisma] pool total=1 idle=1 waiting=0 instance=5389832f tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=5389832f
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=f7967e08
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1068 instance=e8c565dc
+[prisma] pool total=1 idle=1 waiting=0 instance=e8c565dc tag=build
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=881 instance=06a66f4d
+[prisma] pool total=1 idle=1 waiting=0 instance=06a66f4d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=06a66f4d
+
+22:35:42.15  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=871 instance=7ace275d
+[prisma] pool total=1 idle=1 waiting=0 instance=7ace275d tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=7ace275d
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1487 instance=68670c09
+[prisma] pool total=1 idle=1 waiting=0 instance=68670c09 tag=build
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1535 instance=9f9dc4b1
+[prisma] pool total=1 idle=1 waiting=0 instance=9f9dc4b1 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=9f9dc4b1
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=967 instance=8975d56d
+[prisma] pool total=1 idle=1 waiting=0 instance=8975d56d tag=build
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=804 instance=f638a428
+[prisma] pool total=1 idle=1 waiting=0 instance=f638a428 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=f638a428
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1524 instance=2d9ba608
+[prisma] pool total=1 idle=1 waiting=0 instance=2d9ba608 tag=build
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1030 instance=3587e710
+[prisma] pool total=1 idle=1 waiting=0 instance=3587e710 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3587e710
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=867 instance=3a830608
+[prisma] pool total=1 idle=1 waiting=0 instance=3a830608 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=3a830608
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3a830608
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=927 instance=f0c3fab2
+[prisma] pool total=1 idle=1 waiting=0 instance=f0c3fab2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=f0c3fab2
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=665 instance=0a116643
+[prisma] pool total=1 idle=1 waiting=0 instance=0a116643 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0a116643
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=2301 instance=bf50be6b
+[prisma] pool total=1 idle=1 waiting=0 instance=bf50be6b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=bf50be6b
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=847 instance=8787ff8a
+[prisma] pool total=1 idle=1 waiting=0 instance=8787ff8a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=8787ff8a
+
+22:35:42.14  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=781 instance=2be82c92
+[prisma] pool total=1 idle=1 waiting=0 instance=2be82c92 tag=build
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=998 instance=b6e95807
+[prisma] pool total=2 idle=1 waiting=0 instance=b6e95807 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=b6e95807
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=532 instance=91633739
+[prisma] pool total=2 idle=1 waiting=0 instance=91633739 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=91633739
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=c279d303
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=823 instance=aafe46ce
+[prisma] pool total=1 idle=1 waiting=0 instance=aafe46ce tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=aafe46ce
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1199 instance=0f1c121b
+[prisma] pool total=1 idle=1 waiting=0 instance=0f1c121b tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=0f1c121b
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=658 instance=0f907bb0
+[prisma] pool total=1 idle=1 waiting=0 instance=0f907bb0 tag=build
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=569 instance=46c4d830
+[prisma] pool total=1 idle=1 waiting=0 instance=46c4d830 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=46c4d830
+
+22:35:42.13  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=652 instance=a018071a
+[prisma] pool total=1 idle=1 waiting=0 instance=a018071a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=a018071a
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=692 instance=81682414
+[prisma] pool total=1 idle=1 waiting=0 instance=81682414 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=81682414
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=723 instance=fb7aafe7
+[prisma] pool total=2 idle=1 waiting=0 instance=fb7aafe7 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=fb7aafe7
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=ab9585ba
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1023 instance=fd5a96af
+[prisma] pool total=1 idle=1 waiting=0 instance=fd5a96af tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=fd5a96af
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=735 instance=1ed39254
+[prisma] pool total=1 idle=1 waiting=0 instance=1ed39254 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=1ed39254
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=452 instance=2b1a4aba
+[prisma] pool total=1 idle=1 waiting=0 instance=2b1a4aba tag=build
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=875 instance=d3bd8feb
+[prisma] pool total=1 idle=1 waiting=0 instance=d3bd8feb tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=d3bd8feb
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1422 instance=557cea08
+[prisma] pool total=1 idle=1 waiting=0 instance=557cea08 tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=557cea08
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=845 instance=113e86d2
+[prisma] pool total=1 idle=1 waiting=0 instance=113e86d2 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=113e86d2
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1537 instance=af65f367
+[prisma] pool total=1 idle=1 waiting=0 instance=af65f367 tag=build
+
+22:35:42.12  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=567 instance=272701d1
+[prisma] pool total=1 idle=1 waiting=0 instance=272701d1 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=272701d1
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=272701d1
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=502 instance=5d53f9f3
+[prisma] pool total=1 idle=1 waiting=0 instance=5d53f9f3 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=5d53f9f3
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=818 instance=6ab81cee
+[prisma] pool total=1 idle=1 waiting=0 instance=6ab81cee tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6ab81cee
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1404 instance=7f53bb3f
+[prisma] pool total=1 idle=1 waiting=0 instance=7f53bb3f tag=build
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=d2de960f
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=718 instance=90da4c0a
+[prisma] pool total=1 idle=1 waiting=0 instance=90da4c0a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=90da4c0a
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=495 instance=63483e46
+[prisma] pool total=1 idle=1 waiting=0 instance=63483e46 tag=build
+
+22:35:42.11  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=703 instance=65002124
+[prisma] pool total=1 idle=1 waiting=0 instance=65002124 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=65002124
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=671 instance=e6dd92ec
+[prisma] pool total=1 idle=1 waiting=0 instance=e6dd92ec tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=e6dd92ec
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1530 instance=e226b018
+[prisma] pool total=1 idle=1 waiting=0 instance=e226b018 tag=build
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=539 instance=131fc9fc
+[prisma] pool total=1 idle=1 waiting=0 instance=131fc9fc tag=build
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1956 instance=610d2928
+[prisma] pool total=1 idle=1 waiting=0 instance=610d2928 tag=build
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=548 instance=6d24dd2a
+[prisma] pool total=1 idle=1 waiting=0 instance=6d24dd2a tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=6d24dd2a
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=963 instance=d7152183
+[prisma] pool total=1 idle=1 waiting=0 instance=d7152183 tag=build
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=936 instance=b46f1e26
+[prisma] pool total=1 idle=1 waiting=0 instance=b46f1e26 tag=build
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=573 instance=49b7d435
+[prisma] pool total=1 idle=1 waiting=0 instance=49b7d435 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=49b7d435
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=709 instance=5250fe34
+[prisma] pool total=1 idle=1 waiting=0 instance=5250fe34 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=5250fe34
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=915 instance=723acae8
+[prisma] pool total=1 idle=1 waiting=0 instance=723acae8 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=723acae8
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1105 instance=32ebc350
+[prisma] pool total=1 idle=1 waiting=0 instance=32ebc350 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=32ebc350
+
+22:35:42.10  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=854 instance=d958bd3e
+[prisma] pool total=1 idle=1 waiting=0 instance=d958bd3e tag=build
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=1416 instance=55ef8166
+[prisma] pool total=1 idle=1 waiting=0 instance=55ef8166 tag=build
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=557 instance=3d83f854
+[prisma] pool total=1 idle=1 waiting=0 instance=3d83f854 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=3d83f854
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3d83f854
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=82f51ecb
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=571 instance=539d9e8f
+[prisma] pool total=2 idle=1 waiting=0 instance=539d9e8f tag=build
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1575 instance=cd73acd4
+[prisma] pool total=1 idle=1 waiting=0 instance=cd73acd4 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=cd73acd4
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=46 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ja instance=14c92be2
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1004 instance=df4b1c9d
+[prisma] pool total=1 idle=1 waiting=0 instance=df4b1c9d tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=df4b1c9d
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1677 instance=3bd63abe
+[prisma] pool total=1 idle=1 waiting=0 instance=3bd63abe tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=3bd63abe
+
+22:35:42.09  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=559 instance=3cb2d761
+[prisma] pool total=1 idle=1 waiting=0 instance=3cb2d761 tag=build
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1323 instance=68e51a6e
+[prisma] pool total=1 idle=1 waiting=0 instance=68e51a6e tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=68e51a6e
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=649 instance=62763238
+[prisma] pool total=1 idle=1 waiting=0 instance=62763238 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=62763238
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=837 instance=eae9b504
+[prisma] pool total=1 idle=1 waiting=0 instance=eae9b504 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=eae9b504
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=656 instance=f117516a
+[prisma] pool total=1 idle=1 waiting=0 instance=f117516a tag=build
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=f117516a
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=788 instance=48bf8b87
+[prisma] pool total=1 idle=1 waiting=0 instance=48bf8b87 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=48bf8b87
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1425 instance=d9dbc9b9
+[prisma] pool total=1 idle=1 waiting=0 instance=d9dbc9b9 tag=build
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=d9dbc9b9
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=557 instance=af1a7c49
+[prisma] pool total=1 idle=1 waiting=0 instance=af1a7c49 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=af1a7c49
+[setlist] hint-fetch event=111 locale=ja minRev=696 verify=satisfied instance=af1a7c49
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ko rev=696 items=24 ms=106 instance=14c92be2
+[prisma] pool total=2 idle=2 waiting=0 instance=14c92be2 tag=build
+[liveSnapshot] coalesced waiters=3 event=111 locale=ko instance=14c92be2
+[setlist] hint-fetch event=111 locale=ko minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=961 instance=480ac102
+[prisma] pool total=1 idle=1 waiting=0 instance=480ac102 tag=build
+[liveSnapshot] coalesced waiters=2 event=111 locale=ja instance=480ac102
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=1028 instance=7d27de3e
+[prisma] pool total=1 idle=1 waiting=0 instance=7d27de3e tag=build
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=en rev=696 items=24 ms=58 instance=14c92be2
+[prisma] pool total=2 idle=1 waiting=0 instance=14c92be2 tag=build
+[setlist] hint-fetch event=111 locale=en minRev=696 verify=satisfied instance=14c92be2
+
+22:35:42.08  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=696 items=24 ms=976 instance=01586870
+[prisma] pool total=1 idle=1 waiting=0 instance=01586870 tag=build
+
+22:35:41.59  opensetlist-git-dev-opensetlist-projects.vercel.app  info     POST /api/admin/setlist-items          
+[liveWriter] route=admin-create acquireMs=4 execMs=126 rev=696 ok=true instance=14c92be2
+
+22:35:41.43  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+
+22:35:40.41  opensetlist-git-dev-opensetlist-projects.vercel.app  info     POST /api/admin/login                  
+
+22:35:40.16  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                       
+[liveSnapshot] build event=111 locale=ja rev=695 items=23 ms=47 instance=14c92be2
+[prisma] pool total=1 idle=1 waiting=0 instance=14c92be2 tag=build
+
+Fetched 606 logs for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+No logs found for opensetlist-projects/opensetlist

@@ -398,7 +398,9 @@
     "tabPredicted": "予想セットリスト",
     "tablistAriaLabel": "セットリスト表示",
     "predictedComingSoon": "予想セットリスト — 近日公開",
-    "unknownSong": "曲名確認中"
+    "unknownSong": "曲名確認中",
+    "lastSync": "最終同期 {time}",
+    "updatesDelayed": "更新が遅れています"
   },
   "Predict": {
     "add": "+ 曲を追加",

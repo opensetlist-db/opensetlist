@@ -33,14 +33,20 @@ function fmtMs(v) {
 //   FAIL       any gate missed; `why` lists which.
 //   PASS       every gate met, including ≥ 1 sampled body checked.
 export function stageRows(data, stages) {
-  return stages.map(({ scenario, targetRps, seconds }) => {
+  // When a run aborts, a stage's nominal duration overstates how long it
+  // actually ran, and count/nominal would report a healthy-but-cut-short
+  // stage as "achieved 20 %". Divide by the time the stage really had.
+  const runSeconds = data.state ? data.state.testRunDurationMs / 1000 : Infinity;
+  return stages.map(({ scenario, targetRps, seconds, startSeconds = 0 }) => {
     const reqs = sub(data, "http_reqs", scenario);
     const dur = sub(data, "http_req_duration", scenario);
     const errs = sub(data, "snapshot_errors", scenario);
     const bad = sub(data, "snapshot_bad_body", scenario);
     const droppedM = sub(data, "dropped_iterations", scenario);
     const count = reqs ? reqs.values.count : 0;
-    const achieved = count / seconds;
+    const ranSeconds = Math.max(0, Math.min(seconds, runSeconds - startSeconds));
+    const cutShort = ranSeconds < seconds - 1;
+    const achieved = ranSeconds > 0 ? count / ranSeconds : 0;
     const dropped = droppedM ? droppedM.values.count : 0;
     const p95 = dur ? dur.values["p(95)"] : null;
     const p99 = dur ? dur.values["p(99)"] : null;
@@ -63,6 +69,10 @@ export function stageRows(data, stages) {
     if (!ran) verdict = "not run (aborted earlier)";
     else if (dropped > 0) verdict = "GEN-LIMIT";
     else verdict = why.length === 0 ? "PASS" : `FAIL (${why.join(", ")})`;
+    // A stage the run cut off never proved it can hold its rate for the
+    // full window, whatever its numbers looked like until then.
+    if (ran && cutShort && verdict === "PASS") verdict = `CUT SHORT (${Math.round(ranSeconds)}s of ${seconds}s)`;
+    else if (ran && cutShort) verdict += ` · cut short at ${Math.round(ranSeconds)}s`;
 
     return {
       scenario,
@@ -119,6 +129,36 @@ export function adminSection(data) {
     `- visible in the first snapshot after the write: ${vis ? (vis.values.rate * 100).toFixed(1) : "?"} %\n` +
     `- lost edits (never visible after retries): ${lost ? (lost.values.rate * 100).toFixed(1) : "?"} %\n` +
     `- verdict: **${pass ? "PASS" : "FAIL"}**\n`
+  );
+}
+
+// Per-window admin verdicts: the steady `admin` scenario and each
+// burst-window cycle. A write that fails or never becomes visible
+// aborts the run, so a window that shows "not run" after an abort is
+// itself a finding — read the abort message.
+export function adminWindowTable(data, scenarios) {
+  const rows = scenarios.map((sc) => {
+    const lat = sub(data, "admin_save_reload", sc);
+    const vis = sub(data, "admin_visible_first", sc);
+    const lost = sub(data, "admin_lost_edit", sc);
+    const writes = sub(data, "admin_writes", sc);
+    const n = writes ? writes.values.count : 0;
+    if (!lat || n === 0) return `| ${sc} | 0 | — | — | — | not run |`;
+    const p95 = lat.values["p(95)"];
+    const visRate = vis ? vis.values.rate : null;
+    const lostRate = lost ? lost.values.rate : null;
+    const pass = p95 <= GATES.adminP95 && visRate === 1 && (lostRate == null || lostRate === 0);
+    return (
+      `| ${sc} | ${n} | ${fmtMs(p95)} | ${visRate == null ? "—" : (visRate * 100).toFixed(1) + " %"} | ` +
+      `${lostRate == null ? "—" : (lostRate * 100).toFixed(1) + " %"} | ${pass ? "PASS" : "FAIL"} |`
+    );
+  });
+  return (
+    "\n### Admin by window\n\n" +
+    "| Window | writes | save+reload p95 | visible first | lost | Verdict |\n" +
+    "|---|---|---|---|---|---|\n" +
+    rows.join("\n") +
+    "\n"
   );
 }
 

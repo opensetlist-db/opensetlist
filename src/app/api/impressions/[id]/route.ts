@@ -9,6 +9,7 @@ import {
   ImpressionStaleEditError,
 } from "@/lib/impression";
 import { parseAnonId } from "@/lib/anonId";
+import { revalidateEventImpressions } from "@/lib/dataCache";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -87,6 +88,8 @@ export async function PUT(req: NextRequest, { params }: RouteProps) {
         },
       });
     });
+    // Expire the 5 s cached first page so other viewers see the edit.
+    revalidateEventImpressions(created.eventId);
 
     return NextResponse.json({
       impression: {

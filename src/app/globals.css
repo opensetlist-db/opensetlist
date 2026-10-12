@@ -1,4 +1,13 @@
 @import "tailwindcss";
+/*
+ * Tailwind v4 scans every file git does not ignore for class candidates,
+ * including load-test results under tests/load/results (committed harness
+ * logs and reports). Those files carry arbitrary text — Windows paths such
+ * as `…\d5b4d07b…` are parsed as CSS escapes and abort the build with
+ * "Invalid code point". Nothing under tests/ contributes utility classes
+ * to the app, so the whole tree is excluded from the scan.
+ */
+@source not "../../tests";
 
 :root {
   --background: #ffffff;

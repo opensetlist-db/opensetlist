@@ -398,7 +398,9 @@
     "tabPredicted": "예상 세트리스트",
     "tablistAriaLabel": "세트리스트 보기",
     "predictedComingSoon": "예상 세트리스트 — 곧 공개",
-    "unknownSong": "곡 확인 중"
+    "unknownSong": "곡 확인 중",
+    "lastSync": "마지막 동기화 {time}",
+    "updatesDelayed": "업데이트 지연 중"
   },
   "Predict": {
     "add": "+ 곡 추가",

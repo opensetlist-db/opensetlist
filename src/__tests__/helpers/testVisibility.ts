@@ -5,10 +5,9 @@
 // restore the JSDOM default — without it the second test in a file
 // would inherit the prior test's hidden state and silently misbehave.
 //
-// Shared between `useRealtimeEventChannel.test.tsx` and
-// `useRealtimeImpressions.test.tsx` (the R3.5 visibility tests use
-// the exact same call pattern; a verbatim copy in each file is
-// duplication risk for nothing).
+// Shared by the live-hook visibility tests
+// (`useRealtimeEventChannel.test.tsx`, `useImpressionPolling.test.tsx`)
+// — a verbatim copy in each file is duplication risk for nothing.
 export function setDocumentHidden(hidden: boolean) {
   Object.defineProperty(document, "hidden", {
     value: hidden,

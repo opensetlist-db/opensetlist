@@ -314,7 +314,7 @@ Two `PreToolUse` hooks (owner-level, in `~/.claude/hooks/`) review changes befor
 - **Commit-time** — `review-staged.js`, Haiku 4.5, against `git diff --cached`. Fast hard-rule + bug/security check on the staged change. Bypass: include `[skip-review]` in the commit command.
 - **Push-time** — `review-prepush.js`, Sonnet 4.6, against the full branch-vs-base diff (base picked from `.coderabbit.yaml` `auto_review.base_branches`). Mirrors `.coderabbit.yaml` focus areas so CodeRabbit-class findings (cross-file, N+1, layering) surface before push, not after the ~10-min PR-time wait. Chunks diffs >400KB per-file and reviews in parallel; skips entirely above 1.5MB and defers to CodeRabbit. Bypass: `SKIP_PUSH_REVIEW=1 git push` or `git push --no-verify`.
 
-Both block on findings and on timeout; both degrade gracefully on infra failures (network/API down). Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
+Both block on findings. The push-time hook treats a review timeout like any other infra failure (network/API down): the push proceeds with a note that the local review was skipped, and CodeRabbit covers the PR — so a large diff never needs a manual bypass. Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
 
 ---
 
