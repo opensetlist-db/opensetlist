@@ -2092,15 +2092,20 @@ function admissionReport(state, fin, { valid, idx, monotonicPass }) {
   // complete-setlist check compares against the manifest, so such a run
   // measured a different setlist — it fails here, loudly, instead of as
   // a mysterious "incomplete".
-  const firstPut = Math.min(...saves.map((s) => s.putStart), Infinity);
+  // A first read that STARTED before our first save can still be answered
+  // after its commit and then carries OUR rev — that is not a foreign write.
+  // So the test is not "started before the PUT" but "a rev that is neither
+  // the manifest's nor one of this run's own saves": revisions are
+  // sequential per event, so any such number came from another writer.
+  const ourRevs = new Set(saves.map((s) => s.rev).filter((r) => r != null));
   const headRevs = [
-    ...sdkMain.filter((c) => c.first?.reqStart != null && c.first.reqStart < firstPut && c.first.rev != null).map((c) => c.first.rev),
-    ...pages.filter((p) => p.navStart != null && p.navStart < firstPut && p.seed.rev != null).map((p) => p.seed.rev),
-  ];
+    ...sdkMain.filter((c) => c.first?.rev != null).map((c) => c.first.rev),
+    ...pages.filter((p) => p.seed?.rev != null).map((p) => p.seed.rev),
+  ].filter((r) => !ourRevs.has(r));
   const headAtT0 = headRevs.length ? Math.max(...headRevs) : null;
   const gates = [
     { name: "outbound requests between prepare end and T0", value: `${A.boundary.outbound.length}`, gate: "0", pass: A.boundary.outbound.length === 0 },
-    { name: "event unchanged between prepare and the first admission save (first answers vs manifest rev)", value: `head seen ${headAtT0 ?? "—"}, manifest ${A.manifest.rev}`, gate: "≤ manifest rev", pass: headAtT0 == null ? null : headAtT0 <= A.manifest.rev },
+    { name: "event unchanged between prepare and the first admission save (first answers not from this run's saves vs manifest rev)", value: `foreign head seen ${headAtT0 ?? "—"}, manifest ${A.manifest.rev}`, gate: "≤ manifest rev", pass: headAtT0 == null ? null : headAtT0 <= A.manifest.rev },
     { name: "all intended saves committed (admission saves never retried)", value: `${A.saves.filter(isOkSave).length}/${A.saves.length} admission${saveFailures.length ? `; ${saveFailures.length} failed attempt(s) in total` : ""}`, gate: "all 2xx", pass: A.saves.every(isOkSave) && saveFailures.length === 0 },
     { name: "5xx anywhere (saves, pages incl. the document, SDK, guard read)", value: `${fivexxTotal} (${Object.entries(fivexx).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(", ") || "none"})`, gate: "0", pass: fivexxTotal === 0 },
     { name: "503 (subset of the above)", value: `${s503Total}`, gate: "0", pass: s503Total === 0 },
