@@ -121,7 +121,7 @@ logs afterwards.** At start the run checks the host: CPU busy > 60 %
 process — another `tests/load` node process, a `vercel logs` history
 fetch, `vercel-logs-summary`, `warm-join`, k6 — prints a warning (the
 live `vercel-logs-capture.mjs` with its `vercel logs --follow` child and
-the `pooler-clients.mjs` / `pg-connections.mjs` samplers are allowed).
+the `pooler-clients.mjs` / `pg-connections.mjs` / `supavisor-backends.mjs` samplers are allowed).
 `--strict-host` refuses to start instead (exit 2, nothing created). The
 check is in the report header and the JSON (`host.guard`).
 
