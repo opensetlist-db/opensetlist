@@ -78,9 +78,9 @@ import { fileURLToPath } from "node:url";
 //            `-----` rule line before the message)
 const HEADER_HISTORY = /^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?\s+(\S+\.\S+)\s+(info|error|warning|warn|fatal|debug|log)\s+(?:[^\sA-Z]+\s+)?([A-Z]+)\s+(\S+)/;
 const HEADER_FOLLOW = /^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?\s+(\S+)\s+([A-Z]+)\s+(\S+)\s+(\S+\.\S+)\s+(\/\S*)/;
-const META = /^(Vercel CLI\b|Resolving deployment|Fetching (project|logs)|Fetched \d+ logs|Streaming logs for|waiting for new logs|TIME\s+HOST|### capture|<claude-code-hint|-{10,}$)/;
+export const META = /^(Vercel CLI\b|Resolving deployment|Fetching (project|logs)|Fetched \d+ logs|Streaming logs for|waiting for new logs|TIME\s+HOST|### capture|<claude-code-hint|-{10,}$)/;
 
-function parseHeader(line) {
+export function parseHeader(line) {
   let m = HEADER_HISTORY.exec(line);
   if (m) return { hms: m, level: m[6], method: m[7], path: m[8] };
   m = HEADER_FOLLOW.exec(line);
