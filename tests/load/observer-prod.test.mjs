@@ -98,7 +98,7 @@ test("markdown: clock caveat, separate receipt and GET times, eligibility, inval
   assert.match(md, /\| 31 \| 07:20:00\.000 \| 2\/4 \| 2\/3 \| 2 \| 60 \| 2\/2 \|/);
   assert.match(md, /\| 31 \| 0 \| ja \| 07:20:00\.000 \| 0 \| 07:20:00\.005 \| 07:20:00\.130 \| 200 \| warm \| satisfied \| 31 \| 125 \|/);
   assert.match(md, /Invalid payloads on the channel \(1\)/);
-  assert.match(md, /\| 3 \(fresh\) \|/);
+  assert.match(md, /\| 3 \(fresh\) \| ja \| .* \| no \(fresh, by design\) \|/);
   assert.match(md, /fresh listener \(joined late\) received every later save: PASS/);
   assert.doesNotMatch(md, /eyJ/);
 });

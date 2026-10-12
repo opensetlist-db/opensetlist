@@ -219,7 +219,7 @@ export function prodMarkdown(s, rep) {
   L.push("| listener | locale | connect attempt (UTC) | first SUBSCRIBED (UTC) | join ms | subscribed before first save | SUBSCRIBED | rejoins | closes (status @ UTC) | socket drops | recreates | revs received | connected at end |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const l of s.listeners) {
     const closes = l.closes.length ? l.closes.map(([t, st]) => `${st} @ ${iso(t)}`).join(", ") : "0";
-    L.push(`| ${l.id}${l.late ? " (fresh)" : ""} | ${l.locale} | ${iso(l.attemptAt)} | ${iso(l.firstSubscribedAt)} | ${l.joinMs ?? "–"} | ${yes(l.subscribedBeforeFirstSave)} | ${l.subscribed} | ${l.rejoins} | ${closes} | ${l.socketDrops.length ? l.socketDrops.map(iso).join(", ") : "0"} | ${l.recreates} | ${l.revsReceived.join(", ") || "–"} | ${yes(l.connectedAtEnd)} |`);
+    L.push(`| ${l.id}${l.late ? " (fresh)" : ""} | ${l.locale} | ${iso(l.attemptAt)} | ${iso(l.firstSubscribedAt)} | ${l.joinMs ?? "–"} | ${l.late && l.subscribedBeforeFirstSave === false ? "no (fresh, by design)" : yes(l.subscribedBeforeFirstSave)} | ${l.subscribed} | ${l.rejoins} | ${closes} | ${l.socketDrops.length ? l.socketDrops.map(iso).join(", ") : "0"} | ${l.recreates} | ${l.revsReceived.join(", ") || "–"} | ${yes(l.connectedAtEnd)} |`);
   }
   return L.join("\n") + "\n";
 }

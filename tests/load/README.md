@@ -1800,8 +1800,31 @@ Dev smoke (2026-10-12, dev alias, event 111, no save made): 6 live + 1
 poll-only page opened (load 0.9–3.8 s, rows at 0.6–3.3 s, websocket at
 1.1–3.9 s), READY at baseline rev 1912, timed out after 45 s →
 `NOT EXERCISED`; reloads / errors / 5xx 0, live sockets 6/6 never closed,
-7/7 visible, 0 non-GET requests attempted. The save-dependent checks and
-the post-save loads were not exercised (no data is created from here).
+7/7 visible, 0 non-GET requests attempted.
+
+End-to-end on dev (2026-10-12 23:09–23:13 UTC, event 111): observer
+`--prod-readonly` (dev alias + dev project, 3 listeners +
+`--add-listener-after-s=60`) and wake-check (2 × ja/ko/en + 1 poll-only)
+side by side; ONE admin login, save 1 = append a blank row at the tail
+(rev 1913, 23:10:00.714), save 2 ≈ 90 s later = soft-delete it (rev 1914,
+23:11:31.313); `restore.mjs --compact --yes` → 0 rows moved,
+`viewers-check.mjs` → 23 live rows, setlistRevision 1914.
+- observer: both revs reached every listener subscribed before them
+  (1913: 3/3 initial, spread 6 ms; 1914: 4/4 incl. the fresh listener,
+  spread 7 ms); first receipt 0.51 s / 0.48 s after the save request
+  started; 7/7 hinted GETs 200 `warm` / `satisfied`, 207–1621 ms; no
+  close, rejoin or socket drop.
+- wake-check: **PASS**. Frames at 6/6 live pages for both revs; frame→DOM
+  324–634 ms (1913) and 226–659 ms (1914); the websocket-blocked page
+  showed 1913 by polling 1573 ms after the first live frame with 0
+  frames (24 refused socket attempts); the three post-save loads (opened
+  5 s after R1) were SSR-seeded `live 1913` with the server paint equal
+  to the live pages' content (24 rows); warm reads for 1913 in ja 1/1,
+  ko 2/2, en 2/2 hinted fetches; one live ja page's fetch for 1913 left
+  0.42 s after the frame with `minRev=1913` but without `hint=1` (the
+  scheduler issued it as a non-notify request) and was answered `build`
+  — so it is not counted as a hinted read; 0 reloads / page errors / 5xx / non-GET
+  attempts; 10/10 pages visible.
 
 ### Transition sampler (`transition-sampler.mjs`)
 
