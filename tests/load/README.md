@@ -1005,6 +1005,53 @@ node tests/load/browsers/restore.mjs --compact --yes
   result is kept. A failed identity guard aborts the timeline (exit 2)
   before any further write.
 
+## n14 qualification step 7 — 5-minute spam + real saves + background k6 (`--phase=spam7`)
+
+Step 7 qualifies the live path **under a sustained guest spammer**:
+forged `rev` broadcasts at 2 msgs/s for 300 s (≈ 1,000 deliveries/s at
+500 receivers), `ahead` and `max`, while 12 mixed edits (18 measured
+writes + the anchor) land and a background-only k6 runs. Small,
+warming ON, 30 pages + 470 SDK, dev DB event 111, no server change.
+Release rule: pass → no new machinery; fail → fix or explicit
+acceptance of the degraded target (the report gives the worst per-save /
+per-population p95, max, share > 3 s, affected saves). Harness side —
+timeline, sender, receivers, predeclared gates, verdicts, JSON shape —
+in `browsers/README.md`, "Spam phase"; server logs, k6 summary and
+side-cars: `spam7-join.mjs`.
+
+| run | flags (besides `--phase=spam7 --pages=30 --subs=470 --strict-host --declared-process=<k6 pid>`) | notes |
+|---|---|---|
+| P0 | `--spam-rev=none` | control: same save schedule, recovery from the scheduled attack end |
+| P1 | `--spam-rev=ahead` | primary |
+| P2 | `--spam-rev=max` | primary |
+| P1r | `--spam-rev=ahead --save-offsets=12.25,37.25,…,287.25` | repeat, shifted against the 2/s sender phase |
+| P3 | `--spam-rev=stale --spam-secs=60 --save-offsets=-20,70` | ignore-path control, head held fixed in the block |
+| P4 | `--spam-rate=10` with the worse of ahead/max | optional stress, informational |
+
+**Background k6** (on the load laptop, started BEFORE the harness, its
+pid passed as `--declared-process`): `viewers.js` with `POLL_RPS=1
+SSR_RPS=2.5 REACTIONS=500 ADMIN_CYCLES=0 QUIET_CYCLES=0 COLD_START=0
+HINT_MODE=r2 DRAIN_S=0 STEADY_START=0`, a steady window covering
+baseline → recovery (≥ 420 s after the harness's readiness), the 500
+reaction POST+DELETE pairs aligned with the save at spam + 135 s (P1r:
++137.25 s). The harness accepts exactly that pid (+ descendants);
+anything else unknown still refuses, and is re-checked mid-spam and at
+the measurement end (INVALID if found). If k6 exits before the recovery
+end the background aspect is NOT EXERCISED.
+
+**Order per run:** fixture (70 rows) → side-cars → k6 (pid) → harness →
+`node tests/load/browsers/restore.mjs --compact --yes` → log fetch
+(after the measurement only) → `spam7-join.mjs`. Exit codes: 0 VALID +
+PASS, 1 VALID + FAIL, 3 INVALID (host corruption), 4 NOT EXERCISED
+(insufficient declared load: exposure below the predeclared minimums,
+fixture not served, background ended early, no eligible stale receipt).
+A FAIL outranks NOT EXERCISED: service failures under an under-driven
+attack are still failures.
+
+```bash
+node --no-warnings tests/load/browsers/run.mjs --phase=spam7 --pages=30 --subs=470 --spam-rev=ahead --strict-host --declared-process=12345 --label=step7-P1
+```
+
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
 The browsers harness stamps every broadcast arrival on the laptop that
@@ -1458,3 +1505,149 @@ alias routed.
   builds per deployment per minute.
 - **Reactions / wishes smoke** and the harness's provisional verdicts
   (verbatim) close the report.
+
+## n14 qualification step 7 — spam7-join, log completeness
+
+The server side of the 5-minute spam run (`run.mjs --phase=spam7`):
+fetch the deployment's text history logs completely and checkably, then
+join them with the harness JSON, the k6 background run and the side-cars.
+Both tools are read-only (they only call `vercel logs` / read files).
+
+### `history-fetch.sh` — complete text export
+
+```bash
+# right after the measurement (dev alias or the deployment URL):
+tests/load/history-fetch.sh <alias-or-deployment> <since ISO> <until ISO> results/<date>/<stamp>-history.txt [slices=20] [limit=5000]
+# ~5 min later, same arguments — merges the late after() lines in:
+tests/load/history-fetch.sh <alias-or-deployment> <since ISO> <until ISO> results/<date>/<stamp>-history.txt 20 5000 --second-pass
+```
+
+Env: `VERCEL_SCOPE` (opensetlist-projects), `VERCEL_PROJECT` (opensetlist —
+needed in a worktree), `MIN_SLICE_MS` (5000), `PAR` (= slices). Fetch the
+window with a few seconds of margin on both sides (the reconciliation
+below pads by 5 s).
+
+- **Disjoint slices.** The window is cut into `slices` equal slices
+  `[a, b)`, fetched in parallel as `--since a --until b − 1 ms` (both
+  bounds are inclusive at ms precision). Text records carry no request id
+  and identical headers within 10 ms are routine, so overlapping slices
+  could not be deduplicated afterwards; disjoint bounds make it
+  unnecessary.
+- **Saturation by REQUEST RECORDS, not lines.** `--limit` counts records
+  and keeps the NEWEST when a window holds more. A record = one header
+  line + any number of nested lines (or none), so the line count says
+  nothing. Each slice's records are counted with the summariser's own
+  header parser AND read from the CLI's closing `Fetched N logs` line; a
+  slice at ≥ limit (either count) is split in half and both halves are
+  re-fetched, recursively down to `MIN_SLICE_MS`; still at the limit there
+  → `status=saturated`. A failed CLI call is retried once, then
+  `status=failed`. Saturated / failed slices or a CLI count that disagrees
+  with the parsed records → exit 3.
+- **Text mode writes to STDERR.** In text mode the CLI prints the banner,
+  the records and `Fetched N logs` on stderr and nothing on stdout
+  (verified 2026-10-12, CLI 63.1.2 — the opposite of `--json`), so the
+  script captures both streams; the banner is skipped by the parsers.
+- **Second pass.** `--second-pass` re-fetches the file's own slices
+  (splits included) and merges each slice by content, never across
+  slices: records grouped by their exact header; a pass-1 record pairs
+  with an identical pass-2 record first, else with one whose nested lines
+  are a strict superset (`enriched` — the later copy wins); unmatched
+  pass-2 records are `new`; unmatched pass-1 records are kept and counted
+  as `pass1Only` (non-zero = pass 2 came back short).
+- **Self-describing output.** `### capture history-fetch … tz=<±hhmm>
+  passes=…` header (the CLI machine's UTC offset — history times are
+  local clock without a date; spam7-join derives `--add-hours` from it),
+  one `### capture slice from= to= records= status= pass1= cli= [pass2=
+  identical= enriched= new= pass1Only=]` marker per slice, and a footer
+  printed on stdout too:
+  `slices= records= saturated= resplit= failed= passes= pass2Failed=
+  identical= enriched= new= pass1Only= cliUnknown= cliMismatch=
+  maxPerSlice= limit= span=`. Every marker starts with `### capture`, which
+  vercel-logs-summary.mjs skips, so the file also feeds the summariser.
+- Merge / count logic: `history-merge.mjs` (`count`, `slices`, `assemble`).
+- **Live check (dev alias, 2026-10-12, read-only):** 60 GETs on
+  `/api/setlist` (20 with `minRev&hint=1`) at 2 req/s, then a 2-minute
+  window in 20 slices: 60 records, 20 hint-fetch lines, 0 saturated, 0
+  failed, CLI count = parsed count in every slice, ~20 s per pass; second
+  pass 60 identical / 0 new / 0 pass1Only. The same window at `limit=5`
+  (`MIN_SLICE_MS=1000`): 15 re-splits into 35 slices, the same 60
+  records. The join on that file reconciled 20 hint-fetch lines against 20
+  hinted request starts from this host (±5 s padding) → ok.
+
+### `spam7-join.mjs` — server / k6 / side-car join
+
+```bash
+node tests/load/spam7-join.mjs results/<date>/<stamp>-browsers-spam7.json results/<date>/<stamp>-history.txt \
+  --k6=results/<date>/<k6 stamp>-viewers.json \
+  --pooler=results/<date>/<stamp>-pooler-clients.csv --backends=results/<date>/<stamp>-supavisor-backends.csv \
+  --out=results/<date>/spam7-join-<run>.md --json
+```
+
+Options: `--k6-md=` (default: the `.md` next to the k6 JSON — the
+configured rates are read from it), `--poll-rps= --ssr-rps= --steady-s=
+--reactions=` (override), `--add-hours=` (default: from the fetch header's
+`tz=`), `--bucket=5 --carry=5` (Σ estimator), `--pad-s=5`.
+
+Reports: resource gates; log completeness and reconciliation; server
+outcomes per minute (window) and per 10 s (spam start → recovery end) —
+hint-fetch kinds (satisfied / memo / deferred / fresh / none / error =
+hinted 503), builds split warm-job / reader, uncached revision reads
+(`rev-read`, hint=1, timeouts — a memo answer has no line of its own and
+shows only as `verify=memo` on hinted requests), warm-lookup results (hit
+/ miss / timeout / memo-miss / capped), pool waiting, build-failed,
+EMAXCONN, instances, requests; first vs last attack minute; every write
+joined to its `[liveWriter]` line by rev (commit `at` vs the PUT
+interval); Σ peak / baseline / after the last send; side-car maxima per
+phase and per 10 s after the last send; the k6 summary.
+
+**Completeness rules** (Codex step-7 round 2 §4):
+
+- The fetch must be known (history-fetch.sh header), cover the
+  measurement window, have no gaps between slices, no failed and no
+  saturated slice (a slice at ≥ limit counts as saturated whatever its
+  marker says), two passes with every slice re-fetched, and agree with
+  the CLI's own counts.
+- **Reconciliation** against the harness: one `[liveWriter]` `ok=true`
+  line per 2xx harness write, matched by rev (18 measured writes + the
+  anchor); `[setlist] hint-fetch` lines in the window within
+  `[lo, hi]`, where lo = harness hinted requests that started inside the
+  window shrunk by 5 s, hi = those inside the window grown by 5 s (plus
+  k6's own `hint_fetches`). Below lo = shortfall (incomplete); above hi =
+  excess (an unexplained client — reported, not an incompleteness).
+- **A resource gate without complete evidence is UNESTABLISHED, never
+  PASS**; positive evidence (an EMAXCONN line, Σ ≥ 300, an acquire > 500
+  ms) is a FAIL either way. Writer acquire is judged per write (its line
+  exists or the write is UNESTABLISHED). Σ additionally needs every
+  instance that did database work (rev-read / writer / build-failed) to
+  have logged a pool line — otherwise the pooler side-car must cover the
+  window below the gate. Honest latency keeps its own (harness) verdict.
+- Σ after the last send is an estimate: an instance is carried `--carry`
+  s after its last pool line, so **silent instances expire by
+  construction** — a falling Σ means instances stopped logging; when no
+  pool line follows the last send the join says so instead of calling it
+  a drain. The pooler-clients (used / active / waiting clients, probe,
+  backends, idle in tx) and supavisor-backends (backends, active, idle in
+  tx, max tx age, lock waits) side-cars are the corroboration.
+- Text mode has no status codes: server-side 503 evidence is `verify=error`
+  hint fetches, `build-failed` lines and error-level records; the
+  authoritative 503 counts are the harness's buckets and k6.
+- **k6**: counts only, never the thresholds' tolerated error rates. 5xx =
+  the sum of status-tagged `http_reqs{…status:5xx…}` submetrics when
+  present; otherwise 0 is established only when `http_req_failed` has 0
+  failed requests of any kind; a non-zero failed count leaves 5xx
+  unestablished (per-stream bad counts listed). Generator OK = poll and
+  SSR achieved ≥ 95 % of the configured rate over the steady window,
+  reaction pairs ≥ 95 % of `REACTIONS`, 0 dropped iterations; SHORT is an
+  INVALID candidate for the orchestrator, not a service result.
+
+**Harness JSON fields read** (`json.spam7`, alias `json.spam`; accessor
+aliases in the file header):
+
+| field | used for |
+|---|---|
+| `phases.baselineStart`, `phases.recoveryEnd` (required; epoch ms or ISO) | the measurement window |
+| `phases.spamStart`, `phases.lastSend` (else max `sends[].sentAt`), `phases.spamEnd` / `attackEnd` (P0) | per-10 s range, first / last attack minute, drain start, side-car phases |
+| `sends[]` | count; lastSend fallback |
+| `writes[]` `{k, label, rev, putStart, putEnd, status, anchor \| kind:"anchor"}` (+ `anchor` object) | writer reconciliation and acquire gate |
+| `hintedStarts[]` (exact) or `buckets[]` `{t \| s, hinted \| sdkNotification + pagesHinted / pages, s503}` with `bucketMs` | expected hint-fetch lines; harness 503 total |
+| `declaredProcess`, `config.label`, `config.base` | echoed |

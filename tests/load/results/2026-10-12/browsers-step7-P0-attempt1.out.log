@@ -1,0 +1,8 @@
+[21:07:01.193] ERROR: Error: --declared-process=57263: no such process; nothing was created
+    at hostGuard (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:923:40)
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at process.processTimers (node:internal/timers:538:9)
+    at async main (file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:2506:3)
+    at async file:///F:/work/ClaudeCode/opensetlist4/tests/load/browsers/run.mjs:5154:15
+[21:07:01.194] aborting (error: --declared-process=57263: no such process; nothing was created) — cleaning up
+[21:07:02.533] verify: {"dbActive":69,"snapshotItems":69,"snapshotRev":1858,"startRows":null,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}

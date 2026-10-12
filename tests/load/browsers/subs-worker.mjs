@@ -108,7 +108,14 @@ import { createHoldGate, pinEvidence } from "./transition.mjs";
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null, cohort = null, transition = false } = workerData;
+const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null, cohort = null, transition = false, spam7 = false } = workerData;
+// n14 step 7 (`run.mjs --phase=spam7`): every client also keeps its
+// server-observed watermark history (`serverRevLog`, [t, serverRev] on
+// every change — the durable-state check: a forged value must never
+// enter it). The spam correlation columns of `bcasts` (runId, k,
+// serverRev at receipt) are added whenever a payload carries a `runId`,
+// which only the step-7 sender sends. Off: records exactly as before.
+const S7 = spam7 === true;
 // n14 step 6 (`run.mjs --phase=transition`): every request row gets the
 // per-response evidence columns 16–29 (x-vercel-id, the separate
 // milestones headers / body / acceptance evaluated, the hold times,
@@ -251,6 +258,8 @@ function makeSub(idx) {
     hintRes: {}, // satisfied / disproved / superseded / inconclusive → count
     exhausted: [], // [t, hint] tickets dropped after an inconclusive recheck
     serverRevMax: null, // highest acceptance.serverRev ever held
+    // step 7 only (S7): [t, serverRev] each time the watermark changed.
+    ...(S7 ? { serverRevLog: [] } : {}),
     serverRevFinal: null,
     failures: 0,
     failKinds: {}, // http / network / deadline / gap / body → count
@@ -266,9 +275,14 @@ function makeSub(idx) {
   let lastAppliedRev = null;
   let stopped = false;
 
+  let lastLoggedServerRev = null;
   const noteServerRev = () => {
     const s = acceptance.serverRev;
     if (s !== null && (rec.serverRevMax === null || s > rec.serverRevMax)) rec.serverRevMax = s;
+    if (S7 && s !== null && s !== lastLoggedServerRev) {
+      lastLoggedServerRev = s;
+      rec.serverRevLog.push([Date.now(), s]);
+    }
   };
 
   // useLiveSnapshot's runner (see header).
@@ -402,26 +416,40 @@ function makeSub(idx) {
   });
 
   // The hook's `handleRevBroadcast`.
+  //
+  // Step-7 correlation (harness only): the receipt time and the client's
+  // serverRev are taken on entry, BEFORE anything classifies the message,
+  // and a payload's `runId` / `k` (the guest sender's correlation fields,
+  // which the app ignores) are appended to the row as [runId, k,
+  // serverRevAtReceipt]. They are only READ here — neither `k` nor
+  // `runId` reaches noteHint or the scheduler, so a correlated forgery is
+  // handled exactly like an uncorrelated one.
   const handleRevBroadcast = (message) => {
+    const t = Date.now();
+    const srvAtReceipt = acceptance.serverRev;
     const payload = message?.payload;
+    const corr = payload !== null && typeof payload === "object" && typeof payload.runId === "string"
+      ? [payload.runId, Number.isSafeInteger(payload.k) ? payload.k : null, srvAtReceipt]
+      : null;
+    const push = (rev, what) => rec.bcasts.push(corr ? [t, rev, what, ...corr] : [t, rev, what]);
     if (payload === null || typeof payload !== "object") {
-      rec.bcasts.push([Date.now(), null, "i"]);
+      push(null, "i");
       return;
     }
     const { kind, rev } = payload;
     if (kind !== "setlist" || !isValidRev(rev)) {
-      rec.bcasts.push([Date.now(), null, "i"]);
+      push(null, "i");
       return;
     }
     if (dropNotify) {
-      rec.bcasts.push([Date.now(), rev, "x"]);
+      push(rev, "x");
       return;
     }
     if (!acceptance.noteHint(rev)) {
-      rec.bcasts.push([Date.now(), rev, "d"]);
+      push(rev, "d");
       return;
     }
-    rec.bcasts.push([Date.now(), rev, "n"]);
+    push(rev, "n");
     scheduler.requestFetch("notification");
   };
 
@@ -634,12 +662,23 @@ parentPort.on("message", async (msg) => {
   } else if (msg.cmd === "state") {
     // The acceptance + scheduler state right now (drills read serverRev
     // and the carried ticket from here).
-    const clients = subs.map((s) => ({
-      idx: s.rec.idx,
-      serverRev: s.acceptance.serverRev,
-      pendingHint: s.acceptance.pendingHint,
-      ...s.scheduler.getState(),
-    }));
+    // inFlightReq: the worker's active request record joined in —
+    // getState() says `inFlight` but not which ticket that flight
+    // carries (pending and carried can both be null while a ticket
+    // request runs). Requests are single-flight and recorded in dispatch
+    // order, so the in-flight one is the last row without an end time.
+    const clients = subs.map((s) => {
+      const st = s.scheduler.getState();
+      const last = s.rec.reqs[s.rec.reqs.length - 1];
+      const open = st.inFlight && last && last[10] == null ? { reason: last[1], hint: last[3], tStart: last[0], notify: last[4] } : null;
+      return {
+        idx: s.rec.idx,
+        serverRev: s.acceptance.serverRev,
+        pendingHint: s.acceptance.pendingHint,
+        ...st,
+        inFlightReq: open,
+      };
+    });
     parentPort.postMessage({ type: "state", clients });
   } else if (msg.cmd === "holdArm") {
     // n14 step 6, hold subset: hold the responses of `idxs` from now on

@@ -126,6 +126,15 @@ the `pooler-clients.mjs` / `pg-connections.mjs` / `supavisor-backends.mjs` sampl
 `--strict-host` refuses to start instead (exit 2, nothing created). The
 check is in the report header and the JSON (`host.guard`).
 
+`--declared-process=<pid>` (n14 step 7) declares ONE process as part of
+the experiment — the background k6 of step 7. The guard accepts exactly
+that pid plus its descendants by parent PID; any other unknown process
+still competes (a second k6 included). Its name, command line and OS
+start time are recorded (JSON `declaredProcess`), its end by a 2 s
+alive poll; under `--phase=spam7` the host is re-checked asynchronously
+mid-spam and at the measurement end, and an undeclared competing
+process found then makes the run INVALID.
+
 ## Full-scale commands (run one at a time)
 
 From the repo root (`.env`/`.env.local` in the cwd, or `ENV_DIR=<checkout>`).
@@ -601,6 +610,141 @@ node tests/load/browsers/restore.mjs --compact --yes
 # T1 (three switches; the operator writes t1-a/b/c.json — ../README.md "n14 qualification step 6")
 node --no-warnings tests/load/browsers/run.mjs --phase=transition --pages=30 --subs=470 --switch-files=t1-a.json,t1-b.json,t1-c.json --strict-host --label=step6-T1
 ```
+
+## Spam phase (`--phase=spam7`, n14 qualification step 7)
+
+Qualifies **sustained guest spam + real saves + background k6**: a
+guest (anon key, like any visitor) sends forged `rev` broadcasts for
+five minutes while 12 mixed edits land; judged on honest page / SDK
+latency per save, save success, 0 missing, 0 × 5xx, bounded and
+draining request rate. Pure logic: `spam7.mjs` (tests:
+`spam7.test.mjs`); server logs / k6 / side-car join:
+`../spam7-join.mjs`. Existing modes (incl. `--drill=spam`) are
+unchanged.
+
+**Timeline.** Standard start (ONE admin login, the anchor row, the
+population joins and settles, the guest joins during the settle), then
+explicit instants on this host's clock: **baseline**
+`--baseline-secs` (60) → **spam** `--spam-secs` (300) → **recovery**
+`--recovery-secs` (60, from the later of the scheduled attack end and
+the last send) → **measurement end** (the recovery end, or the last
+PUT + `--timeout` if later) → clean-up. Validity (lag / heartbeat,
+browser round trips, host re-checks), the failure accounting and the
+monotonicity check cover baseline start → measurement end; nothing is
+cleaned up before it.
+
+**Saves.** One edit per `--save-offsets` entry (default
+`10,35,…,285`; the repeat `12.25,37.25,…,287.25`), seconds from the spam
+start, each on its own timer, mixed shape (odd k = insert-after + PUT on
+the new row, even k = PUT on the anchor) = 18 measured writes + the
+anchor. **Never retried**: a failed write is recorded (status, error,
+x-vercel-id) and gates the run; a 5xx insert that committed anyway is
+adopted for the clean-up only. The latency clock is the PUT's start.
+
+**Sender.** Slot k due at spamStart + (k − 1) / `--spam-rate` (2);
+payload `{ kind: "setlist", rev, runId, k }` (the app validates only
+`kind` / `rev`). `--spam-rev`: `ahead` = latest committed rev + 1 (base
+= the post-preparation head, refreshed from every save's response),
+`max` = 2^53 − 1, `stale` = the latest committed rev, `none` = P0
+control (no guest; the same schedule and "attack end"). Sends are not
+awaited per slot (acks recorded per message); a slot is skipped only
+when the loop is > one interval late or > 20 acks are outstanding.
+`stale` refuses saves inside the spam block (P3:
+`--spam-secs=60 --spam-rev=stale --save-offsets=-20,70`); just before
+the block the run records whether every client observed the head.
+
+**Receivers.** SDK clients record each forged message on handler entry
+— receipt time, serverRev, then the outcome (`n` noted / `d` ignored /
+`x` dropped / `i` invalid); pages record the frame (`?` = the page's
+own handler is not observable; serverRev = a proxy, the highest body
+rev fetched before). `k` never reaches acceptance or the scheduler.
+
+**Predeclared gates** (FIXED declared populations = `--subs` /
+`--pages`, idx 0 … n − 1; a client without a record counts as zero):
+
+| aspect | rule | outcome |
+|---|---|---|
+| exposure | sends ≥ 95 % of planned slots in every 10 s bucket; ack ok ≥ 99 %; timely (first receipt ≤ 2 s after the actual send) ≥ 95 % of planned deliveries (slots × declared) per 10 s bucket per population AND ≥ 95 % of the sent messages per client | else NOT EXERCISED |
+| honest latency | every edit × client pair; per save per population p95 ≤ `--gate-p95` (3000), 0 missing | FAIL |
+| writes | every measured write 2xx; PUT p95 ≤ 1500 ms | FAIL |
+| errors | 0 × (SDK 5xx / transport / malformed body, page 5xx / failed `/api/setlist` request / reload / page error, save 5xx / transport) | FAIL |
+| drain | a full 10 s interval ≤ μ + max(0.5 μ, 2, 2 s₁₀) starting at/after the last send, completed ≤ 30 s after it, with 0 pending batches / carried tickets / in-flight ticket requests at its end (1 Hz worker state; in-flight = `getState().inFlight` joined with the worker's open request row), and no forged-ticket / recheck rebound until the recovery end | FAIL |
+| cooldown | ticket-carrying requests ≥ 1 s apart per SDK client (baseline → recovery) | FAIL |
+| watermark | every serverRev value ≤ the post-preparation head, or a rev this run's save returned, held no earlier than that save's start | FAIL |
+| monotonic | pages DOM version / SDK applied rev never decrease | FAIL |
+| stale (P3) | every ELIGIBLE receipt (forged rev ≤ the client's serverRev at receipt) ignored | FAIL; no eligible receipt → NOT EXERCISED |
+| fixture | the snapshot at the post-preparation head serves exactly the DB's active rows | else NOT EXERCISED |
+| background | the declared process alive until the recovery end | else NOT EXERCISED |
+
+μ = mean snapshot requests/s of the baseline (SDK + pages, each request
+once by its START, k6 excluded), s₁₀ = sample SD of the non-overlapping
+10 s averages. Diagnostics (never gate): SDK strata at each PUT dispatch
+(`none` / `queued-ticket` = carried or batched ticket / `inflight-ticket`
+= notification or recheck carrying one / `other-ticket-fetch` = a
+generic, retry, catch-up carrying one; empty = NOT EXERCISED), latency
+per stratum, ticket-drop recovery (a forged ticket exhausted while the
+client was behind, then converged by a non-ticket request before any
+later save), peaks. Verdict: **INVALID (3)** host corruption only (lag
+/ heartbeat, browser round trip > 1 s or unanswered, undeclared
+competing process at a re-check) > **VALID + FAIL (1)** > **NOT
+EXERCISED (4)** > **VALID + PASS (0)**.
+
+```bash
+# P1 (primary, ahead) — k6 started first, its pid declared (../README.md "n14 qualification step 7")
+node --no-warnings tests/load/browsers/run.mjs --phase=spam7 --pages=30 --subs=470 --spam-rev=ahead --strict-host --declared-process=<k6 pid> --label=step7-P1
+# P0 control / P2 max / P1r repeat / P3 stale
+… --spam-rev=none --label=step7-P0
+… --spam-rev=max --label=step7-P2
+… --spam-rev=ahead --save-offsets=12.25,37.25,62.25,87.25,112.25,137.25,162.25,187.25,212.25,237.25,262.25,287.25 --label=step7-P1r
+… --spam-rev=stale --spam-secs=60 --save-offsets=-20,70 --label=step7-P3
+node tests/load/browsers/restore.mjs --compact --yes
+```
+
+### spam7 JSON (`<stamp>-browsers-spam7.json` → `spam7`)
+
+Times are epoch ms of the load host unless noted.
+
+```
+spam7: {
+  config: { baselineSecs, spamSecs, recoverySecs, spamRate, spamRev, offsets[], edits, label, base, runId, timelyMs, exposureMin{send,ack,timely,perClient},
+            declared{sdk,pages}, gateP95Ms, putGateMs, drainDeadlineMs, timeoutMs, maxOutstandingAcks, browserInvalidMs },
+  phases: { baselineStart, spamStart, spamEnd (= scheduled attack end, also P0), attackEndScheduled (alias), firstSend|null,
+            lastSend (P0: = spamEnd), recoveryEnd, measurementEnd },  phasesIso: same keys, ISO,
+  initialHead, fixture{ startRows, dbRows, servedItems, servedRev, head, match, error? }, headObserved (stale only){ at, head, sdk, sdkDeclared, pages, pagesDeclared, verified },
+  declaredProcess: { pid, name, cmd, startedAt (OS, UTC ISO), tree[pids], descendants[{pid,name,cmd}], seenAt, endedAt|null, checks[] } | null,
+  hostChecks: [{ label: "mid-spam"|"measurement end", at, ok|null, competing[{pid,why,cmd}], declaredAlive, declaredTree }],
+  sends: [{ k, slotAt, sentAt|null, rev, ack ("ok"|"timed out"|"error"|…|null), ackOk, ackMs, skip (null|"late"|"acks outstanding"|"closed"), skipped }],
+  receipts: { row: [k, receivedAt − spamStart ms, outcome, serverRevAtReceipt], sdk: [{ idx, rows[] }], pages: [{ idx, rows[] }] },
+  exposure: { exercised (null = no sender), reasons[], planned, sent, skipped, ackOk, ackShare, sendMin, ackMs{dist}, sendLateMs{dist},
+              buckets[{ i, from, planned, sent, skipped, ackOk, timely{sdk,pages} }],
+              populations{ sdk|pages: { declared, recorded, received, duplicates, late, plannedDeliveries, timelyTotal, bucketMin, bucketShares[{i,share}],
+                                        perClientMin, clientsBelow, worst[{idx,timely,share,present}], delivery{dist} } } },
+  stale: { eligible, ignored, notedEligible, nonEligible, nonEligibleNoted, unknown, examples[], pass } | null,  pagesStale: same (proxy) | null,
+  saves: [{ k, mode, offsetS, rev, putStart, putMs, sampleLagMs, pages{lat}, sdk{lat}, strata{ none|queued-ticket|inflight-ticket|other-ticket-fetch: {n, …lat} },
+            strataUnclassified, pagesLat[], sdkLat{dist} }],          lat = { n, p50, p95, p99, max, missing, over, overShare, pass }
+  latency: { pages{lat}, sdk{lat}, gateP95Ms, failedEdits },
+  strata: { row: [idx, stratum, carriedPhase, inFlightReason], aggregate{stratum: {n, exercised, …lat}}, saves[{ k, rev, putStart, askedAt, answeredAt, clients[row] }] },
+  writes: [{ k (0 = anchor), op: "anchor"|"insert"|"put", rev, putStart, putEnd, status, attempts (1), rowId, error }],
+  writesDetail: [{ k, op, mode, offsetS, due, startedAt, lateMs, ms, status, rev, error, vercelId, rowId, songId?, orphanRowId? }],
+  writesSummary: { expected, attempted, ok, put{dist}, all{dist}, anchor{id,rev,ms,startedAt}, pass, putPass },
+  hintedStarts: [request-start ms of every hint=1 request, SDK + pages, baselineStart … measurementEnd],
+  errors: { sdk{s5xx,transport,malformed,http4xx,gap}, pages{s5xx,failedRequests,reloads,pageErrors,http4xx}, saves, total, pass },
+  buckets: [{ t, sdkNotification, sdkRecheck, sdkGeneric, sdkOther, pagesHinted, pagesGeneric, s503, total, roll10 }],   1 s, baselineStart … recoveryEnd
+  rates{baseline,spam,recovery}, peaks{ sdkNotificationPerS, sdkRecheckPerS, pagesHintedPerS, totalPerS, roll10Max, s503 },
+  drain: { mu, s10, baselineWindows[], threshold, confirm{from,to,avg,state,stateOk,completedAfterLastSendMs}|null, withinDeadline,
+           firstQuiet (same shape)|null, rebound{count,genuine,byReason,examples}|null, later{maxRoll10,overThreshold,maxPending,maxCarried,maxInFlightTicket}|null, pass },
+  workerState: [{ t, clients, pending, carried, carriedRecheck, inFlight, inFlightTicket, examples[] }],   1 Hz
+  cooldown{ tooClose, clientsBad, minGap, examples, pass }, watermark{ checked, violations, clients, examples[{idx,t,rev,why}], pass },
+  ticketDrop{ counts{forgedExhausted,current,recovered,repaired-by-save,ticket-path,not-converged}, rows[], exercised },
+  browserProbe{ row, samples[[t, pageIdx, rttMs|null]], rtt{dist} },
+  gates[{name,value,pass}], notExercised[], diagnostics[], verdict{ verdict, exit, failed[], notExercised[] }
+}
+```
+
+The top-level JSON also carries `declaredProcess` and, in `config`,
+`spam7` (the parsed flags), `runId`, `declaredPid`. Timelines: SDK rows
+add `serverRevLog` ([t, serverRev] on every change), pages add
+`docLoads` / `reqFailed` / `pageErrs`.
 
 ## Row formats (timelines `.jsonl` and JSON)
 
