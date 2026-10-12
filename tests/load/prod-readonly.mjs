@@ -215,7 +215,7 @@ export function validateObserverProd(args, env, argv = []) {
 
 export const WAKE_CHECK_FLAGS = [
   "prod-readonly", "base", "event-id", "event-path", "locales", "pages", "wait-s",
-  "deployment", "out", "label", "stop-file", "headed", "poll-only",
+  "deployment", "out", "label", "stop-file", "headed", "poll-only", "expect-saves",
 ];
 
 // A non-dev base needs --prod-readonly (the tool is read-only either
@@ -244,9 +244,15 @@ export function validateWakeCheck(args, argv = []) {
   const { locales, error: locErr } = parseLocales(args.locales);
   if (locErr) errors.push(locErr);
   // Pages whose Realtime websocket is blocked (the poll-only repair
-  // path); 0 = none.
-  const pollOnly = args["poll-only"] === undefined ? 0 : Number(args["poll-only"]);
+  // path). Default 1: the repair path is part of what a PASS means; 0 is
+  // allowed but then that check (and the overall verdict) can only be
+  // NOT EXERCISED.
+  const pollOnly = args["poll-only"] === undefined ? 1 : Number(args["poll-only"]);
   if (!Number.isInteger(pollOnly) || pollOnly < 0 || pollOnly > 3) errors.push("--poll-only must be 0..3");
+  // How many saves the operator will make (R1 = check save, R2 = the
+  // "stays connected" save). Fewer observed → overall NOT EXERCISED.
+  const expectSaves = args["expect-saves"] === undefined ? 2 : Number(args["expect-saves"]);
+  if (!Number.isInteger(expectSaves) || expectSaves < 1 || expectSaves > 2) errors.push("--expect-saves must be 1 or 2");
   const pages = args.pages === undefined ? 2 : Number(args.pages);
   if (!Number.isInteger(pages) || pages < 1 || pages > 5) errors.push("--pages (per locale) must be 1..5");
   const waitS = args["wait-s"] === undefined ? 600 : Number(args["wait-s"]);
@@ -262,7 +268,7 @@ export function validateWakeCheck(args, argv = []) {
     errors,
     config: {
       base: new URL(String(args.base)).origin, baseKind, prod, eventId: String(args["event-id"]), eventPath,
-      locales, pages, pollOnly, waitS, deployment, headed: args.headed === true,
+      locales, pages, pollOnly, expectSaves, waitS, deployment, headed: args.headed === true,
       stopFile: args["stop-file"] ? String(args["stop-file"]) : null,
       out: args.out ? String(args.out) : null,
       label: args.label ? String(args.label).replace(/[^a-zA-Z0-9_-]/g, "_") : "",

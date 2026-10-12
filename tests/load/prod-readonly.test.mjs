@@ -115,7 +115,10 @@ test("wake-check: prod needs --prod-readonly; flags allow-listed; path derived",
   assert.equal(ok.config.eventPath, "/events/107");
   assert.deepEqual(ok.config.locales, ["ja", "ko", "en"]);
   assert.equal(ok.config.pages, 2);
-  assert.equal(ok.config.pollOnly, 0);
+  assert.equal(ok.config.pollOnly, 1);
+  assert.equal(ok.config.expectSaves, 2);
+  assert.equal(validateWakeCheck(argsOf("--prod-readonly", "--base=https://opensetlist.com", "--event-id=107", "--poll-only=0", "--expect-saves=1")).config.pollOnly, 0);
+  assert.match(validateWakeCheck(argsOf("--prod-readonly", "--base=https://opensetlist.com", "--event-id=107", "--expect-saves=3")).errors.join(), /--expect-saves must be 1 or 2/);
   assert.equal(ok.config.waitS, 600);
   assert.match(validateWakeCheck(argsOf("--base=https://opensetlist.com", "--event-id=107")).errors.join(), /pass --prod-readonly/);
   assert.deepEqual(validateWakeCheck(argsOf(`--base=${DEV_ALIAS}`, "--event-id=111", "--poll-only=1")).errors, []);

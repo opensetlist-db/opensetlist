@@ -1752,20 +1752,30 @@ partition exists is invisible to a client (the operator's prod SQL check).
 
 ```bash
 node tests/load/wake-check.mjs --prod-readonly --base=https://opensetlist.com --event-id=<n> \
-  [--locales=ja,ko,en] [--pages=2] [--poll-only=1] [--wait-s=600] \
+  [--locales=ja,ko,en] [--pages=2] [--poll-only=1] [--expect-saves=2] [--wait-s=600] \
   [--deployment=dpl_…] [--event-path=/events/<n>/<slug>] [--stop-file=<path>] [--out=<dir>] [--label=<name>] [--headed]
 ```
 
-Opens `pages` **live** pages per locale + `--poll-only` pages whose
-Realtime websocket is blocked (pages.mjs routeMode `blocked`), settles
+Opens `pages` **live** pages per locale + `--poll-only` pages (default
+**1**) whose Realtime websocket is blocked (pages.mjs routeMode `blocked`), settles
 10 s, takes the baseline rev and prints
 `[wake-check] READY pages=… baseline_rev=… at=…` — **the operator saves
 now**. The first rev above the baseline is the check save (R1), the next
 the second save (R2). About 5 s after R1 it opens one **post-save** page
 per locale (a viewer who reloads after the save; a new page, so the live
 pages' continuity stays measurable). Ends at `--wait-s` (from READY) or
-the STOP file (default `<out>/wake-check.STOP`); a window without any
-save ends gracefully as `NOT EXERCISED`. Exit 1 only on FAIL.
+the STOP file (default `<out>/wake-check.STOP`).
+
+Overall verdict: any check FAIL → **FAIL** (exit 1). Otherwise **PASS**
+(exit 0) only if `--expect-saves` distinct revs were observed (default 2:
+the check save AND the second, "stays connected" save) and at least one
+websocket-blocked page ran; with fewer saves (e.g. the operator never made
+save 2, or no save at all) or `--poll-only=0` the overall is **NOT
+EXERCISED** (exit 4), never PASS. The report prints which saves were
+observed (`check save R1: rev …` · `second save R2: not observed`) and why
+the run is NOT EXERCISED. `--expect-saves=1` is for a check-save-only run
+(e.g. a T−10 check without a second save); the second-save checks then
+read NOT EXERCISED without blocking the overall.
 
 Checks (each PASS / FAIL / NOT EXERCISED): pages 200 with rows painted;
 R1 seen in the DOM of every live page; R1's broadcast **frame** at every
@@ -1842,8 +1852,12 @@ the operator's side). Output `<stamp>-transition-sampler[-label].{json,md}`:
 first answer from `--expect`, last answer from any other deployment (the
 old tail, and its overlap with the first expected answer), "sustained
 from", flips, the per-deployment timeline, statuses and 5xx / transport
-errors per loop. Verdict SWITCHED / NOT SUSTAINED / NOT SWITCHED /
-ALREADY SWITCHED / NO DATA. Switch latency = first expected answer − the
+errors per loop, and the **unattributed** document answers (no
+`data-dpl-id`: errors, 5xx, error pages). Verdict SWITCHED / NOT SUSTAINED
+/ NOT SWITCHED / ALREADY SWITCHED / NO DATA (no attributed answer) /
+INSUFFICIENT ATTRIBUTION (more than 20 % of document answers
+unattributed — the gaps could hide the old deployment's tail, so no
+switch is claimed). Switch latency = first expected answer − the
 click time the operator writes down. Dev smoke: 20 s on the dev alias,
 `--expect` = the serving deployment → ALREADY SWITCHED, 79 / 80 samples all
 200.

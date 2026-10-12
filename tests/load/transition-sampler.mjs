@@ -46,6 +46,7 @@ import { dplIdOf } from "./browsers/transition.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAX_INFLIGHT = 4;
+export const MAX_UNATTRIBUTED = 0.2;
 const TIMEOUT_MS = 15_000;
 const iso = (t) => (t == null ? "–" : new Date(t).toISOString().slice(11, 23));
 
@@ -70,8 +71,16 @@ export function samplerSummary(samples, expect) {
   const statuses = (list) => list.reduce((a, s) => { const k = s.error ? `error:${s.error}` : String(s.status); a[k] = (a[k] || 0) + 1; return a; }, {});
   const bad = (s) => s.error != null || s.status >= 500;
   const oldIds = [...new Set(others.map((s) => s.dpl))];
+  // Document answers without a data-dpl-id (errors, 5xx, an error page,
+  // a body cut short) say nothing about who served them. They are
+  // counted, and when they are more than MAX_UNATTRIBUTED of the
+  // document samples the timeline has holes big enough to hide an old
+  // deployment's tail — no SWITCHED / ALREADY SWITCHED is claimed then.
+  const unattributed = docs.length - attributed.length;
+  const unattributedShare = docs.length ? unattributed / docs.length : 1;
   let verdict;
   if (!attributed.length) verdict = "NO DATA";
+  else if (unattributedShare > MAX_UNATTRIBUTED) verdict = "INSUFFICIENT ATTRIBUTION";
   else if (!firstExpected) verdict = "NOT SWITCHED";
   else if (!others.length) verdict = "ALREADY SWITCHED";
   else if (attributed.at(-1).dpl !== expect) verdict = "NOT SUSTAINED";
@@ -84,7 +93,7 @@ export function samplerSummary(samples, expect) {
     // The old deployment's tail: how long after the first expected
     // answer the old one still answered (negative = clean cut-over).
     overlapMs: firstExpected && lastOld ? lastOld.tStart - firstExpected.tStart : null,
-    docs: { n: docs.length, attributed: attributed.length, statuses: statuses(docs), bad: docs.filter(bad).length },
+    docs: { n: docs.length, attributed: attributed.length, unattributed, unattributedShare: +unattributedShare.toFixed(3), statuses: statuses(docs), bad: docs.filter(bad).length },
     api: { n: api.length, statuses: statuses(api), bad: api.filter(bad).length, badAfterSwitch: firstExpected ? api.filter((s) => bad(s) && s.tStart >= firstExpected.tStart - 5000).length : null },
   };
 }
@@ -99,7 +108,7 @@ export function samplerMarkdown(s, meta) {
   L.push(`- first answer from ${s.expect}: ${s.firstExpected ? `${iso(s.firstExpected.tStart)} (request start) → ${iso(s.firstExpected.tEnd)}` : "**none**"}`);
   L.push(`- last answer from another deployment: ${s.lastOld ? `${iso(s.lastOld.tStart)} (${s.lastOld.dpl})` : "none in the window"}${s.overlapMs != null ? ` · old tail after the first expected answer: ${s.overlapMs} ms` : ""}`);
   L.push(`- sustained on ${s.expect} from: ${iso(s.sustainedFrom)} · flips: ${s.flips} · other deployments seen: ${s.oldIds.join(", ") || "–"}`);
-  L.push(`- doc samples ${s.docs.n} (attributed ${s.docs.attributed}) statuses ${JSON.stringify(s.docs.statuses)} · 5xx/errors ${s.docs.bad}`);
+  L.push(`- doc samples ${s.docs.n} (attributed ${s.docs.attributed}, **unattributed ${s.docs.unattributed}** = ${Math.round(s.docs.unattributedShare * 100)} %; > ${MAX_UNATTRIBUTED * 100} % → INSUFFICIENT ATTRIBUTION) statuses ${JSON.stringify(s.docs.statuses)} · 5xx/errors ${s.docs.bad}`);
   L.push(`- api samples ${s.api.n} statuses ${JSON.stringify(s.api.statuses)} · 5xx/errors ${s.api.bad}${s.api.badAfterSwitch != null ? ` (${s.api.badAfterSwitch} from 5 s before the first expected answer on)` : ""}`);
   L.push("", "## Deployment timeline (document answers, by request start)", "", "| from (UTC) | to (UTC) | data-dpl-id | samples |", "|---|---|---|---|");
   for (const r of s.runs) L.push(`| ${iso(r.from)} | ${iso(r.to)} | ${r.dpl}${r.dpl === s.expect ? " (expected)" : ""} | ${r.n} |`);
