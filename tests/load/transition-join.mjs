@@ -800,7 +800,14 @@ export function exposure(sw, prop, rows, { rechecks = null, clients = [] } = {})
   // committed in this leg (saves between plannedAt − 60 s and the window end).
   const legFrom = (sw.plannedAt ?? T) - 60_000;
   const legTo = sw.window?.to ?? Infinity;
-  const saveRows = rows.filter((r) => r.pop === "save" && r.status != null && r.status >= 200 && r.status < 300 && r.rev != null && r.tStart != null && r.tStart >= legFrom && r.tStart <= legTo);
+  // Prefer the leg identity the harness stamps on each save (`leg` = the
+  // switch's 1-based k); the time window is only the fallback for records
+  // without it — close-planned legs would otherwise lend a neighbour's +60 s
+  // save to this leg's head (Codex review, cycle 2).
+  const okSave = (r) => r.pop === "save" && r.status != null && r.status >= 200 && r.status < 300 && r.rev != null;
+  const legK = sw.k ?? sw.idx ?? null;
+  const byLeg = legK == null ? [] : rows.filter((r) => okSave(r) && r.leg != null && String(r.leg) === String(legK));
+  const saveRows = byLeg.length ? byLeg : rows.filter((r) => okSave(r) && r.tStart != null && r.tStart >= legFrom && r.tStart <= legTo);
   const legHead = saveRows.reduce((m, sv) => (sv.rev > m ? sv.rev : m), -Infinity);
   const hits = [];
   // The client receives an answer when it evaluates it (a held response is
