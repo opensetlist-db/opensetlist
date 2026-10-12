@@ -60,6 +60,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, validateWakeCheck } from "./prod-readonly.mjs";
+// The page's real scheduler constants, imported from the .ts source like
+// run.mjs and subs-worker.mjs do: the harness runs on Node 24, which
+// strips type annotations natively (Node >= 22.6 with
+// --experimental-strip-types, >= 23.6 by default), so no loader is needed
+// and the budget below can never drift from the shipped value.
 import { FALLBACK_POLL_MS, FALLBACK_POLL_SPREAD_MS } from "../../src/lib/liveScheduler.ts";
 import { reqIdOf } from "./transition-join.mjs";
 
