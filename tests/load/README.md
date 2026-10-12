@@ -1317,6 +1317,19 @@ node tests/load/transition-join.mjs <stamp>-browsers-transition.json \
   may be one JSON object or JSON Lines (`{"plannedAt"}` first, then the
   CLI record appended) — merged per switch, and they win over the
   harness's copy for `cliStart` / `cliEnd` / `target`.
+- `--windows=<from>,<to>[;<from>,<to>…]` (ISO or epoch ms): the log
+  export windows (e.g. the per-leg windows [plannedAt − 40 s, plannedAt
+  + 75 s]). Without it they are inferred from the union of every
+  deployment's records (blocks split at 30 s gaps — slightly narrower
+  than the real windows). A response whose edge request time (the epoch
+  ms inside its request id, `<pfx>-<ms>-<hex>`) lies outside them is
+  **not exported**: counted apart, never as unmatched; attribution
+  coverage is computed inside the windows. Log records with
+  `responseStatusCode: 0` and empty response fields (Vercel logs a few
+  incomplete records — 6 of 30 988 in T1, every one a 200 to the client)
+  attribute by id / deployment / path and are listed as incomplete.
+- Switch times may be ISO strings (operator files) or epoch ms (harness);
+  every instant is normalised to epoch ms when the switch records merge.
 - `--manifest`: the deployment manifest written by the deploy script —
   `{ "deployments": [{ "id": "dpl_…", "url": "https://…", "role":
   "ON-A|OFF-1|ON-B|ON-A′|R1-1|ON-C|OFF-1t|R1-1t", "commit": "5475bf2",
