@@ -239,3 +239,144 @@ export async function cleanup({ base, cookie, pg, eventId, created, original, re
   }
   return out;
 }
+
+// ─── overlap drill (run.mjs --drill=overlap) ───
+// Every helper below NEVER throws on an HTTP status: the drill records
+// what the server answered (a 5xx is a gate input, not a crash) and
+// carries on with the rest of the group.
+
+const ms0 = () => Date.now();
+async function settle(label, url, init, { timeoutMs = 30000 } = {}) {
+  const startedAt = ms0();
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    const headersAt = ms0();
+    const buf = Buffer.from(await res.arrayBuffer());
+    const endAt = ms0();
+    let body = null;
+    try { body = JSON.parse(buf.toString("utf8")); } catch { /* HTML or empty */ }
+    return { startedAt, headersMs: headersAt - startedAt, ms: endAt - startedAt, status: res.status, buf, body };
+  } catch (e) {
+    return { startedAt, headersMs: null, ms: ms0() - startedAt, status: 0, buf: null, body: null, error: `${label}: ${String(e?.message || e).slice(0, 120)}` };
+  }
+}
+
+// One overlap save: the same PUT as putSong(), plus the optional
+// per-request warm fault header (`x-live-warm-fault`, read by the admin
+// setlist-items writers only, and only on an armed non-production
+// deployment). No retry here — see run.mjs (a retried A landing after B
+// would change which save is the head mid-measurement).
+export async function putSongRaw({ base, cookie, id, position, songId, fault = null }) {
+  const headers = { "content-type": "application/json", cookie };
+  if (fault) headers["x-live-warm-fault"] = fault;
+  const r = await settle("put", `${base}/api/admin/setlist-items/${id}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ position, isEncore: false, type: "song", status: "confirmed", songIds: [String(songId)] }),
+  });
+  const rev = r.body && Number.isSafeInteger(r.body.rev) ? r.body.rev : null;
+  const error = r.error ?? (r.status >= 200 && r.status < 300 ? null : `HTTP ${r.status} ${JSON.stringify(r.body)?.slice(0, 160) ?? ""}`);
+  return { startedAt: r.startedAt, ms: r.ms, status: r.status, rev, error };
+}
+
+// The COMPLETE song payload for POST /api/admin/songs and PUT
+// /api/admin/songs/<id>. The PUT deletes and recreates translations and
+// artist credits from the body, so a partial body would silently strip
+// them; the drill's dedicated songs have exactly these three
+// translations and no credits, and a catalog edit resends all of it,
+// changing only `originalTitle`.
+export function songPayload({ originalTitle, translationTitle }) {
+  return {
+    originalTitle,
+    originalLanguage: "ja",
+    variantLabel: null,
+    sourceNote: null,
+    releaseDate: null,
+    baseVersionId: null,
+    translations: ["ko", "ja", "en"].map((locale) => ({ locale, title: translationTitle })),
+    artistCredits: [],
+  };
+}
+
+// Create one dedicated marker song (S5: the catalog edit must never touch
+// a real catalog song). Throws: a missing dedicated song makes the run
+// meaningless, and nothing has been measured yet when this runs.
+export async function createSong({ base, cookie, title }) {
+  const r = await settle("song create", `${base}/api/admin/songs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(songPayload({ originalTitle: title, translationTitle: title })),
+  });
+  if (r.status !== 201 || !r.body?.id) throw new Error(`song create: HTTP ${r.status} ${r.error ?? JSON.stringify(r.body)?.slice(0, 160)}`);
+  return { id: String(r.body.id), slug: r.body.slug ?? null, title, payload: songPayload({ originalTitle: title, translationTitle: title }) };
+}
+
+// The catalog edit: PUT the complete payload with a new originalTitle.
+// `ackAt` = when the response arrived here (the operator's "saved").
+export async function updateSongTitle({ base, cookie, song, originalTitle }) {
+  const payload = { ...song.payload, originalTitle };
+  const r = await settle("song update", `${base}/api/admin/songs/${song.id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(payload),
+  });
+  return { startedAt: r.startedAt, ackAt: r.startedAt + r.ms, ms: r.ms, status: r.status, error: r.error ?? null };
+}
+
+export async function deleteSong({ base, cookie, id }) {
+  const r = await settle("song delete", `${base}/api/admin/songs/${id}`, { method: "DELETE", headers: { cookie } });
+  return { status: r.status, error: r.error ?? null };
+}
+
+// A raw reaction (no browser): POST /api/reactions → { reactionId,
+// counts, ackAt }.
+export async function postReaction({ base, setlistItemId, reactionType, anonId }) {
+  const r = await settle("reaction", `${base}/api/reactions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ setlistItemId: String(setlistItemId), reactionType, anonId }),
+  }, { timeoutMs: 15000 });
+  return { startedAt: r.startedAt, ms: r.ms, status: r.status, reactionId: r.body?.reactionId ?? null, ackAt: r.body?.ackAt ?? null, error: r.error ?? null };
+}
+
+export async function deleteReaction({ base, reactionId }) {
+  const r = await settle("reaction delete", `${base}/api/reactions`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reactionId }),
+  }, { timeoutMs: 15000 });
+  return { status: r.status, error: r.error ?? null };
+}
+
+// The editor page's content check. Both strings are always rendered for
+// an existing event: the page's own <h1> ("이벤트 편집", app/admin/events/
+// [id]/edit/page.tsx) and an always-present EventForm label ("시작 시각
+// (UTC)"). A login redirect, a not-found page or an error boundary can
+// all answer 200 — none of them carries both — and the event id must
+// appear in the serialized initial data (`"id":<id>` in the RSC payload,
+// with or without JSON escaping).
+export const EDITOR_MARKERS = ["이벤트 편집", "시작 시각 (UTC)"];
+export function editorContentOk(html, eventId) {
+  if (typeof html !== "string") return false;
+  if (!EDITOR_MARKERS.every((m) => html.includes(m))) return false;
+  // Plain substring scan (no RegExp: the escaped form is easy to get
+  // wrong): `"id":<id>` or its JSON-escaped twin `\"id\":<id>`, not
+  // followed by another digit.
+  const id = String(eventId);
+  return [`"id":${id}`, `\\"id\\":${id}`].some((needle) => {
+    for (let i = html.indexOf(needle); i >= 0; i = html.indexOf(needle, i + 1)) {
+      const next = html.charCodeAt(i + needle.length);
+      if (!(next >= 48 && next <= 57)) return true;
+    }
+    return false;
+  });
+}
+
+// Authenticated GET of the admin editor (an SSR render that reads the
+// whole event with its setlist from the database). `ms` = request start
+// → body fully drained; `headersMs` = request start → headers.
+export async function reloadEditor({ base, cookie, eventId }) {
+  const r = await settle("reload", `${base}/admin/events/${eventId}/edit`, { method: "GET", headers: { cookie }, redirect: "manual" });
+  const html = r.buf ? r.buf.toString("utf8") : null;
+  return { at: r.startedAt, ms: r.ms, headersMs: r.headersMs, status: r.status, bytes: r.buf ? r.buf.length : 0, contentOk: r.status === 200 && editorContentOk(html, eventId), error: r.error ?? null };
+}

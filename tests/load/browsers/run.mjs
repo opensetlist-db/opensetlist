@@ -29,8 +29,12 @@
 // monotonicity() below). Any decrease is a failure.
 //
 // Drills (one per run): `--drill=silent-loss | ws-blocked | reconnect |
-// double-save | lost-final | poison | spam | verify-ambiguity`, see the
-// README and the per-drill comments below. `poison` and `spam` are the two guest-
+// double-save | lost-final | poison | spam | verify-ambiguity | overlap`,
+// see the README and the per-drill comments below. `overlap` (n14
+// qualification step 4) replaces the edit shape for the whole run: every
+// edit is a GROUP of 2–3 concurrent PUTs on three anchor rows, judged per
+// group against its head (overlap.mjs; exposure from the server logs:
+// ../overlap-join.mjs). `poison` and `spam` are the two guest-
 // broadcast drills: an anonymous supabase-js client (anon key, like any
 // visitor) joins the public `event:<id>` channel and sends forged `rev`
 // broadcasts in the exact shape the writer sends, so the clients cannot
@@ -70,6 +74,12 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { loadEnv, assertDev, parseArgs, dist, sleep, pgClient, isDeploymentBaseUrl } from "../realtime/lib.mjs";
 import { adminLogin, getSnapshot, insertAfter, putSong, activeRows, pickMarkerSongs, cleanup, findUnacknowledgedInsert } from "./admin.mjs";
+import { putSongRaw, createSong, updateSongTitle, deleteSong, postReaction, deleteReaction, reloadEditor } from "./admin.mjs";
+import {
+  parseOverlapFlags, rolesOf, isOkSave, groupAnchor, pageGroupConvergence, sdkGroupConvergence, subMonotonicityRC,
+  pageStallSuspect, reloadVerdict, roleLatency, reactionVerdict, ackHoldVerdict, probePlan,
+} from "./overlap.mjs";
+import { REACTION_TYPES, ANON_PREFIX } from "../lib/constants.js";
 import { launchPages } from "./pages.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
@@ -144,10 +154,33 @@ const DEBUG_STALL_MS = int("debug-stall", 0);
 const GATE_P95_MS = int("gate-p95", 3000);
 // camelCase spellings accepted too (doubleSave, lostFinal, …).
 const DRILL = args.drill ? String(args.drill).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`) : null;
-if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam", "verify-ambiguity"].includes(DRILL)) {
+if (DRILL && !["silent-loss", "ws-blocked", "reconnect", "double-save", "lost-final", "poison", "spam", "verify-ambiguity", "overlap"].includes(DRILL)) {
   console.error(`unknown --drill=${args.drill}`);
   process.exit(2);
 }
+// overlap (n14 qualification step 4): see overlap.mjs for the flags, their
+// defaults and the refusal rules (all checked here, before anything is
+// created). `OV` is null for every other run.
+const OVERLAP = DRILL === "overlap";
+const OV_PARSED = parseOverlapFlags(args, { drill: DRILL, deploymentUrl: DEPLOYMENT_URL });
+if (OV_PARSED.error) {
+  console.error(OV_PARSED.error);
+  process.exit(2);
+}
+const OV = OV_PARSED.cfg;
+// Reaction types: the page's ack-hold click uses the LAST type, the raw
+// reactions cycle over the others, so the clicked button's count changes
+// only by the page's own reaction (the ack-hold verdict compares exact
+// counts).
+const OV_PAGE_RX_TYPE_INDEX = REACTION_TYPES.length - 1;
+const OV_RAW_RX_TYPES = REACTION_TYPES.slice(0, -1);
+// The ack-hold test needs a reaction button on anchor row A at click
+// time, i.e. a song already on the row: group 1's save A puts the first
+// one there, so the earliest group that can run the test is group 2.
+const OV_REACTION_GROUP = 2;
+// A short run id for the drill's dedicated song titles and raw reaction
+// anonIds (`n14run2-<run>-<k>-<i>`: the prefix viewers-check.mjs knows).
+const RUN_ID = Date.now().toString(36);
 const GUEST_DRILL = DRILL === "poison" || DRILL === "spam";
 // silent-loss: a subset of pages loses the notification for ONE edit.
 // ws-blocked: pages with the websocket blocked for the whole run.
@@ -265,6 +298,12 @@ let guest = null; // guest broadcaster of the poison / spam drills
 // writes `position` too: a stale value would move the row or trip the
 // (eventId, position) unique index.
 let anchor = null; // { id, position }
+// overlap: the three anchor rows { A, B, C: { id, position } }, the
+// dedicated catalog-edit songs (S5) and every reaction id this run
+// created (raw + the page's own), all removed by finalize().
+const ovAnchors = {};
+const ovSongs = [];
+const ovReactionIds = [];
 // Measurement validity (see the header and hostmon.mjs). The main
 // thread's monitor starts at load: it owns every page timestamp
 // (Playwright events land here) and the admin driver's save clock.
@@ -304,6 +343,8 @@ function startWorkers() {
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
         anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
         batch: batchPer, every: 1000, localeOf: LOCALE_OF, workerIdx: w,
+        // overlap: record anchor row A's song title per response.
+        anchorId: OVERLAP ? ovAnchors.A?.id ?? null : null,
       },
     });
     workerStarted[w] = Date.now();
@@ -527,7 +568,8 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
     }
     // [page idx, locale, request start − commit ms, response − commit ms,
     //  source, verify kind, minRev sent]
-    if (first) out.pages.hint.first.push([r.idx, r.locale, first.start - tCommit, first.f[0] - tCommit, first.f[3], verifyKindOf(first.f[5]), first.f[1]]);
+    //  + body rev (appended in step 4: warm-join's "served newer than key")
+    if (first) out.pages.hint.first.push([r.idx, r.locale, first.start - tCommit, first.f[0] - tCommit, first.f[3], verifyKindOf(first.f[5]), first.f[1], first.f[4] ?? null]);
     const bpp = firstAfter(r.bcasts || [], ([t, rev, w]) => w !== "x" && rev === edit.put.rev && t >= tPut - 50);
     if (bpp) out.pages.bcastPut.push(bpp[0] - tPut);
   }
@@ -545,7 +587,7 @@ function editStats(edit, pageRecs, subRecs, { isDrilledPage, isDrilledSub, notes
         //  minRev sent]
         if (!firstDone) {
           firstDone = true;
-          out.subs.hint.first.push([r.idx, r.locale, q[0] - tCommit, q[10] == null ? null : q[10] - tCommit, q[12] ?? null, q[7] ?? null, q[5]]);
+          out.subs.hint.first.push([r.idx, r.locale, q[0] - tCommit, q[10] == null ? null : q[10] - tCommit, q[12] ?? null, q[7] ?? null, q[5], q[8] ?? null]);
         }
       }
       if (q[9] && q[9] !== "none") bumpK(out.subs.hint.res, q[9]);
@@ -705,6 +747,139 @@ async function hostGuard() {
   log("host guard: continuing (no --strict-host); expect an INVALID verdict if the host stalls");
 }
 
+// ─── overlap drill (--drill=overlap) ───
+// One probe: a hinted fetch for key (locale, minRev) exactly as a
+// notification fetch would send it. The row is the `probe` population's
+// (design §2.2): [tStart, locale, minRev, status, source, bodyRev,
+// capturedAt, anchorTitle, tEnd]. anchorTitle = anchor row A's song
+// `originalTitle` in the body — the content evidence of the catalog-edit
+// race (a warm entry captured before the title change).
+const PROBE_ROW = ["tStart", "locale", "minRev", "status (0 = network)", "x-snapshot-source", "body rev", "body capturedAt (epoch ms, PostgreSQL clock)", "anchor A song originalTitle", "tEnd"];
+async function probeOnce(locale, minRev) {
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${BASE}/api/setlist?eventId=${EVENT_ID}&locale=${locale}&minRev=${minRev}&hint=1`, { signal: AbortSignal.timeout(15000) });
+    const source = res.headers.get("x-snapshot-source");
+    let body = null;
+    try { body = await res.json(); } catch { /* non-JSON error body */ }
+    const cap = typeof body?.capturedAt === "string" ? Date.parse(body.capturedAt) : NaN;
+    const item = Array.isArray(body?.items) ? body.items.find((x) => String(x?.id) === String(ovAnchors.A?.id)) : null;
+    return [t0, locale, minRev, res.status, source, Number.isSafeInteger(body?.rev) ? body.rev : null, Number.isFinite(cap) ? cap : null, item?.songs?.[0]?.song?.originalTitle ?? null, Date.now()];
+  } catch {
+    return [t0, locale, minRev, 0, null, null, null, null, Date.now()];
+  }
+}
+
+// Probes of one group (design §2.3): every committed rev of the group —
+// the ACTUAL revs the saves returned, never R+1 arithmetic — × 3 locales
+// at +1 s, +2 s, +4 s after the last save's response. Each row is tagged
+// with the offset and the save (who) whose key it reads; the older key(s)
+// are the interesting ones once the population has merged onto the head.
+// Reported apart; never part of a convergence gate.
+async function runProbes(anchorInfo) {
+  const plan = probePlan(anchorInfo.committed);
+  const byOff = new Map();
+  for (const x of plan) {
+    if (!byOff.has(x.off)) byOff.set(x.off, []);
+    byOff.get(x.off).push(x);
+  }
+  const out = [];
+  for (const [off, list] of [...byOff.entries()].sort((a, b) => a[0] - b[0])) {
+    const due = anchorInfo.lastResponse + off;
+    if (Date.now() < due) await sleep(due - Date.now());
+    const rows = await Promise.all(list.map((x) => probeOnce(x.locale, x.rev).then((row) => ({ off, who: x.who, head: x.rev === anchorInfo.head, row }))));
+    out.push(...rows);
+  }
+  return out;
+}
+
+// One overlap group k. Every action is scheduled from ONE start instant
+// t0 (save A's dispatch), none awaits another: save A at 0 (with the
+// fault header, if any), B at --overlap-gap, C at --overlap-third-at,
+// editor reloads at --overlap-reload-at, the catalog edit at
+// --overlap-catalog-at, n raw reactions spread over [0, 3 s]. The saves
+// are NOT retried (a retried A landing after B would change which save is
+// the head mid-measurement — same reason as double-save); a failed save
+// is recorded with its status and the group fails the "all saves
+// committed" gate. Returns the group record plus its still-running
+// background work (probes, the page reaction trace).
+async function overlapGroup(k, { songFor, reactionPage, aMarkerIds }) {
+  const roles = rolesOf(OV);
+  // Re-read the anchors' positions (the PUT writes `position`; a stale
+  // value would move the row or trip the (eventId, position) index).
+  const ids = roles.map((w) => ovAnchors[w].id);
+  const pos = await withPg(async (pg) => (await pg.query(`select id::text as id, position from "SetlistItem" where id = any($1::bigint[])`, [ids])).rows)
+    .catch((e) => { log(`  anchor position read failed (${e.message}); using tracked positions`); return []; });
+  for (const r of pos) for (const w of roles) if (ovAnchors[w].id === r.id) ovAnchors[w].position = Number(r.position);
+
+  const g = { k, saves: [], reloads: [], catalog: null, reactions: [], t0: null };
+  let ahRun = null;
+  if (OV.pageReaction && k === OV_REACTION_GROUP && reactionPage != null && pagePop.armAckHold) {
+    const arm = await pagePop.armAckHold(reactionPage, {
+      anchorId: ovAnchors.A.id, markerIds: aMarkerIds, typeIndex: OV_PAGE_RX_TYPE_INDEX,
+      reactionType: REACTION_TYPES[OV_PAGE_RX_TYPE_INDEX],
+      // Long enough for a releasing snapshot: the next group's notification
+      // fetch, or the periodic poll (20 s ± 4 s) when this is the last group.
+      windowMs: 30000,
+    });
+    ahRun = arm.run().then((tr) => {
+      if (tr?.ack?.reactionId) ovReactionIds.push(tr.ack.reactionId);
+      return tr;
+    });
+  }
+  const t0 = Date.now();
+  g.t0 = t0;
+  const at = (off, fn) => sleep(Math.max(0, t0 + off - Date.now())).then(fn);
+  const offsetOf = { A: 0, B: OV.gapMs, C: OV.thirdAtMs };
+  const saveP = roles.map((who) => at(offsetOf[who], async () => {
+    const song = songFor(k, who);
+    const row = ovAnchors[who];
+    const fault = who === "A" ? OV.faultA : null;
+    const r = await putSongRaw({ base: BASE, cookie, id: row.id, position: row.position, songId: song.id, fault });
+    if (r.error) saveFailures.push({ k, op: `put (overlap ${who})`, attempt: 1, at: iso(r.startedAt), error: r.error });
+    return { k, who, rowId: row.id, song, startedAt: r.startedAt, ms: r.ms, status: r.status, rev: r.rev, attempts: 1, fault, error: r.error };
+  }));
+  const reloadP = OV.reloadAt.map((off) => at(off, () => reloadEditor({ base: BASE, cookie, eventId: EVENT_ID }).then((r) => ({ k, off, ...r }))));
+  const dedicated = OV.catalogAtMs > 0 ? ovSongs[k - 1] : null;
+  const catP = dedicated
+    ? at(OV.catalogAtMs, () => {
+      const to = `${dedicated.title}-c${k}`;
+      return updateSongTitle({ base: BASE, cookie, song: dedicated, originalTitle: to })
+        .then((r) => ({ k, songId: dedicated.id, from: dedicated.title, to, ...r }));
+    })
+    : null;
+  const rxP = Array.from({ length: OV.reactions }, (_, i) => at(Math.round((i * 3000) / Math.max(1, OV.reactions)), () => {
+    const reactionType = OV_RAW_RX_TYPES[i % OV_RAW_RX_TYPES.length];
+    return postReaction({ base: BASE, setlistItemId: ovAnchors.A.id, reactionType, anonId: `${ANON_PREFIX}${RUN_ID}-${k}-${i}` })
+      .then((r) => {
+        if (r.reactionId) ovReactionIds.push(r.reactionId);
+        return { k, i, reactionType, ...r };
+      });
+  }));
+  g.saves = await Promise.all(saveP);
+  g.anchor = groupAnchor(g.saves);
+  const probeP = OV.probes && g.anchor.committed.length ? runProbes(g.anchor) : Promise.resolve([]);
+  g.reloads = await Promise.all(reloadP);
+  g.catalog = catP ? await catP : null;
+  g.reactions = await Promise.all(rxP);
+  const txt = g.saves.map((s) => `${s.who} ${s.status}${s.rev != null ? ` rev ${s.rev}` : ""} ${s.ms} ms`).join(", ");
+  log(`group ${k}: ${txt}; head ${g.anchor.head ?? "—"}${g.catalog ? `; catalog PUT ${g.catalog.status} ${g.catalog.ms} ms` : ""}${g.reloads.length ? `; reloads ${g.reloads.map((r) => `${r.status}/${r.ms}ms${r.contentOk ? "" : "/content-FAIL"}`).join(" ")}` : ""}${g.reactions.length ? `; reactions ${g.reactions.filter((r) => r.status >= 200 && r.status < 300).length}/${g.reactions.length} ok` : ""}`);
+  return { g, probeP, ahRun };
+}
+
+// Control reloads of the editor (no save in flight): before the first
+// group, in every pause, after the last group — the in-window ÷ control
+// ratio's denominator. Sequential, ~1 s apart.
+async function controlReloads(n, phase) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const r = await reloadEditor({ base: BASE, cookie, eventId: EVENT_ID });
+    out.push({ k: "control", phase, ...r });
+    if (i < n - 1) await sleep(1000);
+  }
+  return out;
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
@@ -718,8 +893,12 @@ async function main() {
   let startRev;
   try {
     original = await activeRows(pg, EVENT_ID);
-    // double-save needs one more marker for its second PUT.
-    songs = await pickMarkerSongs(pg, EDITS + (DRILL === "double-save" ? 1 : 0));
+    // double-save needs one more marker for its second PUT. overlap: one
+    // per save of every group (groups × roles), minus save A's when the
+    // catalog edit is on (A then gets a dedicated song per group).
+    songs = OVERLAP
+      ? await pickMarkerSongs(pg, EDITS * (rolesOf(OV).length - (OV.catalogAtMs > 0 ? 1 : 0)))
+      : await pickMarkerSongs(pg, EDITS + (DRILL === "double-save" ? 1 : 0));
     startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
   } finally {
     await pg.end();
@@ -759,11 +938,37 @@ async function main() {
   // joins, so its own insert is not part of any measured save. It sits
   // right after row AFTER_ROW, i.e. exactly where pair inserts land —
   // which shifts it down by one per pair insert (tracked below).
-  if (NEEDS_ANCHOR) {
+  // (overlap creates its own three anchors below; --edit-mode is ignored
+  // for it.)
+  if (NEEDS_ANCHOR && !OVERLAP) {
     const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
     created.push(a.id);
     anchor = { id: a.id, position: a.position };
     log(`anchor row ${a.id} @${a.position} created (rev ${a.rev}) for ${EDIT_MODE} edits`);
+  }
+
+  // overlap: THREE anchor rows (A, B and — with --overlap-third-at — C),
+  // created before any viewer joins, so the drill's saves are pure
+  // concurrent PUTs on distinct rows. Each insert lands right after row
+  // AFTER_ROW and pushes the earlier ones down; the positions are re-read
+  // from the database before every group anyway. S5 (--overlap-catalog-
+  // at): one dedicated song per group for save A, created now (its own
+  // cache expiry happens before the measurement), soft-deleted at the
+  // clean-up; a real catalog song is never edited.
+  if (OVERLAP) {
+    for (const who of rolesOf(OV)) {
+      const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition });
+      created.push(a.id);
+      ovAnchors[who] = { id: a.id, position: a.position };
+      log(`overlap anchor ${who}: row ${a.id} (rev ${a.rev})`);
+    }
+    if (OV.catalogAtMs > 0) {
+      for (let k = 1; k <= EDITS; k++) {
+        const song = await createSong({ base: BASE, cookie, title: `n14-overlap-${RUN_ID}-${k}` });
+        ovSongs.push(song);
+      }
+      log(`overlap: ${ovSongs.length} dedicated song(s) for save A created (${ovSongs.map((x) => x.id).join(",")})`);
+    }
   }
 
   // Populations.
@@ -825,9 +1030,21 @@ async function main() {
     if (!guest.joined) throw new Error(`guest could not join event:${EVENT_ID} (${guest.status})`);
   }
   await sleep(SETTLE_MS);
+  // overlap: 3 control reloads of the admin editor before the first group.
+  const ovReloadControls = [];
+  if (OVERLAP && OV.reloadAt.length) ovReloadControls.push(...(await controlReloads(3, "before")));
 
   // Edits.
   const edits = [];
+  // overlap: per group the record + its background work (see overlapGroup).
+  const ovGroups = [];
+  const ovPending = [];
+  const ovRoles = OVERLAP ? rolesOf(OV) : [];
+  const ovPlain = OVERLAP ? ovRoles.filter((w) => !(w === "A" && OV.catalogAtMs > 0)) : [];
+  const ovSongFor = (k, who) => (who === "A" && OV.catalogAtMs > 0 ? ovSongs[k - 1] : songs[(k - 1) * ovPlain.length + ovPlain.indexOf(who)]);
+  // The page that runs the reaction ack-hold test: the lowest-index page
+  // that is not routed by a websocket drill (overlap routes none).
+  const ovReactionPage = OVERLAP && OV.pageReaction ? (pagePop.pages.findIndex((p) => p && p.rec.mode === "none" && p.rec.loadedAt) ?? -1) : -1;
   const drillEvents = [];
   // Newest real save rev seen by the admin driver (spam --spam-rev).
   let latestRev = startRev;
@@ -843,6 +1060,31 @@ async function main() {
   for (let k = 1; k <= EDITS; k++) {
     const due = editsStart + (k - 1) * PAUSE_MS;
     if (Date.now() < due) await sleep(due - Date.now());
+    if (OVERLAP) {
+      const aMarkerIds = Array.from({ length: EDITS }, (_, i) => ovSongFor(i + 1, "A").id);
+      const { g, probeP, ahRun } = await overlapGroup(k, { songFor: ovSongFor, reactionPage: ovReactionPage >= 0 ? ovReactionPage : null, aMarkerIds });
+      ovGroups.push(g);
+      ovPending.push(probeP.then((rows) => { g.probes = rows; }));
+      if (ahRun) ovPending.push(ahRun.then((tr) => { g.pageReaction = tr; }));
+      for (const s of g.saves) {
+        if (!isOkSave(s)) continue;
+        noteRev(s.rev);
+        // One entry per committed save: the per-save tables, the hint
+        // accounting, the DOM monotonicity (markerIndex: a later group's
+        // marker on the same anchor row replaces the earlier one) and the
+        // warm section all work on these unchanged.
+        edits.push({ k, who: s.who, mode: "overlap", id: s.rowId, song: s.song, ins: null, put: { startedAt: s.startedAt, successAt: s.startedAt, ms: s.ms, rev: s.rev, attempts: 1 }, double: null });
+      }
+      // 2 control reloads in the pause (after the probes' +4 s).
+      if (OV.reloadAt.length && k < EDITS) {
+        for (const f of [0.6, 0.8]) {
+          const t = due + Math.round(PAUSE_MS * f);
+          if (Date.now() < t) await sleep(t - Date.now());
+          ovReloadControls.push(...(await controlReloads(1, `pause ${k}`)));
+        }
+      }
+      continue;
+    }
     const song = songs[k - 1];
     const drillThis = k === DRILL_EDIT;
     const mode = modeOf(k);
@@ -1082,13 +1324,39 @@ async function main() {
   // PUT's revision. Ending earlier would cut slow (periodic-poll)
   // arrivals of the last edit off as "missing".
   const last = edits[edits.length - 1];
-  while (last && Date.now() < last.put.startedAt + TIMEOUT_MS) {
+  // overlap: the last save in the list is not necessarily the head (the
+  // Event row lock orders the commits), so wait for the highest rev from
+  // the last save's start instead.
+  const lastRev = OVERLAP && edits.length ? Math.max(...edits.map((e) => e.put.rev)) : last?.put.rev;
+  const lastStartAt = OVERLAP && edits.length ? Math.max(...edits.map((e) => e.put.startedAt)) : last?.put.startedAt;
+  while (last && Date.now() < lastStartAt + TIMEOUT_MS) {
     const pagesDone = pagePop.pages.every((p) => !p || edits.every((e) => p.rec.seen[e.song.id] != null));
-    const subsDone = SUBS === 0 || (await subsReached(last.put.rev)) >= SUBS;
+    const subsDone = SUBS === 0 || (await subsReached(lastRev)) >= SUBS;
     if (pagesDone && subsDone) break;
     await sleep(500);
   }
   const editsEnd = Date.now();
+  // overlap, after the measurement window: 3 control reloads, the quiet
+  // tail (--overlap-quiet-tail: sparse probes of the LAST group's keys
+  // every 10 s — how long an older / stale entry stays readable through
+  // the 90 s TTL; the window is censored at the tail's end), then the
+  // background work of every group.
+  let ovTail = [];
+  if (OVERLAP) {
+    if (OV.reloadAt.length) ovReloadControls.push(...(await controlReloads(3, "after")));
+    const lg = ovGroups[ovGroups.length - 1];
+    if (OV.quietTailS > 0 && lg?.anchor.committed.length) {
+      const tailEnd = Date.now() + OV.quietTailS * 1000;
+      log(`overlap quiet tail: probing group ${lg.k}'s keys every 10 s for ${OV.quietTailS} s`);
+      while (Date.now() < tailEnd) {
+        const rows = await Promise.all(probePlan(lg.anchor.committed, ["ja", "ko", "en"], [0]).map((x) => probeOnce(x.locale, x.rev).then((row) => ({ who: x.who, head: x.rev === lg.anchor.head, row }))));
+        ovTail.push(...rows);
+        const next = Math.min(tailEnd, Date.now() + 10000);
+        if (Date.now() < next) await sleep(next - Date.now());
+      }
+    }
+    await Promise.all(ovPending);
+  }
   // The spam runs its full length even when the edits finished first:
   // its duration is part of the drill's definition. The edit window
   // above is already closed, so this only delays the clean-up.
@@ -1096,7 +1364,10 @@ async function main() {
     const s = await spamP;
     drillEvents.push({ k: DRILL_EDIT, what: `guest spam done: ${s.sent} of ${s.planned} messages in ${Math.round(s.ms / 1000)} s${s.skipped ? ` (${s.skipped} slots skipped after slow acks)` : ""}`, at: iso(Date.now()) });
   }
-  return { runStart, popStart, settleStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition };
+  return {
+    runStart, popStart, settleStart, popSummary, edits, drillEvents, drillPageSet, startRev, editsStart, editsEnd, afterPosition,
+    ...(OVERLAP ? { overlap: { groups: ovGroups, controls: ovReloadControls, tail: ovTail, reactionPage: ovReactionPage >= 0 ? ovReactionPage : null } } : {}),
+  };
 }
 
 async function finalize(state, aborted) {
@@ -1104,6 +1375,20 @@ async function finalize(state, aborted) {
   finalized = true;
   log(aborted ? `aborting (${aborted}) — cleaning up` : "cleaning up");
   if (guest) await guest.close();
+  // overlap: every reaction this run created (raw ones by their returned
+  // id — the n14run2- prefix is only the safety net for viewers-check.mjs
+  // — and the page's own, whose browser anonId carries no prefix), then
+  // the rows below, then the dedicated songs (soft-deleted; a song row is
+  // never hard-deleted).
+  let ovClean = null;
+  if (OVERLAP) {
+    ovClean = { reactions: { deleted: 0, failed: [] }, songs: { deleted: 0, failed: [] } };
+    for (const id of [...new Set(ovReactionIds)]) {
+      const r = await deleteReaction({ base: BASE, reactionId: id });
+      if (r.status >= 200 && r.status < 300) ovClean.reactions.deleted++;
+      else ovClean.reactions.failed.push(id);
+    }
+  }
   let clean = null;
   if (created.length && cookie) {
     const pg = pgClient();
@@ -1115,6 +1400,14 @@ async function finalize(state, aborted) {
       if (pgOk) await pg.end().catch(() => {});
     }
     log(`cleanup: deleted ${clean.deleted.length}/${created.length}${clean.failed.length ? ` FAILED ${clean.failed.join(",")}` : ""}; restore ${JSON.stringify(clean.restore)}`);
+  }
+  if (ovClean && cookie) {
+    for (const song of ovSongs) {
+      const r = await deleteSong({ base: BASE, cookie, id: song.id });
+      if (r.status >= 200 && r.status < 300) ovClean.songs.deleted++;
+      else ovClean.songs.failed.push(song.id);
+    }
+    log(`overlap cleanup: reactions deleted ${ovClean.reactions.deleted}/${new Set(ovReactionIds).size}${ovClean.reactions.failed.length ? ` FAILED ${ovClean.reactions.failed.join(",")}` : ""}; songs soft-deleted ${ovClean.songs.deleted}/${ovSongs.length}${ovClean.songs.failed.length ? ` FAILED ${ovClean.songs.failed.join(",")}` : ""}`);
   }
   // Verify the event is back to its starting rows, from a fresh read.
   let verify = null;
@@ -1141,7 +1434,7 @@ async function finalize(state, aborted) {
   const subRecs = workers.length ? await stopWorkers() : [];
   const pageRecs = pagePop ? pagePop.pages.filter(Boolean).map((p) => p.rec) : [];
   if (pagePop) await pagePop.close();
-  return { clean, verify, subRecs, pageRecs };
+  return { clean, verify, subRecs, pageRecs, ovClean };
 }
 
 function report(state, fin) {
@@ -1174,7 +1467,7 @@ function report(state, fin) {
     if (DRILL === "spam" && guest?.sends.length) {
       from = guest.sends[0][0];
       to = guest.sends[guest.sends.length - 1][0] + 3000;
-    } else if (DRILL === "ws-blocked") {
+    } else if (DRILL === "ws-blocked" || OVERLAP) {
       from = state.editsStart;
       to = state.editsEnd;
     } else {
@@ -1214,7 +1507,10 @@ function report(state, fin) {
   const isDrilledPage = (r, e) =>
     ((DRILL === "silent-loss" || DRILL === "lost-final") && e.k === drillK && drillPageSet.has(r.idx)) ||
     (DRILL === "ws-blocked" && drillPageSet.has(r.idx)) ||
-    (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.joinAt, e.put.startedAt))));
+    (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.joinAt, e.put.startedAt)))) ||
+    // overlap: the ack-hold page held one response back on purpose in its
+    // group; its delay there is the test, not a delivery result.
+    (OVERLAP && OV.pageReaction && e.k === OV_REACTION_GROUP && r.idx === state.overlap?.reactionPage);
   const isDrilledSub = (r, e) =>
     (DRILL === "lost-final" && e.k === drillK) ||
     (DRILL === "reconnect" && (e.k === drillK || (e.k > drillK && notRejoinedAt(r.subscribedAt, e.put.startedAt))));
@@ -1289,7 +1585,9 @@ function report(state, fin) {
   const pass = (d, gate) => (d.n === 0 && d.missing === 0 ? null : d.missing === 0 && d.p95 != null && d.p95 <= gate);
   // An edit whose save failed twice was never delivered to anyone, so
   // the run can't claim the gate for the planned edit count.
-  const skippedEdits = EDITS - edits.length;
+  // overlap: `edits` holds one entry per committed SAVE, so "skipped" =
+  // groups with at least one save that did not commit.
+  const skippedEdits = OVERLAP ? (state.overlap?.groups ?? []).filter((g) => !g.anchor.allOk).length : EDITS - edits.length;
   const primaryPass = pass(combined, GATE_P95_MS);
   const verdicts = {
     primary: { gate: `p95 ≤ ${GATE_P95_MS} ms, 0 missing, all ${EDITS} edits saved`, ...combined, skippedEdits, pass: skippedEdits > 0 ? false : primaryPass },
@@ -1302,6 +1600,109 @@ function report(state, fin) {
     subRegressions: monoSubsN, subsWithRegressions: monoSubsBad.length,
     pass: monoPagesN === 0 && monoSubsN === 0,
   };
+
+  // ─── overlap: per-group gates, client side (design §2.6) ───
+  // Clock of every gate: the group's LAST original request start (the
+  // operator's last click); target: the group's HEAD (highest committed
+  // rev — the commit order is the Event row lock's, not the start
+  // order's). Pages converge when the DOM shows every committed save's
+  // marker of the group (distinct anchor rows → all visible at the end;
+  // intermediate revs may be skipped by batch merging and need not be
+  // rendered); SDK clients when they applied a snapshot with rev ≥ head.
+  // From the FIRST save's start: informational. The server-side gates
+  // (acquireMs, pool timeouts, EMAXCONN, builds per save, Σ, exposure)
+  // need the history logs: ../overlap-join.mjs.
+  let overlap = null;
+  if (OVERLAP && state.overlap) {
+    const O = state.overlap;
+    const groups = O.groups.map((g) => {
+      const a = g.anchor;
+      const markers = g.saves.filter(isOkSave).map((x) => String(x.song.id));
+      const conv = { pages: [], pagesFirst: [], pagesMissing: 0, drilledPages: [], subs: [], subsFirst: [], subsMissing: 0 };
+      if (a.head != null) {
+        const opt = { from: a.lastStart, firstStart: a.firstStart, deadline: a.lastStart + TIMEOUT_MS };
+        for (const r of pageRecs) {
+          const c = pageGroupConvergence(r.seen, markers, opt);
+          if (OV.pageReaction && g.k === OV_REACTION_GROUP && r.idx === O.reactionPage) { conv.drilledPages.push(c.ok ? c.lat : null); continue; }
+          if (c.ok) { conv.pages.push(c.lat); conv.pagesFirst.push(c.latFirst); } else conv.pagesMissing++;
+        }
+        for (const r of subRecs) {
+          const c = sdkGroupConvergence(r.applied, a.head, opt);
+          if (c.ok) { conv.subs.push(c.lat); conv.subsFirst.push(c.latFirst); } else conv.subsMissing++;
+        }
+      } else {
+        conv.pagesMissing = pageRecs.length;
+        conv.subsMissing = subRecs.length;
+      }
+      return { g, a, markers, conv };
+    });
+    const flat = (f) => groups.flatMap((x) => f(x));
+    const pagesConv = summarize(flat((x) => x.conv.pages), groups.reduce((s, x) => s + x.conv.pagesMissing, 0));
+    const subsConv = summarize(flat((x) => x.conv.subs), groups.reduce((s, x) => s + x.conv.subsMissing, 0));
+    const fromFirst = dist(flat((x) => [...x.conv.pagesFirst, ...x.conv.subsFirst]));
+    const rc = subRecs.map((r) => ({ r, ...subMonotonicityRC(r.appliedAll) }));
+    const rcN = rc.reduce((s, m) => s + m.regressions.length, 0);
+    const allSaves = O.groups.flatMap((g) => g.saves);
+    const roles = roleLatency(allSaves);
+    const reloads = O.groups.flatMap((g) => g.reloads);
+    const reloadV = reloadVerdict([...reloads, ...O.controls]);
+    const rxAll = O.groups.flatMap((g) => g.reactions);
+    const rxV = reactionVerdict(rxAll);
+    const ahGroup = O.groups.find((g) => g.k === OV_REACTION_GROUP);
+    const ahV = OV.pageReaction
+      ? ackHoldVerdict(ahGroup ? ahGroup.pageReaction ?? { error: "trace missing" } : { error: `needs ≥ ${OV_REACTION_GROUP} groups (anchor row A has no song before group 1's save lands)` })
+      : null;
+    // 5xx anywhere the run looked: admin saves, editor reloads, catalog
+    // edits, raw reactions, the page's reaction, probes, every SDK and
+    // page snapshot response. (EMAXCONN lives in the server logs only.)
+    const is5 = (st) => st >= 500;
+    const probesAll = [...O.groups.flatMap((g) => g.probes || []), ...O.tail];
+    const fivexx = {
+      saves: allSaves.filter((x) => is5(x.status)).length,
+      reloads: [...reloads, ...O.controls].filter((x) => is5(x.status)).length,
+      catalog: O.groups.filter((g) => g.catalog && is5(g.catalog.status)).length,
+      reactions: rxAll.filter((x) => is5(x.status)).length + (ahGroup?.pageReaction?.ack && is5(ahGroup.pageReaction.ack.status) ? 1 : 0),
+      probes: probesAll.filter((x) => is5(x.row[3])).length,
+      sdk: subRecs.reduce((s, r) => s + (r.reqs || []).filter((q) => is5(q[6])).length, 0),
+      pages: pageRecs.reduce((s, r) => s + r.fetches.filter((f) => is5(f[2])).length, 0),
+    };
+    const fivexxTotal = Object.values(fivexx).reduce((s, v) => s + v, 0);
+    const passOf = (d, gate) => (d.n === 0 && d.missing === 0 ? null : d.missing === 0 && d.p95 != null && d.p95 <= gate);
+    const gates = [
+      { name: "all intended saves committed (2xx)", value: `${groups.filter((x) => x.a.allOk).length}/${groups.length} groups`, gate: "every group", pass: groups.length ? groups.every((x) => x.a.allOk) : false },
+      { name: "5xx anywhere (saves, reloads, catalog, reactions, probes, SDK, pages)", value: `${fivexxTotal} (${Object.entries(fivexx).filter(([, v]) => v).map(([k2, v]) => `${k2} ${v}`).join(", ") || "none"})`, gate: "0", pass: fivexxTotal === 0 },
+      { name: "convergence to head from the last save start — pages", value: `${dline(pagesConv)}, missing ${pagesConv.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: passOf(pagesConv, GATE_P95_MS) },
+      { name: "convergence to head from the last save start — SDK", value: `${dline(subsConv)}, missing ${subsConv.missing}`, gate: `p95 ≤ ${GATE_P95_MS}, 0 missing`, pass: SUBS === 0 ? null : passOf(subsConv, GATE_P95_MS) },
+      { name: "DOM monotonicity (pages: marker-derived version never goes back)", value: `${monoPagesN} regressions`, gate: "0", pass: pageRecs.length ? monoPagesN === 0 : null },
+      { name: "(rev, capturedAt) monotonicity (SDK applied)", value: `${rcN} regressions on ${rc.filter((m) => m.regressions.length).length} client(s)`, gate: "0", pass: subRecs.length ? rcN === 0 : null },
+      ...Object.entries(roles).map(([who, r]) => ({ name: `PUT latency, original attempt — save ${who}`, value: `p95 ${ms(r.p95)}, all [${r.values.join(", ")}]${r.failed ? `, ${r.failed} failed` : ""}`, gate: "p95 ≤ 1500", pass: r.pass })),
+      ...(OV.reloadAt.length ? [{ name: "admin editor reloads in the save window", value: `n ${reloadV.window.n}, p50 / max ${ms(reloadV.window.p50)} / ${ms(reloadV.window.max)}, bad ${reloadV.window.bad}`, gate: "200 + content ok + ≤ 3000 ms each", pass: reloadV.pass }] : []),
+      ...(OV.reactions ? [{ name: "raw reactions", value: `n ${rxV.n}, p95 ${ms(rxV.p95)}, max ${ms(rxV.max)}, non-2xx ${rxV.non2xx}`, gate: "p95 ≤ 1500, 0 × 5xx", pass: rxV.pass }] : []),
+      ...(ahV ? [{ name: "page reaction ack hold", value: ahV.exercised ? `held ${ahV.heldCount} < ack ${ahV.ackCount}; drops ${ahV.drops}; release ${ahV.released ? `count ${ahV.releaseCount}, shown ${ahV.finalShown}` : "none"}` : `NOT EXERCISED — ${ahV.reason}`, gate: "never below the ack until capturedAt > ackAt; then = that snapshot", pass: ahV.pass }] : []),
+    ];
+    const pass = gates.every((x) => x.pass !== false);
+    overlap = { groups, pagesConv, subsConv, fromFirst, rc, rcN, roles, reloadV, rxV, ahV, fivexx, fivexxTotal, gates, pass, probesAll };
+  }
+
+  // Under overlap the per-save rows (each save from its OWN start) stay in
+  // the report as information; the group gates (clock = the group's last
+  // save start, target = its head) decide.
+  if (OVERLAP) {
+    verdicts.primary.gate = `informational under --drill=overlap (per save, from each save's own start); the group gates decide`;
+    verdicts.primary.pass = null;
+    verdicts.pages.pass = null;
+    verdicts.subs.pass = null;
+  }
+
+  // ─── SUSPECT: page-side browser stall (every run; overlap.mjs
+  // pageStallSuspect) ───
+  // Banner + JSON only: the verdicts and the exit code are unchanged, and
+  // it is never an automatic INVALID — it is decided afterwards from the
+  // host telemetry and independent evidence (the SDK clients on the same
+  // save, the observer).
+  const suspectSaves = rows
+    .map(({ e, s }) => ({ k: e.k, who: e.who ?? null, rev: e.put.rev, ...pageStallSuspect(s.pages.hint.first, pageRecs.length) }))
+    .filter((x) => x.suspect);
 
   // ─── hint accounting ───
   // SDK: from each client's own request log (the scheduler's descriptor
@@ -1484,6 +1885,12 @@ function report(state, fin) {
       drill: DRILL, gate: `notification / recheck starts ≥ ${COOLDOWN_MS} ms apart per SDK client, 0 HTTP / network / deadline failures during the spam`,
       ...dist([]), missing: 0, ...spam.verdict,
     };
+  } else if (OVERLAP && overlap) {
+    verdicts.drill = {
+      drill: DRILL, gate: "every overlap group gate (see \"Overlap drill\"): saves committed, 0 × 5xx, pages and SDK p95 ≤ gate from the last save start with 0 missing, 0 regressions, PUT p95 ≤ 1.5 s per role, reloads / reactions / ack hold when enabled",
+      ...summarize(overlap.groups.flatMap((x) => [...x.conv.pages, ...x.conv.subs]), overlap.pagesConv.missing + overlap.subsConv.missing),
+      pass: overlap.pass,
+    };
   } else if (DRILL === "verify-ambiguity" && ambiguity) {
     verdicts.drill = {
       drill: DRILL, gate: "every SDK client answered `memo` for the drilled save resolves it on its one recheck (n/a when no memo was observed)",
@@ -1550,10 +1957,17 @@ function report(state, fin) {
     lines.push(`> Thresholds: a lag sample > ${LAG_INVALID_MS} ms on any thread, or a worker without a heartbeat for > ${SILENT_INVALID_MS} ms, between ${iso(vFrom)} and ${iso(vTo)}. Re-run with nothing else on the host (see README "Host isolation").`);
     lines.push("");
   }
+  if (suspectSaves.length) {
+    lines.push("> **SUSPECT: page-side browser stall** — on these saves ≥ 80 % of the pages got their hinted fetch from `warm` / `cache`, yet every one of them took > 1 s (a warm or cache answer costs the server tens of ms; all pages waiting in lock-step points at the one Chromium process, which the Node-thread validity monitors do not watch):");
+    for (const x of suspectSaves) lines.push(`> - save ${x.k}${x.who ?? ""} (rev ${x.rev}): ${x.hits}/${x.pages} pages hit, fastest ${x.minMs} ms, p50 ${x.p50} ms`);
+    lines.push("> Verdicts and exit code are unchanged (not INVALID): decide with the host telemetry below and independent evidence (the SDK clients on the same save, the observer).");
+    lines.push("");
+  }
   lines.push(`- Target: ${BASE}${EVENT_PATH} (event ${EVENT_ID}, start rev ${state.startRev}, ${original.length} active rows; insert after row ${AFTER_ROW} = position ${state.afterPosition})`);
   lines.push(`- Population: ${PAGES} Chromium pages (ja/ko/en 70/20/10), ${SUBS} SDK subscribers in ${SUB_WORKERS} worker thread(s)`);
   const modeTxt = { pair: "(insert-after + PUT marker song) — edit mode pair", standalone: "(ONE PUT swapping the marker song on the anchor row) — edit mode standalone", mixed: "pair on odd edits, standalone on even — edit mode mixed" }[EDIT_MODE];
-  lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
+  if (OVERLAP) lines.push(`- Edits: ${EDITS} overlap group(s) × ${rolesOf(OV).length} concurrent PUTs (${rolesOf(OV).join(", ")}) on anchor rows ${rolesOf(OV).map((w) => ovAnchors[w]?.id).join(", ")}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: overlap (see "Overlap drill")`);
+  else lines.push(`- Edits: ${EDITS} × ${modeTxt}${anchor ? ` (anchor row ${anchor.id})` : ""}, every ${PAUSE_MS / 1000} s; timeout ${TIMEOUT_MS / 1000} s; drill: ${DRILL ?? "none"}${DRILL ? ` (edit ${DRILL === "ws-blocked" ? "all" : drillK}, pages ${DRILL === "reconnect" ? "all + all SDK" : `${Math.min(DRILL_PAGES, PAGES)}`})` : ""}`);
   lines.push(`- Window (UTC): run start ${iso(state.runStart)}, first edit ${iso(state.editsStart)}, last edit settled ${iso(state.editsEnd)}, end ${iso(Date.now())}`);
   lines.push(`- Label: ${args.label ?? "—"}`);
   if (hostCheck) lines.push(`- Host guard at start: CPU ${hostCheck.busyPct ?? "—"} % busy (${hostCheck.how}); ${hostCheck.processListOk ? `${hostCheck.competing.length} competing process(es)` : "process list unavailable"}${hostCheck.problems.length ? ` — **${hostCheck.problems.join("; ").replace(/\|/g, "/")}**` : ""}${STRICT_HOST ? " (--strict-host)" : ""}`);
@@ -1576,6 +1990,8 @@ function report(state, fin) {
     lines.push(`| drill spam (${guest.sends.length} msgs, ${spam.secs.toFixed(0)} s) | ${M} SDK | — | — | — | ${spam.tooClose} client(s) under the cooldown, ${spam.hardFails} hard failure(s) | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
   } else if (ambiguity) {
     lines.push(`| drill verify-ambiguity (rev ${ambiguity.rev}) | ${ambiguity.notif} notification fetches | — | — | — | memo ${ambiguity.memoClients} → recheck ok ${ambiguity.memoRecheckOk}, not ok ${ambiguity.memoRecheckBad}, none ${ambiguity.memoNoRecheck} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
+  } else if (overlap) {
+    lines.push(`| drill overlap: groups, pages + SDK, last save start → head | ${dline(verdicts.drill)} | ${verdicts.drill.missing} | every group gate in "Overlap drill" | ${v(verdicts.drill.pass)} |`);
   } else if (verdicts.drill) {
     lines.push(`| drill ${DRILL} (drilled pairs) | ${dline(drilled)} | ${drilled.missing} | ${verdicts.drill.gate} | ${v(verdicts.drill.pass)} |`);
   }
@@ -1611,7 +2027,7 @@ function report(state, fin) {
   const tries = (x) => (x.attempts > 1 ? ` (${x.attempts} attempts)` : "");
   const markOf = (e) => {
     const nDrilled = pageRecs.filter((r) => isDrilledPage(r, e)).length + subRecs.filter((r) => isDrilledSub(r, e)).length;
-    return `${e.k}${nDrilled ? ` (drill: ${nDrilled})` : ""}${e.double ? " (double save)" : ""}`;
+    return `${e.k}${e.who ?? ""}${nDrilled ? ` (drill: ${nDrilled})` : ""}${e.double ? " (double save)" : ""}`;
   };
   for (const { e } of rows) {
     lines.push(`| ${markOf(e)} | ${e.mode} | ${e.id} | ${e.song.id} ${e.song.title.replace(/\|/g, "/")} | ${e.ins ? iso(e.ins.startedAt) : "—"} | ${e.ins ? `${ms(e.ins.ms)}${e.ins.adopted ? " (adopted)" : ""}${tries(e.ins)}` : "—"} | ${ms(e.ins?.rev)} | ${iso(e.put.startedAt)} | ${e.put.ms}${tries(e.put)} | ${e.put.rev} |`);
@@ -1720,6 +2136,78 @@ function report(state, fin) {
     lines.push(`- 2nd PUT started ${ms(doubleSave.gapMs)} ms after the 1st; final save = song ${doubleSave.finalSong} (rev ${doubleSave.finalRev})${doubleSave.supersededSong ? `, replaced song ${doubleSave.supersededSong}` : " (the other PUT failed)"}`);
     lines.push(`- converged by the end of the edit window: pages ${doubleSave.pagesOk}/${doubleSave.pages} (final marker shown, replaced one gone), SDK ${doubleSave.subsOk}/${doubleSave.subs} (applied ≥ rev ${doubleSave.finalRev}); final save start → final state p50/p95/max ${ms(doubleSave.latency.p50)}/${ms(doubleSave.latency.p95)}/${ms(doubleSave.latency.max)} ms`);
   }
+  if (overlap) {
+    const O = state.overlap;
+    lines.push("");
+    lines.push("## Overlap drill");
+    lines.push("");
+    lines.push(`- ${EDITS} group(s), each: save A at 0${OV.faultA ? ` (header \`x-live-warm-fault: ${OV.faultA}\`)` : ""}, B at +${OV.gapMs} ms${OV.thirdAtMs ? `, C at +${OV.thirdAtMs} ms` : ""} after A's START (not awaited); anchors ${rolesOf(OV).map((w) => `${w} = row ${ovAnchors[w]?.id}`).join(", ")}${OV.reloadAt.length ? `; editor reloads at +${OV.reloadAt.join(", +")} ms` : ""}${OV.catalogAtMs ? `; catalog edit (dedicated song of A) at +${OV.catalogAtMs} ms` : ""}${OV.reactions ? `; ${OV.reactions} raw reactions on row A over [0, 3 s]` : ""}${OV.pageReaction ? `; page reaction ack hold on page ${O.reactionPage ?? "—"} in group ${OV_REACTION_GROUP}` : ""}${OV.quietTailS ? `; quiet tail ${OV.quietTailS} s` : ""}`);
+    lines.push("- Clocks: every time here is this machine's clock. The exposure classification (did B commit during A's job, did the builds overlap, was publication reversed, did the catalog race happen) needs the server's own timestamps and is NOT in this report: run `node tests/load/overlap-join.mjs <this>.json <history log>` (server `at*` fields are the functions' `Date.now()`; `captureAt` / `capturedAt` are PostgreSQL `now()` — a third clock).");
+    lines.push("- Page gate = DOM monotonicity (versions derived from marker links never go backwards), not (rev, capturedAt): a page exposes no applied rev. SDK gate = (rev, capturedAt) of every applied snapshot.");
+    lines.push("");
+    lines.push("| gate (overlap, client side) | value | gate | verdict |");
+    lines.push("|---|---|---|---|");
+    for (const x of overlap.gates) lines.push(`| ${x.name} | ${String(x.value).replace(/\|/g, "/")} | ${x.gate} | ${v(x.pass)} |`);
+    lines.push(`| server side: acquireMs ≤ 500 per save, no pool_acquire_timeout / 503, 0 EMAXCONN, builds per save vs S0, Σ, backend busy | — | \`overlap-join.mjs\` + summariser on the history logs | n/a here |`);
+    lines.push("");
+    lines.push(`From the FIRST save's start (informational): pages + SDK ${dline(overlap.fromFirst)} (n | p50 | p95 | max).`);
+    lines.push("");
+    lines.push("### Per group");
+    lines.push("");
+    lines.push("| group | saves (who: status rev ms) | head (who) | last start (UTC) | pages from last start p50 / p95 / max (n) | missing | SDK from last start p50 / p95 / max (n) | missing | reloads (status / ms / content) | catalog edit | raw reactions ok / n, p95 |");
+    lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+    for (const { g, a, conv } of overlap.groups) {
+      const pd = dist(conv.pages);
+      const sd = dist(conv.subs);
+      const rx = g.reactions;
+      const rxd = dist(rx.map((r) => r.ms));
+      lines.push(`| ${g.k} | ${g.saves.map((x) => `${x.who}: ${x.status} ${x.rev ?? "—"} ${x.ms}`).join("; ")} | ${a.head ?? "—"} (${a.headWho ?? "—"}) | ${iso(a.lastStart)} | ${ms(pd.p50)} / ${ms(pd.p95)} / ${ms(pd.max)} (${pd.n})${conv.drilledPages.length ? ` + ack-hold page ${conv.drilledPages.map(ms).join(",")}` : ""} | ${conv.pagesMissing} | ${ms(sd.p50)} / ${ms(sd.p95)} / ${ms(sd.max)} (${sd.n}) | ${conv.subsMissing} | ${g.reloads.map((r) => `+${r.off}: ${r.status} / ${r.ms} / ${r.contentOk ? "ok" : "**FAIL**"}`).join("; ") || "—"} | ${g.catalog ? `${g.catalog.status} at ${iso(g.catalog.startedAt)}, ack ${g.catalog.ms} ms` : "—"} | ${rx.length ? `${rx.filter((r) => r.status >= 200 && r.status < 300).length} / ${rx.length}, ${ms(rxd.p95)}` : "—"} |`);
+    }
+    if (OV.reloadAt.length) {
+      const rv = overlap.reloadV;
+      lines.push("");
+      lines.push(`Editor reloads (\`GET /admin/events/${EVENT_ID}/edit\`, request start → body drained): in window n ${rv.window.n} p50 ${ms(rv.window.p50)} max ${ms(rv.window.max)} ms; controls (before / pauses / after) n ${rv.control.n} p50 ${ms(rv.control.p50)} max ${ms(rv.control.max)} ms${rv.control.bad ? `, ${rv.control.bad} failed the content check` : ""}; in-window ÷ control median: p50 ${rv.ratioMedian == null ? "—" : rv.ratioMedian.toFixed(2)}, max ${rv.ratioMax == null ? "—" : rv.ratioMax.toFixed(2)} (diagnostic, not a gate).`);
+    }
+    if (overlap.ahV) {
+      const a = overlap.ahV;
+      const tr = O.groups.find((g) => g.k === OV_REACTION_GROUP)?.pageReaction;
+      lines.push("");
+      lines.push(`Page reaction ack hold (page ${O.reactionPage ?? "—"}, group ${OV_REACTION_GROUP}, type ${REACTION_TYPES[OV_PAGE_RX_TYPE_INDEX]}): ${a.exercised ? `exercised — held snapshot rev ${tr?.held?.rev ?? "—"} count ${a.heldCount} (captured ${tr?.held?.capturedAtMs != null ? iso(tr.held.capturedAtMs) : "—"} ≤ ackAt ${tr?.ack?.ackAt ?? "—"}), acknowledged count ${a.ackCount}; display drops below the ack before the release: ${a.drops}; released ${a.released ? `by a response at ${iso(a.releaseAt)} with count ${a.releaseCount}, shown 1 s later ${a.finalShown}` : "never in the window"} → ${a.reason}` : `**not exercised** — ${a.reason}`}.`);
+    }
+    // Probes: per group and key (committed rev), per locale, the sources
+    // at +1 / +2 / +4 s (body rev when ≠ the key).
+    const groupsWithProbes = O.groups.filter((g) => (g.probes || []).length);
+    if (groupsWithProbes.length) {
+      lines.push("");
+      lines.push("### Probes (hinted fetches per committed key; never part of a gate)");
+      lines.push("");
+      lines.push("Per key (the ACTUAL rev a save returned) and locale: `x-snapshot-source` at +1 / +2 / +4 s after the last save's response; `→N` = body rev N ≠ key. First `warm` = observed readability of that key's entry (an upper bound: the probe clock is this machine's).");
+      lines.push("");
+      lines.push("| group | key (who) | ja | ko | en |");
+      lines.push("|---|---|---|---|---|");
+      for (const g of groupsWithProbes) {
+        for (const c of g.anchor.committed) {
+          const cell = (loc) => [1000, 2000, 4000].map((off) => {
+            const p = g.probes.find((x) => x.off === off && x.row[1] === loc && x.row[2] === c.rev);
+            if (!p) return "—";
+            const [, , key, st, src, br] = p.row;
+            return `${st === 200 ? src ?? "none" : `HTTP ${st}`}${br != null && br !== key ? `→${br}` : ""}`;
+          }).join(" / ");
+          lines.push(`| ${g.k} | ${c.rev} (${c.who}${c.rev === g.anchor.head ? ", head" : ""}) | ${cell("ja")} | ${cell("ko")} | ${cell("en")} |`);
+        }
+      }
+    }
+    if (O.tail.length) {
+      const warmN = O.tail.filter((x) => x.row[4] === "warm").length;
+      // The last probe round = every probe sent within 1 s of the last one
+      // (a round's probes leave together); still warm there = censored.
+      const lastT = Math.max(...O.tail.map((x) => x.row[0]));
+      const lastWarm = O.tail.filter((x) => x.row[4] === "warm").map((x) => x.row[0]).sort((a, b) => a - b).pop() ?? null;
+      const censored = O.tail.some((x) => x.row[0] >= lastT - 1000 && x.row[4] === "warm");
+      lines.push("");
+      lines.push(`Quiet tail (${OV.quietTailS} s, every 10 s, group ${O.groups[O.groups.length - 1]?.k}'s keys): ${O.tail.length} probes, ${warmN} answered \`warm\`; last warm at ${iso(lastWarm)}${censored ? " — **censored** (still warm at the tail's end)" : ""}. Titles seen on row A: ${[...new Set(O.tail.map((x) => x.row[7]).filter(Boolean))].join(", ") || "—"}.`);
+    }
+  }
   if (monoPagesBad.length || monoSubsBad.length) {
     lines.push("");
     lines.push("## Monotonicity regressions (first 10)");
@@ -1784,7 +2272,7 @@ function report(state, fin) {
   if (saveFailures.length || skippedEdits) {
     lines.push("## Failed saves");
     lines.push("");
-    lines.push(`${skippedEdits} of ${EDITS} edits skipped (both attempts failed). Each failed attempt:`);
+    lines.push(OVERLAP ? `${skippedEdits} of ${EDITS} groups with a save that did not commit (overlap saves are never retried). Each failed save:` : `${skippedEdits} of ${EDITS} edits skipped (both attempts failed). Each failed attempt:`);
     lines.push("");
     for (const f of saveFailures) lines.push(`- edit ${f.k} ${f.op} attempt ${f.attempt} at ${f.at}: ${f.error}`);
     lines.push("");
@@ -1793,6 +2281,7 @@ function report(state, fin) {
   lines.push("");
   lines.push(`- Soft-deleted ${clean?.deleted.length ?? 0}/${created.length} created rows${clean?.failed.length ? `; **NOT deleted: ${clean.failed.join(", ")}**` : ""}; position restore: ${JSON.stringify(clean?.restore ?? null)}`);
   lines.push(`- Verify: ${JSON.stringify(verify)}${RESTORE ? "" : " (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)"}`);
+  if (fin.ovClean) lines.push(`- Overlap: reactions deleted by id ${fin.ovClean.reactions.deleted}/${new Set(ovReactionIds).size}${fin.ovClean.reactions.failed.length ? ` **NOT deleted: ${fin.ovClean.reactions.failed.join(", ")}** (raw ones carry \`${ANON_PREFIX}\`: \`viewers-check.mjs --delete\`)` : ""}; dedicated songs soft-deleted ${fin.ovClean.songs.deleted}/${ovSongs.length}${fin.ovClean.songs.failed.length ? ` **NOT deleted: ${fin.ovClean.songs.failed.join(", ")}**` : ""}`);
   lines.push("");
   const md = lines.join("\n");
 
@@ -1821,12 +2310,12 @@ function report(state, fin) {
         "thread.lag.spikes": ["t", "lagMs (> 200)"],
         "thread.heartbeats": ["recvT (main clock)", "sendT (worker clock)", "lagMaxSinceLastMs"],
         "thread.deadlineLate": ["t", "lateMs = fired - armed - 8000", "client idx"],
-        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source"],
-        "sdk.applied": ["t", "rev", "fetch reason"],
+        "sdk.reqs": ["tStart", "reason", "generic 0/1", "hint", "notify 0/1", "minRev", "status (0 = network / deadline)", "verify kind", "body rev", "hint resolution", "tEnd", "outcome ok|failed|cancelled", "x-snapshot-source", "body capturedAt (epoch ms, PostgreSQL clock)", "anchor A song originalTitle (overlap drill, else null)"],
+        "sdk.applied": ["t", "rev", "fetch reason", "body capturedAt (epoch ms)"],
         "sdk.bcasts": ["t", "rev", "n news | d duplicate | x dropped by drill | i invalid"],
         "sdk.exhausted": ["t", "hint"],
         "sdk.lag.deadlineLate": ["t", "lateMs"],
-        "page.reqs": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start"],
+        "page.reqs": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start", "body capturedAt (epoch ms)"],
         "page.applied": ["t", "marker song ids added", "removed"],
         "page.bcasts": ["t", "rev", "n | x (dropped by the proxy drill)"],
         "page.notes": ["t", "postgres_changes type I/U/D", "row id"],
@@ -1841,7 +2330,7 @@ function report(state, fin) {
     }),
     ...edits.flatMap((e) => [
       ...(e.ins ? [{ kind: "save", k: e.k, op: "insert-after", id: e.id, start: e.ins.startedAt, successStart: e.ins.successAt ?? e.ins.startedAt, ms: e.ins.ms, rev: e.ins.rev, attempts: e.ins.attempts ?? 1 }] : []),
-      { kind: "save", k: e.k, op: "put", mode: e.mode, id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double },
+      { kind: "save", k: e.k, op: "put", mode: e.mode, id: e.id, song: e.song.id, start: e.put.startedAt, successStart: e.put.successAt ?? e.put.startedAt, ms: e.put.ms, rev: e.put.rev, attempts: e.put.attempts ?? 1, double: !!e.double, ...(e.who ? { who: e.who } : {}) },
     ]),
     ...subRecs.map((r) => ({
       kind: "sdk", idx: r.idx, worker: r.worker ?? null, locale: r.locale,
@@ -1863,7 +2352,8 @@ function report(state, fin) {
   const json = {
     config: { base: BASE, eventId: EVENT_ID, eventPath: EVENT_PATH, pages: PAGES, subs: SUBS, subWorkers: SUB_WORKERS, edits: EDITS, editMode: EDIT_MODE, anchorRow: anchor?.id ?? null, pauseMs: PAUSE_MS, timeoutMs: TIMEOUT_MS, drill: DRILL, drillPages: DRILL_PAGES, drillEdit: DRILL_EDIT, label: args.label ?? null,
       ...(DRILL === "poison" ? { poisonRev: POISON_REV, poisonLeadMs: POISON_LEAD_MS } : {}),
-      ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}) },
+      ...(DRILL === "spam" ? { spamRate: SPAM_RATE, spamSecs: SPAM_SECS, spamRev: SPAM_REV } : {}),
+      ...(OVERLAP ? { overlap: OV, overlapAnchors: ovAnchors, overlapReactionGroup: OV_REACTION_GROUP, runId: RUN_ID } : {}) },
     window: { runStart: iso(state.runStart), editsStart: iso(state.editsStart), editsEnd: iso(state.editsEnd), end: iso(Date.now()) },
     verdicts, popSummary, rejoin, drillEvents,
     // Measurement validity: the verdict, why, and each thread's lag
@@ -1890,17 +2380,53 @@ function report(state, fin) {
     // lined up; the per-request offsets are relative to `putEnd`.
     warm: {
       commitProxy: "PUT end = start of the successful PUT attempt + its duration (the server commits, answers, then runs the warm job in after())",
-      sdkRow: ["idx", "locale", "sendMinusCommitMs", "endMinusCommitMs", "source", "verify", "minRev"],
-      pageRow: ["idx", "locale", "requestStartMinusCommitMs", "responseMinusCommitMs", "source", "verify", "minRev"],
+      sdkRow: ["idx", "locale", "sendMinusCommitMs", "endMinusCommitMs", "source", "verify", "minRev", "bodyRev"],
+      pageRow: ["idx", "locale", "requestStartMinusCommitMs", "responseMinusCommitMs", "source", "verify", "minRev", "bodyRev"],
       saves: rows.map(({ e, s }) => ({
-        k: e.k, mode: e.mode, rev: e.put.rev, insRev: e.ins?.rev ?? null, double: !!e.double,
+        k: e.k, ...(e.who ? { who: e.who } : {}), mode: e.mode, rev: e.put.rev, insRev: e.ins?.rev ?? null, double: !!e.double,
         putStart: e.put.successAt ?? e.put.startedAt, putMs: e.put.ms ?? null,
         putEnd: (e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0),
         putEndIso: iso((e.put.successAt ?? e.put.startedAt) + (e.put.ms ?? 0)),
         sdk: s.subs.hint.first, pages: s.pages.hint.first,
         sdkWarm: s.subs.hint.warm, sdkHinted: s.subs.hint.notif, pagesWarm: s.pages.hint.warm, pagesHinted: s.pages.hint.notif,
       })),
+      // overlap: the groups (every intended save, failed ones included,
+      // with the gate anchors) — warm-join.mjs / overlap-join.mjs group
+      // the per-save rows above by `k`.
+      ...(overlap ? {
+        groups: state.overlap.groups.map((g) => ({
+          k: g.k, head: g.anchor.head, headWho: g.anchor.headWho, lastStart: g.anchor.lastStart, firstStart: g.anchor.firstStart, lastResponse: g.anchor.lastResponse, allOk: g.anchor.allOk,
+          saves: g.saves.map((x) => ({ who: x.who, rowId: x.rowId, songId: x.song.id, rev: x.rev, status: x.status, putStart: x.startedAt, putMs: x.ms, putEnd: x.startedAt + x.ms, fault: x.fault, error: x.error })),
+        })),
+      } : {}),
     },
+    // Page-side browser stall SUSPECT flags (every run; see the banner).
+    suspect: { rule: "pages' first hinted fetch of a save: warm|cache on ≥ 80 % of pages, every one > 1 s (≥ 3 pages)", saves: suspectSaves },
+    // overlap: everything the drill did and measured, per group, plus the
+    // probe population. Clocks: this machine's epoch ms, except
+    // `capturedAt` (PostgreSQL now()) and a reaction's `ackAt` (PostgreSQL
+    // clock_timestamp()).
+    ...(overlap ? {
+      overlap: {
+        gates: overlap.gates, pass: overlap.pass, fivexx: overlap.fivexx, roles: overlap.roles, reloads: overlap.reloadV, reactions: overlap.rxV, ackHold: overlap.ahV,
+        convergence: { pages: overlap.pagesConv, subs: overlap.subsConv, fromFirstStart: overlap.fromFirst },
+        rcRegressions: overlap.rc.filter((m) => m.regressions.length).map((m) => ({ idx: m.r.idx, regressions: m.regressions })),
+        controls: state.overlap.controls,
+        reactionPage: state.overlap.reactionPage,
+        groups: overlap.groups.map(({ g, a, markers, conv }) => ({
+          k: g.k, t0: g.t0, anchor: a, markers,
+          saves: g.saves.map((x) => ({ k: x.k, who: x.who, rowId: x.rowId, songId: x.song.id, songTitle: x.song.title, startedAt: x.startedAt, ms: x.ms, status: x.status, rev: x.rev, attempts: x.attempts, fault: x.fault, error: x.error })),
+          reloads: g.reloads, catalog: g.catalog, reactions: g.reactions,
+          pageReaction: g.pageReaction ?? null,
+          convergence: { pages: conv.pages, pagesFromFirst: conv.pagesFirst, pagesMissing: conv.pagesMissing, ackHoldPage: conv.drilledPages, subs: dist(conv.subs), subsFromFirst: dist(conv.subsFirst), subsMissing: conv.subsMissing },
+        })),
+      },
+      probe: {
+        row: PROBE_ROW,
+        groups: state.overlap.groups.map((g) => ({ k: g.k, committed: g.anchor.committed, head: g.anchor.head, lastResponse: g.anchor.lastResponse, probes: (g.probes || []).map((x) => ({ off: x.off, who: x.who, head: x.head, row: x.row })) })),
+        tail: state.overlap.tail,
+      },
+    } : {}),
     // Every page's DOM-derived version history and every client's
     // regressions (the full per-client apply log is too large to keep).
     monotonic: {

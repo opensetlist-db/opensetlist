@@ -498,7 +498,8 @@ node --no-warnings tests/load/browsers/restore.mjs --compact --yes
   ms, ok) and `skip` reasons, `schedule-failed` / `job-failed` counts; per
   save rev the builds split into **warm** (the job's own 3) and **reader**
   builds (every other build of that rev — the storm that is left), the
-  `warm-lookup` results (hit / miss / stale / invalid / error / timeout)
+  `warm-lookup` results (hit / miss / stale / invalid / error / timeout /
+  memo-miss / capped)
   and their ms p50 / p95; lookups per minute. Compare reader builds per
   save, distinct instances per save, the pool Σ peak and the backend busy
   max against the control.
@@ -532,6 +533,76 @@ returns, so the drills whose correctness depends on that answer run again:
   respected, 0 hard failures); additionally read the summariser's
   lookup misses and their ms p95 during the spam window, and that no
   forged rev ever shows `warm`.
+
+## n14 qualification step 4 — overlapping warm jobs (`--drill=overlap`)
+
+Step 4 keeps the warming implementation and qualifies it when two or
+three saves' warm jobs genuinely overlap: B commits while A's job is
+still building or publishing, builds hold pool connections at the same
+time, a locale's entry is published in reverse order, a catalog edit
+expires the warm tag between A's capture and A's publication. Per-save
+faults (`x-live-warm-fault` on save A only, see "Warming fault drills")
+make one of two saves slow or failing deterministically; they need an
+armed one-off preview (`LIVE_WARM_FAULT_ARMED=1`, header-only, no
+`LIVE_WARM_FAULT`) and `--deployment-url` — the dev alias ignores the
+header, so the harness refuses `--overlap-fault-a` without it. The drill,
+its flags and its client-side gates: `browsers/README.md`, "Overlap
+drill".
+
+**Afterwards, per run** (history re-fetch of the deployment as usual;
+nothing else on the host while the run is live):
+
+```powershell
+node tests/load/vercel-logs-summary.mjs <history.txt> --add-hours=7 --out="$out/vercel-logs-history-summary-<S>.md"
+node tests/load/overlap-join.mjs <stamp>-browsers-overlap.json <history.txt> --add-hours=7 --timelines=<stamp>-timelines.jsonl --out="$out/overlap-join-<S>.md"
+node tests/load/warm-join.mjs <stamp>-browsers-overlap.json <history.txt> --add-hours=7 --out="$out/warm-join-<S>.md"
+node tests/load/viewers-check.mjs
+node --no-warnings tests/load/browsers/restore.mjs --compact --yes
+```
+
+- `overlap-join.mjs` classifies every group from the server's explicit
+  timestamps (`at=` on every `[liveWriter]` / `[liveWarm]` /
+  `[dataCache] expire-warm` line — a history-mode log stamps a request's
+  lines with the request's START, so entry times cannot time a job):
+  (i) B's writer `at` < A's last SUCCESSFUL set `at` (publication = `ok=true`
+  sets only); (ii) A / B `[txStartAt, txEndAt]` intersect (database
+  occupancy; queued time excluded) — build-invocation overlap reported
+  apart; (iii) per locale, B's successful set before A's (cross-instance
+  differences < 100 ms = indeterminate); (iv) per locale, the catalog race
+  (A captured before the expiry started, the expiry finished before A's
+  set started, B published before the expiry; B's key gone at the +1 s
+  probe), stale service **proven only by content** (a `warm` answer after
+  the expiry with the pre-edit title; probes and, with `--timelines`, SDK
+  responses), censored when still stale at the last observation; S3
+  (`seterror`): A's builds ran, nothing published, A's key missed while
+  B's job ran. Three clocks, never mixed silently: the functions'
+  `Date.now()` (`at*`), PostgreSQL `now()` (`captureAt` / the body's
+  `capturedAt`, the reaction `ackAt`), this machine (the browsers JSON).
+  It also checks the fault evidence (A's job `fault=<label> source=header`,
+  none on B / C), acquireMs ≤ 500 per save, pool timeouts, EMAXCONN, builds
+  in [group start, +10 s] per committed save, commit → entry stored per
+  key and locale (server clock) and the first `warm` probe per key. A
+  group whose intended race did not happen is **not exercised**; the
+  minimum fixed beforehand is ≥ 4 of 6 groups (S5: ≥ 3 of 6) — below it
+  the run is NOT EXERCISED and is re-run once with the gap adjusted (both
+  runs stay in the record). A log from a server without the `at=` fields
+  is reported UNCLASSIFIABLE. The scenario is derived from the run's
+  flags (`--scenario=S0..S6` overrides).
+- `vercel-logs-summary.mjs` adds, on such logs: every save of a route
+  with ≤ 12 saves with its commit `at`; a "Warm expiry" section for the
+  `expire-warm` lines with the request they belong to; the job records
+  carry the new fields (start `fault` / `source`, per-locale `at`,
+  `setStartAt`, `captureAt`, `buildStartAt` / `buildEndAt`, `txStartAt` /
+  `txEndAt`, `holdMs`).
+- `warm-join.mjs` uses `set at − writer at` per locale when the log has
+  the fields (offsets column "at"; older logs keep the "rebuilt"
+  reconstruction), keys entries by `(event, atLeastRev)` only, adds "entry
+  rev ≠ key rev" (a job for R stored a newer snapshot) and "served newer
+  than key" (a warm answer whose body rev is above the key), and lists
+  `warm.groups` of an overlap run.
+
+Tests (Node's runner, like the other harness tests):
+`node --test tests/load/*.test.mjs tests/load/browsers/*.test.mjs tests/load/realtime/*.test.mjs`.
 
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
@@ -662,20 +733,27 @@ as written.
 | one missing locale (partial publication) | `locale=ja` (ja carries ~70 % of the traffic, the worst case); `locale=en` for the sparse case | per job `skip locale=ja reason=fault-locale`; ja lookups `miss`, ko/en `hit` |
 | failed writes, visible | `seterror` | per locale `set … ok=false` + `set-error … injected fault: seterror`; lookups `miss` / `memo-miss`, 0 `hit` |
 | failed writes, silent (what the SDK's swallowed errors look like) | `setskip` | `set … ok=true`, yet lookups `miss` / `memo-miss`, 0 `hit` |
-| reads over the 300 ms deadline | `slow=400` | `result=timeout` at ~300 ms; repeats on that key answer `memo-miss` for 1 s |
+| reads over the 300 ms deadline | `slow=400` | `result=timeout` at ~300 ms for the lookups that started or joined the key's `get` early; repeats on that key answer `memo-miss` for 1 s. NOT "no hits": about a third of lookups still `hit` through same-key coalescing — a late joiner receives the in-flight `get` (which settles at ~400 ms) within its own 300 ms deadline |
 | slow but in time (control) | `slow=150` | `result=hit` at ≥ 150 ms |
 | cache errors | `geterror` | `result=error` + `lookup-error … injected fault: geterror` |
-| slow warming, arrivals before publication | `slowjob=<ms>` (e.g. 1000) | job `done ms` ≥ ⌈3 / concurrency⌉ × ms; `warm-join` shows more first hinted fetches before warm-complete |
+| slow warming, arrivals before publication | `slowjob=<ms>` (e.g. 1000) | job `done ms` ≥ ⌈3 / concurrency⌉ × ms; `warm-join` shows more first hinted fetches before warm-complete. The sleep is before the build and holds nothing (no capture, no connection) |
+| stale late fill: captured on time, published late | `slowset=<ms>` (1–10000, e.g. 1500); env spec, or per save in the `x-live-warm-fault` header (below) | `start … fault=slowset:<ms> source=header\|env`; per locale `set … holdMs=0` with `buildEndAt − buildStartAt` normal and `setStartAt − buildEndAt` ≥ ms; lookups for that key `miss` / `memo-miss` until the locale's `set … at=`; the entry carries the state at `captureAt` (DB clock), which a later save or catalog expiry may already have superseded |
+| DB-held slow build (connection held) | `slowbuild=<ms>` (1–5000, e.g. 1500 — the builder's transaction timeout is 10 s, so larger values make the spec invalid); env spec or header | `start … fault=slowbuild:<ms> source=header\|env`; per locale `set … holdMs=<ms>` with `txEndAt − txStartAt` ≥ ms; at concurrency 2 two locales' `[txStartAt, txEndAt]` overlap (both of the instance's pool connections held) and the third locale's `txStartAt` ≥ the earlier `txEndAt`; queueing shows as `txStartAt − buildStartAt` and is not a held connection |
+| per-save fault (one of several overlapping saves) | header `x-live-warm-fault: <spec>` on an admin setlist-item save (`POST /api/admin/setlist-items`, `PUT /api/admin/setlist-items/<id>`, `insert-after`, `swap`); job-side modes only: `slowjob`, `slowset`, `slowbuild`, `seterror`, `setskip`, `locale`. Needs `LIVE_WARM_FAULT_ARMED=1` on a non-production deployment; `LIVE_WARM_FAULT` not needed | that save's job only: `start … fault=<encoded spec> source=header`; other saves' jobs have no `fault=` (or the env one with `source=env`). A malformed spec or a lookup-side mode (`absent`, `slow`, `getnull`, `geterror`) → HTTP 400 with nothing written. Unarmed or production: the header is ignored (no `fault=`, save normal) |
 
 **Verify the fault before trusting a run.** A run in which the fault was
 not active is invalid. It is not a pass.
 
 1. After the deploy, make one admin save and send one hinted `curl`
    (`…&minRev=<rev>&hint=1`) per locale. What the response must be
-   depends on the mode: `absent`, `getnull`, `geterror`, `seterror`,
-   `setskip` and `slow=400` → never `x-snapshot-source: warm`;
-   `locale=ja` → not `warm` for ja, but ko and en ARE `warm`; `slow=150`
-   and `slowjob=…` → `warm` (they slow the path, they do not break it).
+   depends on the mode: `absent`, `getnull`, `geterror`, `seterror` and
+   `setskip` → never `x-snapshot-source: warm`; `slow=400` → a single
+   curl is `timeout` → not `warm` (under load about a third of lookups
+   still hit through same-key coalescing, see the table — so judge
+   `slow=400` by `result=timeout` in the logs, not by "zero hits");
+   `locale=ja` → not `warm` for ja, but ko and en ARE `warm`; `slow=150`,
+   `slowjob=…`, `slowset=…` and `slowbuild=…` → `warm` once the delayed
+   job has published (they slow the path, they do not break it).
    A `warm` where the table says none = the fault is not active. In the Vercel logs
    the request shows `[liveWarm] fault armed mode=<encoded spec>` (for
    example `mode=slow:400+locale:ja`). It is logged once per instance

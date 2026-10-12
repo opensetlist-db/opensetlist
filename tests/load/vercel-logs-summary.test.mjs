@@ -218,7 +218,7 @@ test("warming: jobs, warm vs reader builds, lookups per kind / minute / rev", ()
   assert.deepEqual(w.scheduleFailed.map((x) => [x.rev, x.err]), [["22", "Error"]]);
   // 5 hinted fetches with a numeric minRev (the `minRev=none` one is not).
   assert.equal(w.hinted, 5);
-  assert.deepEqual(w.lookups.counts, { hit: 2, miss: 1, stale: 1, invalid: 0, error: 0, timeout: 1, other: 1 });
+  assert.deepEqual(w.lookups.counts, { hit: 2, miss: 1, stale: 1, invalid: 0, error: 0, timeout: 1, "memo-miss": 0, capped: 0, other: 1 });
   assert.equal(w.hitRate, 2 / 5);
   assert.deepEqual(w.lookups.msByResult.hit, { n: 2, p50: 6, p95: 8 });
   assert.deepEqual(w.lookups.perMinute.map((m) => [m.minute, m.total, m.hit, m.stale]), [[14 * 60 + 10, 4, 2, 0], [14 * 60 + 11, 2, 0, 1]]);
@@ -233,8 +233,8 @@ test("warming: jobs, warm vs reader builds, lookups per kind / minute / rev", ()
   assert.match(md, /### Warming \(`\[liveWarm\]` jobs: 2; `\[setlist\] warm-lookup` lines: 6\)/);
   assert.match(md, /warm hit rate = hits ÷ hinted fetches = 2 \/ 5 = 40\.0 %/);
   // save rev | jobs | done | builds | warm | reader | hinted | lookups |
-  // hit miss stale invalid error timeout other | lookup ms | hit rate
-  assert.match(md, /\| 20 \| 1 \| 420 \| 5 \| 3 \| 2 \| 4 \| 4 \| 2 \| 1 \| 0 \| 0 \| 0 \| 1 \| 0 \| 6 \/ 301 \| 50\.0 % \|/);
+  // hit miss stale invalid error timeout memo-miss capped other | lookup ms | hit rate
+  assert.match(md, /\| 20 \| 1 \| 420 \| 5 \| 3 \| 2 \| 4 \| 4 \| 2 \| 1 \| 0 \| 0 \| 0 \| 1 \| 0 \| 0 \| 0 \| 6 \/ 301 \| 50\.0 % \|/);
 });
 
 // Follow mode stamps every line on its own entry: the warm build is

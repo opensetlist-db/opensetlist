@@ -12,6 +12,7 @@ that behave like the **R2** page. Dev only (same guard as `../realtime/`).
 | `subs-worker.mjs` | Worker thread holding a slice of the SDK population. Each client imports the page's **real** `snapshotAcceptance.ts`, `liveScheduler.ts`, `snapshotVerify.ts`, `snapshotFreshness.ts`, `realtimeRecovery.ts` and `liveBroadcast.ts` from `src/lib` (Node type stripping) and mirrors `useRealtimeEventChannel` + `useLiveSnapshot`: ONE subscription, the `rev` broadcast; the handler validates `{ kind: "setlist", rev }`, `noteHint(rev)` → `requestFetch("notification")`; the scheduler drains the batch at dispatch (`captureHint`) and describes each request (`{reason, generic, hint, notify}`); the URL is `minRev = max(serverRev, H)` (or `serverRev`) with `&hint=1` iff `notify`; `x-snapshot-verify` parsed by the page's parser; `evaluate(gen, body, verify, hint)` → resolved / inconclusive (one recheck, then exhausted); 8 s deadline, n13 retry schedule, `Retry-After` floor; the hook's channel recovery (keep the channel on CHANNEL_ERROR / TIMED_OUT / CLOSED, 5 s ± 1 s polling, re-create only after 60 s + randomized backoff, max 3 per budget). Per client it records every broadcast and what the handler did with it, every request (descriptor, minRev, status, verify kind, body rev, hint resolution), exhausted tickets and the highest `serverRev` ever held. |
 | `hostmon.mjs` | Load-host self-monitoring, shared by `run.mjs` and the workers: event-loop lag monitor (100 ms tick, 10 s buckets), the INVALID rule, the 1 s host sampler, the host isolation guard. `node --test tests/load/browsers/hostmon.test.mjs` pins the pure parts. |
 | `admin.mjs` | Admin driver: login, insert-after, PUT, soft-delete, marker-song picking, optional position restore. |
+| `overlap.mjs` | `--drill=overlap`: flag parsing and refusal rules, gate anchoring (last original start, head), group convergence, SDK (rev, capturedAt) monotonicity, the page-stall SUSPECT rule, reload / role / reaction / ack-hold verdicts — pure, pinned by `node --test tests/load/browsers/overlap.test.mjs`. |
 | `restore.mjs` | Recovery for a hard-killed run: list active rows, soft-delete given ids, optionally compact positions (`--compact --yes`, see below). |
 
 ## One edit (`--edit-mode`)
@@ -202,7 +203,7 @@ regression was seen or a drill gate failed; 2 = error / refused
 
 Other flags: `--edit-mode=pair|standalone|mixed`, `--strict-host`,
 `--debug-stall=<ms>` (self-test only), `--event-id`, `--event-path`, `--after-row=2`, `--timeout=30`,
-`--settle=10`, `--join-timeout=120`, `--wait-pg-ready=true` (only for an R1
+`--settle=10`, `--join-timeout=120`, overlap: `--overlap-*` (see "Overlap drill"), `--wait-pg-ready=true` (only for an R1
 page build: also wait for the pages' postgres_changes registration, up to
 `--pg-ready-timeout=180` s; off by default — an R2 page / SDK client is live
 at SUBSCRIBED), `--sub-workers=N` (default ⌈subs/120⌉), `--sub-batch=50`
@@ -215,6 +216,82 @@ by lost-final: always the last edit), `--reconnect-lead=1000`,
 guest that cannot join the channel stops the run, clean-up first);
 verify-ambiguity: `--prime-per-locale=1`, `--prime-offset=1000`,
 `--prime-lead=150`.
+
+## Overlap drill (`--drill=overlap`, n14 qualification step 4)
+
+Qualifies writer warming under **genuinely overlapping warm jobs**. The
+drill replaces the edit shape for the whole run: `--edits=N` = N
+**groups**, `--pause` s apart, and every group fires two or three admin
+PUTs on three **anchor rows** (created after row 2 before the population
+joins, soft-deleted at the clean-up) **without awaiting each other**:
+
+| t (from save A's start) | action |
+|---|---|
+| 0 | save A (`PUT …/setlist-items/<anchor A>`), with `x-live-warm-fault: <spec>` when `--overlap-fault-a` is set |
+| `--overlap-gap` (250) | save B |
+| `--overlap-third-at` (0 = none) | save C |
+| `--overlap-reload-at=<ms,ms>` | authenticated `GET /admin/events/<id>/edit` (status, request start → body drained, bytes, content check: "이벤트 편집" + "시작 시각 (UTC)" + the event id in the initial data — a 200 that is a login page or an error boundary fails); plus CONTROL reloads: 3 before the first group, 2 in every pause, 3 after the last group |
+| `--overlap-catalog-at` (0 = none) | `PUT /api/admin/songs/<A's song>` with the COMPLETE payload, only `originalTitle` → `<base>-c<k>`. A's marker is then a **dedicated song per group** (`n14-overlap-<run>-<k>`, created before the population joins, soft-deleted at the clean-up); a real catalog song is never edited |
+| [0, 3 s] | `--overlap-reactions=<n>` raw `POST /api/reactions` on anchor row A (`anonId` `n14run2-<run>-<k>-<i>`, types other than the last one; deleted by id at the clean-up, the prefix is the safety net for `viewers-check.mjs --delete`) |
+
+Saves are **never retried** (a retried A landing after B would change the
+head mid-measurement); a failed save is a gate failure. Marker songs are
+group-specific (A, B, C each), so a page's first sight of a marker is
+this group's.
+
+- `--overlap-fault-a=<spec>` — a job-side spec (`slowjob|slowset|slowbuild=<ms>`, `seterror`, `setskip`, `locale=<l>`, comma-combined) sent on save A only. **Refused (exit 2) without `--deployment-url`**: the dev alias is never armed, the header would be ignored and the scenario silently not exercised. Lookup-side modes (`absent`, `slow`, `getnull`, `geterror`) are refused too (the server would answer 400).
+- `--overlap-probes=1` (default on; `0` = off) — after each group, hinted `GET /api/setlist?…&minRev=<rev>&hint=1` for **every committed rev** of the group (the revs the saves actually returned, never R+1) × ja/ko/en at +1 / +2 / +4 s after the last save's response. Reported apart (sources per key and locale, `→N` when the body rev ≠ key); never part of a gate.
+- `--overlap-quiet-tail=<s>` (default 0) — after the last group, probe its keys every 10 s for that long (how long an older / stale entry stays readable through the 90 s TTL; censored at the tail's end).
+- `--overlap-page-reaction=1` — the reaction **ack-hold test** on the lowest-index page, in group 2 (anchor row A needs a song before a reaction button exists, which group 1's save A provides): the page's FIRST hinted `/api/setlist` request of the group is sent for real but its response held; the reaction button of anchor row A is clicked (the last reaction type); once `POST /api/reactions` answers (`reactionId`, `counts`, `ackAt`) the held, pre-click snapshot is released, and the button's displayed count is sampled every 20 ms in the page. Exposure (else "not exercised", never a pass): held `capturedAt ≤ ackAt` with a lower count, released after the ack. Gate: from the ack on, the display never drops below the acknowledged count until a response with `capturedAt > ackAt` arrives; 1 s later it shows that response's count. The page is excluded from that group's convergence (its delay is the test). Its reaction is deleted by id.
+
+**Gates (per group; every group's value shown).** Clock = the group's
+**last original request start**; target = the group's **head** (highest
+committed rev — the Event row lock, not the start order, decides it).
+Pages converge when the DOM shows every committed save's marker of the
+group, SDK clients when they applied rev ≥ head (intermediate revs may be
+skipped). All saves 2xx; 0 × 5xx anywhere (saves, reloads, catalog,
+reactions, probes, SDK, pages); pages p95 and SDK p95 ≤ `--gate-p95`, 0
+missing; **DOM monotonicity** on pages (marker-derived versions never go
+back — a page exposes no applied rev) and **(rev, capturedAt)**
+monotonicity on SDK clients; original-attempt PUT p95 ≤ 1.5 s per role
+(A, B, C); reloads in the window 200 + content ok + ≤ 3 s (control ratio
+diagnostic only); raw reactions p95 ≤ 1.5 s, 0 × 5xx; the ack hold. From
+the first save's start: informational. The per-save tables stay
+(informational under this drill). The server-side gates and the
+**exposure** classification (did B commit during A's job, did the builds
+hold connections at the same time, reversed publication per locale, the
+catalog race) need the history logs: `../overlap-join.mjs` (see
+`../README.md`, "n14 qualification step 4").
+
+```sh
+# smoke (dev alias, unarmed: no --overlap-fault-a), ~1 min, 3 anchor rows + 2 songs created and removed
+node --no-warnings tests/load/browsers/run.mjs --pages=2 --subs=4 --edits=2 --pause=8 --drill=overlap --overlap-gap=250 --overlap-third-at=500 --overlap-reload-at=150,450 --overlap-reactions=4 --overlap-page-reaction=1 --overlap-catalog-at=400 --label=smoke-overlap
+# a step-4 scenario on the armed preview, e.g. S2
+BASE_URL=https://opensetlist-<hash>-opensetlist-projects.vercel.app node --no-warnings tests/load/browsers/run.mjs --deployment-url --pages=30 --subs=470 --edits=6 --pause=25 --strict-host --drill=overlap --overlap-gap=250 --overlap-fault-a=slowset=1500 --label=step4-S2
+```
+
+**SUSPECT (every run).** Step 3's page-side stall signature — one save's
+first hinted fetches come back `warm` / `cache` on ≥ 80 % of the pages
+(≥ 3 pages) yet EVERY one of them takes > 1 s — prints a SUSPECT banner
+and goes into the JSON (`suspect`). Verdicts and the exit code are
+unchanged: it is decided afterwards from the host telemetry and
+independent evidence (SDK clients on the same save, the observer), never
+an automatic INVALID.
+
+## Row formats (timelines `.jsonl` and JSON)
+
+The timelines' first line documents every layout. Columns added in step
+4 are APPENDED (existing positions never move):
+
+| row | columns (0-based) |
+|---|---|
+| `sdk.reqs` | 0 tStart, 1 reason, 2 generic, 3 hint, 4 notify, 5 minRev, 6 status, 7 verify kind, 8 body rev, 9 hint resolution, 10 tEnd, 11 outcome, 12 x-snapshot-source, **13 body capturedAt** (epoch ms, PostgreSQL clock), **14 anchorTitle** (overlap only: anchor row A's song `originalTitle` in the body — the snapshot carries the raw `originalTitle` plus a locale-filtered translation, and the catalog edit changes `originalTitle`; null otherwise) |
+| `sdk.applied` | 0 t, 1 rev, 2 fetch reason, **3 body capturedAt** |
+| `page.reqs` | 0 tResponse, 1 minRev, 2 status, 3 x-snapshot-source, 4 body rev, 5 x-snapshot-verify, 6 hint=1, 7 request start, **8 body capturedAt** (pages stay DOM-measured: this is what arrived, not what React applied) |
+| `save` | + `who` (overlap: A / B / C) |
+| JSON `warm.saves[].sdk` / `.pages` | 0 idx, 1 locale, 2 start − commit, 3 end − commit, 4 source, 5 verify, 6 minRev, **7 body rev**; saves + `who`; new `warm.groups` (overlap: every intended save with its anchors) |
+| JSON `probe` (overlap) | `row`: 0 tStart, 1 locale, 2 minRev, 3 status, 4 source, 5 body rev, 6 capturedAt, 7 anchorTitle, 8 tEnd; `groups[].probes[]` = `{ off, who, head, row }`, `tail[]` |
+| JSON `overlap` | `gates`, `pass`, `fivexx`, `roles`, `reloads`, `reactions`, `ackHold`, `convergence`, `controls`, `groups[]` (`saves {k, who, startedAt, ms, status, rev, attempts, fault}`, `reloads {k, off, at, ms, status, bytes, contentOk}`, `catalog {k, startedAt, ackAt, status, from, to}`, `reactions`, `pageReaction` trace) |
 
 ## Positions (read before running repeatedly)
 
