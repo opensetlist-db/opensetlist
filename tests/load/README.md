@@ -601,6 +601,32 @@ node --no-warnings tests/load/browsers/restore.mjs --compact --yes
   than key" (a warm answer whose body rev is above the key), and lists
   `warm.groups` of an overlap run.
 
+What the first execution (2026-10-12, `tests/load/results/2026-10-12/REPORT-step4.md`)
+taught about running it:
+
+- Unfaulted overlap needs commits within ~100 ms of each other: real warm
+  jobs publish ja/ko ≈ 55–110 ms and en ≈ 250 ms after the commit, so
+  `--overlap-gap=250` (and 100) exercised 1 of 6 groups and S4 as designed
+  0 of 6. A three-writer run exercised 4/6 only at `--overlap-gap=60
+  --overlap-third-at=120`. Expect the gap re-run for S1/S4 and keep both.
+- `slowbuild=<ms>` saturates the A instance's pg pool (max 2) for ≈ 2 × hold
+  (ja/ko in parallel, en queued), so any writer routed to that instance
+  waits in its pre-transaction lookup — visible as a slow PUT with a small
+  `acquireMs`. 1500 ms (~14× the real hold, p95 108 / max 229 ms) fails the
+  PUT gate on co-located B/C; 500 ms passes.
+- The stale late fill of S5 is not a 2 s window: the superseded key's entry
+  serves the pre-edit content until its 90 s TTL. The 120 s quiet tail is
+  what shows it — keep `--overlap-quiet-tail=120` on S5.
+- `--deployment-url` accepts only `opensetlist-<hash>-opensetlist-projects.vercel.app`;
+  for a branch preview use the hash URL from `vercel inspect <git alias>`.
+- The Vercel firewall denies `POST /api/admin/login` after ~5 rapid logins
+  from one IP (`X-Vercel-Mitigated: deny`, clears in about a minute). One
+  login per run; don't verify headers in a loop right before a run.
+- `tests/load/results/2026-10-11/supavisor-backends.mjs` stops on a STOP
+  file in ITS OWN directory unless `--out-dir=<dir>` (with `=`) points at
+  the run's results dir; without it the run script waits forever on the
+  sampler, and `--out-dir <dir>` (space) makes it exit at start.
+
 Tests (Node's runner, like the other harness tests):
 `node --test tests/load/*.test.mjs tests/load/browsers/*.test.mjs tests/load/realtime/*.test.mjs`.
 
