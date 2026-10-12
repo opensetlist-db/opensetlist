@@ -73,6 +73,15 @@ loadEnv();
 assertDev();
 const args = parseArgs(process.argv.slice(2));
 const EVENT_ID = String(args["event-id"] ?? "111");
+// Data-safety boundary: every n14 load/drill tool writes to the dev test
+// event 111 only (CLAUDE.md / tests/load/README.md). `--event-id` exists so
+// the SQL is not hard-wired, but on this project nothing else may be the
+// target: a typo here would clone rows into, or re-position, a real event
+// in the dev database that mirrors production content. Refuse anything else.
+if (EVENT_ID !== "111") {
+  console.error(`refusing --event-id=${EVENT_ID}: the n14 drill tools only touch dev event 111`);
+  process.exit(2);
+}
 const log = (...a) => console.log(...a);
 
 function checkBase(raw) {
