@@ -435,6 +435,173 @@ node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 
 node --no-warnings tests/load/browsers/run.mjs --drill=idle-broadcast --pages=0 --wake --cohort-incumbents=20 --cohort-fresh=20 --connect-at=<T> --first-save-at=<T+8s> --strict-host --restore-positions --timeout=60 --label=step5-I2a
 ```
 
+## Transition phase (`--phase=transition`, n14 qualification step 6)
+
+Qualifies **deployment transitions with open tabs**: the dev alias is
+moved between deployments (ON → OFF → ON, ON → R1 → ON, pseudo-switches
+for the T0 control) while 30 pages + 470 SDK clients stay open on it.
+The harness never calls `vercel`; the OPERATOR moves the alias and tells
+the harness through **switch files**. Pure logic: `transition.mjs`
+(tests: `transition.test.mjs`); attribution of every response to a
+deployment: `../transition-join.mjs` (Vercel request logs).
+
+**Start.** ONE admin login, ONE dedicated anchor row (every timeline
+PUT writes its marker here), the run manifest
+(`<stamp>-transition-manifest.json`), then the population joins the
+alias (SDK 50/s, pages at `--page-concurrency`) and settles `--settle`
+(default 20 s here). The controlled subsets are **carved out of
+`--subs`** (natural = subs − hold − ahead), each in its own worker
+(cohorts `hold` / `ahead`), so the declared population stays the
+declared population. The probe starts after the settle and runs to the
+end.
+
+**Switch-file protocol** (`--switch-files=a.json,b.json,…`, one per
+switch, processed in order; the harness polls every 200 ms, a
+half-written file is just "not yet"; ISO or epoch-ms instants; a BOM is
+tolerated):
+
+1. ≥ 60 s before the switch (`--notice-min`; shorter notice is recorded
+   as a warning, the run goes on) the operator writes
+   `{ "plannedAt": "<ISO>", "kind": "<kind>", "label": "ON-A→OFF-1", "afterSwitchSaves": "insert,update,delete" }`.
+   `kind` ∈ `pseudo` (T0, no move), `off`, `return` (back to an
+   EXISTING ON deployment → stale-first-answer check), `fresh` (a fresh
+   ON target), `r1` (the arrivals' page part becomes the R1 cohort),
+   `return-from-r1` (the ahead-hint subset is armed). `afterSwitchSaves`
+   (optional; update / delete need insert) = the INSERT / UPDATE /
+   soft-DELETE run as separate saves after the leg's last planned save,
+   `--after-switch-gap` (10 s) apart — the R1 tabs' three change types.
+2. At P the operator runs `vercel alias set <target> <alias>` and, right
+   after it returned, MERGES into the same file
+   `{ "cliStart": "<ISO>", "cliEnd": "<ISO>", "cliCpuMs": 812, "target": { "url": "https://opensetlist-<hash>-opensetlist-projects.vercel.app", "id": "dpl_…" } }`.
+   T0 pseudo-switches write the CURRENT deployment as the target.
+
+**Per leg** (all relative to P = `plannedAt`):
+
+- **Saves** at `--transition-saves` (default `-30,-1,+1,+5,+11,+15,+30,+60`
+  s; at least one before and one after P) — PUTs on the anchor, never
+  retried, sequential (each waits for the previous one; scheduled vs
+  actual start = `lateMs`, offset from the file's cliEnd =
+  `fromCliEndMs`). **Leg quiet**: no save of a leg starts before the
+  previous leg's last save + `--leg-gap` (90 s); a save delayed by that
+  is recorded (`quietDelayMs`) and the leg flagged `spacingViolated`.
+- **Identity guard on the actual target**: as soon as the file names
+  `target`, ONE generic read through the target's IMMUTABLE URL
+  (`minRev` = the DB revision just read) must serve the dev database's
+  active rows — ids AND positions — at ≥ that revision (an alias read
+  could still reach the incumbent and falsely "verify" the target). It
+  gates the NEXT write (`gatedMs` on that save); a failed guard stops the
+  timeline (verdict ABORTED, exit 2, the measured part is still
+  reported). `target.url` must have the deployment-URL shape.
+- **Route marker** (population `route`, outside every gate): a document
+  that needs no database (`/<locale>/privacy`) at `--route-marker` per s
+  (2) over `--route-window` (`-10,70` s), plus one baseline read at the
+  leg start. Its `data-dpl-id` (Skew Protection stamps the serving
+  deployment on `<html>`) positively identifies the deployment live:
+  the first marker served by the target (or, target unknown yet, by a
+  non-baseline deployment; for a pseudo-switch, the first marker that
+  started after cliEnd) = the leg's **provisional boundary** ("first
+  target response"); without it, cliEnd. The join replaces it with the
+  log-attributed one. Also: last old request start / response, and
+  sustained target routing over 60 s.
+- **Probe** (population `probe`, whole run): one hinted fetch per
+  `--probe-interval` (1000 ms) on the alias, `minRev` = the latest
+  CONFIRMED committed rev (a save's 2xx response), locales rotating.
+- **Hold subset** (`--hold-subset`, 20): armed 0.5 s before the first
+  `--hold-at` wave (`-1,1,3` s; clients round-robin over the waves); each
+  wave gets a controlled `resume` fetch (recorded in the client's
+  `trig`); every response that completes while armed is held CLIENT-SIDE
+  (an async gate — the worker thread never blocks, the lag monitor and
+  the real 8 s deadline keep running; a hold that outlives the deadline
+  becomes the real deadline failure, counted apart as "held → deadline")
+  and released at the first target response seen live + 200 ms, or at
+  `--hold-cap` (30 s). Produces "old answer after the cutover, then a
+  follow-up converges".
+- **Ahead-hint subset** (`--ahead-hint-subset`, 20; only before a switch
+  of kind `return-from-r1`): at `--ahead-hint-at` (`-1.2` s) its clients
+  get a SYNTHETIC hint = latest committed rev + `--ahead-hint-offset` (5)
+  through the client's own broadcast path (`noteHint` → notification
+  fetch; receipts marked `s` / `sd`, never counted as broadcasts, and
+  requests carrying it flagged `synthetic`). On R1 the answer is below
+  the hint without a verify header → inconclusive → the recheck is queued
+  (≥ 1 s) and lands across the switch. The scheduler state at P is
+  recorded (`stateAtP`: tickets in the recheck phase).
+- **Arrivals** at P + 10 s: `--arrivals=<pages>,<sdk>` (`10,100`), new
+  cohort `arrival-<k>`; after a `kind: "r1"` switch the page part is the
+  **R1 cohort** (`--r1-cohort`, 15, cohort `r1-<k>`) — whatever the alias
+  serves then, classified post hoc by behaviour: a page that registered
+  `postgres_changes` is R1 (an R2 page never does); readiness per cohort
+  (R1 = postgres_changes registered, R2 = channel joined). Arrivals are
+  retained; the population growth is reported.
+- **Reaction / wish smoke** at P + `--smoke-at` (20 s) from ONE OLD
+  (initial) page per locale, from inside the page (its origin, cookies,
+  localStorage): POST a reaction on the anchor with the page's anon id,
+  read the counts back, POST a wish; then the reaction row's `anonId`
+  from the DB (persistence) and the anon id before the switch = at the
+  smoke = in the row (retained identity). Both are deleted at once. A
+  wish on an ongoing event is LOCKED by design (403 "locked") — expected.
+
+**Records** (JSON `transition`, see "Row formats"): every response with
+its FULL `x-vercel-id`, status, body validity, rev, `x-snapshot-source`,
+the raw `x-snapshot-verify` (absent = R1), the hint and the resolution
+the client computed, recheck queued, pin evidence (request header
+`x-deployment-id`, cookie `__vdpl`, `dpl` query — "none" expected for
+every API request), `x-vercel-cache` / `cache-control` / `age`, and the
+milestones request start / headers received / body complete /
+acceptance evaluated / scheduler settled. Pages: the document's
+`data-dpl-id` (the build the tab runs) and `x-vercel-id`, every
+framework asset response (status, `dpl` pin), failed requests,
+main-frame navigations, page errors, and the raw `postgres_changes`
+receipts with `isDeleted` (a soft-delete is an UPDATE).
+
+**Exposure (predeclared, per switch; PROVISIONAL boundary)**: pending
+hinted fetch — ≥ 20 natural clients with a hinted request dispatched
+before cliStart and not settled at the boundary; pending recheck (ahead
+subset) — ≥ 5 synthetic tickets answered inconclusive before cliStart
+whose recheck settled after it (queued = dispatched after cliStart,
+dispatched = in flight at cliStart); old answer after cutover — ≥ 5
+clients (natural + hold, counted apart) with a 200 dispatched before
+cliStart and evaluated after the boundary, then converged to the leg's
+head without a regression; arrival saves (the saves within 6 s after the
+arrival start, i.e. +11 / +15) — SDK ≥ 20 arrivals not yet SUBSCRIBED at
+the PUT response, pages ≥ 3 arrivals navigated but incomplete, judged
+independently. Each EXERCISED / NOT EXERCISED.
+
+**Verdicts per switch, separate**: *continuity* — every planned save
+2xx; every eligible client (incumbents from the PUT start, arrivals from
+max(join, PUT response) — admission.mjs's split) ≥ the saved rev (pages:
+the marker or a later one; structural saves: the DOM row list) within
+`--continuity-timeout` (30 s) of the first save attempt, supersession
+allowed; every continuously connected R2 client (SDK: connected through
+PUT start … PUT response + 10 s; R2 pages: joined before the save, not
+reloaded) received the committed broadcast; 0 × 5xx anywhere, 0
+transport failures, 0 malformed bodies, 0 unexpected reloads, 0 page
+errors, 0 monotonicity regressions (in the leg window); outcomes per
+save counted (satisfied-first-fetch / rechecked / periodic-repaired /
+other reasons / superseded / ticket exhausted). *Performance* — per
+save per population (SDK before / after, pages before / after /
+structural) p95 ≤ `--gate-p95` (3 s), kept visible even when continuity
+passes (OFF at 70 rows and R1 may fail: that is the rollback's measured
+cost). *Arrivals* — time to usable = the LATER of complete setlist and
+readiness, every page usable, p95 ≤ the gate (all waves; wave 0
+reported); SDK first snapshot. *Smoke*, *guard*. Plus the R1 cohort table
+(per R1 page and after-return save: change received, type / isDeleted,
+next fetch start, DOM update), the existing-ON return's stale first
+answers (reported, not a gate), pin evidence ("no chunk 404 after the
+switch" only claimed when old tabs fetched assets after it), update gaps.
+Validity as in every run (whole window). Run verdict: INVALID (3) >
+VALID + FAIL (1) > NOT EXERCISED (4: an exposure missed — re-run that
+switch, the behavioural verdicts stand) > VALID + PASS (0); ABORTED = 2.
+
+```sh
+# smoke on the dev alias with a simulated (pseudo) switch: the switch file's
+# target is the deployment the alias already serves
+#   npx vercel inspect <alias> --scope opensetlist-projects → its immutable URL + dpl id
+node --no-warnings tests/load/browsers/run.mjs --phase=transition --pages=2 --subs=5 --sub-workers=1 --arrivals=1,2 --hold-subset=1 --ahead-hint-subset=1 --switch-files=s1.json --transition-saves=-20,-1,1,5,11,15 --after-switch-gap=5 --label=smoke-transition
+node tests/load/browsers/restore.mjs --compact --yes
+# T1 (three switches; the operator writes t1-a/b/c.json — ../README.md "n14 qualification step 6")
+node --no-warnings tests/load/browsers/run.mjs --phase=transition --pages=30 --subs=470 --switch-files=t1-a.json,t1-b.json,t1-c.json --strict-host --label=step6-T1
+```
+
 ## Row formats (timelines `.jsonl` and JSON)
 
 The timelines' first line documents every layout. Columns added in step
@@ -453,6 +620,11 @@ The timelines' first line documents every layout. Columns added in step
 | `page` line (admission) | + `rowsLog` [t, row signatures in DOM order: song ids joined by `+`, `""` = no song link], `navStart`, `ttfbMs`, `dclMs`, `docStatus`, `seed` { kind live / absent / unknown, rev }, `wave`, `firstApiReqAt`, `wsOpenAt` |
 | JSON `admission` | `config`, `T0`, `base`, `prepBase`, `prepare`, `anchor`, `fixture`, `manifestFile`, `boundary` { waitFrom, T0, waitMs, outbound [t, http / tcp, target], admitFile }, `guardRead`, `scheduled` (scheduled vs actual save start), `expectedRows`, `saves[]` (k, mode, rev, putStart, putEnd, putMs, label, sdkExposure, pageExposure, sdkConv, pageConv, stale, receipt), `gates`, `verdict`, `exercised`, `final` (I3), `pages[]`, `sdk[]` (compact per client: subscription timeline, first / firstOk, bcasts, applied) — the input of `../admission-join.mjs` |
 | JSON `idle` | `config`, `wake` (check results, escalation, fresh cohort times), `connectedAtSave`, `verdict`, `cycles[]` (name, save, verdict, elig, eligible, all, rows), `later[]`, `sdk[]` |
+| `sdk.reqs` (transition) | **16 x-vercel-id**, 17 headersAt, 18 bodyAt, 19 evalAt (acceptance evaluated), 20 heldAt, 21 releasedAt (hold subset), 22 x-vercel-cache, 23 cache-control, 24 age, 25 x-snapshot-verify raw (null = absent), 26 pin evidence, 27 recheck queued 0/1, 28 fail kind, 29 synthetic hint 0/1; tEnd (10) = scheduler settled; `sdk` line + `trig` [t, reason] |
+| `page.reqs` (transition) | **9 x-vercel-id**, 10 x-vercel-cache, 11 cache-control, 12 age, 13 pin evidence, 14 body complete t, 15 request path + query |
+| `page.notes` (transition) | + 3 record `isDeleted`, 4 table |
+| `page` line (transition) | + `cohort`, `docDplId`, `docVercelId`, `pgReadyAt`, `assets` [t, status, dpl query, path], `navs` [t, url, status, x-vercel-id, data-dpl-id] (document loads; a later one = a reload), `reqFailed` [t, path, failure], `pageErrs` [t, message] |
+| JSON `transition` | `version`, `config`, `anchor`, `manifest`, `populations` {initial, growth[]}, `subsets`, `syntheticRevs`, `aborted`, `verdict` {verdict, exit, failed[], notExercised[]}, `switches[]`, `saves[]`, `probe[]` (main-thread response records), `rows` (column names), `sdk[]` (per client: cohort, connLog, statusLog, reqs with the transition columns, applied, bcasts, exhausted, trig), `pages[]` (compact + cohort, build, docDplId, readyAt, timeToUsableMs, fetches, notes, bcasts, assets, navs, reqFailed, pageErrs, seen, gone) — the input of `../transition-join.mjs` |
 | JSON `overlap` | `gates`, `pass`, `fivexx`, `roles`, `reloads`, `reactions`, `ackHold`, `convergence`, `controls`, `groups[]` (`saves {k, who, startedAt, ms, status, rev, attempts, fault}`, `reloads {k, off, at, ms, status, bytes, contentOk}`, `catalog {k, startedAt, ackAt, status, from, to}`, `reactions`, `pageReaction` trace) |
 
 ## Positions (read before running repeatedly)

@@ -65,7 +65,9 @@ const IDLE_KEYS = ["cohort-incumbents", "cohort-fresh", "connect-at", "first-sav
 export function parseStep5Flags(args, { phase, drill, deploymentUrl, pages, now = Date.now() }) {
   const admGiven = ADMISSION_KEYS.filter((k) => args[k] !== undefined);
   const idleGiven = IDLE_KEYS.filter((k) => args[k] !== undefined);
-  if (phase !== undefined && phase !== null && phase !== "admission") return { error: `unknown --phase=${phase} (only "admission")` };
+  // "transition" (n14 step 6) is parsed by transition.mjs
+  // parseTransitionFlags; here it only means "not admission".
+  if (phase !== undefined && phase !== null && phase !== "admission" && phase !== "transition") return { error: `unknown --phase=${phase} (admission | transition)` };
   const admission = phase === "admission";
   const idle = drill === "idle-broadcast";
   if (!admission && admGiven.length) return { error: `${admGiven.map((k) => `--${k}`).join(", ")} need(s) --phase=admission` };

@@ -101,13 +101,32 @@ import {
 // Type-only Prisma import (erased); the runtime exports are plain.
 import { LIVE_BROADCAST_EVENT, liveTopic } from "../../../src/lib/liveBroadcast.ts";
 import { startLagMonitor, HEARTBEAT_MS } from "./hostmon.mjs";
+import { createHoldGate, pinEvidence } from "./transition.mjs";
 
 // The hook's two cadences (`HEALTHY_CADENCE` / `DISCONNECTED_CADENCE` in
 // src/hooks/useRealtimeEventChannel.ts — module-private there, so
 // rebuilt here from the same exported constants).
 const HEALTHY_CADENCE = { intervalMs: HEALTHY_PERIODIC_MS, spreadMs: HEALTHY_PERIODIC_SPREAD_MS, firstTick: "interval" };
 const DISCONNECTED_CADENCE = { intervalMs: FALLBACK_POLL_MS, spreadMs: FALLBACK_POLL_SPREAD_MS, firstTick: "random-phase" };
-const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null, cohort = null } = workerData;
+const { offset, n, base, eventId, supabaseUrl, anonKey, batch, every, localeOf, workerIdx = 0, anchorId = null, cohort = null, transition = false } = workerData;
+// n14 step 6 (`run.mjs --phase=transition`): every request row gets the
+// per-response evidence columns 16–29 (x-vercel-id, the separate
+// milestones headers / body / acceptance evaluated, the hold times,
+// cache headers, the raw verify header, pin evidence, recheck queued,
+// fail kind, synthetic hint — transition.mjs `SDK_ROW_TX`), and the
+// worker accepts the controlled-subset commands (holdArm / holdRelease
+// / trigger / inject, see the message handler). Off: rows and behaviour
+// are exactly as before.
+const TX = transition === true;
+// The client-side hold of the hold subset (transition.mjs
+// createHoldGate): async, so this thread never blocks; `holdIdx` = the
+// clients whose responses the armed gate holds.
+const holdGate = createHoldGate();
+const holdIdx = new Set();
+// Revisions this worker injected as synthetic hints (ahead-hint
+// subset): requests carrying one are flagged (column 29) so the run
+// keeps them out of every committed-broadcast / convergence denominator.
+const syntheticRevs = new Set();
 // --drill=overlap: the id of anchor row A. When set, every response's
 // title for that row's song is recorded (`anchorTitle`, see `reqs`) so a
 // stale snapshot can be proven by CONTENT (the catalog-edit race: a warm
@@ -260,6 +279,15 @@ function makeSub(idx) {
       const notify = request?.notify === true;
       const minRev = acceptance.minRevFor(hint);
       const row = [Date.now(), reason, request?.generic ? 1 : 0, hint, notify ? 1 : 0, minRev, 0, null, null, null, null, null, null, null, null, null];
+      // Transition columns (see TX): 16 x-vercel-id, 17 headersAt,
+      // 18 bodyAt, 19 evalAt, 20 heldAt, 21 releasedAt, 22 x-vercel-cache,
+      // 23 cache-control, 24 age, 25 verify raw, 26 pin evidence,
+      // 27 recheck queued, 28 fail kind, 29 synthetic hint.
+      const url = base + setlistSnapshotUrl(EVENT, rec.locale, minRev, notify);
+      // The SDK sends no header and no cookie; the pin is derived from
+      // what actually goes out (the URL), so a future change that adds
+      // one shows up here instead of being assumed away.
+      if (TX) row.push(null, null, null, null, null, null, null, null, null, null, pinEvidence(url, {}), 0, null, hint != null && syntheticRevs.has(hint) ? 1 : 0);
       rec.reqs.push(row);
       bump(rec.fetches, reason);
       let settled = false;
@@ -276,6 +304,7 @@ function makeSub(idx) {
         consecutiveFailures++;
         rec.failures++;
         bump(rec.failKinds, kind);
+        if (TX) row[28] = kind;
         if (retryAfterMs !== null) rec.retryAfter++;
         finish({
           kind: "failed",
@@ -292,8 +321,16 @@ function makeSub(idx) {
       });
       void (async () => {
         try {
-          const res = await fetch(base + setlistSnapshotUrl(EVENT, rec.locale, minRev, notify), { signal: controller.signal });
+          const res = await fetch(url, { signal: controller.signal });
           row[6] = res.status;
+          if (TX) {
+            row[16] = res.headers.get("x-vercel-id");
+            row[17] = Date.now();
+            row[22] = res.headers.get("x-vercel-cache");
+            row[23] = res.headers.get("cache-control");
+            row[24] = res.headers.get("age");
+            row[25] = res.headers.get(SNAPSHOT_VERIFY_HEADER);
+          }
           if (settled) return;
           if (stopped) return finish(CANCELLED);
           if (!res.ok) {
@@ -306,7 +343,21 @@ function makeSub(idx) {
           // first snapshot's bytes are part of the admission record.
           const txt = await res.text();
           row[15] = Buffer.byteLength(txt);
+          if (TX) row[18] = Date.now();
           const body = JSON.parse(txt);
+          // Hold subset: the response is complete; keep it from the
+          // acceptance rule until the gate releases (async — the deadline
+          // timer armed at dispatch keeps running and may fail the
+          // request meanwhile, which is the real behaviour; then the
+          // `settled` check below drops the held body).
+          if (TX && holdIdx.has(idx)) {
+            const p = holdGate.hold(idx);
+            if (p) {
+              row[20] = Date.now();
+              const e = await p;
+              row[21] = e.releasedAt;
+            }
+          }
           if (settled) return;
           if (stopped) return finish(CANCELLED);
           if (!body || !Array.isArray(body.items)) return fail("body", null);
@@ -317,9 +368,14 @@ function makeSub(idx) {
           row[14] = anchorTitleOf(body);
           bump(rec.verifyKinds, verify.kind);
           const v = acceptance.evaluate(generation, body, verify, hint);
+          if (TX) row[19] = Date.now();
           if (v.kind === "stale-generation") return finish(CANCELLED);
           noteServerRev();
           row[9] = v.hint;
+          // An inconclusive notification-phase answer = the scheduler now
+          // carries the ticket in its recheck phase (queued); an
+          // inconclusive recheck drops it instead (onHintExhausted).
+          if (TX && v.hint === "inconclusive" && reason !== "recheck") row[27] = 1;
           if (v.hint !== "none") bump(rec.hintRes, v.hint);
           if (v.apply && v.version) rec.appliedAll.push([Date.now(), v.version.rev, reason, row[13]]);
           if (v.apply && v.version && (lastAppliedRev === null || v.version.rev > lastAppliedRev)) {
@@ -367,6 +423,23 @@ function makeSub(idx) {
     }
     rec.bcasts.push([Date.now(), rev, "n"]);
     scheduler.requestFetch("notification");
+  };
+
+  // Ahead-hint subset (n14 step 6): a SYNTHETIC hint, handed to the
+  // exact path a received broadcast takes after validation (noteHint →
+  // notification fetch), so the ticket lifecycle is the real one. "s" =
+  // synthetic news, "sd" = synthetic not news; never counted as a
+  // broadcast receipt (`noted` counts n / d only).
+  const injectHint = (rev) => {
+    if (stopped) return false;
+    syntheticRevs.add(rev);
+    if (!acceptance.noteHint(rev)) {
+      rec.bcasts.push([Date.now(), rev, "sd"]);
+      return false;
+    }
+    rec.bcasts.push([Date.now(), rev, "s"]);
+    scheduler.requestFetch("notification");
+    return true;
   };
 
   // ── channel recovery: the hook's state machine (see header) ──
@@ -470,6 +543,15 @@ function makeSub(idx) {
     scheduler,
     // Up right now (the hook's healthy state), and since when.
     isConnected: () => connection === "subscribed" && !stopped,
+    injectHint,
+    // A controlled trigger (hold subset): the scheduler's own request
+    // path with the given reason; recorded in `trig` with its time.
+    trigger(reason) {
+      if (stopped) return false;
+      (rec.trig ||= []).push([Date.now(), reason]);
+      scheduler.requestFetch(reason);
+      return true;
+    },
     start() {
       rec.attemptAt = Date.now();
       scheduler.start();
@@ -559,6 +641,27 @@ parentPort.on("message", async (msg) => {
       ...s.scheduler.getState(),
     }));
     parentPort.postMessage({ type: "state", clients });
+  } else if (msg.cmd === "holdArm") {
+    // n14 step 6, hold subset: hold the responses of `idxs` from now on
+    // until holdRelease.
+    holdIdx.clear();
+    for (const i of msg.idxs || []) holdIdx.add(i);
+    holdGate.arm();
+    parentPort.postMessage({ type: "holdArmAck", at: Date.now(), n: holdIdx.size });
+  } else if (msg.cmd === "holdRelease") {
+    const released = holdGate.release(msg.why || "release");
+    parentPort.postMessage({ type: "holdReleaseAck", at: Date.now(), released, gate: holdGate.snapshot() });
+  } else if (msg.cmd === "trigger") {
+    const want = new Set(msg.idxs || []);
+    let ok = 0;
+    for (const s of subs) if (want.has(s.rec.idx) && s.trigger(msg.reason || "resume")) ok++;
+    parentPort.postMessage({ type: "triggerAck", at: Date.now(), ok });
+  } else if (msg.cmd === "inject") {
+    const want = new Set(msg.idxs || []);
+    let news = 0;
+    let sent = 0;
+    for (const s of subs) if (want.has(s.rec.idx)) { sent++; if (s.injectHint(msg.rev)) news++; }
+    parentPort.postMessage({ type: "injectAck", at: Date.now(), sent, news });
   } else if (msg.cmd === "drop") {
     let ok = 0;
     for (const s of subs) if (s.dropSocket()) ok++;

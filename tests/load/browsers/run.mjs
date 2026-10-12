@@ -106,6 +106,12 @@ import {
   sdkExposure, pageExposure, exposureLabel, sdkConvergence, pageConvergence, staleFirstAnswers, receiptVsReason,
   admissionVerdict, idleEligibility, idleArrivals, summarizeArrivals,
 } from "./admission.mjs";
+import {
+  parseTransitionFlags, parseSwitchFile, saveSchedule, quietDue, waves, pinEvidence, isPinned, dplIdOf, probeResolution, firstTargetLive,
+  routingProfile, boundaryOf, releaseAt, SDK_ROW_TX, Q, pendingHinted, pendingRecheck, oldAnswerAfterCutover, arrivalExposure, clientOutcome,
+  broadcastReceipt, updateGap, pageBuild, pageReadyAt, timeToUsable, staleFirstAfter, firstRowsAt, continuityVerdict, transitionVerdict,
+} from "./transition.mjs";
+import { insertAfterRaw, softDeleteRaw } from "./admin.mjs";
 import { parseSnapshotVerify } from "../../../src/lib/snapshotVerify.ts";
 import { NOTIFICATION_COOLDOWN_MS as COOLDOWN_MS } from "../../../src/lib/liveScheduler.ts";
 import {
@@ -208,6 +214,15 @@ if (S5.error) {
 }
 const ADM = S5.cfg.admission;
 const IDLE = S5.cfg.idle;
+// n14 step 6 (see the transition section below and transition.mjs
+// `parseTransitionFlags`): TXC = the --phase=transition config, null
+// otherwise. Checked here, before anything is created.
+const TXP = parseTransitionFlags(args, { phase: PHASE, drill: DRILL, deploymentUrl: DEPLOYMENT_URL, subs: SUBS });
+if (TXP.error) {
+  console.error(TXP.error);
+  process.exit(2);
+}
+const TXC = TXP.cfg;
 // With a deployment-specific URL the identity guard would fetch a
 // snapshot from the measurement deployment before T0 — exactly the
 // warming this phase must avoid — so it has to run against the
@@ -411,6 +426,8 @@ function spawnWorker({ offset, n, batch, cohort = null }) {
         // overlap: record anchor row A's song title per response.
         anchorId: OVERLAP ? ovAnchors.A?.id ?? null : null,
         cohort,
+        // n14 step 6: per-response evidence columns + subset commands.
+        transition: !!TXC,
       },
     });
     workerStarted[w] = Date.now();
@@ -756,7 +773,10 @@ const replacedPresent = (idx, id, present) => [...(idx.replacedBy.get(id) || [])
 //     snapshot applied over a newer one, even if a higher marker of
 //     another row keeps the max unchanged).
 // `versions` is the page's applied-version history, in order.
-function pageMonotonicity(r, idx, until) {
+// `allowGone` (n14 step 6, transition only): marker song id → the start
+// of the save that soft-deleted its row on purpose; a disappearance at
+// or after that instant is the expected outcome, not a regression.
+function pageMonotonicity(r, idx, until, allowGone = null) {
   const present = new Set();
   let maxV = -Infinity;
   const versions = [];
@@ -764,19 +784,25 @@ function pageMonotonicity(r, idx, until) {
   for (const [t, added, removed] of r.dom || []) {
     if (t >= until) break;
     let touched = false;
+    // An intended deletion lowers the shown version legitimately: the
+    // version baseline restarts from what remains.
+    let deletedNow = false;
     for (const id of added) if (idx.rev.has(id)) { present.add(id); touched = true; }
     for (const id of removed) {
       if (!idx.rev.has(id)) continue;
       present.delete(id);
       touched = true;
-      if (!replacedPresent(idx, id, present)) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
+      const deleted = allowGone?.has(id) && t >= allowGone.get(id);
+      if (deleted) deletedNow = true;
+      if (!replacedPresent(idx, id, present) && !deleted) regressions.push({ t, what: `marker ${id} (rev ${idx.rev.get(id)}) disappeared` });
     }
     if (!touched) continue;
     let v = -Infinity;
     for (const id of present) v = Math.max(v, idx.rev.get(id));
     const shown = Number.isFinite(v) ? v : null;
     if (!versions.length || versions[versions.length - 1][1] !== shown) versions.push([t, shown]);
-    if (v < maxV) regressions.push({ t, what: `version ${maxV} → ${shown ?? "none"}` });
+    if (deletedNow) maxV = v;
+    else if (v < maxV) regressions.push({ t, what: `version ${maxV} → ${shown ?? "none"}` });
     maxV = Math.max(maxV, v);
   }
   return { versions, regressions, present };
@@ -1474,6 +1500,634 @@ async function mainIdle(runStart) {
   };
 }
 
+// ─── n14 step 6: --phase=transition ───
+// Deployment transitions with open tabs (design §2; README "Transition
+// phase"). The population joins on the dev ALIAS and settles; then, per
+// switch file, the operator moves the alias at `plannedAt` (P) with
+// `vercel alias set` and appends the CLI times + the target; the
+// harness runs the predeclared timeline around P: saves at
+// --transition-saves, the identity guard through the target's immutable
+// URL as soon as the file names it (gating the next write), the route
+// marker (live positive identification of the serving deployment), the
+// controlled subsets, the arrivals at P + 10 s and the reaction / wish
+// smoke from old pages. The probe runs for the whole window. Everything
+// is recorded per response with its full `x-vercel-id`, so
+// ../transition-join.mjs can attribute each one to a deployment from the
+// Vercel request logs afterwards — the harness itself only classifies
+// against a PROVISIONAL boundary (transition.mjs `boundaryOf`).
+const txReactionIds = [];
+const txWishIds = [];
+
+// One recorded request from this main thread (probe, route marker,
+// guard). The common per-response record — the shape the join reads
+// (README "Transition phase" → records):
+//   { pop, k, tStart, tHeaders, tBody, status, vercelId, xVercelCache,
+//     cacheControl, age, source, verifyRaw, verifyKind, rev, bodyOk,
+//     hint, minRev, locale, resolution, pin, dpl, bytes, error }
+// `hint` is the minRev a hinted request sent; `resolution` what a
+// client with no other state would compute (transition.mjs
+// probeResolution); `dpl` = the document's data-dpl-id (route marker);
+// `pin` = pin evidence of the request as sent (this process sends no
+// header and no cookie: "none" unless the URL carries `dpl`).
+async function txFetch(pop, url, { k = null, hint = null, minRev = null, locale = null, html = false, items = false } = {}) {
+  const tStart = Date.now();
+  const base = { pop, k, tStart, hint, minRev, locale, pin: pinEvidence(url, {}) };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15000), redirect: "manual" });
+    const tHeaders = Date.now();
+    const txt = await res.text();
+    const tBody = Date.now();
+    const h = (n) => res.headers.get(n);
+    let rev = null;
+    let bodyOk = false;
+    let dpl = null;
+    let served = null;
+    if (html) {
+      dpl = dplIdOf(txt);
+      bodyOk = res.status === 200 && dpl != null;
+    } else {
+      try {
+        const b = JSON.parse(txt);
+        bodyOk = !!b && Array.isArray(b.items);
+        rev = Number.isSafeInteger(b?.rev) ? b.rev : null;
+        if (items && bodyOk) served = b.items.map((it) => `${it.id}@${Number(it.position)}`).sort().join(",");
+      } catch { /* malformed: bodyOk stays false */ }
+    }
+    const verifyRaw = h("x-snapshot-verify");
+    return {
+      ...base, tHeaders, tBody, status: res.status, vercelId: h("x-vercel-id"), xVercelCache: h("x-vercel-cache"), cacheControl: h("cache-control"), age: h("age"),
+      source: h("x-snapshot-source"), verifyRaw, verifyKind: html ? null : verifyKindOf(verifyRaw), rev, bodyOk,
+      resolution: hint != null ? probeResolution(rev, hint, verifyRaw) : null, dpl, bytes: Buffer.byteLength(txt), error: null,
+      ...(served != null ? { served } : {}),
+    };
+  } catch (e) {
+    return { ...base, tHeaders: null, tBody: Date.now(), status: 0, vercelId: null, xVercelCache: null, cacheControl: null, age: null, source: null, verifyRaw: null, verifyKind: null, rev: null, bodyOk: false, resolution: null, dpl: null, bytes: null, error: String(e?.message || e).slice(0, 120) };
+  }
+}
+
+const readSwitch = (p) => {
+  try { return parseSwitchFile(fs.readFileSync(p, "utf8")); } catch { return null; }
+};
+
+// The probe population (design §2): one hinted fetch per
+// --probe-interval on the alias from this thread, minRev = the latest
+// CONFIRMED committed rev (a save's 2xx response), locales rotating.
+// Fire-and-forget on a fixed schedule (a slow answer delays nothing).
+function startProbe(T) {
+  if (!TXC.probeIntervalMs) return async () => {};
+  let stop = false;
+  const pending = [];
+  const loop = (async () => {
+    const t0 = Date.now();
+    for (let i = 0; !stop; i++) {
+      const locale = ["ja", "ko", "en"][i % 3];
+      const minRev = T.latestRev;
+      pending.push(txFetch("probe", `${BASE}/api/setlist?eventId=${EVENT_ID}&locale=${locale}&minRev=${minRev}&hint=1`, { hint: minRev, minRev, locale }).then((r) => { T.probe.push(r); }));
+      await sleepUntil(t0 + (i + 1) * TXC.probeIntervalMs);
+    }
+  })();
+  return async () => { stop = true; await loop; await Promise.all(pending); };
+}
+
+// Live positive identification (transition.mjs firstTargetLive) on every
+// route-marker answer and when the switch file completes.
+function txDetect(L) {
+  if (L.firstTarget || L.baselineDpl == null) return;
+  const rows = L.route.filter((r) => r.phase !== "baseline" && r.dpl).map((r) => ({ reqStart: r.tStart, respAt: r.tBody, dpl: r.dpl, vercelId: r.vercelId }));
+  const ft = firstTargetLive(rows, { baseline: L.baselineDpl, targetId: L.file?.target?.id ?? null, cliEnd: L.file?.cliEnd ?? null });
+  if (!ft) return;
+  L.firstTarget = { ...ft.row, how: ft.how, seenAt: Date.now() };
+  log(`switch ${L.k}: first target response seen live (${ft.how}): ${ft.row.dpl} at +${((ft.row.respAt - L.plannedAt) / 1000).toFixed(1)} s`);
+  L.onTarget?.(L.firstTarget);
+}
+
+// The route marker (design: positive live attribution): a document of
+// the app that needs no database (/<locale>/privacy — Skew Protection
+// stamps `data-dpl-id` on it), --route-marker per second over
+// --route-window around P, plus one baseline read at the leg start (the
+// incumbent's id). Labelled population `route`; outside every gate.
+async function routeLoop(L) {
+  if (!TXC.routeRate) return;
+  const from = L.plannedAt + TXC.routeWindowS[0] * 1000;
+  const to = L.plannedAt + TXC.routeWindowS[1] * 1000;
+  const iv = 1000 / TXC.routeRate;
+  const pending = [];
+  for (let i = 0; ; i++) {
+    const due = from + i * iv;
+    if (due > to) break;
+    await sleepUntil(due);
+    const locale = ["ja", "ko", "en"][i % 3];
+    pending.push(txFetch("route", `${BASE}/${locale}/privacy`, { k: L.k, locale, html: true }).then((r) => { L.route.push(r); txDetect(L); }));
+  }
+  await Promise.all(pending);
+}
+
+// Identity guard on the ACTUAL target (design §2): one generic read
+// through the target's immutable URL, compared with the dev database's
+// active rows (ids AND positions) and revision read just before it —
+// an alias read could still reach the incumbent and falsely "verify"
+// the target. Up to 3 attempts (a concurrent save between the DB read
+// and the fetch shows as a mismatch). Gates the next write.
+async function runGuard(L) {
+  const g = { k: L.k, targetUrl: L.file.target.url, targetId: L.file.target.id, completeSeenAt: L.completeSeenAt, startedAt: Date.now(), attempts: [], ok: false, error: null };
+  if (!isDeploymentBaseUrl(g.targetUrl)) {
+    g.error = `target.url ${g.targetUrl} is not https://opensetlist-<hash>-opensetlist-projects.vercel.app`;
+  } else {
+    for (let a = 1; a <= 3 && !g.ok; a++) {
+      let m;
+      try { m = await withPg((pg) => readManifest(pg)); } catch (e) { g.attempts.push({ a, error: `pg: ${e.message}` }); continue; }
+      const expected = m.rows.map((r) => `${r.id}@${r.position}`).sort().join(",");
+      const r = await txFetch("guard", `${g.targetUrl}/api/setlist?eventId=${EVENT_ID}&locale=ko&minRev=${m.rev}`, { k: L.k, minRev: m.rev, locale: "ko", items: true });
+      const ok = r.status === 200 && r.served === expected && r.rev != null && r.rev >= m.rev;
+      g.attempts.push({ a, dbRev: m.rev, dbRows: m.rows.length, ok, rec: { ...r, served: undefined } });
+      g.ok = ok;
+      if (!ok) await sleep(500);
+    }
+    if (!g.ok) g.error = `target ${g.targetUrl} does not serve the dev manifest (${g.attempts.map((x) => x.error ?? `rev ${x.rec?.rev ?? "—"} vs db ${x.dbRev}, status ${x.rec?.status}`).join("; ")})`;
+  }
+  g.endedAt = Date.now();
+  g.ms = g.endedAt - g.startedAt;
+  L.guard = g;
+  log(`switch ${L.k}: identity guard through ${g.targetUrl}: ${g.ok ? "ok" : `FAILED — ${g.error}`} (${g.ms} ms)`);
+  return g;
+}
+
+// Switch-file watcher: keeps the latest parse; once cliStart / cliEnd /
+// target are in, starts the guard (and re-runs the live detection: the
+// target id may now disambiguate). Bounded: P + 180 s.
+async function watchFile(L) {
+  const giveUp = L.plannedAt + 180000;
+  while (Date.now() < giveUp) {
+    const p = readSwitch(L.path);
+    if (p && !p.error) {
+      L.file = p;
+      if (p.complete) {
+        L.completeSeenAt = Date.now();
+        log(`switch ${L.k}: file complete — cli ${iso(p.cliStart)} → ${iso(p.cliEnd)} (${p.cliCpuMs ?? "—"} ms CPU), target ${p.target.id ?? "—"} ${p.target.url}`);
+        txDetect(L);
+        L.guardP = runGuard(L);
+        await L.guardP;
+        return;
+      }
+    }
+    await sleep(200);
+  }
+  L.fileTimeout = true;
+  log(`switch ${L.k}: the switch file never named cliStart / cliEnd / target (by P + 180 s) — the leg's exposure and guard are NOT EXERCISED`);
+}
+
+// Before a write: wait for a running guard; a failed guard stops the run
+// (nothing more is written through an unproven deployment).
+async function txGate(L) {
+  if (!L.guardP) return 0;
+  const t = Date.now();
+  const g = await L.guardP;
+  if (!g.ok) throw new Error(`switch ${L.k}: identity guard failed — ${g.error}; no further save written`);
+  return Date.now() - t;
+}
+
+// Re-read the anchor's position (an after-return insert above it shifts
+// it; the PUT writes `position`).
+async function txAnchorPos() {
+  const p = await withPg(async (pg) => (await pg.query(`select position from "SetlistItem" where id = $1`, [anchor.id])).rows[0]?.position).catch(() => null);
+  if (p != null) anchor.position = Number(p);
+}
+
+function txRecordSave(T, L, s, r, extra) {
+  const rec = {
+    k: `${L.k}.${s.i}${extra.op === "put" ? "" : `-${extra.op}`}`, leg: L.k, i: s.i, op: extra.op, offS: s.offS, scheduledAt: s.due, quietDelayMs: s.quietDelayMs ?? 0,
+    startedAt: r.startedAt, lateMs: r.startedAt - s.due, gatedMs: extra.gatedMs ?? 0, fromCliEndMs: null,
+    ms: r.ms, headersMs: r.headersMs ?? null, status: r.status, rev: r.rev ?? null, vercelId: r.vercelId ?? null,
+    rowId: extra.rowId ?? null, songId: extra.songId ?? null, error: r.error ?? null,
+  };
+  L.saves.push(rec);
+  T.saves.push(rec);
+  if (r.error) saveFailures.push({ k: rec.k, op: `${extra.op} (transition)`, attempt: 1, at: iso(r.startedAt), error: r.error });
+  if (isOkSave(r) && r.rev != null && r.rev > T.latestRev) T.latestRev = r.rev;
+  log(`switch ${L.k} save ${rec.k} [${extra.op}] P${s.offS >= 0 ? "+" : ""}${s.offS}s: ${r.status} rev ${r.rev ?? "—"} ${r.ms} ms (late ${rec.lateMs} ms${rec.gatedMs ? `, gated ${rec.gatedMs} ms by the guard` : ""}${rec.quietDelayMs ? `, delayed ${rec.quietDelayMs} ms by --leg-gap` : ""})`);
+  return rec;
+}
+
+// The leg's saves: the PUT timeline on the anchor, then (switch file
+// `afterSwitchSaves`) the INSERT / UPDATE / soft-DELETE, each its own
+// save, --after-switch-gap apart after the last planned save. Never
+// retried (the schedule is the experiment); sequential (each waits for
+// the previous one and for the guard; the lateness is recorded).
+async function legSaves(T, L) {
+  const sched = saveSchedule(L.plannedAt, TXC.savesS);
+  for (const s of sched) {
+    const q = quietDue(s.due, T.prevLastSaveStart, TXC.legGapS);
+    s.quietDelayMs = q.delayMs;
+    if (q.delayMs) L.spacingViolated = true;
+    await sleepUntil(q.due);
+    const gatedMs = await txGate(L);
+    const song = T.songs[T.si++];
+    const r = await putSongRaw({ base: BASE, cookie, id: anchor.id, position: anchor.position, songId: song.id });
+    const rec = txRecordSave(T, L, s, r, { op: "put", gatedMs, rowId: anchor.id, songId: String(song.id) });
+    if (isOkSave(r)) T.edits.push({ k: rec.k, mode: "transition", id: anchor.id, song, ins: null, put: { startedAt: r.startedAt, successAt: r.startedAt, ms: r.ms, rev: r.rev, attempts: 1 }, double: null });
+  }
+  const after = L.file?.afterSwitchSaves ?? [];
+  if (after.length) {
+    const lastOff = TXC.savesS[TXC.savesS.length - 1];
+    let row = null;
+    let ins = null;
+    let song = null;
+    for (const [j, op] of after.entries()) {
+      const offS = lastOff + (j + 1) * TXC.afterSwitchGapS;
+      const s = { i: sched.length + j, offS, due: L.plannedAt + Math.round(offS * 1000) };
+      await sleepUntil(s.due);
+      const gatedMs = await txGate(L);
+      if (op === "insert") {
+        const r = await insertAfterRaw({ base: BASE, cookie, eventId: EVENT_ID, afterPosition: T.afterPosition });
+        txRecordSave(T, L, s, r, { op, gatedMs, rowId: r.id });
+        if (r.id) {
+          created.push(r.id);
+          row = { id: r.id, position: r.position };
+          ins = r;
+          await txAnchorPos();
+        }
+      } else if (op === "update") {
+        if (!row) { L.warnings.push("update skipped: the insert failed"); continue; }
+        song = T.songs[T.si++];
+        const r = await putSongRaw({ base: BASE, cookie, id: row.id, position: row.position, songId: song.id });
+        txRecordSave(T, L, s, r, { op, gatedMs, rowId: row.id, songId: String(song.id) });
+        if (isOkSave(r)) T.edits.push({ k: `${L.k}.${s.i}-update`, mode: "transition-after", id: row.id, song, ins: ins && ins.rev != null ? { startedAt: ins.startedAt, successAt: ins.startedAt, ms: ins.ms, rev: ins.rev, attempts: 1, position: ins.position } : null, put: { startedAt: r.startedAt, successAt: r.startedAt, ms: r.ms, rev: r.rev, attempts: 1 }, double: null });
+      } else if (op === "delete") {
+        if (!row) { L.warnings.push("delete skipped: the insert failed"); continue; }
+        const r = await softDeleteRaw({ base: BASE, cookie, id: row.id });
+        txRecordSave(T, L, s, r, { op, gatedMs, rowId: row.id });
+        if (isOkSave(r)) {
+          // Gone on purpose: the page monotonicity check must not call the
+          // marker's disappearance a regression from here on.
+          if (song) T.allowGone.set(String(song.id), r.startedAt);
+          const at = created.indexOf(row.id);
+          if (at >= 0) created.splice(at, 1);
+          await txAnchorPos();
+        }
+      }
+    }
+  }
+  const last = L.saves[L.saves.length - 1];
+  if (last) T.prevLastSaveStart = last.startedAt;
+}
+
+// Hold subset (controlled, design §2): armed 0.5 s before the first
+// --hold-at wave; each wave's clients get a controlled `resume` fetch at
+// P + its offset (dispatched while the incumbent still serves, if the
+// operator is on time); every response that completes while armed is
+// held client-side, released at the first target response seen live +
+// 200 ms (or the cap), so "an old answer applied after the cutover, then
+// a follow-up that converges" is produced even if natural traffic does
+// not. The worker keeps every real deadline.
+async function holdTask(T, L, targetSeen) {
+  const w = T.holdWorker;
+  const H = { idxs: T.holdIdxs, waves: waves(T.holdIdxs, TXC.hold.atS), armedAt: null, triggers: [], release: null, gate: null };
+  L.hold = H;
+  const P = L.plannedAt;
+  await sleepUntil(P + Math.min(...TXC.hold.atS) * 1000 - 500);
+  H.armedAt = (await w.ask("holdArm", "holdArmAck", { idxs: T.holdIdxs })).at;
+  const trigP = H.waves.map(async (wv) => {
+    await sleepUntil(P + wv.offS * 1000);
+    const r = await w.ask("trigger", "triggerAck", { idxs: wv.idxs, reason: "resume" });
+    H.triggers.push({ offS: wv.offS, at: r.at, ok: r.ok, idxs: wv.idxs });
+  });
+  const capAt = P + TXC.hold.capS * 1000;
+  const first = await Promise.race([targetSeen, sleepUntil(capAt).then(() => null)]);
+  const rel = releaseAt({ firstTargetAt: first?.respAt ?? null, plannedAt: P, capS: TXC.hold.capS });
+  await sleepUntil(rel.at);
+  const r = await w.ask("holdRelease", "holdReleaseAck", { why: rel.why });
+  H.release = { at: r.at, plannedAt: rel.at, why: rel.why, released: r.released };
+  H.gate = r.gate;
+  log(`switch ${L.k}: hold subset released (${rel.why}); ${r.released} response(s) were held`);
+  await Promise.all(trigP);
+}
+
+// Ahead-hint subset (controlled, before a return from R1): at each
+// --ahead-hint-at offset its wave gets a SYNTHETIC hint (latest
+// committed rev + --ahead-hint-offset) through the client's own
+// broadcast path; on R1 the notification fetch is answered below the
+// hint without a verify header → inconclusive → the recheck is queued
+// (≥ 1 s) and lands across the switch. The scheduler state at P is
+// recorded (the queued tickets). Excluded from every denominator.
+async function aheadTask(T, L) {
+  const w = T.aheadWorker;
+  const P = L.plannedAt;
+  const A = { idxs: T.aheadIdxs, waves: waves(T.aheadIdxs, TXC.ahead.atS), rev: null, injects: [], stateAtP: null };
+  L.ahead = A;
+  const injP = A.waves.map(async (wv) => {
+    await sleepUntil(P + wv.offS * 1000);
+    if (A.rev == null) {
+      A.rev = T.latestRev + TXC.ahead.offset;
+      T.syntheticRevs.add(A.rev);
+    }
+    const r = await w.ask("inject", "injectAck", { idxs: wv.idxs, rev: A.rev });
+    A.injects.push({ offS: wv.offS, at: r.at, rev: A.rev, sent: r.sent, news: r.news });
+  });
+  const stP = (async () => {
+    await sleepUntil(P);
+    const st = await w.ask("state", "state");
+    const mine = new Set(T.aheadIdxs);
+    A.stateAtP = { at: Date.now(), clients: st.clients.filter((c) => mine.has(c.idx)).map((c) => ({ idx: c.idx, serverRev: c.serverRev, pendingHint: c.pendingHint, carriedHint: c.carriedHint, carriedHintPhase: c.carriedHintPhase, inFlight: c.inFlight, scheduledReason: c.scheduledReason, scheduledAt: c.scheduledAt })) };
+  })();
+  await Promise.all([...injP, stP]);
+  log(`switch ${L.k}: ahead-hint rev ${A.rev} injected (${A.injects.map((x) => `${x.news}/${x.sent} news`).join(", ")}); at P ${A.stateAtP.clients.filter((c) => c.carriedHintPhase === "recheck").length}/${A.stateAtP.clients.length} tickets queued for a recheck`);
+}
+
+// Arrivals at P + 10 s (design §2): --arrivals pages + SDK clients join
+// the alias; after a switch the operator marked `"kind":"r1"` the page
+// part is the R1 cohort (--r1-cohort real R1 pages: whatever the alias
+// serves R1 builds then; classified post hoc by behaviour). Retained to
+// the end of the run (populations reported as they grow).
+async function arrivalTask(T, L) {
+  await sleepUntil(L.plannedAt + TXC.arrivals.atS * 1000);
+  const r1 = L.kind === "r1" && TXC.r1Cohort > 0;
+  const nPages = r1 ? TXC.r1Cohort : TXC.arrivals.pages;
+  const nSdk = TXC.arrivals.sdk;
+  const cohort = `${r1 ? "r1" : "arrival"}-${L.k}`;
+  const A = { at: Date.now(), cohort, r1, sdk: null, pages: null };
+  L.arrivals = A;
+  if (nSdk > 0) {
+    const e = spawnWorker({ offset: T.nextSubOffset, n: nSdk, batch: Math.max(1, Math.min(SUB_BATCH, nSdk)), cohort });
+    A.sdk = { n: nSdk, worker: e.idx, offset: T.nextSubOffset };
+    T.nextSubOffset += nSdk;
+  }
+  if (nPages > 0) {
+    A.pages = { n: nPages, firstIdx: null, startedAt: Date.now(), doneAt: null };
+    if (pagePop?.extend) {
+      const r = await pagePop.extend({ count: nPages, cohort });
+      A.pages.firstIdx = r.firstIdx;
+    } else {
+      pagePop = await launchPages({ count: nPages, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode: () => "none", headless: !args.headed, concurrency: PAGE_CONCURRENCY, log, admission: true, transition: true, cohort });
+      A.pages.firstIdx = 0;
+    }
+    A.pages.doneAt = Date.now();
+  }
+  T.growth.push({ at: Date.now(), k: L.k, cohort, pages: pagePop?.pages.filter(Boolean).length ?? 0, sdk: T.nextSubOffset });
+  log(`switch ${L.k}: arrivals ${cohort}: ${nPages} page(s) + ${nSdk} SDK; population now ${pagePop?.pages.filter(Boolean).length ?? 0} pages + ${T.nextSubOffset} SDK`);
+}
+
+// The anonymous identity of a smoke page (localStorage key of
+// src/lib/anonId.ts), created like getAnonId() when the page has none.
+const ANON_KEY = "opensetlist_anon_id";
+const pageAnon = (i) => pagePop.evaluate(i, (key) => {
+  let id = localStorage.getItem(key);
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id); }
+  return id;
+}, ANON_KEY).catch(() => null);
+
+// Reaction / wish smoke from ONE OLD page per locale after the switch
+// (design §2): from inside the page (its origin, cookies, localStorage —
+// what the page's own UI would send): POST a reaction on the anchor
+// with the page's anon id, read the counts back (refresh), POST a wish;
+// then persistence (the reaction row in the DB with that anon id) and
+// retained identity (the anon id before the switch = at the smoke =
+// in the row). The reaction and the wish are deleted right away.
+// A wish on an ongoing event is locked by design (403) — expected.
+async function smokeTask(T, L) {
+  if (!T.smokePages.length) return;
+  const before = {};
+  for (const i of T.smokePages) before[i] = await pageAnon(i);
+  await sleepUntil(L.plannedAt + TXC.smokeAtS * 1000);
+  for (const [j, i] of T.smokePages.entries()) {
+    const type = REACTION_TYPES[(L.k + j) % REACTION_TYPES.length];
+    const page = pagePop.pages[i];
+    const out = { k: L.k, page: i, locale: page?.rec.locale ?? null, type, at: Date.now(), anonBeforeSwitch: before[i] ?? null };
+    try {
+      const r = await pagePop.evaluate(i, async ({ eventId, anchorId, type: rt, songId, key }) => {
+        const rec = async (url, init) => {
+          const tStart = Date.now();
+          try {
+            const res = await fetch(url, init);
+            const tHeaders = Date.now();
+            let body = null;
+            try { body = await res.json(); } catch { /* not JSON */ }
+            return { tStart, tHeaders, tBody: Date.now(), status: res.status, vercelId: res.headers.get("x-vercel-id"), body };
+          } catch (e) {
+            return { tStart, tHeaders: null, tBody: Date.now(), status: 0, vercelId: null, body: null, error: String(e).slice(0, 120) };
+          }
+        };
+        const anon = localStorage.getItem(key);
+        const post = await rec("/api/reactions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ setlistItemId: String(anchorId), reactionType: rt, anonId: anon }) });
+        const counts = await rec(`/api/reactions?eventId=${eventId}`);
+        const wish = await rec(`/api/events/${eventId}/wishes`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ songId: Number(songId) }) });
+        const trim = (x, pick) => ({ ...x, body: x.body ? pick(x.body) : null });
+        return {
+          anon, anonAfter: localStorage.getItem(key),
+          post: trim(post, (b) => ({ reactionId: b.reactionId ?? null, ackAt: b.ackAt ?? null, count: b.counts?.[rt] ?? null, error: b.error ?? null })),
+          counts: trim(counts, (b) => ({ count: b?.[String(anchorId)]?.[rt] ?? 0 })),
+          wish: trim(wish, (b) => ({ id: b.id ?? null, error: b.error ?? null })),
+        };
+      }, { eventId: EVENT_ID, anchorId: anchor.id, type, songId: T.wishSong.id, key: ANON_KEY });
+      Object.assign(out, r ?? { error: "page gone" });
+    } catch (e) {
+      out.error = String(e?.message || e).slice(0, 160);
+    }
+    const reactionId = out.post?.body?.reactionId ?? null;
+    if (reactionId) {
+      txReactionIds.push(reactionId);
+      try {
+        const row = await withPg(async (pg) => (await pg.query(`select "anonId" as a, "reactionType" as t, "setlistItemId"::text as s from "SetlistItemReaction" where id = $1`, [reactionId])).rows[0] ?? null);
+        out.persisted = row ? { anonId: row.a, type: row.t, item: row.s } : null;
+      } catch (e) { out.persisted = { error: e.message }; }
+      const d = await deleteReaction({ base: BASE, reactionId });
+      out.reactionDelete = d.status;
+      if (d.status >= 200 && d.status < 300) txReactionIds.splice(txReactionIds.indexOf(reactionId), 1);
+    }
+    const wishId = out.wish?.body?.id ?? null;
+    if (wishId) {
+      txWishIds.push(wishId);
+      const d = await fetch(`${BASE}/api/events/${EVENT_ID}/wishes/${wishId}`, { method: "DELETE", signal: AbortSignal.timeout(15000) }).then((x) => x.status).catch(() => 0);
+      out.wishDelete = d;
+      if (d >= 200 && d < 300) txWishIds.splice(txWishIds.indexOf(wishId), 1);
+    }
+    const okPost = out.post && out.post.status >= 200 && out.post.status < 300 && !!reactionId;
+    const wishOk = out.wish && ((out.wish.status >= 200 && out.wish.status < 300) || (out.wish.status === 403 && /locked/i.test(out.wish.body?.error ?? "")));
+    out.checks = {
+      submitted: okPost,
+      persisted: !!out.persisted && out.persisted.anonId === out.anon,
+      refreshed: (out.counts?.body?.count ?? 0) >= 1,
+      identityRetained: out.anon != null && out.anon === out.anonBeforeSwitch && out.anon === out.anonAfter,
+      wish: !!wishOk,
+      no5xx: ![out.post, out.counts, out.wish].some((x) => x && x.status >= 500),
+    };
+    out.pass = Object.values(out.checks).every(Boolean);
+    L.smoke.push(out);
+    log(`switch ${L.k}: smoke page ${i} (${out.locale}): reaction ${out.post?.status ?? "—"}, wish ${out.wish?.status ?? "—"} → ${out.pass ? "ok" : `FAIL ${JSON.stringify(out.checks)}`}`);
+  }
+}
+
+async function runLeg(T, k, filePath) {
+  const L = { k, path: filePath, file: null, kind: null, plannedAt: null, seenAt: null, noticeS: null, completeSeenAt: null, fileTimeout: false, route: [], baselineDpl: null, firstTarget: null, saves: [], guard: null, guardP: null, hold: null, ahead: null, arrivals: null, smoke: [], warnings: [], spacingViolated: false };
+  T.legs.push(L);
+  log(`switch ${k}: waiting for ${filePath} (its plannedAt, ≥ ${TXC.noticeMinS} s ahead)`);
+  let lastLog = Date.now();
+  while (true) {
+    const p = readSwitch(filePath);
+    if (p && !p.error) { L.file = p; break; }
+    if (Date.now() - lastLog > 30000) { lastLog = Date.now(); log(`  still waiting for ${filePath}${p?.error ? ` (${p.error})` : ""}`); }
+    await sleep(200);
+  }
+  L.seenAt = Date.now();
+  L.plannedAt = L.file.plannedAt;
+  L.kind = L.file.kind;
+  // Notice = how far ahead the operator WROTE the plan (the file's
+  // mtime when the harness first read it; the harness may only reach
+  // this leg later, e.g. after the previous one).
+  let written = L.seenAt;
+  try { written = Math.min(L.seenAt, fs.statSync(filePath).mtimeMs); } catch { /* keep seenAt */ }
+  L.fileWrittenAt = Math.round(written);
+  L.noticeS = (L.plannedAt - L.fileWrittenAt) / 1000;
+  if (L.noticeS < TXC.noticeMinS) L.warnings.push(`short notice: plannedAt only ${L.noticeS.toFixed(1)} s after the file appeared (≥ ${TXC.noticeMinS} s predeclared)`);
+  log(`switch ${k}: ${L.kind ?? "(no kind)"} ${L.file.label ?? ""} planned at ${iso(L.plannedAt)} (in ${((L.plannedAt - L.seenAt) / 1000).toFixed(1)} s; written ${L.noticeS.toFixed(1)} s ahead)${L.file.afterSwitchSaves.length ? `; after-switch saves ${L.file.afterSwitchSaves.join(", ")}` : ""}`);
+  // Baseline: the incumbent's deployment id, as the alias serves it now.
+  if (TXC.routeRate) {
+    for (let a = 0; a < 3 && L.baselineDpl == null; a++) {
+      const b = await txFetch("route", `${BASE}/ja/privacy`, { k, locale: "ja", html: true });
+      b.phase = "baseline";
+      L.route.push(b);
+      L.baselineDpl = b.dpl;
+    }
+    if (L.baselineDpl == null) L.warnings.push("route marker baseline unreadable: no live identification this leg (boundary = cliEnd)");
+  }
+  // A plan that is already late would fire the missed saves as a burst
+  // — a different experiment. Stop before anything of this leg runs.
+  const firstDue = L.plannedAt + TXC.savesS[0] * 1000;
+  if (firstDue < Date.now() - 2000) throw new Error(`switch ${k}: plannedAt ${iso(L.plannedAt)} leaves no time for the first save (due ${iso(firstDue)}, ${Math.round((Date.now() - firstDue) / 1000)} s ago) — write the plan ≥ ${TXC.noticeMinS} s ahead`);
+  const targetSeen = new Promise((res) => { L.onTarget = res; });
+  const tasks = [watchFile(L), routeLoop(L), arrivalTask(T, L), smokeTask(T, L)];
+  if (T.holdWorker) tasks.push(holdTask(T, L, targetSeen));
+  if (T.aheadWorker && L.kind === "return-from-r1") tasks.push(aheadTask(T, L));
+  // The leg's background tasks (route window to P + 70 s, the file
+  // watcher up to P + 180 s, smoke, arrivals) must not hold up the NEXT
+  // leg's plan, which the operator may have scheduled right after this
+  // leg's last save + --leg-gap: the caller moves on once the saves are
+  // done and awaits `rest` before the window closes. Every task is
+  // bounded; none outlives the run (after an abort they would otherwise
+  // spawn arrivals into the teardown).
+  const settleTasks = async () => {
+    const res = await Promise.allSettled(tasks);
+    for (const r of res) if (r.status === "rejected") L.warnings.push(`task failed: ${String(r.reason?.message ?? r.reason).slice(0, 160)}`);
+    L.endedAt = Date.now();
+    if (L.file?.cliEnd != null) for (const s of L.saves) s.fromCliEndMs = s.startedAt - L.file.cliEnd;
+  };
+  try {
+    await legSaves(T, L);
+  } catch (e) {
+    await settleTasks();
+    throw e;
+  }
+  return { L, rest: settleTasks() };
+}
+
+async function mainTransition(runStart) {
+  const T = {
+    cfg: TXC, legs: [], saves: [], probe: [], growth: [], edits: [], latestRev: null, prevLastSaveStart: null,
+    syntheticRevs: new Set(), allowGone: new Map(), songs: [], si: 0, wishSong: null, smokePages: [],
+    holdWorker: null, aheadWorker: null, holdIdxs: [], aheadIdxs: [], nextSubOffset: 0, manifest: null, manifestFile: null, anchor: null,
+  };
+  // DB: recorded rows + enough unused marker songs (every planned PUT of
+  // every leg + one after-return UPDATE per leg + the wish song).
+  const pg = pgClient();
+  await pg.connect();
+  let startRev;
+  try {
+    original = await activeRows(pg, EVENT_ID);
+    T.songs = await pickMarkerSongs(pg, TXC.files.length * (TXC.savesS.length + 1) + 1);
+    T.wishSong = T.songs.pop();
+    startRev = Number((await pg.query(`select "setlistRevision" as r from "Event" where id = $1`, [EVENT_ID])).rows[0].r);
+  } finally {
+    await pg.end();
+  }
+  if (original.length < AFTER_ROW) throw new Error(`event ${EVENT_ID} has ${original.length} active rows, need ≥ ${AFTER_ROW}`);
+  T.afterPosition = original[AFTER_ROW - 1].position;
+  // ONE admin login (the firewall rate-limits the login route), then the
+  // dedicated anchor (every timeline PUT writes its marker here; never
+  // an original row), then the manifest the guards compare with.
+  cookie = await adminLogin(BASE);
+  const a = await insertAfter({ base: BASE, cookie, eventId: EVENT_ID, afterPosition: T.afterPosition });
+  created.push(a.id);
+  anchor = { id: a.id, position: a.position };
+  T.anchor = { id: a.id, position: a.position, rev: a.rev };
+  T.latestRev = a.rev ?? startRev;
+  T.manifest = await withPg((pg2) => readManifest(pg2));
+  T.latestRev = Math.max(T.latestRev, T.manifest.rev);
+  const now = new Date();
+  const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
+  fs.mkdirSync(dir, { recursive: true });
+  T.manifestFile = path.join(dir, `${now.toISOString().replace(/[:.]/g, "-")}-transition-manifest.json`);
+  fs.writeFileSync(T.manifestFile, JSON.stringify({ eventId: EVENT_ID, base: BASE, label: args.label ?? null, startRev, rev: T.manifest.rev, anchor: T.anchor, rows: T.manifest.rows, switchFiles: TXC.files, writtenAt: now.toISOString() }, null, 1));
+  log(`transition prepare: anchor row ${a.id} @${a.position} (rev ${a.rev}); manifest ${T.manifest.rows.length} rows at rev ${T.manifest.rev}`);
+
+  // Population (design §2): the natural SDK clients, then the two
+  // controlled subsets in their own workers (cohorts "hold" / "ahead",
+  // carved out of --subs), and the pages — all on the alias, 50/s.
+  const popStart = Date.now();
+  const nat = SUBS - TXC.hold.n - TXC.ahead.n;
+  const per = Math.ceil(nat / SUB_WORKERS);
+  const batchPer = Math.max(1, Math.round(SUB_BATCH / SUB_WORKERS));
+  for (let off = 0; off < nat; off += per) spawnWorker({ offset: off, n: Math.min(per, nat - off), batch: batchPer, cohort: "incumbent" });
+  T.nextSubOffset = nat;
+  if (TXC.hold.n) {
+    T.holdWorker = spawnWorker({ offset: T.nextSubOffset, n: TXC.hold.n, batch: Math.min(SUB_BATCH, TXC.hold.n), cohort: "hold" });
+    T.holdIdxs = Array.from({ length: TXC.hold.n }, (_, i) => T.nextSubOffset + i);
+    T.nextSubOffset += TXC.hold.n;
+  }
+  if (TXC.ahead.n) {
+    T.aheadWorker = spawnWorker({ offset: T.nextSubOffset, n: TXC.ahead.n, batch: Math.min(SUB_BATCH, TXC.ahead.n), cohort: "ahead" });
+    T.aheadIdxs = Array.from({ length: TXC.ahead.n }, (_, i) => T.nextSubOffset + i);
+    T.nextSubOffset += TXC.ahead.n;
+  }
+  pagePop = PAGES > 0
+    ? await launchPages({ count: PAGES, base: BASE, eventPath: EVENT_PATH, eventId: EVENT_ID, localeOf: LOCALE_OF, routeMode: () => "none", headless: !args.headed, concurrency: PAGE_CONCURRENCY, log, admission: true, transition: true, cohort: "incumbent" })
+    : emptyPop();
+  let joinedAt = null;
+  let lastPrint = 0;
+  while (true) {
+    const sj = SUBS > 0 ? await subsConnected() : 0;
+    const pj = pagePop.joined();
+    if (sj >= SUBS && pj >= PAGES) { joinedAt = Date.now(); break; }
+    if (Date.now() - popStart > JOIN_TIMEOUT_MS) { log("join timeout — measuring whoever joined"); break; }
+    if (Date.now() - lastPrint > 3000) { lastPrint = Date.now(); log(`  joined: pages ${pj}/${PAGES} subs ${sj}/${SUBS}`); }
+    await sleep(500);
+  }
+  const popSummary = { pagesJoined: pagePop.joined(), pagesPgReady: pagePop.pgReady(), ...(SUBS > 0 ? await subsProgress() : { joined: 0 }), allJoinedSec: joinedAt ? (joinedAt - popStart) / 1000 : null, allPgReadySec: null };
+  T.growth.push({ at: Date.now(), k: null, cohort: "initial", pages: pagePop.pages.filter(Boolean).length, sdk: T.nextSubOffset });
+  // Smoke pages: the first initial page of each locale.
+  for (const loc of ["ja", "ko", "en"]) {
+    const i = pagePop.pages.findIndex((p) => p && p.rec.locale === loc);
+    if (i >= 0) T.smokePages.push(i);
+  }
+  const settleMs = args.settle === undefined ? 20000 : SETTLE_MS;
+  log(`population: ${JSON.stringify(popSummary)}; settling ${settleMs / 1000}s`);
+  const settleStart = Date.now();
+  await sleep(settleMs);
+
+  const stopProbe = startProbe(T);
+  const editsStart = Date.now();
+  const rests = [];
+  try {
+    for (const [k, f] of TXC.files.entries()) rests.push((await runLeg(T, k + 1, f)).rest);
+    await Promise.all(rests);
+  } catch (e) {
+    await Promise.allSettled(rests);
+    // A failed identity guard (or any error inside a leg) stops the
+    // timeline, but the run still reports what it measured up to here
+    // (verdict ABORTED, exit 2) — the evidence of WHY matters.
+    T.aborted = e.message;
+    log(`transition ABORTED: ${e.message}`);
+  } finally {
+    // The last saves' convergence (bounded), then the window closes.
+    const lastPut = [...T.saves].reverse().find((s) => isOkSave(s));
+    if (lastPut) await waitConverged(T.latestRev, { until: lastPut.startedAt + TXC.continuityMs });
+    await stopProbe();
+  }
+  const editsEnd = Date.now();
+  return {
+    runStart, popStart, settleStart, popSummary, edits: T.edits, drillEvents: [], drillPageSet: new Set(), startRev,
+    editsStart, editsEnd, afterPosition: T.afterPosition, admission: null, finalPhase: null, transition: T,
+  };
+}
+
 // ─── main ───
 async function main() {
   const runStart = Date.now();
@@ -1482,6 +2136,10 @@ async function main() {
     ? `browsers run: base=${BASE} event=${EVENT_ID} drill=idle-broadcast (SDK cohorts only; --pages / --subs / --edits not used)`
     : `browsers run: base=${BASE} event=${EVENT_ID} pages=${PAGES} subs=${SUBS} (workers=${SUB_WORKERS}) edits=${EDITS} pause=${PAUSE_MS}ms drill=${DRILL ?? "none"}${ADM ? ` phase=admission (prepare via ${PREP_BASE})` : ""}`);
   if (IDLE) return await mainIdle(runStart);
+  if (TXC) {
+    log(`phase=transition: ${TXC.files.length} switch file(s) ${TXC.files.join(", ")}; saves at P${TXC.savesS.map((s) => (s >= 0 ? `+${s}` : `${s}`)).join(",")} s; arrivals ${TXC.arrivals.pages} pages + ${TXC.arrivals.sdk} SDK at P+${TXC.arrivals.atS} s (R1 cohort ${TXC.r1Cohort}); subsets hold ${TXC.hold.n}, ahead-hint ${TXC.ahead.n} (of --subs); --edits not used`);
+    return await mainTransition(runStart);
+  }
 
   // DB: recorded starting rows (for the position restore) + marker songs.
   const pg = pgClient();
@@ -1866,6 +2524,15 @@ async function finalize(state, aborted) {
   finalized = true;
   log(aborted ? `aborting (${aborted}) — cleaning up` : "cleaning up");
   if (guest) await guest.close();
+  // transition: smoke reactions / wishes whose immediate delete failed
+  // (normally none are left).
+  let txClean = null;
+  if (TXC && (txReactionIds.length || txWishIds.length)) {
+    txClean = { reactions: [], wishes: [] };
+    for (const id of [...txReactionIds]) txClean.reactions.push([id, (await deleteReaction({ base: BASE, reactionId: id })).status]);
+    for (const id of [...txWishIds]) txClean.wishes.push([id, await fetch(`${BASE}/api/events/${EVENT_ID}/wishes/${id}`, { method: "DELETE", signal: AbortSignal.timeout(15000) }).then((x) => x.status).catch(() => 0)]);
+    log(`transition cleanup: reactions ${JSON.stringify(txClean.reactions)}, wishes ${JSON.stringify(txClean.wishes)}`);
+  }
   // overlap: every reaction this run created (raw ones by their returned
   // id — the n14run2- prefix is only the safety net for viewers-check.mjs
   // — and the page's own, whose browser anonId carries no prefix), then
@@ -1925,7 +2592,7 @@ async function finalize(state, aborted) {
   const subRecs = workers.length ? await stopWorkers() : [];
   const pageRecs = pagePop ? pagePop.pages.filter(Boolean).map((p) => p.rec) : [];
   if (pagePop) await pagePop.close();
-  return { clean, verify, subRecs, pageRecs, ovClean };
+  return { clean, verify, subRecs, pageRecs, ovClean, txClean };
 }
 
 // ─── n14 step 5: report sections ───
@@ -2252,6 +2919,367 @@ function idleReport(state, fin) {
   return { lines: L, json, verdict };
 }
 
+// ─── n14 step 6: the transition section ───
+// Per switch, SEPARATE verdicts (design §2): continuity, performance,
+// exposure, arrivals, smoke; plus the live routing profile, the R1
+// cohort, the existing-ON return's stale first answers and the pin
+// evidence. Clock: this host. Every classification against "the first
+// target response" uses the PROVISIONAL boundary (route marker, else
+// cliEnd); ../transition-join.mjs re-derives it from the Vercel logs.
+const PAGE_ROW_TX = ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start", "body capturedAt", "x-vercel-id", "x-vercel-cache", "cache-control", "age", "pin evidence", "body complete t", "request path + query"];
+
+function transitionReport(state, fin, { valid, pageMono, subMono }) {
+  const T = state.transition;
+  const C = TXC;
+  const bumpK = (o, k) => { o[k] = (o[k] || 0) + 1; };
+  const is2xx = (s) => s.status >= 200 && s.status < 300;
+  const sdkAll = fin.subRecs.map((r) => ({
+    idx: r.idx, worker: r.worker ?? null, cohort: r.cohort ?? null, locale: r.locale, attemptAt: r.attemptAt, subscribedAt: r.subscribedAt,
+    connLog: r.connLog ?? null, statusLog: r.statusLog ?? null, stoppedAt: r.stoppedAt ?? null, fallbacks: r.fallbacks, recreates: r.recreates ?? [],
+    reqs: r.reqs || [], applied: r.appliedAll || [], bcasts: r.bcasts || [], exhausted: r.exhausted || [], trig: r.trig || [], failKinds: r.failKinds || {},
+  }));
+  const natural = sdkAll.filter((c) => c.cohort !== "hold" && c.cohort !== "ahead");
+  const holdC = sdkAll.filter((c) => c.cohort === "hold");
+  const aheadC = sdkAll.filter((c) => c.cohort === "ahead");
+  const mi = markerIndex(state.edits);
+  const markers = [...new Set(state.edits.map((e) => String(e.song.id)))];
+  const anchorMarkers = state.edits.filter((e) => e.id === T.anchor.id).map((e) => String(e.song.id));
+  const expected = expectedRows(T.manifest.rows, { [T.anchor.id]: ["", ...anchorMarkers] });
+  const baseRows = expected.length;
+  // The complete-setlist check only holds while no after-return insert
+  // is on the page: judge each page up to the first insert after its
+  // navigation start.
+  const inserts = T.saves.filter((s) => s.op === "insert" && isOkSave(s)).map((s) => s.startedAt).sort((a, b) => a - b);
+  const untilFor = (nav) => inserts.find((t) => t > (nav ?? 0)) ?? Infinity;
+  const recByIdx = new Map(fin.pageRecs.map((r) => [r.idx, r]));
+  const pages = fin.pageRecs.map((r) => {
+    const c = compactPage(r, expected, untilFor(r.navStart), markers);
+    const p = {
+      ...c, cohort: r.cohort ?? null, docDplId: r.docDplId ?? null, docVercelId: r.docVercelId ?? null,
+      joinAt: r.joinAt, pgReadyAt: r.pgReadyAt, notes: r.notes, bcasts: r.bcasts, fetches: r.fetches,
+      assets: r.assets ?? [], navs: r.navs ?? [], reqFailed: r.reqFailed ?? [], pageErrs: r.pageErrs ?? [], seenAll: r.seen, goneAll: r.gone,
+    };
+    p.build = pageBuild(p);
+    p.readyAt = pageReadyAt(p);
+    p.timeToUsableMs = timeToUsable(p);
+    return p;
+  });
+  const saveL = T.saves.filter((s) => isOkSave(s)).map((s) => ({ k: s.k, leg: s.leg, op: s.op, offS: s.offS, rev: s.rev, songId: s.songId, rowId: s.rowId, putStart: s.startedAt, putEnd: s.startedAt + s.ms, putMs: s.ms }));
+  // The marker of an after-return UPDATE disappears with the row's
+  // soft-delete: pages that navigated after that cannot show it.
+  const goneAtOf = (songId) => T.allowGone.get(String(songId)) ?? null;
+  const predFor = (s, legSaves) => {
+    if (s.op === "insert") return (rows) => rows.length === baseRows + 1;
+    const upd = legSaves.find((x) => x.op === "update" && x.rowId === s.rowId);
+    if (s.op === "update") return (rows) => rows.some((sig) => sig.split("+").includes(String(s.songId)));
+    return (rows) => rows.length === baseRows && !(upd && rows.some((sig) => sig.split("+").includes(String(upd.songId))));
+  };
+  const gateOk = (d) => (d.n ? d.p95 != null && d.p95 <= GATE_P95_MS : null);
+
+  const switches = T.legs.map((L) => {
+    const F = L.file || {};
+    const P = L.plannedAt;
+    const saves = saveL.filter((s) => s.leg === L.k);
+    const starts = L.saves.map((s) => s.startedAt);
+    const from = Math.min(P, ...starts) - 5000;
+    const to = (starts.length ? Math.max(...starts) : P) + C.continuityMs;
+    const inWin = (t) => t != null && t >= from && t <= to;
+    const boundary = boundaryOf({ firstTarget: L.firstTarget, cliEnd: F.cliEnd ?? null });
+    const cliStart = F.cliStart ?? null;
+    const routeRows = L.route.filter((r) => r.phase !== "baseline").map((r) => ({ reqStart: r.tStart, respAt: r.tBody, dpl: r.dpl }));
+    const routing = routingProfile(routeRows, { baseline: L.baselineDpl, targetId: F.target?.id ?? null, firstTarget: L.firstTarget ? { reqStart: L.firstTarget.reqStart, respAt: L.firstTarget.respAt, dpl: L.firstTarget.dpl } : null });
+
+    // ── per save: convergence (continuity 30 s + performance 3 s),
+    // broadcast receipt, outcomes ──
+    const perSave = saves.map((sv) => {
+      const sdkConv = sdkConvergence(natural, sv, { timeoutMs: C.continuityMs });
+      let pageConv = null;
+      let pageStruct = null;
+      const goneAt = sv.op === "update" ? goneAtOf(sv.songId) : null;
+      const pop = pages.filter((p) => p.navStart != null && p.navStart <= sv.putStart + C.continuityMs && !(goneAt != null && p.navStart >= goneAt));
+      if (sv.op === "put" || sv.op === "update") {
+        pageConv = pop.length ? pageConvergence(pop, sv, { timeoutMs: C.continuityMs, replacedBy: mi.replacedBy }) : null;
+      } else {
+        // Structural saves: pages open at the save, DOM row list.
+        const pred = predFor(sv, saves);
+        const open = pages.filter((p) => p.navStart != null && p.navStart <= sv.putStart);
+        const lat = [];
+        let missing = 0;
+        for (const p of open) {
+          const t = firstRowsAt(recByIdx.get(p.idx)?.rowsLog, sv.putStart, pred);
+          if (t != null && t <= sv.putStart + C.continuityMs) lat.push(t - sv.putStart);
+          else missing++;
+        }
+        pageStruct = { ...dist(lat), values: lat, missing };
+      }
+      const receipt = broadcastReceipt(natural, sv);
+      const r2pages = pages.filter((p) => p.build === "r2" && p.joinAt.length && p.joinAt[0] <= sv.putStart && p.navs.length <= 1);
+      const pagesReceived = r2pages.filter((p) => p.bcasts.some(([, rev, w]) => rev === sv.rev && w !== "x")).length;
+      const outcomes = {};
+      for (const c of natural) {
+        const fs1 = firstSub(c);
+        if (fs1 == null) continue;
+        const clock = fs1 <= sv.putStart ? sv.putStart : Math.max(fs1, sv.putEnd);
+        const o = clientOutcome(c, sv, { clock, timeoutMs: C.continuityMs });
+        bumpK(outcomes, o.outcome);
+        if (o.superseded) bumpK(outcomes, "(superseded)");
+        if (o.exhausted) bumpK(outcomes, "(ticket exhausted)");
+      }
+      const perf = {
+        sdkBefore: { ...sdkConv.before, values: undefined, pass: gateOk(sdkConv.before) },
+        sdkAfter: { ...sdkConv.after, values: undefined, pass: gateOk(sdkConv.after) },
+        pagesBefore: pageConv ? { ...pageConv.before, values: undefined, pass: gateOk(pageConv.before) } : null,
+        pagesAfter: pageConv ? { ...pageConv.after, values: undefined, pass: gateOk(pageConv.after) } : null,
+        pagesStruct: pageStruct ? { ...pageStruct, values: undefined, pass: gateOk(pageStruct) } : null,
+      };
+      const missing = sdkConv.before.missing + sdkConv.after.missing + (pageConv ? pageConv.before.missing + pageConv.after.missing : 0) + (pageStruct?.missing ?? 0);
+      return { ...sv, missing, sdkNotJoined: sdkConv.notJoined, perf, receipt: { sdk: receipt, pages: { eligible: r2pages.length, received: pagesReceived } }, outcomes };
+    });
+
+    // ── continuity (window [from, to]) ──
+    const sdkRowsIn = sdkAll.flatMap((c) => c.reqs.filter((q) => inWin(q[Q.tStart])).map((q) => ({ c, q })));
+    const pageFetchIn = pages.flatMap((p) => p.fetches.filter((f) => inWin(f[0])).map((f) => ({ p, f })));
+    const probeIn = T.probe.filter((r) => inWin(r.tStart));
+    const smokeReqs = L.smoke.flatMap((s) => [s.post, s.counts, s.wish].filter(Boolean));
+    const guardRecs = (L.guard?.attempts || []).map((a) => a.rec).filter(Boolean);
+    const fivexx = {
+      saves: L.saves.filter((s) => s.status >= 500).length,
+      sdk: sdkRowsIn.filter(({ q }) => q[Q.status] >= 500).length,
+      pages: pageFetchIn.filter(({ f }) => f[2] >= 500).length + pages.filter((p) => inWin(p.navStart) && p.docStatus >= 500).length,
+      probe: probeIn.filter((r) => r.status >= 500).length,
+      route: L.route.filter((r) => r.status >= 500).length,
+      guard: guardRecs.filter((r) => r.status >= 500).length,
+      smoke: smokeReqs.filter((r) => r.status >= 500).length,
+    };
+    // A hold-subset request that failed while HELD is the controlled
+    // delay meeting the real 8 s deadline, not a transport failure.
+    const transport = {
+      saves: L.saves.filter((s) => s.status === 0).length,
+      sdk: sdkRowsIn.filter(({ q }) => q[Q.status] === 0 && q[Q.outcome] === "failed" && q[Q.heldAt] == null).length,
+      pages: pages.reduce((a, p) => a + p.reqFailed.filter(([t, u]) => inWin(t) && u.startsWith("/api/setlist")).length, 0),
+      probe: probeIn.filter((r) => r.status === 0).length,
+    };
+    const heldDeadline = sdkRowsIn.filter(({ q }) => q[Q.heldAt] != null && q[Q.outcome] === "failed").length;
+    const malformed = {
+      sdk: sdkRowsIn.filter(({ q }) => q[Q.status] === 200 && q[Q.outcome] === "failed" && (q[Q.failKind] === "network" || q[Q.failKind] === "body")).length,
+      pages: pageFetchIn.filter(({ f }) => f[2] === 200 && f[14] != null && f[4] == null).length,
+      probe: probeIn.filter((r) => r.status === 200 && !r.bodyOk).length,
+    };
+    const reloads = pages.reduce((a, p) => a + p.navs.slice(1).filter(([t]) => inWin(t)).length, 0);
+    const pageErrors = pages.reduce((a, p) => a + p.pageErrs.filter(([t]) => inWin(t)).length, 0);
+    const monoSdk = subMono.reduce((a, m) => a + m.regressions.filter((x) => inWin(x.t)).length, 0);
+    const monoPages = pageMono.reduce((a, m) => a + m.regressions.filter((x) => inWin(x.t)).length, 0);
+    const missing = perSave.reduce((a, s) => a + s.missing, 0);
+    const notJoined = perSave.reduce((a, s) => Math.max(a, s.sdkNotJoined), 0);
+    const bMissSdk = perSave.reduce((a, s) => a + s.receipt.sdk.missing, 0);
+    const bMissPages = perSave.reduce((a, s) => a + (s.receipt.pages.eligible - s.receipt.pages.received), 0);
+    const plannedSaves = C.savesS.length + (F.afterSwitchSaves?.length ?? 0);
+    const sum = (o) => Object.values(o).reduce((a, v) => a + v, 0);
+    const checks = [
+      { name: "every planned save 2xx (never retried)", value: `${L.saves.filter(is2xx).length}/${plannedSaves}`, pass: L.saves.length === plannedSaves && L.saves.every(is2xx) },
+      { name: `every eligible client ≥ the saved rev within ${C.continuityMs / 1000} s of the first save attempt (incumbents from the PUT start, arrivals from max(join, PUT response))`, value: `${missing} missing${notJoined ? `; ${notJoined} SDK never joined` : ""}`, pass: missing === 0 && notJoined === 0 },
+      { name: "every continuously connected eligible R2 client received the committed broadcast", value: `SDK ${bMissSdk} missed, R2 pages ${bMissPages} missed`, pass: bMissSdk === 0 && bMissPages === 0 },
+      { name: "5xx (saves, SDK, pages incl. documents, probe, route marker, guard, smoke)", value: `${sum(fivexx)} ${JSON.stringify(fivexx)}`, pass: sum(fivexx) === 0 },
+      { name: "transport failures (held hold-subset deadlines excluded, listed apart)", value: `${sum(transport)} ${JSON.stringify(transport)}; held → deadline ${heldDeadline}`, pass: sum(transport) === 0 },
+      { name: "malformed bodies", value: `${sum(malformed)} ${JSON.stringify(malformed)}`, pass: sum(malformed) === 0 },
+      { name: "unexpected reloads (pages)", value: `${reloads}`, pass: reloads === 0 },
+      { name: "page errors", value: `${pageErrors}`, pass: pageErrors === 0 },
+      { name: "monotonicity regressions (SDK applied rev, pages DOM version)", value: `SDK ${monoSdk}, pages ${monoPages}`, pass: monoSdk === 0 && monoPages === 0 },
+    ];
+    const cont = continuityVerdict(checks);
+
+    // ── performance (kept visible even when continuity passes) ──
+    const perfFails = perSave.flatMap((s) => Object.entries(s.perf).filter(([, d]) => d && d.pass === false).map(([pop]) => `${s.k} ${pop} p95 ${s.perf[pop].p95}`));
+
+    // ── exposure (provisional boundary) ──
+    const bnd = boundary.at;
+    const headRev = saves.length ? Math.max(...saves.map((s) => s.rev)) : null;
+    const pend = pendingHinted(natural, { cliStart, boundary: bnd, min: C.min.pending });
+    const recheck = L.ahead ? pendingRecheck(aheadC, { cliStart, syntheticRevs: [L.ahead.rev], min: C.min.recheck }) : null;
+    const oldNat = oldAnswerAfterCutover(natural, { cliStart, boundary: bnd, headRev, until: to, min: C.min.old });
+    const oldHold = oldAnswerAfterCutover(holdC, { cliStart, boundary: bnd, headRev, until: to, min: C.min.old });
+    const arrCohort = L.arrivals?.cohort ?? null;
+    const arrSdk = natural.filter((c) => arrCohort && c.cohort === arrCohort);
+    const arrPages = pages.filter((p) => arrCohort && p.cohort === arrCohort);
+    const arrSaves = L.arrivals ? saves.filter((s) => s.putStart >= L.arrivals.at && s.putStart <= L.arrivals.at + 6000) : [];
+    const arrX = arrSaves.map((s) => ({ k: s.k, offS: s.offS, ...arrivalExposure(arrSdk, arrPages, s, { sdkMin: C.min.arrivalSdk, pagesMin: C.min.arrivalPages }) }));
+    const ex = (b) => (b ? "EXERCISED" : "NOT EXERCISED");
+    const exposureVerdicts = {
+      pendingHinted: ex(pend.exercised),
+      ...(recheck ? { pendingRecheck: ex(recheck.exercised) } : {}),
+      oldAnswer: ex(oldNat.count + oldHold.count >= C.min.old),
+      ...(C.arrivals.sdk > 0 ? { arrivalSdk: ex(arrX.some((x) => x.sdk.exposed)) } : {}),
+      ...(arrPages.length || (L.arrivals?.pages?.n ?? 0) > 0 ? { arrivalPages: ex(arrX.some((x) => x.pages.exposed)) } : {}),
+    };
+
+    // ── arrivals ──
+    const usable = arrPages.map((p) => p.timeToUsableMs);
+    const usableD = dist(usable.filter((v) => v != null));
+    const wave0 = dist(arrPages.filter((p) => p.wave === 0).map((p) => p.timeToUsableMs).filter((v) => v != null));
+    const firstSnap = arrSdk.map((c) => {
+      const q = c.reqs.find((r) => r[Q.status] === 200 && r[Q.outcome] === "ok");
+      return q && c.attemptAt != null ? q[Q.tEnd] - c.attemptAt : null;
+    });
+    const firstSnapD = dist(firstSnap.filter((v) => v != null));
+    const arrivals = {
+      cohort: arrCohort, r1: !!L.arrivals?.r1, at: L.arrivals?.at ?? null,
+      pages: { n: arrPages.length, usable: usableD, wave0, unusable: usable.filter((v) => v == null).length, builds: arrPages.reduce((a, p) => (bumpK(a, p.build), a), {}) },
+      sdk: { n: arrSdk.length, firstSnapshot: firstSnapD, without: firstSnap.filter((v) => v == null).length },
+    };
+    const arrivalsPass = !L.arrivals ? null
+      : (arrPages.length === 0 || (arrivals.pages.unusable === 0 && gateOk(usableD) !== false))
+        && (arrSdk.length === 0 || (arrivals.sdk.without === 0 && gateOk(firstSnapD) !== false));
+
+    // ── R1 cohort: change receipts → fetch → DOM, after-return saves ──
+    const afterOps = L.saves.filter((s) => ["insert", "update", "delete"].includes(s.op) && isOkSave(s));
+    const r1Pages = pages.filter((p) => p.build === "r1");
+    const r1Cohort = {
+      pages: r1Pages.map((p) => ({ idx: p.idx, cohort: p.cohort, locale: p.locale, docDplId: p.docDplId, pgReadyAt: p.pgReadyAt[0] ?? null })),
+      ops: afterOps.length ? r1Pages.map((p) => ({
+        idx: p.idx,
+        ops: afterOps.map((s) => {
+          const note = (p.notes || []).find((n) => n[2] === String(s.rowId) && n[0] >= s.startedAt - 50);
+          const fAfter = note ? p.fetches.find((f) => (f[7] ?? f[0]) >= note[0]) : null;
+          const dom = firstRowsAt(recByIdx.get(p.idx)?.rowsLog, s.startedAt, predFor(s, L.saves));
+          return { op: s.op, k: s.k, rev: s.rev, rowId: s.rowId, noteAt: note?.[0] ?? null, noteType: note?.[1] ?? null, isDeleted: note?.[3] ?? null, fetchStart: fAfter ? (fAfter[7] ?? fAfter[0]) : null, fetchVercelId: fAfter?.[9] ?? null, fetchVerify: fAfter ? fAfter[5] : null, domAt: dom, domMs: dom != null ? dom - s.startedAt : null };
+        }),
+      })) : [],
+    };
+
+    // ── existing-ON return: stale first answers after the boundary ──
+    let staleAfterReturn = null;
+    if (L.kind === "return" && bnd != null) {
+      const rows = [];
+      for (const c of natural) {
+        const q = c.reqs.find((r) => r[Q.tStart] >= bnd && r[Q.status] === 200);
+        if (q) rows.push({ who: `sdk ${c.idx}`, tStart: q[Q.tStart], rev: q[Q.rev], vercelId: q[Q.vercelId] ?? null });
+      }
+      for (const p of pages) {
+        const f = p.fetches.find((x) => (x[7] ?? x[0]) >= bnd && x[2] === 200);
+        if (f) rows.push({ who: `page ${p.idx}`, tStart: f[7] ?? f[0], rev: f[4], vercelId: f[9] ?? null });
+      }
+      const pr = T.probe.find((r) => r.tStart >= bnd && r.status === 200);
+      if (pr) rows.push({ who: "probe", tStart: pr.tStart, rev: pr.rev, vercelId: pr.vercelId });
+      staleAfterReturn = staleFirstAfter(rows, saveL, bnd);
+    }
+
+    // ── pins (Skew Protection evidence, design §0) ──
+    const after = cliStart ?? P;
+    const assetsAfter = pages.flatMap((p) => p.assets.filter(([t]) => t >= after));
+    const pins = {
+      sdkPinned: sdkRowsIn.filter(({ q }) => isPinned(q[Q.pin])).length, sdkRows: sdkRowsIn.length,
+      pageApiPinned: pageFetchIn.filter(({ f }) => isPinned(f[13])).length, pageApiRows: pageFetchIn.length,
+      probePinned: probeIn.filter((r) => isPinned(r.pin)).length,
+      assetsAfterSwitch: assetsAfter.length, assetsAfterPinned: assetsAfter.filter(([, , q]) => q != null).length, assetsAfter404: assetsAfter.filter(([, st]) => st === 404).length,
+      // "no chunk 404 after the switch" is only a claim when old tabs
+      // actually fetched framework assets after it.
+      noChunk404Claim: assetsAfter.length ? (assetsAfter.some(([, st]) => st === 404) ? "FAILED (404 after the switch)" : "holds for the assets fetched") : "NOT EXERCISED (no asset fetched after the switch)",
+    };
+    const gaps = dist(natural.map((c) => updateGap(c.reqs, from, to)).filter((v) => v != null));
+
+    const smokePass = L.smoke.length ? L.smoke.every((s) => s.pass) : null;
+    const verdicts = {
+      continuity: cont.pass ? "PASS" : "FAIL",
+      performance: perfFails.length ? "FAIL" : "PASS",
+      ...(arrivalsPass === null ? {} : { arrivals: arrivalsPass ? "PASS" : "FAIL" }),
+      ...(smokePass === null ? {} : { smoke: smokePass ? "PASS" : "FAIL" }),
+      ...(L.guard ? { guard: L.guard.ok ? "PASS" : "FAIL" } : {}),
+    };
+    return {
+      k: L.k, file: L.path, kind: L.kind, label: F.label ?? null, afterSwitchSaves: F.afterSwitchSaves ?? [],
+      plannedAt: P, seenAt: L.seenAt, fileWrittenAt: L.fileWrittenAt ?? null, noticeS: L.noticeS, cliStart, cliEnd: F.cliEnd ?? null, cliCpuMs: F.cliCpuMs ?? null, target: F.target ?? null,
+      completeSeenAt: L.completeSeenAt, fileTimeout: L.fileTimeout, warnings: L.warnings, spacingViolated: L.spacingViolated, endedAt: L.endedAt ?? null,
+      baselineDpl: L.baselineDpl, firstTargetLive: L.firstTarget ? { ...L.firstTarget } : null, boundary, routing, guard: L.guard,
+      saves: L.saves, hold: L.hold, ahead: L.ahead, arrivalsPlan: L.arrivals, smoke: L.smoke, route: L.route,
+      window: { from, to }, perSave, continuity: { checks, ...cont, fivexx, transport, malformed, heldDeadline }, performance: { fails: perfFails },
+      exposure: { boundary, pendingHinted: pend, pendingRecheck: recheck, oldAnswer: { natural: oldNat, hold: oldHold, total: oldNat.count + oldHold.count, min: C.min.old }, arrivals: arrX },
+      exposureVerdicts, arrivals, r1Cohort, staleAfterReturn, pins, updateGaps: gaps, verdicts,
+    };
+  });
+
+  const verdict = T.aborted ? { verdict: "ABORTED", exit: 2, reason: T.aborted, failed: [`aborted: ${T.aborted}`], notExercised: [] } : transitionVerdict({ invalid: valid.invalid, switches });
+
+  // ── markdown ──
+  const M = [];
+  const v = (x) => (x === "PASS" ? "**PASS**" : x === "FAIL" ? "**FAIL**" : x ?? "n/a");
+  M.push("## Transition (n14 step 6)");
+  M.push("");
+  M.push(`**Verdict: ${verdict.verdict}**${verdict.failed?.length ? ` — failed: ${verdict.failed.join("; ")}` : ""}${verdict.notExercised?.length ? ` — not exercised: ${verdict.notExercised.join("; ")}` : ""}${valid.invalid ? " (measurement invalid — see the banner)" : ""}.`);
+  M.push("");
+  M.push(`- Anchor row ${T.anchor.id} (rev ${T.anchor.rev}); manifest ${T.manifest.rows.length} rows at rev ${T.manifest.rev} (\`${path.basename(T.manifestFile)}\`). Population: ${PAGES} pages + ${SUBS} SDK (${SUBS - C.hold.n - C.ahead.n} natural, hold ${C.hold.n}, ahead-hint ${C.ahead.n}); growth ${T.growth.map((g) => `${g.cohort}: ${g.pages}p + ${g.sdk}s`).join(" → ")}.`);
+  M.push(`- Saves at P${C.savesS.map((s) => (s >= 0 ? `+${s}` : `${s}`)).join(", ")} s on the anchor (never retried); continuity ${C.continuityMs / 1000} s from the first save attempt; performance p95 ≤ ${GATE_P95_MS} ms per save per population; leg gap ${C.legGapS} s; probe every ${C.probeIntervalMs} ms (${T.probe.length} requests); route marker ${C.routeRate}/s over P${C.routeWindowS[0]}…+${C.routeWindowS[1]} s.`);
+  M.push("- The boundary (\"first target response\") is PROVISIONAL here: the route marker's live identification (`data-dpl-id`), else cliEnd. `../transition-join.mjs` attributes every recorded `x-vercel-id` to its deployment from the Vercel logs.");
+  M.push("");
+  M.push("| switch | kind | P (UTC) | CLI (s) | target | first target live | guard | continuity | performance | arrivals | smoke | exposure |");
+  M.push("|---|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const s of switches) {
+    M.push(`| ${s.k} ${s.label ?? ""} | ${s.kind ?? "—"} | ${iso(s.plannedAt)} | ${s.cliStart != null ? `${((s.cliStart - s.plannedAt) / 1000).toFixed(1)}…${((s.cliEnd - s.plannedAt) / 1000).toFixed(1)} (${s.cliCpuMs ?? "—"} ms CPU)` : "—"} | ${s.target?.id ?? "—"} | ${s.firstTargetLive ? `+${((s.firstTargetLive.respAt - s.plannedAt) / 1000).toFixed(1)} s` : "—"} | ${v(s.verdicts.guard)} | ${v(s.verdicts.continuity)} | ${v(s.verdicts.performance)} | ${v(s.verdicts.arrivals)} | ${v(s.verdicts.smoke)} | ${Object.entries(s.exposureVerdicts).map(([k2, x]) => `${k2} ${x === "EXERCISED" ? "✓" : "NOT"}`).join(", ")} |`);
+  }
+  M.push("");
+  for (const s of switches) {
+    M.push(`### Switch ${s.k}${s.label ? ` — ${s.label}` : ""} (${s.kind ?? "no kind"})`);
+    M.push("");
+    if (s.warnings.length) M.push(`- **Warnings:** ${s.warnings.join("; ")}`);
+    M.push(`- File \`${path.basename(s.file)}\` seen ${iso(s.seenAt)} (notice ${s.noticeS?.toFixed(1)} s), complete ${iso(s.completeSeenAt)}${s.fileTimeout ? " — **never completed**" : ""}; target ${s.target?.url ?? "—"}; baseline ${s.baselineDpl ?? "—"}.`);
+    M.push(`- Live routing (route marker): first target ${s.firstTargetLive ? `${iso(s.firstTargetLive.respAt)} (${s.firstTargetLive.how})` : "—"}; last old request start ${iso(s.routing.lastOldReqStart)}, last old response ${iso(s.routing.lastOldResponse)}; sustained target routing over ${s.routing.windowMs / 1000} s: ${s.routing.sustained == null ? "not covered" : s.routing.sustained ? "yes" : `**no** (${s.routing.offTarget} off-target)`}. Boundary: ${iso(s.boundary.at)} (${s.boundary.how}).`);
+    if (s.guard) M.push(`- Identity guard through ${s.guard.targetUrl}: ${s.guard.ok ? "ok" : `**FAILED** — ${s.guard.error}`} (${s.guard.ms} ms, ${s.guard.attempts.length} attempt(s), started ${s.guard.completeSeenAt != null ? `${s.guard.startedAt - s.guard.completeSeenAt} ms after the file completed` : "—"}).`);
+    M.push(`- Saves: ${s.saves.map((x) => `${x.k} ${x.op} P${x.offS >= 0 ? "+" : ""}${x.offS}s ${x.status} rev ${x.rev ?? "—"} ${x.ms} ms (late ${x.lateMs}${x.fromCliEndMs != null ? `, cliEnd${x.fromCliEndMs >= 0 ? "+" : ""}${(x.fromCliEndMs / 1000).toFixed(1)} s` : ""}${x.gatedMs ? `, gated ${x.gatedMs}` : ""})`).join("; ")}.`);
+    M.push("");
+    M.push("| check (continuity) | value | verdict |");
+    M.push("|---|---|---|");
+    for (const c of s.continuity.checks) M.push(`| ${c.name} | ${String(c.value).replace(/\|/g, "/")} | ${c.pass == null ? "n/a" : c.pass ? "**PASS**" : "**FAIL**"} |`);
+    M.push("");
+    M.push("| save | op | rev | SDK before p95 (n) / miss | SDK after p95 (n) / miss | pages before | pages after | pages DOM rows (structural) | broadcast SDK recv / eligible | R2 pages recv / eligible | outcomes |");
+    M.push("|---|---|---|---|---|---|---|---|---|---|---|");
+    const cv = (d) => (d ? `${ms(d.p95)} (${d.n}) / ${d.missing}` : "—");
+    for (const x of s.perSave) M.push(`| ${x.k} | ${x.op} | ${x.rev} | ${cv(x.perf.sdkBefore)} | ${cv(x.perf.sdkAfter)} | ${cv(x.perf.pagesBefore)} | ${cv(x.perf.pagesAfter)} | ${cv(x.perf.pagesStruct)} | ${x.receipt.sdk.received} / ${x.receipt.sdk.eligible} | ${x.receipt.pages.received} / ${x.receipt.pages.eligible} | ${JSON.stringify(x.outcomes).replace(/\|/g, "/")} |`);
+    M.push("");
+    M.push(`- Performance: ${s.performance.fails.length ? `**FAIL** — ${s.performance.fails.join("; ")}` : "every save × population p95 ≤ the gate"}.`);
+    const e = s.exposure;
+    M.push(`- Exposure (provisional boundary): pending hinted fetch ${e.pendingHinted.count} (≥ ${e.pendingHinted.min}) → ${s.exposureVerdicts.pendingHinted}; ${e.pendingRecheck ? `pending recheck ${e.pendingRecheck.count} (queued ${e.pendingRecheck.queued}, dispatched ${e.pendingRecheck.dispatched}; ≥ ${e.pendingRecheck.min}) → ${s.exposureVerdicts.pendingRecheck}; ` : ""}old answer after cutover, converged without regression: natural ${e.oldAnswer.natural.count}/${e.oldAnswer.natural.candidates}, hold ${e.oldAnswer.hold.count}/${e.oldAnswer.hold.candidates} (≥ ${e.oldAnswer.min}) → ${s.exposureVerdicts.oldAnswer}; arrival saves ${e.arrivals.map((x) => `${x.k} (P+${x.offS}): SDK unjoined ${x.sdk.unjoined}${x.sdk.exposed ? " ✓" : ""}, pages incomplete ${x.pages.incomplete}${x.pages.exposed ? " ✓" : ""}`).join("; ") || "none in the window"}.`);
+    if (s.hold) M.push(`- Hold subset: armed ${iso(s.hold.armedAt)}, triggers ${s.hold.triggers.map((t) => `P${t.offS >= 0 ? "+" : ""}${t.offS}s ${t.ok}`).join(", ")}, released ${iso(s.hold.release?.at)} (${s.hold.release?.why}); ${s.hold.gate?.entries?.length ?? 0} response(s) held; held → deadline ${s.continuity.heldDeadline}.`);
+    if (s.ahead) M.push(`- Ahead-hint subset: synthetic rev ${s.ahead.rev} (${s.ahead.injects.map((x) => `P${x.offS}s ${x.news}/${x.sent} news`).join(", ")}); at P ${s.ahead.stateAtP?.clients.filter((c) => c.carriedHintPhase === "recheck").length ?? 0} ticket(s) queued for a recheck.`);
+    if (s.arrivalsPlan) M.push(`- Arrivals ${s.arrivals.cohort}${s.arrivals.r1 ? " (R1 cohort)" : ""} at ${iso(s.arrivals.at)}: pages ${s.arrivals.pages.n} (builds ${JSON.stringify(s.arrivals.pages.builds)}), time to usable (later of complete setlist and readiness) p50 / p95 / max ${ms(s.arrivals.pages.usable.p50)} / ${ms(s.arrivals.pages.usable.p95)} / ${ms(s.arrivals.pages.usable.max)} ms, wave 0 p95 ${ms(s.arrivals.pages.wave0.p95)}, unusable ${s.arrivals.pages.unusable}; SDK ${s.arrivals.sdk.n}, first snapshot p50 / p95 ${ms(s.arrivals.sdk.firstSnapshot.p50)} / ${ms(s.arrivals.sdk.firstSnapshot.p95)} ms, without ${s.arrivals.sdk.without}.`);
+    if (s.smoke.length) M.push(`- Reaction / wish smoke (old pages): ${s.smoke.map((x) => `p${x.page} ${x.locale}: reaction ${x.post?.status ?? "—"}, wish ${x.wish?.status ?? "—"} → ${x.pass ? "ok" : `**FAIL** ${JSON.stringify(x.checks)}`}`).join("; ")}.`);
+    if (s.r1Cohort.pages.length) {
+      M.push(`- R1 pages (postgres_changes registered): ${s.r1Cohort.pages.length} — ${s.r1Cohort.pages.map((p) => `p${p.idx} ${p.locale} ${p.docDplId ?? "?"}`).join(", ")}.`);
+      if (s.r1Cohort.ops.length) {
+        M.push("");
+        M.push("| R1 page | op | rev | change received (ms after save) | type / isDeleted | fetch start (ms) | DOM updated (ms) |");
+        M.push("|---|---|---|---|---|---|---|");
+        for (const p of s.r1Cohort.ops) for (const o of p.ops) {
+          const sv = s.saves.find((x) => x.k === o.k);
+          const rel = (t) => (t == null || !sv ? "—" : t - sv.startedAt);
+          M.push(`| ${p.idx} | ${o.op} | ${o.rev} | ${rel(o.noteAt)} | ${o.noteType ?? "—"} / ${o.isDeleted ?? "—"} | ${rel(o.fetchStart)} | ${o.domMs ?? "**never**"} |`);
+        }
+        M.push("");
+      }
+    }
+    if (s.staleAfterReturn) M.push(`- Existing-ON return, first answers after the boundary: ${s.staleAfterReturn.stale}/${s.staleAfterReturn.eligible} stale${s.staleAfterReturn.staleList.length ? ` (${s.staleAfterReturn.staleList.slice(0, 6).map((x) => `${x.who} rev ${x.rev} < ${x.head}`).join(", ")})` : ""} — reported, not a gate.`);
+    M.push(`- Pins: SDK ${s.pins.sdkPinned}/${s.pins.sdkRows} requests pinned, page API ${s.pins.pageApiPinned}/${s.pins.pageApiRows}, probe ${s.pins.probePinned}; framework assets after the switch ${s.pins.assetsAfterSwitch} (pinned ${s.pins.assetsAfterPinned}, 404 ${s.pins.assetsAfter404}) — "no chunk 404 after the switch": ${s.pins.noChunk404Claim}. Update gaps (natural SDK, max interval between successful responses in the window) p50 / max ${ms(s.updateGaps.p50)} / ${ms(s.updateGaps.max)} ms.`);
+    M.push("");
+  }
+
+  const json = {
+    version: 1,
+    config: C, base: BASE, eventId: EVENT_ID, label: args.label ?? null,
+    clock: "epoch ms of the load host (Date.now()); the switch file's cliStart / cliEnd come from the same laptop",
+    anchor: T.anchor, manifest: { file: T.manifestFile, rev: T.manifest.rev, rows: T.manifest.rows.length },
+    populations: { initial: { pages: PAGES, sdkNatural: SUBS - C.hold.n - C.ahead.n, hold: C.hold.n, ahead: C.ahead.n }, growth: T.growth },
+    subsets: { hold: { idxs: T.holdIdxs, worker: T.holdWorker?.idx ?? null }, ahead: { idxs: T.aheadIdxs, worker: T.aheadWorker?.idx ?? null } },
+    syntheticRevs: [...T.syntheticRevs],
+    aborted: T.aborted ?? null,
+    verdict,
+    switches,
+    saves: T.saves,
+    probe: T.probe,
+    rows: { sdkReqs: SDK_ROW_TX, pageFetches: PAGE_ROW_TX, pageNotes: ["t", "type I/U/D", "row id", "isDeleted", "table"], pageAssets: ["t", "status", "dpl query (null = unpinned)", "path"], pageNavs: ["t", "url", "status", "x-vercel-id", "data-dpl-id"], pageReqFailed: ["t", "path", "failure"] },
+    sdk: sdkAll,
+    pages: pages.map(({ seenAll, goneAll, ...p }) => ({ ...p, seen: seenAll, gone: goneAll })),
+  };
+  return { lines: M, json, verdict };
+}
+
 function report(state, fin) {
   const { edits, popSummary, drillEvents, drillPageSet } = state;
   const { pageRecs, subRecs, clean, verify } = fin;
@@ -2358,7 +3386,7 @@ function report(state, fin) {
   // Monotonicity over the whole edit window (the clean-up's deletes come
   // after editsEnd and legitimately remove every marker).
   const idx = markerIndex(edits);
-  const pageMono = pageRecs.map((r) => ({ r, ...pageMonotonicity(r, idx, state.editsEnd) }));
+  const pageMono = pageRecs.map((r) => ({ r, ...pageMonotonicity(r, idx, state.editsEnd, state.transition?.allowGone ?? null) }));
   const subMono = subRecs.map((r) => ({ r, ...subMonotonicity(r) }));
   const monoPagesBad = pageMono.filter((m) => m.regressions.length);
   const monoSubsBad = subMono.filter((m) => m.regressions.length);
@@ -2407,7 +3435,7 @@ function report(state, fin) {
   // here.
   const skippedEdits = OVERLAP
     ? (state.overlap?.groups ?? []).filter((g) => !g.anchor.allOk).length
-    : IDLE ? 0 : ADM ? EDITS - edits.filter((e) => typeof e.k === "number").length : EDITS - edits.length;
+    : IDLE || TXC ? 0 : ADM ? EDITS - edits.filter((e) => typeof e.k === "number").length : EDITS - edits.length;
   const primaryPass = pass(combined, GATE_P95_MS);
   const verdicts = {
     primary: { gate: `p95 ≤ ${GATE_P95_MS} ms, 0 missing, all ${EDITS} edits saved`, ...combined, skippedEdits, pass: skippedEdits > 0 ? false : primaryPass },
@@ -2428,6 +3456,13 @@ function report(state, fin) {
   // section decides (population-split clocks, exposure, eligibility).
   const adm = ADM && state.admission ? admissionReport(state, fin, { valid, idx, monotonicPass: verdicts.monotonic.pass }) : null;
   const idl = IDLE && state.idle ? idleReport(state, fin) : null;
+  const trn = TXC && state.transition ? transitionReport(state, fin, { valid, pageMono, subMono }) : null;
+  if (trn) {
+    verdicts.primary.gate = "informational under --phase=transition (every client from each save's own start, arrivals included); the Transition section decides";
+    verdicts.primary.pass = null;
+    verdicts.pages.pass = null;
+    verdicts.subs.pass = null;
+  }
   if (adm || idl) {
     verdicts.primary.gate = `informational under ${ADM ? "--phase=admission" : "--drill=idle-broadcast"} (every client from each save's own start); the ${ADM ? "Admission" : "Idle-broadcast"} section decides`;
     verdicts.primary.pass = null;
@@ -2815,7 +3850,9 @@ function report(state, fin) {
   if (hostCheck) lines.push(`- Host guard at start: CPU ${hostCheck.busyPct ?? "—"} % busy (${hostCheck.how}); ${hostCheck.processListOk ? `${hostCheck.competing.length} competing process(es)` : "process list unavailable"}${hostCheck.problems.length ? ` — **${hostCheck.problems.join("; ").replace(/\|/g, "/")}**` : ""}${STRICT_HOST ? " (--strict-host)" : ""}`);
   lines.push("");
   if (ADM) lines.push(`- Phase: admission — prepare via ${PREP_BASE}, measured on ${BASE}${DEPLOYMENT_URL ? " (deployment URL)" : ""}`);
-  if (adm || idl) lines.push("");
+  if (TXC) lines.push(`- Phase: transition — ${TXC.files.length} switch(es) on ${BASE}`);
+  if (adm || idl || trn) lines.push("");
+  if (trn) lines.push(...trn.lines);
   if (adm) lines.push(...adm.lines);
   if (idl) lines.push(...idl.lines);
   lines.push(valid.invalid ? "## Gate verdicts — measurement invalid (see the banner)" : "## Gate verdicts");
@@ -3168,6 +4205,11 @@ function report(state, fin) {
         "page.applied": ["t", "marker song ids added", "removed"],
         "page.bcasts": ["t", "rev", "n | x (dropped by the proxy drill)"],
         "page.notes": ["t", "postgres_changes type I/U/D", "row id"],
+        ...(TXC ? {
+          "sdk.reqs (transition)": SDK_ROW_TX,
+          "page.reqs (transition)": ["tResponse", "minRev", "status", "x-snapshot-source", "body rev", "x-snapshot-verify (raw)", "hint=1", "request start", "body capturedAt (epoch ms)", "x-vercel-id", "x-vercel-cache", "cache-control", "age", "pin evidence", "body complete t", "request path + query"],
+          "page.notes (transition)": ["t", "postgres_changes type I/U/D", "row id", "record isDeleted (true / false / null)", "table"],
+        } : {}),
       },
     },
     ...lagThreads.map(({ thread, summary }) => {
@@ -3186,6 +4228,7 @@ function report(state, fin) {
       reqs: r.reqs, applied: r.appliedAll, bcasts: r.bcasts, exhausted: r.exhausted,
       subscribedAt: r.subscribedAt, fallbacks: r.fallbacks, recreates: r.recreates, failKinds: r.failKinds,
       cohort: r.cohort ?? null, attemptAt: r.attemptAt, stoppedAt: r.stoppedAt ?? null, statusLog: r.statusLog ?? null, connLog: r.connLog ?? null,
+      ...(TXC ? { trig: r.trig ?? [] } : {}),
       lag: { thread: `worker ${r.worker ?? "?"}`, deadlineLate: lateByIdx.get(r.idx) || [] },
     })),
     ...pageRecs.map((r) => ({
@@ -3193,6 +4236,7 @@ function report(state, fin) {
       reqs: r.fetches, applied: r.dom, bcasts: r.bcasts, notes: r.notes,
       openedAt: r.openedAt, loadedAt: r.loadedAt, joinAt: r.joinAt,
       ...(r.rowsLog ? { rowsLog: r.rowsLog, navStart: r.navStart, ttfbMs: r.ttfbMs, dclMs: r.dclMs, docStatus: r.docStatus, seed: r.seed, wave: r.wave, firstApiReqAt: r.firstApiReqAt, wsOpenAt: r.wsOpenAt } : {}),
+      ...(TXC ? { cohort: r.cohort ?? null, docDplId: r.docDplId ?? null, docVercelId: r.docVercelId ?? null, pgReadyAt: r.pgReadyAt, assets: r.assets, navs: r.navs, reqFailed: r.reqFailed, pageErrs: r.pageErrs } : {}),
       // Page events are timestamped by the browser (DOM) or by Playwright
       // callbacks on the main thread; the main thread's lag is the one
       // that can delay the latter.
@@ -3214,6 +4258,12 @@ function report(state, fin) {
     // input of ../admission-join.mjs.
     admission: adm ? adm.json : null,
     idle: idl ? idl.json : null,
+    // n14 step 6 (null otherwise): the transition section — switches,
+    // saves, guard, route marker, probe, subsets, arrivals, smoke,
+    // exposure, verdicts, every SDK client / page with its per-response
+    // rows (README "Transition phase"). The input of
+    // ../transition-join.mjs.
+    transition: trn ? trn.json : null,
     // Measurement validity: the verdict, why, and each thread's lag
     // series (10 s buckets [start, n, p50, p95, p99, max] + every sample
     // > 200 ms), heartbeats and deadline-timer lateness.
@@ -3298,7 +4348,9 @@ function report(state, fin) {
       pages: { lat: s.pages.lat, drilledLat: s.pages.drilledLat, missing: s.pages.missing, drilledMissing: s.pages.drilledMissing, notifPut: s.pages.notifPut, notifIns: s.pages.notifIns },
       subs: { latDist: dist(s.subs.lat), drilledDist: dist(s.subs.drilledLat), missing: s.subs.missing, drilledMissing: s.subs.drilledMissing, notifPut: dist(s.subs.notifPut), bcastPut: dist(s.subs.bcastPut), bcastIns: dist(s.subs.bcastIns) },
     })),
-    pages: ADM ? pageRecs.map(({ rowsLog, ...rest }) => ({ ...rest, rowsLogEntries: rowsLog?.length ?? 0 })) : pageRecs,
+    // transition: every page is in `transition.pages` (with its
+    // per-response rows); not repeated here.
+    pages: TXC ? null : ADM ? pageRecs.map(({ rowsLog, ...rest }) => ({ ...rest, rowsLogEntries: rowsLog?.length ?? 0 })) : pageRecs,
   };
   return { md, json, timelines };
 }
@@ -3308,7 +4360,7 @@ function writeResults(md, json, timelines) {
   const dir = path.join(HERE, "..", "results", now.toISOString().slice(0, 10));
   fs.mkdirSync(dir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ADM ? "-admission" : ""}`);
+  const base = path.join(dir, `${stamp}-browsers${DRILL ? `-${DRILL}` : ADM ? "-admission" : TXC ? "-transition" : ""}`);
   fs.writeFileSync(`${base}.md`, md);
   fs.writeFileSync(`${base}.json`, JSON.stringify(json, null, 1));
   if (timelines) fs.writeFileSync(path.join(dir, `${stamp}-timelines.jsonl`), timelines.join("\n") + "\n");
@@ -3349,6 +4401,12 @@ try {
     const vv = json.admission.verdict.verdict;
     log(`ADMISSION VERDICT: ${vv}`);
     process.exit(vv === "VALID + PASS" ? 0 : vv === "NOT EXERCISED" ? 4 : 1);
+  }
+  // Step 6: the transition verdict decides (ABORTED = exit 2).
+  if (json.transition) {
+    const tv = json.transition.verdict;
+    log(`TRANSITION VERDICT: ${tv.verdict}${tv.failed?.length ? ` — failed: ${tv.failed.join("; ")}` : ""}${tv.notExercised?.length ? ` — not exercised: ${tv.notExercised.join("; ")}` : ""}`);
+    process.exit(tv.exit);
   }
   if (json.idle) {
     log(`IDLE-BROADCAST VERDICT: ${json.idle.verdict}`);
