@@ -913,7 +913,10 @@ present:
 
 Times are epoch ms of the k6 host; `saves[].admitted` / `outstanding` /
 `httpInFlight` are the k6 side's exposure evidence at the save's
-response (k6 has no SUBSCRIBED or DOM to count).
+response (k6 has no SUBSCRIBED or DOM to count). The file `viewers.js`
+writes in `ADMISSION=1` mode (`kind: "k6-admission"`, see the k6 section) is
+accepted as-is: `admission-join.mjs` maps it onto these fields
+(`normaliseK6`) and keeps the original under `raw`.
 
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 

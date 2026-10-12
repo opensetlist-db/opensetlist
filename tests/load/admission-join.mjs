@@ -262,9 +262,15 @@ export function join(json, { logText = null, observerText = null, k6 = null, add
     const ob = obs ? (() => {
       const maxAgeS = idle?.config?.maxAgeS ?? 90;
       const marginS = OBSERVER_CLOCK_MARGIN_MS / 1000;
-      const elig = idleEligibility(obs.raw.clients, c.save, { maxAgeS: maxAgeS - marginS, minAgeS: 6 + marginS });
+      // The margin eats into both bounds; below --max-age=8 no observer client
+      // could ever qualify, which must read as an invalid configuration, not
+      // as a cohort that silently failed eligibility.
+      const invalid = maxAgeS - marginS <= 6 + marginS ? `--max-age=${maxAgeS} leaves no observer eligibility interval under the ${OBSERVER_CLOCK_MARGIN_MS} ms clock margin (need ≥ ${Math.ceil(6 + 2 * marginS) + 1} s)` : null;
+      const elig = invalid
+        ? { per: obs.raw.clients.map((cl) => ({ idx: cl.idx, cohort: cl.cohort ?? null, since: null, ageS: null, eligible: false, why: invalid })), eligible: 0, total: obs.raw.clients.length, spreadS: null, spreadOk: false, exercised: false, invalid }
+        : idleEligibility(obs.raw.clients, c.save, { maxAgeS: maxAgeS - marginS, minAgeS: 6 + marginS });
       const rows = idleArrivals(obs.raw.clients, c.save, { timeoutMs: 60_000, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS });
-      return { elig, rows, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS, boundsS: { minAgeS: 6 + marginS, maxAgeS: maxAgeS - marginS }, sum: summarizeArrivals(rows.filter((r) => elig.per.find((p) => p.idx === r.idx)?.eligible)) };
+      return { elig, rows, clockMarginMs: OBSERVER_CLOCK_MARGIN_MS, invalid, boundsS: { minAgeS: 6 + marginS, maxAgeS: maxAgeS - marginS }, sum: summarizeArrivals(rows.filter((r) => elig.per.find((p) => p.idx === r.idx)?.eligible)) };
     })() : null;
     return { ...c, observer: ob };
   });
@@ -341,6 +347,7 @@ export function toMarkdown(j, { source = "" } = {}) {
       L.push(`- Harness: eligible ${c.elig.eligible}/${c.elig.total} (spread ${c.elig.spreadS == null ? "—" : c.elig.spreadS.toFixed(1)} s); eligible clients received the broadcast ${c.eligible.received}/${c.eligible.n}, applied ${c.eligible.applied}/${c.eligible.n} by ${JSON.stringify(c.eligible.reasons)}; repair max ${d(c.eligible.repair.max)} ms (healthy periodic repair 20 s ± 4 s — measured, not a bound)`);
       if (c.observer) {
         const o = c.observer;
+        if (o.invalid) L.push(`- Observer: **INVALID configuration** — ${o.invalid}`);
         L.push(`- Observer (runner clock; judged with a ${o.clockMarginMs} ms cross-host clock margin: age must be within [${o.boundsS.minAgeS} s, ${o.boundsS.maxAgeS} s], receipts up to ${o.clockMarginMs} ms before the PUT start still count): eligible ${o.elig.eligible}/${o.elig.total} (spread ${o.elig.spreadS == null ? "—" : o.elig.spreadS.toFixed(1)} s, exercised ${o.elig.exercised ? "yes" : "**no**"}); eligible received ${o.sum.received}/${o.sum.n}, applied ${o.sum.applied}/${o.sum.n} by ${JSON.stringify(o.sum.reasons)}${o.elig.per.filter((p) => !p.eligible).length ? `; not eligible: ${o.elig.per.filter((p) => !p.eligible).map((p) => `${p.idx} (${p.why})`).join(", ")}` : ""}`);
         L.push("");
         L.push("| observer client | connected since | age s | eligible | broadcast ms after PUT response | applying fetch | repair ms |");

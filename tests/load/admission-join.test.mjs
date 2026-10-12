@@ -199,3 +199,12 @@ test("observer clients get a cross-host clock margin: early-stamped receipts cou
   assert.equal(rec.received, 2);
   assert.match(toMarkdown(j), /1000 ms cross-host clock margin: age must be within \[7 s, 89 s\]/);
 });
+
+test("observer eligibility with --max-age below 8 s is an invalid configuration, not a silent not-exercised", () => {
+  const j = join({ ...IDLE_JSON, idle: { ...IDLE_JSON.idle, config: { maxAgeS: 7 } } }, { observerText: OBS });
+  const o = j.cycles[0].observer;
+  assert.match(o.invalid, /--max-age=7 leaves no observer eligibility interval/);
+  assert.equal(o.elig.exercised, false);
+  assert.equal(o.elig.eligible, 0);
+  assert.match(toMarkdown(j), /INVALID configuration/);
+});

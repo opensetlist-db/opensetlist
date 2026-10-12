@@ -5,7 +5,7 @@
 // the clean-up's restore plan and the verifier's table.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cloneCount, planFixture, planRestore, verifyAgainst, encoreOrderError, rowContentKey } from "./fes-rows-lib.mjs";
+import { commitOutcome, cloneCount, planFixture, planRestore, verifyAgainst, encoreOrderError, rowContentKey } from "./fes-rows-lib.mjs";
 
 // Event 111's shape: 22 ordinary rows at 1..22, one encore row at 23.
 const ev111 = () =>
@@ -127,4 +127,11 @@ test("row content key ignores junction order but not song order values", () => {
   assert.equal(rowContentKey(a), rowContentKey(b));
   const c = { ...a, songs: [{ songId: "1", order: 1 }, { songId: "2", order: 0 }] };
   assert.notEqual(rowContentKey(a), rowContentKey(c));
+});
+
+test("commitOutcome: certain before COMMIT, SQLSTATE = rolled back, rows found = committed, nothing seen = unknown", () => {
+  assert.equal(commitOutcome({ committing: false, code: undefined, liveCount: 0 }), "rolled-back");
+  assert.equal(commitOutcome({ committing: true, code: "40001", liveCount: 0 }), "rolled-back");
+  assert.equal(commitOutcome({ committing: true, code: "ECONNRESET", liveCount: 46 }), "committed");
+  assert.equal(commitOutcome({ committing: true, code: undefined, liveCount: 0 }), "unknown");
 });

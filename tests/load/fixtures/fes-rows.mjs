@@ -84,7 +84,7 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { loadEnv, assertDev, parseArgs, pgClient, isAllowedBaseUrl, isDeploymentBaseUrl } from "../realtime/lib.mjs";
 import { adminLogin, softDelete } from "../browsers/admin.mjs";
-import { cloneCount, planFixture, planRestore, verifyAgainst, encoreOrderError, PARK_OFFSET, SCALAR_COLUMNS } from "./fes-rows-lib.mjs";
+import { cloneCount, planFixture, planRestore, verifyAgainst, encoreOrderError, commitOutcome, PARK_OFFSET, SCALAR_COLUMNS } from "./fes-rows-lib.mjs";
 
 const REPO = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const DEFAULT_BASE = "https://opensetlist-git-dev-opensetlist-projects.vercel.app";
@@ -353,13 +353,19 @@ async function create() {
       // clone IDs; any present ⇒ the fixture is live and the manifest must say
       // `committed` (with `commitAmbiguous`) so --cleanup removes it.
       let live = 0;
-      if (committing) {
+      if (committing && !(typeof e.code === "string" && /^[0-9A-Z]{5}$/.test(e.code))) {
+        // Connection-level failure during COMMIT: ask the database, and ask
+        // more than once — the server may still be finishing the commit when
+        // the first fresh query runs, so one zero is not an answer.
         try {
           const probe = pgClient();
           await probe.connect();
           try {
-            const r = await probe.query(`select count(*)::int as n from "SetlistItem" where id = any($1::bigint[])`, [manifest.created.map((c) => c.id)]);
-            live = r.rows[0].n;
+            for (let attempt = 0; attempt < 4 && live === 0; attempt++) {
+              if (attempt) await new Promise((r) => setTimeout(r, 3000));
+              const r = await probe.query(`select count(*)::int as n from "SetlistItem" where id = any($1::bigint[])`, [manifest.created.map((c) => c.id)]);
+              live = r.rows[0].n;
+            }
           } finally { await probe.end(); }
         } catch (e2) {
           manifest.state = "unknown";
@@ -368,11 +374,13 @@ async function create() {
           throw e;
         }
       }
-      manifest.state = live > 0 ? "committed" : "rolled-back";
-      if (live > 0) manifest.commitAmbiguous = `COMMIT acknowledgment lost (${e.message}); ${live}/${manifest.created.length} planned clones found in the database`;
+      manifest.state = commitOutcome({ committing, code: e.code, liveCount: live });
+      if (manifest.state === "committed") manifest.commitAmbiguous = `COMMIT acknowledgment lost (${e.message}); ${live}/${manifest.created.length} planned clones found in the database`;
+      else if (manifest.state === "unknown") manifest.error = `commit outcome unknown: ${e.message}; 0 planned clones visible after 4 checks over ~9 s — the server may still have committed; run --verify (or manifest.recovery) before --cleanup`;
       else manifest.error = e.message;
       writeJson(file, manifest);
-      if (live > 0) log(`WARNING: COMMIT acknowledgment lost but ${live} clone rows exist — manifest marked committed; run --cleanup`);
+      if (manifest.state === "committed") log(`WARNING: COMMIT acknowledgment lost but ${live} clone rows exist — manifest marked committed; run --cleanup`);
+      if (manifest.state === "unknown") log(`WARNING: COMMIT outcome unknown — manifest marked unknown; check the database before --cleanup`);
     }
     throw e;
   } finally {
@@ -385,6 +393,7 @@ async function cleanup() {
   const { file, m } = readManifest(args.cleanup);
   if (m.eventId !== EVENT_ID) throw new Error(`manifest is for event ${m.eventId}, not ${EVENT_ID}`);
   if (m.state === "rolled-back") { log("manifest says the fixture rolled back — nothing to clean up"); return true; }
+  if (m.state === "unknown") throw new Error("manifest state is unknown (COMMIT outcome undetermined): run --verify first; if clones exist, set state to committed, else to rolled-back");
   const ids = m.created.map((c) => c.id);
   const origIds = new Set(m.before.rows.map((r) => r.id));
   if (ids.some((id) => origIds.has(id))) throw new Error("manifest lists an original row as a clone — refusing");

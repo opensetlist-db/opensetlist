@@ -188,3 +188,21 @@ export function verifyAgainst({ before, now, clonesNow, revAfterFixture }) {
   add("revision strictly increased (never rewound)", revOk, `fixture ${revAfterFixture} → now ${now.event.setlistRevision}`);
   return out;
 }
+
+/**
+ * What a failed COMMIT means for the manifest. `committing` = the error
+ * happened while the COMMIT statement was in flight (before that, the
+ * rollback is certain). A server-side rejection carries a 5-character
+ * SQLSTATE (`code`, e.g. 40001) and means the transaction is gone. A
+ * connection-level failure (ECONNRESET, timeout, no code) is ambiguous: the
+ * server may still be committing. `liveCount` = planned clone rows found by
+ * a fresh connection, polled a few times; 0 rows during an in-flight COMMIT
+ * is NOT proof of rollback (the transaction may become visible a moment
+ * later), so the answer is `unknown` and --cleanup must not trust it.
+ */
+export function commitOutcome({ committing, code, liveCount }) {
+  if (!committing) return "rolled-back";
+  if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return "rolled-back";
+  if (liveCount > 0) return "committed";
+  return "unknown";
+}
