@@ -6,6 +6,10 @@
 //        [--out=<dir>] [--event-id=111] [--event-path=/events/111/<slug>]
 //        [--locales=ko,ja,en] [--wait-s=15] [--headed]
 //
+// --event-id is REQUIRED when --base is not the dev alias / localhost
+// (the default 111 is a dev event; prod-readonly.mjs
+// `attributionEventGuard`).
+//
 // What it does (reads only — no writes; dev alias):
 //   1. 10 SDK-style reads of /api/setlist on the alias, the way
 //      subs-worker.mjs issues them (plain fetch, no pin): 5 generic, then
@@ -32,6 +36,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { attribute, normaliseResponse, parseJsonl, reqIdOf } from "./transition-join.mjs";
+import { attributionEventGuard, classifyBase } from "./prod-readonly.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(process.argv.slice(2).map((a) => {
@@ -44,8 +49,22 @@ if (!args.base || !args.deployment) {
 }
 const BASE = String(args.base).replace(/\/$/, "");
 const DEPLOYMENT = String(args.deployment);
+// n14 step 8: the defaults below are DEV data (event 111 and its slug).
+// Against anything but the dev alias / localhost the event must be named
+// with --event-id, so a production run never measures "event 111" by
+// accident; without --event-path such a run loads the bare id, which
+// 308-redirects to the canonical slug (the redirect is one more document
+// row, attributed like the rest).
+{
+  const refusal = attributionEventGuard({ base: BASE, eventId: args["event-id"], eventPath: args["event-path"] });
+  if (refusal) {
+    console.error(refusal);
+    process.exit(2);
+  }
+}
+const IS_DEV = classifyBase(BASE) === "dev";
 const EVENT_ID = String(args["event-id"] ?? "111");
-const EVENT_PATH = String(args["event-path"] ?? "/events/111/rehearsal-lovelive-fes-2020-day1");
+const EVENT_PATH = String(args["event-path"] ?? (IS_DEV ? "/events/111/rehearsal-lovelive-fes-2020-day1" : `/events/${EVENT_ID}`));
 const LOCALES = String(args.locales ?? "ko,ja,en").split(",");
 const WAIT_S = Number(args["wait-s"] ?? 15);
 const now = new Date();
