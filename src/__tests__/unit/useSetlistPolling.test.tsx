@@ -482,4 +482,44 @@ describe("useSetlistPolling — n14 cadence + acceptance", () => {
     expect(result.current.freshness.state).toBe("live");
     expect(result.current.capturedAt).toBe("2026-11-14T07:30:10.000Z");
   });
+
+  it("a 404 (event deleted) stops polling for good, even across a re-enable", async () => {
+    // First poll at the random phase 0.5 × 5 s = 2.5 s.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: new Headers({}),
+      json: async () => ({ error: "not_found" }),
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useSetlistPolling({
+          eventId: "1",
+          initialItems,
+          initialReactionCounts,
+          initialTop3Wishes,
+          locale: "ko",
+          enabled,
+        }),
+      { initialProps: { enabled: true } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.gone).toBe(true);
+    expect(result.current.freshness.state).toBe("live");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    rerender({ enabled: false });
+    rerender({ enabled: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

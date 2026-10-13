@@ -2336,3 +2336,138 @@ describe("useRealtimeEventChannel — n14 scheduler + acceptance", () => {
     expect(window.__osl.dropNextNotification).toBe(true);
   });
 });
+
+// A soft-deleted (or missing) event answers 404. The page keeps its last
+// content but stops every live request for good: no retry, no periodic
+// repair poll, no notification fetch, and the Realtime channel is
+// released and never re-joined (not even on a visibility resume).
+describe("useRealtimeEventChannel — 404 (event deleted) is terminal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    capturedSubscribeCallback = null;
+    addBreadcrumbMock.mockClear();
+    captureMessageMock.mockClear();
+    channelMock.mockClear();
+    removeChannelMock.mockClear();
+    fakeChannel.on.mockClear();
+    fakeChannel.subscribe.mockClear();
+    capturedHandlers.length = 0;
+    fakeChannel.on.mockImplementation(captureOn);
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+  });
+
+  function mount() {
+    return renderHook(() =>
+      useRealtimeEventChannel({
+        eventId: "1",
+        initialItems,
+        initialReactionCounts,
+        initialTop3Wishes,
+        locale: "ko",
+        enabled: true,
+        startTime: null,
+        initialRev: 1,
+        initialCapturedAt: capturedAtFor(1),
+      }),
+    );
+  }
+
+  async function advance(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it("a 404 seed: gone, channel removed, nothing fetched afterwards", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeErrorResponse(404));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const hook = mount();
+    await flushMicrotasks();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.gone).toBe(true);
+    expect(channelMock).toHaveBeenCalledTimes(1);
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+
+    // Past every retry step and many periodic ticks.
+    await advance(5 * 60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Not a failure: the indicator never walks to retrying / delayed.
+    expect(hook.result.current.freshness.state).toBe("live");
+    // No re-join either.
+    expect(channelMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("the delete's broadcast → 404 → stop: later broadcasts, polls and resumes do no work", async () => {
+    let deleted = false;
+    let serverRev = 1;
+    const fetchMock = answering(() =>
+      deleted
+        ? makeErrorResponse(404)
+        : revResponse(serverRev, capturedAtFor(serverRev), [{ id: "kept" }]),
+    );
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const hook = mount();
+    await flushMicrotasks();
+    await act(async () => {
+      capturedSubscribeCallback?.("SUBSCRIBED");
+    });
+    await advance(1_000); // catch-up
+    const before = fetchMock.mock.calls.length;
+    expect(hook.result.current.items).toEqual([{ id: "kept" }]);
+
+    // The admin soft-delete bumps the revision and broadcasts it.
+    deleted = true;
+    serverRev = 2;
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 2 });
+    });
+    await advance(1_000);
+    expect(fetchMock.mock.calls.length).toBe(before + 1);
+    expect(hook.result.current.gone).toBe(true);
+    expect(removeChannelMock).toHaveBeenCalledTimes(1);
+    // The last content stays on screen.
+    expect(hook.result.current.items).toEqual([{ id: "kept" }]);
+
+    // A stray broadcast on the old handler, an `online` event, a hide
+    // + show cycle and several periodic windows: nothing fetches, no
+    // channel is joined again.
+    await act(async () => {
+      sendRev({ kind: "setlist", rev: 3 });
+      window.dispatchEvent(new Event("online"));
+    });
+    await act(async () => {
+      setDocumentHidden(true);
+    });
+    await act(async () => {
+      setDocumentHidden(false);
+    });
+    await advance(5 * 60_000);
+    expect(fetchMock.mock.calls.length).toBe(before + 1);
+    expect(channelMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 503 is still retried (only 404 is terminal)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeErrorResponse(503));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const hook = mount();
+    await flushMicrotasks();
+    await advance(1_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.gone).toBe(false);
+    expect(removeChannelMock).not.toHaveBeenCalled();
+  });
+});

@@ -70,6 +70,49 @@ function snapshotUnavailable(): NextResponse {
 }
 
 /**
+ * 404 for an event that does not exist or was soft-deleted — the same
+ * answer the event page gives, so the live path agrees with the page
+ * (and the sitemap) instead of serving the last snapshot of a page that
+ * is gone.
+ *
+ * Decided from the snapshot itself (`found` / `isDeleted`, read by the
+ * builder's LEFT JOIN of the event head): no extra database read, and
+ * the cache entry that carries the flags is the same one every other
+ * request is served from, so a deleted event costs no rebuild storm.
+ * The soft-delete bumps the revision and broadcasts inside its
+ * transaction, then expires the public data tag that every snapshot
+ * entry carries (`deleteEvent` in the admin events route), so the next
+ * build sees `isDeleted` at once and the broadcast's notification fetch
+ * is what tells open tabs. There is no un-delete path today; one would
+ * have to expire the same tags to bring the 200 back.
+ *
+ * The body is a stable code, never text (a public response — clients
+ * localise, if they show anything at all). `Cache-Control` matches the
+ * 200: no browser or CDN reuse, so the 404 is re-decided on every
+ * request. `x-snapshot-source` is still sent (diagnostics); the
+ * `x-snapshot-verify` header is NOT — there is no snapshot whose
+ * `minRev` resolution it could describe.
+ *
+ * Clients must treat this as terminal, never as a transport failure:
+ * `useLiveSnapshot` maps it to a `gone` outcome that stops the live
+ * scheduler and releases the Realtime channel (no retry, no recheck).
+ * That is why it is a 404 and not a 5xx — every 5xx (and the 503 above)
+ * is retried.
+ */
+function eventGone(source: string): NextResponse {
+  return NextResponse.json(
+    { error: "not_found" },
+    {
+      status: 404,
+      headers: {
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "x-snapshot-source": source,
+      },
+    },
+  );
+}
+
+/**
  * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>][&hint=1]
  *
  * The live event page's snapshot: setlist items, reaction counts, the
@@ -89,6 +132,10 @@ function snapshotUnavailable(): NextResponse {
  *       updatedAt,    // = servedAt; kept for v0.18.x clients, which
  *                     // read it into `lastUpdated`
  *     }
+ *
+ *   → 404 { error: "not_found" }, Cache-Control: public, max-age=0,
+ *         must-revalidate — no Event row for the id, or it is
+ *         soft-deleted (see `eventGone`)
  *
  *   → 503 { error: "snapshot_unavailable" }, Retry-After: 1..3,
  *         Cache-Control: no-store — the snapshot could not be built
@@ -158,8 +205,6 @@ export async function GET(req: NextRequest) {
     return snapshotUnavailable();
   }
   const { snapshot, source, verify } = result;
-  const resolved = resolveSnapshotForResponse(snapshot);
-  const servedAt = new Date().toISOString();
 
   // Instrumentation for one open question: is a response that is served
   // from the cache (the stale value of a stale-while-revalidate entry)
@@ -178,7 +223,16 @@ export async function GET(req: NextRequest) {
         `instance=${INSTANCE_ID}`,
     );
   }
+  // Logged for a missing / deleted event too: the hint-fetch line counts
+  // REQUESTS (one per hinted fetch, whatever came of it), and the load
+  // harness pairs it with saves — a soft-delete is itself a save that
+  // broadcasts, so its notification fetches must stay countable.
   if (hint) logHintFetch(eventId, locale, minRev, verify.kind);
+
+  if (!snapshot.found || snapshot.isDeleted) return eventGone(source);
+
+  const resolved = resolveSnapshotForResponse(snapshot);
+  const servedAt = new Date().toISOString();
 
   return NextResponse.json(
     {

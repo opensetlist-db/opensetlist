@@ -67,6 +67,11 @@ interface UseSetlistPollingResult<T> {
   rev: number | null;
   /** Applied snapshot `capturedAt` ISO (see `useLiveSnapshot`). */
   capturedAt: string | null;
+  /**
+   * The event answered 404 (missing / soft-deleted). Polling has
+   * stopped for good; the last content stays. See `useLiveSnapshot`.
+   */
+  gone: boolean;
 }
 
 /**
@@ -127,8 +132,14 @@ export function useSetlistPolling<T>({
     initialCapturedAt,
   });
 
+  const { gone } = data;
   useEffect(() => {
     if (!enabled) return;
+    // Terminal 404 (see `LiveSnapshotData.gone`): the request that saw
+    // it already stopped its scheduler; the state flip re-runs this
+    // effect, whose cleanup releases the session, and this guard keeps
+    // a re-enable from starting a new one against a dead event.
+    if (gone) return;
     resetFailures();
     // Hand-over from the realtime path: start from the newest version
     // the page has already shown (the realtime hook passes it as
@@ -148,7 +159,7 @@ export function useSetlistPolling<T>({
       scheduler.dispose();
       runner.abort();
     };
-  }, [enabled, intervalMs, spreadMs, createRunner, resetFailures, adoptSeed]);
+  }, [enabled, gone, intervalMs, spreadMs, createRunner, resetFailures, adoptSeed]);
 
   return data;
 }

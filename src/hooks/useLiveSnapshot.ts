@@ -83,6 +83,19 @@ export interface LiveSnapshotData<T> {
    * `ackAt` to know when the snapshot has caught up with the tap.
    */
   capturedAt: string | null;
+  /**
+   * The server answered 404 for this event (missing or soft-deleted —
+   * `/api/setlist` decides it from the snapshot's `found` /
+   * `isDeleted`). Terminal for this event/locale: the request that saw
+   * it settled as `gone`, which stops its scheduler for good, and the
+   * owning hooks tear down their session (scheduler, timers, Realtime
+   * channel) and refuse to start a new one while it is set. The last
+   * applied content stays on screen untouched — no redirect, no
+   * placeholder; callers only hide the sync indicator, which would
+   * otherwise keep showing a "last synced" time that will never move.
+   * Reset on event/locale change.
+   */
+  gone: boolean;
 }
 
 /** Body of `/api/setlist` (n14 contract; older fields tolerated). */
@@ -137,6 +150,7 @@ function hintOutcomeFor(resolution: HintResolution): LiveHintOutcome | undefined
 
 const CANCELLED: LiveFetchOutcome = { kind: "cancelled" };
 const OK: LiveFetchOutcome = { kind: "ok" };
+const GONE: LiveFetchOutcome = { kind: "gone" };
 
 function seedRev(value: number | null | undefined): number | null {
   return isValidRev(value) ? value : null;
@@ -173,6 +187,7 @@ export function useLiveSnapshot<T>({
   const [capturedAt, setCapturedAt] = useState<string | null>(() =>
     seedCapturedAt(initialCapturedAt),
   );
+  const [gone, setGone] = useState(false);
 
   // Consecutive snapshot failures. Hook-scoped (not session-scoped) so
   // the count — and therefore the "delayed" indicator — survives the
@@ -238,6 +253,7 @@ export function useLiveSnapshot<T>({
     setFreshness(INITIAL_FRESHNESS);
     setRev(seedRev(initialRev));
     setCapturedAt(seedCapturedAt(initialCapturedAt));
+    setGone(false);
   }
 
   const resetFailures = useCallback(() => {
@@ -396,6 +412,23 @@ export function useLiveSnapshot<T>({
                 finish(CANCELLED);
                 return;
               }
+              if (res.status === 404) {
+                // The event is missing or soft-deleted (the route's
+                // `{ error: "not_found" }`). NOT a failure: no failure
+                // count, no freshness change, no retry — a retry can
+                // only ever get the same answer, and with the backoff
+                // capped at 30 s it would poll a dead event for as long
+                // as the tab stays open. `gone` makes the scheduler
+                // stop itself; the state flip lets the owning hook
+                // release the channel. Checked before `!res.ok` so it
+                // can never fall into the transport-failure path below.
+                // Only a 404 from `/api/setlist` itself reaches here:
+                // the request was live (`isLive()` above), so it is this
+                // event/locale's answer, not a stale one.
+                setGone(true);
+                finish(GONE);
+                return;
+              }
               if (!res.ok) {
                 fail(parseRetryAfterMs(res.headers?.get("Retry-After")));
                 return;
@@ -478,6 +511,7 @@ export function useLiveSnapshot<T>({
     freshness,
     rev,
     capturedAt,
+    gone,
   };
 
   return { data, createRunner, resetFailures, adoptSeed };

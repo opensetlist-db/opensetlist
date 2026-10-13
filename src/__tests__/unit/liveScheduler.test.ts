@@ -710,6 +710,93 @@ describe("liveScheduler — dispose", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
+// `gone` — the server answered 404 (event missing / soft-deleted).
+// Terminal: the scheduler stops itself as if disposed, and nothing it
+// owed (follow-up, retry, ticket, periodic) ever dispatches.
+// ────────────────────────────────────────────────────────────────────
+
+describe("liveScheduler — gone (404) is terminal", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const healthy = {
+    intervalMs: HEALTHY_PERIODIC_MS,
+    spreadMs: HEALTHY_PERIODIC_SPREAD_MS,
+    firstTick: "interval" as const,
+  };
+
+  it("stops the periodic poll and drops the dirty follow-up; later triggers are no-ops", async () => {
+    const { calls, runFetch, scheduler } = harness({ random: () => 0.5, periodic: healthy });
+    scheduler.start();
+    scheduler.requestFetch("initial");
+    scheduler.requestFetch("notification"); // dirty while in flight
+    await settle(calls[0], { kind: "gone" });
+    expect(scheduler.getState()).toMatchObject({
+      gone: true,
+      disposed: true,
+      inFlight: false,
+      dirty: false,
+      scheduledAt: null,
+      retryPending: false,
+      genericRequired: false,
+      carriedHint: null,
+    });
+    for (const reason of ["notification", "catchup", "resume", "boundary", "periodic", "initial"] as const) {
+      scheduler.requestFetch(reason);
+    }
+    scheduler.start();
+    scheduler.setPeriodic({ intervalMs: 5_000, spreadMs: 0, firstTick: "interval" });
+    await advance(10 * HEALTHY_PERIODIC_MS);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a gone retry ends the backoff chain — no further retry", async () => {
+    const { calls, runFetch, scheduler } = harness();
+    scheduler.requestFetch("initial");
+    await settle(calls[0], { kind: "failed", retryInMs: 1_000 });
+    expect(scheduler.getState().retryPending).toBe(true);
+    await advance(1_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    await settle(calls[1], { kind: "gone" });
+    await advance(120_000);
+    expect(runFetch).toHaveBeenCalledTimes(2);
+    expect(scheduler.getState().gone).toBe(true);
+  });
+
+  it("a gone answer to a notification drops its ticket — no recheck", async () => {
+    const acceptance = new SnapshotAcceptance({ rev: 5, capturedAt: "2026-11-14T07:30:00.000Z" });
+    const { calls, runFetch, scheduler } = harness({
+      random: () => 0.5,
+      captureHint: () => acceptance.captureHint(),
+    });
+    if (acceptance.noteHint(9)) scheduler.requestFetch("notification");
+    await advance(1_000);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request.hint).toBe(9);
+    await settle(calls[0], { kind: "gone" });
+    // A further broadcast (e.g. a second save racing the delete) does nothing.
+    if (acceptance.noteHint(10)) scheduler.requestFetch("notification");
+    await advance(60_000);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(scheduler.getState().carriedHint).toBeNull();
+  });
+
+  it("a gone settling after dispose changes nothing", async () => {
+    const { calls, runFetch, scheduler } = harness();
+    scheduler.requestFetch("initial");
+    scheduler.dispose();
+    await settle(calls[0], { kind: "gone" });
+    await advance(60_000);
+    expect(runFetch).toHaveBeenCalledTimes(1);
+    expect(scheduler.getState()).toMatchObject({ disposed: true, gone: false });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────
 // R2 — hint tickets, the one bounded recheck, and the sticky
 // maintenance obligation. A real `SnapshotAcceptance` supplies
 // `captureHint`, so batches behave exactly as on the page.
