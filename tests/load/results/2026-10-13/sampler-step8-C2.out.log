@@ -1,0 +1,29 @@
+01:12:04.396 sampling https://opensetlist.com/ja/events/109/smoke-test-v0190 + /api/setlist every 250 ms for 420 s (or tests/load/results/2026-10-13/step8-C2.STOP); expecting dpl_84mZdx7b4ES7hafdQSNr9zagHrzk after the switch
+01:12:04.893 document now answered by dpl_8trbJx15YxL3tF9dexocYu2eJFq3 (request start 01:12:04.402)
+01:13:01.242 document now answered by dpl_84mZdx7b4ES7hafdQSNr9zagHrzk (expected) (request start 01:13:00.909)
+01:13:01.773 document now answered by dpl_8trbJx15YxL3tF9dexocYu2eJFq3 (request start 01:13:01.401)
+01:13:02.391 document now answered by dpl_84mZdx7b4ES7hafdQSNr9zagHrzk (expected) (request start 01:13:02.156)
+# Transition sampler — step8-C2 — SWITCHED
+
+- base https://opensetlist.com (prod) · path `/ja/events/109/smoke-test-v0190` · event 109 · expected after the switch: dpl_84mZdx7b4ES7hafdQSNr9zagHrzk
+- host `CHPDesktop2024` · window 2026-10-13T01:12:04.394Z → 2026-10-13T01:14:10.498Z (UTC) · ended by STOP file · every 250 ms per loop
+- clock: this host's clock, UTC. Switch latency = first expected answer − the operator's promote / rollback click time.
+
+- first answer from dpl_84mZdx7b4ES7hafdQSNr9zagHrzk: 01:13:00.909 (request start) → 01:13:01.241
+- last answer from another deployment: 01:13:01.901 (dpl_8trbJx15YxL3tF9dexocYu2eJFq3) · old tail after the first expected answer: 992 ms
+- sustained on dpl_84mZdx7b4ES7hafdQSNr9zagHrzk from: 01:13:02.156 · flips: 3 · other deployments seen: dpl_8trbJx15YxL3tF9dexocYu2eJFq3
+- doc samples 504 (attributed 504, **unattributed 0** = 0 %; > 20 % → INSUFFICIENT ATTRIBUTION) statuses {"200":504} · 5xx/errors 0
+- api samples 503 statuses {"200":503} · 5xx/errors 0 (0 from 5 s before the first expected answer on)
+
+## Deployment timeline (document answers, by request start)
+
+| from (UTC) | to (UTC) | data-dpl-id | samples |
+|---|---|---|---|
+| 01:12:04.402 | 01:13:00.647 | dpl_8trbJx15YxL3tF9dexocYu2eJFq3 | 226 |
+| 01:13:00.909 | 01:13:01.153 | dpl_84mZdx7b4ES7hafdQSNr9zagHrzk (expected) | 2 |
+| 01:13:01.401 | 01:13:01.901 | dpl_8trbJx15YxL3tF9dexocYu2eJFq3 | 3 |
+| 01:13:02.156 | 01:14:10.153 | dpl_84mZdx7b4ES7hafdQSNr9zagHrzk (expected) | 273 |
+
+API answers carry no deployment id; their x-vercel-id values are in the JSON for a `vercel logs` join per deployment.
+
+01:14:10.503 wrote tests\load\results\2026-10-13\2026-10-13T01-12-04-394Z-transition-sampler-step8-C2.{json,md}

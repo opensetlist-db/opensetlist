@@ -1054,6 +1054,9 @@ node --no-warnings tests/load/browsers/run.mjs --phase=spam7 --pages=30 --subs=4
 
 ## Independent observer (`observer.mjs`, `n14-observer.yml`)
 
+(Dev only. The production read-only mode, `--prod-readonly`, is a
+separate client documented under "n14 qualification step 8".)
+
 The browsers harness stamps every broadcast arrival on the laptop that
 also runs the load. When a save's notification looks late, the report
 alone cannot say whether the service was slow or the laptop was
@@ -1651,3 +1654,264 @@ aliases in the file header):
 | `writes[]` `{k, label, rev, putStart, putEnd, status, anchor \| kind:"anchor"}` (+ `anchor` object) | writer reconciliation and acquire gate |
 | `hintedStarts[]` (exact) or `buckets[]` `{t \| s, hinted \| sdkNotification + pagesHinted / pages, s503}` with `bucketMs` | expected hint-fetch lines; harness 503 total |
 | `declaredProcess`, `config.label`, `config.base` | echoed |
+
+## n14 qualification step 8 — production verification (read-only tools)
+
+Step 8 proves on **opensetlist.com** what steps 1–7 proved on dev: the
+wake procedure, promotion / rollback propagation on the production domain,
+and a clean release. It adds no load. Four tools may point at production,
+and only to look:
+
+| tool | what | production needs |
+|---|---|---|
+| `observer.mjs --prod-readonly` | N supabase-js listeners on `event:<id>` + one hinted GET per receipt | `--prod-readonly`, the anon key via `--anon-key-env` |
+| `wake-check.mjs` | Chromium pages per locale waiting for the operator's save | `--prod-readonly` |
+| `transition-sampler.mjs` | doc + `/api/setlist` sampling across a promotion / rollback | `--prod-readonly`, `--event-id` **and** `--path` |
+| `attribution-smoke.mjs` | unchanged, except: off the dev alias `--event-id` is required | `--event-id` |
+
+### Guards (`prod-readonly.mjs`, tests in `prod-readonly.test.mjs`)
+
+- **Never by accident.** A production / deployment URL is refused unless
+  `--prod-readonly` is on the command line. Without it, `observer.mjs`
+  keeps its dev-only guard unchanged (dev project + dev alias / localhost),
+  and refuses the prod-only flags (`--supabase-url`, `--anon-key-env`, …)
+  instead of silently observing dev.
+- **Read-only by construction.** In these tools only an allow-list of
+  flags is accepted; anything else is refused before a socket opens. Flags
+  other harness commands use to save, log in or inject (`--admin`,
+  `--save-offsets`, `--cleanup`, `--spam-*`, `--publish`, `--send`,
+  `--fixture`, `--drop*`, …) are named as write-capable in the refusal.
+  None of the tools reads `ADMIN_PASSWORD`, a DB URL or a service key.
+  `wake-check`'s pages abort every non-GET request (`readOnly` in
+  `pages.mjs`) — no impression, reaction, wish or Sentry event is filed on
+  the operator's behalf; the count is reported.
+- **Anon key only.** `--anon-key-env=<NAME>` names the variable holding the
+  key; names containing SERVICE / SECRET / PASSWORD / DATABASE / ADMIN are
+  refused, and the value must be a JWT with `role: anon` (or an
+  `sb_publishable_…` key) whose `ref` matches `--supabase-url`. A
+  service-role key under an innocent name is refused too. The key is never
+  printed or written; the project ref appears masked (`abcd…`).
+- Allowed bases: `https://opensetlist.com` (or `www.`), an immutable
+  `opensetlist-<hash>-opensetlist-projects.vercel.app` deployment URL, the
+  dev alias, localhost.
+
+Refusals verified from the CLI (exit 2, nothing on the network):
+`observer.mjs --base=https://opensetlist.com` (dev guard),
+`observer.mjs --supabase-url=…` without the flag,
+`observer.mjs --prod-readonly … --admin` / `--save-offsets=0,30 --cleanup`,
+`--anon-key-env=SUPABASE_SERVICE_ROLE_KEY`, the service-role value under
+`MY_KEY`, `wake-check.mjs --base=https://opensetlist.com` without the
+flag, `wake-check.mjs --prod-readonly … --admin`, `transition-sampler.mjs`
+without `--path`, `attribution-smoke.mjs --base=https://opensetlist.com`
+without `--event-id`.
+
+### Production read-only observer (`observer.mjs --prod-readonly`)
+
+```bash
+PROD_SUPABASE_ANON_KEY=… node tests/load/observer.mjs --prod-readonly \
+  --base=https://opensetlist.com --event-id=<n> \
+  --supabase-url=https://<prod ref>.supabase.co --anon-key-env=PROD_SUPABASE_ANON_KEY \
+  [--listeners=3] [--duration-s=900] [--add-listener-after-s=<s>] [--locales=ja,ko,en] \
+  [--stop-file=<path>] [--out=<dir>] [--label=<name>]
+```
+
+A separate, small client (`observer-prod.mjs`), not the subs-worker page
+model: no periodic polls, no drills, never a channel send. It first GETs
+`/api/setlist?eventId=<n>` (the event exists, starting rev; anything but
+200 → exit 2), then subscribes the listeners (and one fresh listener at
+`--add-listener-after-s`), and per receipt records the RAW broadcast time
+and the exact rev from the payload (a receipt is the frame itself, never
+inferred from a fetch), then separately one hinted GET
+`?minRev=<rev>&hint=1` with its own start / end, status,
+`x-snapshot-source`, `x-snapshot-verify`, body rev, `x-vercel-id`.
+Payloads that are not `{kind:"setlist", rev:<int>}` are listed (the
+channel is public) and trigger nothing. Ends at `--duration-s` or when the
+STOP file (default `<out>/observer-prod.STOP`) is newer than the start;
+writes `<stamp>-observer-prod[-label].{json,md}`:
+
+- verdict: every listener SUBSCRIBED; every initial listener SUBSCRIBED
+  **before the first save's broadcast**; stayed connected (no
+  CHANNEL_ERROR / TIMED_OUT / CLOSED / socket drop before our stop); every
+  rev reached every listener that was subscribed before it; every hinted
+  GET 200 with body rev ≥ rev; the fresh listener received every save
+  after its SUBSCRIBED; 5xx count;
+- per rev: received / total, received / eligible (subscribed before the
+  rev's first receipt), missing listeners, spread, GET sources / elapsed;
+- per receipt: broadcast received (UTC), Δ first, GET start / end, headers;
+- per listener: connect attempt, first SUBSCRIBED, join ms, subscribed
+  before the first save, rejoins, closes with times, socket drops,
+  recreates, revs received.
+
+Clock: all times are the **receiver** host's clock, UTC; compare with the
+save time from the admin UI / `vercel logs` (`[liveWriter]`) allowing for
+NTP skew. The first receipt time of a rev is the client-side proof that
+committed broadcast delivery works; whether today's `realtime.messages`
+partition exists is invisible to a client (the operator's prod SQL check).
+
+### Wake check (`wake-check.mjs`)
+
+```bash
+node tests/load/wake-check.mjs --prod-readonly --base=https://opensetlist.com --event-id=<n> \
+  [--locales=ja,ko,en] [--pages=2] [--poll-only=1] [--expect-saves=2] [--wait-s=600] \
+  [--deployment=dpl_…] [--event-path=/events/<n>/<slug>] [--stop-file=<path>] [--out=<dir>] [--label=<name>] [--headed]
+```
+
+Opens `pages` **live** pages per locale + `--poll-only` pages (default
+**1**) whose Realtime websocket is blocked (pages.mjs routeMode `blocked`), settles
+10 s, takes the baseline rev and prints
+`[wake-check] READY pages=… baseline_rev=… at=…` — **the operator saves
+now**. The first rev above the baseline is the check save (R1), the next
+the second save (R2). About 5 s after R1 it opens one **post-save** page
+per locale (a viewer who reloads after the save; a new page, so the live
+pages' continuity stays measurable). Ends at `--wait-s` (from READY) or
+the STOP file (default `<out>/wake-check.STOP`).
+
+Overall verdict: any check FAIL → **FAIL** (exit 1). Otherwise **PASS**
+(exit 0) only if `--expect-saves` distinct revs were observed (default 2:
+the check save AND the second, "stays connected" save) and at least one
+websocket-blocked page ran; with fewer saves (e.g. the operator never made
+save 2, or no save at all) or `--poll-only=0` the overall is **NOT
+EXERCISED** (exit 4), never PASS. The report prints which saves were
+observed (`check save R1: rev …` · `second save R2: not observed`) and why
+the run is NOT EXERCISED. `--expect-saves=1` is for a check-save-only run
+(e.g. a T−10 check without a second save); the second-save checks then
+read NOT EXERCISED without blocking the overall.
+
+Checks (each PASS / FAIL / NOT EXERCISED): pages 200 with rows painted;
+R1 seen in the DOM of every live page; R1's broadcast **frame** at every
+live page; DOM ≤ 3 s after the frame (frame time and DOM time are separate
+columns); the same three for R2 (the "listener stays connected" save);
+websocket-blocked page shows R1 by polling within 9 s of the first live
+frame (5 s ± 1 s fallback cadence + the 3 s DOM budget) and received no
+frame; post-save loads SSR-seeded at rev ≥ R1 (`initialRev` in the RSC
+payload) with the server-rendered paint (last row-text report by
+DOMContentLoaded) equal to the live pages' content of that locale; 0
+reloads (a 308 hop is not a reload); 0 page errors; 0 × 5xx; one
+websocket per live page, never closed; every page `visibilityState =
+visible`; with `--deployment=dpl_…`, every page's `data-dpl-id` matches.
+Informational: per locale, whether a hinted fetch for R1 was answered
+`x-snapshot-source: warm` — **which instance** served it is not in any
+header (`x-vercel-id` = edge PoP :: function region :: request id), so the
+warm reads' request ids are listed for a `vercel logs` join
+(`[liveWriter] instance=` vs the read) to say "warm on a different
+instance".
+
+DOM = the rows' visible text (pages.mjs `rowText`: every `<SetlistRow>`
+`<li>`, text inside `<button>` excluded so other viewers' reaction counts
+never look like an update). The save must change something visible — add
+a row (R1), delete it (R2).
+
+Foreground: the live hook tears its channel down on `document.hidden`.
+Every page is its own context launched with background / occlusion
+throttling disabled and headless pages report `visible`; the table
+records it per page. With `--headed`, do not minimise the windows.
+
+Dev smoke (2026-10-12, dev alias, event 111, no save made): 6 live + 1
+poll-only page opened (load 0.9–3.8 s, rows at 0.6–3.3 s, websocket at
+1.1–3.9 s), READY at baseline rev 1912, timed out after 45 s →
+`NOT EXERCISED`; reloads / errors / 5xx 0, live sockets 6/6 never closed,
+7/7 visible, 0 non-GET requests attempted.
+
+End-to-end on dev (2026-10-12 23:09–23:13 UTC, event 111): observer
+`--prod-readonly` (dev alias + dev project, 3 listeners +
+`--add-listener-after-s=60`) and wake-check (2 × ja/ko/en + 1 poll-only)
+side by side; ONE admin login, save 1 = append a blank row at the tail
+(rev 1913, 23:10:00.714), save 2 ≈ 90 s later = soft-delete it (rev 1914,
+23:11:31.313); `restore.mjs --compact --yes` → 0 rows moved,
+`viewers-check.mjs` → 23 live rows, setlistRevision 1914.
+- observer: both revs reached every listener subscribed before them
+  (1913: 3/3 initial, spread 6 ms; 1914: 4/4 incl. the fresh listener,
+  spread 7 ms); first receipt 0.51 s / 0.48 s after the save request
+  started; 7/7 hinted GETs 200 `warm` / `satisfied`, 207–1621 ms; no
+  close, rejoin or socket drop.
+- wake-check: **PASS**. Frames at 6/6 live pages for both revs; frame→DOM
+  324–634 ms (1913) and 226–659 ms (1914); the websocket-blocked page
+  showed 1913 by polling 1573 ms after the first live frame with 0
+  frames (24 refused socket attempts); the three post-save loads (opened
+  5 s after R1) were SSR-seeded `live 1913` with the server paint equal
+  to the live pages' content (24 rows); warm reads for 1913 in ja 1/1,
+  ko 2/2, en 2/2 hinted fetches; one live ja page's fetch for 1913 left
+  0.42 s after the frame with `minRev=1913` but without `hint=1` (the
+  scheduler issued it as a non-notify request) and was answered `build`
+  — so it is not counted as a hinted read; 0 reloads / page errors / 5xx / non-GET
+  attempts; 10/10 pages visible.
+
+### Transition sampler (`transition-sampler.mjs`)
+
+```bash
+node tests/load/transition-sampler.mjs --prod-readonly --base=https://opensetlist.com \
+  --event-id=<n> --path=/ja/events/<n>/<slug> --expect=dpl_<target> \
+  [--duration-s=300] [--interval-ms=250] [--stop-file=<path>] [--out=<dir>] [--label=<name>]
+```
+
+Start it ~30 s before the click. Two loops every 250 ms (≤ 4 in flight
+each): the canonical event page (no redirect hop) — its `data-dpl-id` is
+the serving deployment — and `/api/setlist` (x-vercel-id kept for a
+`vercel logs` join; mapping ids to deployments with `vercel inspect` is
+the operator's side). Output `<stamp>-transition-sampler[-label].{json,md}`:
+first answer from `--expect`, last answer from any other deployment (the
+old tail, and its overlap with the first expected answer), "sustained
+from", flips, the per-deployment timeline, statuses and 5xx / transport
+errors per loop, and the **unattributed** document answers (no
+`data-dpl-id`: errors, 5xx, error pages). Verdict SWITCHED / NOT SUSTAINED
+/ NOT SWITCHED / ALREADY SWITCHED / NO DATA (no attributed answer) /
+INSUFFICIENT ATTRIBUTION (more than 20 % of document answers Exit code: 0 only for SWITCHED, 1 for NOT SWITCHED / NOT SUSTAINED, 4 (NOT EXERCISED) for ALREADY SWITCHED / INSUFFICIENT ATTRIBUTION / NO DATA — a caller must not read "the sampler ran" as "the switch happened".
+unattributed — the gaps could hide the old deployment's tail, so no
+switch is claimed). Switch latency = first expected answer − the
+click time the operator writes down. Dev smoke: 20 s on the dev alias,
+`--expect` = the serving deployment → ALREADY SWITCHED, 79 / 80 samples all
+200.
+
+### Operator sequence (step 8)
+
+Operator = Vercel / admin / GitHub actions on production. Harness = the
+command run beside it (read-only, from the laptop). Record every
+deployment id and click time (UTC).
+
+**A. Release (v0.19.0)**
+
+| # | operator | harness beside it |
+|---|---|---|
+| 1 | merge the dev → main release PR (prod still serves the previous tag) | – |
+| 2 | dispatch `backup.yml` (pre-release backup); wait green | – |
+| 3 | dispatch `migrate-prod.yml` **on main** — the schema (`Event.setlistRevision`, post-deploy.sql) lands before the app that reads it; wait green | – |
+| 4 | verify the column (prod SQL check: `Event.setlistRevision` present, publication / `realtime.send` / partitions as in `wiki/output/n14-prod-realtime-send-check.sql`) | – |
+| 5 | freeze `LIVE_WARM_ENTRIES` in the Vercel **production** env to the decided value (it only takes effect on the next build) | – |
+| 6 | annotated tag `v0.19.0` → production deploy; note the deployment id (ON) | `transition-sampler.mjs --expect=<ON dpl>` across the deploy's promotion (optional) |
+
+**B. Smoke on a fixture event** (short-lived, clearly labelled public
+event, e.g. "[TEST] OpenSetlist smoke — delete me"; the operator creates
+and later deletes it — nothing here writes)
+
+| # | operator | harness beside it |
+|---|---|---|
+| 1 | create the fixture event (ongoing, a few rows); tell the id | `attribution-smoke.mjs --base=https://opensetlist.com --deployment=<ON dpl> --event-id=<fixture>` |
+| 2 | – | start `observer.mjs --prod-readonly … --event-id=<fixture> --duration-s=1500 --add-listener-after-s=420` and `wake-check.mjs --prod-readonly … --event-id=<fixture> --poll-only=1 --wait-s=1200 --deployment=<ON dpl>`; phone on the event page |
+| 3 | after both READY / SUBSCRIBED lines: **save #1 = add a row** | both record R1 |
+| 4 | wait ≥ 10 min (after the fresh listener's SUBSCRIBED at +7 min): **save #2 = delete that row** | both record R2; then touch the STOP files |
+| 5 | (≥ 30 min idle, then repeat 2–4: idle-tenant check) | same |
+| 6 | delete the fixture event; check it left the listings and the sitemap | `curl -s https://opensetlist.com/sitemap.xml \| grep -c "/events/<fixture>/"` → 0 (after the sitemap's revalidation); `/ja/events/<fixture>` → 404 |
+
+**C. T−10 rehearsal on the real Fes event (read-only)** — no save on the
+real event in step 8:
+`wake-check.mjs --prod-readonly --event-id=107 --wait-s=300` (loads, rows,
+sockets, foreground; save checks NOT EXERCISED by design) and
+`observer.mjs --prod-readonly --event-id=107 --duration-s=300`
+(subscribe / stay connected). The real T−10 check save is the show day's
+runbook step.
+
+**D. Rollback drill** (on the fixture event; recreate it if B deleted it)
+
+| # | operator | harness beside it |
+|---|---|---|
+| 1 | build the OFF deployment of the **same commit** (`LIVE_WARM_ENTRIES` unset) as a production deployment without assigning the domain; note its id (OFF) | start `wake-check.mjs --prod-readonly … --wait-s=1800` and `observer.mjs --prod-readonly … --duration-s=1800` (continuity across both switches) |
+| 2 | – | `transition-sampler.mjs --prod-readonly … --expect=<OFF dpl>` (start ~30 s before the click) |
+| 3 | **Instant Rollback** to OFF; write down the click time | sampler: first / last / sustained |
+| 4 | +30 s: a save on the fixture event; verify it at a listener | observer + wake-check record it |
+| 5 | – | `transition-sampler.mjs … --expect=<ON dpl>` |
+| 6 | **promote ON** back; click time; check the production domain auto-assignment state in Vercel afterwards (a rollback can leave it off) | sampler |
+| 7 | +30 s: a save; verify | observer + wake-check; then STOP files |
+| 8 | – | `vercel logs` export per deployment for the window ([liveWriter] acquire, 5xx, instances) |
+
+Three deployment ids go in the report (ON, OFF, and "last R1" — R1 never
+reached production, so that leg is NOT EXERCISED by construction).
