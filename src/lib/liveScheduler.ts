@@ -169,6 +169,18 @@
 //     `captureHint` has no ticket evidence at all, so its notifications
 //     still run as plain requests.
 //
+//   - `gone` is terminal. The server answered 404: the event does not
+//     exist or was soft-deleted (`/api/setlist` decides that from the
+//     snapshot's `found` / `isDeleted`). No later request can bring it
+//     back for this page — an event is not un-deleted mid-show, and if
+//     the operator ever does, a reload picks it up — so the scheduler
+//     stops for good: the pending retry / recheck / deferred request and
+//     the periodic timer are cleared, every obligation and ticket is
+//     dropped, and every later trigger is a no-op (exactly like
+//     `dispose()`). Treating it as an ordinary failure would retry with
+//     backoff forever and walk the indicator to "delayed" for a page
+//     that is simply not there any more.
+//
 // Everything time-related goes through the injectable `clock` and
 // `random` so the unit tests can drive it with fake timers and pinned
 // randomness. All values are relative waits — no stored-date
@@ -279,6 +291,8 @@ export type LiveHintOutcome = "resolved" | "inconclusive";
  *     the server-directed floor described in the header.
  *   - `cancelled`: the request no longer matters (the hook tore the
  *     channel down, or the event/locale changed). Nothing follows.
+ *   - `gone`: the server said the event no longer exists (HTTP 404).
+ *     Terminal — the scheduler stops itself (see the header).
  */
 export type LiveFetchOutcome =
   | { kind: "ok"; hint?: LiveHintOutcome }
@@ -299,7 +313,8 @@ export type LiveFetchOutcome =
        */
       hint?: LiveHintOutcome;
     }
-  | { kind: "cancelled" };
+  | { kind: "cancelled" }
+  | { kind: "gone" };
 
 export interface SchedulerClock {
   setTimeout(fn: () => void, ms: number): unknown;
@@ -420,6 +435,11 @@ export interface LiveSchedulerState {
    */
   notBeforeAt: number | null;
   disposed: boolean;
+  /**
+   * A request came back `gone` (404). Implies `disposed`: the scheduler
+   * stopped itself and will never fetch again.
+   */
+  gone: boolean;
 }
 
 export interface LiveScheduler {
@@ -511,6 +531,7 @@ export function createLiveScheduler(
 
   let periodic: PeriodicConfig | null = options.periodic ?? null;
   let disposed = false;
+  let gone = false;
   let started = false;
   let inFlight = false;
   // Whether the in-flight request took the generic path (a periodic
@@ -783,6 +804,22 @@ export function createLiveScheduler(
       return;
     }
 
+    if (outcome.kind === "gone") {
+      // Terminal (header): stop exactly as `dispose()` does, and drop
+      // every obligation, ticket and follow-up — none of them can be
+      // answered by a page that no longer exists. `gone` stays readable
+      // through `getState()` for callers and tests.
+      gone = true;
+      disposed = true;
+      clearScheduled();
+      clearPeriodic();
+      genericRequired = false;
+      notificationPending = false;
+      retryOwed = false;
+      carried = null;
+      return;
+    }
+
     const settledAt = clock.now();
 
     // ── The ticket's fate ──
@@ -958,6 +995,7 @@ export function createLiveScheduler(
         carriedHintPhase: carried?.phase ?? null,
         notBeforeAt: Number.isFinite(notBeforeAt) ? notBeforeAt : null,
         disposed,
+        gone,
       };
     },
   };

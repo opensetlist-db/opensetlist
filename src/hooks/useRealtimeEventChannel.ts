@@ -163,6 +163,13 @@ interface UseRealtimeEventChannelResult<T> {
    * hold. Advances on every applied fetch, periodic ones included.
    */
   capturedAt: string | null;
+  /**
+   * `/api/setlist` answered 404 — the event is missing or was
+   * soft-deleted. Terminal: no more requests, no channel, the last
+   * content stays on screen. `LiveEventLayout` hides the sync
+   * indicator on it. See `LiveSnapshotData.gone`.
+   */
+  gone: boolean;
 }
 
 /**
@@ -389,10 +396,24 @@ export function useRealtimeEventChannel<T>({
     hasReportedFallbackRef.current = false;
   }, [eventId]);
 
+  const { gone } = snapshot;
   useEffect(() => {
     if (!enabled) return;
     // R3.5: no channel (and no polling) while the tab is hidden.
     if (paused) return;
+    // Terminal 404 (`/api/setlist` says the event is missing or was
+    // soft-deleted). The request that saw it already stopped this
+    // session's scheduler (`gone` outcome — no retry, no recheck, no
+    // periodic tick); `gone` flipping re-runs this effect, and the
+    // cleanup of the session that saw it is what releases the rest —
+    // `removeChannel`, the boundary and recovery timers, the `online`
+    // listener. This guard then keeps every later run (a visibility
+    // resume, a startTime change) from joining the topic or seeding a
+    // request against an event that is not there. In practice the
+    // trigger is the soft-delete's own broadcast (the admin delete
+    // bumps + broadcasts in its transaction), or the next periodic
+    // repair poll if that broadcast was lost.
+    if (gone) return;
 
     // ──── Snapshot requests ────
     // One runner (request mechanics: URL + `minRev`, 8 s deadline,
@@ -759,7 +780,7 @@ export function useRealtimeEventChannel<T>({
       if (channel) void supabase.removeChannel(channel);
       channel = null;
     };
-  }, [eventId, locale, enabled, paused, startTime, createRunner]);
+  }, [eventId, locale, enabled, paused, gone, startTime, createRunner]);
 
   return snapshot;
 }

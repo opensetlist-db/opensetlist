@@ -120,15 +120,77 @@ describe("GET /api/setlist", () => {
     expect(getLiveSnapshot).toHaveBeenLastCalledWith(BigInt(111), "ja", null, { hint: false });
   });
 
-  it("soft-deleted event → status null", async () => {
+});
+
+// A missing or soft-deleted event answers 404 — the same as the event
+// page — decided from the snapshot's own `found` / `isDeleted`, so the
+// cached entry is enough (no extra read). The body is a stable code
+// (public response, no text) and the client treats it as terminal.
+describe("GET /api/setlist — missing / soft-deleted event", () => {
+  it.each([
+    ["found=false (no Event row)", { found: false, isDeleted: false, rawStatus: null, startTime: null, rev: BigInt(0) }],
+    ["isDeleted=true (soft-deleted)", { isDeleted: true }],
+    ["found=false and isDeleted reported", { found: false, isDeleted: true }],
+  ] as const)("%s → 404 not_found with the usual cache headers", async (_label, patch) => {
+    vi.mocked(getLiveSnapshot).mockResolvedValue({
+      snapshot: { ...snapshot, ...patch },
+      source: "cache",
+      verify: { kind: "none" },
+    });
+    const res = await get("eventId=111&locale=ko");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not_found" });
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(res.headers.get("x-snapshot-source")).toBe("cache");
+    // No snapshot was served, so there is no minRev resolution to report;
+    // and nothing in the 404 looks like the 503 the client retries.
+    expect(res.headers.get("x-snapshot-verify")).toBeNull();
+    expect(res.headers.get("Retry-After")).toBeNull();
+  });
+
+  it("passes the snapshot source through on a 404 (build / repair / warm)", async () => {
+    for (const source of ["build", "repair", "warm"] as const) {
+      vi.mocked(getLiveSnapshot).mockResolvedValue({
+        snapshot: { ...snapshot, isDeleted: true },
+        source,
+        verify: { kind: "none" },
+      });
+      const res = await get("eventId=111&locale=ja");
+      expect(res.status).toBe(404);
+      expect(res.headers.get("x-snapshot-source")).toBe(source);
+    }
+  });
+
+  it("found and not deleted → 200 with the snapshot", async () => {
+    const res = await get("eventId=111&locale=ja");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(res.headers.get("x-snapshot-source")).toBe("cache");
+    expect(res.headers.get("x-snapshot-verify")).toBe("none");
+    expect((await res.json()).rev).toBe(42);
+  });
+
+  it("a hinted fetch on a deleted event still logs its hint-fetch line", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     vi.mocked(getLiveSnapshot).mockResolvedValue({
       snapshot: { ...snapshot, isDeleted: true },
       source: "cache",
       verify: { kind: "none" },
     });
-    const body = await (await get("eventId=111")).json();
-    expect(body.status).toBeNull();
-    expect(body.startTime).toBeNull();
+    const res = await get("eventId=111&locale=ko&minRev=43&hint=1");
+    expect(res.status).toBe(404);
+    const lines = log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((l) => l.startsWith("[setlist] hint-fetch"));
+    expect(lines).toEqual([
+      expect.stringMatching(
+        /^\[setlist\] hint-fetch event=111 locale=ko minRev=43 verify=none instance=[0-9a-f]{8}$/,
+      ),
+    ]);
   });
 });
 

@@ -266,6 +266,7 @@ export function LiveEventLayout({
     lastUpdated,
     freshness,
     capturedAt,
+    gone,
   } = useRealtimeEventChannel<LiveSetlistItem>({
     eventId,
     initialItems,
@@ -416,7 +417,13 @@ export function LiveEventLayout({
           isOngoing={isOngoing}
           locale={locale}
           status={effectiveStatus}
-          freshness={freshness}
+          // A 404 from `/api/setlist` (event soft-deleted or missing)
+          // stops every live request for good (`gone`). The last content
+          // stays as it is, but the 「最終同期」 indicator would freeze on
+          // its last time — or, if the deletion landed during a retry,
+          // keep claiming "delayed" — so it is hidden instead.
+          // `<LiveSetlist>` renders no indicator without `freshness`.
+          freshness={gone ? undefined : freshness}
           // Reaction ack hold watermark. `null` (no snapshot watermark
           // known — SSR or API without n14's `capturedAt`) is passed as
           // `undefined` so `<ReactionButtons>` keeps its pre-n14

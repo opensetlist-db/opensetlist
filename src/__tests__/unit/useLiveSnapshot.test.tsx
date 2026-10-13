@@ -183,3 +183,104 @@ describe("useLiveSnapshot runner — R2 hint contract", () => {
     expect(runner.captureHint()).toBeNull();
   });
 });
+
+// A 404 from `/api/setlist` means the event is missing or soft-deleted.
+// The runner must hand the scheduler a terminal `gone` — never a
+// `failed` (which would be retried with backoff forever) — and expose
+// `gone` without touching the content or the failure bookkeeping.
+describe("useLiveSnapshot runner — 404 is terminal (gone)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const notFound = () => ({
+    ok: false,
+    status: 404,
+    headers: new Headers({ "x-snapshot-source": "cache" }),
+    json: async () => ({ error: "not_found" }),
+  });
+
+  async function runOnce(hook: ReturnType<typeof mount>, request: LiveFetchRequest) {
+    const runner = hook.result.current.createRunner();
+    let outcome: LiveFetchOutcome | null = null;
+    await act(async () => {
+      outcome = await runner.runFetch(request.reason, request);
+    });
+    return outcome!;
+  }
+
+  it("404 → { kind: 'gone' }, gone=true, no failure counted, last content kept", async () => {
+    fetchMock.mockResolvedValueOnce(response(6, "satisfied"));
+    const hook = mount(5);
+    expect(await runOnce(hook, generic)).toEqual({ kind: "ok" });
+    expect(hook.result.current.data.items).toEqual([{ id: "rev6" }]);
+
+    const onFailure = vi.fn();
+    fetchMock.mockResolvedValueOnce(notFound());
+    const runner = hook.result.current.createRunner(onFailure);
+    let outcome: LiveFetchOutcome | null = null;
+    await act(async () => {
+      outcome = await runner.runFetch("notification", notification(7));
+    });
+    expect(outcome).toEqual({ kind: "gone" });
+    expect(onFailure).not.toHaveBeenCalled();
+    const data = hook.result.current.data;
+    expect(data.gone).toBe(true);
+    // Content and the sync bookkeeping are left exactly as they were.
+    expect(data.items).toEqual([{ id: "rev6" }]);
+    expect(data.rev).toBe(6);
+    expect(data.freshness.state).toBe("live");
+  });
+
+  it("a 404 is never a hint verdict and never reads the body", async () => {
+    const json = vi.fn(async () => ({ error: "not_found" }));
+    fetchMock.mockResolvedValueOnce({ ...notFound(), json });
+    const hook = mount(5);
+    expect(await runOnce(hook, notification(9))).toEqual({ kind: "gone" });
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("other non-OK statuses stay retryable failures (500 / 503 / 410 are not gone)", async () => {
+    const hook = mount(5);
+    for (const status of [500, 503, 410]) {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status,
+        headers: new Headers({}),
+        json: async () => ({}),
+      });
+      expect((await runOnce(hook, generic)).kind).toBe("failed");
+    }
+    expect(hook.result.current.data.gone).toBe(false);
+  });
+
+  it("gone resets on event change", async () => {
+    fetchMock.mockResolvedValueOnce(notFound());
+    const hook = renderHook(
+      ({ eventId }: { eventId: string }) =>
+        useLiveSnapshot<{ id: string }>({
+          eventId,
+          locale: "ko",
+          initialItems: [],
+          initialReactionCounts: {},
+          initialTop3Wishes: [],
+          initialRev: 5,
+          initialCapturedAt: T0,
+        }),
+      { initialProps: { eventId: "1" } },
+    );
+    const runner = hook.result.current.createRunner();
+    await act(async () => {
+      await runner.runFetch("periodic", generic);
+    });
+    expect(hook.result.current.data.gone).toBe(true);
+    hook.rerender({ eventId: "2" });
+    expect(hook.result.current.data.gone).toBe(false);
+  });
+});
