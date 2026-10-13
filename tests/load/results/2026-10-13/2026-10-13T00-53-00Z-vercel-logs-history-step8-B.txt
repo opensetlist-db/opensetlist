@@ -1,0 +1,2093 @@
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "dpl_84mZdx7b4ES7hafdQSNr9zagHrzk"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+TIME         HOST             LEVEL                                                                           
+18:02:37.37  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:02:36.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=43 instance=960fcd97
+[prisma] pool total=2 idle=2 waiting=0 instance=960fcd97 tag=build
+
+18:02:36.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=31 instance=960fcd97
+[prisma] pool total=2 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:35.15  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:35.01  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=27 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:32.81  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:02:31.98  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:31.92  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=30 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:31.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=28 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:29.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:27.69  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:26.97  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:26.56  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:02:26.08  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:25.94  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:23.42  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:22.96  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:22.06  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:21.42  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=28 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:18.78  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=2 idle=2 waiting=0 instance=960fcd97 tag=build
+
+18:02:18.09  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:17.91  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=32 instance=960fcd97
+[prisma] pool total=2 idle=2 waiting=0 instance=960fcd97 tag=build
+
+18:02:17.44  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:15.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=2 idle=2 waiting=0 instance=960fcd97 tag=build
+
+18:02:15.57  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:15.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=33 instance=960fcd97
+[prisma] pool total=2 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:12.82  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:02:12.38  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=30 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:11.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=28 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:10.55  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:02:10.42  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=33 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:09.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=48 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:06.76  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:06.32  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=29 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:03.91  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=33 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:02.69  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=30 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:02.09  opensetlist.com  info   λ GET /ja/songs/1306/make-up-session-abc                                 
+
+18:02:00.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=77 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:02:00.59  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:02:00.34  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=35 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:01:59.03  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=31 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:01:56.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=33 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:01:56.22  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:55.41  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=35 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:01:55.17  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:53.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=38 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+18:01:52.51  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=52 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+18:01:51.57  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=46 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+
+18:01:51.39  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:51.13  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=41 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+18:01:49.02  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:48.44  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:48.39  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=38 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+18:01:48.31  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=38 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+18:01:48.23  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:48.02  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:46.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=23 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=5 verify=satisfied instance=8d795271
+
+18:01:46.07  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=23 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=en minRev=5 verify=satisfied instance=8d795271
+
+18:01:46.06  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=24 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=5 verify=satisfied instance=8d795271
+
+18:01:45.85  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=37 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=5 verify=satisfied instance=45f4e6a4
+
+18:01:45.76  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=37 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=5 verify=satisfied instance=45f4e6a4
+
+18:01:45.74  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=24 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=5 verify=satisfied instance=8d795271
+
+18:01:45.61  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=455 instance=960fcd97
+[prisma] pool total=1 idle=1 waiting=0 instance=960fcd97 tag=build
+[setlist] hint-fetch event=109 locale=en minRev=5 verify=satisfied instance=960fcd97
+
+18:01:45.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=74 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=5 verify=satisfied instance=45f4e6a4
+
+18:01:45.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[setlist] hint-fetch event=109 locale=en minRev=5 verify=satisfied instance=077fbf0a
+
+18:01:45.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=40 instance=077fbf0a
+[prisma] pool total=2 idle=2 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=5 verify=satisfied instance=077fbf0a
+
+18:01:45.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=5 items=3 ms=33 instance=8d795271
+[prisma] pool total=2 idle=1 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=5 verify=satisfied instance=8d795271
+
+18:01:45.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=5 items=3 ms=38 instance=077fbf0a
+[prisma] pool total=2 idle=2 waiting=0 instance=077fbf0a tag=build
+[liveSnapshot] coalesced waiters=2 event=109 locale=en instance=077fbf0a
+[setlist] hint-fetch event=109 locale=en minRev=5 verify=satisfied instance=077fbf0a
+
+18:01:45.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=5 items=3 ms=54 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=5 verify=satisfied instance=8d795271
+
+18:01:45.27  opensetlist.com  info     DELETE /api/admin/setlist-items/4182                                   
+[liveWriter] route=admin-delete acquireMs=4 execMs=28 rev=5 ok=true at=1791853305431 instance=077fbf0a
+
+18:01:44.27  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=38 instance=077fbf0a
+[prisma] pool total=2 idle=2 waiting=0 instance=077fbf0a tag=build
+
+18:01:43.69  opensetlist.com  info   λ GET /sitemap.xml                                                       
+
+18:01:43.56  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:42.74  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:42.67  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:42.09  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:41.86  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:40.01  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:38.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:34.83  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:33.04  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:32.78  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=38 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:32.36  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:31.43  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:30.98  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:29.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=43 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:28.45  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:28.05  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:26.45  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:24.25  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:23.38  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:23.17  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:22.26  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:21.66  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:19.98  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:18.86  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=58 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+18:01:18.85  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:18.25  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:17.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:14.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:14.37  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:13.78  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:01:13.34  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:13.24  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:13.15  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:11.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=103 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:10.05  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:08.95  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:08.28  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:06.61  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:01:04.43  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:01:02.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:58.29  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:57.99  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:57.72  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:00:56.98  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:56.67  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:56.35  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=27 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:56.28  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=27 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:55.28  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:54.75  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:51.83  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:51.47  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:51.29  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:49.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=58 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:49.43  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:49.28  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:49.20  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:47.92  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:45.61  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:44.40  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:41.69  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:41.56  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:40.45  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:39.51  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:37.71  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:00:36.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:36.11  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:35.16  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=28 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:35.03  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:32.20  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:32.13  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:31.35  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:31.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:28.42  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:27.33  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:26.86  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:26.63  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:25.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:24.31  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=27 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:23.36  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:22.57  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:20.95  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:18.31  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:17.76  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:16.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:15.61  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:15.20  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:13.48  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:13.30  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:13.00  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:12.78  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:00:12.42  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:11.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:10.48  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:07.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:07.43  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:04.54  opensetlist.com  info   λ GET /api/impressions                                                   
+
+18:00:03.76  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=27 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:03.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=32 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+18:00:02.38  opensetlist.com  info   λ GET /api/setlist                                                       
+
+18:00:02.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=27 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:59.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:58.06  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:57.62  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:57.46  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:54.66  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:53.97  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:53.36  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:52.05  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=53 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:51.02  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:49.78  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:49.51  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:49.29  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:49.23  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:48.04  opensetlist.com  warn     GET /ko/members/8200ee44-6f50-4a0c-8d11-6c27703f750f/katsuragi-izumi   
+Failed to set Next.js data cache for unstable_cache /ko/members/8200ee44-6f50-4a0c-8d11-6c27703f750f/katsuragi-izumi?tab=history 632533fc8de0493f9324b819904876f0565512b2d6b5c664be53e870e464d1c0, items over 2MB can not be cached (2528864 bytes)
+
+17:59:47.64  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:46.12  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:44.09  opensetlist.com  info   λ GET /ja                                                                
+
+17:59:43.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:43.22  opensetlist.com  info     GET /                                                                  
+
+17:59:40.93  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:40.27  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:40.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:40.03  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:39.90  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:38.93  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:37.68  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:37.08  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:36.72  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:35.13  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:33.14  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:31.63  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:31.01  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:30.52  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:59:30.35  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:25.79  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:25.25  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:23.65  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:59:23.58  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:22.32  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:59:22.12  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:21.65  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:19.92  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:59:19.89  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=2 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:16.70  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:59:16.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:15.78  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:15.34  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:14.90  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:59:13.36  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:12.69  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:12.30  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:11.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:10.93  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:09.75  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:09.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=22 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:08.22  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:06.63  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:59:06.40  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:03.75  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:59:02.73  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:59.37  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:58.13  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:58.10  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:58:57.80  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:55.12  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:54.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:54.19  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=28 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:52.71  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:58:52.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:52.41  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:51.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:50.53  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:50.11  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:49.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:49.30  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:48.84  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:47.41  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:46.44  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:44.17  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:42.30  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:40.37  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:39.05  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:58:37.67  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:58:37.25  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:36.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:36.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=2 idle=2 waiting=0 instance=8d795271 tag=build
+
+17:58:36.12  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=41 instance=8d795271
+[prisma] pool total=2 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:35.40  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:34.56  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:33.94  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:33.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:30.41  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:58:28.91  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:27.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=73 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:27.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:24.34  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:23.79  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:23.35  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:23.14  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:20.66  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:19.13  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:18.42  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:17.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:16.86  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:16.35  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:15.57  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:14.25  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:58:13.90  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:13.65  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:13.32  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:11.82  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=87 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:10.14  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:09.07  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:08.74  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=39 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:08.45  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:07.37  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=40 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:06.27  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:58:02.21  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=40 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:01.59  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:58:00.19  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=40 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:58.75  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:58.63  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:57:57.96  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:57.44  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:57.39  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:53.52  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:53.01  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:57:52.71  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=44 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:52.20  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=41 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:51.76  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=40 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:50.57  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:49.63  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:48.92  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=56 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:48.92  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:47.00  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:57:46.92  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=55 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:57:45.77  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:43.53  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:42.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:42.01  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:40.32  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=38 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:57:38.54  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:38.36  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:38.36  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:37.72  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:36.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=34 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:36.29  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=39 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:33.76  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:57:32.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:32.29  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:31.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:31.49  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:30.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:27.77  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:26.80  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:25.53  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:24.43  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:22.83  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:22.31  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:21.72  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:20.51  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:20.12  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:18.88  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:18.37  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:18.11  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:14.86  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:14.81  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:13.92  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:12.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:12.39  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:12.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:11.80  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:09.61  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=38 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:08.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:07.06  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:06.20  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:05.10  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:04.03  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:57:02.78  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:01.57  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:57:01.19  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:57:00.21  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=47 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:59.21  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:58.69  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:56.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=41 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:55.21  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:53.60  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:56:53.58  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:52.86  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:52.74  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:52.21  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:50.99  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:49.66  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:47.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:46.46  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:44.28  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:44.16  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:42.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:42.00  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:39.40  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:39.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:38.08  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:36.89  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:36.78  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:56:36.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:35.84  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:56:34.94  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=113 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:56:34.94  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:33.93  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:32.71  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:32.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:31.76  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:56:30.98  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=33 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:29.26  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:28.74  opensetlist.com  info     GET /ko/songs/224/yuki-mau-sora-to-nibyou-no-eien                      
+
+17:56:26.75  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=33 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:25.01  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:24.39  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:22.51  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=33 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:20.35  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:19.04  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=51 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:17.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=32 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:16.60  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:15.13  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:14.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:13.95  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:12.84  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:12.74  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:12.25  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:56:12.16  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:11.39  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:11.21  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:10.16  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:09.37  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:07.64  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:06.28  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:05.80  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:56:03.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:02.58  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:56:00.14  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:59.68  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:58.76  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:57.83  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:55.93  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:55.90  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:54.88  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:54.83  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:54.56  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:52.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:51.44  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:51.18  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:50.18  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:49.30  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:47.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:47.06  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:43.30  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:42.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:42.73  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:42.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:42.14  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:40.50  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:38.38  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:37.11  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:36.95  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:35.56  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:35.24  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:33.10  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:33.04  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:32.38  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:32.26  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=51 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:31.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:31.10  opensetlist.com  info     GET /ko/songs/25/kokon-touzai                                          
+
+17:55:30.48  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:29.93  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:28.40  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:26.47  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:26.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:25.46  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:23.94  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:22.20  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:21.83  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:17.70  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:17.63  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:17.45  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:17.00  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:15.98  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:15.67  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:14.75  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:14.50  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:13.55  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:09.93  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:55:09.80  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:09.23  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:07.72  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:05.67  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:05.08  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:55:02.50  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:02.47  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:55:01.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=37 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:59.63  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:59.25  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:59.12  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:58.79  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:58.28  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:57.18  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=38 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:55.15  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:53.85  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:53.31  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:52.53  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:52.10  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:52.05  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:49.57  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:48.97  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=34 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:48.81  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:47.13  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:44.30  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:43.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=36 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:43.89  opensetlist.com  info   λ GET /ja                                                                
+
+17:54:43.79  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=54 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:43.20  opensetlist.com  info     GET /                                                                  
+
+17:54:40.48  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:40.47  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:39.25  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:38.72  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:36.41  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:35.67  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:35.46  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:34.39  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:34.18  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:33.63  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:33.15  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:32.68  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:32.43  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:30.85  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:29.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:27.35  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:27.10  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:26.89  opensetlist.com  info     GET /en/songs/3007/mahoutsukai-hajimemashita                           
+
+17:54:25.49  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:24.93  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:23.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:21.76  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:20.55  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:20.16  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:19.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:19.22  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:18.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:17.29  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:15.37  opensetlist.com  info     GET /en                                                                
+
+17:54:15.34  opensetlist.com  info     GET /en/songs/1/dream-believers                                        
+
+17:54:15.15  opensetlist.com  info     GET /en/artists/1/hasunosora                                           
+
+17:54:15.15  opensetlist.com  info     GET /en/songs/3195/sunny-day-song                                      
+
+17:54:15.14  opensetlist.com  info     GET /en/artists/92/muse                                                
+
+17:54:15.09  opensetlist.com  info     GET /en/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.93  opensetlist.com  info     GET /en/artists/76/aqours                                              
+
+17:54:14.92  opensetlist.com  info     GET /ko                                                                
+
+17:54:14.90  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:14.89  opensetlist.com  info     GET /en/artists/22/nijigasaki                                          
+
+17:54:14.87  opensetlist.com  info     GET /en                                                                
+
+17:54:14.84  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:14.83  opensetlist.com  info     GET /ko/songs/1/dream-believers                                        
+
+17:54:14.82  opensetlist.com  info     GET /ja                                                                
+
+17:54:14.79  opensetlist.com  info     GET /ja/songs/1/dream-believers                                        
+
+17:54:14.78  opensetlist.com  info     GET /ko/artists/1/hasunosora                                           
+
+17:54:14.73  opensetlist.com  info     GET /ko/songs/3195/sunny-day-song                                      
+
+17:54:14.72  opensetlist.com  info     GET /en/songs/1/dream-believers                                        
+
+17:54:14.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:14.70  opensetlist.com  info     GET /en/songs/3195/sunny-day-song                                      
+
+17:54:14.69  opensetlist.com  info     GET /en/artists/1/hasunosora                                           
+
+17:54:14.68  opensetlist.com  info     GET /ja/artists/1/hasunosora                                           
+
+17:54:14.68  opensetlist.com  info     GET /en/artists/92/muse                                                
+
+17:54:14.67  opensetlist.com  info     GET /ko/artists/92/muse                                                
+
+17:54:14.67  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:14.65  opensetlist.com  info     GET /ko/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.62  opensetlist.com  info     GET /ja/songs/3195/sunny-day-song                                      
+
+17:54:14.59  opensetlist.com  info     GET /ja/artists/92/muse                                                
+
+17:54:14.59  opensetlist.com  info     GET /ko/artists/76/aqours                                              
+
+17:54:14.56  opensetlist.com  info     GET /ja/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.51  opensetlist.com  info   λ GET /en/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.51  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:14.50  opensetlist.com  info   λ GET /en/artists/22/nijigasaki                                          
+
+17:54:14.50  opensetlist.com  info   λ GET /en/artists/76/aqours                                              
+
+17:54:14.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:14.48  opensetlist.com  info     GET /ko/songs/1274/just-believe                                        
+
+17:54:14.48  opensetlist.com  info   λ GET /ko/artists/22/nijigasaki                                          
+
+17:54:14.47  opensetlist.com  info   λ GET /ko                                                                
+
+17:54:14.41  opensetlist.com  info   λ GET /ja/artists/22/nijigasaki                                          
+
+17:54:14.40  opensetlist.com  info   λ GET /ja/artists/76/aqours                                              
+
+17:54:14.40  opensetlist.com  info   λ GET /ko/songs/1/dream-believers                                        
+
+17:54:14.40  opensetlist.com  info   λ GET /ja/songs/1274/just-believe                                        
+
+17:54:14.38  opensetlist.com  info   λ GET /ja                                                                
+
+17:54:14.31  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:14.30  opensetlist.com  info   λ GET /ko/artists/1/hasunosora                                           
+
+17:54:14.30  opensetlist.com  info   λ GET /ko/songs/3195/sunny-day-song                                      
+
+17:54:14.30  opensetlist.com  info   λ GET /ko/artists/92/muse                                                
+
+17:54:14.22  opensetlist.com  info   λ GET /ja/songs/1/dream-believers                                        
+
+17:54:14.22  opensetlist.com  info   λ GET /ja/artists/1/hasunosora                                           
+
+17:54:14.22  opensetlist.com  info   λ GET /ja/songs/3195/sunny-day-song                                      
+
+17:54:14.21  opensetlist.com  info   λ GET /ja/artists/92/muse                                                
+
+17:54:14.11  opensetlist.com  info   λ GET /ko/artists/76/aqours                                              
+
+17:54:14.11  opensetlist.com  info   λ GET /ko/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.11  opensetlist.com  info   λ GET /ko/songs/1274/just-believe                                        
+
+17:54:14.11  opensetlist.com  info   λ GET /ko/artists/22/nijigasaki                                          
+
+17:54:14.10  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:14.02  opensetlist.com  info   λ GET /ja/artists/22/nijigasaki                                          
+
+17:54:14.02  opensetlist.com  info   λ GET /ja/songs/1274/just-believe                                        
+
+17:54:14.02  opensetlist.com  info   λ GET /ja/songs/1908/koi-ni-naritai-aquarium                             
+
+17:54:14.02  opensetlist.com  info   λ GET /ja/artists/76/aqours                                              
+
+17:54:14.01  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:13.62  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=35 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:54:13.26  opensetlist.com  info     GET /en/events/109/smoke-test-v0190                                    
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=199 instance=d2368388
+[prisma] pool total=2 idle=2 waiting=0 instance=d2368388 tag=build
+
+17:54:13.24  opensetlist.com  info     GET /ja/events/109/smoke-test-v0190                                    
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=31 instance=ab715c79
+[prisma] pool total=2 idle=2 waiting=0 instance=ab715c79 tag=build
+
+17:54:13.24  opensetlist.com  info     GET /ko/events/109/smoke-test-v0190                                    
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=70 instance=5f0a8401
+[prisma] pool total=2 idle=2 waiting=0 instance=5f0a8401 tag=build
+
+17:54:09.82  opensetlist.com  info   λ GET /ja/songs/1274/just-believe                                        
+
+17:54:09.82  opensetlist.com  info   λ GET /ja/artists/22/nijigasaki                                          
+
+17:54:09.64  opensetlist.com  info   λ GET /ja/songs/1274/just-believe                                        
+
+17:54:09.64  opensetlist.com  info   λ GET /ja/artists/22/nijigasaki                                          
+
+17:54:09.45  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:54:08.95  opensetlist.com  info   λ GET /ko/artists/22/nijigasaki                                          
+
+17:54:08.62  opensetlist.com  info     GET /ja/songs/1274/just-believe                                        
+
+17:54:08.61  opensetlist.com  info     GET /ja/artists/22/nijigasaki                                          
+
+17:54:08.56  opensetlist.com  info     GET /en/artists/22/nijigasaki                                          
+
+17:54:08.54  opensetlist.com  info     GET /ko/songs/1274/just-believe                                        
+
+17:54:08.53  opensetlist.com  info     GET /ja/artists/22/nijigasaki                                          
+
+17:54:08.52  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:08.49  opensetlist.com  info     GET /ja/songs/1274/just-believe                                        
+
+17:54:08.41  opensetlist.com  info   λ GET /ja/artists/22/nijigasaki                                          
+
+17:54:08.41  opensetlist.com  info   λ GET /ja/songs/1274/just-believe                                        
+
+17:54:08.39  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:08.34  opensetlist.com  info     GET /en/artists/22/nijigasaki                                          
+
+17:54:08.34  opensetlist.com  info     GET /ko/songs/1274/just-believe                                        
+
+17:54:08.34  opensetlist.com  info   λ GET /ko/artists/22/nijigasaki                                          
+
+17:54:08.32  opensetlist.com  info     GET /ko/artists/22/nijigasaki                                          
+
+17:54:08.30  opensetlist.com  info     GET /en/artists/22/nijigasaki                                          
+
+17:54:08.30  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:08.29  opensetlist.com  info     GET /ja/artists/22/nijigasaki                                          
+
+17:54:08.29  opensetlist.com  info     GET /ja/songs/1274/just-believe                                        
+
+17:54:08.27  opensetlist.com  info     GET /ko/songs/1274/just-believe                                        
+
+17:54:08.17  opensetlist.com  info     GET /en/artists/22/nijigasaki                                          
+
+17:54:08.17  opensetlist.com  info     GET /en/songs/1274/just-believe                                        
+
+17:54:08.11  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=46 instance=077fbf0a
+[prisma] pool total=2 idle=2 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:08.09  opensetlist.com  info     GET /ko/songs/1274/just-believe                                        
+
+17:54:08.09  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=102 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=4 verify=satisfied instance=8d795271
+
+17:54:08.09  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=28 instance=077fbf0a
+[prisma] pool total=2 idle=1 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:08.09  opensetlist.com  info     GET /ko/artists/22/nijigasaki                                          
+
+17:54:07.99  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=40 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+[setlist] hint-fetch event=109 locale=en minRev=4 verify=satisfied instance=45f4e6a4
+
+17:54:07.90  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=66 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=en minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:07.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=29 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:07.85  opensetlist.com  info   λ GET /admin/events/109/edit                                             
+
+17:54:07.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=4 items=4 ms=29 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ja minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:07.69  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=4 items=4 ms=29 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+[setlist] hint-fetch event=109 locale=ko minRev=4 verify=satisfied instance=077fbf0a
+
+17:54:07.69  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=4 items=4 ms=58 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+[setlist] hint-fetch event=109 locale=en minRev=4 verify=satisfied instance=45f4e6a4
+
+17:54:07.60  opensetlist.com  info   λ GET /api/admin/events/109                                              
+
+17:54:07.25  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:07.24  opensetlist.com  info     POST /api/admin/setlist-items                                          
+[liveWriter] route=admin-create acquireMs=3 execMs=68 rev=4 ok=true at=1791852847519 instance=077fbf0a
+
+17:54:06.71  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:04.53  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:02.57  opensetlist.com  info   λ GET /api/songs/search                                                  
+
+17:54:01.98  opensetlist.com  info   λ GET /api/songs/search                                                  
+
+17:54:01.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=29 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:01.55  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:01.47  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:54:00.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:54:00.38  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=33 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:59.41  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:58.82  opensetlist.com  info   λ GET /api/admin/artists                                                 
+
+17:53:56.89  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:56.69  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:55.62  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:55.57  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:53:54.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=31 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:50.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=32 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:50.32  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:49.58  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=71 instance=077fbf0a
+[prisma] pool total=1 idle=1 waiting=0 instance=077fbf0a tag=build
+
+17:53:46.19  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:44.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=29 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+17:53:43.12  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=31 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+17:53:42.78  opensetlist.com  info   λ GET /api/admin/artists                                                 
+
+17:53:41.58  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:40.42  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=55 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+17:53:39.00  opensetlist.com  info   λ GET /api/setlist                                                       
+
+17:53:38.76  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=32 instance=45f4e6a4
+[prisma] pool total=1 idle=1 waiting=0 instance=45f4e6a4 tag=build
+
+17:53:37.77  opensetlist.com  info   λ GET /api/admin/stage-identities                                        
+
+17:53:37.44  opensetlist.com  info     GET /api/admin/albums                                                  
+
+17:53:37.44  opensetlist.com  info     GET /api/admin/stage-identities                                        
+
+17:53:37.44  opensetlist.com  info   λ GET /api/admin/artists                                                 
+
+17:53:37.44  opensetlist.com  info     GET /api/admin/event-series                                            
+
+17:53:37.12  opensetlist.com  info   λ GET /admin/events/109/edit                                             
+
+17:53:35.48  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:34.23  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:33.10  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:31.22  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:29.52  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:28.75  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:27.22  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:25.40  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:24.33  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:23.44  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:23.32  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:22.60  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:21.11  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:20.79  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:19.04  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:15.82  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:14.70  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=22 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:12.87  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=25 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:12.39  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:11.50  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ko rev=3 items=3 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:09.24  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:09.15  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:04.62  opensetlist.com  info   λ GET /api/impressions                                                   
+
+17:53:03.56  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=23 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:01.96  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=ja rev=3 items=3 ms=24 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+17:53:01.35  opensetlist.com  info   λ GET /api/setlist                                                       
+[liveSnapshot] build event=109 locale=en rev=3 items=3 ms=26 instance=8d795271
+[prisma] pool total=1 idle=1 waiting=0 instance=8d795271 tag=build
+
+Fetched 686 logs for opensetlist-projects/opensetlist
