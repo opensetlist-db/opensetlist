@@ -30,6 +30,14 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.19.1 (2026-10-13)
+- **`/api/setlist` answers 404 for a missing or soft-deleted event, and open tabs stop on it (#596).** Patch bump: **no schema change**, no env vars, no new deps. Found in n14 step 8: after an event was soft-deleted the page answered 404 but the API kept serving the last snapshot (`status: null`) and an open tab polled it forever.
+  - Route: `!snapshot.found || snapshot.isDeleted` → 404 `{ error: "not_found" }` with `Cache-Control: public, max-age=0, must-revalidate`; decided from the cached snapshot (no extra DB read, no rebuild).
+  - Client: HTTP 404 is a terminal `gone` outcome — the scheduler cancels retry / recheck / periodic work, the Realtime channel and timers are released, polling stays off across re-enable, the sync indicator is hidden; the last content stays on screen, no redirect. 410 and 5xx remain retryable. Open tabs learn of a deletion from the admin delete's own broadcast or the next poll.
+- **n14 qualification step 8 — production verification of v0.19.0: PASS (#593, #595).** Read-only tooling (`observer.mjs --prod-readonly`, `wake-check.mjs`, `transition-sampler.mjs`) watched a throwaway production event while the operator saved: every broadcast reached every listener within 5 ms of each other ~0.5 s after the save, open pages updated ≤ 1.13 s after the frame, a WebSocket-blocked page caught up by polling in 2.0 s, fresh loads were SSR-seeded at the new revision; Instant Rollback to a warming-OFF twin and promotion back propagated in 5–6 s with a 1–4 s overlap and open tabs survived; 0 × 5xx, writer acquire 3–4 ms. Report: `tests/load/results/2026-10-13/REPORT-step8.md`. The n14 qualification (steps 1–8) is complete.
+- **Release flow corrected (#594):** Vercel deploys `main` on the release-PR merge, the tag only triggers `migrate-prod`; schema-changing releases run `migrate-prod.yml --ref dev` before the merge (v0.19.0 had four minutes of 500s between its merge and its migration).
+- **Post-deploy (prod):** `GET /api/setlist?eventId=<a deleted or non-existent id>&locale=ko` → 404; a live event's page and API unchanged (200, `x-snapshot-source` present).
+
 ### v0.19.0 (2026-10-13)
 - **Live setlist path (n13 + n14): a save reaches every open event page in about 2 s instead of the next 20 s poll.** Minor bump: **one additive schema change** (`Event.setlistRevision BigInt @default(0)`), two new optional env vars (`LIVE_WARM_ENTRIES`, `LIVE_WARM_CONCURRENCY`), one new dependency (`@vercel/functions`), Prisma 7.7 → 7.10. The admin builder and the public pages look the same; what changes is how fast and how reliably an edit becomes visible, and how the server behaves under 500 simultaneous viewers.
 - **#563 — n13 live freshness.** Bounded retries with a fetch deadline, catch-up fetch after (re)subscribe, and a sync indicator on the event page; the 20 ± 4 s poll remains the safety net.
