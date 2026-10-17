@@ -29,7 +29,7 @@
  * Pure — no Prisma / Next imports, so it unit-tests in isolation.
  */
 
-import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchy";
+import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
 import type { AvailableSong } from "@/lib/types/predict";
 import type { EventRosterEntry } from "@/lib/types/setlist";
 
