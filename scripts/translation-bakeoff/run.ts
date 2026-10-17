@@ -27,6 +27,10 @@ import { config as loadEnv } from "dotenv";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { HARD_CASES, type BakeoffCase } from "./cases";
+import {
+  ANTHROPIC_MODELS,
+  type AnthropicModel,
+} from "../../src/lib/translator/anthropic";
 
 // .env.local first so it wins over .env, matching Next.js precedence.
 // Must run before anything that reads process.env at import time
@@ -37,24 +41,22 @@ const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 const BUCKET_IPS = ["hasunosora", "nijigasaki"] as const;
 
-type ProviderId =
-  | "gemini"
-  | "openai"
-  | "claude-haiku-5-5"
-  | "claude-sonnet-5-5";
-const ALL_PROVIDERS: ProviderId[] = [
-  "gemini",
-  "openai",
-  "claude-haiku-5-5",
-  "claude-sonnet-5-5",
-];
+// ANTHROPIC_MODELS is a static import: anthropic.ts reads no env at
+// import time, so it is safe ahead of loadEnv (unlike prisma, below).
+type ProviderId = "gemini" | "openai" | AnthropicModel;
+const ALL_PROVIDERS: ProviderId[] = ["gemini", "openai", ...ANTHROPIC_MODELS];
+
+function isAnthropicModel(p: ProviderId): p is AnthropicModel {
+  return (ANTHROPIC_MODELS as readonly string[]).includes(p);
+}
 
 // USD per million tokens, from platform.claude.com pricing as of
 // 2026-10-17. Only Claude cost is computed: its per-call cost depends on
 // cache write vs read, which the response usage reports. Gemini/OpenAI
 // costs are already known from production and their raw helpers don't
-// surface usage.
-const CLAUDE_PRICES: Record<string, {
+// surface usage. Keyed by AnthropicModel so a model added to
+// ANTHROPIC_MODELS fails typecheck here until it has a price.
+const CLAUDE_PRICES: Record<AnthropicModel, {
   input: number;
   cacheWrite5m: number;
   cacheRead: number;
@@ -212,9 +214,7 @@ async function buildCallers(
     }
   }
 
-  const claudeModels = providers.filter(
-    (p): p is "claude-haiku-5-5" | "claude-sonnet-5-5" => p.startsWith("claude-"),
-  );
+  const claudeModels = providers.filter(isAnthropicModel);
   if (claudeModels.length > 0) {
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) console.warn("  skip claude: ANTHROPIC_API_KEY not set");
