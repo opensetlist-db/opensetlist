@@ -60,3 +60,6 @@ next-env.d.ts
 # browsers run per-client timelines (one line per client, tens of MB at
 # full scale) — kept on the load host for later analysis, never committed.
 /tests/load/results/**/*.jsonl
+
+# translation bake-off output — contains users' impression text
+/scripts/translation-bakeoff/out/

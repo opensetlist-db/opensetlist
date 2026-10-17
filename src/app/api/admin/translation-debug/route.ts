@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { IMPRESSION_LOCALES } from "@/lib/config";
 import {
@@ -16,10 +17,16 @@ import {
 } from "@/lib/translator/prompts/keys";
 import { geminiRawTranslate } from "@/lib/translator/gemini";
 import { openaiRawTranslate } from "@/lib/translator/openai";
+import {
+  anthropicRawTranslate,
+  ANTHROPIC_MODEL,
+  ANTHROPIC_MODELS,
+  type AnthropicModel,
+} from "@/lib/translator/anthropic";
 
 const TRANSLATOR_TIMEOUT_MS = 30_000;
 
-const PROVIDERS = ["gemini", "openai"] as const;
+const PROVIDERS = ["gemini", "openai", "anthropic"] as const;
 type Provider = (typeof PROVIDERS)[number];
 
 // Admin can target any registered IP prompt by slug, or the generic
@@ -29,10 +36,11 @@ const VALID_IP_KEYS: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY]
 
 // POST /api/admin/translation-debug
 // Body: { sourceLocale: "ko" | "ja" | "en", text: string,
-//         provider?: "gemini" | "openai",
+//         provider?: "gemini" | "openai" | "anthropic",
+//         model?: <ANTHROPIC_MODELS>  (anthropic only),
 //         ipKey?: <REGISTERED_IP_KEYS> | "generic" }
 // Response: { systemPrompt, input, raw, parsed, parseError, sourceLocale,
-//             provider, ipKey }
+//             provider, model, ipKey }
 //
 // `ipKey` picks which prompt to send: any slug in IP_PROMPTS, or "generic"
 // for the fallback prompt. Default "hasunosora" preserves pre-multi-IP
@@ -43,6 +51,12 @@ const VALID_IP_KEYS: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY]
 // `provider` overrides TRANSLATION_PROVIDER for this request only — lets
 // admins A/B the same prompt across both providers without touching env.
 // Falls back to env (default "gemini") when unset.
+//
+// `model` lets the admin compare Claude Haiku (the live translator's
+// model) against Sonnet (quality ceiling). Only meaningful for
+// provider=anthropic; rejected for the other providers so a stray field
+// can't silently look like it took effect. `model` in the response is
+// null for non-Claude providers.
 //
 // Bypasses the ImpressionTranslation cache — every click hits the
 // translator. The production translate route is the caching-enabled path.
@@ -61,11 +75,13 @@ export async function POST(req: NextRequest) {
     sourceLocale,
     text,
     provider: providerInput,
+    model: modelInput,
     ipKey: ipKeyInput,
   } = (body ?? {}) as {
     sourceLocale?: unknown;
     text?: unknown;
     provider?: unknown;
+    model?: unknown;
     ipKey?: unknown;
   };
 
@@ -109,6 +125,19 @@ export async function POST(req: NextRequest) {
       ? (process.env.TRANSLATION_PROVIDER as Provider)
       : "gemini");
 
+  if (
+    modelInput !== undefined &&
+    (provider !== "anthropic" ||
+      typeof modelInput !== "string" ||
+      !(ANTHROPIC_MODELS as readonly string[]).includes(modelInput))
+  ) {
+    return NextResponse.json({ error: "Invalid model" }, { status: 400 });
+  }
+  const model: AnthropicModel | null =
+    provider === "anthropic"
+      ? ((modelInput as AnthropicModel | undefined) ?? ANTHROPIC_MODEL)
+      : null;
+
   // Echo the exact user turn the providers see (text + source_locale hint),
   // not just the raw text. This is what prompt-reproduction debugging needs.
   const input = buildUserInput(text, sourceLocale);
@@ -135,6 +164,17 @@ export async function POST(req: NextRequest) {
         systemPrompt,
         AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
       );
+    } else if (provider === "anthropic") {
+      const key = process.env.ANTHROPIC_API_KEY;
+      if (!key) throw new Error("ANTHROPIC_API_KEY not set");
+      ({ raw } = await anthropicRawTranslate(
+        new Anthropic({ apiKey: key }),
+        text,
+        sourceLocale,
+        systemPrompt,
+        AbortSignal.timeout(TRANSLATOR_TIMEOUT_MS),
+        model ?? ANTHROPIC_MODEL,
+      ));
     } else {
       // Exhaustiveness guard — `provider` is narrowed to the validated
       // union above; `provider satisfies never` fails compilation if the
@@ -155,6 +195,7 @@ export async function POST(req: NextRequest) {
       name: err instanceof Error ? err.name : typeof err,
       detail,
       provider,
+      model,
     });
     return NextResponse.json(
       {
@@ -164,6 +205,7 @@ export async function POST(req: NextRequest) {
         input,
         sourceLocale,
         provider,
+        model,
         ipKey,
       },
       { status: 502 },
@@ -186,6 +228,7 @@ export async function POST(req: NextRequest) {
     parseError,
     sourceLocale,
     provider,
+    model,
     ipKey,
   });
 }
