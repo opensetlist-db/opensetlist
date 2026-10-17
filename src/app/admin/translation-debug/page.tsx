@@ -12,9 +12,27 @@ import {
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 
-type Provider = "gemini" | "openai";
+type Provider = "gemini" | "openai" | "anthropic";
 // "default" means: let the server fall back to TRANSLATION_PROVIDER env.
-type ProviderChoice = Provider | "default";
+// Claude gets one choice per model (Haiku = the live translator's model,
+// Sonnet = quality ceiling for comparisons); both map to provider
+// "anthropic" plus an explicit `model`. The model ids are spelled out here
+// rather than imported from @/lib/translator/anthropic, which would pull
+// the Anthropic SDK into the client bundle. The server re-validates them.
+type ProviderChoice =
+  | "default"
+  | "gemini"
+  | "openai"
+  | "claude-haiku-5-5"
+  | "claude-sonnet-5-5";
+
+function providerRequestFields(
+  choice: ProviderChoice,
+): { provider?: Provider; model?: string } {
+  if (choice === "default") return {};
+  if (choice === "gemini" || choice === "openai") return { provider: choice };
+  return { provider: "anthropic", model: choice };
+}
 
 // Picks the system prompt to send. Registered IP slugs come from the
 // IP_PROMPTS keys; "generic" sends FALLBACK_PROMPT. The server validates
@@ -29,6 +47,7 @@ type DebugResponse = {
   parseError: string | null;
   sourceLocale: Locale;
   provider: Provider;
+  model?: string | null;
   ipKey: string;
 };
 
@@ -60,7 +79,7 @@ export default function TranslationDebugPage() {
           ipKey,
           // Only send `provider` when the admin explicitly picked one; an
           // absent field lets the server use TRANSLATION_PROVIDER env.
-          ...(providerChoice !== "default" ? { provider: providerChoice } : {}),
+          ...providerRequestFields(providerChoice),
         }),
       });
       const data = await res.json();
@@ -77,6 +96,7 @@ export default function TranslationDebugPage() {
             parseError: null,
             sourceLocale: data.sourceLocale ?? sourceLocale,
             provider: data.provider ?? "gemini",
+            model: data.model ?? null,
             ipKey: data.ipKey ?? ipKey,
           });
         }
@@ -129,6 +149,8 @@ export default function TranslationDebugPage() {
             <option value="default">기본 (환경 변수)</option>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
+            <option value="claude-haiku-5-5">Claude Haiku 5.5</option>
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
           </select>
         </div>
         <div>
@@ -190,7 +212,7 @@ export default function TranslationDebugPage() {
           )}
 
           <DebugBlock
-            label={`LLM 원본 출력 (${result.provider})`}
+            label={`LLM 원본 출력 (${result.provider}${result.model ? ` / ${result.model}` : ""})`}
             content={result.raw || "(번역기 호출 안됨)"}
           />
 
