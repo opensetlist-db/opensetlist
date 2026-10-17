@@ -96,15 +96,40 @@ function parseArgs() {
 
 async function loadDbRows(perIp: number): Promise<Row[]> {
   const { prisma } = await import("../../src/lib/prisma");
-  const { resolvePromptForImpression } = await import(
-    "../../src/lib/translator/promptResolver"
-  );
   // Head rows only (supersededAt null): an edited chain's older revisions
   // are near-duplicates of the head and would skew the sample.
+  //
+  // The IP walk (event → performers → stage identity → artists) is done
+  // in this one query rather than per row through promptResolver, which
+  // would be one round-trip per impression. Same filter as the resolver:
+  // top-level group Artists (type=group, no parent) are the IP slugs.
   const impressions = await prisma.eventImpression.findMany({
     where: { isDeleted: false, isHidden: false, supersededAt: null },
     orderBy: { createdAt: "desc" },
-    select: { id: true, content: true, locale: true },
+    select: {
+      id: true,
+      content: true,
+      locale: true,
+      event: {
+        select: {
+          performers: {
+            select: {
+              stageIdentity: {
+                select: {
+                  artistLinks: {
+                    select: {
+                      artist: {
+                        select: { slug: true, type: true, parentArtistId: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     take: 400,
   });
 
@@ -112,21 +137,30 @@ async function loadDbRows(perIp: number): Promise<Row[]> {
   for (const imp of impressions) {
     if (!(LOCALES as readonly string[]).includes(imp.locale)) continue;
     if ([...buckets.values()].every((b) => b.length >= perIp)) break;
-    // Bucket by the IP slugs the resolver found, not by its final ipKey.
-    // Cross-IP groups such as AiScReam are top-level group Artists, so an
-    // event with one of their members (e.g. Ceras) resolves to
-    // ["hasunosora","aiscream"] → multi-IP → generic, and no impression
-    // would ever land in an IP bucket. Picking the single bucketed IP
-    // among the slugs compares providers on the prompt the impression
-    // should get; the resolver behaviour itself is a separate issue.
-    const { ipSlugs } = await resolvePromptForImpression(imp.id);
-    const ips = ipSlugs.filter((s) => (BUCKET_IPS as readonly string[]).includes(s));
+    // Bucket by the single bucketed IP among the event's slugs, not by
+    // what promptResolver would pick. Cross-IP groups such as AiScReam
+    // are top-level group Artists, so an event with one of their members
+    // (e.g. Ceras) resolves to ["hasunosora","aiscream"] → multi-IP →
+    // generic, and no impression would ever land in an IP bucket. This
+    // compares providers on the prompt the impression should get; the
+    // resolver behaviour itself is a separate issue.
+    const slugs = new Set<string>();
+    for (const p of imp.event.performers) {
+      for (const { artist } of p.stageIdentity.artistLinks) {
+        if (artist.type === "group" && artist.parentArtistId === null) {
+          slugs.add(artist.slug);
+        }
+      }
+    }
+    const ips = [...slugs].filter((s) => (BUCKET_IPS as readonly string[]).includes(s));
     if (ips.length !== 1) continue;
     const ipKey = ips[0];
     const bucket = buckets.get(ipKey);
     if (!bucket || bucket.length >= perIp) continue;
     bucket.push({
-      id: `db-${imp.id.slice(0, 8)}`,
+      // Full id: the row id keys the results map, so a truncated prefix
+      // could collide and silently merge two rows.
+      id: `db-${imp.id}`,
       sourceLocale: imp.locale as Locale,
       ipKey,
       text: imp.content,
