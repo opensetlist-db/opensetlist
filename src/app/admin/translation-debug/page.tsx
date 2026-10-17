@@ -8,6 +8,13 @@ import {
   GENERIC_IP_KEY,
   DEFAULT_IP_KEY,
 } from "@/lib/translator/prompts/keys";
+// SDK-free module — importing @/lib/translator/anthropic here would pull
+// the Anthropic SDK into the client bundle.
+import {
+  ANTHROPIC_MODELS,
+  ANTHROPIC_MODEL_LABELS,
+  type AnthropicModel,
+} from "@/lib/translator/anthropicModels";
 
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
@@ -15,16 +22,9 @@ type Locale = (typeof LOCALES)[number];
 type Provider = "gemini" | "openai" | "anthropic";
 // "default" means: let the server fall back to TRANSLATION_PROVIDER env.
 // Claude gets one choice per model (Haiku = the live translator's model,
-// Sonnet = quality ceiling for comparisons); both map to provider
-// "anthropic" plus an explicit `model`. The model ids are spelled out here
-// rather than imported from @/lib/translator/anthropic, which would pull
-// the Anthropic SDK into the client bundle. The server re-validates them.
-type ProviderChoice =
-  | "default"
-  | "gemini"
-  | "openai"
-  | "claude-haiku-5-5"
-  | "claude-sonnet-5-5";
+// Sonnet = quality ceiling for comparisons); each maps to provider
+// "anthropic" plus an explicit `model`, which the server re-validates.
+type ProviderChoice = "default" | "gemini" | "openai" | AnthropicModel;
 
 function providerRequestFields(
   choice: ProviderChoice,
@@ -149,8 +149,11 @@ export default function TranslationDebugPage() {
             <option value="default">기본 (환경 변수)</option>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
-            <option value="claude-haiku-5-5">Claude Haiku 5.5</option>
-            <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+            {ANTHROPIC_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {ANTHROPIC_MODEL_LABELS[m]}
+              </option>
+            ))}
           </select>
         </div>
         <div>

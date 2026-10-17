@@ -6,18 +6,15 @@ import {
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "./prompt";
+import {
+  ANTHROPIC_MODEL,
+  ANTHROPIC_MODELS,
+  type AnthropicModel,
+} from "./anthropicModels";
 
-// Single source of truth for the Claude model the live translator uses,
-// mirroring GEMINI_MODEL in gemini.ts. Shared with
-// scripts/count-prompt-tokens.ts so the cache-threshold check measures on
-// the same tokenizer the translator actually runs.
-export const ANTHROPIC_MODEL = "claude-haiku-5-5";
-
-// Models the admin debug route and the bake-off script may pick per
-// request. The live translator always runs ANTHROPIC_MODEL; Sonnet is
-// here only as a quality ceiling for comparisons (≈20× Haiku's price).
-export const ANTHROPIC_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5"] as const;
-export type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
+// Re-exported so server code can keep importing everything Claude-related
+// from here; client code must import ./anthropicModels directly.
+export { ANTHROPIC_MODEL, ANTHROPIC_MODELS, type AnthropicModel };
 
 // "No thinking" is spelled differently per model: Haiku 5.5 takes
 // `disabled`, while Sonnet 5.5 rejects `disabled` with a 400 and wants
