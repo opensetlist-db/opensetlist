@@ -1,0 +1,56 @@
+// node --test tests/load/transition-sampler.test.mjs
+import test from "node:test";
+import assert from "node:assert/strict";
+import { samplerSummary, samplerMarkdown, samplerExitCode } from "./transition-sampler.mjs";
+
+const T = Date.UTC(2026, 10, 1, 3, 0, 0, 0);
+const doc = (dt, dpl, status = 200) => ({ kind: "doc", tStart: T + dt, tEnd: T + dt + 120, status, dpl, vercelId: "icn1::icn1::x", error: null });
+const api = (dt, status = 200, error = null) => ({ kind: "api", tStart: T + dt, tEnd: T + dt + 80, status, dpl: null, vercelId: "icn1::icn1::y", error });
+
+test("switch with an old tail: first expected, last old, sustained, flips", () => {
+  const s = samplerSummary([
+    doc(0, "dpl_OLD"), doc(250, "dpl_OLD"), doc(500, "dpl_NEW"), doc(750, "dpl_OLD"), doc(1000, "dpl_NEW"), doc(1250, "dpl_NEW"),
+    api(125), api(375), api(625, 502), api(875, 0, "TimeoutError"),
+  ], "dpl_NEW");
+  assert.equal(s.verdict, "SWITCHED");
+  assert.equal(s.firstExpected.tStart, T + 500);
+  assert.equal(s.lastOld.tStart, T + 750);
+  assert.equal(s.sustainedFrom, T + 1000);
+  assert.equal(s.overlapMs, 250);
+  assert.equal(s.flips, 3);
+  assert.deepEqual(s.oldIds, ["dpl_OLD"]);
+  assert.equal(s.api.bad, 2);
+  assert.equal(s.api.badAfterSwitch, 2);
+  const md = samplerMarkdown(s, { base: "https://opensetlist.com", baseKind: "prod", path: "/ja/events/107/x", eventId: "107", host: "h", startedAt: "a", endedAt: "b", endReason: "duration", intervalMs: 250 });
+  assert.match(md, /— SWITCHED/);
+  assert.match(md, /\| 03:00:01\.000 \| 03:00:01\.250 \| dpl_NEW \(expected\) \| 2 \|/);
+});
+
+test("verdicts: not switched / already switched / not sustained / no data", () => {
+  assert.equal(samplerSummary([doc(0, "dpl_OLD")], "dpl_NEW").verdict, "NOT SWITCHED");
+  assert.equal(samplerSummary([doc(0, "dpl_NEW")], "dpl_NEW").verdict, "ALREADY SWITCHED");
+  assert.equal(samplerSummary([doc(0, "dpl_OLD"), doc(250, "dpl_NEW"), doc(500, "dpl_OLD")], "dpl_NEW").verdict, "NOT SUSTAINED");
+  assert.equal(samplerSummary([doc(0, null, 500), api(10)], "dpl_NEW").verdict, "NO DATA");
+});
+
+test("unattributed document answers are counted; > 20 % → INSUFFICIENT ATTRIBUTION, never (ALREADY) SWITCHED", () => {
+  // 3 of 10 documents without data-dpl-id (30 %): would read ALREADY SWITCHED otherwise
+  const many = [...Array.from({ length: 7 }, (_, i) => doc(i * 250, "dpl_NEW")), doc(1750, null, 500), doc(2000, null), doc(2250, null, 0)];
+  const s = samplerSummary(many, "dpl_NEW");
+  assert.equal(s.docs.unattributed, 3);
+  assert.equal(s.docs.unattributedShare, 0.3);
+  assert.equal(s.verdict, "INSUFFICIENT ATTRIBUTION");
+  assert.match(samplerMarkdown(s, { base: "b", baseKind: "prod", path: "/ja/events/1/x", eventId: "1", host: "h", startedAt: "a", endedAt: "b", endReason: "duration", intervalMs: 250 }), /\*\*unattributed 3\*\* = 30 %/);
+  // 2 of 10 (20 %) is still within the bound
+  const few = [...Array.from({ length: 8 }, (_, i) => doc(i * 250, "dpl_NEW")), doc(2000, null, 502), doc(2250, null)];
+  assert.equal(samplerSummary(few, "dpl_NEW").verdict, "ALREADY SWITCHED");
+  assert.equal(samplerSummary(few, "dpl_NEW").docs.unattributed, 2);
+});
+
+// Exit codes follow the harness vocabulary: only a witnessed switch is 0.
+test("samplerExitCode: 0 only for SWITCHED, 1 for a failed switch, 4 for no evidence", () => {
+  assert.equal(samplerExitCode("SWITCHED"), 0);
+  assert.equal(samplerExitCode("NOT SWITCHED"), 1);
+  assert.equal(samplerExitCode("NOT SUSTAINED"), 1);
+  for (const v of ["ALREADY SWITCHED", "INSUFFICIENT ATTRIBUTION", "NO DATA", undefined]) assert.equal(samplerExitCode(v), 4, v);
+});

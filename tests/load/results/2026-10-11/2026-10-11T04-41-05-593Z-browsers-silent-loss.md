@@ -1,0 +1,96 @@
+# Browsers run — 2026-10-11T04:39:30.601Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 627, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: silent-loss (edit 3, pages 10)
+- Window (UTC): run start 2026-10-11T04:39:30.601Z, first edit 2026-10-11T04:39:52.689Z, last edit settled 2026-10-11T04:41:00.583Z, end 2026-10-11T04:41:05.590Z
+- Label: r2-silent-loss
+
+## Gate verdicts
+
+Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 1490 | 1310 | 1782 | 2117 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 80 | 1567 | 1932 | 2073 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1304 | 1764 | 2117 | 0 | same | **PASS** |
+| drill silent-loss (drilled pairs) | 10 | 13391 | 17085 | 17085 | 0 | max ≤ 24000 ms, 0 missing | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 6445 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker), non-drilled: pages 80 | 2240 | 2599 | 2735 · SDK 1410 | 1980 | 2440 | 2809 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 90 | — | — | — |
+| broadcast `rev` → pages | 80 / 90 | 666 | 816 | 1027 |
+| broadcast `rev` → SDK | 1410 / 1410 | 667 | 1007 | 1022 |
+
+## Per edit
+
+| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1923 | 130 天才なのかもしれない | 2026-10-11T04:39:52.689Z | 526 | 628 | 2026-10-11T04:39:53.351Z | 650 | 629 |
+| 2 | 1924 | 132 天地黎明 | 2026-10-11T04:40:17.702Z | 555 | 630 | 2026-10-11T04:40:18.383Z | 590 | 631 |
+| 3 (drill: 10) | 1925 | 133 チリコンカン | 2026-10-11T04:40:42.699Z | 564 | 632 | 2026-10-11T04:40:43.391Z | 628 | 633 |
+
+### Per save — pages (PUT start → marker in the DOM)
+
+| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 629 | 30/30 | 1560 / 2066 / 2073 | 0 | 814 / 1017 (30) | 0 | 25 | satisfied 25 |
+| 2 | 631 | 30/30 | 1559 / 1868 / 1880 | 0 | 661 / 687 (30) | 0 | 23 | satisfied 23 |
+| 3 (drill: 10) | 633 | 30/30 | 1699 / 16706 / 17085 | 0 | 665 / 700 (20) | 0 | 16 | satisfied 16 |
+
+### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)
+
+| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 629 | 470/470 | 1351 / 1794 / 2043 | 0 | 986 / 1015 (470) | 158 | satisfied 158 | satisfied 172 | 0 (0) | 0 |
+| 2 | 631 | 470/470 | 1233 / 1748 / 2010 | 0 | 652 / 724 (470) | 197 | satisfied 197 | satisfied 204 | 0 (0) | 0 |
+| 3 (drill: 10) | 633 | 470/470 | 1241 / 1734 / 2117 | 0 | 663 / 669 (470) | 200 | satisfied 200 | satisfied 201 | 0 (0) | 0 |
+
+## Hint outcomes (whole run)
+
+- SDK: 6768 requests; notification fetches (hint=1) 2706, their x-snapshot-verify: satisfied 2686; all 200 responses: none 470, satisfied 6228
+  - ticket resolutions: satisfied 2741; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 636
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, notification +hint=1 2706, periodic generic +H 56, periodic generic 1807, notification 1259; failures by kind: —
+- Pages: 415 /api/setlist responses; notification fetches (hint=1) 196, their x-snapshot-verify: satisfied 196; all 200 responses: satisfied 415 (an R1 page build sends no hint=1)
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1616 p95=2153 max=2175
+  - /api/setlist responses seen: 415 ({"build":238,"cache":176,"repair":1}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 270; dropped notification frames 20, blocked attempts 0
+- SDK: 470/470 joined; all joined after 10.436 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=221 p95=464 max=539
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"notification":3965,"periodic":1863}; X-Snapshot-Source {"build":4098,"cache":2596,"repair":6}
+
+## Drill events
+
+- edit 3 2026-10-11T04:40:42.699Z: proxy drops notification frames (rev broadcast / postgres_changes) on pages 0,1,2,3,4,5,6,7,8,9
+- edit 3 2026-10-11T04:41:00.582Z: stop dropping (drilled clients repaired or timeout)
+
+| drilled page | edit | locale | PUT → marker ms | dropped notification frames (proxy) | repairing fetch: ms after PUT, minRev, source |
+|---|---|---|---|---|---|
+| 0 | 3 | ja | 14855 | 2 | 14836, 631, cache |
+| 1 | 3 | ko | 16706 | 2 | 16689, 631, cache |
+| 2 | 3 | ja | 13298 | 2 | 13225, 631, cache |
+| 3 | 3 | en | 13391 | 2 | 13376, 631, cache |
+| 4 | 3 | ja | 12811 | 2 | 12753, 631, cache |
+| 5 | 3 | ja | 10782 | 2 | 10744, 631, cache |
+| 6 | 3 | ko | 15457 | 2 | 15446, 631, cache |
+| 7 | 3 | ja | 11702 | 2 | 11613, 631, cache |
+| 8 | 3 | ja | 17085 | 2 | 17032, 631, cache |
+| 9 | 3 | ja | 13728 | 2 | 13712, 631, cache |
+
+## Clean-up
+
+- Soft-deleted 3/3 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":636,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)

@@ -1,0 +1,182 @@
+name: n14 — independent observer
+
+# Manual only. Runs tests/load/observer.mjs on a GitHub-hosted runner: a
+# few R2 live-page SDK clients + a plain /api/setlist poller subscribed
+# to the dev test event, timestamping every `rev` broadcast arrival and
+# every snapshot fetch. Started next to a load run on the operator's
+# laptop, it is a second vantage point on another host and network, so
+# a late notification in the harness report can be attributed to the
+# service (the observer was late too) or to the load host (the
+# observer was on time). See tests/load/README.md "Independent observer".
+#
+# This is a RELATIVE observer. The runner sits in a US region, ~150–200
+# ms RTT from the Seoul project, and that RTT is part of every number it
+# records (broadcast arrival, fetch duration). Compare its per-rev
+# arrivals with the harness's for the same rev, and its spread / fetch
+# p95 across saves of one run — not its absolute latency with a laptop
+# in Korea.
+#
+# n14 step 5: `connect_at` lets the job start early and connect at a
+# planned instant; the observer prints `[observer] ready …` /
+# `[observer] connected …` lines the operator reads from the job's LIVE
+# log in the GitHub web UI (`gh run view --log` only returns logs once the
+# run has completed). See tests/load/README.md "n14 qualification step 5".
+#
+# Cost: it burns Actions minutes for the whole window (minutes + ~2 for
+# setup), on the free-tier allowance of the repository's owner. Run it
+# only alongside a load run that needs attributing.
+#
+# Dev only, no secrets: the observer needs just the DEV project's
+# NEXT_PUBLIC_SUPABASE_URL and anon key, which are public values (they
+# ship in every page bundle), so they come from repository VARIABLES,
+# not secrets. No database URL and no admin password are involved — the
+# observer never writes. `observer.mjs` itself refuses any Supabase URL
+# other than the dev project and any base URL other than localhost or
+# the dev preview alias.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Dev preview base URL (localhost or opensetlist-git-dev-*.vercel.app only)"
+        required: true
+        default: "https://opensetlist-git-dev-opensetlist-projects.vercel.app"
+        type: string
+      minutes:
+        description: "Observation window in minutes (1–60)"
+        required: true
+        default: "10"
+        type: string
+      clients:
+        description: "SDK clients (1–50)"
+        required: true
+        default: "5"
+        type: string
+      label:
+        description: "Label for the output files (e.g. the run's name)"
+        required: false
+        default: "ci"
+        type: string
+      # n14 step 5: start the workflow early and connect at a planned
+      # instant (the harness's local cohort uses the same --connect-at).
+      # Empty = connect as soon as the job is up (the old behaviour).
+      connect_at:
+        description: "Optional ISO UTC instant to connect at (e.g. 2026-10-12T06:30:00Z); the observer holds all network activity until then. ≤ 60 min ahead."
+        required: false
+        default: ""
+        type: string
+
+# One observer at a time: two overlapping observers would double the
+# Actions bill without adding a vantage point (same runner pool). A
+# second dispatch waits for the first instead of cancelling it, so a
+# window that is already recording is never cut short.
+concurrency:
+  group: n14-observer
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # GitHub expressions have no arithmetic, so "window + 5 minutes" for
+  # the observe job's timeout is computed here and passed as an output
+  # (`needs` is an allowed context in `timeout-minutes`). The same step
+  # validates the numeric inputs, so a bad dispatch fails in seconds
+  # instead of after npm ci.
+  plan:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      timeout: ${{ steps.t.outputs.timeout }}
+    env:
+      OBS_MINUTES: ${{ inputs.minutes }}
+      OBS_CLIENTS: ${{ inputs.clients }}
+      OBS_CONNECT_AT: ${{ inputs.connect_at }}
+    steps:
+      - id: t
+        # The job timeout = window + 5 min + the hold until connect_at
+        # (rounded up to whole minutes); connect_at must parse and be at
+        # most 60 min ahead. A connect_at already in the past is allowed
+        # (the observer then connects at once; eligibility is decided post
+        # hoc from the artifact).
+        run: |
+          case "$OBS_MINUTES" in ''|*[!0-9]*) echo "::error::minutes must be an integer"; exit 1;; esac
+          case "$OBS_CLIENTS" in ''|*[!0-9]*) echo "::error::clients must be an integer"; exit 1;; esac
+          if [ "$OBS_MINUTES" -lt 1 ] || [ "$OBS_MINUTES" -gt 60 ]; then echo "::error::minutes must be 1–60"; exit 1; fi
+          if [ "$OBS_CLIENTS" -lt 1 ] || [ "$OBS_CLIENTS" -gt 50 ]; then echo "::error::clients must be 1–50"; exit 1; fi
+          HOLD=0
+          if [ -n "$OBS_CONNECT_AT" ]; then
+            AT=$(date -u -d "$OBS_CONNECT_AT" +%s 2>/dev/null) || { echo "::error::connect_at must be an ISO timestamp"; exit 1; }
+            NOW=$(date -u +%s)
+            if [ "$AT" -gt $((NOW + 3600)) ]; then echo "::error::connect_at is more than 60 min ahead"; exit 1; fi
+            if [ "$AT" -gt "$NOW" ]; then HOLD=$(( (AT - NOW + 59) / 60 )); fi
+          fi
+          echo "timeout=$((OBS_MINUTES + 5 + HOLD))" >> "$GITHUB_OUTPUT"
+
+  observe:
+    name: Observe event broadcasts
+    needs: plan
+    runs-on: ubuntu-latest
+    # The window plus 5 minutes for checkout / npm ci / upload.
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.timeout) }}
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.N14_DEV_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.N14_DEV_SUPABASE_ANON_KEY }}
+      # Inputs go through env, never inline in `run:`, so a crafted
+      # input cannot inject shell.
+      OBS_BASE: ${{ inputs.base }}
+      OBS_MINUTES: ${{ inputs.minutes }}
+      OBS_CLIENTS: ${{ inputs.clients }}
+      OBS_LABEL: ${{ inputs.label }}
+      OBS_CONNECT_AT: ${{ inputs.connect_at }}
+    steps:
+      # The job runs installed dependencies after checkout but never
+      # needs Git credentials again; do not leave the token in .git/config.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Node 24, the same major as ci.yml and event-detail-perf.yml: the
+      # lockfile is written by npm 11 (Node 24) and `npm ci` under Node
+      # 22's npm 10 rejects it as out of sync ("Missing: @swc/helpers …
+      # from lock file" on the first dispatch). Type stripping, which
+      # subs-worker.mjs needs to import the app's src/lib/*.ts modules at
+      # runtime, is on by default from 22.18 and in every 24.x.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      # Full install (the observer needs only @supabase/supabase-js,
+      # dotenv and pg from it); `--ignore-scripts` skips the
+      # `postinstall: prisma generate` the observer does not use (the
+      # src/lib modules subs-worker.mjs loads import Prisma types only,
+      # which type stripping erases).
+      - run: npm ci --ignore-scripts
+
+      - name: Check repository variables
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] || [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "::error::Set repository variables N14_DEV_SUPABASE_URL and N14_DEV_SUPABASE_ANON_KEY (Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          fi
+
+      - name: Run observer
+        run: |
+          node --no-warnings tests/load/observer.mjs \
+            --base="$OBS_BASE" --event=111 \
+            --clients="$OBS_CLIENTS" --minutes="$OBS_MINUTES" \
+            --out=observer-out --label="$OBS_LABEL" \
+            --connect-at="$OBS_CONNECT_AT"
+
+      # `always()`: a run stopped by the job timeout or a failed worker
+      # still uploads whatever was written.
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n14-observer-${{ github.run_id }}
+          path: observer-out/
+          if-no-files-found: warn
+          retention-days: 30

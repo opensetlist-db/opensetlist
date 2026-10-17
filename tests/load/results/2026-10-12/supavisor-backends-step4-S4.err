@@ -1,0 +1,14 @@
+node:path:513
+      validateString(arg, 'path');
+      ^
+
+TypeError [ERR_INVALID_ARG_TYPE]: The "path" argument must be of type string. Received type boolean (true)
+    at Object.join (node:path:513:7)
+    at file:///F:/work/ClaudeCode/opensetlist4/tests/load/results/2026-10-11/supavisor-backends.mjs:34:44
+    at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  code: 'ERR_INVALID_ARG_TYPE'
+}
+
+Node.js v24.14.0

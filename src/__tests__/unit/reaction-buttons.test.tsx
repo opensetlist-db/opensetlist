@@ -609,3 +609,224 @@ describe("ReactionButtons", () => {
     expect(fireButton2.getAttribute("aria-pressed")).toBe("true");
   });
 });
+
+// ────────────────────────────────────────────────────────────────────
+// n14 — ack hold. POST/DELETE answer `{ counts, ackAt }`; the
+// acknowledged counts stay until a snapshot with `capturedAt > ackAt`
+// arrives (a snapshot read before the tap committed must not undo it).
+// ────────────────────────────────────────────────────────────────────
+
+describe("ReactionButtons — ack hold (snapshotCapturedAt vs ackAt)", () => {
+  const BEFORE = "2026-11-14T07:30:00.000Z";
+  const ACK = "2026-11-14T07:30:01.000Z";
+  const AFTER = "2026-11-14T07:30:02.000Z";
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function renderAt(counts: Record<string, number>, capturedAt: string | null | undefined) {
+    return (
+      <ReactionButtons
+        setlistItemId="7"
+        songId="100"
+        eventId="42"
+        initialCounts={counts}
+        snapshotCapturedAt={capturedAt}
+      />
+    );
+  }
+
+  async function tapBest() {
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("best"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTitle("best").hasAttribute("disabled")).toBe(false);
+    });
+  }
+
+  it("POST: a stale snapshot after the ack keeps the acknowledged count; a later one releases it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 3 }, ackAt: ACK }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt({ best: 2 }, BEFORE));
+    await tapBest();
+    expect(screen.getByTitle("best").textContent).toContain("3");
+
+    // Snapshot read before the tap committed (capturedAt < ackAt): it
+    // still says 2 — must NOT undo the tap.
+    rerender(renderAt({ best: 2 }, "2026-11-14T07:30:00.500Z"));
+    expect(screen.getByTitle("best").textContent).toContain("3");
+    // Equal timestamps keep holding too (ms truncation safety).
+    rerender(renderAt({ best: 2 }, ACK));
+    expect(screen.getByTitle("best").textContent).toContain("3");
+
+    // Snapshot captured after the ack: authoritative again — including
+    // other viewers' changes (here someone else removed theirs: 2).
+    rerender(renderAt({ best: 2 }, AFTER));
+    expect(screen.getByTitle("best").textContent).toContain("2");
+    // Hold released: later snapshots apply normally.
+    rerender(renderAt({ best: 5 }, "2026-11-14T07:30:03.000Z"));
+    expect(screen.getByTitle("best").textContent).toContain("5");
+  });
+
+  it("never max(): a higher stale count does not override a lower ack either", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 4 }, ackAt: ACK }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt({ best: 2 }, BEFORE));
+    await tapBest();
+    rerender(renderAt({ best: 9 }, BEFORE)); // stale, even though larger
+    expect(screen.getByTitle("best").textContent).toContain("4");
+  });
+
+  it("DELETE: holds the acknowledged (lower) count against a stale snapshot", async () => {
+    localStorage.setItem("reactions-7", JSON.stringify({ best: "r1" }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, counts: {}, ackAt: ACK }),
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { rerender } = render(renderAt({ best: 1 }, BEFORE));
+    await waitFor(() => {
+      expect(screen.getByTitle("best").getAttribute("aria-pressed")).toBe("true");
+    });
+    await tapBest();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/reactions",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(screen.getByTitle("best").textContent).not.toContain("1");
+
+    // Stale snapshot still counts the removed reaction.
+    rerender(renderAt({ best: 1 }, "2026-11-14T07:30:00.900Z"));
+    expect(screen.getByTitle("best").textContent).not.toContain("1");
+    expect(screen.getByTitle("best").getAttribute("aria-pressed")).toBe("false");
+
+    // Release on a newer snapshot that has someone else's new reaction.
+    rerender(renderAt({ best: 1 }, AFTER));
+    expect(screen.getByTitle("best").textContent).toContain("1");
+  });
+
+  it("releases on a newer watermark even when the counts map reference is unchanged", async () => {
+    const empty: Record<string, number> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 1 }, ackAt: ACK }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt(empty, BEFORE));
+    await tapBest();
+    expect(screen.getByTitle("best").textContent).toContain("1");
+    rerender(renderAt(empty, "2026-11-14T07:30:00.500Z"));
+    expect(screen.getByTitle("best").textContent).toContain("1");
+    // Same EMPTY ref, newer watermark → the snapshot (no reactions,
+    // e.g. the tap was later removed elsewhere) applies.
+    rerender(renderAt(empty, AFTER));
+    expect(screen.getByTitle("best").textContent).not.toContain("1");
+  });
+
+  it("a null watermark (unknown-age snapshot) never releases the hold", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 3 }, ackAt: ACK }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt({ best: 2 }, null));
+    await tapBest();
+    rerender(renderAt({ best: 2 }, null));
+    expect(screen.getByTitle("best").textContent).toContain("3");
+  });
+
+  it("without snapshotCapturedAt (pre-n14 callers) there is no hold", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 3 }, ackAt: ACK }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt({ best: 2 }, undefined));
+    await tapBest();
+    expect(screen.getByTitle("best").textContent).toContain("3");
+    rerender(renderAt({ best: 2 }, undefined));
+    expect(screen.getByTitle("best").textContent).toContain("2");
+  });
+
+  it("a response without ackAt (pre-n14 server) does not engage the hold", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 3 } }),
+      }) as unknown as typeof fetch,
+    );
+    const { rerender } = render(renderAt({ best: 2 }, BEFORE));
+    await tapBest();
+    rerender(renderAt({ best: 2 }, "2026-11-14T07:30:00.500Z"));
+    expect(screen.getByTitle("best").textContent).toContain("2");
+  });
+
+  it("DELETE with an unreadable body keeps the optimistic decrement (no rollback)", async () => {
+    localStorage.setItem("reactions-7", JSON.stringify({ best: "r1" }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError("Unexpected end of JSON input");
+        },
+      }) as unknown as typeof fetch,
+    );
+    render(renderAt({ best: 1 }, BEFORE));
+    await waitFor(() => {
+      expect(screen.getByTitle("best").getAttribute("aria-pressed")).toBe("true");
+    });
+    await tapBest();
+    expect(screen.getByTitle("best").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTitle("best").textContent).not.toContain("1");
+    expect(JSON.parse(localStorage.getItem("reactions-7") ?? "{}")).toEqual({});
+  });
+
+  it("a failed POST rolls back and keeps an earlier hold intact", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ reactionId: "r1", counts: { best: 3 }, ackAt: ACK }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const { rerender } = render(renderAt({ best: 2, moved: 0 }, BEFORE));
+    await tapBest();
+    // Second tap on another type fails → rollback to pre-tap state.
+    await act(async () => {
+      fireEvent.click(screen.getByTitle("moved"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTitle("moved").hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.getByTitle("best").textContent).toContain("3");
+    // The first ack's hold still blocks a stale snapshot.
+    rerender(renderAt({ best: 2, moved: 0 }, "2026-11-14T07:30:00.500Z"));
+    expect(screen.getByTitle("best").textContent).toContain("3");
+  });
+});

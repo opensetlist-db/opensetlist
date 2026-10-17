@@ -1,0 +1,36 @@
+time="2026-10-10T20:59:27-07:00" level=info msg="[burst b00] create appliedRev=512 savedRev=513 minRev=513+hint n=603 errors=0 p95=966ms max=1221ms" source=console
+time="2026-10-10T20:59:28-07:00" level=info msg="[admin] cold start done at 4.7s" source=console
+time="2026-10-10T21:00:03-07:00" level=info msg="[admin] cycle 1 (burst) at 40.0s" source=console
+time="2026-10-10T21:00:06-07:00" level=info msg="[burst b01] create appliedRev=514 savedRev=515 minRev=515+hint n=595 errors=0 p95=1243ms max=1704ms" source=console
+time="2026-10-10T21:00:12-07:00" level=info msg="[burst b02] update appliedRev=515 savedRev=516 minRev=516+hint n=613 errors=0 p95=856ms max=1104ms" source=console
+time="2026-10-10T21:00:19-07:00" level=info msg="[burst b03] insert_after appliedRev=516 savedRev=517 minRev=517+hint n=612 errors=0 p95=1047ms max=1318ms" source=console
+time="2026-10-10T21:00:25-07:00" level=info msg="[burst b04] swap appliedRev=517 savedRev=518 minRev=518+hint n=606 errors=0 p95=974ms max=1357ms" source=console
+time="2026-10-10T21:00:31-07:00" level=info msg="[burst b05] delete appliedRev=518 savedRev=519 minRev=519+hint n=605 errors=0 p95=1140ms max=1590ms" source=console
+time="2026-10-10T21:00:38-07:00" level=info msg="[burst b06] delete appliedRev=519 savedRev=520 minRev=520+hint n=598 errors=0 p95=728ms max=995ms" source=console
+time="2026-10-10T21:00:46-07:00" level=info msg="[admin] cycle 2 (quiet) at 82.4s" source=console
+time="2026-10-10T21:01:18-07:00" level=info msg="[admin] cycle 3 (burst) at 114.4s" source=console
+time="2026-10-10T21:01:20-07:00" level=info msg="[burst b07] create appliedRev=526 savedRev=527 minRev=527+hint n=595 errors=0 p95=955ms max=1446ms" source=console
+time="2026-10-10T21:01:26-07:00" level=info msg="[burst b08] update appliedRev=527 savedRev=528 minRev=528+hint n=618 errors=0 p95=719ms max=1014ms" source=console
+time="2026-10-10T21:01:33-07:00" level=info msg="[burst b09] insert_after appliedRev=528 savedRev=529 minRev=529+hint n=600 errors=0 p95=940ms max=1191ms" source=console
+time="2026-10-10T21:01:39-07:00" level=info msg="[burst b10] swap appliedRev=529 savedRev=530 minRev=530+hint n=616 errors=0 p95=955ms max=1237ms" source=console
+time="2026-10-10T21:01:46-07:00" level=info msg="[burst b11] delete appliedRev=530 savedRev=531 minRev=531+hint n=617 errors=0 p95=1246ms max=1552ms" source=console
+time="2026-10-10T21:01:52-07:00" level=info msg="[burst b12] delete appliedRev=531 savedRev=532 minRev=532+hint n=599 errors=0 p95=735ms max=938ms" source=console
+time="2026-10-10T21:02:00-07:00" level=info msg="[admin] cycle 4 (burst) at 156.6s" source=console
+time="2026-10-10T21:02:02-07:00" level=info msg="[burst b13] create appliedRev=532 savedRev=533 minRev=533+hint n=620 errors=0 p95=868ms max=1147ms" source=console
+time="2026-10-10T21:02:08-07:00" level=info msg="[burst b14] update appliedRev=533 savedRev=534 minRev=534+hint n=606 errors=0 p95=791ms max=1032ms" source=console
+time="2026-10-10T21:02:15-07:00" level=info msg="[burst b15] insert_after appliedRev=534 savedRev=535 minRev=535+hint n=597 errors=0 p95=1107ms max=1504ms" source=console
+time="2026-10-10T21:02:21-07:00" level=info msg="[burst b16] swap appliedRev=535 savedRev=536 minRev=536+hint n=588 errors=0 p95=988ms max=1311ms" source=console
+time="2026-10-10T21:02:27-07:00" level=info msg="[burst b17] delete appliedRev=536 savedRev=537 minRev=537+hint n=600 errors=0 p95=948ms max=1218ms" source=console
+time="2026-10-10T21:02:33-07:00" level=info msg="[burst b18] delete appliedRev=537 savedRev=538 minRev=538+hint n=593 errors=0 p95=665ms max=856ms" source=console
+time="2026-10-10T21:02:41-07:00" level=info msg="[admin] cycle 5 (quiet) at 198.2s" source=console
+time="2026-10-10T21:03:13-07:00" level=info msg="[admin] cycle 6 (burst) at 230.0s" source=console
+time="2026-10-10T21:03:16-07:00" level=warning msg="[error] poll: HTTP 503  {\"error\":\"snapshot_unavailable\"}" source=console
+time="2026-10-10T21:03:16-07:00" level=warning msg="[error] burst b19: HTTP 503  {\"error\":\"snapshot_unavailable\"}" source=console
+time="2026-10-10T21:03:16-07:00" level=info msg="[burst b19] create appliedRev=544 savedRev=545 minRev=545+hint n=587 errors=1 p95=1435ms max=1708ms bodies=[\"1x HTTP 503: {\\\"error\\\":\\\"snapshot_unavailable\\\"}\"]" source=console
+time="2026-10-10T21:03:22-07:00" level=info msg="[burst b20] update appliedRev=545 savedRev=546 minRev=546+hint n=618 errors=0 p95=783ms max=981ms" source=console
+time="2026-10-10T21:03:29-07:00" level=info msg="[burst b21] insert_after appliedRev=546 savedRev=547 minRev=547+hint n=612 errors=0 p95=753ms max=947ms" source=console
+time="2026-10-10T21:03:36-07:00" level=info msg="[burst b22] swap appliedRev=547 savedRev=548 minRev=548+hint n=601 errors=0 p95=1269ms max=1666ms" source=console
+time="2026-10-10T21:03:43-07:00" level=info msg="[burst b23] delete appliedRev=548 savedRev=549 minRev=549+hint n=607 errors=0 p95=1039ms max=1430ms" source=console
+time="2026-10-10T21:03:49-07:00" level=info msg="[burst b24] delete appliedRev=549 savedRev=550 minRev=550+hint n=606 errors=0 p95=622ms max=889ms" source=console
+time="2026-10-10T21:03:52-07:00" level=info msg="[admin] cycles done at 268.8s; waiting for the steady/reaction windows to end at 295s" source=console
+time="2026-10-10T21:04:18-07:00" level=info msg="[admin] drain: no requests from 295.0s for 90s" source=console

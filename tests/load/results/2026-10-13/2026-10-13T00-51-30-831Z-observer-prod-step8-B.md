@@ -1,0 +1,46 @@
+# Production read-only observer — step8-B
+
+- host `CHPDesktop2024` (win32 10.0.26200 x64, node v24.14.0)
+- base https://opensetlist.com (prod) · event 109 · 3 listeners + 1 fresh listener at +600 s on `event:109` · Supabase project prjj… · key: jwt anon (from `PROD_SUPABASE_ANON_KEY`, not recorded)
+- window 2026-10-13T00:51:30.831Z → 2026-10-13T01:02:39.732Z (UTC) · ended by STOP file
+- **clock:** every time below is THIS receiver host's clock, in UTC. Compare with the save time from the admin UI / `vercel logs` (`[liveWriter]`) allowing for NTP skew (tens of ms).
+- start: GET /api/setlist (ja) → 200 rev 3 source build in 398 ms
+
+## Verdict
+
+- every listener SUBSCRIBED: yes
+- every (initial) listener SUBSCRIBED before the first save's broadcast: yes
+- every listener stayed connected (no close / socket drop before stop): yes
+- broadcasts (distinct revs) received: 2 · every rev reached every listener subscribed before it: yes · every hinted GET 200 with body rev ≥ rev: yes
+- fresh listener (joined late) received every later save: PASS · listener 3: 1/1 rev(s) after its SUBSCRIBED
+- 5xx answers: 0
+
+## Per rev (broadcast receipts)
+
+A receipt is the `rev` broadcast frame itself (rev read from its payload). "Eligible" = SUBSCRIBED before the rev's first arrival.
+
+| rev | first receipt (UTC) | received / total | received / eligible | missing (eligible) | spread ms | hinted GETs ok | sources | GET elapsed p50 / max ms |
+|---|---|---|---|---|---|---|---|---|
+| 4 | 00:54:07.654 | 3/4 | 3/3 | – | 5 | 3/3 | build 3 | 303 / 307 |
+| 5 | 01:01:45.565 | 4/4 | 4/4 | – | 5 | 4/4 | build 4 | 266 / 303 |
+
+### Receipts, then the follow-up hinted GET (separate times)
+
+| rev | listener | locale | broadcast received (UTC) | Δ first ms | GET start (UTC) | GET end (UTC) | GET status | x-snapshot-source | x-snapshot-verify | body rev | GET ms | x-vercel-id |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 0 | ja | 00:54:07.654 | 0 | 00:54:07.655 | 00:54:07.958 | 200 | build | satisfied | 4 | 303 | sfo1::icn1::vz7qk-1791852847709-042cd66e20db |
+| 4 | 1 | ko | 00:54:07.657 | 3 | 00:54:07.657 | 00:54:07.906 | 200 | build | satisfied | 4 | 249 | sfo1::icn1::z2dkf-1791852847697-d1f5ce443c59 |
+| 4 | 2 | en | 00:54:07.659 | 5 | 00:54:07.659 | 00:54:07.966 | 200 | build | satisfied | 4 | 307 | sfo1::icn1::kcwr5-1791852847697-d81862f24378 |
+| 5 | 3 | ja | 01:01:45.565 | 0 | 01:01:45.565 | 01:01:45.835 | 200 | build | satisfied | 5 | 270 | sfo1::icn1::c2f7j-1791853305607-39b63be8e619 |
+| 5 | 2 | en | 01:01:45.567 | 2 | 01:01:45.567 | 01:01:45.787 | 200 | build | satisfied | 5 | 220 | sfo1::icn1::vn7s9-1791853305607-d7ba32e84305 |
+| 5 | 0 | ja | 01:01:45.569 | 4 | 01:01:45.569 | 01:01:45.835 | 200 | build | satisfied | 5 | 266 | sfo1::icn1::vmmjs-1791853305599-e59e09682b50 |
+| 5 | 1 | ko | 01:01:45.570 | 5 | 01:01:45.570 | 01:01:45.873 | 200 | build | satisfied | 5 | 303 | sfo1::icn1::ws5jf-1791853305607-27a1ac7964d9 |
+
+## Per listener
+
+| listener | locale | connect attempt (UTC) | first SUBSCRIBED (UTC) | join ms | subscribed before first save | SUBSCRIBED | rejoins | closes (status @ UTC) | socket drops | recreates | revs received | connected at end |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | ja | 00:51:31.236 | 00:51:31.351 | 115 | yes | 1 | 0 | 0 | 0 | 0 | 4, 5 | yes |
+| 1 | ko | 00:51:31.240 | 00:51:31.355 | 115 | yes | 1 | 0 | 0 | 0 | 0 | 4, 5 | yes |
+| 2 | en | 00:51:31.242 | 00:51:31.365 | 123 | yes | 1 | 0 | 0 | 0 | 0 | 4, 5 | yes |
+| 3 (fresh) | ja | 01:01:31.248 | 01:01:31.518 | 270 | no (fresh, by design) | 1 | 0 | 0 | 0 | 0 | 5 | yes |

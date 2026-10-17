@@ -4,6 +4,7 @@ import {
   SNAPSHOT_RETRY_AFTER_CAP_MS,
   SNAPSHOT_RETRY_SCHEDULE_MS,
   armSnapshotDeadline,
+  clampRetryAfterMs,
   freshnessStateFor,
   parseRetryAfterMs,
   snapshotRetryDelayMs,
@@ -36,6 +37,15 @@ describe("snapshotRetryDelayMs", () => {
     expect(snapshotRetryDelayMs(1, 86_400_000)).toBe(
       SNAPSHOT_RETRY_AFTER_CAP_MS,
     );
+  });
+});
+
+describe("clampRetryAfterMs", () => {
+  it("bounds the server floor to [0, cap] — the same bound the retry delay uses", () => {
+    expect(clampRetryAfterMs(2_000)).toBe(2_000);
+    expect(clampRetryAfterMs(-5)).toBe(0);
+    expect(clampRetryAfterMs(86_400_000)).toBe(SNAPSHOT_RETRY_AFTER_CAP_MS);
+    expect(clampRetryAfterMs(86_400_000)).toBe(snapshotRetryDelayMs(1, 86_400_000));
   });
 });
 

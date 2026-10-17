@@ -283,7 +283,7 @@ Branches:
   hotfix/* — emergency fixes, merged into main + dev.
 
 Release flow:
-  feature/* → PR → dev → test on Preview → PR → main → git tag v*.*.* → production deploy
+  feature/* → PR → dev → test on Preview → PR → main (Vercel deploys production on this merge) → git tag v*.*.* (triggers migrate-prod + release record)
 
 Environments:
   Production (main):  Prod Supabase (DATABASE_URL, DATABASE_URL_UNPOOLED)
@@ -292,7 +292,7 @@ Environments:
 
 GitHub Actions:
   migrate-dev.yml    — prisma db push on dev DB (push to dev)
-  migrate-prod.yml   — prisma db push on prod DB (on tag v*)
+  migrate-prod.yml   — prisma db push on prod DB (on tag v*, and workflow_dispatch on any ref)
   backup.yml         — daily pg_dump of prod DB
 
 Version tags: vMAJOR.MINOR.PATCH (e.g. v1.0.0)
@@ -305,6 +305,15 @@ Hard rules:
 - Run `git add ...` and `git commit -m "..."` as **two separate Bash tool calls**, not chained with `&&`. The owner runs a `PreToolUse` hook (`~/.claude/hooks/review-staged.js`) that calls `git diff --cached` to review the staged change against this CLAUDE.md before each commit. Chained `add && commit` leaves the index empty at hook time, the hook logs `exit:empty-diff`, and the review never runs. Splitting the calls puts staging done before the commit Bash invocation so the hook actually reviews. Committing without a manual approval pause is fine — the hook is the safety net; if it finds issues it blocks the commit, otherwise the commit proceeds and the owner sees the result.
 - Run `git push` as **its own Bash tool call** when any HEAD-mutating git command precedes it in the same chain (`commit`, `rebase`, `merge`, `reset`, `cherry-pick`, `revert`, `pull`, `am`). The push-review hook (`~/.claude/hooks/review-prepush.js`) computes the branch-vs-base diff from HEAD before the chain runs, so a chained `commit && push` would review pre-commit HEAD and miss the new commits — the hook auto-blocks these chains. Non-mutating chains like `git fetch && git push` or `git push && echo done` are fine.
 - Always create a version tag for production releases
+- **Schema-changing releases: migrate BEFORE merging to main.** Vercel's Git
+  integration deploys `main` to production the moment the release PR merges;
+  the tag only triggers `migrate-prod.yml`. Merging first means the new app
+  queries the old schema until the migration lands (v0.19.0, 2026-10-12:
+  four minutes of 500s on song pages). Order: `gh workflow run backup.yml`
+  → `gh workflow run migrate-prod.yml --ref dev` (additive changes are
+  harmless to the app still serving) → verify the column in the `db pull`
+  step → merge the release PR → tag. Non-additive changes need a different
+  plan (expand/contract) and must not be merged this way at all.
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
 ### Local review hooks
@@ -314,7 +323,7 @@ Two `PreToolUse` hooks (owner-level, in `~/.claude/hooks/`) review changes befor
 - **Commit-time** — `review-staged.js`, Haiku 4.5, against `git diff --cached`. Fast hard-rule + bug/security check on the staged change. Bypass: include `[skip-review]` in the commit command.
 - **Push-time** — `review-prepush.js`, Sonnet 4.6, against the full branch-vs-base diff (base picked from `.coderabbit.yaml` `auto_review.base_branches`). Mirrors `.coderabbit.yaml` focus areas so CodeRabbit-class findings (cross-file, N+1, layering) surface before push, not after the ~10-min PR-time wait. Chunks diffs >400KB per-file and reviews in parallel; skips entirely above 1.5MB and defers to CodeRabbit. Bypass: `SKIP_PUSH_REVIEW=1 git push` or `git push --no-verify`.
 
-Both block on findings and on timeout; both degrade gracefully on infra failures (network/API down). Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
+Both block on findings. The push-time hook treats a review timeout like any other infra failure (network/API down): the push proceeds with a note that the local review was skipped, and CodeRabbit covers the PR — so a large diff never needs a manual bypass. Treat blocked output the same as a CodeRabbit comment — fix or argue, don't bypass on autopilot.
 
 ---
 

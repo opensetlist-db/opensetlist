@@ -1,0 +1,66 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: tests/load/viewers.js
+        output: -
+
+     scenarios: (100.00%) 4 scenarios, 571 max VUs, 1h35m0s max duration (incl. graceful stop):
+              * admin: 1 iterations for each of 1 VUs (maxDuration: 1h30m0s, exec: adminMain, gracefulStop: 5m0s)
+              * poll: 1.00 iterations/s for 8m35s (maxVUs: 5-20, exec: poll, gracefulStop: 30s)
+              * ssr: 2.50 iterations/s for 8m35s (maxVUs: 10-50, exec: ssr, gracefulStop: 30s)
+              * reactions: 50.00 iterations/s for 10s (maxVUs: 100-500, exec: reaction, startTime: 4m20s, gracefulStop: 1m0s)
+
+
+Run         [ 100% ] setup()
+admin       [   0% ]
+poll        [   0% ]
+ssr         [   0% ]
+reactions   [   0% ]
+
+Run         [ 100% ] setup()
+admin       [   0% ]
+poll        [   0% ]
+ssr         [   0% ]
+reactions   [   0% ]
+
+Run         [ 100% ] setup()
+admin       [   0% ]
+poll        [   0% ]
+ssr         [   0% ]
+reactions   [   0% ]
+
+running (0h00m03.9s), 003/116 VUs, 1 complete and 0 interrupted iterations
+admin       [   0% ] 1 VUs      0h00m00.5s/1h30m0s  0/1 iters, 1 per VU
+poll        [   0% ] 00/05 VUs  0m00.5s/8m35s       1.00 iters/s
+ssr         [   0% ] 02/10 VUs  0m00.5s/8m35s       2.50 iters/s
+reactions • [   0% ] waiting    4m19.5s            
+
+running (0h00m04.9s), 005/116 VUs, 2 complete and 0 interrupted iterations
+admin       [   0% ] 1 VUs      0h00m01.5s/1h30m0s  0/1 iters, 1 per VU
+poll        [   0% ] 00/05 VUs  0m01.5s/8m35s       1.00 iters/s
+ssr         [   0% ] 04/10 VUs  0m01.5s/8m35s       2.50 iters/s
+reactions • [   0% ] waiting    4m18.5s            
+
+running (0h00m05.9s), 008/116 VUs, 3 complete and 0 interrupted iterations
+admin       [   0% ] 1 VUs      0h00m02.5s/1h30m0s  0/1 iters, 1 per VU
+poll        [   0% ] 00/05 VUs  0m02.5s/8m35s       1.00 iters/s
+ssr         [   0% ] 07/10 VUs  0m02.5s/8m35s       2.50 iters/s
+reactions • [   0% ] waiting    4m17.5s            
+
+running (0h00m06.9s), 010/116 VUs, 4 complete and 0 interrupted iterations
+admin       [   0% ] 1 VUs      0h00m03.5s/1h30m0s  0/1 iters, 1 per VU
+poll        [   1% ] 00/05 VUs  0m03.5s/8m35s       1.00 iters/s
+ssr         [   1% ] 09/10 VUs  0m03.5s/8m35s       2.50 iters/s
+reactions • [   0% ] waiting    4m16.5s            
+
+running (0h00m07.9s), 006/116 VUs, 12 complete and 0 interrupted iterations
+admin     ✓ [ 100% ] 1 VUs      0h00m04.3s/1h30m0s  1/1 iters, 1 per VU
+poll        [   1% ] 00/05 VUs  0m04.5s/8m35s       1.00 iters/s
+ssr         [   1% ] 06/10 VUs  0m04.5s/8m35s       2.50 iters/s
+reactions • [   0% ] waiting    4m15.5s            

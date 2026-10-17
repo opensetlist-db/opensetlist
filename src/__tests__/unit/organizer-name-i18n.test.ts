@@ -12,6 +12,7 @@ vi.mock("@/lib/admin-auth", () => ({
 
 vi.mock("@/lib/dataCache", () => ({
   revalidatePublicData: vi.fn(),
+  revalidateEventData: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -278,5 +279,23 @@ describe("events.csv import — *_organizerName columns", () => {
     expect(en.update.organizerName).toBe("Love Live! Series");
     const ko = upserts.find((u) => u.create.locale === "ko");
     expect(ko.update.name).toBe("1일차");
+  });
+
+  it("does not null an existing event's shortName / city / venue from an organizer-only locale", async () => {
+    const res = await importCsv(
+      [
+        "event_slug,ko_name,ko_city,en_organizerName",
+        "lovelive-15th-fes-day1,1일차,도쿄,Love Live! Series",
+      ].join("\n")
+    );
+    expect(res.status).toBe(200);
+    const upserts = mocked.eventTranslation.upsert.mock.calls.map((c) => c[0]);
+    // en carries only the organizer → only organizerName is patched.
+    const en = upserts.find((u) => u.create.locale === "en");
+    expect(en.update).toEqual({ organizerName: "Love Live! Series" });
+    // ko carries clobber fields → keeps the existing clobber-on-blank
+    // semantics for shortName / city / venue.
+    const ko = upserts.find((u) => u.create.locale === "ko");
+    expect(ko.update).toMatchObject({ shortName: null, city: "도쿄", venue: null });
   });
 });

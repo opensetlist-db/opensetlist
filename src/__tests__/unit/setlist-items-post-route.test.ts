@@ -39,8 +39,20 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// n14 writer-transaction helpers: mocked so the route's control flow
+// is tested without raw SQL; the SQL is covered by the dev-DB
+// integration suite (src/__tests__/integration/n14-live-path.test.ts).
+vi.mock("@/lib/liveBroadcast", () => ({
+  lockEvent: vi.fn(async () => true),
+  bumpSetlistRevisionAndBroadcast: vi.fn(async () => BigInt(1)),
+}));
+
 import { POST } from "@/app/api/events/[id]/setlist-items/route";
 import { prisma } from "@/lib/prisma";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -565,6 +577,10 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
       data: { setlistItemId: BigInt(888) },
     });
     expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+    // n14: the merge confirm changes confirmCount (snapshot data) → it
+    // runs in the writer transaction and bumps exactly once.
+    expect(lockEvent).toHaveBeenCalledWith(prisma, BigInt(1));
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
   });
 
   it("same-position different-song → INSERTs as rumoured sibling (no merge)", async () => {
@@ -586,6 +602,8 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
     expect(res.status).toBe(201);
     expect(prisma.setlistItem.create).toHaveBeenCalledTimes(1);
     expect(prisma.setlistItemConfirm.create).not.toHaveBeenCalled();
+    expect(lockEvent).toHaveBeenCalledWith(prisma, BigInt(1));
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
   });
 
   it("returns 400 when position is missing", async () => {
@@ -636,5 +654,63 @@ describe("POST /api/events/[id]/setlist-items — conflict handling", () => {
       { params: params1 },
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// ───── Busy database: 503 only when nothing was written ─────
+
+describe("POST /api/events/[id]/setlist-items — busy database", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupHappyPath();
+    mutableFlags.addItemEnabled = true;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  const body = {
+    itemType: "song",
+    songId: 42,
+    performerIds: ["si-host-1"],
+    isEncore: false,
+  };
+  const acquireTimeout = () =>
+    Object.assign(new Error("timeout exceeded when trying to connect"), {
+      clientVersion: "test",
+    });
+
+  it("pool exhausted on the first lookup → 503 db_busy, Retry-After 2, no i18n text", async () => {
+    (prisma.event.findFirst as ReturnType<typeof vi.fn>).mockRejectedValue(acquireTimeout());
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ ok: false, error: "db_busy" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("create transaction never started (maxWait) → 503, attempted once (no retry)", async () => {
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "Transaction API error: Unable to start a transaction in the given time.",
+        { code: "P2028", clientVersion: "test" },
+      ),
+    );
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: "db_busy" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+  });
+
+  it("a failure inside the started transaction stays a 500", async () => {
+    (prisma.setlistItem.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError(
+        "Transaction API error: A query cannot be executed on an expired transaction.",
+        { code: "P2028", clientVersion: "test" },
+      ),
+    );
+    const res = await POST(postRequest("1", body) as never, { params: params1 });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: "internal_error" });
   });
 });

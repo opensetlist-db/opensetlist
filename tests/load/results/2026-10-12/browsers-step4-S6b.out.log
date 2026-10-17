@@ -1,0 +1,240 @@
+[03:49:18.480] host guard: ok (CPU 5.7 % busy, 2 s CPU sample over 12 cores; no competing processes)
+[03:49:18.482] browsers run: base=https://opensetlist-83prdlajn-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=6 pause=25000ms drill=overlap
+[03:49:19.720] event 111: 23 active rows, rev 1409; inserting after row 2 (position 2); markers 1980,1981,1983,1984,1985,1987,1988,1989,1990,1995,1996,1997,1998,1999,2000,2004,2005,2006
+[03:49:20.178] deployment-url check: https://opensetlist-83prdlajn-opensetlist-projects.vercel.app serves event 111 at rev 1409 with the dev database's 23 rows (ids and positions match)
+[03:49:21.091] overlap anchor A: row 2235 (rev 1410)
+[03:49:21.674] overlap anchor B: row 2236 (rev 1411)
+[03:49:22.224] overlap anchor C: row 2237 (rev 1412)
+[03:49:24.496]   pages: 5/30 opened
+[03:49:26.024]   pages: 10/30 opened
+[03:49:27.390]   pages: 15/30 opened
+[03:49:30.197]   pages: 20/30 opened
+[03:49:33.152]   pages: 25/30 opened
+[03:49:34.386]   pages: 30/30 opened
+[03:49:34.388]   joined: pages 25/30 subs 470/470
+[03:49:34.897] population: {"pagesJoined":30,"pagesPgReady":0,"joined":470,"allJoinedSec":12.673,"allPgReadySec":null}; settling 10s
+[03:49:53.541] group 1: A 200 rev 1413 389 ms, B 200 rev 1414 608 ms, C 200 rev 1415 732 ms; head 1415; reloads 200/718ms 200/618ms; reactions 40/40 ok
+[03:50:18.212] group 2: A 200 rev 1416 458 ms, B 200 rev 1418 1279 ms, C 200 rev 1417 580 ms; head 1418; reloads 200/403ms 200/553ms; reactions 40/40 ok
+[03:50:43.241] group 3: A 200 rev 1419 446 ms, B 200 rev 1420 443 ms, C 200 rev 1421 490 ms; head 1421; reloads 200/564ms 200/276ms; reactions 40/40 ok
+[03:51:08.180] group 4: A 200 rev 1422 441 ms, B 200 rev 1424 1330 ms, C 200 rev 1423 753 ms; head 1424; reloads 200/583ms 200/496ms; reactions 40/40 ok
+[03:51:33.242] group 5: A 200 rev 1425 380 ms, B 200 rev 1426 528 ms, C 200 rev 1427 881 ms; head 1427; reloads 200/625ms 200/437ms; reactions 40/40 ok
+[03:51:58.229] group 6: A 200 rev 1428 450 ms, B 200 rev 1430 1191 ms, C 200 rev 1429 578 ms; head 1430; reloads 200/478ms 200/571ms; reactions 40/40 ok
+[03:52:01.549] cleaning up
+[03:52:55.189] cleanup: deleted 3/3; restore null
+[03:52:55.189] overlap cleanup: reactions deleted 240/240; songs soft-deleted 0/0
+[03:52:56.318] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":1433,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]}
+
+# Browsers run — 2026-10-12T03:49:15.788Z
+
+- Target: https://opensetlist-83prdlajn-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 1409, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 6 overlap group(s) × 3 concurrent PUTs (A, B, C) on anchor rows 2235, 2236, 2237, every 25 s; timeout 30 s; drill: overlap (see "Overlap drill")
+- Window (UTC): run start 2026-10-12T03:49:15.788Z, first edit 2026-10-12T03:49:49.213Z, last edit settled 2026-10-12T03:51:58.230Z, end 2026-10-12T03:52:57.042Z
+- Label: step4-S6b
+- Host guard at start: CPU 5.7 % busy (2 s CPU sample over 12 cores); 0 competing process(es) (--strict-host)
+
+## Gate verdicts
+
+Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 9000 | 1419 | 1916 | 3245 | 0 | p95 ≤ 3000, 0 missing | n/a |
+| edit × page | 540 | 1284 | 1883 | 2589 | 0 | same | n/a |
+| edit × SDK client | 8460 | 1425 | 1922 | 3245 | 0 | same | n/a |
+| drill overlap: groups, pages + SDK, last save start → head | 3000 | 1458 | 2223 | 2994 | 0 | every group gate in "Overlap drill" | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 364 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 11934 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| warming: warm hits ÷ hinted fetches (`x-snapshot-source: warm`) | SDK 4987/6348 (78.6 %), pages 268/410 (65.4 %) | — | — | — | — | informational; reader builds per save: `vercel-logs-summary.mjs` "Warming" on the history logs; arrival vs warm-complete: `warm-join.mjs` | n/a |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker; pair edits only), non-drilled: pages 0 | — | — | — · SDK 0 | — | — | — (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 540 | — | — | — |
+| broadcast `rev` → pages | 540 / 540 | 575 | 1381 | 1391 |
+| broadcast `rev` → SDK | 8460 / 8460 | 583 | 1381 | 1404 |
+
+## Per edit
+
+| # | mode | row | marker song | insert start (UTC) | ins ms | rev | save (PUT) start (UTC) | save ms | save rev |
+|---|---|---|---|---|---|---|---|---|---|
+| 1A | overlap | 2235 | 1980 What is my LIFE? | — | — | — | 2026-10-12T03:49:50.135Z | 389 | 1413 |
+| 1B | overlap | 2236 | 1981 HIBANA―火花― | — | — | — | 2026-10-12T03:49:50.383Z | 608 | 1414 |
+| 1C | overlap | 2237 | 1983 What is my LIFE? | — | — | — | 2026-10-12T03:49:50.634Z | 732 | 1415 |
+| 2A | overlap | 2235 | 1984 HomeRun Queen!! | — | — | — | 2026-10-12T03:50:15.119Z | 458 | 1416 |
+| 2B | overlap | 2236 | 1985 マジカル♡レシピ・シルブプレ！ | — | — | — | 2026-10-12T03:50:15.381Z | 1279 | 1418 |
+| 2C | overlap | 2237 | 1987 恋のワンタイムパスワード | — | — | — | 2026-10-12T03:50:15.622Z | 580 | 1417 |
+| 3A | overlap | 2235 | 1988 センチメートル・ランデヴー | — | — | — | 2026-10-12T03:50:40.150Z | 446 | 1419 |
+| 3B | overlap | 2236 | 1989 What is my LIFE? | — | — | — | 2026-10-12T03:50:40.393Z | 443 | 1420 |
+| 3C | overlap | 2237 | 1990 Pray for love | — | — | — | 2026-10-12T03:50:40.641Z | 490 | 1421 |
+| 4A | overlap | 2235 | 1995 What is my LIFE? | — | — | — | 2026-10-12T03:51:05.085Z | 441 | 1422 |
+| 4B | overlap | 2236 | 1996 Little Green委員会 | — | — | — | 2026-10-12T03:51:05.335Z | 1330 | 1424 |
+| 4C | overlap | 2237 | 1997 LOVE♡YOU♡Save the EARTH!! | — | — | — | 2026-10-12T03:51:05.585Z | 753 | 1423 |
+| 5A | overlap | 2235 | 1998 What is my LIFE? | — | — | — | 2026-10-12T03:51:30.145Z | 380 | 1425 |
+| 5B | overlap | 2236 | 1999 イキタクナイevery day | — | — | — | 2026-10-12T03:51:30.395Z | 528 | 1426 |
+| 5C | overlap | 2237 | 2000 Trick or Toxic | — | — | — | 2026-10-12T03:51:30.643Z | 881 | 1427 |
+| 6A | overlap | 2235 | 2004 SUPER SUMMER SENSATION!! | — | — | — | 2026-10-12T03:51:55.140Z | 450 | 1428 |
+| 6B | overlap | 2236 | 2005 凸凹Quartet | — | — | — | 2026-10-12T03:51:55.389Z | 1191 | 1430 |
+| 6C | overlap | 2237 | 2006 シンメトリー | — | — | — | 2026-10-12T03:51:55.635Z | 578 | 1429 |
+
+### Per save — pages (save start → marker in the DOM)
+
+| # | save rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1A | 1413 | 30/30 | 1107 / 1822 / 2453 | 0 | 443 / 446 (30) | 0 | 26 | satisfied 26 | 2/26 | 256 / 458 |
+| 1B | 1414 | 30/30 | 1002 / 1777 / 2205 | 0 | 604 / 607 (30) | 0 | 4 | satisfied 4 | 4/4 | 48 / 85 |
+| 1C | 1415 | 30/30 | 1376 / 2417 / 2589 | 0 | 788 / 806 (30) | 0 | 26 | satisfied 26 | 26/26 | 453 / 658 |
+| 2A | 1416 | 30/30 | 1182 / 1447 / 1447 | 0 | 508 / 520 (30) | 0 | 28 | satisfied 28 | 3/28 | 293 / 556 |
+| 2B | 1418 | 30/30 | 1786 / 2487 / 2509 | 0 | 1329 / 1338 (30) | 0 | 30 | satisfied 30 | 30/30 | 329 / 1036 |
+| 2C | 1417 | 30/30 | 1297 / 1673 / 1709 | 0 | 630 / 633 (30) | 0 | 2 | satisfied 2 | 2/2 | 481 / 519 |
+| 3A | 1419 | 30/30 | 982 / 1288 / 1306 | 0 | 500 / 502 (30) | 0 | 16 | satisfied 16 | 0/16 | 172 / 299 |
+| 3B | 1420 | 30/30 | 739 / 1045 / 1063 | 0 | 501 / 510 (30) | 0 | 14 | satisfied 14 | 14/14 | 132 / 300 |
+| 3C | 1421 | 30/30 | 1440 / 1760 / 1764 | 0 | 533 / 537 (30) | 0 | 24 | satisfied 24 | 24/24 | 761 / 953 |
+| 4A | 1422 | 30/30 | 992 / 1345 / 1481 | 0 | 486 / 491 (30) | 0 | 29 | satisfied 29 | 0/29 | 275 / 463 |
+| 4B | 1424 | 30/30 | 1757 / 2535 / 2537 | 0 | 1386 / 1390 (30) | 0 | 30 | satisfied 30 | 30/30 | 252 / 1033 |
+| 4C | 1423 | 30/30 | 1446 / 1635 / 1654 | 0 | 809 / 819 (30) | 0 | 6 | satisfied 6 | 6/6 | 331 / 361 |
+| 5A | 1425 | 30/30 | 954 / 1356 / 1415 | 0 | 435 / 442 (30) | 0 | 23 | satisfied 23 | 0/23 | 255 / 394 |
+| 5B | 1426 | 30/30 | 894 / 1546 / 1734 | 0 | 558 / 575 (30) | 0 | 6 | satisfied 6 | 5/6 | 54 / 146 |
+| 5C | 1427 | 30/30 | 1415 / 1613 / 1648 | 0 | 839 / 842 (30) | 0 | 28 | satisfied 28 | 28/28 | 283 / 551 |
+| 6A | 1428 | 30/30 | 1122 / 1366 / 1398 | 0 | 499 / 503 (30) | 0 | 29 | satisfied 29 | 5/29 | 323 / 541 |
+| 6B | 1430 | 30/30 | 1700 / 2020 / 2195 | 0 | 1243 / 1250 (30) | 0 | 29 | satisfied 29 | 29/29 | 345 / 554 |
+| 6C | 1429 | 30/30 | 1363 / 1774 / 1949 | 0 | 616 / 620 (30) | 0 | 0 | — | 0/0 | — / — |
+
+### Per save — SDK clients (save start → applied rev ≥ save rev)
+
+| # | save rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1A | 1413 | 470/470 | 1391 / 2595 / 3150 | 0 | 444 / 450 (470) | 365 | satisfied 365 | satisfied 373 | 0 (0) | 0 | 153/365 | 259 / 439 |
+| 1B | 1414 | 470/470 | 1355 / 2481 / 3245 | 0 | 608 / 619 (470) | 89 | satisfied 89 | satisfied 90 | 0 (0) | 0 | 89/89 | 46 / 281 |
+| 1C | 1415 | 470/470 | 1372 / 2403 / 2994 | 0 | 790 / 799 (470) | 410 | satisfied 410 | satisfied 428 | 0 (0) | 0 | 409/410 | 466 / 1352 |
+| 2A | 1416 | 470/470 | 1407 / 1835 / 2629 | 0 | 508 / 512 (470) | 467 | satisfied 467 | satisfied 470 | 0 (0) | 0 | 230/467 | 305 / 529 |
+| 2B | 1418 | 470/470 | 1745 / 2476 / 3022 | 0 | 1328 / 1336 (470) | 455 | satisfied 455 | satisfied 460 | 0 (0) | 0 | 455/455 | 309 / 1032 |
+| 2C | 1417 | 470/470 | 1394 / 1669 / 2499 | 0 | 628 / 635 (470) | 56 | satisfied 56 | satisfied 56 | 0 (0) | 0 | 56/56 | 481 / 504 |
+| 3A | 1419 | 470/470 | 1358 / 1661 / 2492 | 0 | 500 / 504 (470) | 232 | satisfied 232 | satisfied 232 | 0 (0) | 0 | 59/232 | 187 / 284 |
+| 3B | 1420 | 470/470 | 1315 / 1702 / 2249 | 0 | 502 / 516 (470) | 230 | satisfied 230 | satisfied 234 | 0 (0) | 0 | 230/230 | 152 / 289 |
+| 3C | 1421 | 470/470 | 1457 / 1677 / 2219 | 0 | 532 / 537 (470) | 373 | satisfied 373 | satisfied 395 | 0 (0) | 0 | 373/373 | 789 / 1001 |
+| 4A | 1422 | 470/470 | 1324 / 1549 / 1682 | 0 | 487 / 491 (470) | 459 | satisfied 459 | satisfied 466 | 0 (0) | 0 | 174/459 | 304 / 522 |
+| 4B | 1424 | 470/470 | 1768 / 2530 / 2578 | 0 | 1386 / 1390 (470) | 452 | satisfied 452 | satisfied 463 | 0 (0) | 0 | 452/452 | 255 / 1030 |
+| 4C | 1423 | 470/470 | 1417 / 1644 / 2223 | 0 | 808 / 816 (470) | 80 | satisfied 80 | satisfied 83 | 0 (0) | 0 | 79/80 | 313 / 378 |
+| 5A | 1425 | 470/470 | 1379 / 1714 / 2908 | 0 | 435 / 441 (470) | 333 | satisfied 333 | satisfied 339 | 0 (0) | 0 | 118/333 | 228 / 418 |
+| 5B | 1426 | 470/470 | 1233 / 1766 / 2658 | 0 | 558 / 569 (470) | 126 | satisfied 126 | satisfied 130 | 0 (0) | 0 | 126/126 | 97 / 156 |
+| 5C | 1427 | 470/470 | 1427 / 1602 / 2579 | 0 | 838 / 845 (470) | 413 | satisfied 413 | satisfied 438 | 0 (0) | 0 | 413/413 | 318 / 548 |
+| 6A | 1428 | 470/470 | 1377 / 1809 / 2550 | 0 | 499 / 504 (470) | 457 | satisfied 457 | satisfied 464 | 0 (0) | 0 | 220/457 | 293 / 521 |
+| 6B | 1430 | 470/470 | 1666 / 1906 / 2506 | 0 | 1244 / 1250 (470) | 441 | satisfied 441 | satisfied 456 | 0 (0) | 0 | 441/441 | 315 / 548 |
+| 6C | 1429 | 470/470 | 1362 / 1660 / 2260 | 0 | 613 / 620 (470) | 2 | satisfied 2 | satisfied 2 | 0 (0) | 0 | 2/2 | 248 / 336 |
+
+## Hint outcomes (whole run)
+
+- SDK: 11968 requests; notification fetches (hint=1) 6348, their x-snapshot-verify: satisfied 6348; all 200 responses: none 470, satisfied 11496
+  - ticket resolutions: satisfied 6511; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 1433
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 4517, notification +hint=1 6348, periodic generic +H 163; failures by kind: —
+  - notification fetches by x-snapshot-source: warm 4987, build 1358, cache 3 (warm 4987/6348 (78.6 %))
+- Pages: 769 /api/setlist responses; notification fetches (hint=1) 410, their x-snapshot-verify: satisfied 410; all 200 responses: satisfied 769 (an R1 page build sends no hint=1)
+  - notification fetches by x-snapshot-source: warm 268, build 141, cache 1 (warm 268/410 (65.4 %))
+
+## Measurement validity (load host)
+
+Event-loop lag = how late a 100 ms interval tick ran, per thread, inside the measurement window 2026-10-12T03:49:22.224Z → 2026-10-12T03:51:58.230Z (p50 = median of the 10 s buckets' p50, p95 / p99 / max = the worst bucket). Heartbeats: one per second per worker, from its own loop. Deadline timers: fired − armed − 8,000 ms for every SDK request that hit the 8 s deadline. INVALID if any lag sample > 1000 ms or any heartbeat gap > 3000 ms.
+
+| thread | lag p50 / p95 / p99 / max ms | samples > 1 s | heartbeats (max gap ms) | deadline timers fired: n, late p50 / p95 / max ms |
+|---|---|---|---|---|
+| main | 8 / 14 / 24 / 24 | 0 | — | — |
+| worker 0 | 9 / 14 / 30 / 30 | 0 | 198 (1099) | 0, — / — / — |
+| worker 1 | 8 / 16 / 37 / 37 | 0 | 198 (1098) | 0, — / — / — |
+| worker 2 | 9 / 16 / 39 / 39 | 0 | 198 (1097) | 0, — / — / — |
+| worker 3 | 8 / 15 / 40 / 40 | 0 | 198 (1099) | 0, — / — / — |
+
+Verdict: valid.
+
+Host (1 s samples; 12 logical cores, 65370 MB): host CPU = busy share of all cores; process CPU = this process (main + SDK workers) as a share of all cores; Chromium is in the host figure only. load1 is always 0 on Windows.
+
+| phase | s | host CPU p50 / max % | process CPU p50 / max % | RSS max MB | free mem min MB | load1 max | threads |
+|---|---|---|---|---|---|---|---|
+| join | 12.7 | 56.8 / 89.2 | 10 / 13.2 | 690 | 35145 | 0 | 5 |
+| settle | 14.3 | 22.9 / 39.3 | 1.8 / 4.4 | 694 | 35143 | 0 | 5 |
+| edits | 129.0 | 21.8 / 78.8 | 1 / 29.2 | 865 | 34782 | 0 | 5 |
+| drill overlap | 129.0 | 21.8 / 78.8 | 1 / 29.2 | 865 | 34782 | 0 | 5 |
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1747 p95=3029 max=3191
+  - /api/setlist responses seen: 769 ({"build":173,"cache":328,"warm":268}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 630; dropped notification frames 0, blocked attempts 0
+- SDK: 470/470 joined; all joined after 12.673 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=198 p95=359 max=423
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":4680,"notification":6348}; X-Snapshot-Source {"build":1981,"cache":4998,"warm":4987}
+
+## Overlap drill
+
+- 6 group(s), each: save A at 0 (header `x-live-warm-fault: slowbuild=500`), B at +250 ms, C at +500 ms after A's START (not awaited); anchors A = row 2235, B = row 2236, C = row 2237; editor reloads at +150, +450 ms; 40 raw reactions on row A over [0, 3 s]
+- Clocks: every time here is this machine's clock. The exposure classification (did B commit during A's job, did the builds overlap, was publication reversed, did the catalog race happen) needs the server's own timestamps and is NOT in this report: run `node tests/load/overlap-join.mjs <this>.json <history log>` (server `at*` fields are the functions' `Date.now()`; `captureAt` / `capturedAt` are PostgreSQL `now()` — a third clock).
+- Page gate = DOM monotonicity (versions derived from marker links never go backwards), not (rev, capturedAt): a page exposes no applied rev. SDK gate = (rev, capturedAt) of every applied snapshot.
+
+| gate (overlap, client side) | value | gate | verdict |
+|---|---|---|---|
+| all intended saves committed (2xx) | 6/6 groups | every group | **PASS** |
+| 5xx anywhere (saves, reloads, catalog, reactions, probes, SDK, pages) | 0 (none) | 0 | **PASS** |
+| convergence to head from the last save start — pages | 180 / 1458 / 2193 / 2589, missing 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| convergence to head from the last save start — SDK | 2820 / 1458 / 2223 / 2994, missing 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| DOM monotonicity (pages: marker-derived version never goes back) | 0 regressions | 0 | **PASS** |
+| (rev, capturedAt) monotonicity (SDK applied) | 0 regressions on 0 client(s) | 0 | **PASS** |
+| PUT latency, original attempt — save A | p95 458, all [389, 458, 446, 441, 380, 450] | p95 ≤ 1500 | **PASS** |
+| PUT latency, original attempt — save B | p95 1330, all [608, 1279, 443, 1330, 528, 1191] | p95 ≤ 1500 | **PASS** |
+| PUT latency, original attempt — save C | p95 881, all [732, 580, 490, 753, 881, 578] | p95 ≤ 1500 | **PASS** |
+| admin editor reloads in the save window | n 12, p50 / max 553 / 718, bad 0 | 200 + content ok + ≤ 3000 ms each | **PASS** |
+| raw reactions | n 240, p95 870, max 1631, non-2xx 0 | p95 ≤ 1500, 0 × 5xx | **PASS** |
+| server side: acquireMs ≤ 500 per save, no pool_acquire_timeout / 503, 0 EMAXCONN, builds per save vs S0, Σ, backend busy | — | `overlap-join.mjs` + summariser on the history logs | n/a here |
+
+From the FIRST save's start (informational): pages + SDK 3000 | 1956 | 2724 | 3493 (n | p50 | p95 | max).
+
+### Per group
+
+| group | saves (who: status rev ms) | head (who) | last start (UTC) | pages from last start p50 / p95 / max (n) | missing | SDK from last start p50 / p95 / max (n) | missing | reloads (status / ms / content) | catalog edit | raw reactions ok / n, p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | A: 200 1413 389; B: 200 1414 608; C: 200 1415 732 | 1415 (C) | 2026-10-12T03:49:50.634Z | 1376 / 2417 / 2589 (30) | 0 | 1372 / 2403 / 2994 (470) | 0 | +150: 200 / 718 / ok; +450: 200 / 618 / ok | — | 40 / 40, 778 |
+| 2 | A: 200 1416 458; B: 200 1418 1279; C: 200 1417 580 | 1418 (B) | 2026-10-12T03:50:15.622Z | 1545 / 2246 / 2268 (30) | 0 | 1504 / 2235 / 2781 (470) | 0 | +150: 200 / 403 / ok; +450: 200 / 553 / ok | — | 40 / 40, 1243 |
+| 3 | A: 200 1419 446; B: 200 1420 443; C: 200 1421 490 | 1421 (C) | 2026-10-12T03:50:40.641Z | 1440 / 1760 / 1764 (30) | 0 | 1457 / 1677 / 2219 (470) | 0 | +150: 200 / 564 / ok; +450: 200 / 276 / ok | — | 40 / 40, 866 |
+| 4 | A: 200 1422 441; B: 200 1424 1330; C: 200 1423 753 | 1424 (B) | 2026-10-12T03:51:05.585Z | 1507 / 2285 / 2287 (30) | 0 | 1518 / 2280 / 2328 (470) | 0 | +150: 200 / 583 / ok; +450: 200 / 496 / ok | — | 40 / 40, 699 |
+| 5 | A: 200 1425 380; B: 200 1426 528; C: 200 1427 881 | 1427 (C) | 2026-10-12T03:51:30.643Z | 1415 / 1613 / 1648 (30) | 0 | 1427 / 1602 / 2579 (470) | 0 | +150: 200 / 625 / ok; +450: 200 / 437 / ok | — | 40 / 40, 870 |
+| 6 | A: 200 1428 450; B: 200 1430 1191; C: 200 1429 578 | 1430 (B) | 2026-10-12T03:51:55.635Z | 1454 / 1774 / 1949 (30) | 0 | 1420 / 1660 / 2260 (470) | 0 | +150: 200 / 478 / ok; +450: 200 / 571 / ok | — | 40 / 40, 510 |
+
+Editor reloads (`GET /admin/events/111/edit`, request start → body drained): in window n 12 p50 553 max 718 ms; controls (before / pauses / after) n 16 p50 547 max 1022 ms; in-window ÷ control median: p50 1.01, max 1.31 (diagnostic, not a gate).
+
+### Probes (hinted fetches per committed key; never part of a gate)
+
+Per key (the ACTUAL rev a save returned) and locale: `x-snapshot-source` at +1 / +2 / +4 s after the last save's response; `→N` = body rev N ≠ key. First `warm` = observed readability of that key's entry (an upper bound: the probe clock is this machine's).
+
+| group | key (who) | ja | ko | en |
+|---|---|---|---|---|
+| 1 | 1413 (A) | warm / warm / warm | warm / warm / warm | warm→1415 / warm→1415 / warm→1415 |
+| 1 | 1414 (B) | warm / warm / warm | warm / warm / warm | warm→1415 / warm→1415 / warm→1415 |
+| 1 | 1415 (C, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 2 | 1416 (A) | warm / warm / warm | warm / warm / warm | warm→1417 / warm→1417 / warm→1417 |
+| 2 | 1417 (C) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 2 | 1418 (B, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 3 | 1419 (A) | warm / warm / warm | warm / warm / warm | warm→1421 / warm→1421 / warm→1421 |
+| 3 | 1420 (B) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 3 | 1421 (C, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 4 | 1422 (A) | warm / warm / warm | warm / warm / warm | warm→1423 / warm→1423 / warm→1423 |
+| 4 | 1423 (C) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 4 | 1424 (B, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 5 | 1425 (A) | warm / warm / warm | warm / warm / warm | warm→1427 / warm→1427 / warm→1427 |
+| 5 | 1426 (B) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 5 | 1427 (C, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 6 | 1428 (A) | warm / warm / warm | warm / warm / warm | warm→1429 / warm→1429 / warm→1429 |
+| 6 | 1429 (C) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+| 6 | 1430 (B, head) | warm / warm / warm | warm / warm / warm | warm / warm / warm |
+
+## Clean-up
+
+- Soft-deleted 3/3 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":1433,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)
+- Overlap: reactions deleted by id 240/240; dedicated songs soft-deleted 0/0
+
+[03:52:57.107] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-12\2026-10-12T03-52-57-081Z-browsers-overlap.md

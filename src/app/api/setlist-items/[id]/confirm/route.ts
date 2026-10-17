@@ -3,6 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
 import { CONFLICT_CONFIRMATION_THRESHOLD } from "@/lib/config";
 import { revalidateEventData } from "@/lib/dataCache";
+import {
+  bumpSetlistRevisionAndBroadcast,
+  lockEvent,
+} from "@/lib/liveBroadcast";
+import {
+  liveWriterBusyResponse,
+  liveWriterTransaction,
+} from "@/lib/liveWriterTx";
+
+// A failed lookup / confirm write answers 500 — or 503 `db_busy` +
+// Retry-After when the database could not be reached at all (nothing
+// ran, so the tap may be repeated). Public route: stable code only.
+function confirmFailure(err: unknown): NextResponse {
+  return (
+    liveWriterBusyResponse(err, "public") ??
+    NextResponse.json({ error: "internal_error" }, { status: 500 })
+  );
+}
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -93,10 +111,7 @@ export async function POST(_req: Request, { params }: RouteProps) {
     });
   } catch (err) {
     console.error("[POST /confirm] item lookup failed", err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return confirmFailure(err);
   }
   if (!item) {
     return NextResponse.json(
@@ -112,10 +127,7 @@ export async function POST(_req: Request, { params }: RouteProps) {
     });
   } catch (err) {
     console.error("[POST /confirm] confirm row write failed", err);
-    return NextResponse.json(
-      { error: "internal_error" },
-      { status: 500 },
-    );
+    return confirmFailure(err);
   }
 
   // Conflict-handling promotion path. Only applies when:
@@ -189,20 +201,39 @@ export async function POST(_req: Request, { params }: RouteProps) {
         // `confirmed` (or already soft-deleted by another racing
         // promotion against a different sibling) and updates zero
         // rows. updateMany doesn't throw on zero rows.
-        await prisma.$transaction([
-          prisma.setlistItem.updateMany({
+        //
+        // n14: interactive writer transaction — lock the event first,
+        // then the two updates, then bump the setlist revision +
+        // broadcast. Only the promotion bumps: a plain confirm tap
+        // changes nothing but a count (refreshed by the periodic
+        // snapshot poll), and broadcasting every tap would make each
+        // vote a 500-viewer refetch wave. The bump is skipped when the
+        // idempotency guard matched zero rows (a racing promotion
+        // already settled this group), so a no-op never notifies.
+        const eventId = item.eventId;
+        const itemId = item.id;
+        const position = item.position;
+        // Live-writer limits + timing. A busy database here is NOT
+        // turned into a 503: the confirm row above is already
+        // committed, so the request as a whole succeeded, and a 503
+        // would invite the client to send the tap again and write a
+        // second confirm. It falls into the catch below like any other
+        // promotion failure (the next tap retries the promotion).
+        await liveWriterTransaction("public-confirm-promote", eventId, async (tx) => {
+          await lockEvent(tx, eventId);
+          const hidden = await tx.setlistItem.updateMany({
             where: {
-              eventId: item.eventId,
-              position: item.position,
-              id: { not: item.id },
+              eventId,
+              position,
+              id: { not: itemId },
               status: "rumoured",
               isDeleted: false,
             },
             data: { isDeleted: true, deletedAt: new Date() },
-          }),
-          prisma.setlistItem.updateMany({
+          });
+          const promoted = await tx.setlistItem.updateMany({
             where: {
-              id: item.id,
+              id: itemId,
               status: "rumoured",
               // `isDeleted: false` defends against the
               // racing-promotion scenario where a sibling
@@ -216,12 +247,15 @@ export async function POST(_req: Request, { params }: RouteProps) {
               isDeleted: false,
             },
             data: { status: "confirmed" },
-          }),
-        ]);
+          });
+          return hidden.count + promoted.count > 0
+            ? bumpSetlistRevisionAndBroadcast(tx, eventId)
+            : null;
+        });
 
         // Promotion changes what the event page renders (rumoured →
         // confirmed); expire its cached SSR read.
-        revalidateEventData(item.eventId);
+        revalidateEventData(eventId);
         return NextResponse.json(
           { ok: true, promoted: true },
           { headers: { "Cache-Control": "private, no-store" } },

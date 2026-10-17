@@ -1,0 +1,34 @@
+time="2026-10-10T16:45:48-07:00" level=info msg="[burst b00] create appliedRev=393 n=597 errors=0 p95=2644ms max=2881ms" source=console
+time="2026-10-10T16:45:49-07:00" level=info msg="[admin] cold start done at 6.7s" source=console
+time="2026-10-10T16:46:22-07:00" level=info msg="[admin] cycle 1 (burst) at 40.0s" source=console
+time="2026-10-10T16:46:24-07:00" level=info msg="[burst b01] create appliedRev=395 n=599 errors=0 p95=786ms max=1001ms" source=console
+time="2026-10-10T16:46:30-07:00" level=info msg="[burst b02] update appliedRev=396 n=581 errors=0 p95=644ms max=868ms" source=console
+time="2026-10-10T16:46:37-07:00" level=info msg="[burst b03] insert_after appliedRev=397 n=602 errors=0 p95=1025ms max=1237ms" source=console
+time="2026-10-10T16:46:43-07:00" level=info msg="[burst b04] swap appliedRev=398 n=599 errors=0 p95=959ms max=1189ms" source=console
+time="2026-10-10T16:46:49-07:00" level=info msg="[burst b05] delete appliedRev=399 n=599 errors=0 p95=907ms max=1183ms" source=console
+time="2026-10-10T16:46:55-07:00" level=info msg="[burst b06] delete appliedRev=400 n=610 errors=0 p95=813ms max=1015ms" source=console
+time="2026-10-10T16:47:03-07:00" level=info msg="[admin] cycle 2 (quiet) at 81.5s" source=console
+time="2026-10-10T16:47:35-07:00" level=info msg="[admin] cycle 3 (burst) at 113.4s" source=console
+time="2026-10-10T16:47:38-07:00" level=info msg="[burst b07] create appliedRev=407 n=606 errors=0 p95=811ms max=1067ms" source=console
+time="2026-10-10T16:47:44-07:00" level=info msg="[burst b08] update appliedRev=408 n=593 errors=0 p95=706ms max=876ms" source=console
+time="2026-10-10T16:47:50-07:00" level=info msg="[burst b09] insert_after appliedRev=409 n=603 errors=0 p95=898ms max=1120ms" source=console
+time="2026-10-10T16:47:56-07:00" level=info msg="[burst b10] swap appliedRev=410 n=591 errors=0 p95=1035ms max=1335ms" source=console
+time="2026-10-10T16:48:03-07:00" level=info msg="[burst b11] delete appliedRev=411 n=590 errors=0 p95=1041ms max=1341ms" source=console
+time="2026-10-10T16:48:09-07:00" level=info msg="[burst b12] delete appliedRev=412 n=603 errors=0 p95=668ms max=886ms" source=console
+time="2026-10-10T16:48:17-07:00" level=info msg="[admin] cycle 4 (burst) at 155.0s" source=console
+time="2026-10-10T16:48:19-07:00" level=info msg="[burst b13] create appliedRev=413 n=603 errors=0 p95=774ms max=975ms" source=console
+time="2026-10-10T16:48:25-07:00" level=info msg="[burst b14] update appliedRev=414 n=598 errors=0 p95=783ms max=1068ms" source=console
+time="2026-10-10T16:48:32-07:00" level=info msg="[burst b15] insert_after appliedRev=415 n=579 errors=0 p95=1074ms max=1288ms" source=console
+time="2026-10-10T16:48:38-07:00" level=info msg="[burst b16] swap appliedRev=416 n=618 errors=0 p95=872ms max=1174ms" source=console
+time="2026-10-10T16:48:44-07:00" level=info msg="[burst b17] delete appliedRev=417 n=608 errors=0 p95=1039ms max=1337ms" source=console
+time="2026-10-10T16:48:50-07:00" level=info msg="[burst b18] delete appliedRev=418 n=593 errors=0 p95=670ms max=860ms" source=console
+time="2026-10-10T16:48:58-07:00" level=info msg="[admin] cycle 5 (quiet) at 196.2s" source=console
+time="2026-10-10T16:49:30-07:00" level=info msg="[admin] cycle 6 (burst) at 228.3s" source=console
+time="2026-10-10T16:49:33-07:00" level=info msg="[burst b19] create appliedRev=425 n=605 errors=0 p95=972ms max=1164ms" source=console
+time="2026-10-10T16:49:39-07:00" level=info msg="[burst b20] update appliedRev=426 n=595 errors=0 p95=820ms max=1045ms" source=console
+time="2026-10-10T16:49:45-07:00" level=info msg="[burst b21] insert_after appliedRev=427 n=605 errors=0 p95=939ms max=1172ms" source=console
+time="2026-10-10T16:49:52-07:00" level=info msg="[burst b22] swap appliedRev=428 n=598 errors=0 p95=891ms max=1158ms" source=console
+time="2026-10-10T16:49:58-07:00" level=info msg="[burst b23] delete appliedRev=429 n=593 errors=0 p95=889ms max=1163ms" source=console
+time="2026-10-10T16:50:04-07:00" level=info msg="[burst b24] delete appliedRev=430 n=602 errors=0 p95=653ms max=972ms" source=console
+time="2026-10-10T16:50:07-07:00" level=info msg="[admin] cycles done at 265.2s; waiting for the steady/reaction windows to end at 295s" source=console
+time="2026-10-10T16:50:37-07:00" level=info msg="[admin] drain: no requests from 295.0s for 90s" source=console

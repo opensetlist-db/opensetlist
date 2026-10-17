@@ -50,6 +50,12 @@ interface Props {
    * `pickRowArtistBadges`.
    */
   eventArtistId?: string | null;
+  /**
+   * `capturedAt` of the live snapshot `reactionCounts` came from —
+   * forwarded to `<ReactionButtons>` for the reaction ack hold.
+   * Optional; omitted → pre-n14 behaviour (no hold).
+   */
+  snapshotCapturedAt?: string | null;
 }
 
 /**
@@ -75,6 +81,7 @@ export function ActualSetlist({
   eventId,
   status,
   eventArtistId,
+  snapshotCapturedAt,
 }: Props) {
   const t = useTranslations("Event");
   const ct = useTranslations("Common");
@@ -305,6 +312,7 @@ export function ActualSetlist({
                   item={item}
                   index={bucketIndex}
                   reactionCounts={reactionCounts}
+                  snapshotCapturedAt={snapshotCapturedAt}
                   locale={locale}
                   eventId={eventId}
                   eventArtistId={eventArtistId}
@@ -401,6 +409,7 @@ export function ActualSetlist({
                       item={item}
                       index={bucketIndex}
                       reactionCounts={reactionCounts}
+                      snapshotCapturedAt={snapshotCapturedAt}
                       locale={locale}
                       eventId={eventId}
                       eventArtistId={eventArtistId}

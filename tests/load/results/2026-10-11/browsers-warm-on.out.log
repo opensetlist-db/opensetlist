@@ -1,0 +1,135 @@
+[09:00:55.816] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=12 pause=25000ms drill=none
+[09:00:57.126] event 111: 23 active rows, rev 826; inserting after row 2 (position 2); markers 370,371,372,373,379,380,381,382,383,388,389,390
+[09:01:02.530]   pages: 5/30 opened
+[09:01:03.921]   pages: 10/30 opened
+[09:01:06.600]   pages: 15/30 opened
+[09:01:07.906]   pages: 20/30 opened
+[09:01:09.381]   pages: 25/30 opened
+[09:01:10.824]   pages: 30/30 opened
+[09:01:10.838]   joined: pages 26/30 subs 470/470
+[09:01:11.360] population: {"pagesJoined":30,"pagesPgReady":0,"joined":470,"allJoinedSec":13.599,"allPgReadySec":null}; settling 10s
+[09:01:22.745] edit 1: row 2035 @3 insert 536 ms (rev 827) → song 370 "夏めきペイン" put 511 ms (rev 828)
+[09:01:47.687] edit 2: row 2036 @3 insert 710 ms (rev 829) → song 371 "DEEPNESS" put 471 ms (rev 830)
+[09:02:13.595] edit 3: row 2037 @3 insert 693 ms (rev 831) → song 372 "Dream Believers" put 458 ms (rev 832)
+[09:02:37.554] edit 4: row 2038 @3 insert 537 ms (rev 833) → song 373 "やっぱ天使！" put 482 ms (rev 834)
+[09:03:02.533] edit 5: row 2039 @3 insert 562 ms (rev 835) → song 379 "とーひょー☆スター！" put 466 ms (rev 836)
+[09:03:27.696] edit 6: row 2040 @3 insert 699 ms (rev 837) → song 380 "フルーツパンチ" put 470 ms (rev 838)
+[09:03:53.201] edit 7: row 2041 @3 insert 661 ms (rev 839) → song 381 "My Lucky Clover" put 951 ms (rev 840)
+[09:04:17.656] edit 8: row 2042 @3 insert 660 ms (rev 841) → song 382 "太陽であれ！" put 470 ms (rev 842)
+[09:04:42.403] edit 9: row 2043 @3 insert 549 ms (rev 843) → song 383 "diamondz" put 405 ms (rev 844)
+[09:05:07.448] edit 10: row 2044 @3 insert 565 ms (rev 845) → song 388 "ニャオシグニャル" put 479 ms (rev 846)
+[09:05:32.433] edit 11: row 2045 @3 insert 505 ms (rev 847) → song 389 "ハートにQ" put 517 ms (rev 848)
+[09:05:57.602] edit 12: row 2046 @3 insert 572 ms (rev 849) → song 390 "片翼のトリバガ" put 492 ms (rev 850)
+[09:05:59.264] cleaning up
+[09:06:04.720] cleanup: deleted 12/12; restore null
+[09:06:05.907] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":862,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]}
+
+# Browsers run — 2026-10-11T09:00:55.816Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 826, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 12 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: none
+- Window (UTC): run start 2026-10-11T09:00:55.816Z, first edit 2026-10-11T09:01:21.374Z, last edit settled 2026-10-11T09:05:59.264Z, end 2026-10-11T09:06:06.715Z
+- Label: warm-on
+
+## Gate verdicts
+
+Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 6000 | 1497 | 3588 | 5331 | 0 | p95 ≤ 3000, 0 missing | **FAIL** |
+| edit × page | 360 | 1477 | 2181 | 4039 | 0 | same | **PASS** |
+| edit × SDK client | 5640 | 1500 | 3596 | 5331 | 0 | same | **FAIL** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 360 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 20643 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| warming: warm hits ÷ hinted fetches (`x-snapshot-source: warm`) | SDK 12813/12822 (99.9 %), pages 829/831 (99.8 %) | — | — | — | — | informational; reader builds per save: `vercel-logs-summary.mjs` "Warming" on the history logs; arrival vs warm-complete: `warm-join.mjs` | n/a |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker), non-drilled: pages 360 | 2179 | 2879 | 4737 · SDK 5640 | 2194 | 4294 | 6029 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 360 | — | — | — |
+| broadcast `rev` → pages | 360 / 360 | 560 | 1179 | 1517 |
+| broadcast `rev` → SDK | 5640 / 5640 | 580 | 1141 | 3902 |
+
+## Per edit
+
+| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 2035 | 370 夏めきペイン | 2026-10-11T09:01:21.374Z | 536 | 827 | 2026-10-11T09:01:22.038Z | 511 | 828 |
+| 2 | 2036 | 371 DEEPNESS | 2026-10-11T09:01:46.377Z | 710 | 829 | 2026-10-11T09:01:47.196Z | 471 | 830 |
+| 3 | 2037 | 372 Dream Believers | 2026-10-11T09:02:11.375Z | 693 | 831 | 2026-10-11T09:02:12.073Z | 458 | 832 |
+| 4 | 2038 | 373 やっぱ天使！ | 2026-10-11T09:02:36.378Z | 537 | 833 | 2026-10-11T09:02:37.058Z | 482 | 834 |
+| 5 | 2039 | 379 とーひょー☆スター！ | 2026-10-11T09:03:01.380Z | 562 | 835 | 2026-10-11T09:03:02.063Z | 466 | 836 |
+| 6 | 2040 | 380 フルーツパンチ | 2026-10-11T09:03:26.384Z | 699 | 837 | 2026-10-11T09:03:27.222Z | 470 | 838 |
+| 7 | 2041 | 381 My Lucky Clover | 2026-10-11T09:03:51.381Z | 661 | 839 | 2026-10-11T09:03:52.167Z | 951 | 840 |
+| 8 | 2042 | 382 太陽であれ！ | 2026-10-11T09:04:16.389Z | 660 | 841 | 2026-10-11T09:04:17.178Z | 470 | 842 |
+| 9 | 2043 | 383 diamondz | 2026-10-11T09:04:41.385Z | 549 | 843 | 2026-10-11T09:04:41.938Z | 405 | 844 |
+| 10 | 2044 | 388 ニャオシグニャル | 2026-10-11T09:05:06.381Z | 565 | 845 | 2026-10-11T09:05:06.954Z | 479 | 846 |
+| 11 | 2045 | 389 ハートにQ | 2026-10-11T09:05:31.387Z | 505 | 847 | 2026-10-11T09:05:31.908Z | 517 | 848 |
+| 12 | 2046 | 390 片翼のトリバガ | 2026-10-11T09:05:56.379Z | 572 | 849 | 2026-10-11T09:05:57.093Z | 492 | 850 |
+
+### Per save — pages (PUT start → marker in the DOM)
+
+| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 828 | 30/30 | 1415 / 1722 / 1735 | 0 | 675 / 692 (30) | 0 | 28 | satisfied 28 | 28/28 | 674 / 896 |
+| 2 | 830 | 30/30 | 1448 / 1598 / 1602 | 0 | 530 / 564 (30) | 0 | 28 | satisfied 28 | 28/28 | 763 / 933 |
+| 3 | 832 | 30/30 | 2193 / 4008 / 4039 | 0 | 1179 / 1517 (30) | 0 | 28 | satisfied 28 | 28/28 | 1131 / 3318 |
+| 4 | 834 | 30/30 | 1434 / 1661 / 1664 | 0 | 591 / 595 (30) | 0 | 30 | satisfied 30 | 30/30 | 746 / 943 |
+| 5 | 836 | 30/30 | 1541 / 1689 / 1697 | 0 | 538 / 567 (30) | 0 | 25 | satisfied 25 | 25/25 | 880 / 957 |
+| 6 | 838 | 30/30 | 1461 / 1738 / 1836 | 0 | 526 / 545 (30) | 0 | 29 | satisfied 29 | 29/29 | 784 / 912 |
+| 7 | 840 | 30/30 | 1565 / 1699 / 2346 | 0 | 1014 / 1014 (30) | 0 | 30 | satisfied 30 | 30/30 | 399 / 499 |
+| 8 | 842 | 30/30 | 1344 / 1653 / 1653 | 0 | 517 / 522 (30) | 0 | 28 | satisfied 28 | 28/28 | 652 / 922 |
+| 9 | 844 | 30/30 | 1440 / 1739 / 1750 | 0 | 464 / 472 (30) | 0 | 27 | satisfied 27 | 27/27 | 826 / 1043 |
+| 10 | 846 | 30/30 | 1477 / 1732 / 1762 | 0 | 546 / 570 (30) | 0 | 26 | satisfied 26 | 26/26 | 780 / 1038 |
+| 11 | 848 | 30/30 | 1510 / 1766 / 1773 | 0 | 592 / 602 (30) | 0 | 29 | satisfied 29 | 29/29 | 823 / 993 |
+| 12 | 850 | 30/30 | 1395 / 1651 / 1651 | 0 | 560 / 561 (30) | 0 | 29 | satisfied 29 | 29/29 | 693 / 860 |
+
+### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)
+
+| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 828 | 470/470 | 1422 / 1858 / 2122 | 0 | 847 / 897 (470) | 399 | satisfied 399 | satisfied 446 | 0 (0) | 0 | 399/399 | 636 / 1182 |
+| 2 | 830 | 470/470 | 1383 / 1611 / 1725 | 0 | 575 / 638 (470) | 450 | satisfied 450 | satisfied 466 | 0 (0) | 0 | 450/450 | 720 / 944 |
+| 3 | 832 | 470/470 | 4396 / 4945 / 5331 | 0 | 3263 / 3786 (470) | 429 | satisfied 429 | satisfied 468 | 0 (0) | 0 | 429/429 | 2922 / 4286 |
+| 4 | 834 | 470/470 | 1416 / 1726 / 2138 | 0 | 579 / 661 (470) | 441 | satisfied 441 | satisfied 462 | 0 (0) | 0 | 441/441 | 702 / 959 |
+| 5 | 836 | 470/470 | 1442 / 1656 / 1706 | 0 | 545 / 626 (470) | 440 | satisfied 440 | satisfied 460 | 0 (0) | 0 | 440/440 | 724 / 944 |
+| 6 | 838 | 470/470 | 1598 / 2704 / 3294 | 0 | 527 / 531 (470) | 433 | satisfied 433 | satisfied 459 | 0 (0) | 0 | 433/433 | 689 / 1952 |
+| 7 | 840 | 470/470 | 1546 / 1728 / 2206 | 0 | 1011 / 1016 (470) | 450 | satisfied 450 | satisfied 459 | 0 (0) | 0 | 443/450 | 386 / 531 |
+| 8 | 842 | 470/470 | 1375 / 1609 / 2391 | 0 | 519 / 527 (470) | 442 | satisfied 442 | satisfied 460 | 0 (0) | 0 | 442/442 | 689 / 945 |
+| 9 | 844 | 470/470 | 1874 / 2302 / 2494 | 0 | 964 / 1145 (470) | 435 | satisfied 435 | satisfied 464 | 0 (0) | 0 | 435/435 | 1036 / 1675 |
+| 10 | 846 | 470/470 | 1513 / 1751 / 2146 | 0 | 562 / 725 (470) | 445 | satisfied 445 | satisfied 463 | 0 (0) | 0 | 445/445 | 796 / 1037 |
+| 11 | 848 | 470/470 | 1672 / 2003 / 2036 | 0 | 808 / 838 (470) | 443 | satisfied 443 | satisfied 464 | 0 (0) | 0 | 443/443 | 838 / 1296 |
+| 12 | 850 | 470/470 | 1374 / 1625 / 2122 | 0 | 546 / 555 (470) | 442 | satisfied 442 | satisfied 457 | 0 (0) | 0 | 442/442 | 685 / 936 |
+
+## Hint outcomes (whole run)
+
+- SDK: 20671 requests; notification fetches (hint=1) 12822, their x-snapshot-verify: satisfied 12822; all 200 responses: none 470, satisfied 20191
+  - ticket resolutions: satisfied 13286; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 862
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 6445, notification +hint=1 12822, periodic generic +H 464; failures by kind: —
+  - notification fetches by x-snapshot-source: warm 12813, build 9 (warm 12813/12822 (99.9 %))
+- Pages: 1325 /api/setlist responses; notification fetches (hint=1) 831, their x-snapshot-verify: satisfied 831; all 200 responses: satisfied 1325 (an R1 page build sends no hint=1)
+  - notification fetches by x-snapshot-source: warm 829, build 2 (warm 829/831 (99.8 %))
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1615 p95=4244 max=4783
+  - /api/setlist responses seen: 1325 ({"cache":467,"warm":829,"build":29}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 1080; dropped notification frames 0, blocked attempts 0
+- SDK: 470/470 joined; all joined after 13.599 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=222 p95=1961 max=2055
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":6909,"notification":12822}; X-Snapshot-Source {"cache":7387,"warm":12813,"build":461}
+
+## Clean-up
+
+- Soft-deleted 12/12 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":862,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)
+
+[09:06:06.745] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T09-06-06-726Z-browsers.md

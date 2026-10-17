@@ -1,0 +1,479 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+// n14 writer contract for the admin setlist routes, with the database
+// mocked: every save is ONE interactive transaction ordered
+//   lockEvent → reads → writes → bumpSetlistRevisionAndBroadcast
+// and the event cache is expired only after the transaction resolved.
+// The real SQL (row lock, revision increment, realtime.messages row) is
+// exercised against the dev DB in
+// src/__tests__/integration/n14-live-path.test.ts.
+
+const log = vi.hoisted(() => [] as string[]);
+
+vi.mock("@/lib/admin-auth", () => ({ verifyAdminAPI: vi.fn(async () => null) }));
+
+vi.mock("@/lib/dataCache", () => ({
+  revalidateEventData: vi.fn(() => log.push("revalidate")),
+}));
+
+// The real `requestWarmFault` (the routes' header parsing is under
+// test); only the post-commit scheduler is a spy, so the plumbing
+// route → liveWriterTransaction → scheduleWarm can be observed.
+vi.mock("@/lib/liveWarm", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/liveWarm")>()),
+  scheduleWarm: vi.fn(),
+}));
+
+vi.mock("@/lib/liveBroadcast", () => ({
+  lockEvent: vi.fn(async () => {
+    log.push("lock");
+    return true;
+  }),
+  bumpSetlistRevisionAndBroadcast: vi.fn(async () => {
+    log.push("bump");
+    return BigInt(12);
+  }),
+  revToNumber: (rev: bigint) => Number(rev),
+}));
+
+vi.mock("@/lib/prisma", () => {
+  const rec =
+    (name: string, value: unknown = {}) =>
+    vi.fn(async () => {
+      log.push(name);
+      return typeof value === "function" ? (value as () => unknown)() : value;
+    });
+  const client = {
+    setlistItem: {
+      findMany: rec("findMany", []),
+      findUnique: rec("findUnique", { eventId: BigInt(5) }),
+      create: rec("create", { id: BigInt(900), eventId: BigInt(5) }),
+      update: rec("update", { id: BigInt(900), eventId: BigInt(5) }),
+    },
+    setlistItemSong: { deleteMany: rec("deleteSongs") },
+    setlistItemMember: { deleteMany: rec("deleteMembers") },
+    setlistItemArtist: { deleteMany: rec("deleteArtists") },
+    eventPerformer: { findMany: rec("eventPerformers", []) },
+    $transaction: vi.fn(),
+  };
+  client.$transaction.mockImplementation(
+    async (cb: (tx: typeof client) => Promise<unknown>) => {
+      log.push("begin");
+      const out = await cb(client);
+      log.push("commit");
+      return out;
+    },
+  );
+  return { prisma: client };
+});
+
+import { POST as CREATE } from "@/app/api/admin/setlist-items/route";
+import { PUT, DELETE } from "@/app/api/admin/setlist-items/[id]/route";
+import { POST as INSERT_AFTER } from "@/app/api/admin/setlist-items/insert-after/route";
+import { POST as SWAP } from "@/app/api/admin/setlist-items/swap/route";
+import { prisma } from "@/lib/prisma";
+import { bumpSetlistRevisionAndBroadcast } from "@/lib/liveBroadcast";
+import {
+  scheduleWarm,
+  WARM_FAULT_HEADER,
+  WARM_FAULT_HEADER_UNPARSEABLE,
+  WARM_FAULT_HEADER_UNSUPPORTED,
+} from "@/lib/liveWarm";
+import { jsonRequest } from "../helpers/requestFactory";
+import type { NextRequest } from "next/server";
+
+const req = (url: string, body: unknown, method = "POST") =>
+  jsonRequest(url, body, method) as unknown as NextRequest;
+const params = (id: string) => ({ params: Promise.resolve({ id }) });
+
+// One-shot override that still records the call in `log` (a plain
+// `mockResolvedValueOnce` would replace the logging implementation).
+function logged(value: unknown) {
+  return (async () => {
+    log.push("findMany");
+    return value;
+  }) as never;
+}
+function onceFindMany(value: unknown) {
+  vi.mocked(prisma.setlistItem.findMany).mockImplementationOnce(logged(value));
+}
+
+beforeEach(() => {
+  log.length = 0;
+  vi.clearAllMocks();
+});
+
+describe("admin setlist writers — transaction shape (n14)", () => {
+  it("POST: lock → encore read → create → bump → commit → revalidate; rev in body", async () => {
+    const res = await CREATE(
+      req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }),
+    );
+    expect(res.status).toBe(201);
+    expect(log).toEqual([
+      "begin",
+      "lock",
+      "findMany",
+      "create",
+      "bump",
+      "commit",
+      "revalidate",
+    ]);
+    expect((await res.json()).rev).toBe(12);
+  });
+
+  it("POST: encore violation → 400, nothing written, no bump, no revalidate", async () => {
+    onceFindMany([
+      { position: 1, isEncore: true },
+    ] as never);
+    const res = await CREATE(
+      req("http://x/api/admin/setlist-items", {
+        eventId: 5,
+        position: 2,
+        isEncore: false,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.setlistItem.create).not.toHaveBeenCalled();
+    expect(bumpSetlistRevisionAndBroadcast).not.toHaveBeenCalled();
+    expect(log).not.toContain("revalidate");
+  });
+
+  it("PUT: item → event resolved first, then one tx with the link rewrite and one bump", async () => {
+    const res = await PUT(
+      req("http://x/api/admin/setlist-items/900", { position: 1 }, "PUT"),
+      params("900"),
+    );
+    expect(res.status).toBe(200);
+    expect(log).toEqual([
+      "findUnique",
+      "begin",
+      "lock",
+      "findMany",
+      "deleteSongs",
+      "deleteMembers",
+      "deleteArtists",
+      "update",
+      "bump",
+      "commit",
+      "revalidate",
+    ]);
+  });
+
+  it("PUT on a missing item → 404 without opening a transaction", async () => {
+    vi.mocked(prisma.setlistItem.findUnique).mockResolvedValueOnce(null);
+    const res = await PUT(
+      req("http://x/api/admin/setlist-items/1", { position: 1 }, "PUT"),
+      params("1"),
+    );
+    expect(res.status).toBe(404);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("DELETE: soft-delete + bump in one tx", async () => {
+    const res = await DELETE(
+      req("http://x/api/admin/setlist-items/900", {}, "DELETE"),
+      params("900"),
+    );
+    expect(res.status).toBe(200);
+    expect(log).toEqual([
+      "findUnique",
+      "begin",
+      "lock",
+      "update",
+      "bump",
+      "commit",
+      "revalidate",
+    ]);
+    expect(await res.json()).toEqual({ success: true, rev: 12 });
+  });
+
+  it("insert-after shifting k rows still bumps exactly once", async () => {
+    onceFindMany([
+      { id: BigInt(3), position: 3 },
+      { id: BigInt(2), position: 2 },
+    ] as never);
+    const res = await INSERT_AFTER(
+      req("http://x/api/admin/setlist-items/insert-after", {
+        eventId: 5,
+        afterPosition: 1,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(log).toEqual([
+      "begin",
+      "lock",
+      "findMany",
+      "update",
+      "update",
+      "eventPerformers",
+      "create",
+      "bump",
+      "commit",
+      "revalidate",
+    ]);
+    expect(bumpSetlistRevisionAndBroadcast).toHaveBeenCalledTimes(1);
+  });
+
+  it("swap reads positions inside the transaction, after the lock", async () => {
+    vi.mocked(prisma.setlistItem.findMany)
+      // pre-tx membership read (eventId only)
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), eventId: BigInt(5) },
+          { id: BigInt(2), eventId: BigInt(5) },
+        ]),
+      )
+      // in-tx position read
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), position: 4 },
+          { id: BigInt(2), position: 7 },
+        ]),
+      );
+    const res = await SWAP(
+      req("http://x/api/admin/setlist-items/swap", { itemIdA: 1, itemIdB: 2 }),
+    );
+    expect(res.status).toBe(200);
+    expect(log).toEqual([
+      "findMany",
+      "begin",
+      "lock",
+      "findMany",
+      "update",
+      "update",
+      "update",
+      "bump",
+      "commit",
+      "revalidate",
+    ]);
+    const updates = vi.mocked(prisma.setlistItem.update).mock.calls.map(
+      (c) => (c[0] as { where: { id: bigint }; data: { position: number } }),
+    );
+    expect(updates.map((u) => [u.where.id, u.data.position])).toEqual([
+      [BigInt(1), -1],
+      [BigInt(2), 4],
+      [BigInt(1), 7],
+    ]);
+  });
+
+  it("swap across events → 400 before any transaction", async () => {
+    onceFindMany([
+      { id: BigInt(1), eventId: BigInt(5) },
+      { id: BigInt(2), eventId: BigInt(6) },
+    ] as never);
+    const res = await SWAP(
+      req("http://x/api/admin/setlist-items/swap", { itemIdA: 1, itemIdB: 2 }),
+    );
+    expect(res.status).toBe(400);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("admin setlist writers — busy database (503, nothing written, no retry)", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  const KOREAN = "데이터베이스 연결이 혼잡합니다. 잠시 후 다시 저장해 주세요.";
+
+  it("passes the live-writer limits explicitly", async () => {
+    await CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }));
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 2_000,
+      timeout: 8_000,
+    });
+  });
+
+  it("pooler cap before the transaction started → 503 with the operator message", async () => {
+    vi.mocked(prisma.$transaction).mockImplementationOnce((async () => {
+      throw Object.assign(
+        new Error("(EMAXCONN) max client connections reached, limit: 200"),
+        {
+          name: "DriverAdapterError",
+          cause: {
+            kind: "postgres",
+            code: "XX000",
+            severity: "FATAL",
+            message: "(EMAXCONN) max client connections reached, limit: 200",
+          },
+        },
+      );
+    }) as never);
+    const res = await CREATE(
+      req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("2");
+    expect(await res.json()).toEqual({ error: KOREAN, code: "db_busy" });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(log).not.toContain("create");
+    expect(log).not.toContain("revalidate");
+  });
+
+  it("pool exhausted on the pre-transaction item lookup → 503 (PUT and DELETE)", async () => {
+    const timeout = () =>
+      Object.assign(new Error("timeout exceeded when trying to connect"), {
+        clientVersion: "test",
+      });
+    vi.mocked(prisma.setlistItem.findUnique)
+      .mockRejectedValueOnce(timeout())
+      .mockRejectedValueOnce(timeout());
+    const put = await PUT(
+      req("http://x/api/admin/setlist-items/900", { position: 1 }, "PUT"),
+      params("900"),
+    );
+    const del = await DELETE(
+      req("http://x/api/admin/setlist-items/900", {}, "DELETE"),
+      params("900"),
+    );
+    for (const res of [put, del]) {
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toBe(KOREAN);
+    }
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("any other failure still propagates (not a 503)", async () => {
+    vi.mocked(prisma.$transaction).mockImplementationOnce((async () => {
+      throw new Error("boom");
+    }) as never);
+    await expect(
+      CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 })),
+    ).rejects.toThrow("boom");
+  });
+});
+
+// n14 step 4: the drill-only per-save warm fault header. Read by the
+// ADMIN writers only, after auth, validated before anything is read or
+// written, and handed to the warm job by value.
+describe("admin setlist writers — x-live-warm-fault header", () => {
+  const ENV = ["LIVE_WARM_FAULT_ARMED", "LIVE_WARM_FAULT", "VERCEL_ENV"];
+  afterEach(() => {
+    for (const k of ENV) delete process.env[k];
+  });
+
+  const withFault = (url: string, body: unknown, spec: string, method = "POST") =>
+    new Request(url, {
+      method,
+      headers: { "content-type": "application/json", [WARM_FAULT_HEADER]: spec },
+      body: JSON.stringify(body),
+    }) as unknown as NextRequest;
+
+  // One call per admin live writer that accepts the header.
+  const writers = (spec: string) => [
+    () => CREATE(withFault("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }, spec)),
+    () =>
+      PUT(
+        withFault("http://x/api/admin/setlist-items/900", { position: 1 }, spec, "PUT"),
+        params("900"),
+      ),
+    () =>
+      INSERT_AFTER(
+        withFault(
+          "http://x/api/admin/setlist-items/insert-after",
+          { eventId: 5, afterPosition: 1 },
+          spec,
+        ),
+      ),
+    () =>
+      SWAP(withFault("http://x/api/admin/setlist-items/swap", { itemIdA: 1, itemIdB: 2 }, spec)),
+  ];
+
+  it("armed: an unparseable spec → 400 with the Korean message, nothing read or written, on every writer", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    for (const call of writers("slowset=abc")) {
+      const res = await call();
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: WARM_FAULT_HEADER_UNPARSEABLE });
+    }
+    expect(log).toEqual([]);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(scheduleWarm).not.toHaveBeenCalled();
+  });
+
+  it("armed: a lookup-side mode → 400 unsupported, nothing written", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    for (const spec of ["absent", "slow=100", "getnull", "geterror,locale=ja"]) {
+      for (const call of writers(spec)) {
+        const res = await call();
+        expect(res.status, spec).toBe(400);
+        expect(await res.json()).toEqual({ error: WARM_FAULT_HEADER_UNSUPPORTED });
+      }
+    }
+    expect(log).toEqual([]);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("armed: a valid spec reaches THIS save's warm job (create)", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const res = await writers("slowset=1500,locale=ja")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledTimes(1);
+    expect(scheduleWarm).toHaveBeenCalledWith(
+      BigInt(5),
+      BigInt(12),
+      expect.objectContaining({ label: "slowset:1500+locale:ja", slowSetMs: 1500 }),
+    );
+  });
+
+  it("armed: a valid spec reaches the warm job of update, insert-after and swap", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const [, put, insertAfter, swap] = writers("slowbuild=1500");
+    expect((await put()).status).toBe(200);
+    expect((await insertAfter()).status).toBe(200);
+    vi.mocked(prisma.setlistItem.findMany)
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), eventId: BigInt(5) },
+          { id: BigInt(2), eventId: BigInt(5) },
+        ]),
+      )
+      .mockImplementationOnce(
+        logged([
+          { id: BigInt(1), position: 4 },
+          { id: BigInt(2), position: 7 },
+        ]),
+      );
+    expect((await swap()).status).toBe(200);
+    const faults = vi.mocked(scheduleWarm).mock.calls.map((c) => c[2]?.label);
+    expect(faults).toEqual(["slowbuild:1500", "slowbuild:1500", "slowbuild:1500"]);
+  });
+
+  it("unarmed: the header is ignored — even a malformed one — and the save warms without a fault", async () => {
+    const res = await writers("garbage")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("production: ignored even when armed", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    process.env.VERCEL_ENV = "production";
+    const res = await writers("absent")[0]();
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("armed, no header: the save warms without a request fault", async () => {
+    process.env.LIVE_WARM_FAULT_ARMED = "1";
+    const res = await CREATE(req("http://x/api/admin/setlist-items", { eventId: 5, position: 1 }));
+    expect(res.status).toBe(201);
+    expect(scheduleWarm).toHaveBeenCalledWith(BigInt(5), BigInt(12), null);
+  });
+
+  it("the public writers and the shared wrapper have no header path (source check)", () => {
+    const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
+    for (const p of [
+      "src/app/api/events/[id]/setlist-items/route.ts",
+      "src/app/api/setlist-items/[id]/confirm/route.ts",
+    ]) {
+      const src = read(p);
+      expect(src, p).toContain("liveWriterTransaction");
+      expect(src, p).not.toMatch(/requestWarmFault|x-live-warm-fault|warmFault/);
+    }
+    // The shared wrapper and the scheduler never read request headers.
+    for (const p of ["src/lib/liveWriterTx.ts", "src/lib/liveWarm.ts"]) {
+      expect(read(p), p).not.toMatch(/from "next\/headers"/);
+    }
+  });
+});

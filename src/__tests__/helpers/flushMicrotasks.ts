@@ -5,10 +5,9 @@ import { act } from "@testing-library/react";
 // Two `Promise.resolve()` awaits is the safe minimum that lets any
 // chained microtasks (state-set → re-render → effect cleanup) drain.
 //
-// Shared between `useRealtimeEventChannel.test.tsx` and
-// `useRealtimeImpressions.test.tsx` (the R3.5 visibility tests in both
-// use the exact same pattern; verbatim duplicate inline was a
-// duplication risk for nothing).
+// Shared by the live-hook tests (`useRealtimeEventChannel.test.tsx`,
+// `useImpressionPolling.test.tsx`, …) — a verbatim inline copy per file
+// was duplication risk for nothing.
 export async function flushMicrotasks(): Promise<void> {
   await act(async () => {
     await Promise.resolve();

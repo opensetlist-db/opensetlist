@@ -39,6 +39,8 @@ import {
   joinIdKey,
   revalidateEventData,
   revalidatePublicData,
+  warmEntryCache,
+  WARM_PUBLIC_DATA_TAG,
   splitIdKey,
   timeBucket,
 } from "@/lib/dataCache";
@@ -173,5 +175,40 @@ describe("revalidation helpers", () => {
     expect(() => revalidatePublicData()).not.toThrow();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+});
+
+describe("warm Runtime Cache entries", () => {
+  it("revalidatePublicData also expires every warm-public-data entry (best-effort, async)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cache = warmEntryCache();
+    await cache.set("1:ja:5", { v: 1 }, { tags: [WARM_PUBLIC_DATA_TAG, "warm-event-1"] });
+    await cache.set("other", { v: 2 }, { tags: ["something-else"] });
+    expect(await cache.get("1:ja:5")).toEqual({ v: 1 });
+    revalidatePublicData();
+    // The expiry is started, not awaited, by the synchronous helper.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await cache.get("1:ja:5")).toBeNull();
+    expect(await cache.get("other")).toEqual({ v: 2 });
+  });
+
+  it("logs expire-warm start / done with explicit server-clock timestamps", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    revalidatePublicData();
+    await new Promise((r) => setTimeout(r, 0));
+    const out = log.mock.calls
+      .map((c) => String(c[0]))
+      .filter((l) => l.startsWith("[dataCache] expire-warm "));
+    expect(out).toEqual([
+      expect.stringMatching(/^\[dataCache\] expire-warm phase=start at=\d+ instance=[0-9a-f]{8}$/),
+      expect.stringMatching(
+        /^\[dataCache\] expire-warm phase=done ok=true ms=\d+ at=\d+ instance=[0-9a-f]{8}$/,
+      ),
+    ]);
+    const at = out.map((l) => Number(l.match(/ at=(\d+)/)![1]));
+    const ms = Number(out[1].match(/ ms=(\d+)/)![1]);
+    expect(at[1] - at[0]).toBe(ms);
+    log.mockRestore();
   });
 });

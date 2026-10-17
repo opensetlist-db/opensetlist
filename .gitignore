@@ -57,6 +57,9 @@ next-env.d.ts
 # k6 load-test raw metric dumps (n12) — the per-run .md tables and
 # REPORT.md are committed, the multi-hundred-KB JSON is not.
 /tests/load/results/**/*.json
+# browsers run per-client timelines (one line per client, tens of MB at
+# full scale) — kept on the load host for later analysis, never committed.
+/tests/load/results/**/*.jsonl
 
 # translation bake-off output — contains users' impression text
 /scripts/translation-bakeoff/out/

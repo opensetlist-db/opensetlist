@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
 import type { FanTop3Entry } from "@/lib/types/setlist";
@@ -31,8 +32,13 @@ import { FALLBACK_LOCALE } from "@/i18n/routing";
 export async function fetchEventWishlistTop3(
   eventId: bigint,
   locale: string | null,
+  // Optional transaction client. The live snapshot builder
+  // (`src/lib/liveSnapshot.ts`) passes its REPEATABLE READ `tx` so the
+  // wish TOP-3 is read from the same snapshot as the setlist items and
+  // reaction counts; every other caller uses the global client.
+  db: Prisma.TransactionClient = prisma,
 ): Promise<FanTop3Entry[]> {
-  const groups = await prisma.songWish.groupBy({
+  const groups = await db.songWish.groupBy({
     by: ["songId"],
     where: { eventId },
     _count: { _all: true },
@@ -45,7 +51,7 @@ export async function fetchEventWishlistTop3(
   const localeFilter = locale
     ? { locale: { in: [locale, FALLBACK_LOCALE] } }
     : undefined;
-  const songs = await prisma.song.findMany({
+  const songs = await db.song.findMany({
     where: { id: { in: songIds }, isDeleted: false },
     select: {
       id: true,

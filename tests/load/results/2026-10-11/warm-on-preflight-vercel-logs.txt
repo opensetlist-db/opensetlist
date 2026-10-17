@@ -1,0 +1,66 @@
+<claude-code-hint v="1" type="plugin" value="vercel@claude-plugins-official" />
+Vercel CLI 63.1.2 (Node.js 24.14.0)
+Resolving deployment "opensetlist-git-dev-opensetlist-projects.vercel.app"
+Fetching project "prj_zM3rzKkydH1OQMbzEfVTWI1km1Db"
+Fetching logs...
+TIME         HOST                                                 LEVEL                                                 
+01:48:41.74  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=en minRev=788 result=hit ms=9 instance=608f6699
+[setlist] hint-fetch event=111 locale=en minRev=788 verify=satisfied instance=608f6699
+
+01:48:41.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=ko minRev=788 result=hit ms=8 instance=608f6699
+[setlist] hint-fetch event=111 locale=ko minRev=788 verify=satisfied instance=608f6699
+
+01:48:41.40  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=ja minRev=788 result=hit ms=7 instance=608f6699
+[setlist] hint-fetch event=111 locale=ja minRev=788 verify=satisfied instance=608f6699
+
+01:48:37.93  opensetlist-git-dev-opensetlist-projects.vercel.app  info     DELETE /api/admin/setlist-items/2021         
+[liveWriter] route=admin-delete acquireMs=3 execMs=19 rev=788 ok=true instance=608f6699
+[liveWarm] start event=111 rev=788 instance=608f6699
+[liveSnapshot] build event=111 locale=ko rev=788 items=23 ms=37 instance=608f6699
+[prisma] pool total=2 idle=1 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=ko atLeastRev=788 rev=788 bytes=59215 buildMs=38 setMs=10 ok=true instance=608f6699
+[liveSnapshot] build event=111 locale=ja rev=788 items=23 ms=53 instance=608f6699
+[prisma] pool total=2 idle=1 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=ja atLeastRev=788 rev=788 bytes=49271 buildMs=54 setMs=11 ok=true instance=608f6699
+[liveSnapshot] build event=111 locale=en rev=788 items=23 ms=41 instance=608f6699
+[prisma] pool total=2 idle=2 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=en atLeastRev=788 rev=788 bytes=58295 buildMs=43 setMs=20 ok=true instance=608f6699
+[liveWarm] done event=111 rev=788 ms=112 instance=608f6699
+
+01:48:37.57  opensetlist-git-dev-opensetlist-projects.vercel.app  info     POST /api/admin/login                        
+
+01:48:37.37  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=en minRev=787 result=hit ms=9 instance=608f6699
+[setlist] hint-fetch event=111 locale=en minRev=787 verify=satisfied instance=608f6699
+
+01:48:37.20  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=ko minRev=787 result=hit ms=11 instance=608f6699
+[setlist] hint-fetch event=111 locale=ko minRev=787 verify=satisfied instance=608f6699
+
+01:48:36.89  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ GET /api/setlist                             
+[setlist] warm-lookup event=111 locale=ja minRev=787 result=hit ms=18 instance=608f6699
+[setlist] hint-fetch event=111 locale=ja minRev=787 verify=satisfied instance=608f6699
+
+01:48:14.30  opensetlist-git-dev-opensetlist-projects.vercel.app  info     PUT /api/admin/setlist-items/2021            
+[liveWriter] route=admin-update acquireMs=4 execMs=14 rev=- ok=true instance=608f6699
+
+01:48:13.47  opensetlist-git-dev-opensetlist-projects.vercel.app  info     POST /api/admin/setlist-items/insert-after   
+[liveWriter] route=admin-insert-after acquireMs=21 execMs=98 rev=787 ok=true instance=608f6699
+[liveWarm] start event=111 rev=787 instance=608f6699
+[liveSnapshot] build event=111 locale=ko rev=787 items=24 ms=49 instance=608f6699
+[prisma] pool total=2 idle=1 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=ko atLeastRev=787 rev=787 bytes=80829 buildMs=50 setMs=12 ok=true instance=608f6699
+[liveSnapshot] build event=111 locale=ja rev=787 items=24 ms=79 instance=608f6699
+[prisma] pool total=2 idle=1 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=ja atLeastRev=787 rev=787 bytes=67229 buildMs=80 setMs=19 ok=true instance=608f6699
+[liveSnapshot] build event=111 locale=en rev=787 items=24 ms=92 instance=608f6699
+[prisma] pool total=2 idle=2 waiting=0 instance=608f6699 tag=build
+[liveWarm] set event=111 locale=en atLeastRev=787 rev=787 bytes=79462 buildMs=97 setMs=12 ok=true instance=608f6699
+[liveWarm] done event=111 rev=787 ms=172 instance=608f6699
+
+01:48:12.81  opensetlist-git-dev-opensetlist-projects.vercel.app  info   λ POST /api/admin/login                        
+
+Fetched 11 logs for opensetlist-projects/opensetlist

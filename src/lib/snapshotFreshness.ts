@@ -97,6 +97,17 @@ export function parseRetryAfterMs(
 }
 
 /**
+ * A parsed `Retry-After` (ms), bounded to `[0, SNAPSHOT_RETRY_AFTER_CAP_MS]`.
+ * The one place the cap is applied: both the retry delay below and the
+ * scheduler's server-directed floor (`notBeforeMs` on a failed outcome,
+ * see `useLiveSnapshot`) go through it, so the two can never disagree
+ * about how long the server asked us to stay away.
+ */
+export function clampRetryAfterMs(retryAfterMs: number): number {
+  return Math.min(Math.max(0, retryAfterMs), SNAPSHOT_RETRY_AFTER_CAP_MS);
+}
+
+/**
  * Delay before the next retry, given how many consecutive failures
  * have happened so far (1-based: pass 1 after the first failure).
  *
@@ -110,7 +121,7 @@ export function snapshotRetryDelayMs(
   random: () => number = Math.random,
 ): number {
   if (retryAfterMs !== null) {
-    return Math.min(Math.max(0, retryAfterMs), SNAPSHOT_RETRY_AFTER_CAP_MS);
+    return clampRetryAfterMs(retryAfterMs);
   }
   const idx = Math.min(
     Math.max(consecutiveFailures - 1, 0),

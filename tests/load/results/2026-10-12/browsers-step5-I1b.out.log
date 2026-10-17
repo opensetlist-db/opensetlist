@@ -1,0 +1,162 @@
+[08:27:43.441] host guard: ok (CPU 10.1 % busy, 2 s CPU sample over 12 cores; no competing processes)
+[08:27:43.442] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 drill=idle-broadcast (SDK cohorts only; --pages / --subs / --edits not used)
+[08:27:46.781] idle-broadcast I1: 20 incumbents connect at 2026-10-12T08:31:00.000Z, first save at 2026-10-12T08:31:12.000Z, then +40 s, +100 s; start rev 1672
+[08:31:00.268]   incumbents connected 0/20
+[08:31:02.277]   incumbents connected 20/20
+[08:31:04.281]   incumbents connected 20/20
+[08:31:06.282]   incumbents connected 20/20
+[08:31:08.293]   incumbents connected 20/20
+[08:31:10.301]   incumbents connected 20/20
+[08:31:13.376] save s1 (anchor insert): rev 1673 1240 ms
+[08:31:52.460] save s2 [idle]: 200 rev 1674 437 ms
+[08:32:52.413] save s3 [idle]: 200 rev 1675 404 ms
+[08:32:53.427] cleaning up
+[08:32:55.853] cleanup: deleted 1/1; restore {"restored":21}
+[08:32:56.960] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":1677,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}
+
+# Browsers run — 2026-10-12T08:27:40.705Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 1672, 23 active rows; insert after row 2 = position 2)
+- Population: SDK cohorts only — 20 incumbents (--drill=idle-broadcast)
+- Edits: the idle-broadcast schedule (first save = the anchor insert, then PUTs on it; see "Idle-broadcast drill"); timeout 60 s
+- Window (UTC): run start 2026-10-12T08:27:40.705Z, first edit 2026-10-12T08:31:12.009Z, last edit settled 2026-10-12T08:32:53.426Z, end 2026-10-12T08:32:57.343Z
+- Label: step5-I1b
+- Host guard at start: CPU 10.1 % busy (2 s CPU sample over 12 cores); 0 competing process(es) (--strict-host)
+
+
+## Idle-broadcast drill (I1)
+
+**Verdict: PASS** (I1 — first save after idle: PASS).
+
+- Connect at 2026-10-12T08:31:00.000Z (20 incumbents; 20/20 connected just before the first save), first save 2026-10-12T08:31:12.000Z (scheduled; actual 2026-10-12T08:31:12.009Z), max-age 90 s, later saves at +40 s, +100 s.
+- The idle period itself (≥ 30 min since the last broadcast AND the last client disconnect, incl. the observer) is the operator's precondition; this run cannot see it. The observer's clients are joined in afterwards by `admission-join.mjs --observer=`.
+
+#### I1 — first save after idle — save s1 rev 1673 at 2026-10-12T08:31:12.009Z (PUT 1240 ms): **PASS**
+
+- Eligibility (connected 6 s … 90 s before the save, without interruption through its response): 20/20 eligible; cohort first-SUBSCRIBED spread 0.0 s (≤ 30 s: yes)
+- Eligible clients: raw broadcast received 20/20 (PUT response → receipt p50 / p95 / max 47 / 48 / 52 ms); applied 20/20, by {"notification":20}; repair (applied without the broadcast; healthy periodic poll 20 s ± 4 s — measured, not a bound) p50 / max — / — ms (n 0)
+- All local clients of the run on this save: received 20/20, applied 20/20 by {"notification":20}
+
+| client | cohort | connected since (UTC) | age at save s | eligible | broadcast ms after PUT response | applying fetch | apply ms after PUT start | repair ms |
+|---|---|---|---|---|---|---|---|---|
+| 0 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 48 | notification | 1823 | — |
+| 1 | incumbent | 2026-10-12T08:31:02.192Z | 9.8 | yes | 46 | notification | 1801 | — |
+| 2 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 48 | notification | 1598 | — |
+| 3 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 47 | notification | 1789 | — |
+| 4 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 48 | notification | 1954 | — |
+| 5 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 48 | notification | 1659 | — |
+| 6 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 48 | notification | 2068 | — |
+| 7 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 52 | notification | 1743 | — |
+| 8 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 46 | notification | 1565 | — |
+| 9 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 46 | notification | 1899 | — |
+| 10 | incumbent | 2026-10-12T08:31:02.195Z | 9.8 | yes | 47 | notification | 1721 | — |
+| 11 | incumbent | 2026-10-12T08:31:02.195Z | 9.8 | yes | 48 | notification | 1665 | — |
+| 12 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 48 | notification | 1686 | — |
+| 13 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 48 | notification | 1773 | — |
+| 14 | incumbent | 2026-10-12T08:31:02.194Z | 9.8 | yes | 46 | notification | 1964 | — |
+| 15 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 47 | notification | 1638 | — |
+| 16 | incumbent | 2026-10-12T08:31:02.193Z | 9.8 | yes | 47 | notification | 1738 | — |
+| 17 | incumbent | 2026-10-12T08:31:02.192Z | 9.8 | yes | 48 | notification | 1901 | — |
+| 18 | incumbent | 2026-10-12T08:31:02.196Z | 9.8 | yes | 47 | notification | 1573 | — |
+| 19 | incumbent | 2026-10-12T08:31:02.192Z | 9.8 | yes | 47 | notification | 1552 | — |
+
+#### Later saves (arrivals, informational)
+
+- s2 rev 1674: broadcast 20/20, applied 20/20 by {"notification":19,"periodic":1}; receipt p95 50 ms
+- s3 rev 1675: broadcast 20/20, applied 20/20 by {"notification":20}; receipt p95 50 ms
+
+## Gate verdicts
+
+Latency = save (the PUT that makes the marker exist; in a pair edit the insert-after came before it) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 60 | 1049 | 1901 | 2068 | 0 | p95 ≤ 3000, 0 missing | n/a |
+| edit × page | 0 | — | — | — | 0 | same | n/a |
+| edit × SDK client | 60 | 1049 | 1901 | 2068 | 0 | same | n/a |
+| drill idle-broadcast (drilled pairs) | 0 | — | — | — | 0 | every exercised cohort control: each eligible client receives the save's raw broadcast and applies it within the timeout (see "Idle-broadcast drill") | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 0 pages, 0 versions | — | — | — | 0 regressions on 0 page(s) | 0 | n/a |
+| monotonic applied rev (SDK) | 20 clients, 244 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| warming: warm hits ÷ hinted fetches (`x-snapshot-source: warm`) | SDK 99/99 (100.0 %), pages 0/0 | — | — | — | — | informational; reader builds per save: `vercel-logs-summary.mjs` "Warming" on the history logs; arrival vs warm-complete: `warm-join.mjs` | n/a |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker; pair edits only), non-drilled: pages 0 | — | — | — · SDK 0 | — | — | — (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 0 | — | — | — |
+| broadcast `rev` → pages | 0 / 0 | — | — | — |
+| broadcast `rev` → SDK | 60 / 60 | 486 | 1288 | 1292 |
+
+## Per edit
+
+| # | mode | row | marker song | insert start (UTC) | ins ms | rev | save (PUT) start (UTC) | save ms | save rev |
+|---|---|---|---|---|---|---|---|---|---|
+| s1 | idle-first | 2509 | blank (anchor insert: blank row) | — | — | — | 2026-10-12T08:31:12.009Z | 1240 | 1673 |
+| s2 | idle | 2509 | 1997 LOVE♡YOU♡Save the EARTH!! | — | — | — | 2026-10-12T08:31:52.023Z | 437 | 1674 |
+| s3 | idle | 2509 | 2014 POP LOVE | — | — | — | 2026-10-12T08:32:52.009Z | 404 | 1675 |
+
+### Per save — pages (save start → marker in the DOM)
+
+| # | save rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify | warm / hinted | 1st hinted request start − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| s1 | 1673 | 0/0 | — / — / — | 0 | — / — (0) | 0 | 0 | — | 0/0 | — / — |
+| s2 | 1674 | 0/0 | — / — / — | 0 | — / — (0) | 0 | 0 | — | 0/0 | — / — |
+| s3 | 1675 | 0/0 | — / — / — | 0 | — / — (0) | 0 | 0 | — | 0/0 | — / — |
+
+### Per save — SDK clients (save start → applied rev ≥ save rev)
+
+| # | save rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted | warm / hinted | 1st hinted send − commit p50 / p95 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| s1 | 1673 | 20/20 | 1738 / 1964 / 2068 | 0 | 1287 / 1288 (20) | 20 | satisfied 20 | satisfied 20 | 0 (0) | 0 | 20/20 | 295 / 540 |
+| s2 | 1674 | 20/20 | 981 / 1142 / 1143 | 0 | 486 / 487 (20) | 19 | satisfied 19 | satisfied 19 | 0 (0) | 0 | 19/19 | 364 / 522 |
+| s3 | 1675 | 20/20 | 855 / 1117 / 1163 | 0 | 454 / 454 (20) | 20 | satisfied 20 | satisfied 20 | 0 (0) | 0 | 20/20 | 249 / 535 |
+
+## Hint outcomes (whole run)
+
+- SDK: 244 requests; notification fetches (hint=1) 99, their x-snapshot-verify: satisfied 99; all 200 responses: none 20, satisfied 224
+  - ticket resolutions: satisfied 99; rechecks 0 (0.0 % of notification fetches), resolved on the recheck 0; hints exhausted 0; highest serverRev held 1677
+  - request shapes (reason / generic / ticket): initial generic 20, catchup generic 20, notification +hint=1 99, periodic generic 105; failures by kind: —
+  - notification fetches by x-snapshot-source: warm 99 (warm 99/99 (100.0 %))
+- Pages: 0 /api/setlist responses; notification fetches (hint=1) 0, their x-snapshot-verify: —; all 200 responses: — (an R1 page build sends no hint=1)
+  - notification fetches by x-snapshot-source: — (warm 0/0)
+
+## Measurement validity (load host)
+
+Event-loop lag = how late a 100 ms interval tick ran, per thread, inside the measurement window 2026-10-12T08:31:00.007Z → 2026-10-12T08:32:53.426Z (p50 = median of the 10 s buckets' p50, p95 / p99 / max = the worst bucket). Heartbeats: one per second per worker, from its own loop. Deadline timers: fired − armed − 8,000 ms for every SDK request that hit the 8 s deadline. INVALID if any lag sample > 1000 ms or any heartbeat gap > 3000 ms.
+
+| thread | lag p50 / p95 / p99 / max ms | samples > 1 s | heartbeats (max gap ms) | deadline timers fired: n, late p50 / p95 / max ms |
+|---|---|---|---|---|
+| main | 9 / 16 / 17 / 17 | 0 | — | — |
+| worker 0 | 9 / 16 / 17 / 17 | 0 | 108 (1108) | 0, — / — / — |
+
+Verdict: valid.
+
+Host (1 s samples; 12 logical cores, 65370 MB): host CPU = busy share of all cores; process CPU = this process (main + SDK workers) as a share of all cores; Chromium is in the host figure only. load1 is always 0 on Windows.
+
+| phase | s | host CPU p50 / max % | process CPU p50 / max % | RSS max MB | free mem min MB | load1 max | threads |
+|---|---|---|---|---|---|---|---|
+| join | 12.0 | 19 / 25.4 | 0 / 3.6 | 170 | 35789 | 0 | 2 |
+| settle | 0.0 | — / — | — / — | — | — | — | 0 |
+| edits | 101.4 | 12.9 / 25.2 | 0 / 3 | 166 | 35775 | 0 | 2 |
+
+## Population
+
+- Pages: 0/0 loaded; channel joined 0; visibility {}; locales {}
+  - open → join ms: n=0 p50=— p95=— max=—
+  - /api/setlist responses seen: 0 ({}); page errors: 0; ws opens 0, closes 0; rev broadcasts seen 0; dropped notification frames 0, blocked attempts 0
+- SDK: 20/20 joined; all joined after — s (from population start)
+  - subscribe → SUBSCRIBED ms: n=20 p50=1948 p95=1976 max=2008
+  - statuses {"SUBSCRIBED":20,"CLOSED":20}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":20,"catchup":20,"notification":99,"periodic":105}; X-Snapshot-Source {"cache":135,"warm":99,"build":10}
+
+## Clean-up
+
+- Soft-deleted 1/1 created rows; position restore: {"restored":21}
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":1677,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":true,"oursStillActive":[]}
+
+[08:32:57.360] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-12\2026-10-12T08-32-57-351Z-browsers-idle-broadcast.md
+[08:32:57.360] IDLE-BROADCAST VERDICT: PASS

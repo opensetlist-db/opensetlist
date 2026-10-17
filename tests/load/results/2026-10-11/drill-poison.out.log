@@ -1,0 +1,115 @@
+[04:33:13.489] browsers run: base=https://opensetlist-git-dev-opensetlist-projects.vercel.app event=111 pages=30 subs=470 (workers=4) edits=3 pause=25000ms drill=poison
+[04:33:14.711] event 111: 23 active rows, rev 587; inserting after row 2 (position 2); markers 118,119,120
+[04:33:19.207]   pages: 5/30 opened
+[04:33:22.279]   pages: 10/30 opened
+[04:33:23.517]   pages: 15/30 opened
+[04:33:24.910]   pages: 20/30 opened
+[04:33:26.180]   pages: 25/30 opened
+[04:33:27.531]   pages: 30/30 opened
+[04:33:27.541]   joined: pages 25/30 subs 470/470
+[04:33:28.053] population: {"pagesJoined":30,"pagesPgReady":0,"joined":470,"allJoinedSec":12.955,"allPgReadySec":null}; settling 10s
+[04:33:28.214] guest broadcaster: SUBSCRIBED after 157 ms
+[04:33:38.236]   drill: forged rev 9007199254740991 sent (ok); editing in 4000 ms
+[04:33:44.358] edit 1: row 1911 @3 insert 565 ms (rev 588) → song 118 "希望的プリズム" put 1413 ms (rev 589)
+[04:34:04.472] edit 2: row 1912 @3 insert 578 ms (rev 590) → song 119 "Tragic Drops" put 543 ms (rev 591)
+[04:34:29.873] edit 3: row 1913 @3 insert 521 ms (rev 592) → song 120 "Mirage Voyage" put 831 ms (rev 593)
+[04:34:31.424] cleaning up
+[04:34:35.071] cleanup: deleted 3/3; restore null
+[04:34:36.444] verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":596,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]}
+
+# Browsers run — 2026-10-11T04:33:13.489Z
+
+- Target: https://opensetlist-git-dev-opensetlist-projects.vercel.app/events/111/rehearsal-lovelive-fes-2020-day1 (event 111, start rev 587, 23 active rows; insert after row 2 = position 2)
+- Population: 30 Chromium pages (ja/ko/en 70/20/10), 470 SDK subscribers in 4 worker thread(s)
+- Edits: 3 × (insert-after + PUT marker song), every 25 s; timeout 30 s; drill: poison (edit 1, pages 30)
+- Window (UTC): run start 2026-10-11T04:33:13.489Z, first edit 2026-10-11T04:33:38.216Z, last edit settled 2026-10-11T04:34:31.424Z, end 2026-10-11T04:34:37.112Z
+- Label: r2-poison
+
+## Gate verdicts
+
+Latency = PUT (the save that makes the marker exist) request start of its FIRST attempt → marker link in the page DOM / SDK client applied a snapshot with rev ≥ the PUT's rev. Missing = not seen within the timeout. Monotonic: no page/client ever went back to an older version.
+
+| Scope | n | p50 ms | p95 ms | max ms | missing | gate | verdict |
+|---|---|---|---|---|---|---|---|
+| all pairs (pages + SDK) | 1500 | 1605 | 2634 | 3060 | 0 | p95 ≤ 3000, 0 missing | **PASS** |
+| edit × page | 90 | 1822 | 2546 | 3060 | 0 | same | **PASS** |
+| edit × SDK client | 1410 | 1565 | 2636 | 3044 | 0 | same | **PASS** |
+| drill poison (forged rev 9007199254740991) | 470/470 SDK received | — | — | — | 0 client(s) > 1 recheck, 0 with serverRev ≥ forged | ≤ 1 recheck of the forged hint per SDK client, serverRev never ≥ the forged rev, forged broadcast received | **PASS** |
+| monotonic DOM (pages: version shown never decreases) | 30 pages, 90 versions | — | — | — | 0 regressions on 0 page(s) | 0 | **PASS** |
+| monotonic applied rev (SDK) | 470 clients, 7291 applies | — | — | — | 0 regressions on 0 client(s) | 0 | **PASS** |
+| edits with a retried save (clock from the 1st attempt) | 0 | — | — | — | 0 | informational — 0 edit(s); from the successful attempt p50/p95/max —/—/— | n/a |
+
+Insert-start based (insert-after request start → marker), non-drilled: pages 90 | 2507 | 3240 | 3754 · SDK 1410 | 2258 | 3330 | 3738 (n | p50 | p95 | max).
+
+## Notification paths (PUT start → arrival)
+
+An R1 page build (what the preview runs until R2 deploys, or after a rollback) is notified by postgres_changes and ignores the broadcast; an R2 build only has the broadcast. The SDK clients are always R2.
+
+| Path | delivered / expected | p50 ms | p95 ms | max ms |
+|---|---|---|---|---|
+| postgres_changes UPDATE → pages (R1 build) | 0 / 90 | — | — | — |
+| broadcast `rev` → pages | 90 / 90 | 929 | 1477 | 1518 |
+| broadcast `rev` → SDK | 1410 / 1410 | 853 | 1481 | 1490 |
+
+## Per edit
+
+| # | row | marker song | insert start (UTC) | ins ms | rev | PUT start (UTC) | PUT ms | rev |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1911 | 118 希望的プリズム | 2026-10-11T04:33:42.249Z | 565 | 588 | 2026-10-11T04:33:42.943Z | 1413 | 589 |
+| 2 | 1912 | 119 Tragic Drops | 2026-10-11T04:34:03.217Z | 578 | 590 | 2026-10-11T04:34:03.925Z | 543 | 591 |
+| 3 | 1913 | 120 Mirage Voyage | 2026-10-11T04:34:28.240Z | 521 | 592 | 2026-10-11T04:34:28.882Z | 831 | 593 |
+
+### Per save — pages (PUT start → marker in the DOM)
+
+| # | PUT rev | seen | p50 / p95 / max ms | missing | bcast → page p50 / p95 (n) | pg → page (n) | notification fetches (hint=1) | their x-snapshot-verify |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 589 | 30/30 | 2145 / 2884 / 3060 | 0 | 1476 / 1477 (30) | 0 | 27 | satisfied 27 |
+| 2 | 591 | 30/30 | 1662 / 2104 / 2292 | 0 | 601 / 614 (30) | 0 | 23 | satisfied 23 |
+| 3 | 593 | 30/30 | 1725 / 2120 / 2235 | 0 | 929 / 932 (30) | 0 | 29 | satisfied 29 |
+
+### Per save — SDK clients (PUT start → applied rev ≥ PUT rev)
+
+| # | PUT rev | reached | p50 / p95 / max ms | missing | bcast → SDK p50 / p95 (n) | notification fetches | their x-snapshot-verify | ticket resolutions | rechecks (resolved) | exhausted |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 589 | 470/470 | 2228 / 2880 / 3044 | 0 | 1476 / 1484 (470) | 451 | satisfied 451 | satisfied 457 | 0 (0) | 0 |
+| 2 | 591 | 470/470 | 1264 / 1847 / 2295 | 0 | 602 / 615 (470) | 170 | satisfied 170 | satisfied 173 | 0 (0) | 0 |
+| 3 | 593 | 470/470 | 1385 / 2024 / 2308 | 0 | 853 / 917 (470) | 181 | satisfied 181 | satisfied 184 | 0 (0) | 0 |
+
+## Hint outcomes (whole run)
+
+- SDK: 7476 requests; notification fetches (hint=1) 3914, their x-snapshot-verify: memo 396, satisfied 3448, fresh 64, deferred 1; all 200 responses: none 470, satisfied 6095, memo 727, fresh 126, deferred 23
+  - ticket resolutions: inconclusive 750, disproved 126, satisfied 3491; rechecks 362 (9.2 % of notification fetches), resolved on the recheck 54; hints exhausted 344; highest serverRev held 596
+  - request shapes (reason / generic / ticket): initial generic 470, catchup generic 470, periodic generic 1454, notification +hint=1 3914, recheck +H 362, notification 710, periodic generic +H 96; failures by kind: —
+- Pages: 472 /api/setlist responses; notification fetches (hint=1) 275, their x-snapshot-verify: memo 27, satisfied 245, fresh 3; all 200 responses: satisfied 415, memo 47, fresh 10 (an R1 page build sends no hint=1)
+
+## Population
+
+- Pages: 30/30 loaded; channel joined 30; visibility {"visible":30}; locales {"ja":21,"ko":6,"en":3}
+  - open → join ms: n=30 p50=1526 p95=4145 max=4205
+  - /api/setlist responses seen: 472 ({"cache":190,"build":282}); page errors: 0; ws opens 30, closes 0; rev broadcasts seen 300; dropped notification frames 0, blocked attempts 0
+- SDK: 470/470 joined; all joined after 12.955 s (from population start)
+  - subscribe → SUBSCRIBED ms: n=470 p50=175 p95=374 max=1390
+  - statuses {"SUBSCRIBED":470,"CLOSED":470}; disconnected episodes (polling while realtime-js rejoins) 0; channel re-creations 0; fetch failures 0 (with Retry-After 0); fetches by reason {"initial":470,"catchup":470,"periodic":1550,"notification":4624,"recheck":362}; X-Snapshot-Source {"build":4553,"cache":2890}
+
+## Poison drill
+
+- forged `{ kind: "setlist", rev: 9007199254740991 }` sent 2026-10-11T04:33:38.216Z; received by 470/470 SDK clients (news for 470)
+- requests carrying the forged hint: 876 (max 2 per client); notification fetches 461; rechecks 362 (clients with > 1: 0); resolutions inconclusive 750, disproved 126; exhausted 344
+- durable watermark: clients whose serverRev ever reached the forged rev: **0**; highest serverRev held by any client 596
+- pages: /api/setlist requests with minRev = the forged rev: 57 (max 2 per page; an R1 build ignores the broadcast → 0)
+
+## Guest broadcasts
+
+- anon client on public `event:111`: SUBSCRIBED after 157 ms; 1 message(s) `{ kind: "setlist", rev }` sent 2026-10-11T04:33:38.216Z → 2026-10-11T04:33:38.216Z; results {"ok":1}
+- revs claimed: 9007199254740991
+
+## Drill events
+
+- edit 1 2026-10-11T04:33:38.216Z: guest broadcast { kind: "setlist", rev: 9007199254740991 } → ok; honest saves follow in 4000 ms
+
+## Clean-up
+
+- Soft-deleted 3/3 created rows; position restore: null
+- Verify: {"dbActive":23,"snapshotItems":23,"snapshotRev":596,"startRows":23,"goneMeanwhile":0,"sameOrder":true,"samePositions":false,"oursStillActive":[]} (samePositions is expected to be false without --restore-positions: insert-after shifted rows below the insertion point and soft-delete does not compact)
+
+[04:34:37.120] results: F:\work\ClaudeCode\opensetlist4\tests\load\results\2026-10-11\2026-10-11T04-34-37-115Z-browsers-poison.md

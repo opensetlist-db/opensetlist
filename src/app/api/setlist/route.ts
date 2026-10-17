@@ -1,16 +1,175 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { serializeBigInt } from "@/lib/utils";
-import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
-import { getEventStatus } from "@/lib/eventStatus";
 import {
-  locales,
-  defaultLocale,
-  FALLBACK_LOCALE,
-  type Locale,
-} from "@/i18n/routing";
+  getLiveSnapshot,
+  logSnapshotFailure,
+  parseHint,
+  parseMinRev,
+  resolveSnapshotForResponse,
+} from "@/lib/liveSnapshot";
+import { INSTANCE_ID } from "@/lib/instanceId";
+import {
+  formatSnapshotVerify,
+  SNAPSHOT_VERIFY_HEADER,
+} from "@/lib/snapshotVerify";
+import { locales, defaultLocale, type Locale } from "@/i18n/routing";
 
+const SLOW_HIT_MS = 500;
+
+/**
+ * `[setlist] hint-fetch …` — exactly one line per request that carried
+ * `?hint=1`, so the load harness can count hint outcomes (satisfied /
+ * fresh / memo / deferred) per save from the Vercel logs. `verify` is
+ * the `x-snapshot-verify` kind (without its `=…` detail), or `error`
+ * for a 503 — that response carries no header, but the request still
+ * happened and must be counted. `minRev=none` when absent/invalid.
+ */
+function logHintFetch(
+  eventId: bigint,
+  locale: Locale,
+  minRev: number | null,
+  verify: string,
+): void {
+  console.log(
+    `[setlist] hint-fetch event=${eventId} locale=${locale} ` +
+      `minRev=${minRev ?? "none"} verify=${verify} instance=${INSTANCE_ID}`,
+  );
+}
+
+/**
+ * 503 for a snapshot that could not be built (pool / pooler exhausted,
+ * build timeout, any database error on the build or repair path).
+ *
+ * `Retry-After` is a random 1–3 s: every client of a burst failed at
+ * about the same moment, and a fixed value would send them all back in
+ * the same instant to repeat the overload. By the time they return the
+ * first successful build has usually filled the data cache, so the
+ * retry is a cache hit. `no-store` so no intermediary keeps the error.
+ *
+ * Deliberately NOT a "last good snapshot" fallback (yet). Serving an
+ * older snapshot with 200 needs per-instance memory of the last good
+ * value, and to be honest it must carry that value's own `rev` /
+ * `capturedAt` (never a fresh `servedAt`-like stamp), a degraded flag
+ * the client can see, and a scheduled refresh — otherwise a 200 would
+ * hide a failed update and the client would stop asking for the
+ * revision it was told about. That is a larger change; an explicit 503
+ * keeps the client's retry logic in charge meanwhile.
+ */
+function snapshotUnavailable(): NextResponse {
+  const retryAfterSeconds = 1 + Math.floor(Math.random() * 3);
+  return NextResponse.json(
+    { error: "snapshot_unavailable" },
+    {
+      status: 503,
+      headers: {
+        "Retry-After": String(retryAfterSeconds),
+        "Cache-Control": "no-store",
+        "x-snapshot-source": "error",
+      },
+    },
+  );
+}
+
+/**
+ * 404 for an event that does not exist or was soft-deleted — the same
+ * answer the event page gives, so the live path agrees with the page
+ * (and the sitemap) instead of serving the last snapshot of a page that
+ * is gone.
+ *
+ * Decided from the snapshot itself (`found` / `isDeleted`, read by the
+ * builder's LEFT JOIN of the event head): no extra database read, and
+ * the cache entry that carries the flags is the same one every other
+ * request is served from, so a deleted event costs no rebuild storm.
+ * The soft-delete bumps the revision and broadcasts inside its
+ * transaction, then expires the public data tag that every snapshot
+ * entry carries (`deleteEvent` in the admin events route), so the next
+ * build sees `isDeleted` at once and the broadcast's notification fetch
+ * is what tells open tabs. There is no un-delete path today; one would
+ * have to expire the same tags to bring the 200 back.
+ *
+ * The body is a stable code, never text (a public response — clients
+ * localise, if they show anything at all). `Cache-Control` matches the
+ * 200: no browser or CDN reuse, so the 404 is re-decided on every
+ * request. `x-snapshot-source` is still sent (diagnostics); the
+ * `x-snapshot-verify` header is NOT — there is no snapshot whose
+ * `minRev` resolution it could describe.
+ *
+ * Clients must treat this as terminal, never as a transport failure:
+ * `useLiveSnapshot` maps it to a `gone` outcome that stops the live
+ * scheduler and releases the Realtime channel (no retry, no recheck).
+ * That is why it is a 404 and not a 5xx — every 5xx (and the 503 above)
+ * is retried.
+ */
+function eventGone(source: string): NextResponse {
+  return NextResponse.json(
+    { error: "not_found" },
+    {
+      status: 404,
+      headers: {
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "x-snapshot-source": source,
+      },
+    },
+  );
+}
+
+/**
+ * GET /api/setlist?eventId=<id>&locale=<ko|ja|en>[&minRev=<n>][&hint=1]
+ *
+ * The live event page's snapshot: setlist items, reaction counts, the
+ * wish TOP-3 and the event status, all from ONE consistent database
+ * snapshot (see `src/lib/liveSnapshot.ts`), served from a 2 s data
+ * cache that every setlist writer expires after commit.
+ *
+ *   → 200 {
+ *       items, reactionCounts, top3Wishes,   // unchanged shapes
+ *       status,       // resolved at response time from the cached raw
+ *                     // status + startTime; null when the event is
+ *                     // missing or soft-deleted
+ *       startTime,    // ISO | null
+ *       rev,          // Event.setlistRevision of the snapshot (number)
+ *       capturedAt,   // ISO, Postgres now() of the snapshot transaction
+ *       servedAt,     // ISO, response time — never a freshness signal
+ *       updatedAt,    // = servedAt; kept for v0.18.x clients, which
+ *                     // read it into `lastUpdated`
+ *     }
+ *
+ *   → 404 { error: "not_found" }, Cache-Control: public, max-age=0,
+ *         must-revalidate — no Event row for the id, or it is
+ *         soft-deleted (see `eventGone`)
+ *
+ *   → 503 { error: "snapshot_unavailable" }, Retry-After: 1..3,
+ *         Cache-Control: no-store — the snapshot could not be built
+ *         (see `snapshotUnavailable`)
+ *
+ * Clients order snapshots by `(rev, capturedAt)`; `?minRev=` asks the
+ * server to repair a cache entry older than a revision the client has
+ * already seen (bounded — see `getLiveSnapshot`).
+ *
+ * `Cache-Control: public, max-age=0, must-revalidate`: no browser or
+ * CDN reuse in R1 (CDN caching is a later, measured experiment); the
+ * data cache behind this route does the deduplication.
+ * `x-snapshot-source: build | cache | repair | warm | error` is
+ * diagnostics only (`warm` = a writer-warmed entry for the exact
+ * `minRev`, see below).
+ *
+ * `x-snapshot-verify: none | satisfied | fresh=<dbRev> |
+ * memo=<rev>;age=<ms> | deferred` (200 only) tells the client how its
+ * `minRev` was resolved — see `src/lib/snapshotVerify.ts` for the
+ * grammar and what each value proves.
+ *
+ * `?hint=1` marks a notification fetch (sent because a broadcast hint
+ * arrived). It is accepted and logged (`[setlist] hint-fetch`, and
+ * `hint=` on the revision-read line), so old clients that never send it
+ * and new clients against an older server both keep working. With
+ * writer warming on (`LIVE_WARM_ENTRIES=1`, `src/lib/liveWarm.ts`) a
+ * request with `hint=1` AND `minRev` first looks up the writer-warmed
+ * entry for exactly that revision — one `[setlist] warm-lookup` line
+ * per lookup — and a hit answers `x-snapshot-source: warm`,
+ * `x-snapshot-verify: satisfied`, through the same response shaping as
+ * every other source. Everything else is unchanged.
+ */
 export async function GET(req: NextRequest) {
+  const started = Date.now();
   // `new URL(req.url)` over `req.nextUrl` so unit tests can invoke
   // the handler with a plain `Request`. Mirrors the wishes route.
   const url = new URL(req.url);
@@ -19,24 +178,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "eventId required" }, { status: 400 });
   }
   // Locale is normalized to one of the supported values from
-  // `src/i18n/routing.ts` (single source of truth for the locale set
-  // + default). The polling hook and realtime fetchSnapshot both
-  // always pass `?locale=`; the default-on-miss is defensive coverage
-  // for unauthenticated tooling / direct curls.
-  //
-  // The normalized locale drives:
-  //   1. `fetchEventWishlistTop3` — already locale-aware.
-  //   2. The `{ in: [locale, FALLBACK_LOCALE] }` filter on every
-  //      nested `translations` include below. See the JSDoc on
-  //      `FALLBACK_LOCALE` for why the fallback row is load-bearing
-  //      and why it's a shared constant rather than an inlined literal
-  //      (this route + SSR `page.tsx:getEvent` must move in sync if
-  //      the fallback locale ever changes).
+  // `src/i18n/routing.ts`; the hooks always pass `?locale=`, the
+  // default-on-miss covers direct curls. It trims every nested
+  // translation join to `[locale, FALLBACK_LOCALE]` and is part of the
+  // cache key, so an unknown value must never reach it.
   const localeParam = url.searchParams.get("locale");
   const locale: Locale = locales.includes(localeParam as Locale)
     ? (localeParam as Locale)
     : defaultLocale;
-  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
 
   let eventId: bigint;
   try {
@@ -45,286 +194,78 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invalid eventId" }, { status: 400 });
   }
 
-  const [items, reactionGroups, top3Wishes] = await Promise.all([
-    // Explicit `select` (not `include`) to control egress on the
-    // Postgres → Vercel pooler wire. Supabase meters this hop
-    // uncompressed; the wholesale include shape was 207 KB / call
-    // (eventId=1, 39 SetlistItems), dominated by 3-locale translation
-    // floods + junction-table primary keys + admin-only scalars. F24
-    // narrows to ~30-38 KB / call by listing exactly the fields the
-    // event-page reads. Every field below is grep-verified against
-    // event-page render code; see plan file for the audit table.
-    prisma.setlistItem.findMany({
-      where: { eventId, isDeleted: false },
-      orderBy: { position: "asc" },
-      select: {
-        id: true,
-        position: true,
-        isEncore: true,
-        stageType: true,
-        unitName: true,
-        status: true,
-        performanceType: true,
-        type: true,
-        createdAt: true,
-        // Per-item Confirm count. Drives:
-        //   1. The visual count rendered next to the ✓ button on
-        //      rumoured rows.
-        //   2. The conflict-handling sort order — sibling rumoured
-        //      rows at the same position render top-down by
-        //      confirmCount DESC, createdAt ASC. See
-        //      `<ActualSetlist>` position-bucketing logic.
-        //   3. The N-confirm-tap promotion threshold check in
-        //      `/api/setlist-items/[id]/confirm` (server reads from
-        //      DB; client uses the polled count for the sort key).
-        _count: { select: { confirms: true } },
-        // Event status + startTime folded onto each row so the polled
-        // `status` field doesn't need its own slot in this route's
-        // Promise.all. Pre-fold, the route fanned out to 4 concurrent
-        // connections and Sentry trace
-        // 9dc342f6b276465c8ebbb1964ac8ae70 caught the cheapest query
-        // — a 3-column Event.findFirst PK lookup — queueing ~1.08 s
-        // for a connection slot under the prior `max: 3` cap.
-        // PR #431 raised the cap to 5; this fold drops the
-        // steady-state fan-out from 4 → 3 so a future +1 awaited
-        // query doesn't silently re-introduce the queue wait.
-        //
-        // Same value across every row (Prisma materializes via a
-        // LATERAL join on the same parent event), stripped before
-        // serialization below so the wire shape is byte-identical.
-        // Empty-items fallback handled after the Promise.all —
-        // scheduled-but-empty events still need the authoritative
-        // status so the wishlist/predicted-setlist editors lock at
-        // startTime regardless of client clock skew (the original
-        // motivation for surfacing status here at all; see v0.10.0
-        // smoke note below).
-        //
-        // `isDeleted` is included alongside status/startTime so the
-        // read site can preserve the original
-        // `findFirst({ isDeleted: false })` semantics — a soft-
-        // deleted parent (rare: admin removed an event mid-poll)
-        // must resolve to `status: null` regardless of whether its
-        // non-deleted children are still around. Without this guard
-        // the polled status would flip from null → a stale value the
-        // instant we stopped issuing the standalone findFirst.
-        event: {
-          select: { status: true, startTime: true, isDeleted: true },
-        },
-        songs: {
-          orderBy: { order: "asc" },
-          select: {
-            order: true,
-            song: {
-              select: {
-                id: true,
-                slug: true,
-                originalTitle: true,
-                originalLanguage: true,
-                variantLabel: true,
-                baseVersionId: true,
-                translations: {
-                  where: localeFilter,
-                  select: {
-                    locale: true,
-                    title: true,
-                    variantLabel: true,
-                  },
-                },
-                artists: {
-                  select: {
-                    artist: {
-                      select: {
-                        id: true,
-                        slug: true,
-                        type: true,
-                        color: true,
-                        originalName: true,
-                        originalShortName: true,
-                        originalLanguage: true,
-                        translations: {
-                          where: localeFilter,
-                          select: {
-                            locale: true,
-                            name: true,
-                            shortName: true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        performers: {
-          select: {
-            stageIdentity: {
-              select: {
-                id: true,
-                slug: true,
-                originalName: true,
-                originalShortName: true,
-                originalLanguage: true,
-                translations: {
-                  where: localeFilter,
-                  select: {
-                    locale: true,
-                    name: true,
-                    shortName: true,
-                  },
-                },
-                // Required by the sidebar's per-unit member sublist
-                // re-derivation in `LiveEventLayout` /
-                // `src/lib/sidebarDerivations.ts:133`. Without this,
-                // a polled setlist that introduces a new performer
-                // would render with no unit affiliation in the
-                // `<UnitsCard>` member list. Mirrors the include
-                // shape on the page-level event query
-                // (`page.tsx:121-125`).
-                artistLinks: { select: { artistId: true } },
-              },
-            },
-            realPerson: {
-              select: {
-                id: true,
-                slug: true,
-                originalName: true,
-                originalLanguage: true,
-                translations: {
-                  where: localeFilter,
-                  select: {
-                    locale: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        artists: {
-          select: {
-            artist: {
-              select: {
-                id: true,
-                slug: true,
-                type: true,
-                color: true,
-                originalName: true,
-                originalShortName: true,
-                originalLanguage: true,
-                translations: {
-                  where: localeFilter,
-                  select: {
-                    locale: true,
-                    name: true,
-                    shortName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.setlistItemReaction.groupBy({
-      by: ["setlistItemId", "reactionType"],
-      where: { setlistItem: { eventId, isDeleted: false } },
-      _count: true,
-    }),
-    // Wishlist fan TOP-3 — shared loader in src/lib/wishes/top3.ts so
-    // the polled `/api/setlist` channel and the standalone GET on
-    // `/api/events/[id]/wishes` always return identical shapes. Two
-    // round-trips internally (groupBy + findMany) but they're
-    // sequential against the DB; from this Promise.all's point of
-    // view it's a single awaited slot.
-    fetchEventWishlistTop3(eventId, locale),
-  ]);
-
-  const reactionCounts: Record<string, Record<string, number>> = {};
-  for (const g of reactionGroups) {
-    const key = g.setlistItemId.toString();
-    if (!reactionCounts[key]) reactionCounts[key] = {};
-    reactionCounts[key][g.reactionType] = g._count;
+  const minRev = parseMinRev(url.searchParams.get("minRev"));
+  const hint = parseHint(url.searchParams.get("hint"));
+  let result: Awaited<ReturnType<typeof getLiveSnapshot>>;
+  try {
+    result = await getLiveSnapshot(eventId, locale, minRev, { hint });
+  } catch (err) {
+    logSnapshotFailure(eventId, locale, Date.now() - started, err);
+    if (hint) logHintFetch(eventId, locale, minRev, "error");
+    return snapshotUnavailable();
   }
+  const { snapshot, source, verify } = result;
 
-  // Event status + startTime are needed so the client can lock the
-  // wishlist + predicted-setlist editors when the server's
-  // authoritative clock crosses startTime, even if the client's
-  // local clock is skewed (e.g. a user with a slow device clock
-  // would see the editor remain open past startTime because their
-  // `Date.now() < startMs`; the polled status overrides the client
-  // wall-clock check). v0.10.0 smoke caught the symptom + the
-  // operator confirmed clock-skew is the realistic bypass at this
-  // scale (manipulating localStorage requires understanding the
-  // format; changing device time is trivial).
-  //
-  // Sourced from the first setlistItem's `event` LATERAL include
-  // above (every row carries the same parent's status/startTime).
-  // The fallback below runs only when the event has zero non-
-  // deleted setlist items — a scheduled-but-empty event polled by a
-  // client watching for the first item to appear, or an event whose
-  // items have all been soft-deleted. Sequential not parallel so it
-  // doesn't reintroduce the pool contention this fold removes.
-  // `items.length > 0` over `items[0]?.event ?? findFirst()` —
-  // the project's tsconfig doesn't enable `noUncheckedIndexedAccess`,
-  // so TS types `items[0]` as non-undefined and would either reject
-  // the `??` fallback's nullable result or collapse the union back
-  // to non-null. The explicit length check matches both the runtime
-  // intent and the type system without an annotation crutch.
-  //
-  // The `!isDeleted` clause preserves the original
-  // `findFirst({ isDeleted: false })` semantics for the rare case
-  // where the event was soft-deleted but its non-deleted children
-  // are still around (admin removed an event mid-poll). In that
-  // case `liveEvent` is null and we fall through to the standalone
-  // findFirst, which also filters `isDeleted: false` and returns
-  // null — `status` becomes null and the client keeps its SSR-
-  // initial value. Costs one wasted DB round-trip per soft-deleted-
-  // event poll, acceptable trade for the safety: the alternative is
-  // a stale `status` slipping past the guard and potentially
-  // unlocking editors on a deleted event.
-  const liveEvent =
-    items.length > 0 && !items[0].event.isDeleted ? items[0].event : null;
-  const event =
-    liveEvent ??
-    (await prisma.event.findFirst({
-      where: { id: eventId, isDeleted: false },
-      select: { status: true, startTime: true },
-    }));
-  // Resolve status server-side via the same `getEventStatus`
-  // helper the page uses at SSR. `null` when the event was missing
-  // or soft-deleted — clients treat null as "no fresh status; keep
-  // the SSR-initial value" (see `<LiveEventLayout>`).
-  const status = event ? getEventStatus(event) : null;
+  // Instrumentation for one open question: is a response that is served
+  // from the cache (the stale value of a stale-while-revalidate entry)
+  // held until the background rebuild it triggered finishes, instead
+  // of returning at once? A cache hit by itself is a data-cache read and
+  // should take a few ms; anything over 500 ms end to end in this
+  // handler is logged so the load test can correlate it with build
+  // lines on the same instance. A hinted request whose revision read
+  // could not verify also ends as a slow "cache" response; those pair
+  // with a `[liveSnapshot] rev-read … rev=timeout` line on the same
+  // instance. Measurement only — no behaviour depends on it.
+  const ms = Date.now() - started;
+  if (source === "cache" && ms > SLOW_HIT_MS) {
+    console.log(
+      `[setlist] slow-hit ms=${ms} event=${eventId} locale=${locale} ` +
+        `instance=${INSTANCE_ID}`,
+    );
+  }
+  // Logged for a missing / deleted event too: the hint-fetch line counts
+  // REQUESTS (one per hinted fetch, whatever came of it), and the load
+  // harness pairs it with saves — a soft-delete is itself a save that
+  // broadcasts, so its notification fetches must stay countable.
+  if (hint) logHintFetch(eventId, locale, minRev, verify.kind);
 
-  // Flatten Prisma's `_count: { confirms }` → top-level
-  // `confirmCount` so the LiveSetlistItem type stays a flat shape
-  // (and the client doesn't have to know about Prisma's `_count`
-  // convention). Done BEFORE serializeBigInt so the recursive walk
-  // sees the renamed property; serializeBigInt only cares about
-  // BigInt values and passes the rest through unchanged. The
-  // `event` field (populated by the LATERAL include for the status
-  // derivation above) is dropped here so the wire shape stays
-  // byte-identical to the pre-fold response — shipping 25 copies
-  // of the same parent's status/startTime to the client would be
-  // pure bloat.
-  const itemsWithConfirmCount = items.map(({ _count, event: _event, ...rest }) => ({
-    ...rest,
-    confirmCount: _count.confirms,
-  }));
+  if (!snapshot.found || snapshot.isDeleted) return eventGone(source);
+
+  const resolved = resolveSnapshotForResponse(snapshot);
+  const servedAt = new Date().toISOString();
 
   return NextResponse.json(
     {
-      items: serializeBigInt(itemsWithConfirmCount),
-      reactionCounts,
-      top3Wishes,
-      status,
-      updatedAt: new Date().toISOString(),
+      items: snapshot.items,
+      reactionCounts: snapshot.reactionCounts,
+      top3Wishes: snapshot.top3Wishes,
+      status: resolved.status,
+      startTime: resolved.startTime,
+      rev: resolved.rev,
+      capturedAt: resolved.capturedAt,
+      servedAt,
+      updatedAt: servedAt,
     },
     {
       headers: {
-        "Cache-Control": "private, no-store",
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "x-snapshot-source": source,
+        // Verification is a HEADER, never a body field, on purpose. The
+        // body is the shared snapshot: one data-cache entry per
+        // (event, locale), built once and handed to every request on
+        // every instance (and, if CDN caching is ever enabled for this
+        // route, potentially to other viewers too). The verification
+        // result is not a property of that snapshot — it depends on
+        // this request's `minRev`, on whether this request started or
+        // merely joined the revision read, and on the instance's memo
+        // at this moment. Stored in the body it would leak one
+        // request's evidence (e.g. `fresh=…`) into another request's
+        // answer, where it would be false. `Cache-Control` is left
+        // unchanged: nothing reuses responses today, and the URL
+        // carries `minRev`, so a future CDN experiment must revisit this
+        // header (a cached `fresh` would turn into stale evidence)
+        // before turning reuse on.
+        [SNAPSHOT_VERIFY_HEADER]: formatSnapshotVerify(verify),
       },
     },
   );
