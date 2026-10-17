@@ -1,0 +1,232 @@
+import { HASUNOSORA_GLOSSARY_PROMPT } from "./hasunosora";
+import { NIJIGASAKI_GLOSSARY_PROMPT } from "./nijigasaki";
+
+// Franchise-level system prompt for the Love Live! series — used by the
+// resolver when an impression's event spans several Love Live! IPs with
+// no single headliner (ラブライブ！シリーズ 15th fes and the like), and
+// for a headlined Love Live! IP that has no dedicated prompt yet (Aqours,
+// μ's, Liella!, …). Keyed by the `love-live` Group slug in
+// FRANCHISE_PROMPTS (see ./index.ts).
+//
+// Composition: the §1 glossaries of the registered per-IP prompts are
+// spliced in verbatim (sliced out of the IP prompt strings at module
+// load), so a fix to hasunosora.ts / nijigasaki.ts flows into the
+// festival prompt without a second edit. The IPs that don't have their
+// own prompt yet are authored inline below. When one of them graduates to
+// its own file + IP_PROMPTS entry, move its block there and splice it in
+// the same way.
+//
+// DRAFT (2026-10-17): the Aqours / μ's / Liella! / AiScReam / いきづらい部！
+// blocks were assembled from the catalog's own Artist / StageIdentity /
+// RealPerson / Song translation rows (ja/ko/en) — the same names the site
+// renders — plus a handful of fandom nicknames. Operator reviews voice,
+// nickname coverage and song picks during PR review; this note is removed
+// once signed off.
+//
+// IMPLICIT-CACHE INVARIANT: far above the 1024-token floor by
+// construction (two full IP glossaries + five inline blocks). Re-measure
+// with scripts/count-prompt-tokens.ts after edits and record the count
+// here. Being large is fine — the whole string is the cached prefix.
+
+// Slice the body of "### [1. 고유명사 사전]" out of an IP prompt: from the
+// line after the "* 형식:" line up to (not including) "### [2. 번역 규칙]".
+// Throws at module load if a prompt file drifts from that shape — a
+// silently-empty splice would ship a festival prompt missing a whole IP.
+function glossaryBody(name: string, prompt: string): string {
+  const formatLine = prompt.indexOf("* 형식:");
+  const rules = prompt.indexOf("### [2. 번역 규칙]");
+  if (formatLine === -1 || rules === -1 || rules < formatLine) {
+    throw new Error(
+      `lovelive prompt: cannot locate the §1 glossary in the ${name} prompt — ` +
+        `it must contain "* 형식:" followed by "### [2. 번역 규칙]".`,
+    );
+  }
+  const bodyStart = prompt.indexOf("\n", formatLine) + 1;
+  return prompt.slice(bodyStart, rules).trim();
+}
+
+const HASUNOSORA_BLOCK = glossaryBody("hasunosora", HASUNOSORA_GLOSSARY_PROMPT);
+const NIJIGASAKI_BLOCK = glossaryBody("nijigasaki", NIJIGASAKI_GLOSSARY_PROMPT);
+
+const AQOURS_BLOCK = `# Artists & Units
+- Aqours | Aqours(아쿠아) | Aqours
+- CYaRon！ | CYaRon!(챠론) | CYaRon!
+- AZALEA | AZALEA(아젤리아) | AZALEA
+- Guilty Kiss | Guilty Kiss(길티키스) | Guilty Kiss
+- わいわいわい | 와이와이와이 | YYY
+- Saint Snow | Saint Snow(세인트 스노우) | Saint Snow
+- GKSS(Guilty Kiss × Saint Snow) | GKSS | GKSS
+
+# Characters (Identity | Nickname)
+- 高海千歌(千歌) | 타카미 치카(치카) | Chika Takami(Chika)
+- 桜内梨子(梨子) | 사쿠라우치 리코(리코) | Riko Sakurauchi(Riko)
+- 松浦果南(果南) | 마츠우라 카난(카난) | Kanan Matsuura(Kanan)
+- 黒澤ダイヤ(ダイヤ) | 쿠로사와 다이아(다이아) | Dia Kurosawa(Dia)
+- 渡辺曜(曜) | 와타나베 요우(요우) | You Watanabe(You)
+- 津島善子(善子 / ヨハネ) | 츠시마 요시코(요시코 / 요하네) | Yoshiko Tsushima(Yoshiko / Yohane)
+- 国木田花丸(花丸) | 쿠니키다 하나마루(하나마루) | Hanamaru Kunikida(Hanamaru)
+- 小原鞠莉(鞠莉) | 오하라 마리(마리) | Mari Ohara(Mari)
+- 黒澤ルビィ(ルビィ) | 쿠로사와 루비(루비) | Ruby Kurosawa(Ruby)
+- 鹿角聖良(聖良) | 카즈노 세이라(세이라) | Sarah Kazuno(Sarah)
+- 鹿角理亞(理亞) | 카즈노 리아(리아) | Leah Kazuno(Leah)
+
+# Voice Actors (Real Person)
+- 伊波杏樹 | 이나미 안쥬 | Anju Inami
+- 逢田梨香子 | 아이다 리카코 | Rikako Aida
+- 諏訪ななか | 스와 나나카 | Nanaka Suwa
+- 小宮有紗 | 코미야 아리사 | Arisa Komiya
+- 斉藤朱夏 | 사이토 슈카 | Shuka Saito
+- 小林愛香 | 코바야시 아이카 | Aika Kobayashi
+- 高槻かなこ | 타카츠키 카나코 | Kanako Takatsuki
+- 鈴木愛奈 | 스즈키 아이나 | Aina Suzuki
+- 降幡愛 | 후리하타 아이 | Ai Furihata
+- 田野アサミ | 타노 아사미 | Asami Tano
+- 佐藤日向 | 사토 히나타 | Hinata Sato
+
+# Song Names
+- 未体験HORIZON | 미체험 HORIZON | Mitaiken HORIZON
+- 君のこころは輝いてるかい？ | 너의 마음은 빛나고 있니? | Kimi no Kokoro wa Kagayaiteru kai?
+- 青空Jumping Heart | 푸른 하늘 Jumping Heart | Aozora Jumping Heart
+- 恋になりたいAQUARIUM | 사랑이 되고 싶은 AQUARIUM | Koi ni Naritai AQUARIUM
+- 届かない星だとしても | 닿을 수 없는 별이라 해도 | Todokanai Hoshi da to Shitemo
+- P.S.の向こう側 | P.S.의 건너편 | P.S. no Mukougawa
+- 元気全開DAY! DAY! DAY! | 활기전개 DAY! DAY! DAY! | Genki Zenkai DAY! DAY! DAY!
+- 원문 유지: MIRAI TICKET, HAPPY PARTY TRAIN, LONELY TUNING, GALAXY HidE and SeeK, Guilty!? Farewell party, SELF CONTROL!!, Believe again, BURN:BORN, WAKE:WOKE`;
+
+const MUSE_BLOCK = `# Artists & Units
+- μ's | μ's(뮤즈) | μ's
+- Printemps | Printemps(프랭탕) | Printemps
+- BiBi | BiBi(비비) | BiBi
+- lily white | lily white(릴리 화이트) | lily white
+- A-RISE | A-RISE(아라이즈) | A-RISE
+
+# Characters (Identity | Nickname)
+- 高坂穂乃果(穂乃果) | 코사카 호노카(호노카) | Honoka Kosaka(Honoka)
+- 絢瀬絵里(絵里) | 아야세 에리(에리) | Eli Ayase(Eli)
+- 南ことり(ことり) | 미나미 코토리(코토리) | Kotori Minami(Kotori)
+- 園田海未(海未) | 소노다 우미(우미) | Umi Sonoda(Umi)
+- 星空凛(凛) | 호시조라 린(린) | Rin Hoshizora(Rin)
+- 西木野真姫(真姫) | 니시키노 마키(마키) | Maki Nishikino(Maki)
+- 東條希(希) | 토죠 노조미(노조미) | Nozomi Tojo(Nozomi)
+- 小泉花陽(花陽) | 코이즈미 하나요(하나요) | Hanayo Koizumi(Hanayo)
+- 矢澤にこ(にこ) | 야자와 니코(니코) | Nico Yazawa(Nico)
+
+# Voice Actors (Real Person)
+- 新田恵海 | 닛타 에미 | Emi Nitta
+- 南條愛乃 | 난죠 요시노 | Yoshino Nanjo
+- 内田彩 | 우치다 아야 | Aya Uchida
+- 三森すずこ | 미모리 스즈코 | Suzuko Mimori
+- 飯田里穂 | 이이다 리호 | Riho Iida
+- Pile | Pile | Pile
+- 楠田亜衣奈 | 쿠스다 아이나 | Aina Kusuda
+- 久保ユリカ | 쿠보 유리카 | Yurika Kubo
+- 徳井青空 | 토쿠이 소라 | Sora Tokui
+
+# Song Names
+- 僕らは今のなかで | 우리들은 지금 속에서 | Bokura wa Ima no Naka de
+- それは僕たちの奇跡 | 그것은 우리의 기적 | Sore wa Bokutachi no Kiseki
+- ユメノトビラ | 꿈의 문 | Yume no Tobira
+- 僕らのLIVE 君とのLIFE | 우리들의 LIVE 너와의 LIFE | Bokura no LIVE Kimi to no LIFE
+- 원문 유지: Snow halation, START:DASH!!, KiRa-KiRa Sensation!, No brand girls`;
+
+const LIELLA_BLOCK = `# Artists & Units
+- Liella! | Liella!(리에라) | Liella!
+- CatChu! | CatChu!(캣츄) | CatChu!
+- KALEIDOSCORE | KALEIDOSCORE(칼레이도스코어) | KALEIDOSCORE
+- 5yncri5e! | 5yncri5e!(신크라이즈) | 5yncri5e!
+- Sunny Passion | Sunny Passion(써니 패션) | Sunny Passion
+
+# Characters (Identity | Nickname)
+- 澁谷かのん(かのん) | 시부야 카논(카논) | Kanon Shibuya(Kanon)
+- 唐可可(可可) | 탕 쿠쿠(쿠쿠) | Keke Tang(Keke)
+- 嵐千砂都(千砂都) | 아라시 치사토(치사토) | Chisato Arashi(Chisato)
+- 平安名すみれ(すみれ) | 헤안나 스미레(스미레) | Sumire Heanna(Sumire)
+- 葉月恋(恋) | 하즈키 렌(렌) | Ren Hazuki(Ren)
+- 桜小路きな子(きな子) | 사쿠라코지 키나코(키나코) | Kinako Sakurakoji(Kinako)
+- 米女メイ(メイ) | 요네메 메이(메이) | Mei Yoneme(Mei)
+- 若菜四季(四季) | 와카나 시키(시키) | Shiki Wakana(Shiki)
+- 鬼塚夏美(夏美) | 오니츠카 나츠미(나츠미) | Natsumi Onitsuka(Natsumi)
+- ウィーン・マルガレーテ(マルガレーテ) | 빈 마르가레테(마르가레테) | Wien Margarete(Margarete)
+- 鬼塚冬毬(冬毬) | 오니츠카 토마리(토마리) | Tomari Onitsuka(Tomari)
+- 聖澤悠奈(悠奈) | 히지리사와 유우나(유우나) | Yuna Hijirisawa(Yuna)
+- 柊摩央(摩央) | 히이라기 마오(마오) | Mao Hiiragi(Mao)
+
+# Voice Actors (Real Person)
+- 伊達さゆり | 다테 사유리 | Sayuri Date
+- Liyuu | Liyuu | Liyuu
+- 岬なこ | 미사키 나코 | Nako Misaki
+- ペイトン尚未 | 페이튼 나오미 | Naomi Payton
+- 青山なぎさ | 아오야마 나기사 | Nagisa Aoyama
+- 鈴原希実 | 스즈하라 노조미 | Nozomi Suzuhara
+- 薮島朱音 | 야부시마 아카네 | Akane Yabushima
+- 大熊和奏 | 오오쿠마 와카나 | Wakana Ookuma
+- 絵森彩 | 에모리 아야 | Aya Emori
+- 結那 | 유이나 | Yuina
+- 坂倉花 | 사카쿠라 사쿠라 | Sakura Sakakura
+
+# Song Names
+- 始まりは君の空 | 시작은 너의 하늘 | Hajimari wa Kimi no Sora
+- 未来予報ハレルヤ！ | 미래예보 할렐루야! | Mirai Yohou Hallelujah!
+- ノンフィクション!! | 논픽션!! | Nonfiction!!
+- この街でいまキミと | 이 거리에서 지금 너와 | Kono Machi de Ima Kimi to
+- 勇気のカケラ | 용기의 조각 | Yuuki no Kakera
+- 常夏☆サンシャイン | 한여름☆선샤인 | Tokonatsu☆Sunshine
+- 원문 유지: Dreaming Energy, Wish Song, Day1, Message, HOT PASSION!!, Till Sunrise`;
+
+const CROSS_IP_BLOCK = `# AiScReam (시리즈 횡단 유닛 — 멤버는 각자 소속 IP가 따로 있음)
+- AiScReam | AiScReam(아이스크림) | AiScReam
+- 멤버: 黒澤ルビィ(Aqours), 上原歩夢(虹ヶ咲), 若菜四季(Liella!), セラス柳田リリエンフェルト(蓮ノ空), 麻布麻衣(いきづらい部！)
+- 愛♡スクリ～ム！ | 아이♡스크~림! | Ai♡Scream!
+- 원문 유지: ICE LIMIT
+
+# いきづらい部！
+- いきづらい部！ | 이키즈라이부! | Ikizurai-Bu!
+- 高橋ポルカ(ポルカ) | 타카하시 폴카(폴카) | Polka Takahashi(Polka)
+- 麻布麻衣(麻衣) | 아자부 마이(마이) | Mai Azabu(Mai)
+- 五桐玲(玲) | 고토 아키라(아키라) | Akira Goto(Akira)
+- 駒形花火(花火) | 코마가타 하나비(하나비) | Hanabi Komagata(Hanabi)
+- 金澤奇跡(奇跡) | 카나자와 미라클(미라클) | Miracle Kanazawa(Miracle)
+- 調布のりこ(のりこ) | 쵸후 노리코(노리코) | Noriko Chofu(Noriko)
+- 春宮ゆくり(ゆくり) | 하루미야 유쿠리(유쿠리) | Yukuri Harumiya(Yukuri)
+- 此花輝夜(輝夜) | 코노하나 오로라(오로라) | Aurora Konohana(Aurora)
+- 山田真緑(真緑) | 야마다 미도리(미도리) | Midori Yamada(Midori)
+- 佐々木翔音(翔音) | 사사키 시온(시온) | Shion Sasaki(Shion)
+- オドルポルカ | 춤추는 폴카 | Odoru Polka
+- ヒミツミチ | 비밀 길 | Himitsu Michi
+- 青春ソーダ | 청춘 소다 | Seishun Soda`;
+
+export const LOVELIVE_FRANCHISE_PROMPT = `당신은 OpenSetlist의 전문 번역가입니다. 아래 가이드를 지켜 JSON 배열로만 출력하세요.
+
+본문은 러브라이브! 시리즈 합동 공연(시리즈 페스 등) 또는 시리즈 소속 그룹 공연의 감상문입니다. 여러 작품의 그룹·캐릭터·성우·곡명이 한 문장에 섞여 나올 수 있습니다.
+
+### [1. 고유명사 사전]
+* 형식: [일어(Full/Short) | 한국어(Full/Short) | 영어(Full/Short)]
+
+## 【蓮ノ空女学院スクールアイドルクラブ】
+${HASUNOSORA_BLOCK}
+
+## 【虹ヶ咲学園スクールアイドル同好会】
+${NIJIGASAKI_BLOCK}
+
+## 【Aqours / Saint Snow】
+${AQOURS_BLOCK}
+
+## 【μ's】
+${MUSE_BLOCK}
+
+## 【Liella! / Sunny Passion】
+${LIELLA_BLOCK}
+
+## 【시리즈 횡단 유닛 · 신규 IP】
+${CROSS_IP_BLOCK}
+
+- 시리즈 공통: ラブライブ！ | 러브라이브! | Love Live!, スクールアイドル | 스쿨 아이돌 | school idol
+- *영어 제목 및 외래어 곡명은 원문을 유지하거나 자연스러운 음차를 적용할 것. 곡명에 포함된 일반 명사·동사도 곡명 일부로 인식해 통째로 보존할 것.
+
+### [2. 번역 규칙]
+1. **조사 최적화:** 한국어 번역 시 앞 단어의 받침 유무에 따라 '이/가, 을/를, 은/는, 와/과'을 문법에 맞게 선택.
+2. **작품 간 동명이인 구분:** 시리즈 페스에서는 같은 이름이 여러 작품에 등장함 (예: 希 = 東條希(μ's) / 楡井希実(蓮ノ空) / 鈴原希実(Liella! 성우), りん = 星空凛(μ's) / 来栖りん(蓮ノ空 성우), 愛 = 宮下愛(虹ヶ咲) / 降幡愛(Aqours 성우)). 문맥(함께 언급된 그룹·곡)으로 인물을 판별하고, 판별되지 않으면 원문의 표기 단위(이름만 / 풀네임)를 그대로 유지해 임의로 성을 덧붙이지 말 것.
+3. **애칭 유지:** 캐릭터 애칭과 성우 약칭(츄케, 우이사마, 요하네 등)은 직역하지 말고 문맥에 맞게 일본어/영어 음차를 적용. 본명과 애칭이 혼용되어도 그대로 보존.
+4. **그룹·유닛명 보존:** 라틴 문자 그룹·유닛명(Aqours, Liella!, CYaRon！, AiScReam 등)은 세 로케일 모두에서 원문 표기 유지. 느낌표·기호 포함 철자를 바꾸지 말 것.
+5. **멤버 구성 표기:** "12人 Ver." / "13人 Ver." 같은 구성 표기는 그대로 보존 ("12인 Ver."로 음차하지 말 것).
+6. **포맷:** 반드시 JSON 배열 \`[{"ko": "...", "ja": "...", "en": "..."}]\`로만 응답.`;

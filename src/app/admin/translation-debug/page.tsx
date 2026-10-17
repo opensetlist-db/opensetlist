@@ -5,6 +5,7 @@ import { useState } from "react";
 // client bundle doesn't include the multi-KB prompt-content strings.
 import {
   REGISTERED_IP_KEYS,
+  REGISTERED_FRANCHISE_KEYS,
   GENERIC_IP_KEY,
   DEFAULT_IP_KEY,
 } from "@/lib/translator/prompts/keys";
@@ -17,9 +18,14 @@ type Provider = "gemini" | "openai";
 type ProviderChoice = Provider | "default";
 
 // Picks the system prompt to send. Registered IP slugs come from the
-// IP_PROMPTS keys; "generic" sends FALLBACK_PROMPT. The server validates
+// IP_PROMPTS keys, franchise keys (e.g. "love-live") from
+// FRANCHISE_PROMPTS; "generic" sends FALLBACK_PROMPT. The server validates
 // against the same whitelist (see api/admin/translation-debug/route.ts).
-const IP_CHOICES: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
+const IP_CHOICES: readonly string[] = [
+  ...REGISTERED_IP_KEYS,
+  ...REGISTERED_FRANCHISE_KEYS,
+  GENERIC_IP_KEY,
+];
 
 type DebugResponse = {
   systemPrompt: string;

@@ -8,9 +8,10 @@ import {
   parseMultilingualResponse,
   type MultilingualOutput,
 } from "@/lib/translator/prompt";
-import { IP_PROMPTS, FALLBACK_PROMPT } from "@/lib/translator/prompts";
+import { promptForKey } from "@/lib/translator/prompts";
 import {
   REGISTERED_IP_KEYS,
+  REGISTERED_FRANCHISE_KEYS,
   GENERIC_IP_KEY,
   DEFAULT_IP_KEY,
 } from "@/lib/translator/prompts/keys";
@@ -22,10 +23,15 @@ const TRANSLATOR_TIMEOUT_MS = 30_000;
 const PROVIDERS = ["gemini", "openai"] as const;
 type Provider = (typeof PROVIDERS)[number];
 
-// Admin can target any registered IP prompt by slug, or the generic
-// fallback. The dropdown UI is bounded by REGISTERED_IP_KEYS + "generic"
-// so the request shape is always validated against a known whitelist.
-const VALID_IP_KEYS: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
+// Admin can target any registered IP prompt by slug, a registered
+// franchise prompt by Group slug, or the generic fallback. The dropdown UI
+// is bounded by the same three lists so the request shape is always
+// validated against a known whitelist.
+const VALID_IP_KEYS: readonly string[] = [
+  ...REGISTERED_IP_KEYS,
+  ...REGISTERED_FRANCHISE_KEYS,
+  GENERIC_IP_KEY,
+];
 
 // POST /api/admin/translation-debug
 // Body: { sourceLocale: "ko" | "ja" | "en", text: string,
@@ -96,10 +102,7 @@ export async function POST(req: NextRequest) {
   // by the registry contract (see src/lib/translator/prompts/index.ts).
   const ipKey: string =
     typeof ipKeyInput === "string" ? ipKeyInput : DEFAULT_IP_KEY;
-  const systemPrompt: string =
-    ipKey === GENERIC_IP_KEY
-      ? FALLBACK_PROMPT
-      : (IP_PROMPTS[ipKey] ?? FALLBACK_PROMPT);
+  const systemPrompt: string = promptForKey(ipKey);
 
   const provider: Provider =
     (providerInput as Provider | undefined) ??
