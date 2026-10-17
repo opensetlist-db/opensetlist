@@ -16,12 +16,12 @@ import { NIJIGASAKI_GLOSSARY_PROMPT } from "./nijigasaki";
 // its own file + IP_PROMPTS entry, move its block there and splice it in
 // the same way.
 //
-// DRAFT (2026-10-17): the Aqours / μ's / Liella! / AiScReam / いきづらい部！
-// blocks were assembled from the catalog's own Artist / StageIdentity /
-// RealPerson / Song translation rows (ja/ko/en) — the same names the site
-// renders — plus a handful of fandom nicknames. Operator reviews voice,
-// nickname coverage and song picks during PR review; this note is removed
-// once signed off.
+// Sources for the inline blocks: names come from the catalog's own Artist /
+// StageIdentity / RealPerson / Song translation rows (ja/ko/en) — the same
+// names the site renders. Korean group/unit readings and VA nicknames
+// follow Korean community usage as recorded on namu.wiki (e.g. 리엘라!,
+// 서니 패션, 파일, 리유 — not the Latin or Japanese-derived forms). Check
+// new entries against the same sources.
 //
 // 6870 tokens on Gemini's tokenizer (2026-10-17) — far above the
 // 1024-token implicit-cache floor by construction (two full IP glossaries
