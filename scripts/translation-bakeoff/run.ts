@@ -89,6 +89,11 @@ function parseArgs() {
   const get = (name: string) =>
     args.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
   const perIp = Number(get("per-ip") ?? 15);
+  // NaN (or 0) would make every `length >= perIp` check false, lifting the
+  // per-IP cap and sending all 400 sampled rows to every provider.
+  if (!Number.isInteger(perIp) || perIp <= 0) {
+    throw new Error(`--per-ip must be a positive integer, got: ${get("per-ip")}`);
+  }
   const providers = (get("providers")?.split(",") ?? ALL_PROVIDERS) as ProviderId[];
   for (const p of providers) {
     if (!ALL_PROVIDERS.includes(p)) throw new Error(`Unknown provider: ${p}`);

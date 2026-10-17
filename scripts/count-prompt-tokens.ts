@@ -64,21 +64,30 @@ function buildCounters(): Counter[] {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
     const client = new Anthropic({ apiKey: anthropicKey });
+    // countTokens requires a non-empty messages array, so every count
+    // includes a placeholder user turn. Subtracting a baseline measured
+    // with the same turn and no system prompt leaves the system prompt
+    // alone — the cached prefix the 512-token minimum applies to.
+    // Without this, a prompt just under 512 could pass on the strength of
+    // the placeholder's tokens.
+    const messages = [{ role: "user" as const, content: "." }];
+    let baseline: number | undefined;
     counters.push({
       name: `Claude ${ANTHROPIC_MODEL}`,
       minTokens: 512,
-      // countTokens requires a non-empty messages array. The one-character
-      // user turn adds a few tokens to input_tokens, so the figure slightly
-      // overstates the system prompt alone — harmless for a ≥ check with
-      // this much headroom.
-      count: async (prompt) =>
-        (
+      count: async (prompt) => {
+        baseline ??= (
+          await client.messages.countTokens({ model: ANTHROPIC_MODEL, messages })
+        ).input_tokens;
+        const total = (
           await client.messages.countTokens({
             model: ANTHROPIC_MODEL,
             system: prompt,
-            messages: [{ role: "user", content: "." }],
+            messages,
           })
-        ).input_tokens,
+        ).input_tokens;
+        return total - baseline;
+      },
     });
   }
 
