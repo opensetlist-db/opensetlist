@@ -16,6 +16,9 @@
  *     (`anonId`, `anon_id`, `opensetlist-anon-token`, and attribute
  *     keys that END with the header name, e.g.
  *     `http.request.header.opensetlist-anon-token`)
+ *   - the value of a `[key, value]` pair whose key names the id —
+ *     Sentry's tuple-array `request.query_string` shape, where the key
+ *     is a string element, not an object key
  *   - inside strings: `anonId=<value>` (URLs, query strings, form
  *     bodies) and `"anonId":"<value>"` (JSON bodies captured as text)
  *
@@ -54,6 +57,10 @@ export function scrubAnon<T>(value: T): T {
     if (seen.has(v)) return v;
     seen.add(v);
     if (Array.isArray(v)) {
+      if (v.length === 2 && typeof v[0] === "string" && SENSITIVE_KEY.test(v[0])) {
+        v[1] = FILTERED;
+        return v;
+      }
       for (let i = 0; i < v.length; i++) v[i] = walk(v[i], depth + 1);
       return v;
     }

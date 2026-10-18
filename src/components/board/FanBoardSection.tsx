@@ -81,6 +81,7 @@ function failureKey(reason: PickFailure) {
 }
 
 const TOAST_MS = 3000;
+const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
 // Stable default so the per-group filter memo doesn't recompute on
 // every render when the page passes no catalog.
 const NO_CATALOG: readonly AvailableSong[] = [];
@@ -120,13 +121,23 @@ export function FanBoardSection({
   });
 
   // A tab left open across the start time goes read-only AT the start
-  // time, not after its first refused write. setTimeout's 32-bit delay
-  // caps how far ahead this can be armed; a lock further out than ~24
-  // days is simply not armed (the server still refuses at the instant).
+  // time, not after its first refused write. setTimeout's delay is a
+  // 32-bit int (~24.8 days; larger values fire immediately), so a lock
+  // further out is reached in hops: each hop waits at most the cap and
+  // re-arms with the time still remaining.
   useEffect(() => {
-    const ms = new Date(seed.lockAt).getTime() - Date.now();
-    if (!Number.isFinite(ms) || ms > 2147483647) return;
-    const timer = setTimeout(() => setLockedByServer(true), Math.max(0, ms));
+    const lockMs = new Date(seed.lockAt).getTime();
+    if (!Number.isFinite(lockMs)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const ms = lockMs - Date.now();
+      if (ms <= 0) {
+        setLockedByServer(true);
+        return;
+      }
+      timer = setTimeout(arm, Math.min(ms, MAX_TIMEOUT_MS));
+    };
+    arm();
     return () => clearTimeout(timer);
   }, [seed.lockAt]);
 

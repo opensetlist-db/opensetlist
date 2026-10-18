@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 // "My picks" on the fan board (n15-03), through the whole block with a
 // mocked board read and mocked pick routes: the N/3 counter, the cap
@@ -433,6 +433,28 @@ describe("<FanBoardSection> my picks", () => {
     await screen.findByText("残陽");
     await waitFor(() => expect(screen.queryByText("add(蓮ノ空)")).toBeNull());
     expect(screen.queryByLabelText("removeAria(残陽)")).toBeNull();
+  });
+
+  it("a lock more than ~24 days out is still reached (the timer re-arms)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const lockAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    try {
+      render(
+        <FanBoardSection
+          eventId="107"
+          locale="ko"
+          seed={{ ...SEED, lockAt: lockAt.toISOString() }}
+          catalog={CATALOG}
+        />,
+      );
+      await screen.findByText("add(蓮ノ空)");
+      await act(async () => {
+        vi.advanceTimersByTime(30 * 24 * 60 * 60 * 1000 + 1000);
+      });
+      expect(screen.queryByText("add(蓮ノ空)")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a locked board shows my picks without add/remove controls", async () => {

@@ -74,6 +74,21 @@ describe("scrubAnon", () => {
     expect(out.spans[0].data["http.method"]).toBe("GET");
   });
 
+  it("masks the value of [key, value] query tuples (Sentry's tuple-array query_string)", () => {
+    const out = scrubAnon({
+      request: {
+        query_string: [
+          ["anonId", ID],
+          ["locale", "ko"],
+        ],
+      },
+    });
+    expect(out.request.query_string).toEqual([
+      ["anonId", FILTERED],
+      ["locale", "ko"],
+    ]);
+  });
+
   it("leaves unrelated data alone and survives cycles / non-plain values", () => {
     const cyclic: Record<string, unknown> = { message: "anonymous user", n: 3 };
     cyclic.self = cyclic;
