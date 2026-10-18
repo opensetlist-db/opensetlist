@@ -7,8 +7,14 @@
 // sources (cache reuse itself is proven on a Preview, not here).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// No `song` model on purpose: the aggregate must take titles from the
+// cached catalog, so any song query would throw here.
 vi.mock("@/lib/prisma", () => ({
-  prisma: { event: { findFirst: vi.fn() } },
+  prisma: {
+    event: { findFirst: vi.fn() },
+    boardPick: { groupBy: vi.fn() },
+    $queryRaw: vi.fn(),
+  },
 }));
 vi.mock("@/lib/dataCache", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/dataCache")>();
@@ -37,6 +43,8 @@ import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
 import type { AvailableSong } from "@/lib/types/predict";
 
 const findFirst = vi.mocked(prisma.event.findFirst);
+const pickGroupBy = vi.mocked(prisma.boardPick.groupBy);
+const participantsRaw = vi.mocked(prisma.$queryRaw);
 const groupsMock = vi.mocked(loadBoardGroups);
 const catalogMock = vi.mocked(getAvailableSongsCached);
 
@@ -91,7 +99,20 @@ beforeEach(() => {
     { artistId: 2, slug: "liella", label: "Liella!", color: null },
   ]);
   catalogMock.mockResolvedValue([song(10, "残陽"), song(11, "ハナムスビ")]);
+  // No fan picks unless a test says otherwise.
+  pickGroupBy.mockResolvedValue([] as never);
+  participantsRaw.mockResolvedValue([] as never);
 });
+
+/** One `boardPick.groupBy` row as Prisma returns it. */
+function pickRow(group: number, songId: number, count: number, firstAt: string) {
+  return {
+    groupArtistId: BigInt(group),
+    songId: BigInt(songId),
+    _count: { _all: count },
+    _min: { createdAt: new Date(firstAt) },
+  };
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -100,6 +121,8 @@ afterEach(() => {
 function expectNoAggregateWork() {
   expect(groupsMock).not.toHaveBeenCalled();
   expect(catalogMock).not.toHaveBeenCalled();
+  expect(pickGroupBy).not.toHaveBeenCalled();
+  expect(participantsRaw).not.toHaveBeenCalled();
 }
 
 function expectNoRevalidate() {
@@ -248,5 +271,70 @@ describe("GET /api/events/[id]/board", () => {
     findFirst.mockResolvedValue(control() as never);
     const text = await (await GET(req(), params())).text();
     expect(text).not.toMatch(/anon/i);
+  });
+
+  it("fan picks → crowd TOP3 per group with counts, labels and the catalog's titles", async () => {
+    findFirst.mockResolvedValue(
+      control({ boardStarterSongIds: { "1": ["11"] } }) as never,
+    );
+    pickGroupBy.mockResolvedValue([
+      pickRow(1, 11, 4, "2026-10-20T00:00:00.000Z"),
+      pickRow(1, 10, 4, "2026-10-19T00:00:00.000Z"),
+      // Not in the catalog any more (soft-deleted after it was picked).
+      pickRow(1, 99, 2, "2026-10-18T00:00:00.000Z"),
+      pickRow(1, 12, 1, "2026-10-18T00:00:00.000Z"),
+      pickRow(2, 11, 1, "2026-10-21T00:00:00.000Z"),
+      // A group that is no longer on this board: ignored.
+      pickRow(7, 10, 9, "2026-10-21T00:00:00.000Z"),
+    ] as never);
+    participantsRaw.mockResolvedValue([
+      { groupArtistId: BigInt(1), participants: 5 },
+      { groupArtistId: BigInt(2), participants: 1 },
+      { groupArtistId: BigInt(7), participants: 9 },
+    ] as never);
+
+    const body = await (await GET(req(), params())).json();
+    const [g1, g2] = body.groups;
+    expect(g1.expects).toEqual({
+      top: [
+        // 4 vs 4: the earlier first submission wins
+        { songId: "10", title: "残陽", count: 4, available: true },
+        { songId: "11", title: "ハナムスビ", count: 4, available: true },
+        { songId: "99", title: "", count: 2, available: false },
+      ],
+      submissions: 11,
+      participants: 5,
+      label: "ok",
+    });
+    expect(g2.expects).toEqual({
+      top: [{ songId: "11", title: "ハナムスビ", count: 1, available: true }],
+      submissions: 1,
+      participants: 1,
+      label: "early",
+    });
+    // Starters still travel; the client shows them only on operator columns.
+    expect(g1.starters).toEqual([{ songId: "11", title: "ハナムスビ" }]);
+    // One catalog per group that has picks or starters, in the request locale.
+    expect(catalogMock).toHaveBeenCalledTimes(2);
+    expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ja");
+    expect(catalogMock).toHaveBeenCalledWith(BigInt(2), "ja");
+    // Exactly one grouped count + one distinct-participant count.
+    expect(pickGroupBy).toHaveBeenCalledTimes(1);
+    expect(pickGroupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ["groupArtistId", "songId"],
+        where: { eventId: BigInt(107) },
+      }),
+    );
+    expect(participantsRaw).toHaveBeenCalledTimes(1);
+    expectNoRevalidate();
+  });
+
+  it("asOf is the computation time", async () => {
+    const now = new Date(START.getTime() - 60_000);
+    vi.setSystemTime(now);
+    findFirst.mockResolvedValue(control() as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body.asOf).toBe(now.toISOString());
   });
 });
