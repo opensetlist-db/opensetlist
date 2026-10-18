@@ -14,7 +14,7 @@ config({ path: [".env.local", ".env"], quiet: true });
 //   direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
 //   pooler:  postgresql://postgres.<ref>:<pw>@<region>.pooler.supabase.com:6543/postgres
 // Any URL that does not parse fails closed.
-const DEV_PROJECT_REF = "nddawybyuedsrshhxikx";
+export const DEV_PROJECT_REF = "nddawybyuedsrshhxikx";
 function pointsAtDevProject(raw: string): boolean {
   let url: URL;
   try {
