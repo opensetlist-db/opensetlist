@@ -316,6 +316,29 @@ Hard rules:
   plan (expand/contract) and must not be merged this way at all.
 - Always include release notes when creating a tag (use `git tag -a` with annotation)
 
+### Task workflow
+
+Every implementation task runs these steps in order:
+
+1. **Branch** — `git fetch origin`, then `git checkout -b feature/<slug> origin/dev`.
+   Branch from `origin/dev`: local `dev` lags behind and a stale base
+   surfaces later as merge conflicts on the PR.
+2. **Research** — send lookups (codebase sweeps, docs and API facts, DB or
+   wiki digging) to a subagent with `model: haiku`, and keep the main
+   context for design and code. Done when the report answers the question.
+3. **Implement** — commit locally on the feature branch.
+4. **Review** — run `/code-review origin/dev` and
+   `/codex-review --base origin/dev`, fix every valid finding, and note each
+   skipped one with its reason. Done when neither review has an
+   unaddressed finding. The push-review hook stays the last gate; reviewing
+   here first saves a push round per finding.
+5. **Push + PR** — `git push -u origin <branch>`, `gh pr create --base dev`,
+   then ask the owner to merge.
+6. **Wiki** — record the outcome in `F:\work\vaults\opensetlist\wiki`: a
+   dated entry at the top of `log.md`, plus edits to every topic page the
+   work changes (e.g. `translation-system.md`). Done when no topic page
+   contradicts the merged code.
+
 ### Local review hooks
 
 Two `PreToolUse` hooks (owner-level, in `~/.claude/hooks/`) review changes before they leave the machine:
