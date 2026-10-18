@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
-import { Client } from "pg";
+import { devPgClient } from "./devPg";
 
 // `GET /api/setlist` for a soft-deleted or missing event — integration
 // test against the DEV database.
@@ -44,7 +44,7 @@ const SLUG = `deleted404-itest-${Date.now()}`;
 let eventId: bigint;
 // Separate session-pooler connection for the restore and the cleanup,
 // so they never share a backend with the code under test.
-const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+const pg = devPgClient();
 
 function getReq(url: string): NextRequest {
   return new Request(url, { method: "GET" }) as unknown as NextRequest;

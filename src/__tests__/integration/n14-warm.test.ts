@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
-import { Client } from "pg";
+import { devPgClient } from "./devPg";
 
 // n14 writer warming (`LIVE_WARM_ENTRIES`) — integration test against
 // the DEV database: a real live save, the real warm job building every
@@ -57,7 +57,7 @@ import { locales } from "@/i18n/routing";
 
 const SLUG = `n14-warm-itest-${Date.now()}`;
 let eventId: bigint;
-const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+const pg = devPgClient();
 
 function req(url: string, body?: unknown): NextRequest {
   return new Request(url, {
