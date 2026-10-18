@@ -24,7 +24,8 @@ import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 import { BoardMyPicks } from "@/components/board/BoardMyPicks";
 import { pickTitle } from "@/lib/board/pickTitle";
-import { pickFailureKey, useBoardPicks } from "@/components/board/useBoardPicks";
+import { useBoardPicks } from "@/components/board/useBoardPicks";
+import { pickFailureKey } from "@/lib/board/ballotClient";
 
 /**
  * Fan board block (n15).
@@ -65,9 +66,6 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
   timeZoneName: "short",
 };
 
-/** Failure code → `Board` message key. Anything unexpected (a 400 the
- *  UI should never produce, a 404 for a just-deleted song) reads as
- *  the generic "couldn't save". */
 const TOAST_MS = 3000;
 const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
 // Stable default so the per-group filter memo doesn't recompute on

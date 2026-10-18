@@ -104,8 +104,9 @@ export async function POST(req: Request, { params }: RouteProps) {
  *   409 `cap_reached` (more than 3 picks for one group)
  *   503 database busy before the write started (safe to retry)
  *
- * Order mirrors POST: parse → fresh control check → cap → static target
- * validation → ballot lock (control re-check, then the diff).
+ * Order mirrors POST: parse → fresh control check → static target
+ * validation (400/404 before any 409, as a single add answers) → cap →
+ * ballot lock (control re-check, then the diff).
  */
 export async function PUT(req: Request, { params }: RouteProps) {
   const eventId = parseDecimalId((await params).id);
@@ -130,8 +131,8 @@ export async function PUT(req: Request, { params }: RouteProps) {
   try {
     const control = await checkBoardWritable(eventId);
     if (!control.ok) return ballotJson(control.status, { error: control.code });
-    assertPublishCaps(parsed.picks);
     await validatePublishTargets(control.context, parsed.picks);
+    assertPublishCaps(parsed.picks);
     const picks = await publishPicks(eventId, anon.value, parsed.picks);
     return ballotJson(200, { picks });
   } catch (err) {

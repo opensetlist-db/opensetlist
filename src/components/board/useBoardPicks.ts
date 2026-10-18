@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ANON_TOKEN_HEADER,
-  getAnonId,
-  readExistingAnonId,
-} from "@/lib/anonId";
+import { getAnonId, readExistingAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { trackEvent } from "@/lib/analytics";
 import {
@@ -13,12 +9,15 @@ import {
   writeBoardPicks,
   type StoredBoardPick,
 } from "@/lib/board/pickStorage";
-import type {
-  BoardMineResponse,
-  BoardPickCreated,
-  BoardPickErrorCode,
-  BoardPublishResponse,
-} from "@/lib/board/types";
+import {
+  callJson,
+  errorCode,
+  minePicksFrom,
+  requestMine,
+  type JsonReply,
+  type PickFailure,
+} from "@/lib/board/ballotClient";
+import type { BoardPickCreated } from "@/lib/board/types";
 
 /**
  * The viewer's own ballot on one event's fan board (n15-03): local copy
@@ -31,75 +30,15 @@ import type {
  * server refused (cap races, lock at start time, kill switch).
  */
 
-export type PickFailure =
-  | BoardPickErrorCode
-  /** fetch threw / timed out / non-JSON body */
-  | "network";
+export type { PickFailure };
 
 export type PickOutcome =
   | { ok: true; kind: "added" | "removed"; groupId: string }
   | { ok: false; reason: PickFailure };
 
-/** The `Board` i18n key a failure is shown with — shared by the board
- *  block's toasts and the publish proposal (n15-09b). */
-export function pickFailureKey(reason: PickFailure) {
-  switch (reason) {
-    case "cap_reached":
-      return "errorCap" as const;
-    case "group_conflict":
-      return "errorGroupConflict" as const;
-    case "board_locked":
-      return "errorLocked" as const;
-    case "board_disabled":
-      return "errorDisabled" as const;
-    case "busy":
-      return "errorBusy" as const;
-    case "invalid_anon_id":
-      return "errorNoStorage" as const;
-    default:
-      return "errorGeneric" as const;
-  }
-}
-
-const WRITE_TIMEOUT_MS = 8000;
 /** "Restore my picks" tries: the first request plus two retries. */
 const MINE_ATTEMPTS = 3;
 const MINE_RETRY_DELAY_MS = 2000;
-
-async function callJson(
-  url: string,
-  init: RequestInit,
-): Promise<{ status: number; body: unknown } | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), WRITE_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    let body: unknown = null;
-    try {
-      body = await res.json();
-    } catch {
-      // A body that isn't JSON (a proxy's HTML 502) is a network-class
-      // failure for the caller unless the status alone says enough.
-    }
-    return { status: res.status, body };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function errorCode(body: unknown): BoardPickErrorCode | null {
-  if (body && typeof body === "object" && "error" in body) {
-    const code = (body as { error: unknown }).error;
-    if (typeof code === "string") return code as BoardPickErrorCode;
-  }
-  return null;
-}
 
 export function useBoardPicks({
   eventId,
@@ -149,21 +88,15 @@ export function useBoardPicks({
     let cancelled = false;
     let settled = false;
     (async () => {
-      // The id goes in a header, never the URL (it is a write
-      // credential; URLs reach logs and telemetry).
-      const params = new URLSearchParams({ locale });
       // A transient failure (503 busy — the route's retry-safe answer —
       // a 5xx, or no response at all) is retried a few times, 2 s apart
       // to match the route's Retry-After. Giving up after ONE failure
       // would be sticky: the next local add makes storage non-empty, so
       // later mounts skip the restore and this browser never sees its
       // older server picks (nor can remove them before the lock).
-      let res: Awaited<ReturnType<typeof callJson>> = null;
+      let res: JsonReply = null;
       for (let attempt = 1; attempt <= MINE_ATTEMPTS; attempt++) {
-        res = await callJson(`/api/events/${eventId}/board/mine?${params}`, {
-          method: "GET",
-          headers: { [ANON_TOKEN_HEADER]: anonId },
-        });
+        res = await requestMine(eventId, locale, anonId);
         if (cancelled) return;
         const transient = !res || res.status >= 500;
         if (!transient || attempt === MINE_ATTEMPTS) break;
@@ -171,18 +104,8 @@ export function useBoardPicks({
         if (cancelled) return;
       }
       settled = true;
-      if (!res || res.status !== 200) return;
-      const body = res.body as BoardMineResponse | null;
-      if (!body || !Array.isArray(body.picks) || body.picks.length === 0) {
-        return;
-      }
-      const next = body.picks.map((p) => ({
-        id: p.id,
-        groupId: p.groupId,
-        songId: p.songId,
-        title: p.title,
-        available: p.available,
-      }));
+      const next = minePicksFrom(res);
+      if (!next || next.length === 0) return;
       // A pick made in this tab while the restore was in flight wins
       // over nothing; merge by row id so neither side is lost.
       setPicks((cur) => {
@@ -300,38 +223,4 @@ export function useBoardPicks({
   );
 
   return { picks, pending, add, remove };
-}
-
-export type PublishOutcome =
-  | { ok: true; picks: BoardPickCreated[] }
-  | { ok: false; reason: PickFailure };
-
-/**
- * Publish a whole ballot (n15-09b): `PUT /board/picks` with the given
- * picks, which replace the anon's expected songs atomically. The
- * caller owns local storage and the feedback — this is only the call
- * and its typed outcome, on the same timeout and error mapping as the
- * single add/remove above.
- */
-export async function publishBallot(
-  eventId: string,
-  picks: ReadonlyArray<{ groupId: string; songId: string }>,
-): Promise<PublishOutcome> {
-  const anonId = getAnonId();
-  if (!anonId) return { ok: false, reason: "invalid_anon_id" };
-  const res = await callJson(`/api/events/${eventId}/board/picks`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      anonId,
-      picks: picks.map((p) => ({ groupId: p.groupId, songId: p.songId })),
-    }),
-  });
-  if (!res) return { ok: false, reason: "network" };
-  if (res.status === 200) {
-    const body = res.body as BoardPublishResponse | null;
-    if (body && Array.isArray(body.picks)) return { ok: true, picks: body.picks };
-    return { ok: false, reason: "network" };
-  }
-  return { ok: false, reason: errorCode(res.body) ?? "network" };
 }

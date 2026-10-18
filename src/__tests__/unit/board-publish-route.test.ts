@@ -280,6 +280,12 @@ describe("PUT /board/picks — refused before anything is written", () => {
     expect(txMock).not.toHaveBeenCalled();
   });
 
+  it("400 beats 409: a fourth pick under a group not on the board is invalid_group", async () => {
+    const res = await publish([p("99", "10"), p("99", "11"), p("99", "12"), p("99", "13")]);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_group" });
+  });
+
   it("403 — the board locks while the publish waits for the ballot lock: nothing is written", async () => {
     tx.event.findFirst.mockResolvedValue(event({ boardEnabled: false }));
     const res = await publish([p("1", "10")]);

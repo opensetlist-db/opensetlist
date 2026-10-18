@@ -122,11 +122,16 @@ export async function validatePublishTargets(
     throw new BallotError(404, "song_not_found");
   }
   const groupIds = [...new Set(picks.map((p) => p.groupId))];
-  const catalogs = new Map<bigint, Set<bigint>>();
-  for (const g of groupIds) {
-    const catalog = await getAvailableSongsCached(g, defaultLocale);
-    catalogs.set(g, new Set(catalog.map((s) => BigInt(s.songId))));
-  }
+  // Cached loaders (an hour); a cold one is one query per group, and a
+  // board has at most a handful of groups.
+  const catalogs = new Map(
+    await Promise.all(
+      groupIds.map(async (g) => {
+        const catalog = await getAvailableSongsCached(g, defaultLocale);
+        return [g, new Set(catalog.map((s) => BigInt(s.songId)))] as const;
+      }),
+    ),
+  );
   if (picks.some((p) => !catalogs.get(p.groupId)?.has(p.songId))) {
     throw new BallotError(400, "song_outside_group");
   }

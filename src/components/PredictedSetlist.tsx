@@ -510,8 +510,9 @@ export function PredictedSetlist({
   const showBridgeNotice = bridgeOutcome !== null && bridgeOutcome.kind !== "none";
   const showProvisional = provisional && predictions.length > 0;
   // "Put on the board" (n15-09b): only before the lock, with a list to
-  // derive from. An empty list has nothing to propose — clearing the
-  // board is done on the board itself.
+  // derive from — an empty list has nothing to propose. (A fan who
+  // removes every chip in the proposal can still publish the empty set,
+  // which clears their picks; the preview lists each removal first.)
   const canPublish =
     !isLocked &&
     boardGroups !== undefined &&

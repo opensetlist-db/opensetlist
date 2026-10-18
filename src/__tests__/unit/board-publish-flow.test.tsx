@@ -311,6 +311,7 @@ describe("full setlist → board proposal → published picks", () => {
     renderPage();
     await screen.findByRole("button", { name: "copy" });
     expect(window.localStorage.getItem("board-107")).toBe(published);
+    // 10 and 11 under 蓮ノ空 (the open column); 20 sits under Liella!.
     expect(board().getAllByTestId("board-my-pick")).toHaveLength(2);
     expect(putCalls()).toHaveLength(1);
   });
@@ -339,6 +340,38 @@ describe("full setlist → board proposal → published picks", () => {
     renderPage();
     const panel = await openProposal();
     expect(await panel.findByTestId("preview-removed")).toHaveTextContent("始まりは君の空");
+  });
+
+  it("the server's picks replace a stale local copy as the preview baseline", async () => {
+    window.localStorage.setItem("opensetlist_anon_id", "anon-two-devices");
+    storeList([10]);
+    // This tab remembers 10 only; another device since added 20.
+    storePicks([{ groupId: "1", songId: "10", title: "残陽" }]);
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return putAnswer(JSON.parse(String(init.body)));
+      if (String(url).includes("/board/mine")) {
+        return json(200, {
+          picks: [
+            { id: "s1", groupId: "1", songId: "10", title: "残陽", available: true, createdAt: "2026-10-01T00:00:00.000Z" },
+            { id: "s2", groupId: "2", songId: "20", title: "始まりは君の空", available: true, createdAt: "2026-10-02T00:00:00.000Z" },
+          ],
+        });
+      }
+      return json(200, READY);
+    });
+    renderPage();
+    const panel = await openProposal();
+    expect(await panel.findByTestId("preview-removed")).toHaveTextContent("始まりは君の空");
+  });
+
+  it("a lock refusal keeps confirm disabled", async () => {
+    storeList([10]);
+    putAnswer = () => json(403, { error: "board_locked" });
+    renderPage();
+    const panel = await openProposal();
+    fireEvent.click(panel.getByRole("button", { name: "publish" }));
+    expect(await panel.findByRole("alert")).toHaveTextContent("errorLocked");
+    expect(panel.getByRole("button", { name: "publish" })).toBeDisabled();
   });
 
   it("no publish from an empty list", async () => {

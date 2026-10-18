@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ANON_TOKEN_HEADER, readExistingAnonId } from "@/lib/anonId";
+import { readExistingAnonId } from "@/lib/anonId";
 import { trackEvent } from "@/lib/analytics";
 import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
 import {
@@ -17,8 +17,13 @@ import {
   type StoredBoardPick,
 } from "@/lib/board/pickStorage";
 import { pickTitle } from "@/lib/board/pickTitle";
-import { pickFailureKey, publishBallot } from "@/components/board/useBoardPicks";
-import type { BoardChip, BoardMineResponse } from "@/lib/board/types";
+import {
+  minePicksFrom,
+  pickFailureKey,
+  publishBallot,
+  requestMine,
+} from "@/lib/board/ballotClient";
+import type { BoardChip } from "@/lib/board/types";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
@@ -34,10 +39,9 @@ import { colors } from "@/styles/tokens";
  *     group's songs in list order. From then on it is the fan's to
  *     edit — remove a song, add another from the group's catalog (a
  *     swap is the two), move a crossover to its other group.
- *   - The preview compares against "mine": the local copy of the
- *     ballot, or `/board/mine` once when that copy is empty (another
- *     device, cleared storage), so a fan is never told "nothing will
- *     be removed" about picks they made elsewhere.
+ *   - The preview compares against "mine": `/board/mine` (the local
+ *     copy only until it answers), so a fan is never told "nothing
+ *     will be removed" about picks they made on another device.
  *   - Confirm sends the whole set (`PUT /board/picks`); the server
  *     replaces the ballot atomically. On success the local copy is
  *     rewritten from the server's answer and the parent refreshes the
@@ -85,35 +89,23 @@ export function BoardPublishProposal({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // "Mine" fallback for the preview, mirroring `useBoardPicks`: only
-  // when the local copy is empty and this browser has an anon id. One
-  // try — a failure just leaves the preview on the local copy.
+  // Refused for good (the show started, or the operator turned the
+  // board off while the panel was open): confirm stays disabled.
+  const [closed, setClosed] = useState(false);
+
+  // The preview's baseline is the SERVER's view of the ballot whenever
+  // this browser has an anon id: the local copy can be stale (picks
+  // made on another device since it was written) or empty, and the
+  // publish replaces what the server holds, not what this tab
+  // remembers. The local copy shows until the answer arrives, and stays
+  // if the request fails.
   useEffect(() => {
-    if (readBoardPicks(eventId).length > 0) return;
     const anonId = readExistingAnonId();
     if (!anonId) return;
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch(
-          `/api/events/${eventId}/board/mine?${new URLSearchParams({ locale })}`,
-          { headers: { [ANON_TOKEN_HEADER]: anonId }, cache: "no-store" },
-        );
-        if (!res.ok) return;
-        const body = (await res.json()) as BoardMineResponse;
-        if (cancelled || !Array.isArray(body.picks)) return;
-        setMine(
-          body.picks.map((p) => ({
-            id: p.id,
-            groupId: p.groupId,
-            songId: p.songId,
-            title: p.title,
-            available: p.available,
-          })),
-        );
-      } catch {
-        // Preview stays on the (empty) local copy.
-      }
+      const server = minePicksFrom(await requestMine(eventId, locale, anonId));
+      if (!cancelled && server) setMine(server);
     })();
     return () => {
       cancelled = true;
@@ -125,31 +117,40 @@ export function BoardPublishProposal({
     if (song) return pickTitle(song, locale);
     return mine.find((p) => p.songId === songId)?.title ?? songId;
   };
-  const countIn = (groupId: string) =>
-    proposal.filter((p) => p.groupId === groupId).length;
+  const countIn = (picks: readonly ProposalPick[], groupId: string) =>
+    picks.filter((p) => p.groupId === groupId).length;
   const preview = previewPublish(proposal, mine);
   const changes = preview.added.length + preview.removed.length;
 
+  // Cap checks read the updater's `cur`, not the render's `proposal`:
+  // two edits batched into one render must not slip past the cap
+  // between them (the server would 409 the publish anyway).
   const remove = (songId: string) =>
     setProposal((cur) => cur.filter((p) => p.songId !== songId));
   const add = (groupId: string, songId: string) =>
     setProposal((cur) =>
-      cur.some((p) => p.songId === songId) || countIn(groupId) >= BOARD_PICKS_PER_GROUP
+      cur.some((p) => p.songId === songId) ||
+      countIn(cur, groupId) >= BOARD_PICKS_PER_GROUP
         ? cur
         : [...cur, { songId, groupId, choices: groupsOfSong.get(songId) ?? [groupId] }],
     );
   const move = (songId: string, groupId: string) =>
     setProposal((cur) =>
-      cur.map((p) => (p.songId === songId ? { ...p, groupId } : p)),
+      countIn(cur, groupId) >= BOARD_PICKS_PER_GROUP
+        ? cur
+        : cur.map((p) => (p.songId === songId ? { ...p, groupId } : p)),
     );
 
   const confirm = async () => {
-    if (pending) return;
+    if (pending || closed) return;
     setPending(true);
     setError(null);
     const outcome = await publishBallot(eventId, proposal);
     setPending(false);
     if (!outcome.ok) {
+      if (outcome.reason === "board_locked" || outcome.reason === "board_disabled") {
+        setClosed(true);
+      }
       setError(t(pickFailureKey(outcome.reason), { max: BOARD_PICKS_PER_GROUP }));
       return;
     }
@@ -237,7 +238,7 @@ export function BoardPublishProposal({
                                 value={c}
                                 // A group already at the cap can't take
                                 // one more; staying put is always fine.
-                                disabled={c !== p.groupId && countIn(c) >= BOARD_PICKS_PER_GROUP}
+                                disabled={c !== p.groupId && countIn(proposal, c) >= BOARD_PICKS_PER_GROUP}
                               >
                                 {chip?.label ?? c}
                               </option>
@@ -309,7 +310,7 @@ export function BoardPublishProposal({
         <button
           type="button"
           onClick={() => void confirm()}
-          disabled={pending}
+          disabled={pending || closed}
           className="rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
           style={{ background: colors.primary, color: colors.bgCard }}
         >
