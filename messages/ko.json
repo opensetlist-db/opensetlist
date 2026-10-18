@@ -613,7 +613,12 @@
     "proposalCancel": "취소",
     "copyTemplate": "{event} 세트리스트 예상 (OpenSetlist)\n{picks}\n{url}",
     "copyLine": "{group}: {songs}",
-    "copySongSeparator": " / "
+    "copySongSeparator": " / ",
+    "tallyOverall": "팬 예상 TOP3: {size}곡 중 {played}곡 등장",
+    "tallyGroup": "{size}곡 중 {played}곡 등장",
+    "tallyPlayed": "등장",
+    "tallyNotPlayed": "미등장",
+    "minePlayed": "등장"
   },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",

@@ -613,7 +613,12 @@
     "proposalCancel": "キャンセル",
     "copyTemplate": "{event} セトリ予想 (OpenSetlist)\n{picks}\n{url}",
     "copyLine": "{group}: {songs}",
-    "copySongSeparator": " / "
+    "copySongSeparator": " / ",
+    "tallyOverall": "ファンの予想TOP3：{size}曲中{played}曲が披露",
+    "tallyGroup": "{size}曲中{played}曲が披露",
+    "tallyPlayed": "披露",
+    "tallyNotPlayed": "未披露",
+    "minePlayed": "披露"
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
