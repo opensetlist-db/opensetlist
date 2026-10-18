@@ -596,7 +596,7 @@ describe("<FanBoardSection> post-show result mode (n15-06)", () => {
     ).toHaveTextContent("tallyGroup(2,3)");
   });
 
-  it("each shortlist song shows ✓ or ✗; the removed song has no link but is graded", async () => {
+  it("each shortlist song shows ✓ or ✕; the removed song has no link but is graded", async () => {
     respond(completed());
     renderBlock();
     const expectCol = within(await screen.findByTestId("board-col-expect"));
@@ -607,7 +607,7 @@ describe("<FanBoardSection> post-show result mode (n15-06)", () => {
       "true",
     ]);
     expect(within(entries[0]).getByLabelText("tallyPlayed")).toHaveTextContent("✓");
-    expect(within(entries[1]).getByLabelText("tallyNotPlayed")).toHaveTextContent("✗");
+    expect(within(entries[1]).getByLabelText("tallyNotPlayed")).toHaveTextContent("✕");
     expect(entries[2].querySelector("a")).toBeNull();
     expect(entries[2]).toHaveTextContent("unavailable");
   });

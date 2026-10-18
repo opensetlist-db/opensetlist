@@ -14,7 +14,9 @@ import type {
   BoardGroupTally,
   BoardGroupView,
   BoardReadResponse,
+  BoardShortlistEntry,
   BoardTally,
+  BoardTopEntry,
 } from "@/lib/board/types";
 import {
   BOARD_PICKS_PER_GROUP,
@@ -58,7 +60,7 @@ import {
  *
  * After the show (completed, n15-06) the same block is in result mode:
  * the expect column lists each group's shortlist — its TOP3 at the
- * lock — graded ✓/✗ against the final setlist with "N of K played",
+ * lock — graded ✓/✕ against the final setlist with "N of K played",
  * an overall line sits at the top, and my own picks that were played
  * are highlighted. A group nobody picked is not graded (its starters,
  * operator copy, keep their usual ungraded rendering).
@@ -661,9 +663,8 @@ function ColumnPanel({
   // ever rendering next to a grade.
   const showStarters =
     !graded && label === "operator" && group.starters.length > 0;
-  const entries: (BoardGroupView["expects"]["top"][number] & {
-    played?: boolean;
-  })[] = graded ? graded.shortlist : column.top;
+  const entries: readonly (BoardTopEntry & Partial<BoardShortlistEntry>)[] =
+    graded ? graded.shortlist : column.top;
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
@@ -728,7 +729,7 @@ function ColumnPanel({
                   className="w-3 flex-shrink-0 text-center text-[12px]"
                   style={{ color: e.played ? colors.primary : colors.textMuted }}
                 >
-                  {e.played ? "✓" : "✗"}
+                  {e.played ? "✓" : "✕"}
                 </span>
               )}
               {e.available ? (

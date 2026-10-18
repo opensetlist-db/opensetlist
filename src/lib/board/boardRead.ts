@@ -284,6 +284,16 @@ export const getBoardAggregateCached = cachedQuery(
     // then on). An early wrap-up — stored status flipped to completed
     // before the start — refused writes from that flip, so every row is
     // already before the start and the cutoff drops nothing.
+    //
+    // The cutoff reads the CURRENT start time. If an operator moves the
+    // start earlier after the show (a data correction), picks made
+    // between the new and the old start drop out of the shortlist —
+    // accepted: the corrected time is the truth the board is graded
+    // against, and such corrections are rare.
+    //
+    // Freshness: the tally shares this entry's TTL (CACHE_TTL.board),
+    // and setlist writes don't expire the board tag, so a setlist
+    // correction after the show reaches the grade within ~2 minutes.
     const lockAt =
       status === "completed" && control ? new Date(control.startTime) : undefined;
     const [groups, counts, wishCounts, setlistSongs] = await Promise.all([

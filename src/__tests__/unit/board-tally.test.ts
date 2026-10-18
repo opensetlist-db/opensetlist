@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { buildBoardColumn, type BoardSongCount } from "@/lib/board/aggregate";
 import { playedSongIds, tallyBoard } from "@/lib/board/tally";
+import { isSongMatched } from "@/lib/songMatch";
 
 const at = (iso: string) => new Date(iso);
 const row = (songId: string, count: number, firstAt = "2026-11-01T00:00:00Z") =>
@@ -145,5 +146,28 @@ describe("tallyBoard", () => {
     const [deleted] = tally.groups[0].shortlist;
     expect(deleted).toMatchObject({ songId: "10", available: false, played: true });
     expect([tally.played, tally.size]).toEqual([1, 2]);
+  });
+});
+
+describe("played rule agrees with the share card (isSongMatched)", () => {
+  // The tally re-expresses `isSongMatched` over string ids; this pins
+  // the two together so a change to the share card's rule can't drift
+  // silently away from the board's grade.
+  const setlist = [
+    // a medley: two songs in one item
+    { songs: [{ song: { id: 10, baseVersionId: null } }, { song: { id: 11, baseVersionId: null } }] },
+    // a variant of base 20
+    { songs: [{ song: { id: 21, baseVersionId: 20 } }] },
+  ];
+  const played = playedSongIds(
+    setlist.flatMap((item) =>
+      item.songs.map(({ song }) => ({
+        songId: String(song.id),
+        baseVersionId: song.baseVersionId === null ? null : String(song.baseVersionId),
+      })),
+    ),
+  );
+  it.each([10, 11, 20, 21, 30])("song %i", (id) => {
+    expect(played.has(String(id))).toBe(isSongMatched(id, setlist));
   });
 });
