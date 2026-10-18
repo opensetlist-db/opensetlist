@@ -23,7 +23,7 @@ import { NIJIGASAKI_GLOSSARY_PROMPT } from "./nijigasaki";
 // 서니 패션, 파일, 리유 — not the Latin or Japanese-derived forms). Check
 // new entries against the same sources.
 //
-// 6870 tokens on Gemini's tokenizer (2026-10-17) — far above the
+// 6886 tokens on Gemini's tokenizer (2026-10-17) — far above the
 // 1024-token implicit-cache floor by construction (two full IP glossaries
 // + four inline blocks). Re-measure
 // with scripts/count-prompt-tokens.ts after edits and record the count
@@ -246,6 +246,6 @@ ${CROSS_IP_BLOCK}
 1. **조사 최적화:** 한국어 번역 시 앞 단어의 받침 유무에 따라 '이/가, 을/를, 은/는, 와/과'을 문법에 맞게 선택.
 2. **작품 간 동명이인 구분:** 시리즈 페스에서는 같은 이름이 여러 작품에 등장함 (예: 希 = 東條希(μ's) / 楡井希実(蓮ノ空) / 鈴原希実(Liella! 성우), りん = 星空凛(μ's) / 来栖りん(蓮ノ空 성우), 愛 = 宮下愛(虹ヶ咲) / 降幡愛(Aqours 성우)). 문맥(함께 언급된 그룹·곡)으로 인물을 판별하고, 판별되지 않으면 원문의 표기 단위(이름만 / 풀네임)를 그대로 유지해 임의로 성을 덧붙이지 말 것.
 3. **애칭 유지:** 캐릭터 애칭과 성우 약칭(츄케, 우이사마, 요하네 등)은 직역하지 말고 문맥에 맞게 일본어/영어 음차를 적용. 본명과 애칭이 혼용되어도 그대로 보존.
-4. **그룹·유닛명 보존:** 라틴 문자 그룹·유닛명(Aqours, Liella!, CYaRon！, AiScReam 등)은 세 로케일 모두에서 원문 표기 유지. 느낌표·기호 포함 철자를 바꾸지 말 것.
+4. **그룹·유닛명 표기:** 사전에 로케일별 표기가 있으면 그 표기를 따를 것 (예: DiverDiva → 한국어 "다이버디바"). 사전에 없는 라틴 문자 그룹·유닛명만 세 로케일 모두에서 원문 표기를 유지하고, 느낌표·기호 포함 철자를 바꾸지 말 것.
 5. **멤버 구성 표기:** "12人 Ver." / "13人 Ver." 같은 구성 표기는 그대로 보존 ("12인 Ver."로 음차하지 말 것).
 6. **포맷:** 반드시 JSON 배열 \`[{"ko": "...", "ja": "...", "en": "..."}]\`로만 응답.`;
