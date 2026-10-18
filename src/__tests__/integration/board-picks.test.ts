@@ -89,7 +89,7 @@ function publish(anonId: string, picks: Array<{ songId: bigint; group?: bigint }
 /** The anon's rows straight from the table. `createdAt` is rendered
  *  as a UTC ISO string in SQL: the column is `timestamp(3)` without
  *  time zone holding UTC wall time, and node-pg would parse it in the
- *  machine's LOCAL zone (see `utc()` below for the write side). */
+ *  machine's LOCAL zone (see `utcParam()` below for the write side). */
 async function ballotRows(anonId: string) {
   const r = await pg.query<{ id: string; songId: string; createdAt: string }>(
     `SELECT id, "songId"::text AS "songId",
@@ -428,7 +428,7 @@ describe("board picks — dev database", () => {
     // start that is now an hour ago.
     await pg.query(`UPDATE "BoardPick" SET "createdAt" = $2 WHERE "eventId" = $1`, [
       eventId.toString(),
-      utc(new Date(start.getTime() - 60 * 60 * 1000)),
+      utcParam(new Date(start.getTime() - 60 * 60 * 1000)),
     ]);
     await pg.query(`UPDATE "Event" SET status = 'completed' WHERE id = $1`, [
       eventId.toString(),
@@ -440,7 +440,7 @@ describe("board picks — dev database", () => {
       await pg.query(
         `INSERT INTO "BoardPick" (id, "eventId", "groupArtistId", "songId", "anonId", "createdAt")
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`,
-        [eventId.toString(), groupId.toString(), songIds[3].toString(), `itest-${anon}`, utc(new Date())],
+        [eventId.toString(), groupId.toString(), songIds[3].toString(), `itest-${anon}`, utcParam(new Date())],
       );
     }
     // Final setlist: one medley holding song 0 and song 4.
