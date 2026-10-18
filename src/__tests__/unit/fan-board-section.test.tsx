@@ -542,3 +542,134 @@ describe("<LiveSetlist> board guard", () => {
     expect(screen.getByTestId("event-wish-section")).toBeTruthy();
   });
 });
+
+describe("<FanBoardSection> post-show result mode (n15)", () => {
+  const SHORTLIST = [
+    { songId: "10", title: "残陽", count: 7, available: true, played: true },
+    { songId: "11", title: "ハナムスビ", count: 3, available: true, played: false },
+    { songId: "99", title: "", count: 2, available: false, played: true },
+  ];
+
+  function completed(
+    tallyGroups = [{ groupId: "1", shortlist: SHORTLIST, played: 2, size: 3 }],
+    overall = { played: 2, size: 3 },
+  ): BoardReadResponse {
+    return {
+      enabled: true,
+      status: "completed",
+      locked: true,
+      lockAt: LOCK,
+      asOf: "2026-11-15T00:00:00.000Z",
+      groups: [
+        {
+          ...group("1", "hasunosora", "蓮ノ空", [{ songId: "12", title: "スターター" }]),
+          expects: {
+            top: SHORTLIST.map((e) => ({
+              songId: e.songId,
+              title: e.title,
+              count: e.count,
+              available: e.available,
+            })),
+            submissions: 12,
+            participants: 6,
+            label: "ok",
+          },
+        },
+        group("2", "liella", "Liella!", [{ songId: "20", title: "始まりは君の空" }]),
+      ],
+      tally: { ...overall, groups: tallyGroups, playedSongIds: ["10", "99", "30"] },
+    };
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("overall and per-group lines read N of K", async () => {
+    respond(completed());
+    renderBlock();
+    expect(await screen.findByTestId("board-tally-overall")).toHaveTextContent(
+      "tallyOverall(2,3)",
+    );
+    expect(
+      within(screen.getByTestId("board-col-expect")).getByTestId("board-tally-group"),
+    ).toHaveTextContent("tallyGroup(2,3)");
+  });
+
+  it("each shortlist song shows ✓ or ✕; the removed song has no link but is graded", async () => {
+    respond(completed());
+    renderBlock();
+    const expectCol = within(await screen.findByTestId("board-col-expect"));
+    const entries = await expectCol.findAllByTestId("board-top-entry");
+    expect(entries.map((e) => e.getAttribute("data-played"))).toEqual([
+      "true",
+      "false",
+      "true",
+    ]);
+    expect(within(entries[0]).getByLabelText("tallyPlayed")).toHaveTextContent("✓");
+    expect(within(entries[1]).getByLabelText("tallyNotPlayed")).toHaveTextContent("✕");
+    expect(entries[2].querySelector("a")).toBeNull();
+    expect(entries[2]).toHaveTextContent("unavailable");
+  });
+
+  it("the want column is never graded", async () => {
+    respond(completed());
+    renderBlock();
+    await screen.findByTestId("board-tally-overall");
+    const wantCol = within(screen.getByTestId("board-col-want"));
+    expect(wantCol.queryByTestId("board-tally-group")).toBeNull();
+    expect(wantCol.queryByLabelText("tallyPlayed")).toBeNull();
+  });
+
+  it("a group nobody picked keeps its starters, ungraded, with no N of K line", async () => {
+    respond(
+      completed([
+        { groupId: "1", shortlist: SHORTLIST, played: 2, size: 3 },
+        { groupId: "2", shortlist: [], played: 0, size: 0 },
+      ]),
+    );
+    renderBlock();
+    await screen.findByTestId("board-tally-overall");
+    fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
+    const expectCol = within(screen.getByTestId("board-col-expect"));
+    expect(expectCol.getByTestId("board-starter")).toHaveTextContent("始まりは君の空");
+    expect(expectCol.queryByTestId("board-tally-group")).toBeNull();
+    expect(expectCol.queryByLabelText("tallyPlayed")).toBeNull();
+    expect(expectCol.queryByLabelText("tallyNotPlayed")).toBeNull();
+  });
+
+  it("no shortlist anywhere → no overall line", async () => {
+    respond(completed([], { played: 0, size: 0 }));
+    renderBlock();
+    await screen.findAllByTestId("board-top-entry");
+    expect(screen.queryByTestId("board-tally-overall")).toBeNull();
+  });
+
+  it("my picks that were played are highlighted — shortlisted or not", async () => {
+    window.localStorage.setItem(
+      "board-107",
+      JSON.stringify({
+        picks: [
+          { id: "p1", groupId: "1", songId: "11", title: "ハナムスビ", available: true },
+          { id: "p2", groupId: "1", songId: "30", title: "AURORA FLOWER", available: true },
+        ],
+      }),
+    );
+    respond(completed());
+    renderBlock();
+    await screen.findByTestId("board-tally-overall");
+    const mine = within(screen.getByTestId("board-my-picks")).getAllByTestId(
+      "board-my-pick",
+    );
+    expect(mine.map((e) => e.getAttribute("data-played"))).toEqual([null, "true"]);
+    expect(mine[1]).toHaveTextContent("minePlayed");
+  });
+
+  it("an upcoming board shows no result mode", async () => {
+    respond(READY);
+    renderBlock();
+    await screen.findAllByTestId("board-starter");
+    expect(screen.queryByTestId("board-tally-overall")).toBeNull();
+    expect(screen.queryByTestId("board-tally-group")).toBeNull();
+  });
+});

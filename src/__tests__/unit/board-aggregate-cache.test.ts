@@ -37,6 +37,7 @@ vi.mock("@/lib/prisma", () => ({
     event: { findFirst: vi.fn() },
     boardPick: { groupBy: vi.fn() },
     songWish: { groupBy: vi.fn() },
+    setlistItemSong: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -68,11 +69,12 @@ beforeEach(() => {
   ]);
   pickGroupBy.mockResolvedValue([] as never);
   vi.mocked(prisma.songWish.groupBy).mockResolvedValue([] as never);
+  vi.mocked(prisma.setlistItemSong.findMany).mockResolvedValue([] as never);
   vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
 });
 
 function aggregateCalls() {
-  return unstableCacheCalls.filter((c) => c.keyParts[0] === "event-board-v2");
+  return unstableCacheCalls.filter((c) => c.keyParts[0] === "event-board-v3");
 }
 
 describe("getBoardAggregateCached", () => {
