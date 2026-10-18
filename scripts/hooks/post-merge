@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# managed-by: scripts/install-git-hooks.sh
 # Git post-merge hook: regenerate the Prisma client when a merge (or a
 # `git pull`) changed the schema.
 #
@@ -14,7 +15,14 @@
 # directory, so the main checkout and every worktree run it.
 set -u
 
-changed="$(git diff --name-only ORIG_HEAD HEAD -- prisma/schema.prisma prisma.config.ts 2>/dev/null)"
+files=(prisma/schema.prisma prisma.config.ts)
+if [ "${1:-0}" = "1" ]; then
+  # `git merge --squash` ($1 = 1) stages the result without moving HEAD,
+  # so ORIG_HEAD..HEAD is empty: compare HEAD with the working tree.
+  changed="$(git diff --name-only HEAD -- "${files[@]}" 2>/dev/null)"
+else
+  changed="$(git diff --name-only ORIG_HEAD HEAD -- "${files[@]}" 2>/dev/null)"
+fi
 [ -n "$changed" ] || exit 0
 
 # The repo's own CLI, not `npx`: npx falls back to whatever `prisma` is
