@@ -150,6 +150,13 @@ export function EventWishSection({
     setMyWishes(readWishes(eventId));
   }
 
+  // The 3-wish cap is the event-wide wishlist's own. On a fan board
+  // event (n15-08) the same storage key also holds per-group wishes
+  // (tagged `groupId`, up to 3 per group, capped by the server) so the
+  // wishlist that renders during the show lists them; they must not
+  // use this list's slots if the board is later switched off.
+  const legacyCount = myWishes.filter((w) => !w.groupId).length;
+
   const [searchOpen, setSearchOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -171,7 +178,7 @@ export function EventWishSection({
         setSearchOpen(false);
         return;
       }
-      if (myWishes.length >= MAX_WISHES) {
+      if (legacyCount >= MAX_WISHES) {
         setSearchOpen(false);
         return;
       }
@@ -227,7 +234,7 @@ export function EventWishSection({
         setPending(false);
       }
     },
-    [eventId, myWishes, pending, isLocked],
+    [eventId, myWishes, pending, isLocked, legacyCount],
   );
 
   const handleRemove = useCallback(
@@ -280,7 +287,7 @@ export function EventWishSection({
   }
 
   const excludeSongIds = myWishes.map((w) => w.songId);
-  const canAddMore = !isLocked && myWishes.length < MAX_WISHES;
+  const canAddMore = !isLocked && legacyCount < MAX_WISHES;
   const titleText = isLocked ? t("lockedTitle") : t("title");
 
   return (

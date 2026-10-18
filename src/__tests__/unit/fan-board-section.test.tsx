@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 vi.mock("next-intl", () => ({
   useTranslations:
@@ -46,6 +46,7 @@ function group(id: string, slug: string, name: string, starters: BoardGroupView[
     slug,
     name,
     color: null,
+    wishes: { top: [], submissions: 0, participants: 0, label: "operator" },
     expects: { top: [], submissions: 0, participants: 0, label: "operator" },
     starters,
   };
@@ -97,7 +98,7 @@ describe("<FanBoardSection>", () => {
   it("fetches the board for its event + locale after mount", async () => {
     respond(READY);
     renderBlock();
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("/api/events/107/board?locale=ko");
   });
@@ -116,20 +117,25 @@ describe("<FanBoardSection>", () => {
   it("first group open by default, with labelled operator starter picks", async () => {
     respond(READY);
     renderBlock();
-    const starters = await screen.findAllByTestId("board-starter");
+    const col = within(await screen.findByTestId("board-col-expect"));
+    const starters = col.getAllByTestId("board-starter");
     expect(starters).toHaveLength(2);
     expect(starters[0].textContent).toContain("残陽");
     expect(starters[0].textContent).toContain("operatorPick");
-    expect(screen.getByText("operatorNote")).toBeTruthy();
+    expect(col.getByText("operatorNote")).toBeTruthy();
     // Song titles link to the localized bare-id song page.
-    expect(screen.getByText("残陽").closest("a")?.getAttribute("href")).toBe("/ko/songs/10");
+    expect(col.getByText("残陽").closest("a")?.getAttribute("href")).toBe("/ko/songs/10");
+    // Zero wishes too → the want column falls back to the same starters.
+    expect(
+      within(screen.getByTestId("board-col-want")).getAllByTestId("board-starter"),
+    ).toHaveLength(2);
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("as-of and open-until line both render", async () => {
     respond(READY);
     renderBlock();
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
     expect(screen.getByText(/asOf\(/)).toBeTruthy();
     expect(screen.getByText(/openUntil\(/)).toBeTruthy();
   });
@@ -137,10 +143,11 @@ describe("<FanBoardSection>", () => {
   it("one group open at a time; a group without starters shows the empty invitation", async () => {
     respond(READY);
     renderBlock();
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
     fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
     expect(screen.queryByText("残陽")).toBeNull();
-    expect(screen.getByText("empty")).toBeTruthy();
+    // Both columns of the group invite a first entry.
+    expect(screen.getAllByText("empty")).toHaveLength(2);
     expect(screen.getByRole("tab", { name: "Liella!" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("false");
   });
@@ -149,7 +156,7 @@ describe("<FanBoardSection>", () => {
     window.location.hash = "#board-aqours";
     respond(READY);
     renderBlock();
-    await screen.findByText("empty");
+    await screen.findAllByText("empty");
     expect(screen.getByRole("tab", { name: "Aqours" }).getAttribute("aria-selected")).toBe("true");
   });
 
@@ -157,13 +164,13 @@ describe("<FanBoardSection>", () => {
     window.location.hash = "#board-nope";
     respond(READY);
     renderBlock();
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
   });
 
   it("board_view fires once per viewed group, with event and group ids", async () => {
     respond(READY);
     renderBlock();
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
     fireEvent.click(screen.getByRole("tab", { name: "Liella!" }));
     fireEvent.click(screen.getByRole("tab", { name: "蓮ノ空" }));
     expect(vi.mocked(trackEvent).mock.calls).toEqual([
@@ -246,8 +253,10 @@ describe("<FanBoardSection> crowd TOP3", () => {
       expect.stringContaining("submissions(3)"),
     ]);
     expect(screen.getByTestId("board-early")).toHaveTextContent("earlySample");
-    // Starters are operator copy for empty columns only.
-    expect(screen.queryByTestId("board-starter")).toBeNull();
+    // Starters are operator copy for empty columns only (the want column
+    // here IS empty, so it shows them; the expect column must not).
+    const expectCol = within(screen.getByTestId("board-col-expect"));
+    expect(expectCol.queryByTestId("board-starter")).toBeNull();
     // Plain counts, never shares.
     expect(screen.getByRole("tabpanel").textContent).not.toMatch(/%/);
   });
@@ -470,12 +479,16 @@ describe("<LiveSetlist> board guard", () => {
   const boardCalls = () =>
     fetchMock.mock.calls.filter(([url]) => String(url).includes("/board"));
 
-  it.each(["upcoming", "completed"] as const)("%s mounts the block and requests the board", async (status) => {
-    respond(READY);
-    renderLiveSetlist(status);
-    await screen.findByText("残陽");
-    expect(boardCalls()).toHaveLength(1);
-  });
+  it.each(["upcoming", "completed"] as const)(
+    "%s mounts the block and requests the board; the standalone wishlist is replaced (n15-08)",
+    async (status) => {
+      respond(READY);
+      renderLiveSetlist(status);
+      await screen.findAllByText("残陽");
+      expect(boardCalls()).toHaveLength(1);
+      expect(screen.queryByTestId("event-wish-section")).toBeNull();
+    },
+  );
 
   it.each(["ongoing", "cancelled"] as const)(
     "%s: no block, no board request; today's wishlist still renders",
@@ -488,16 +501,20 @@ describe("<LiveSetlist> board guard", () => {
     },
   );
 
-  it("no seed (board off) → nothing mounted, no request", () => {
-    renderLiveSetlist("upcoming", null);
-    expect(screen.queryByRole("tablist")).toBeNull();
-    expect(boardCalls()).toHaveLength(0);
-  });
+  it.each(["upcoming", "completed"] as const)(
+    "%s without a seed (board off) → no block, no request, today's wishlist",
+    (status) => {
+      renderLiveSetlist(status, null);
+      expect(screen.queryByRole("tablist")).toBeNull();
+      expect(boardCalls()).toHaveLength(0);
+      expect(screen.getByTestId("event-wish-section")).toBeTruthy();
+    },
+  );
 
   it("an upcoming page that turns ongoing unmounts the block", async () => {
     respond(READY);
     const view = renderLiveSetlist("upcoming");
-    await screen.findByText("残陽");
+    await screen.findAllByText("残陽");
     view.rerender(
       <LiveSetlist
         eventId="107"
@@ -521,5 +538,7 @@ describe("<LiveSetlist> board guard", () => {
     );
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(boardCalls()).toHaveLength(1);
+    // …and today's wishlist takes the board's place for the show.
+    expect(screen.getByTestId("event-wish-section")).toBeTruthy();
   });
 });

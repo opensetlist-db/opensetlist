@@ -27,6 +27,7 @@ vi.mock("@/lib/prisma", () => ({
     event: { findFirst: vi.fn() },
     song: { findFirst: vi.fn() },
     boardPick: { findMany: vi.fn() },
+    songWish: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -60,6 +61,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 const eventFind = vi.mocked(prisma.event.findFirst);
 const songFind = vi.mocked(prisma.song.findFirst);
 const mineFind = vi.mocked(prisma.boardPick.findMany);
+const mineWishFind = vi.mocked(prisma.songWish.findMany);
 const txMock = vi.mocked(prisma.$transaction);
 const groupsMock = vi.mocked(loadBoardGroups);
 const catalogMock = vi.mocked(getAvailableSongsCached);
@@ -154,6 +156,7 @@ beforeEach(() => {
   tx.boardPick.create.mockResolvedValue({ id: "new-id", createdAt: CREATED });
   tx.boardPick.findFirst.mockResolvedValue({ id: "p1", anonId: ANON });
   tx.boardPick.delete.mockResolvedValue({});
+  mineWishFind.mockResolvedValue([] as never);
 });
 
 afterEach(() => {
@@ -461,6 +464,7 @@ describe("GET /board/mine", () => {
           createdAt: CREATED.toISOString(),
         },
       ],
+      wishes: [],
     });
     expect(mineFind).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -484,5 +488,58 @@ describe("isolation", () => {
     await POST(postReq(body()), params());
     await DELETE(delReq({ anonId: ANON }), delParams());
     for (const spy of revalidateSpies()) expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /board/mine — wishes (n15-08)", () => {
+  const mineReq = () =>
+    new Request("http://localhost/api/events/107/board/mine?locale=ja", {
+      headers: { [ANON_TOKEN_HEADER]: ANON },
+    });
+
+  it("returns the caller's board wishes beside the picks; legacy rows are never asked for", async () => {
+    mineFind.mockResolvedValue([] as never);
+    mineWishFind.mockResolvedValue([
+      {
+        id: "w1",
+        groupArtistId: BigInt(2),
+        songId: BigInt(11),
+        createdAt: CREATED,
+        song: {
+          isDeleted: false,
+          originalTitle: "未体験HORIZON",
+          originalLanguage: "ja",
+          variantLabel: null,
+          translations: [],
+        },
+      },
+    ] as never);
+    const res = await MINE(mineReq(), params());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await res.json()).toEqual({
+      picks: [],
+      wishes: [
+        {
+          id: "w1",
+          groupId: "2",
+          songId: "11",
+          title: "未体験HORIZON",
+          available: true,
+          createdAt: CREATED.toISOString(),
+        },
+      ],
+    });
+    // Scoped to this anon AND to rows that carry a group: a legacy
+    // wish (anon NULL) can never match, so it is never handed out.
+    expect(mineWishFind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          eventId: BigInt(107),
+          anonId: ANON,
+          groupArtistId: { not: null },
+        },
+      }),
+    );
   });
 });
