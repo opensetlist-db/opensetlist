@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const tx = {
   $executeRaw: vi.fn(),
+  event: { findFirst: vi.fn() },
   boardPick: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -137,6 +138,10 @@ beforeEach(() => {
     order.push("lock");
     return 1;
   });
+  tx.event.findFirst.mockImplementation(async () => {
+    order.push("control");
+    return event();
+  });
   tx.boardPick.findUnique.mockImplementation(async () => {
     order.push("existing");
     return null;
@@ -260,7 +265,7 @@ describe("POST /board/picks — ballot", () => {
       songId: "10",
       createdAt: CREATED.toISOString(),
     });
-    expect(order).toEqual(["tx", "lock", "existing", "count"]);
+    expect(order).toEqual(["tx", "lock", "control", "existing", "count"]);
     expect(tx.boardPick.create).toHaveBeenCalledWith({
       data: {
         eventId: BigInt(107),
@@ -304,6 +309,26 @@ describe("POST /board/picks — ballot", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "group_conflict" });
     expect(tx.boardPick.create).not.toHaveBeenCalled();
+  });
+
+  it("control re-checked under the lock: disabled / started while waiting → 403, nothing written", async () => {
+    tx.event.findFirst.mockResolvedValueOnce(event({ boardEnabled: false }));
+    let res = await POST(postReq(body()), params());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "board_disabled" });
+
+    tx.event.findFirst.mockResolvedValueOnce(
+      event({ startTime: new Date(Date.now() - 1) }),
+    );
+    res = await POST(postReq(body()), params());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "board_locked" });
+
+    tx.event.findFirst.mockResolvedValueOnce(event({ boardEnabled: false }));
+    res = await DELETE(delReq({ anonId: ANON }), delParams());
+    expect(res.status).toBe(403);
+    expect(tx.boardPick.create).not.toHaveBeenCalled();
+    expect(tx.boardPick.delete).not.toHaveBeenCalled();
   });
 
   it("pool exhausted before the transaction → 503 busy + Retry-After", async () => {

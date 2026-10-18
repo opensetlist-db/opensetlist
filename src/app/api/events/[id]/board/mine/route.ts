@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { defaultLocale, locales, type Locale } from "@/i18n/routing";
 import { parseRequiredAnonId } from "@/lib/anonId";
 import { getBoardControlCached } from "@/lib/board/boardRead";
-import { loadMinePicks, parseDecimalId } from "@/lib/board/picks";
+import { parseDecimalId } from "@/lib/board/ids";
+import { loadMinePicks } from "@/lib/board/picks";
+import { classifyPreExecutionFailure } from "@/lib/dbErrors";
 import type { BoardMineResponse } from "@/lib/board/types";
 
 type RouteProps = { params: Promise<{ id: string }> };
@@ -51,15 +53,27 @@ export async function GET(req: Request, { params }: RouteProps) {
     ? (raw as Locale)
     : defaultLocale;
 
-  const control = await getBoardControlCached(eventId);
-  if (!control) {
-    return NextResponse.json(
-      { error: "not_found" },
-      { status: 404, headers: PRIVATE_NO_STORE },
-    );
+  try {
+    const control = await getBoardControlCached(eventId);
+    if (!control) {
+      return NextResponse.json(
+        { error: "not_found" },
+        { status: 404, headers: PRIVATE_NO_STORE },
+      );
+    }
+    const body: BoardMineResponse = {
+      picks: await loadMinePicks(eventId, anon.value, locale),
+    };
+    return NextResponse.json(body, { headers: PRIVATE_NO_STORE });
+  } catch (err) {
+    // Same answer as the write routes when the pool is exhausted: a
+    // retry-safe 503, not a 500 (the client just keeps its empty list).
+    if (classifyPreExecutionFailure(err)) {
+      return NextResponse.json(
+        { error: "busy" },
+        { status: 503, headers: { ...PRIVATE_NO_STORE, "Retry-After": "2" } },
+      );
+    }
+    throw err;
   }
-  const body: BoardMineResponse = {
-    picks: await loadMinePicks(eventId, anon.value, locale),
-  };
-  return NextResponse.json(body, { headers: PRIVATE_NO_STORE });
 }

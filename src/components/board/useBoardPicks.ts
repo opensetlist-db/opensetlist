@@ -88,7 +88,9 @@ export function useBoardPicks({
   // a double tap can't fire two creates (the server would answer the
   // second idempotently anyway; this just keeps the UI calm).
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
-  const restored = useRef(false);
+  // Event id the restore fallback already ran for (per event, so a
+  // re-render for another event id restores that ballot too).
+  const restoredFor = useRef<string | null>(null);
 
   // Local copy after mount (SSR has no storage, so the first client
   // render must match it). Render-time setState behind `useMounted`,
@@ -103,8 +105,8 @@ export function useBoardPicks({
 
   // Fallback: nothing local → ask the server once per mount.
   useEffect(() => {
-    if (!active || restored.current) return;
-    restored.current = true;
+    if (!active || restoredFor.current === eventId) return;
+    restoredFor.current = eventId;
     if (readBoardPicks(eventId).length > 0) return;
     // A browser that never minted an id has never written a pick.
     const anonId = readExistingAnonId();

@@ -10,15 +10,11 @@
  * 2^53. Strings round-trip exactly; consumers convert with `BigInt()`.
  */
 
+import { isDecimalId } from "@/lib/board/ids";
+
 export const STARTER_PICKS_PER_GROUP = 3;
 
 export type StarterPickMap = Record<string, string[]>;
-
-const DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
-
-function isDecimalId(v: unknown): v is string {
-  return typeof v === "string" && DECIMAL_ID.test(v);
-}
 
 /**
  * Lenient read of the stored column. Anything malformed (a hand-edited

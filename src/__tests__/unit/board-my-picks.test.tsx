@@ -367,6 +367,21 @@ describe("<FanBoardSection> my picks", () => {
     expect(screen.getByText("残陽")).toBeTruthy();
   });
 
+  it("goes read-only at the lock time even if the read said open", async () => {
+    seedLocal([{ id: "p1", groupId: "1", songId: "10", title: "残陽", available: true }]);
+    render(
+      <FanBoardSection
+        eventId="107"
+        locale="ko"
+        seed={{ ...SEED, lockAt: new Date(Date.now() - 1000).toISOString() }}
+        catalog={CATALOG}
+      />,
+    );
+    await screen.findByText("残陽");
+    await waitFor(() => expect(screen.queryByText("add(蓮ノ空)")).toBeNull());
+    expect(screen.queryByLabelText("removeAria(残陽)")).toBeNull();
+  });
+
   it("a locked board shows my picks without add/remove controls", async () => {
     seedLocal([{ id: "p1", groupId: "1", songId: "10", title: "残陽", available: true }]);
     handler = (url) =>

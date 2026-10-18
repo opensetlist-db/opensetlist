@@ -23,6 +23,8 @@
  * wrapped (private mode / quota / blocked storage).
  */
 
+import { isDecimalId } from "@/lib/board/ids";
+
 export interface StoredBoardPick {
   id: string;
   groupId: string;
@@ -39,18 +41,14 @@ function key(eventId: string): string {
   return `board-${eventId}`;
 }
 
-const DECIMAL_ID = /^[1-9][0-9]{0,18}$/;
-
 function isStoredPick(value: unknown): value is StoredBoardPick {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   return (
     typeof v.id === "string" &&
     v.id.length > 0 &&
-    typeof v.groupId === "string" &&
-    DECIMAL_ID.test(v.groupId) &&
-    typeof v.songId === "string" &&
-    DECIMAL_ID.test(v.songId) &&
+    isDecimalId(v.groupId) &&
+    isDecimalId(v.songId) &&
     typeof v.title === "string" &&
     typeof v.available === "boolean"
   );

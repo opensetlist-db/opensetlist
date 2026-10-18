@@ -110,14 +110,25 @@ export function FanBoardSection({
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(
     null,
   );
-  // A write refused with `board_locked` (a tab left open across the
-  // start time) flips the block to read-only without a reload.
+  // Set at the lock time (timer below) or by a write refused with
+  // `board_locked`: flips the block to read-only without a reload.
   const [lockedByServer, setLockedByServer] = useState(false);
   const ballot = useBoardPicks({
     eventId,
     locale,
     active: state.kind === "ready",
   });
+
+  // A tab left open across the start time goes read-only AT the start
+  // time, not after its first refused write. setTimeout's 32-bit delay
+  // caps how far ahead this can be armed; a lock further out than ~24
+  // days is simply not armed (the server still refuses at the instant).
+  useEffect(() => {
+    const ms = new Date(seed.lockAt).getTime() - Date.now();
+    if (!Number.isFinite(ms) || ms > 2147483647) return;
+    const timer = setTimeout(() => setLockedByServer(true), Math.max(0, ms));
+    return () => clearTimeout(timer);
+  }, [seed.lockAt]);
 
   useEffect(() => {
     if (!toast) return;

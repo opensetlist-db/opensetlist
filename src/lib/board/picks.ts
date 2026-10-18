@@ -20,22 +20,6 @@ import type { BoardMinePick } from "@/lib/board/types";
  * answer are written once.
  */
 
-const INT64_MAX = BigInt("9223372036854775807");
-
-/**
- * A positive decimal-string id → BigInt, else null. Ids cross the board
- * API as decimal strings (BigInt-safe; JSON numbers lose precision past
- * 2^53). Numbers are rejected on purpose so a client can't drift back
- * to the lossy shape unnoticed.
- */
-export function parseDecimalId(value: unknown): bigint | null {
-  if (typeof value !== "string" || !/^[1-9][0-9]{0,18}$/.test(value)) {
-    return null;
-  }
-  const n = BigInt(value);
-  return n <= INT64_MAX ? n : null;
-}
-
 /** Ids of board picks are uuids; anything wildly off is not a pick id
  *  this app issued. Bounded so a junk path can't reach the query. */
 export function isPickIdShape(value: string): boolean {

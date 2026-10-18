@@ -4,11 +4,8 @@ import {
   ballotJson,
   checkBoardWritable,
 } from "@/lib/board/ballot";
-import {
-  createPick,
-  parseDecimalId,
-  validatePickTarget,
-} from "@/lib/board/picks";
+import { parseDecimalId } from "@/lib/board/ids";
+import { createPick, validatePickTarget } from "@/lib/board/picks";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
