@@ -23,7 +23,7 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
-import { parseIsoInstant } from "@/lib/admin-input";
+import { parseCsvBooleanCell, parseIsoInstant } from "@/lib/admin-input";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -1406,6 +1406,18 @@ async function importEvents(rows: Record<string, string>[]) {
       results.push(`WARN: ${slug} startTime moved to/before the stored engagementOpensAt — override cleared (D-7 default)`);
     }
 
+    // boardEnabled (optional, n15 fan board): conditional update like
+    // engagementOpensAt above — blank keeps the stored flag, an
+    // unparseable value is WARNed and ignored. New events default to
+    // off (the schema default) unless the row says otherwise.
+    const boardEnabledCell = parseCsvBooleanCell(row.boardEnabled);
+    let boardEnabled: boolean | undefined = undefined;
+    if (boardEnabledCell === "invalid") {
+      results.push(`WARN: ${slug} boardEnabled must be true/false (${row.boardEnabled}) — ignored`);
+    } else {
+      boardEnabled = boardEnabledCell;
+    }
+
     if (existing) {
       await prisma.event.update({
         where: { slug },
@@ -1424,6 +1436,7 @@ async function importEvents(rows: Record<string, string>[]) {
           // survive re-imports of stale scrape output.
           ...(bdAlbumIdResolved !== null ? { bdAlbumId: bdAlbumIdResolved } : {}),
           ...(engagementOpensAt !== undefined ? { engagementOpensAt } : {}),
+          ...(boardEnabled !== undefined ? { boardEnabled } : {}),
           ...eventOriginals,
         },
       });
@@ -1457,6 +1470,7 @@ async function importEvents(rows: Record<string, string>[]) {
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           engagementOpensAt: engagementOpensAt ?? null,
+          boardEnabled: boardEnabled ?? false,
           country: row.country || null,
           ...eventOriginals,
           originalName,

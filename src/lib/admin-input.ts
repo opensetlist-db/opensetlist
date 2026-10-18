@@ -326,3 +326,23 @@ export function parseIsoInstant(raw: string): Date | null {
   const parsed = new Date(raw.trim());
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+/**
+ * Optional boolean CSV cell with the importer's preserve-on-blank
+ * contract (same as `engagementOpensAt` / `bdAlbum_slug`):
+ *   - blank / missing → `undefined` = leave the stored value alone, so
+ *     re-importing a CSV that predates the column can't flip a flag the
+ *     operator set in the admin form;
+ *   - true/false, 1/0, yes/no (case-insensitive) → the boolean;
+ *   - anything else → `"invalid"` so the caller can WARN and keep the
+ *     stored value rather than guess.
+ */
+export function parseCsvBooleanCell(
+  raw: string | undefined | null,
+): boolean | undefined | "invalid" {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (v === "") return undefined;
+  if (v === "true" || v === "1" || v === "yes") return true;
+  if (v === "false" || v === "0" || v === "no") return false;
+  return "invalid";
+}

@@ -551,6 +551,20 @@
     "createVariantRow": "+ Add \"{query}\" as a new variant",
     "createDisabledTooltip": "Available in Phase 2"
   },
+  "Board": {
+    "title": "Fan board",
+    "explainer": "Pick up to 3 songs per group you expect to hear — skip any group you don't know",
+    "asOf": "As of {time}",
+    "openUntil": "Open until the show starts ({time})",
+    "closed": "Closed",
+    "groupsAria": "Choose a group",
+    "colExpect": "Songs fans expect",
+    "operatorPick": "Operator's pick",
+    "operatorNote": "No fan picks yet, so these are the operator's picks (not counted)",
+    "empty": "No picks yet — be the first.",
+    "loading": "Loading the board…",
+    "loadError": "Couldn't load the board"
+  },
   "Wishlist": {
     "title": "Songs you want to hear at this show",
     "lockedTitle": "Everyone's wishlist",

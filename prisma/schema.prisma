@@ -567,6 +567,21 @@ model Event {
   // BigInt so the counter can never wrap; serialized to the wire as a
   // JSON number after a safe-integer assertion.
   setlistRevision   BigInt      @default(0)
+  // Fan board (n15). Explicit per-event enablement AND the kill switch:
+  // the flag alone decides whether the event page mounts the board and
+  // whether board reads/writes are served — not festival classification
+  // (a single-artist event gets a one-group board by flipping it). A DB
+  // column rather than an env var because flipping it must not need a
+  // redeploy. Written only by the dedicated admin board endpoint
+  // (`/api/admin/events/[id]/board`), which performs no cache
+  // invalidation; readers pick changes up through the event-row TTL.
+  boardEnabled        Boolean   @default(false)
+  // Operator starter picks shown (labelled) in a board column that has
+  // zero fan submissions: `{ "<rootGroupArtistId>": ["<songId>", …] }`,
+  // ≤ 3 base songs per group, ids as decimal strings (JSON has no
+  // BigInt). Never rows in the pick tables, so they cannot leak into
+  // counts or the post-show tally. Null = none configured.
+  boardStarterSongIds Json?
 
   eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
   artist       Artist?               @relation(fields: [artistId], references: [id])

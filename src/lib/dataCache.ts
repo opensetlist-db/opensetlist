@@ -48,6 +48,11 @@ export const CACHE_TTL = {
   // keyed on a 5-minute `now` bucket (see `timeBucket`).
   home: 300,
   sitemap: 3600,
+  // Fan board aggregate (n15). Fan writes never invalidate it (they
+  // must not touch any cache the live path shares), so the TTL alone
+  // bounds staleness — ~2 minutes is the promised "as of" lag, and a
+  // promo spike costs one aggregation per key per window.
+  board: 120,
 } as const;
 
 /**
@@ -83,6 +88,17 @@ export function eventTag(eventId: bigint | number | string): string {
  */
 export function eventImpressionsTag(eventId: bigint | number | string): string {
   return `event:${eventId.toString()}:impressions`;
+}
+
+/**
+ * Own tag for the fan board aggregate (n15). Deliberately NOT
+ * `eventTag(id)`: board entries must not be expired by — or expire —
+ * the event/live entries. Nothing calls a revalidate helper for it
+ * today (board writes are TTL-only); it exists so an operator purge can
+ * target the board alone if one is ever needed.
+ */
+export function eventBoardTag(eventId: bigint | number | string): string {
+  return `event:${eventId.toString()}:board`;
 }
 
 // Deployment discriminator for cache keys. The Vercel Data Cache

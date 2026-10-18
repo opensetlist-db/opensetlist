@@ -4,6 +4,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
+import BoardSettings from "../../BoardSettings";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -124,6 +125,13 @@ export default async function EditEventPage({ params }: Props) {
             })),
           }}
         />
+      </div>
+
+      <hr className="border-zinc-200" />
+
+      <div>
+        <h2 className="mb-6 text-2xl font-bold">팬 보드</h2>
+        <BoardSettings eventId={Number(data.id)} />
       </div>
 
       <hr className="border-zinc-200" />
