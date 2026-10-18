@@ -31,6 +31,7 @@ import { GoogleGenAI } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   IP_PROMPTS,
+  FRANCHISE_PROMPTS,
   FALLBACK_PROMPT,
 } from "../src/lib/translator/prompts/index";
 import { GEMINI_MODEL } from "../src/lib/translator/gemini";
@@ -106,6 +107,9 @@ async function main() {
   const entries: Array<[string, string]> = [
     ...Object.entries(IP_PROMPTS).flatMap(([key, prompt]) =>
       prompt ? [[key, prompt] as [string, string]] : [],
+    ),
+    ...Object.entries(FRANCHISE_PROMPTS).flatMap(([key, prompt]) =>
+      prompt ? [[`franchise:${key}`, prompt] as [string, string]] : [],
     ),
     ["generic (FALLBACK_PROMPT)", FALLBACK_PROMPT],
   ];
