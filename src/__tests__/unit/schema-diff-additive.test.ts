@@ -47,6 +47,8 @@ CREATE TABLE "BoardPick" ("id" TEXT NOT NULL, CONSTRAINT "BoardPick_pkey" PRIMAR
     ["add + drop in one ALTER", `ALTER TABLE "Event" ADD COLUMN "a" INT, DROP COLUMN "b";`],
     ["retype", `ALTER TABLE "Event" ALTER COLUMN "x" SET DATA TYPE BIGINT USING "x"::bigint;`],
     ["set not null", `ALTER TABLE "Event" ALTER COLUMN "x" SET NOT NULL;`],
+    ["add + short-form retype", `ALTER TABLE "Event" ADD COLUMN "a" INT, ALTER "b" TYPE BIGINT;`],
+    ["add + short-form set not null", `ALTER TABLE "Event" ADD COLUMN "a" INT, ALTER "b" SET NOT NULL;`],
     ["drop table", `DROP TABLE "Old";`],
     ["drop index", `DROP INDEX "Event_slug_key";`],
     ["rename", `ALTER TABLE "Event" RENAME COLUMN "a" TO "b";`],

@@ -33,8 +33,12 @@ const ADDITIVE_START = [
 // allow-list above, so the deny-list only has to catch destructive
 // CLAUSES inside an additive-looking statement (`ADD …, DROP …`). Words
 // that also appear in harmless clauses stay out: `ON DELETE SET NULL` /
-// `ON UPDATE CASCADE` on a new FK, `USING gin` on a new index.
-const DESTRUCTIVE = /\b(DROP|RENAME|ALTER\s+COLUMN|SET\s+DATA\s+TYPE)\b/i;
+// `ON UPDATE CASCADE` on a new FK, `USING gin` on a new index. Postgres
+// lets a later clause drop the COLUMN keyword (`ADD a INT, ALTER b TYPE
+// …`), so any `ALTER` after a comma counts; Prisma always prints the long
+// form, but the deny-list must not rely on that.
+const DESTRUCTIVE =
+  /\b(DROP|RENAME|ALTER\s+COLUMN|SET\s+DATA\s+TYPE|SET\s+NOT\s+NULL)\b|,\s*ALTER\b/i;
 
 /** Statements of a SQL script, comments and blank space removed. */
 function statements(sql) {
