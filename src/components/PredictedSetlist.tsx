@@ -31,11 +31,12 @@ import { SongPickerContent } from "@/components/predict/SongPickerContent";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
-  readPredictionEntries,
+  readPredictions,
   writePredictions,
   markLocked,
   type PredictionEntry,
 } from "@/lib/predictionsStorage";
+import type { BoardToBuilderOutcome } from "@/lib/board/toPredictions";
 import { calcPredictScore } from "@/lib/predictScore";
 import { isSongMatched } from "@/lib/songMatch";
 import { trackEvent } from "@/lib/analytics";
@@ -94,6 +95,14 @@ interface Props {
   availableSongs: AvailableSong[];
   /** Filter chip set derived from `availableSongs` server-side. */
   unitFilters: UnitFilter[];
+  /**
+   * What the board's "go to full setlist mode" did just before this
+   * mount (n15-09a), or null when the fan came by the tab. Drives the
+   * one-line notice: songs imported, or the existing list kept.
+   */
+  bridgeOutcome?: BoardToBuilderOutcome | null;
+  /** Mode switch back to the board block; absent on non-board events. */
+  onBackToBoard?: () => void;
 }
 
 /**
@@ -132,6 +141,8 @@ export function PredictedSetlist({
   dateLine,
   availableSongs,
   unitFilters,
+  bridgeOutcome = null,
+  onBackToBoard,
 }: Props) {
   const t = useTranslations("Predict");
   const mounted = useMounted();
@@ -220,10 +231,16 @@ export function PredictedSetlist({
   // (avoids react-hooks/set-state-in-effect; the canonical project
   // pattern, see useMounted.ts:9-18).
   const [predictions, setPredictions] = useState<PredictionEntry[]>([]);
+  // A list pre-filled from board picks (n15-09a) is grouped, not
+  // ranked; the builder says so until the fan reorders. Stored with the
+  // list, so the label survives a reload.
+  const [provisional, setProvisional] = useState(false);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   if (mounted && hydratedKey !== eventId) {
     setHydratedKey(eventId);
-    setPredictions(readPredictionEntries(eventId));
+    const stored = readPredictions(eventId);
+    setPredictions(stored ? stored.songs : []);
+    setProvisional(stored?.provisional === true);
   }
 
   // ─── Picker sheet state (mobile pre-show only) ──────────────
@@ -257,12 +274,15 @@ export function PredictedSetlist({
       if (isLocked) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
+      setProvisional(false);
       setPredictions((prev) => {
         const oldIndex = prev.findIndex((p) => p.songId === active.id);
         const newIndex = prev.findIndex((p) => p.songId === over.id);
         if (oldIndex < 0 || newIndex < 0) return prev;
         const next = arrayMove(prev, oldIndex, newIndex);
-        writePredictions(eventId, next);
+        // A reorder is the fan arranging the list — it settles a
+        // board-imported order.
+        writePredictions(eventId, next, { provisional: false });
         // GA4 Phase 1B: one fire per drop commit, never per drag
         // pixel. The active.id === over.id no-op was rejected
         // above; the index-not-found branch is rejected here. So we
@@ -353,7 +373,16 @@ export function PredictedSetlist({
     (merged: PredictionEntry[], meta: CopyApplyMeta) => {
       if (isLocked) return;
       setPredictions(merged);
-      writePredictions(eventId, merged);
+      // A replace swaps the board-imported songs out entirely, so its
+      // "provisional" label no longer describes the list; an append
+      // leaves the imported block as unarranged as before.
+      const settles = meta.mode === "replace";
+      writePredictions(
+        eventId,
+        merged,
+        settles ? { provisional: false } : undefined,
+      );
+      if (settles) setProvisional(false);
       setCopyOpen(false);
       trackEvent("predict_copy_apply", {
         event_id: String(eventId),
@@ -536,6 +565,50 @@ export function PredictedSetlist({
           {t("description")}
         </div>
       )}
+
+      {/* Two-mode bridge strip (n15-09a), pre-show only: the outcome of
+          the board import that opened this tab, the provisional-order
+          label, and the switch back to the board. Hidden as a whole
+          when none applies, so non-board events render as before. */}
+      {isPreShow &&
+        (onBackToBoard ||
+          (bridgeOutcome && bridgeOutcome.kind !== "none") ||
+          (provisional && predictions.length > 0)) && (
+          <div
+            className="text-[11px]"
+            style={{
+              padding: "6px 14px",
+              color: colors.textSecondary,
+              borderBottom: `0.5px solid ${colors.borderLight}`,
+            }}
+          >
+            {bridgeOutcome && bridgeOutcome.kind !== "none" && (
+              <p role="status" data-testid="predict-bridge-notice">
+                {bridgeOutcome.kind === "imported"
+                  ? t("bridgeImported", { count: bridgeOutcome.count })
+                  : t("bridgeKept")}
+              </p>
+            )}
+            {provisional && predictions.length > 0 && (
+              <p
+                data-testid="predict-provisional"
+                style={{ color: colors.textMuted }}
+              >
+                {t("provisionalOrder")}
+              </p>
+            )}
+            {onBackToBoard && (
+              <button
+                type="button"
+                onClick={onBackToBoard}
+                className="mt-0.5 underline"
+                style={{ color: colors.primary }}
+              >
+                🎪 {t("toBoard")}
+              </button>
+            )}
+          </div>
+        )}
 
       {/* Predicted rows */}
       <DndContext

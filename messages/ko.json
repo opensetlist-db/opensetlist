@@ -422,6 +422,10 @@
     "finalScore": "{matched}/{total} 적중 ({pct}%) 🎯",
     "description": "공연 시작 전까지 곡을 추가해 주세요. 실제 세트리스트와 비교하여 적중률이 계산됩니다. 예상 세트리스트 곡 수에는 제한이 없지만, 실제 세트리스트 곡 수 만큼의 상위 순번곡만이 판정에 사용됩니다.",
     "copyFromPast": "📋 지난 공연에서",
+    "toBoard": "보드 픽으로 돌아가기",
+    "bridgeImported": "보드 픽에서 {count}곡을 가져왔어요.",
+    "bridgeKept": "이미 만든 세트리스트가 있어서 그대로 두었어요.",
+    "provisionalOrder": "곡 순서는 임시예요. 드래그해서 순서를 정해 주세요.",
     "copy": {
       "sheetTitle": "지난 공연에서 가져오기",
       "loading": "지난 공연 정보를 불러오는 중...",
@@ -587,6 +591,7 @@
     "copy": "내 픽 복사",
     "copied": "클립보드에 복사했어요",
     "copyUnavailable": "복사하지 못했어요. 내 선택을 직접 옮겨 적어 주세요.",
+    "toFullSetlist": "전체 세트리스트 모드로",
     "copyTemplate": "{event} 세트리스트 예상 (OpenSetlist)\n{picks}\n{url}",
     "copyLine": "{group}: {songs}",
     "copySongSeparator": " / "
