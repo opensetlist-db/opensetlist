@@ -583,7 +583,13 @@
     "errorGeneric": "저장하지 못했어요. 다시 시도해 주세요.",
     "mineBadge": "내 선택",
     "earlySample": "초기 집계",
-    "explore": "{group} 둘러보기"
+    "explore": "{group} 둘러보기",
+    "copy": "내 픽 복사",
+    "copied": "클립보드에 복사했어요",
+    "copyUnavailable": "복사하지 못했어요. 내 선택을 직접 옮겨 적어 주세요.",
+    "copyTemplate": "{event} 세트리스트 예상 (OpenSetlist)\n{picks}\n{url}",
+    "copyLine": "{group}: {songs}",
+    "copySongSeparator": " / "
   },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",

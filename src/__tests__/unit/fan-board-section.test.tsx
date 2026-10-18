@@ -23,6 +23,8 @@ import { FanBoardSection } from "@/components/board/FanBoardSection";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { LiveSetlist } from "@/components/LiveSetlist";
 import { trackEvent } from "@/lib/analytics";
+import { absoluteUrl } from "@/lib/seo/entityUrl";
+import { groupIdFromFragment } from "@/lib/board/fragment";
 import type { BoardBlockSeed, BoardGroupView, BoardReadResponse } from "@/lib/board/types";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
@@ -34,6 +36,7 @@ const SEED: BoardBlockSeed = {
     { groupId: "2", slug: "liella", label: "Liella!", color: null },
     { groupId: "3", slug: "aqours", label: "Aqours", color: null },
   ],
+  share: { eventName: "ラブライブ！フェス Day.1", path: "/ko/events/107/lovelive-fes-day1" },
 };
 
 function group(id: string, slug: string, name: string, starters: BoardGroupView["starters"] = []): BoardGroupView {
@@ -317,6 +320,90 @@ describe("<FanBoardSection> crowd TOP3", () => {
       event_id: "107",
       group_id: "1",
     });
+  });
+});
+
+describe("<FanBoardSection> copy my picks", () => {
+  const writeText = vi.fn<(text: string) => Promise<void>>();
+
+  function storePicks(picks: { id: string; groupId: string; songId: string; title: string }[]) {
+    window.localStorage.setItem(
+      "board-107",
+      JSON.stringify({ picks: picks.map((p) => ({ ...p, available: true })) }),
+    );
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    window.localStorage.clear();
+  });
+
+  it("disabled at zero picks", async () => {
+    respond(READY);
+    renderBlock();
+    const button = await screen.findByRole("button", { name: "copy" });
+    expect(button).toBeDisabled();
+  });
+
+  it("copies the picks text with the canonical URL + the open group's fragment; toast + board_copy", async () => {
+    storePicks([
+      { id: "p1", groupId: "1", songId: "10", title: "残陽" },
+      { id: "p2", groupId: "3", songId: "30", title: "未体験HORIZON" },
+    ]);
+    respond(READY);
+    renderBlock();
+    // Open Liella! — a group I skipped: the link still opens the group
+    // I was on, the text still lists only the groups I picked in.
+    fireEvent.click(await screen.findByRole("tab", { name: "Liella!" }));
+    const button = screen.getByRole("button", { name: "copy" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const url = `${absoluteUrl("/ko/events/107/lovelive-fes-day1")}#board-liella`;
+    expect(writeText.mock.calls[0][0]).toBe(
+      `copyTemplate(ラブライブ！フェス Day.1,copyLine(蓮ノ空,残陽)
+copyLine(Aqours,未体験HORIZON),${url})`,
+    );
+    // The fragment is the one the board itself parses.
+    expect(groupIdFromFragment(new URL(url).hash, READY.groups)).toBe("2");
+    expect(await screen.findByTestId("board-toast")).toHaveTextContent("copied");
+    expect(trackEvent).toHaveBeenCalledWith("board_copy", {
+      event_id: "107",
+      group_id: "2",
+      count: 2,
+    });
+  });
+
+  it("no clipboard API → fallback message, nothing tracked", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    storePicks([{ id: "p1", groupId: "1", songId: "10", title: "残陽" }]);
+    respond(READY);
+    renderBlock();
+    fireEvent.click(await screen.findByRole("button", { name: "copy" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("board-toast")).toHaveTextContent("copyUnavailable"),
+    );
+    expect(trackEvent).not.toHaveBeenCalledWith("board_copy", expect.anything());
+  });
+
+  it("a refused clipboard write → the same fallback message", async () => {
+    writeText.mockRejectedValue(new DOMException("denied", "NotAllowedError"));
+    storePicks([{ id: "p1", groupId: "1", songId: "10", title: "残陽" }]);
+    respond(READY);
+    renderBlock();
+    fireEvent.click(await screen.findByRole("button", { name: "copy" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("board-toast")).toHaveTextContent("copyUnavailable"),
+    );
   });
 });
 

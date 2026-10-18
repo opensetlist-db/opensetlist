@@ -84,9 +84,19 @@ export interface BoardChip {
   color: string | null;
 }
 
+/** What "copy my picks" (n15-05) needs from the page: the localized
+ *  event name with its day (series short + event name, the same
+ *  composition as the page title) and the canonical event path from
+ *  `entityPath` — never rebuilt client-side from a display name. */
+export interface BoardShareSeed {
+  eventName: string;
+  path: string;
+}
+
 export interface BoardBlockSeed {
   lockAt: string;
   chips: BoardChip[];
+  share: BoardShareSeed;
 }
 
 /** One of the viewer's own expected-song picks, as `/board/mine`
