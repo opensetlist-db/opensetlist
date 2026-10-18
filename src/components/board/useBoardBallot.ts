@@ -246,14 +246,15 @@ export function useBoardBallot({
     [eventId, locale],
   );
 
-  // Fallback: a kind with nothing local → ask the server once per
-  // mount (one request answers both kinds).
+  // Restore from the server once per mount (one request answers both
+  // kinds). Picks restore only when nothing is stored locally. Wishes
+  // are always merged in by row id: `wish-{eventId}` has more than one
+  // writer (this hook in several tabs, and the event-wide wishlist), so
+  // a non-empty local list can still be a subset of the server's.
   useEffect(() => {
     if (!active || restoredFor.current === eventId) return;
     restoredFor.current = eventId;
     const needPicks = readBoardPicks(eventId).length === 0;
-    const needWishes = readBoardWishes(eventId).length === 0;
-    if (!needPicks && !needWishes) return;
     // A browser that never minted an id has never written to a ballot.
     const anonId = readExistingAnonId();
     if (!anonId) return;
@@ -290,7 +291,7 @@ export function useBoardBallot({
         setList("pick", (cur) => mergeById(cur, next));
       }
       // `wishes` is absent from a response of the previous release.
-      if (needWishes && Array.isArray(body.wishes) && body.wishes.length > 0) {
+      if (Array.isArray(body.wishes) && body.wishes.length > 0) {
         const next = body.wishes.map(mineToEntry);
         setList("wish", (cur) => mergeById(cur, next));
       }

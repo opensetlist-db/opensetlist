@@ -119,17 +119,28 @@ export async function deleteWish(
   anonId: string | null,
   wishId: string,
 ): Promise<{ id: string }> {
+  // One conditional delete instead of find-then-delete: the anonymous
+  // path holds no lock, so two concurrent deletes of the same legacy
+  // row (double tap, two tabs) would both pass a find and the second
+  // `delete` would throw P2025 → 500. With `deleteMany` the loser simply
+  // removes nothing and is told why below.
   const remove = async (tx: Pick<typeof prisma, "songWish">) => {
-    const wish = await tx.songWish.findFirst({
-      where: { id: wishId, eventId },
-      select: { id: true, anonId: true },
+    const { count } = await tx.songWish.deleteMany({
+      where: {
+        id: wishId,
+        eventId,
+        OR: anonId === null ? [{ anonId: null }] : [{ anonId: null }, { anonId }],
+      },
     });
-    if (!wish) throw new BallotError(404, "wish_not_found");
-    if (wish.anonId !== null && wish.anonId !== anonId) {
-      throw new BallotError(403, "not_owner");
-    }
-    await tx.songWish.delete({ where: { id: wish.id } });
-    return { id: wish.id };
+    if (count > 0) return { id: wishId };
+    // Nothing deleted: gone (or another event's) → 404; still there →
+    // it belongs to another anon → 403.
+    const still = await tx.songWish.findFirst({
+      where: { id: wishId, eventId },
+      select: { id: true },
+    });
+    if (!still) throw new BallotError(404, "wish_not_found");
+    throw new BallotError(403, "not_owner");
   };
   if (anonId === null) return remove(prisma);
   return withBallotLock(eventId, anonId, remove);

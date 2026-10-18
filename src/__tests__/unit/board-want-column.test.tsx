@@ -410,6 +410,35 @@ describe("<FanBoardSection> want column", () => {
     ]);
   });
 
+  it("a NON-empty local wish list is still completed from /board/mine (another writer stored a subset)", async () => {
+    window.localStorage.setItem(
+      "wish-107",
+      JSON.stringify({ wishes: [{ ...legacyEntry("w1", 10, "残陽"), groupId: "1" }] }),
+    );
+    handler = (url) => {
+      if (url.startsWith("/api/events/107/board?")) return { status: 200, body: readBoard() };
+      if (url.startsWith("/api/events/107/board/mine")) {
+        return {
+          status: 200,
+          body: {
+            picks: [],
+            wishes: [
+              { id: "w1", groupId: "1", songId: "10", title: "残陽", available: true, createdAt: "2026-11-01T00:00:00.000Z" },
+              { id: "w2", groupId: "1", songId: "11", title: "ハナムスビ", available: true, createdAt: "2026-11-01T00:00:00.000Z" },
+            ],
+          },
+        };
+      }
+      return { status: 500, body: {} };
+    };
+    renderBlock();
+    const col = await wantColAsync();
+    expect(await col.findByText("ハナムスビ")).toBeTruthy();
+    // Merged by row id: the local row is not duplicated.
+    expect(col.getAllByTestId("board-my-pick")).toHaveLength(2);
+    expect(stored().map((w: { dbId: string }) => w.dbId)).toEqual(["w1", "w2"]);
+  });
+
   it("locked board: no add / remove in the want column, legacy wishes read-only", async () => {
     window.localStorage.setItem(
       "wish-107",
