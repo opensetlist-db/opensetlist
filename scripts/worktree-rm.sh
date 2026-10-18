@@ -6,7 +6,9 @@
 # Safety rules, in the order they are enforced:
 #   - Only a folder directly inside <main checkout>/.claude/worktrees/ is
 #     accepted — never the main checkout, never anything else on disk.
-#   - A real worktree with uncommitted changes is refused.
+#   - A real worktree with uncommitted changes (untracked files
+#     included) is refused, and so is one on a detached HEAD — its
+#     commits have no branch to survive the removal — unless --force.
 #   - The linked node_modules is unlinked FIRST, so nothing below can
 #     recurse through it into the main checkout's node_modules.
 #   - The branch is deleted only if git agrees it is merged
@@ -36,7 +38,11 @@ same_path() {
 }
 
 path="$(canon "$target")"
-main="$(canon "$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2> /dev/null || git rev-parse --path-format=absolute --git-common-dir)/..")"
+# git lists the main worktree first; asked from inside the target, this
+# also works for a leftover folder (it resolves to the main repo).
+main="$(git -C "$path" worktree list --porcelain 2> /dev/null | sed -n '1s/^worktree //p' || true)"
+[ -n "$main" ] || main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+main="$(canon "$main")"
 parent="$(canon "$path/..")"
 if ! same_path "$parent" "$main/.claude/worktrees"; then
   echo "refusing: $path is not a folder inside $main/.claude/worktrees/" >&2
@@ -50,11 +56,17 @@ registered=""
 branch=""
 if [ -n "$toplevel" ] && same_path "$(canon "$toplevel")" "$path"; then
   registered=1
-  if [ -n "$(git -C "$path" status --porcelain)" ]; then
+  # --untracked-files=all: a user's status.showUntrackedFiles=no must
+  # not hide a file that is about to be deleted.
+  if [ -n "$(git -C "$path" status --porcelain --untracked-files=all)" ]; then
     echo "refusing: $path has uncommitted changes" >&2
     exit 1
   fi
   branch="$(git -C "$path" symbolic-ref --quiet --short HEAD || true)"
+  if [ -z "$branch" ] && [ -z "$force" ]; then
+    echo "refusing: $path is on a detached HEAD — create a branch for its commits, or rerun with --force" >&2
+    exit 1
+  fi
 fi
 
 # 1. Unlink node_modules. On Windows `rmdir` without /s removes a
@@ -78,10 +90,20 @@ if [ -z "$registered" ] && [ -z "$force" ] && [ -n "$(ls -A "$path")" ]; then
   exit 1
 fi
 
-# 2. Remove the worktree; finish by hand when git stops at a folder it
-#    can't empty (long paths, a real node_modules from `npm ci`).
+# 2. Remove the worktree. If git refuses (locked, untracked files) and
+#    still lists it, stop — that refusal is the safety net. On Windows
+#    git often unregisters the worktree and then stops at a folder it
+#    can't empty (long paths); only then is the rm -rf below the finish.
 if [ -n "$registered" ]; then
-  git -C "$main" worktree remove "$path" 2> /dev/null || true
+  if ! git -C "$main" worktree remove "$path"; then
+    # Still a worktree root (the same test as above) = git refused and
+    # kept it registered; anything else means git unregistered it.
+    still="$(git -C "$path" rev-parse --show-toplevel 2> /dev/null || true)"
+    if [ -n "$still" ] && same_path "$(canon "$still")" "$path"; then
+      echo "refusing: git would not remove $path (see above); node_modules was unlinked — relink it before using the worktree again" >&2
+      exit 1
+    fi
+  fi
 fi
 if [ -d "$path" ]; then
   rm -rf "$path" 2> /dev/null || true

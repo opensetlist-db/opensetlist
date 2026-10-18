@@ -25,13 +25,20 @@ set -euo pipefail
 branch="${1:?usage: worktree-new.sh <branch> [base-ref]}"
 base="${2:-origin/dev}"
 
-# The main checkout, even when run from inside another worktree.
-main="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+# The main checkout, even when run from inside another worktree: git
+# lists the main worktree first (its path, unlike the common dir's
+# parent, is right even for a --separate-git-dir repo).
+main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+main="$(cd "$main" && pwd)"
 slug="${branch#*/}"
 slug="${slug//\//-}"   # feature/a/b → a-b: one folder level
 path="$main/.claude/worktrees/$slug"
 
-git -C "$main" fetch origin --quiet
+# Only a remote-tracking base needs refreshing; a local base (HEAD, a
+# local branch) must not depend on the network.
+case "$base" in
+  origin/*) git -C "$main" fetch origin --quiet ;;
+esac
 git -C "$main" worktree add -b "$branch" "$path" "$base"
 
 if [ -f "$main/.worktreeinclude" ]; then
