@@ -1017,11 +1017,10 @@ export default async function EventPage({ params }: Props) {
   // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
   // 404 on `/artists/{id}` (the artist page calls notFound()), so
   // linking to them would dead-end. Treat as absent and fall through
-  // to the organizerName branch.
-  const seriesArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  // to the organizerName branch. Same value the picker branch keys on
+  // (`seriesPrimaryArtistOf`), so the header link and the single-artist
+  // picker can never point at different artists.
+  const seriesArtist = seriesPrimaryArtist;
   const headerArtist = seriesArtist
     ? {
         // String() — `Artist.id` is BigInt; `Number(bigint)` truncates
