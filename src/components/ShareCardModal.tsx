@@ -8,10 +8,8 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useTranslations } from "next-intl";
-import {
-  ShareCardPreview,
-  type ShareCardMode,
-} from "@/components/ShareCardPreview";
+import { ShareCardPreview } from "@/components/ShareCardPreview";
+import type { ShareCardMode } from "@/lib/shareCardMode";
 import {
   CARD_CAPTURE_WIDTH_PX,
   OFF_SCREEN_LEFT_PX,

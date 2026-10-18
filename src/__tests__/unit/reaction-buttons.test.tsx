@@ -8,9 +8,11 @@ import {
 } from "@testing-library/react";
 import {
   ReactionButtons,
+} from "@/components/ReactionButtons";
+import {
   REACTION_ACTIVE_COLOR,
   REACTION_ACTIVE_BG,
-} from "@/components/ReactionButtons";
+} from "@/components/reaction-style";
 import { hexToRgbString } from "@/__tests__/utils/color";
 
 const ACTIVE_COLOR_RGB = hexToRgbString(REACTION_ACTIVE_COLOR);

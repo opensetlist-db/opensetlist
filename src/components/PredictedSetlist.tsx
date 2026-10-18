@@ -31,11 +31,14 @@ import { SongPickerContent } from "@/components/predict/SongPickerContent";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
-  readPredictionEntries,
+  readPredictions,
   writePredictions,
   markLocked,
   type PredictionEntry,
 } from "@/lib/predictionsStorage";
+import type { BoardToBuilderOutcome } from "@/lib/board/toPredictions";
+import type { BoardChip } from "@/lib/board/types";
+import { BoardPublishProposal } from "@/components/board/BoardPublishProposal";
 import { calcPredictScore } from "@/lib/predictScore";
 import { isSongMatched } from "@/lib/songMatch";
 import { trackEvent } from "@/lib/analytics";
@@ -94,6 +97,22 @@ interface Props {
   availableSongs: AvailableSong[];
   /** Filter chip set derived from `availableSongs` server-side. */
   unitFilters: UnitFilter[];
+  /**
+   * What the board's "go to full setlist mode" did just before this
+   * mount (n15-09a), or null when the fan came by the tab. Drives the
+   * one-line notice: songs imported, or the existing list kept.
+   */
+  bridgeOutcome?: BoardToBuilderOutcome | null;
+  /** Mode switch back to the board block; absent on non-board events. */
+  onBackToBoard?: () => void;
+  /**
+   * The board's groups (n15-09b), present only where the board takes
+   * picks right now. Enables "put on the board": the list → an
+   * editable proposal → published expected songs.
+   */
+  boardGroups?: readonly BoardChip[];
+  /** After a publish, so the parent refreshes the board block. */
+  onBoardPublished?: () => void;
 }
 
 /**
@@ -132,6 +151,10 @@ export function PredictedSetlist({
   dateLine,
   availableSongs,
   unitFilters,
+  bridgeOutcome = null,
+  onBackToBoard,
+  boardGroups,
+  onBoardPublished,
 }: Props) {
   const t = useTranslations("Predict");
   const mounted = useMounted();
@@ -220,10 +243,19 @@ export function PredictedSetlist({
   // (avoids react-hooks/set-state-in-effect; the canonical project
   // pattern, see useMounted.ts:9-18).
   const [predictions, setPredictions] = useState<PredictionEntry[]>([]);
+  // A list pre-filled from board picks (n15-09a) is grouped, not
+  // ranked; the builder says so until the fan reorders. Stored with the
+  // list, so the label survives a reload.
+  const [provisional, setProvisional] = useState(false);
+  // "Put on the board" panel (n15-09b) and the last publish's count.
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [publishedCount, setPublishedCount] = useState<number | null>(null);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   if (mounted && hydratedKey !== eventId) {
     setHydratedKey(eventId);
-    setPredictions(readPredictionEntries(eventId));
+    const stored = readPredictions(eventId);
+    setPredictions(stored ? stored.songs : []);
+    setProvisional(stored?.provisional === true);
   }
 
   // ─── Picker sheet state (mobile pre-show only) ──────────────
@@ -257,12 +289,15 @@ export function PredictedSetlist({
       if (isLocked) return;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
+      setProvisional(false);
       setPredictions((prev) => {
         const oldIndex = prev.findIndex((p) => p.songId === active.id);
         const newIndex = prev.findIndex((p) => p.songId === over.id);
         if (oldIndex < 0 || newIndex < 0) return prev;
         const next = arrayMove(prev, oldIndex, newIndex);
-        writePredictions(eventId, next);
+        // A reorder is the fan arranging the list — it settles a
+        // board-imported order.
+        writePredictions(eventId, next, { provisional: false });
         // GA4 Phase 1B: one fire per drop commit, never per drag
         // pixel. The active.id === over.id no-op was rejected
         // above; the index-not-found branch is rejected here. So we
@@ -296,6 +331,9 @@ export function PredictedSetlist({
         const next = predictions.filter((p) => p.songId !== songId);
         setPredictions(next);
         writePredictions(eventId, next);
+        // Mirrors the storage rule: emptying the list ends the board
+        // import, so songs added afterwards aren't labelled provisional.
+        if (next.length === 0) setProvisional(false);
         trackEvent("predict_remove", {
           event_id: String(eventId),
           song_id: String(songId),
@@ -353,7 +391,16 @@ export function PredictedSetlist({
     (merged: PredictionEntry[], meta: CopyApplyMeta) => {
       if (isLocked) return;
       setPredictions(merged);
-      writePredictions(eventId, merged);
+      // A replace swaps the board-imported songs out entirely, so its
+      // "provisional" label no longer describes the list; an append
+      // leaves the imported block as unarranged as before.
+      const settles = meta.mode === "replace";
+      writePredictions(
+        eventId,
+        merged,
+        settles ? { provisional: false } : undefined,
+      );
+      if (settles) setProvisional(false);
       setCopyOpen(false);
       trackEvent("predict_copy_apply", {
         event_id: String(eventId),
@@ -462,6 +509,23 @@ export function PredictedSetlist({
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
   const isDesktopPicker = mounted && isDesktop && showPicker;
 
+  // Bridge strip parts (n15-09a), see the strip below.
+  const showBridgeNotice = bridgeOutcome !== null && bridgeOutcome.kind !== "none";
+  const showProvisional = provisional && predictions.length > 0;
+  // "Put on the board" (n15-09b): only before the lock, with a list to
+  // derive from — an empty list has nothing to propose. (A fan who
+  // removes every chip in the proposal can still publish the empty set,
+  // which clears their picks; the preview lists each removal first.)
+  // Without a catalog the derivation finds no song in any group, so the
+  // proposal would be empty and a confirm would silently clear the
+  // fan's picks — no button then.
+  const canPublish =
+    !isLocked &&
+    boardGroups !== undefined &&
+    boardGroups.length > 0 &&
+    predictions.length > 0 &&
+    availableSongs.length > 0;
+
   return (
     <div
       style={
@@ -535,6 +599,94 @@ export function PredictedSetlist({
         >
           {t("description")}
         </div>
+      )}
+
+      {/* Two-mode bridge strip (n15-09a), pre-show only: the outcome of
+          the board import that opened this tab, the provisional-order
+          label, and the switch back to the board. Hidden as a whole
+          when none applies, so non-board events render as before. */}
+      {isPreShow && (onBackToBoard || showBridgeNotice || showProvisional || boardGroups) && (
+          <div
+            className="text-[11px]"
+            style={{
+              padding: "6px 14px",
+              color: colors.textSecondary,
+              borderBottom: `0.5px solid ${colors.borderLight}`,
+            }}
+          >
+            {/* No role="status" here: this node mounts with its text
+                (the builder remounts per tap), which screen readers
+                often skip. `<SetlistSection>` keeps the announcing live
+                region mounted across the remount. */}
+            {showBridgeNotice && (
+              <p data-testid="predict-bridge-notice">
+                {bridgeOutcome.kind === "imported"
+                  ? t("bridgeImported", { count: bridgeOutcome.count })
+                  : t("bridgeKept")}
+              </p>
+            )}
+            {showProvisional && (
+              <p
+                data-testid="predict-provisional"
+                style={{ color: colors.textMuted }}
+              >
+                {t("provisionalOrder")}
+              </p>
+            )}
+            {/* Publish outcome (n15-09b). Unlike the import notice,
+                this region stays mounted while the builder does (a
+                publish doesn't remount it), so it can announce. */}
+            {boardGroups && (
+              <p role="status" data-testid="predict-board-published">
+                {publishedCount !== null
+                  ? t("boardPublished", { count: publishedCount })
+                  : ""}
+              </p>
+            )}
+            <div className="mt-0.5 flex flex-wrap gap-x-3">
+              {onBackToBoard && (
+                <button
+                  type="button"
+                  onClick={onBackToBoard}
+                  className="underline"
+                  style={{ color: colors.primary }}
+                >
+                  🎪 {t("toBoard")}
+                </button>
+              )}
+              {canPublish && !proposalOpen && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPublishedCount(null);
+                    setProposalOpen(true);
+                  }}
+                  className="underline"
+                  style={{ color: colors.primary }}
+                >
+                  📌 {t("toBoardPublish")}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/* The proposal derives from the list as it stands at open and
+          is unmounted on close, so reopening derives afresh. */}
+      {canPublish && proposalOpen && boardGroups && (
+        <BoardPublishProposal
+          eventId={eventId}
+          locale={locale}
+          groups={boardGroups}
+          catalog={availableSongs}
+          draft={predictions}
+          onCancel={() => setProposalOpen(false)}
+          onPublished={(count) => {
+            setProposalOpen(false);
+            setPublishedCount(count);
+            onBoardPublished?.();
+          }}
+        />
       )}
 
       {/* Predicted rows */}

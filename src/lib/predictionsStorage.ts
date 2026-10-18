@@ -7,7 +7,8 @@
  *     eventId: string,
  *     songs: [{ songId: number, song: WishSongDisplay }],
  *     savedAt: ISO string,
- *     lockedAt: ISO string | null
+ *     lockedAt: ISO string | null,
+ *     provisional?: true
  *   }
  *
  * Mirrors the wishlist's `wish-{eventId}` shape (PR #279) — the
@@ -38,6 +39,13 @@ interface StoredShape {
   songs: PredictionEntry[];
   savedAt: string;
   lockedAt: string | null;
+  /**
+   * Set when the list was pre-filled from the fan board's picks
+   * (n15-09a): those come grouped, not ranked, so the UI labels the
+   * order provisional until the fan arranges it. Absent on every list
+   * the builder made itself — older payloads read as "not provisional".
+   */
+  provisional?: boolean;
 }
 
 const KEY_PREFIX = "predict-";
@@ -104,6 +112,9 @@ function isStoredShape(value: unknown): value is StoredShape {
   if (!v.songs.every(isPredictionEntry)) return false;
   if (typeof v.savedAt !== "string") return false;
   if (v.lockedAt !== null && typeof v.lockedAt !== "string") return false;
+  if (v.provisional !== undefined && typeof v.provisional !== "boolean") {
+    return false;
+  }
   return true;
 }
 
@@ -131,10 +142,20 @@ export function readPredictionEntries(eventId: string): PredictionEntry[] {
   return stored ? stored.songs : [];
 }
 
-/** Replace the songs array; preserves existing `lockedAt` if any. */
+/**
+ * Replace the songs array; preserves existing `lockedAt` if any.
+ *
+ * `provisional` (see `StoredShape`) is carried over from the stored
+ * list unless the caller says otherwise: adding or removing a song
+ * leaves a board-imported order just as unarranged as it was, so only
+ * the callers that set or settle the order (the board import, a
+ * reorder, a copy-from-past replace) pass it. A write of zero songs
+ * always clears it.
+ */
 export function writePredictions(
   eventId: string,
   songs: PredictionEntry[],
+  opts: { provisional?: boolean } = {},
 ): void {
   if (typeof window === "undefined") return;
   // Best-effort `lockedAt` preservation. `readPredictions` returns
@@ -159,11 +180,19 @@ export function writePredictions(
       /* malformed JSON — leave preservedLockedAt as null */
     }
   }
+  // An empty list has no order left to settle: whatever the fan adds
+  // next is their own list, not the board's, so the flag never
+  // survives a write of zero songs.
+  const provisional =
+    songs.length > 0 && (opts.provisional ?? existing?.provisional ?? false);
   const next: StoredShape = {
     eventId,
     songs,
     savedAt: new Date().toISOString(),
     lockedAt: preservedLockedAt,
+    // Omitted rather than `false` so a list that never came from the
+    // board stores the exact pre-n15 shape.
+    ...(provisional ? { provisional: true } : {}),
   };
   try {
     window.localStorage.setItem(predictKey(eventId), JSON.stringify(next));

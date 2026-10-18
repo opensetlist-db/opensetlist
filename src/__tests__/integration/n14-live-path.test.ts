@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { Client } from "pg";
 import { createClient } from "@supabase/supabase-js";
 import { DEV_PROJECT_REF } from "./setup";
+import { devPgClient } from "./devPg";
 
 // n14 live path — integration tests against the DEV database.
 //
@@ -103,7 +103,7 @@ let songA: bigint;
 let songB: bigint;
 // Separate session-pooler connection for observation and out-of-band
 // commits, so it never shares a backend with the code under test.
-const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+const pg = devPgClient();
 
 type Message = {
   topic: string;
@@ -569,7 +569,7 @@ describe("3. a failing realtime.send does not abort the save", () => {
 
   it("a real inner failure (NULL topic → NOT NULL violation) still commits the surrounding write", async () => {
     // Uses its own session so we can watch the WARNING arrive.
-    const c = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+    const c = devPgClient();
     await c.connect();
     const warnings: string[] = [];
     c.on("notice", (n) => {

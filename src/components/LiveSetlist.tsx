@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { useTranslations } from "next-intl";
 import { TrendingSongs, type TrendingSong } from "@/components/TrendingSongs";
 import { SetlistSection } from "@/components/SetlistSection";
@@ -19,6 +20,10 @@ import type {
 import { EventWishSection } from "@/components/EventWishSection";
 import { FanBoardSection } from "@/components/board/FanBoardSection";
 import type { BoardBlockSeed } from "@/lib/board/types";
+import type {
+  BoardToBuilderOutcome,
+  BuilderRequest,
+} from "@/lib/board/toPredictions";
 import { LiveSyncIndicator } from "@/components/LiveSyncIndicator";
 import type { Freshness } from "@/lib/snapshotFreshness";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -172,6 +177,47 @@ export function LiveSetlist({
 }: Props) {
   const t = useTranslations("Event");
 
+  // Two-mode bridge (n15-09a). The board block and the setlist card are
+  // siblings, so the "go to full setlist mode" tap is lifted here: the
+  // board runs the import, this bumps a request the setlist section
+  // reacts to (switch to Predict, re-read storage, show the outcome),
+  // and the card is scrolled into view. The way back is a plain scroll
+  // to the board block. Element ids instead of refs: both targets are
+  // rendered by children that own their own refs.
+  const boardAnchorId = `fan-board-${eventId}`;
+  const setlistAnchorId = `setlist-card-${eventId}`;
+  const [builderRequest, setBuilderRequest] = useState<BuilderRequest | null>(
+    null,
+  );
+  const openFullSetlist = useCallback(
+    (outcome: BoardToBuilderOutcome) => {
+      setBuilderRequest((prev) => ({ seq: (prev?.seq ?? 0) + 1, outcome }));
+      // After the commit, so the Predict tab is what scrolls into view.
+      requestAnimationFrame(() => {
+        document
+          .getElementById(setlistAnchorId)
+          ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+      });
+    },
+    [setlistAnchorId],
+  );
+  const backToBoard = useCallback(() => {
+    document
+      .getElementById(boardAnchorId)
+      ?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [boardAnchorId]);
+  // The bridge needs a Predict tab to land in: upcoming and inside the
+  // D-7 window — the same gate `<SetlistSection>` uses for the tab.
+  const bridgeOpen = board !== null && status === "upcoming" && isWishPredictOpen;
+  // The reverse direction (n15-09b): a publish from the Predict tab
+  // rewrote the local ballot, so the board block re-reads it (the
+  // revision) and comes into view showing the new picks.
+  const [boardPicksRevision, setBoardPicksRevision] = useState(0);
+  const onBoardPublished = useCallback(() => {
+    setBoardPicksRevision((r) => r + 1);
+    requestAnimationFrame(backToBoard);
+  }, [backToBoard]);
+
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
   // drifting. When polling is off (upcoming/completed events) we keep the
@@ -274,6 +320,9 @@ export function LiveSetlist({
             locale={locale}
             seed={board}
             catalog={availableSongs}
+            anchorId={boardAnchorId}
+            onOpenFullSetlist={bridgeOpen ? openFullSetlist : undefined}
+            picksRevision={boardPicksRevision}
           />
         )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
@@ -298,6 +347,7 @@ export function LiveSetlist({
         <TrendingSongs songs={trendingSongs} />
       )}
     <section
+      id={setlistAnchorId}
       className="mb-8"
       style={{
         background: colors.bgCard,
@@ -422,6 +472,10 @@ export function LiveSetlist({
         availableSongs={availableSongs}
         unitFilters={unitFilters}
         eventArtistId={eventArtistId}
+        builderRequest={builderRequest}
+        onBackToBoard={bridgeOpen ? backToBoard : undefined}
+        boardGroups={bridgeOpen && board ? board.chips : undefined}
+        onBoardPublished={bridgeOpen ? onBoardPublished : undefined}
       />
     </section>
     </>

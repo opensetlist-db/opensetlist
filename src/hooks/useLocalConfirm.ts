@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMounted } from "@/hooks/useMounted";
 import { LAUNCH_FLAGS } from "@/lib/launchFlags";
+import { confirmKey } from "@/lib/localEngagementKeys";
 
 /**
  * Phase 1B/1C client-side hook for the per-viewer confirm state.
@@ -25,11 +26,6 @@ import { LAUNCH_FLAGS } from "@/lib/launchFlags";
  * private windows or across browsers can submit duplicates;
  * operator runbook covers the bounded abuse risk for Phase 1.
  */
-const KEY_PREFIX = "confirm-";
-
-export function confirmKey(eventId: string): string {
-  return `${KEY_PREFIX}${eventId}`;
-}
 
 function readStored(eventId: string): Set<number> {
   if (typeof window === "undefined") return new Set();

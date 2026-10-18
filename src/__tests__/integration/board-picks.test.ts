@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
-import { Client } from "pg";
+import { devPgClient, utcParam } from "./devPg";
 
 // Fan board pick writes (n15-03) against the DEV database: the things
 // only real rows and a real advisory lock can prove — the cap holds
@@ -33,14 +33,15 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
 
 import { prisma } from "@/lib/prisma";
 import * as dataCache from "@/lib/dataCache";
-import { POST } from "@/app/api/events/[id]/board/picks/route";
+import { POST, PUT } from "@/app/api/events/[id]/board/picks/route";
+import { publishPicks } from "@/lib/board/publish";
 import { DELETE } from "@/app/api/events/[id]/board/picks/[pickId]/route";
 import { GET as MINE } from "@/app/api/events/[id]/board/mine/route";
 import { GET as BOARD } from "@/app/api/events/[id]/board/route";
 import { ANON_TOKEN_HEADER } from "@/lib/anonId";
 
 const TAG = `boardpick-itest-${Date.now()}`;
-const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+const pg = devPgClient();
 
 let groupId: bigint;
 let otherArtistId: bigint;
@@ -66,6 +67,38 @@ function postPick(anonId: string, songId: bigint, group = groupId) {
     }),
     { params: Promise.resolve({ id: eventId.toString() }) },
   );
+}
+
+function publish(anonId: string, picks: Array<{ songId: bigint; group?: bigint }>) {
+  return PUT(
+    new Request(`http://x/api/events/${eventId}/board/picks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        anonId,
+        picks: picks.map((p) => ({
+          groupId: (p.group ?? groupId).toString(),
+          songId: p.songId.toString(),
+        })),
+      }),
+    }),
+    { params: Promise.resolve({ id: eventId.toString() }) },
+  );
+}
+
+/** The anon's rows straight from the table. `createdAt` is rendered
+ *  as a UTC ISO string in SQL: the column is `timestamp(3)` without
+ *  time zone holding UTC wall time, and node-pg would parse it in the
+ *  machine's LOCAL zone (see `utc()` below for the write side). */
+async function ballotRows(anonId: string) {
+  const r = await pg.query<{ id: string; songId: string; createdAt: string }>(
+    `SELECT id, "songId"::text AS "songId",
+            to_char("createdAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt"
+       FROM "BoardPick"
+      WHERE "eventId" = $1 AND "anonId" = $2 ORDER BY "songId"`,
+    [eventId.toString(), anonId],
+  );
+  return r.rows;
 }
 
 function deletePick(anonId: string, pickId: string) {
@@ -96,17 +129,10 @@ async function rowCount(anonId: string): Promise<number> {
   return Number(r.rows[0].n);
 }
 
-// `Event.startTime` is `timestamp(3)` WITHOUT time zone holding UTC
-// wall time (Prisma's convention). node-pg serializes a JS Date in the
-// machine's LOCAL zone, and Postgres drops the offset for this type —
-// so a raw Date would land hours off on any non-UTC laptop. Send the
-// UTC ISO string: its wall time is UTC, which is what the column holds.
-const utc = (d: Date) => d.toISOString();
-
 async function setStart(startTime: Date) {
   await pg.query(`UPDATE "Event" SET "startTime" = $2 WHERE id = $1`, [
     eventId.toString(),
-    utc(startTime),
+    utcParam(startTime),
   ]);
 }
 
@@ -195,7 +221,7 @@ beforeEach(async () => {
   await pg.query(`DELETE FROM "BoardPick" WHERE "eventId" = $1`, [eventId.toString()]);
   await pg.query(
     `UPDATE "Event" SET "boardEnabled" = true, "startTime" = $2 WHERE id = $1`,
-    [eventId.toString(), utc(new Date(Date.now() + 24 * 60 * 60 * 1000))],
+    [eventId.toString(), utcParam(new Date(Date.now() + 24 * 60 * 60 * 1000))],
   );
   await pg.query(`UPDATE "Song" SET "isDeleted" = false WHERE id = $1`, [
     songIds[0].toString(),
@@ -450,6 +476,90 @@ describe("board picks — dev database", () => {
       await pg.query(`DELETE FROM "SetlistItemSong" WHERE "setlistItemId" = $1`, [item.id.toString()]);
       await pg.query(`DELETE FROM "SetlistItem" WHERE id = $1`, [item.id.toString()]);
       await pg.query(`UPDATE "Event" SET status = 'scheduled' WHERE id = $1`, [eventId.toString()]);
+    }
+  });
+});
+
+// Publish (n15-09b): the whole ballot replaced in one transaction.
+describe("board publish — dev database", () => {
+  it("replaces atomically: retained picks keep id + timestamp, others go, new ones arrive", async () => {
+    for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
+    const before = await ballotRows(ANON_A);
+    const kept = before.find((r) => r.songId === songIds[0].toString())!;
+
+    const res = await publish(ANON_A, [{ songId: songIds[0] }, { songId: songIds[2] }]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { picks: Array<{ id: string; songId: string; createdAt: string }> };
+    expect(body.picks.map((p) => p.songId).sort()).toEqual(
+      [songIds[0], songIds[2]].map(String).sort(),
+    );
+
+    const after = await ballotRows(ANON_A);
+    expect(after.map((r) => r.songId).sort()).toEqual(
+      [songIds[0], songIds[2]].map(String).sort(),
+    );
+    const keptAfter = after.find((r) => r.songId === songIds[0].toString())!;
+    expect(keptAfter.id).toBe(kept.id);
+    expect(keptAfter.createdAt).toBe(kept.createdAt);
+    expect(body.picks.find((p) => p.id === kept.id)?.createdAt).toBe(kept.createdAt);
+  });
+
+  it("an empty array clears the ballot; other anons are untouched", async () => {
+    await postPick(ANON_A, songIds[0]);
+    await postPick(ANON_B, songIds[0]);
+    const res = await publish(ANON_A, []);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ picks: [] });
+    expect(await rowCount(ANON_A)).toBe(0);
+    expect(await rowCount(ANON_B)).toBe(1);
+  });
+
+  it("cap: 4 in one group → 409 and the previous set stands", async () => {
+    await postPick(ANON_A, songIds[4]);
+    const before = await ballotRows(ANON_A);
+    const res = await publish(ANON_A, songIds.slice(0, 4).map((songId) => ({ songId })));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "cap_reached" });
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("a failure inside the transaction rolls the whole publish back", async () => {
+    // Bypass the static validation so the insert itself fails (no such
+    // song → foreign-key violation) AFTER the delete already ran in the
+    // same transaction. The previous set must survive intact.
+    for (const i of [0, 1]) await postPick(ANON_A, songIds[i]);
+    const before = await ballotRows(ANON_A);
+    await expect(
+      publishPicks(eventId, ANON_A, [
+        { groupId, songId: songIds[2] },
+        { groupId, songId: BigInt("999999999999") },
+      ]),
+    ).rejects.toThrow();
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("a song outside the group / a locked board → refused, nothing written", async () => {
+    await postPick(ANON_A, songIds[0]);
+    const before = await ballotRows(ANON_A);
+    const outside = await publish(ANON_A, [{ songId: foreignSongId }]);
+    expect(outside.status).toBe(400);
+    await setStart(new Date(Date.now() - 1000));
+    const locked = await publish(ANON_A, []);
+    expect(locked.status).toBe(403);
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("never calls a revalidate helper", async () => {
+    await publish(ANON_A, [{ songId: songIds[0] }]);
+    await publish(ANON_A, []);
+    for (const f of [
+      dataCache.revalidatePublicData,
+      dataCache.revalidateEventData,
+      dataCache.revalidateEventImpressions,
+      dataCache.revalidateBoardControl,
+      dataCache.revalidateBoardAggregate,
+    ]) {
+      expect(vi.mocked(f)).not.toHaveBeenCalled();
     }
   });
 });

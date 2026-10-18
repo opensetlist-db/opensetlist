@@ -18,7 +18,7 @@ const tx = {
     findFirst: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),
-    delete: vi.fn(),
+    deleteMany: vi.fn(),
   },
 };
 
@@ -161,10 +161,10 @@ beforeEach(() => {
     return 0;
   });
   tx.songWish.create.mockResolvedValue({ id: "new-id", createdAt: CREATED });
-  tx.songWish.findFirst.mockResolvedValue({ id: "w1", anonId: ANON });
-  tx.songWish.delete.mockResolvedValue({});
-  plainWish.findFirst.mockResolvedValue({ id: "w1", anonId: null } as never);
-  plainWish.delete.mockResolvedValue({} as never);
+  tx.songWish.deleteMany.mockResolvedValue({ count: 1 });
+  tx.songWish.findFirst.mockResolvedValue({ id: "w1" });
+  plainWish.deleteMany.mockResolvedValue({ count: 1 } as never);
+  plainWish.findFirst.mockResolvedValue({ id: "w1" } as never);
 });
 
 afterEach(() => {
@@ -309,39 +309,49 @@ describe("POST /wishes on a board event — ballot", () => {
 });
 
 describe("DELETE /wishes/[wishId] on a board event", () => {
-  it("own wish → 200 { id }, under the ballot lock", async () => {
+  // The delete is ONE conditional deleteMany (owner = this anon, or no
+  // owner); a 0 count is then explained by a lookup: gone → 404, still
+  // there → someone else's → 403.
+  const ownerOrLegacy = (anon: string | null) => ({
+    where: {
+      id: "w1",
+      eventId: BigInt(107),
+      OR: anon === null ? [{ anonId: null }] : [{ anonId: null }, { anonId: anon }],
+    },
+  });
+
+  it("own wish → 200 { id }, one conditional delete under the ballot lock", async () => {
     const res = await DELETE(delReq({ anonId: ANON }), delParams());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "w1" });
     expect(tx.$executeRaw).toHaveBeenCalled();
-    expect(tx.songWish.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "w1", eventId: BigInt(107) } }),
-    );
-    expect(tx.songWish.delete).toHaveBeenCalledWith({ where: { id: "w1" } });
+    expect(tx.songWish.deleteMany).toHaveBeenCalledWith(ownerOrLegacy(ANON));
+    expect(tx.songWish.findFirst).not.toHaveBeenCalled();
     expectNoRevalidate();
   });
 
-  it("another anon's wish → 403 not_owner", async () => {
-    tx.songWish.findFirst.mockResolvedValue({ id: "w1", anonId: "someone-else" });
+  it("another anon's wish → nothing deleted, 403 not_owner", async () => {
+    tx.songWish.deleteMany.mockResolvedValue({ count: 0 });
     const res = await DELETE(delReq({ anonId: ANON }), delParams());
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "not_owner" });
-    expect(tx.songWish.delete).not.toHaveBeenCalled();
   });
 
   it("a ballot wish can't be removed without its anon id", async () => {
-    plainWish.findFirst.mockResolvedValue({ id: "w1", anonId: ANON } as never);
+    plainWish.deleteMany.mockResolvedValue({ count: 0 } as never);
+    plainWish.findFirst.mockResolvedValue({ id: "w1" } as never);
     const res = await DELETE(delReq(), delParams());
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "not_owner" });
-    expect(plainWish.delete).not.toHaveBeenCalled();
+    // Only ownerless rows can match an anonymous delete.
+    expect(plainWish.deleteMany).toHaveBeenCalledWith(ownerOrLegacy(null));
   });
 
   it("a LEGACY wish stays removable with an anon id — deleted as-is, never claimed", async () => {
-    tx.songWish.findFirst.mockResolvedValue({ id: "w1", anonId: null });
     const res = await DELETE(delReq({ anonId: ANON }), delParams());
     expect(res.status).toBe(200);
-    expect(tx.songWish.delete).toHaveBeenCalledWith({ where: { id: "w1" } });
+    // The ownerless branch of the condition is what matches a legacy row.
+    expect(tx.songWish.deleteMany).toHaveBeenCalledWith(ownerOrLegacy(ANON));
     // Nothing writes the caller's anon id onto the row.
     expect(tx.songWish.create).not.toHaveBeenCalled();
     expect(plainWish.create).not.toHaveBeenCalled();
@@ -351,12 +361,25 @@ describe("DELETE /wishes/[wishId] on a board event", () => {
     const res = await DELETE(delReq(), delParams());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "w1" });
-    expect(plainWish.delete).toHaveBeenCalledWith({ where: { id: "w1" } });
+    expect(plainWish.deleteMany).toHaveBeenCalledWith(ownerOrLegacy(null));
     // No anon → no ballot to serialize on.
     expect(txMock).not.toHaveBeenCalled();
   });
 
+  it("two concurrent anonymous deletes of one legacy row: the loser gets 404, not 500", async () => {
+    plainWish.deleteMany
+      .mockResolvedValueOnce({ count: 1 } as never)
+      .mockResolvedValueOnce({ count: 0 } as never);
+    plainWish.findFirst.mockResolvedValue(null as never);
+    const [a, b] = await Promise.all([
+      DELETE(delReq(), delParams()),
+      DELETE(delReq(), delParams()),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 404]);
+  });
+
   it("gone → 404 wish_not_found", async () => {
+    tx.songWish.deleteMany.mockResolvedValue({ count: 0 });
     tx.songWish.findFirst.mockResolvedValue(null);
     const res = await DELETE(delReq({ anonId: ANON }), delParams());
     expect(res.status).toBe(404);
@@ -386,8 +409,8 @@ describe("DELETE /wishes/[wishId] on a board event", () => {
       expect(res.status).toBe(403);
       expect(await res.json()).toEqual({ error: "board_locked" });
     }
-    expect(tx.songWish.delete).not.toHaveBeenCalled();
-    expect(plainWish.delete).not.toHaveBeenCalled();
+    expect(tx.songWish.deleteMany).not.toHaveBeenCalled();
+    expect(plainWish.deleteMany).not.toHaveBeenCalled();
   });
 });
 
