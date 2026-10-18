@@ -149,7 +149,8 @@ export function readPredictionEntries(eventId: string): PredictionEntry[] {
  * list unless the caller says otherwise: adding or removing a song
  * leaves a board-imported order just as unarranged as it was, so only
  * the callers that set or settle the order (the board import, a
- * reorder, a copy-from-past replace) pass it.
+ * reorder, a copy-from-past replace) pass it. A write of zero songs
+ * always clears it.
  */
 export function writePredictions(
   eventId: string,
@@ -179,7 +180,11 @@ export function writePredictions(
       /* malformed JSON — leave preservedLockedAt as null */
     }
   }
-  const provisional = opts.provisional ?? existing?.provisional ?? false;
+  // An empty list has no order left to settle: whatever the fan adds
+  // next is their own list, not the board's, so the flag never
+  // survives a write of zero songs.
+  const provisional =
+    songs.length > 0 && (opts.provisional ?? existing?.provisional ?? false);
   const next: StoredShape = {
     eventId,
     songs,

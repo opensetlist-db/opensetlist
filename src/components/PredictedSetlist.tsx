@@ -316,6 +316,9 @@ export function PredictedSetlist({
         const next = predictions.filter((p) => p.songId !== songId);
         setPredictions(next);
         writePredictions(eventId, next);
+        // Mirrors the storage rule: emptying the list ends the board
+        // import, so songs added afterwards aren't labelled provisional.
+        if (next.length === 0) setProvisional(false);
         trackEvent("predict_remove", {
           event_id: String(eventId),
           song_id: String(songId),

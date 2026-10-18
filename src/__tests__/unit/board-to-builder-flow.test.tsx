@@ -320,6 +320,23 @@ describe("<PredictedSetlist> bridge strip", () => {
     view.unmount();
   });
 
+  it("removing the last imported song ends the provisional label", () => {
+    writePredictions("107", [entry(10, "残陽")], { provisional: true });
+    renderBuilder({
+      availableSongs: CATALOG,
+      unitFilters: [{ key: "all", label: "All", color: null, kind: "all", artistId: null }],
+    });
+    expect(screen.getByTestId("predict-provisional")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("removeAria"));
+    expect(readPredictions("107")?.provisional).toBeUndefined();
+    // Build a list by hand from the picker: no label, in memory or stored.
+    fireEvent.click(screen.getByText("add"));
+    fireEvent.click(screen.getByText("ハナムスビ"));
+    expect(readPredictions("107")?.songs.map((e) => e.songId)).toEqual([11]);
+    expect(screen.queryByTestId("predict-provisional")).toBeNull();
+    expect(readPredictions("107")?.provisional).toBeUndefined();
+  });
+
   it("locked (show started): no strip even for a provisional list", () => {
     writePredictions("107", [entry(10, "残陽")], { provisional: true });
     renderBuilder({

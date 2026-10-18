@@ -253,6 +253,19 @@ describe("provisional flag (n15-09a board import)", () => {
     expect(readPredictions("1")?.provisional).toBeUndefined();
   });
 
+  it("never survives a write of zero songs", () => {
+    // Emptying a board-imported list, then building one by hand, must
+    // not inherit the label.
+    writePredictions("1", [entry(1)], { provisional: true });
+    writePredictions("1", []);
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+    writePredictions("1", [entry(2)]);
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+    // Even an explicit request can't mark an empty list provisional.
+    writePredictions("1", [], { provisional: true });
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+  });
+
   it("survives markLocked", () => {
     writePredictions("1", [entry(1)], { provisional: true });
     markLocked("1");
