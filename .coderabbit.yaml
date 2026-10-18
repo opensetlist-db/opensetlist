@@ -38,5 +38,7 @@ reviews:
 
     Skip:
     - Stylistic preferences already handled by ESLint
+    - Tailwind arbitrary pixel values (`text-[11px]`, `rounded-[14px]`) — the
+      house style for sizes; scale tokens like `text-xs` also set line-height
     - Comments about adding more tests (no test suite yet)
     - Suggestions to add logging
