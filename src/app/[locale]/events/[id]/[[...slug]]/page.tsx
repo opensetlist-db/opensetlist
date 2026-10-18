@@ -32,7 +32,11 @@ import {
   getFestivalGroupArtistsCached,
 } from "@/lib/predict/availableSongs";
 import { mergeFestivalCatalog } from "@/lib/predict/festivalCatalog";
-import { boardGroupRootIds, resolveBoardGroups } from "@/lib/board/boardGroups";
+import {
+  boardGroupRootIds,
+  boardGroupsFromRows,
+  seriesPrimaryArtistOf,
+} from "@/lib/board/boardGroups";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
@@ -893,10 +897,7 @@ export default async function EventPage({ params }: Props) {
   //     Only an upcoming multi-artist event with NO roster still has
   //     no defensible scope; there the picker hides and the surface
   //     degrades to copy-from-past + share CTA.
-  const seriesPrimaryArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  const seriesPrimaryArtist = seriesPrimaryArtistOf(event.eventSeries);
   let availableSongs: AvailableSong[] = [];
   let unitFilters: UnitFilter[] = [];
   if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
@@ -922,7 +923,7 @@ export default async function EventPage({ params }: Props) {
     );
   } else if (resolvedStatus === "upcoming" && roster.length > 0) {
     const hierarchy = await getArtistHierarchyCached();
-    // Same resolver the fan board uses (`primaryArtist: null` selects
+    // Same resolver the fan board uses (`primaryArtistId: null` selects
     // the festival branch), so the picker's chips and the board's
     // groups come from one ordering.
     const rootIds = boardGroupRootIds({
@@ -947,13 +948,7 @@ export default async function EventPage({ params }: Props) {
       // hierarchy read and this one) or whose id isn't JS-safe drops
       // out of `groups`; catalogs are looked up by id so the two
       // arrays stay aligned.
-      const groups = resolveBoardGroups({
-        roster,
-        hierarchy,
-        primaryArtist: null,
-        groupArtists,
-        locale,
-      });
+      const groups = boardGroupsFromRows(rootIds, groupArtists, locale);
       const catalogByRoot = new Map(rootIds.map((id, i) => [id, perGroup[i]]));
       const groupCatalogs = groups.map(
         (g) => catalogByRoot.get(String(g.artistId)) ?? [],

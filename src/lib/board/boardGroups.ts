@@ -96,10 +96,10 @@ export interface BoardGroupsInput {
 /**
  * The board's groups, in board order.
  *
- * A root whose display row is missing (soft-deleted between the
- * hierarchy read and the row read) or whose id isn't JS-safe drops out
- * silently and the rest keep their order — the same policy the
- * festival picker applies, so a board group always has a picker chip.
+ * Composition of `boardGroupRootIds` + `boardGroupsFromRows` for
+ * callers that already hold the display rows. A caller that must load
+ * the rows first (the event page) computes the ids once, loads, then
+ * calls `boardGroupsFromRows` directly instead of resolving twice.
  */
 export function resolveBoardGroups({
   roster,
@@ -113,11 +113,32 @@ export function resolveBoardGroups({
     hierarchy,
     primaryArtistId: primaryArtist?.id ?? null,
   });
+  const rows = primaryArtist ? [...groupArtists, primaryArtist] : groupArtists;
+  return boardGroupsFromRows(rootIds, rows, locale);
+}
+
+/**
+ * Ordered root ids + their display rows → board groups.
+ *
+ * A root whose display row is missing (soft-deleted between the
+ * hierarchy read and the row read) or whose id isn't JS-safe drops out
+ * silently and the rest keep their order — the same policy the
+ * festival picker applies, so a board group always has a picker chip.
+ * NB on a single-artist event whose series artist is a sub-unit, the
+ * root is a different artist: its row must be among `rows`, or the
+ * board has no group.
+ *
+ * When two rows share an id the LAST wins (`resolveBoardGroups` appends
+ * the series artist, the row the page already rendered the header
+ * from).
+ */
+export function boardGroupsFromRows(
+  rootIds: readonly string[],
+  rows: readonly BoardGroupArtistRow[],
+  locale: string,
+): BoardGroup[] {
   const rowById = new Map<string, BoardGroupArtistRow>();
-  for (const r of groupArtists) rowById.set(String(r.id), r);
-  // Primary last so it wins over a duplicate in `groupArtists` — it is
-  // the row the page already rendered the header from.
-  if (primaryArtist) rowById.set(String(primaryArtist.id), primaryArtist);
+  for (const r of rows) rowById.set(String(r.id), r);
 
   const groups: BoardGroup[] = [];
   for (const rootId of rootIds) {
@@ -132,4 +153,19 @@ export function resolveBoardGroups({
     });
   }
   return groups;
+}
+
+/**
+ * The series' primary artist when the event is single-artist, else
+ * null (no series, festival series with `artistId = null`, or a
+ * soft-deleted series artist — the relation isn't `isDeleted`-filtered
+ * in the page query). This is the one place that decides which branch
+ * of the board resolver an event takes; the page, the board read route
+ * and the pick write routes must all ask here so they can't disagree.
+ */
+export function seriesPrimaryArtistOf<
+  A extends { isDeleted: boolean },
+>(series: { artist: A | null } | null | undefined): A | null {
+  const artist = series?.artist;
+  return artist && !artist.isDeleted ? artist : null;
 }

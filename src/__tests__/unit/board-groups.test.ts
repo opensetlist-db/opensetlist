@@ -3,10 +3,15 @@ import { describe, it, expect } from "vitest";
 import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
 import {
   boardGroupRootIds,
+  boardGroupsFromRows,
   resolveBoardGroups,
+  seriesPrimaryArtistOf,
   type BoardGroupArtistRow,
 } from "@/lib/board/boardGroups";
+import { safeBigIntToNumber } from "@/lib/copyPastSetlist";
+import { displayNameWithFallback } from "@/lib/display";
 import { resolveFestivalGroups } from "@/lib/predict/festivalCatalog";
+import type { AvailableSong } from "@/lib/types/predict";
 import type { EventRosterEntry, RosterArtist } from "@/lib/types/setlist";
 
 const H = buildArtistHierarchy([
@@ -185,5 +190,105 @@ describe("resolveBoardGroups", () => {
       locale: "ko",
     });
     expect(groups).toEqual([]);
+  });
+});
+
+// Verbatim port of the festival branch of the event page as it stood
+// before the board resolver existed (index-aligned groups + catalogs).
+// The characterization test below pins the page's new code path —
+// `boardGroupRootIds` → `boardGroupsFromRows` → catalogs by root id —
+// to this output, so a later change to the resolver that would move a
+// picker chip fails here rather than on the Fes page.
+function legacyFestivalPath(
+  roster: EventRosterEntry[],
+  hierarchy: typeof H,
+  groupArtists: BoardGroupArtistRow[],
+  perGroupById: Map<string, AvailableSong[]>,
+  locale: string,
+) {
+  const groupRefs = resolveFestivalGroups(roster, hierarchy);
+  const perGroup = groupRefs.map((g) => perGroupById.get(g.rootId) ?? []);
+  const artistById = new Map(groupArtists.map((a) => [String(a.id), a]));
+  const groups: Array<{ artistId: number; slug: string; label: string; color: string | null }> = [];
+  const groupCatalogs: AvailableSong[][] = [];
+  groupRefs.forEach((ref, i) => {
+    const artist = artistById.get(ref.rootId);
+    const artistId = artist ? safeBigIntToNumber(BigInt(artist.id)) : null;
+    if (!artist || artistId === null) return;
+    groups.push({
+      artistId,
+      slug: artist.slug,
+      label: displayNameWithFallback(artist, artist.translations, locale, "short"),
+      color: artist.color,
+    });
+    groupCatalogs.push(perGroup[i]);
+  });
+  return { groups, groupCatalogs };
+}
+
+function newFestivalPath(
+  roster: EventRosterEntry[],
+  hierarchy: typeof H,
+  groupArtists: BoardGroupArtistRow[],
+  perGroupById: Map<string, AvailableSong[]>,
+  locale: string,
+) {
+  const rootIds = boardGroupRootIds({ roster, hierarchy, primaryArtistId: null });
+  const perGroup = rootIds.map((id) => perGroupById.get(id) ?? []);
+  const groups = boardGroupsFromRows(rootIds, groupArtists, locale);
+  const catalogByRoot = new Map(rootIds.map((id, i) => [id, perGroup[i]]));
+  const groupCatalogs = groups.map((g) => catalogByRoot.get(String(g.artistId)) ?? []);
+  return { groups, groupCatalogs };
+}
+
+function catalog(rootId: number): AvailableSong[] {
+  // Identity is all that matters here — the test checks which catalog
+  // array lines up with which group, not its contents.
+  return [{ songId: rootId * 100 } as AvailableSong];
+}
+
+describe("festival page path — characterization against the pre-resolver page", () => {
+  const perGroupById = new Map(
+    [1, 10, 20, 30].map((id) => [String(id), catalog(id)]),
+  );
+
+  it("full Fes roster: identical groups and catalog alignment", () => {
+    for (const locale of ["ko", "ja", "en"]) {
+      expect(newFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById, locale)).toEqual(
+        legacyFestivalPath(FES_ROSTER, H, FES_ROWS, perGroupById, locale),
+      );
+    }
+  });
+
+  it("a missing display row: same drop, catalogs stay aligned", () => {
+    const rows = [row(1), row(20), row(30)];
+    const next = newFestivalPath(FES_ROSTER, H, rows, perGroupById, "ko");
+    expect(next).toEqual(legacyFestivalPath(FES_ROSTER, H, rows, perGroupById, "ko"));
+    expect(next.groupCatalogs.map((c) => c[0].songId)).toEqual([100, 2000, 3000]);
+  });
+});
+
+describe("boardGroupsFromRows", () => {
+  it("last row wins on a duplicate id", () => {
+    const groups = boardGroupsFromRows(
+      ["1"],
+      [row(1, { color: "#111111" }), row(1, { color: "#222222" })],
+      "ko",
+    );
+    expect(groups.map((g) => g.color)).toEqual(["#222222"]);
+  });
+});
+
+describe("seriesPrimaryArtistOf", () => {
+  it("returns the alive series artist", () => {
+    const artist = { id: 1, isDeleted: false };
+    expect(seriesPrimaryArtistOf({ artist })).toBe(artist);
+  });
+
+  it("null for no series, a festival series, or a soft-deleted artist", () => {
+    expect(seriesPrimaryArtistOf(null)).toBeNull();
+    expect(seriesPrimaryArtistOf(undefined)).toBeNull();
+    expect(seriesPrimaryArtistOf({ artist: null })).toBeNull();
+    expect(seriesPrimaryArtistOf({ artist: { id: 1, isDeleted: true } })).toBeNull();
   });
 });
