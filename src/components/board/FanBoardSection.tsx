@@ -309,7 +309,7 @@ export function FanBoardSection({
           <p className="mt-0.5 text-[11px]" style={{ color: colors.textSubtle }}>
             {t("asOf", { time: formatDate(state.asOf, locale, TIME_FORMAT) })}
             {" · "}
-            {state.locked
+            {locked
               ? t("closed")
               : t("openUntil", {
                   time: formatDate(seed.lockAt, locale, TIME_FORMAT),

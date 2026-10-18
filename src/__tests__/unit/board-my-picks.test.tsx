@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
@@ -343,6 +344,56 @@ describe("<FanBoardSection> my picks", () => {
     const mineCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/board/mine?"))!;
     expect(String(mineCall[0])).toContain("anonId=anon-1");
     expect(JSON.parse(window.localStorage.getItem("board-107")!).picks).toHaveLength(1);
+  });
+
+  it("a restore cut off by an effect cleanup (StrictMode / locale switch) is asked again", async () => {
+    window.localStorage.setItem(ANON_ID_KEY, "anon-1");
+    let release: () => void = () => {};
+    let mineCalls = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/events/107/board?")) return json(200, readBoard());
+      if (url.startsWith("/api/events/107/board/mine?")) {
+        mineCalls += 1;
+        // Hold the first answer until after the cleanup has run.
+        if (mineCalls === 1) await new Promise<void>((r) => (release = r));
+        return json(200, {
+          picks: [
+            { id: "p9", groupId: "1", songId: "11", title: "ハナムスビ", available: true, createdAt: "2026-11-01T00:00:00.000Z" },
+          ],
+        });
+      }
+      return json(500, {});
+    });
+    const view = render(
+      <StrictMode>
+        <FanBoardSection eventId="107" locale="ko" seed={SEED} catalog={CATALOG} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(mineCalls).toBe(1));
+    // Re-run the effect (its deps change) while request 1 is in flight.
+    view.rerender(
+      <StrictMode>
+        <FanBoardSection eventId="107" locale="ja" seed={SEED} catalog={CATALOG} />
+      </StrictMode>,
+    );
+    release();
+    await screen.findByText("ハナムスビ");
+    expect(mineCalls).toBe(2);
+  });
+
+  it("the header says closed once the block locks at lockAt", async () => {
+    render(
+      <FanBoardSection
+        eventId="107"
+        locale="ko"
+        seed={{ ...SEED, lockAt: new Date(Date.now() - 1000).toISOString() }}
+        catalog={CATALOG}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2 }).nextElementSibling?.textContent).toContain("closed"),
+    );
+    expect(screen.queryByText(/openUntil/)).toBeNull();
   });
 
   it("does not ask /board/mine when picks are stored locally or no anon id exists", async () => {

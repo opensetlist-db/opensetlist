@@ -112,13 +112,16 @@ export function useBoardPicks({
     const anonId = readExistingAnonId();
     if (!anonId) return;
     let cancelled = false;
+    let settled = false;
     (async () => {
       const params = new URLSearchParams({ anonId, locale });
       const res = await callJson(
         `/api/events/${eventId}/board/mine?${params}`,
         { method: "GET" },
       );
-      if (cancelled || !res || res.status !== 200) return;
+      if (cancelled) return;
+      settled = true;
+      if (!res || res.status !== 200) return;
       const body = res.body as BoardMineResponse | null;
       if (!body || !Array.isArray(body.picks) || body.picks.length === 0) {
         return;
@@ -141,6 +144,12 @@ export function useBoardPicks({
     })();
     return () => {
       cancelled = true;
+      // Cleaned up before the answer arrived (StrictMode's dev-only
+      // mount → cleanup → mount, or a locale switch mid-request): let
+      // the next run ask again, or the restore would never happen.
+      if (!settled && restoredFor.current === eventId) {
+        restoredFor.current = null;
+      }
     };
   }, [active, eventId, locale]);
 
