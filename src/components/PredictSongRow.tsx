@@ -7,13 +7,7 @@ import { displayOriginalTitle } from "@/lib/display";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import { colors, zIndex } from "@/styles/tokens";
 
-/**
- * Dimmed-row opacity for "matched-out-of-rank" + "below-divider"
- * states. Exported so the unit-test snapshot assertion (and any
- * future consumer that needs to mirror this look) can reference the
- * same value rather than hardcoding `0.4` independently.
- */
-export const DIMMED_ROW_OPACITY = 0.4;
+import { DIMMED_ROW_OPACITY } from "@/components/predict-row-style";
 
 /**
  * Visual state per the mockup's during-show divider rules:

@@ -30,8 +30,8 @@ export interface ImpressionPollPayload {
 }
 
 /** Mean impressions poll interval and its per-gap spread (30 s ± 5 s). */
-export const IMPRESSION_POLL_MS = 30_000;
-export const IMPRESSION_POLL_SPREAD_MS = 5_000;
+const IMPRESSION_POLL_MS = 30_000;
+const IMPRESSION_POLL_SPREAD_MS = 5_000;
 
 interface UseImpressionPollingOptions {
   eventId: string;

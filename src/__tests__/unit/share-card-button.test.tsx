@@ -5,10 +5,8 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
 
-import {
-  ShareCardButton,
-  deriveShareCardMode,
-} from "@/components/ShareCardButton";
+import { ShareCardButton } from "@/components/ShareCardButton";
+import { deriveShareCardMode } from "@/lib/shareCardMode";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import type { WishSongDisplay } from "@/lib/wishStorage";

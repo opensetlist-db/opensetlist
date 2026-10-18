@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ShareCardModal } from "@/components/ShareCardModal";
 import { PrimaryButton } from "@/components/ui/Button";
-import type { ShareCardMode } from "@/components/ShareCardPreview";
 import { calcShareCardScore } from "@/lib/predictScore";
 import { trackEvent } from "@/lib/analytics";
 import { BASE_URL } from "@/lib/config";
 import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
-import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
+import { deriveShareCardMode } from "@/lib/shareCardMode";
+import type { ResolvedEventStatus } from "@/lib/eventStatus";
 
 interface Props {
   eventId: string;
@@ -39,32 +39,6 @@ interface Props {
 }
 
 /**
- * Derive the share-card `mode` from event lifecycle + actual-setlist
- * presence. See `<ShareCardPreview>` for the per-mode rendering rules.
- *
- *   - `upcoming` (pre-show)                  → `prediction`
- *   - `ongoing` with no actuals yet          → `prediction`
- *     (operator hasn't entered any songs; treating as pre-show keeps
- *     the card useful instead of rendering an empty result body)
- *   - `ongoing` with at least one actual     → `live`
- *   - `completed`                            → `final`
- *   - `cancelled` (rare)                     → `final` if any actuals,
- *                                              else `prediction`
- *
- * Pure function so the test suite can pin every transition without
- * mounting the component.
- */
-export function deriveShareCardMode(
-  status: ResolvedEventStatus,
-  hasActuals: boolean,
-): ShareCardMode {
-  if (status === "completed") return "final";
-  if (status === "cancelled") return hasActuals ? "final" : "prediction";
-  if (status === "ongoing" && hasActuals) return "live";
-  return "prediction";
-}
-
-/**
  * Share button + modal trigger. Shows up whenever the viewer has at
  * least one prediction stored for the event, at every lifecycle
  * stage. Pre-show is the viral entry point — fans share their
@@ -72,7 +46,7 @@ export function deriveShareCardMode(
  * up. v0.11.1-and-earlier only enabled share post-show, missing the
  * pre-show share funnel entirely.
  *
- * Three modes, derived via `deriveShareCardMode` above:
+ * Three modes, derived via `deriveShareCardMode` (`src/lib/shareCardMode.ts`):
  *
  *   - `prediction` (pre-show or ongoing-no-actuals): button reads
  *     `예상 공유 🎯`. Card has no score banner; renders the viewer's
