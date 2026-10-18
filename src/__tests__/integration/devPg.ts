@@ -17,7 +17,8 @@ import { Client, types } from "pg";
  *
  * This client fixes both deterministically:
  *   - reads: `timestamp` (OID 1114) parses as UTC;
- *   - writes: a `Date` parameter THROWS — pass `utcParam(date)` (the
+ *   - writes: a `Date` parameter THROWS, also inside an array
+ *     parameter — pass `utcParam(date)` (the
  *     UTC ISO string, whose wall time is what the column holds).
  * Prisma calls are unaffected (the adapter does its own conversion).
  */
@@ -28,6 +29,14 @@ const TIMESTAMP_OID = 1114;
  *  string. */
 export function utcParam(d: Date): string {
   return d.toISOString();
+}
+
+/** True when `v` is a Date or an array that contains one at any depth —
+ *  node-pg serializes array parameters element by element, so a nested
+ *  Date is written in local time just like a top-level one. */
+function containsDate(v: unknown): boolean {
+  if (v instanceof Date) return true;
+  return Array.isArray(v) && v.some(containsDate);
 }
 
 export function devPgClient(): Client {
@@ -45,7 +54,7 @@ export function devPgClient(): Client {
     const values = Array.isArray(args[1])
       ? args[1]
       : (args[0] as { values?: unknown[] } | undefined)?.values;
-    if (values?.some((v) => v instanceof Date)) {
+    if (values?.some(containsDate)) {
       throw new Error(
         "devPgClient: a Date query parameter would be written in local time; pass utcParam(date) instead",
       );

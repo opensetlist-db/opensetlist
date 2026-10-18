@@ -32,6 +32,10 @@ tester.run("use-client-exports", rule, {
     CLIENT + "export const FanBoard = () => null;",
     CLIENT + "export function useBoardPicks() {}",
     CLIENT + "export const useThing = () => 1;",
+    // Component-shaped initializers stay valid.
+    CLIENT + "export const Panel = memo(function Panel() { return null; });",
+    CLIENT + "export const Ctx = createContext(null);",
+    CLIENT + "export const Box = forwardRef(() => null);",
     CLIENT + "export default function Page() { return null; }",
     CLIENT + "const x = 1; export default x;",
     // Type-only exports are erased at compile time.
@@ -71,6 +75,30 @@ tester.run("use-client-exports", rule, {
     {
       code: CLIENT + "export enum Kind { A }",
       errors: [{ messageId: "nonComponent", data: { name: "Kind" } }],
+    },
+    // A PascalCase name doesn't make a plain value a component.
+    {
+      code: CLIENT + "export const BoardLimit = 3;",
+      errors: [{ messageId: "nonComponent", data: { name: "BoardLimit" } }],
+    },
+    {
+      code: CLIENT + "export const DefaultTheme = { color: 'red' };",
+      errors: [{ messageId: "nonComponent", data: { name: "DefaultTheme" } }],
+    },
+    {
+      code: CLIENT + "export const Steps = ['a', 'b'];",
+      errors: [{ messageId: "nonComponent", data: { name: "Steps" } }],
+    },
+    {
+      code: CLIENT + "export const Title = `x`, Offset = -1;",
+      errors: [
+        { messageId: "nonComponent", data: { name: "Title" } },
+        { messageId: "nonComponent", data: { name: "Offset" } },
+      ],
+    },
+    {
+      code: CLIENT + "export const useLimit = 3;",
+      errors: [{ messageId: "nonComponent", data: { name: "useLimit" } }],
     },
     {
       code: CLIENT + "export * from './x';",
