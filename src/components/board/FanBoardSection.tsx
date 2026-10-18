@@ -303,17 +303,22 @@ export function FanBoardSection({
   // shows even when the pick was added in another locale; a song that
   // dropped out of the catalog (moderated) is left out, mirroring how
   // "my picks" renders it unavailable (the builder drops unavailable
-  // picks; this only folds the live catalog into the flag). With no
-  // catalog (completed events) the stored flag and title stand. The
-  // text is computed every render so the disabled state and the copied
-  // text can't disagree.
+  // picks; this only folds the live catalog into the flag). The check
+  // is per group, exactly as `<BoardMyPicks>` gets `songsOf(groupId)`:
+  // on a festival a song can leave one group's catalog while staying
+  // in another's. An empty group catalog (completed events, a festival
+  // with no roster) is "no catalog", so the stored flag stands — `[]`
+  // can't tell "nothing in scope" from "everything deleted". The text
+  // is computed every render so the disabled state and the copied text
+  // can't disagree.
   const catalogById = new Map(catalog.map((s) => [String(s.songId), s]));
-  const copyablePicks =
-    catalog.length === 0
-      ? ballot.picks
-      : ballot.picks.map((p) =>
-          catalogById.has(p.songId) ? p : { ...p, available: false },
-        );
+  const copyablePicks = ballot.picks.map((p) => {
+    const groupSongs = songsOf(p.groupId);
+    return groupSongs.length === 0 ||
+      groupSongs.some((s) => String(s.songId) === p.songId)
+      ? p
+      : { ...p, available: false };
+  });
   const copyResult =
     state.kind === "ready" && active
       ? buildBoardCopyText({

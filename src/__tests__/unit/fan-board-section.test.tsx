@@ -27,6 +27,7 @@ import { absoluteUrl } from "@/lib/seo/entityUrl";
 import { groupIdFromFragment } from "@/lib/board/fragment";
 import type { BoardBlockSeed, BoardGroupView, BoardReadResponse } from "@/lib/board/types";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
+import type { AvailableSong } from "@/lib/types/predict";
 
 const LOCK = "2026-11-14T07:30:00.000Z";
 const SEED: BoardBlockSeed = {
@@ -404,6 +405,40 @@ copyLine(Aqours,未体験HORIZON),${url})`,
     await waitFor(() =>
       expect(screen.getByTestId("board-toast")).toHaveTextContent("copyUnavailable"),
     );
+    expect(trackEvent).not.toHaveBeenCalledWith("board_copy", expect.anything());
+  });
+
+  it("festival: a pick is copied only while its song is still in ITS group's catalog", async () => {
+    // Song 10 moved out of 蓮ノ空 (group 1) and now belongs to Aqours
+    // (group 3) only. "My picks" shows the 蓮ノ空 pick unavailable, so
+    // the copied text must not list it under 蓮ノ空 either.
+    const song = (id: number, title: string, groups: number[]) =>
+      ({
+        songId: id,
+        originalTitle: title,
+        originalLanguage: "ja",
+        variantLabel: null,
+        baseVersionId: null,
+        translations: [],
+        festivalGroupIds: groups,
+      }) as unknown as AvailableSong;
+    storePicks([
+      { id: "p1", groupId: "1", songId: "10", title: "残陽" },
+      { id: "p2", groupId: "1", songId: "11", title: "ハナムスビ" },
+    ]);
+    respond(READY);
+    render(
+      <FanBoardSection
+        eventId="107"
+        locale="ko"
+        seed={SEED}
+        catalog={[song(10, "残陽", [3]), song(11, "ハナムスビ", [1])]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "copy" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toContain("copyLine(蓮ノ空,ハナムスビ)");
+    expect(writeText.mock.calls[0][0]).not.toContain("残陽");
   });
 });
 
