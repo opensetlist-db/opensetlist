@@ -901,7 +901,7 @@ export default async function EventPage({ params }: Props) {
   // wishlist and the board client is not mounted at all (show-night
   // capacity numbers were qualified without it); cancelled events have
   // nothing to show.
-  const boardSeed: BoardBlockSeed | null = await (async () => {
+  const boardChipsSeed: Omit<BoardBlockSeed, "share"> | null = await (async () => {
     if (
       !event.boardEnabled ||
       (resolvedStatus !== "upcoming" && resolvedStatus !== "completed")
@@ -1182,6 +1182,17 @@ export default async function EventPage({ params }: Props) {
     [seriesShortName || seriesFullName, eventFullName]
       .filter(Boolean)
       .join(" ") || headerTitle;
+  // The copy-my-picks text names the event the same way the <title>
+  // and JSON-LD do (series short + event full): a bare "Day.1" in an
+  // X post says nothing. The link is the canonical path; the client
+  // adds the origin and the open group's fragment.
+  const boardSeed: BoardBlockSeed | null = boardChipsSeed && {
+    ...boardChipsSeed,
+    share: {
+      eventName: jsonLdName,
+      path: entityPath("events", locale, id, event.slug),
+    },
+  };
   const rosterHostGroups =
     rosterLineup?.groups.filter((g) => !g.isGuest) ?? [];
   const jsonLdPerformers =

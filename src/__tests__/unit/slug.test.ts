@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { beforeAll, describe, it, expect } from "vitest";
 import {
   deriveSlug,
   generateSlug,
@@ -86,6 +86,15 @@ describe("deriveSlug", () => {
   // source of truth for "what slug does this name produce" and the
   // contract is exactly what the slug-generator preview, every admin
   // POST auto-path, and generateUniqueSlug all depend on.
+  //
+  // The kuromoji dictionary load is one-time (the init Promise is
+  // memoized in src/lib/slug.ts) but takes seconds, and under the full
+  // suite's parallel load it pushed whichever test hit it first past the
+  // 5 s per-test timeout. Warm it here, under its own budget, so each
+  // test's timeout covers only its conversion.
+  beforeAll(async () => {
+    await deriveSlug("ペ");
+  }, 60_000);
 
   it("returns ASCII slug directly when input is ASCII-derivable", async () => {
     expect(await deriveSlug("Cerise Bouquet")).toBe("cerise-bouquet");

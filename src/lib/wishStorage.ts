@@ -21,7 +21,14 @@
  * SSR-safe: every read returns `[]` if `window === undefined`. Callers
  * hydrate after mount, mirroring the `useMounted` + delayed-read
  * pattern in `<ReactionButtons>`.
+ *
+ * Board-enabled events (n15-08) share this key: per-group wishes are
+ * stored here too, tagged with `groupId`, so the event-wide wishlist
+ * that renders during the show still lists every wish the fan made.
+ * On those events the server, not this module, owns the cap.
  */
+
+import { isDecimalId } from "@/lib/board/ids";
 
 /**
  * Minimal song-display payload persisted alongside each wish so the
@@ -50,6 +57,17 @@ export interface WishEntry {
   songId: number;
   dbId: string;
   song: WishSongDisplay;
+  /**
+   * Root group the wish was made under — set only for wishes added on
+   * a fan board (n15-08, board-enabled events). Absent = a LEGACY wish
+   * (the event-wide wishlist): it never counts toward a per-group cap
+   * and is never re-posted under a group. Optional so entries written
+   * by the previous release (and the non-board wishlist) stay valid.
+   */
+  groupId?: string;
+  /** False only when the server reported the song soft-deleted (a
+   *  `/board/mine` restore). Absent = available. Board wishes only. */
+  available?: boolean;
 }
 
 interface StoredShape {
@@ -101,7 +119,9 @@ function isWishEntry(value: unknown): value is WishEntry {
     v.songId > 0 &&
     typeof v.dbId === "string" &&
     v.dbId.length > 0 &&
-    isWishSongDisplay(v.song)
+    isWishSongDisplay(v.song) &&
+    (v.groupId === undefined || isDecimalId(v.groupId)) &&
+    (v.available === undefined || typeof v.available === "boolean")
   );
 }
 

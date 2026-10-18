@@ -40,7 +40,7 @@ vi.mock("vaul", () => {
 });
 
 import { PredictedSetlist } from "@/components/PredictedSetlist";
-import { DIMMED_ROW_OPACITY } from "@/components/PredictSongRow";
+import { DIMMED_ROW_OPACITY } from "@/components/predict-row-style";
 import { writePredictions, type PredictionEntry } from "@/lib/predictionsStorage";
 import type { WishSongDisplay } from "@/lib/wishStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";

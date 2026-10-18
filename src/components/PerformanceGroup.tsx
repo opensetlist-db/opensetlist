@@ -47,16 +47,6 @@ import type { ResolvedEventStatus } from "@/lib/eventStatus";
  * to flip — not acceptable for a navigation-secondary control.
  */
 
-// Layout constants live in a server-safe module so server-component
-// consumers (e.g. the song detail page's column-header strip) can
-// import them without the value resolving to `undefined` through the
-// RSC client-boundary. Re-exported here for backward compatibility
-// with existing call sites that import from `@/components/PerformanceGroup`.
-export {
-  PERFORMANCE_ROW_GRID,
-  PERFORMANCE_ROW_INDENT_PX,
-  PERFORMANCE_ROW_GAP_PX,
-} from "./performance-row-layout";
 import { PERFORMANCE_ROW_INDENT_PX } from "./performance-row-layout";
 
 export interface PerformanceEvent {

@@ -9,7 +9,8 @@ vi.mock("@/hooks/useMounted", () => ({
   useMounted: () => true,
 }));
 
-import { disagreeKey, useLocalDisagree } from "@/hooks/useLocalDisagree";
+import { useLocalDisagree } from "@/hooks/useLocalDisagree";
+import { disagreeKey } from "@/lib/localEngagementKeys";
 
 beforeEach(() => {
   window.localStorage.clear();

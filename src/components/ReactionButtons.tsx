@@ -6,6 +6,10 @@ import { trackEvent } from "@/lib/analytics";
 import { getAnonId } from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { REACTION_TYPES } from "@/lib/reactions";
+import {
+  REACTION_ACTIVE_BG,
+  REACTION_ACTIVE_COLOR,
+} from "@/components/reaction-style";
 import { colors, radius } from "@/styles/tokens";
 
 const EMPTY_REACTIONS: Record<string, string> = {};
@@ -24,13 +28,8 @@ const OPTIMISTIC_PENDING = "pending";
 // buttons disabled until the user navigates away.
 const REACTION_TIMEOUT_MS = 10_000;
 
-// Three-state palette (mockup §3-3). Active state pulls from the
-// shared design tokens so the brand-blue stays in lockstep with the
-// rest of the chrome. Re-exported under reaction-scoped names so
-// tests can assert against the same source of truth without
-// importing tokens directly.
-export const REACTION_ACTIVE_COLOR = colors.primary;
-export const REACTION_ACTIVE_BG = colors.primaryBg;
+// Three-state palette (mockup §3-3); the active pair lives in
+// `reaction-style.ts` so tests share the source of truth.
 const REACTION_BORDER_SOLID = colors.border;
 const REACTION_BORDER_DASHED = colors.borderDashed;
 const REACTION_COUNT_INACTIVE_COLOR = colors.textSecondary;

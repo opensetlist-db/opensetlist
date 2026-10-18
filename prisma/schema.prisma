@@ -296,8 +296,10 @@ model Artist {
   stageLinks   StageIdentityArtist[]
   songCredits  SongArtist[]
   eventSeries  EventSeries[]
-  // Fan board (n15) picks made under this root group.
+  // Fan board (n15) picks and per-group wishes (n15-08) filed under
+  // this root group.
   boardPicks   BoardPick[]
+  songWishes   SongWish[]
   events       Event[]
   albums       AlbumArtist[]
   setlistItems SetlistItemArtist[]
@@ -1381,22 +1383,42 @@ model Report {
   @@index([assignedScope, status])
 }
 
-// ── SONG WISH (Phase 1B engagement) ───────────────────
-// Wishlist rows feeding the per-event TOP-3 aggregate UI.
-// No anonId at 1B/1C — localStorage owns user-side dedup
-// before POST. Server-side dedup arrives at Phase 2 with
-// accounts. The (eventId, songId) index is for aggregation
-// reads, not uniqueness.
+// ── SONG WISH (Phase 1B engagement; per group since n15-08) ──
+// Wishlist rows feeding the per-event TOP-3 aggregate UI (and, on
+// board-enabled events, the fan board's "want" column).
+//
+// Two populations share this table:
+//   - Legacy rows (non-board events, and everything written before
+//     n15-08): anonId and groupArtistId are NULL. localStorage owns the
+//     per-user dedup and the cap of 3; the server accepts duplicates.
+//   - Board rows (events with Event.boardEnabled): anonId and
+//     groupArtistId are REQUIRED by the write route, which enforces
+//     ≤ 3 per (event, anon, group) under the same advisory lock as
+//     BoardPick. groupArtistId is the ROOT group the fan chose, stored
+//     rather than derived (a cross-group song counts only where the
+//     fan put it); the board attributes a legacy row to a group at
+//     read time instead.
+//
+// The unique (eventId, anonId, songId) makes a duplicate board wish
+// impossible even if the lock were bypassed; legacy rows keep NULL
+// anonIds, which never collide in Postgres, so existing duplicates and
+// the pre-n15-08 write path stay valid against this schema.
+// The (eventId, songId) index is for the overall TOP-3 aggregation.
 model SongWish {
-  id        String   @id @default(uuid())
-  eventId   BigInt
-  songId    BigInt
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  eventId       BigInt
+  songId        BigInt
+  anonId        String?  @db.VarChar(64)
+  groupArtistId BigInt?
+  createdAt     DateTime @default(now())
 
-  event Event @relation(fields: [eventId], references: [id])
-  song  Song  @relation(fields: [songId], references: [id])
+  event       Event   @relation(fields: [eventId], references: [id])
+  song        Song    @relation(fields: [songId], references: [id])
+  groupArtist Artist? @relation(fields: [groupArtistId], references: [id])
 
+  @@unique([eventId, anonId, songId])
   @@index([eventId, songId])
+  @@index([eventId, anonId])
 }
 
 // ── BOARD PICK (n15 fan board) ────────────────────────
