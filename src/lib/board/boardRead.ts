@@ -12,7 +12,7 @@ import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
 import { seriesPrimaryArtistOf } from "@/lib/board/boardGroups";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { readStarterMap } from "@/lib/board/starterPicks";
-import { boardColumnLabel } from "@/lib/board/thresholds";
+import { buildExpectColumn, type BoardSongCount } from "@/lib/board/aggregate";
 import type {
   BoardGroupView,
   BoardReadResponse,
@@ -69,26 +69,82 @@ export const getBoardControlCached = cachedQuery(
 
 type AggregateStatus = "upcoming" | "completed";
 
-/** Starter ids → display refs via the group's (already cached) base
- *  catalog. A starter that is no longer in the catalog (soft-deleted,
- *  or became a variant) is dropped: starters are operator copy, not
- *  votes, so there is nothing to preserve. */
-function starterRefs(
-  songIds: readonly string[],
+/** A group's (already cached) base catalog as song id → localized
+ *  title. Holds live base songs only, so a missing id means the song is
+ *  gone from the group's catalog (soft-deleted, or became a variant). */
+function catalogTitles(
   catalog: Awaited<ReturnType<typeof getAvailableSongsCached>>,
   locale: string,
+): Map<string, string> {
+  return new Map(
+    catalog.map((s) => [
+      String(s.songId),
+      displayOriginalTitle(s, s.translations, locale).main,
+    ]),
+  );
+}
+
+/** Starter ids → display refs. A starter that is no longer in the
+ *  catalog is dropped: starters are operator copy, not votes, so there
+ *  is nothing to preserve. */
+function starterRefs(
+  songIds: readonly string[],
+  titles: ReadonlyMap<string, string>,
 ): BoardSongRef[] {
-  const byId = new Map(catalog.map((s) => [String(s.songId), s]));
   const out: BoardSongRef[] = [];
   for (const id of songIds) {
-    const s = byId.get(id);
-    if (!s) continue;
-    out.push({
-      songId: id,
-      title: displayOriginalTitle(s, s.translations, locale).main,
-    });
+    const title = titles.get(id);
+    if (title !== undefined) out.push({ songId: id, title });
   }
   return out;
+}
+
+/**
+ * Fan picks of one event, grouped — the only two queries the aggregate
+ * adds, both over `BoardPick`'s (eventId, groupArtistId) index:
+ *
+ *   - per (group, song): row count + first submission. One row per
+ *     distinct picked song, not per pick; the ranking then keeps 3.
+ *   - per group: distinct anon ids. `BoardPick.anonId` is NOT NULL, but
+ *     the threshold rule is "distinct non-null anon ids" (legacy wish
+ *     rows, which have none, join the board later), so the count is
+ *     written that way.
+ *
+ * Raw SQL for the second because Prisma's `groupBy` has no
+ * `COUNT(DISTINCT …)`; grouping by (group, anon) instead would ship one
+ * row per participant just to count them.
+ */
+async function loadPickCounts(eventId: bigint) {
+  const [songRows, participantRows] = await Promise.all([
+    prisma.boardPick.groupBy({
+      by: ["groupArtistId", "songId"],
+      where: { eventId },
+      _count: { _all: true },
+      _min: { createdAt: true },
+    }),
+    prisma.$queryRaw<{ groupArtistId: bigint; participants: number }[]>`
+      SELECT "groupArtistId", COUNT(DISTINCT "anonId")::int AS "participants"
+      FROM "BoardPick"
+      WHERE "eventId" = ${eventId} AND "anonId" IS NOT NULL
+      GROUP BY "groupArtistId"
+    `,
+  ]);
+  const songsByGroup = new Map<string, BoardSongCount[]>();
+  for (const r of songRows) {
+    const groupId = String(r.groupArtistId);
+    const list = songsByGroup.get(groupId) ?? [];
+    list.push({
+      songId: String(r.songId),
+      count: r._count._all,
+      // `_min` is null only for an empty group, which groupBy never returns.
+      firstAt: r._min.createdAt ?? new Date(0),
+    });
+    songsByGroup.set(groupId, list);
+  }
+  const participantsByGroup = new Map(
+    participantRows.map((r) => [String(r.groupArtistId), Number(r.participants)]),
+  );
+  return { songsByGroup, participantsByGroup };
 }
 
 export const getBoardAggregateCached = cachedQuery(
@@ -97,41 +153,47 @@ export const getBoardAggregateCached = cachedQuery(
   async (eventId: bigint, locale: string, _status: AggregateStatus) => {
     const control = await getBoardControlCached(eventId);
     const primary = seriesPrimaryArtistOf(control?.eventSeries);
-    const groups = await loadBoardGroups({
-      eventId,
-      primaryArtistId: primary?.id ?? null,
-      locale,
-    });
+    const [groups, counts] = await Promise.all([
+      loadBoardGroups({
+        eventId,
+        primaryArtistId: primary?.id ?? null,
+        locale,
+      }),
+      loadPickCounts(eventId),
+    ]);
     const starters = readStarterMap(control?.boardStarterSongIds ?? null);
-    // Catalogs only for groups that actually have starters — the
-    // common "no starters configured" board does no catalog reads.
+    // Titles come from the group's (already cached) base catalog — the
+    // same entry the event page's picker reads — so the aggregate adds
+    // no song query. Loaded only for groups that have something to
+    // title: a board with no starters and no picks does no catalog reads.
     const catalogs = await Promise.all(
-      groups.map((g) =>
-        starters[String(g.artistId)]
+      groups.map((g) => {
+        const groupId = String(g.artistId);
+        return starters[groupId] || counts.songsByGroup.has(groupId)
           ? getAvailableSongsCached(BigInt(g.artistId), locale)
-          : Promise.resolve([]),
-      ),
+          : Promise.resolve([]);
+      }),
     );
+    // Picks filed under a group that is no longer on this board (roster
+    // edit) simply have no column to land in; they stay in the table.
     const views: BoardGroupView[] = groups.map((g, i) => {
       const groupId = String(g.artistId);
-      // Fan picks arrive in n15-03/04; until then every expect column
-      // has zero submissions and is therefore an operator column.
-      const submissions = 0;
-      const participants = 0;
+      const titles = catalogTitles(catalogs[i], locale);
       return {
         groupId,
         slug: g.slug,
         name: g.label,
         color: g.color,
-        expects: {
-          top: [],
-          submissions,
-          participants,
-          label: boardColumnLabel(submissions, participants),
-        },
-        starters: starterRefs(starters[groupId] ?? [], catalogs[i], locale),
+        expects: buildExpectColumn(
+          counts.songsByGroup.get(groupId) ?? [],
+          counts.participantsByGroup.get(groupId) ?? 0,
+          (songId) => titles.get(songId) ?? null,
+        ),
+        starters: starterRefs(starters[groupId] ?? [], titles),
       };
     });
+    // Computation time, not request time: on a cache hit this is when
+    // the counts were taken, which is what "as of" promises the reader.
     return { asOf: new Date(), groups: views };
   },
   {
