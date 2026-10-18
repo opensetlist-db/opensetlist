@@ -5,21 +5,45 @@ import { useState } from "react";
 // client bundle doesn't include the multi-KB prompt-content strings.
 import {
   REGISTERED_IP_KEYS,
+  REGISTERED_FRANCHISE_KEYS,
   GENERIC_IP_KEY,
   DEFAULT_IP_KEY,
 } from "@/lib/translator/prompts/keys";
+// SDK-free module — importing @/lib/translator/anthropic here would pull
+// the Anthropic SDK into the client bundle.
+import {
+  ANTHROPIC_MODELS,
+  ANTHROPIC_MODEL_LABELS,
+  type AnthropicModel,
+} from "@/lib/translator/anthropicModels";
 
 const LOCALES = ["ko", "ja", "en"] as const;
 type Locale = (typeof LOCALES)[number];
 
-type Provider = "gemini" | "openai";
+type Provider = "gemini" | "openai" | "anthropic";
 // "default" means: let the server fall back to TRANSLATION_PROVIDER env.
-type ProviderChoice = Provider | "default";
+// Claude gets one choice per model (Haiku = the live translator's model,
+// Sonnet = quality ceiling for comparisons); each maps to provider
+// "anthropic" plus an explicit `model`, which the server re-validates.
+type ProviderChoice = "default" | "gemini" | "openai" | AnthropicModel;
+
+function providerRequestFields(
+  choice: ProviderChoice,
+): { provider?: Provider; model?: string } {
+  if (choice === "default") return {};
+  if (choice === "gemini" || choice === "openai") return { provider: choice };
+  return { provider: "anthropic", model: choice };
+}
 
 // Picks the system prompt to send. Registered IP slugs come from the
-// IP_PROMPTS keys; "generic" sends FALLBACK_PROMPT. The server validates
+// IP_PROMPTS keys, franchise keys (e.g. "love-live") from
+// FRANCHISE_PROMPTS; "generic" sends FALLBACK_PROMPT. The server validates
 // against the same whitelist (see api/admin/translation-debug/route.ts).
-const IP_CHOICES: readonly string[] = [...REGISTERED_IP_KEYS, GENERIC_IP_KEY];
+const IP_CHOICES: readonly string[] = [
+  ...REGISTERED_IP_KEYS,
+  ...REGISTERED_FRANCHISE_KEYS,
+  GENERIC_IP_KEY,
+];
 
 type DebugResponse = {
   systemPrompt: string;
@@ -29,6 +53,7 @@ type DebugResponse = {
   parseError: string | null;
   sourceLocale: Locale;
   provider: Provider;
+  model?: string | null;
   ipKey: string;
 };
 
@@ -60,7 +85,7 @@ export default function TranslationDebugPage() {
           ipKey,
           // Only send `provider` when the admin explicitly picked one; an
           // absent field lets the server use TRANSLATION_PROVIDER env.
-          ...(providerChoice !== "default" ? { provider: providerChoice } : {}),
+          ...providerRequestFields(providerChoice),
         }),
       });
       const data = await res.json();
@@ -77,6 +102,7 @@ export default function TranslationDebugPage() {
             parseError: null,
             sourceLocale: data.sourceLocale ?? sourceLocale,
             provider: data.provider ?? "gemini",
+            model: data.model ?? null,
             ipKey: data.ipKey ?? ipKey,
           });
         }
@@ -129,6 +155,11 @@ export default function TranslationDebugPage() {
             <option value="default">기본 (환경 변수)</option>
             <option value="gemini">Gemini</option>
             <option value="openai">OpenAI</option>
+            {ANTHROPIC_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {ANTHROPIC_MODEL_LABELS[m]}
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -190,7 +221,7 @@ export default function TranslationDebugPage() {
           )}
 
           <DebugBlock
-            label={`LLM 원본 출력 (${result.provider})`}
+            label={`LLM 원본 출력 (${result.provider}${result.model ? ` / ${result.model}` : ""})`}
             content={result.raw || "(번역기 호출 안됨)"}
           />
 

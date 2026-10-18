@@ -1,5 +1,6 @@
 import { OpenAITranslator } from "./openai";
 import { GeminiTranslator } from "./gemini";
+import { AnthropicTranslator } from "./anthropic";
 import type { Translator } from "./types";
 
 export function getTranslator(): Translator {
@@ -23,6 +24,16 @@ export function getTranslator(): Translator {
       );
     }
     return new OpenAITranslator(key);
+  }
+
+  if (provider === "anthropic") {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) {
+      throw new Error(
+        "ANTHROPIC_API_KEY not set; required for TRANSLATION_PROVIDER=anthropic",
+      );
+    }
+    return new AnthropicTranslator(key);
   }
 
   throw new Error(`Unknown TRANSLATION_PROVIDER: ${provider}`);

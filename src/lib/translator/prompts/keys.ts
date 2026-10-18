@@ -24,6 +24,12 @@ export const REGISTERED_IP_KEYS: readonly string[] = [
   "nijigasaki",
 ];
 
+// Franchise-level prompt keys (Group.slug) — lock-step with the
+// FRANCHISE_PROMPTS keys in ./index.ts. Surfaced as `ipKey` by the
+// resolver when it lands on a franchise prompt, and offered in the admin
+// debug dropdown next to the per-IP keys.
+export const REGISTERED_FRANCHISE_KEYS: readonly string[] = ["love-live"];
+
 export const GENERIC_IP_KEY = "generic";
 
 // Default ipKey for the admin debug surface (UI initial state +
