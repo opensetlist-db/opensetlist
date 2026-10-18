@@ -353,7 +353,6 @@ describe("<FanBoardSection> copy my picks", () => {
   });
   afterEach(() => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
-    window.localStorage.clear();
   });
 
   it("disabled at zero picks", async () => {
