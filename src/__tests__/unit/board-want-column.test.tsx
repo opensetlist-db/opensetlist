@@ -371,7 +371,12 @@ describe("<FanBoardSection> want column", () => {
     expect(
       fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
     ).toBe(false);
-    expect(trackEvent).not.toHaveBeenCalledWith("board_wish_remove", expect.anything());
+    // Tracked as a board wish removal, flagged legacy, with no group.
+    expect(trackEvent).toHaveBeenCalledWith("board_wish_remove", {
+      event_id: "107",
+      song_id: "10",
+      legacy: true,
+    });
   });
 
   it("a /board/mine restore fills my wishes, but never hands back legacy rows", async () => {

@@ -13,6 +13,7 @@ import { seriesPrimaryArtistOf } from "@/lib/board/boardGroups";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { readStarterMap } from "@/lib/board/starterPicks";
 import {
+  addSongCount,
   buildBoardColumn,
   mergeLegacyWishes,
   type BoardSongCount,
@@ -221,8 +222,7 @@ async function loadWishCounts(eventId: bigint) {
         legacy.set(songId, { ...r, songId });
         continue;
       }
-      prev.count += r.count;
-      if (r.firstAt.getTime() < prev.firstAt.getTime()) prev.firstAt = r.firstAt;
+      addSongCount(prev, r);
     }
   }
 
@@ -274,14 +274,23 @@ export const getBoardAggregateCached = cachedQuery(
     // any of its units/solos", i.e. exactly the songs whose root is
     // that group. A song in no catalog (soft-deleted, or credited
     // outside the roster) stays out of every column.
-    const wishesByGroup = hasLegacy
-      ? mergeLegacyWishes(wishCounts.songsByGroup, wishCounts.legacy, (songId) => {
-          const i = catalogs.findIndex((c) =>
-            c.some((s) => String(s.songId) === songId),
-          );
-          return i === -1 ? null : String(groups[i].artistId);
-        })
-      : wishCounts.songsByGroup;
+    let wishesByGroup = wishCounts.songsByGroup;
+    if (hasLegacy) {
+      // song id → first group (roster order) whose catalog holds it;
+      // later groups never overwrite an earlier one.
+      const groupOfSong = new Map<string, string>();
+      groups.forEach((g, i) => {
+        for (const s of catalogs[i]) {
+          const id = String(s.songId);
+          if (!groupOfSong.has(id)) groupOfSong.set(id, String(g.artistId));
+        }
+      });
+      wishesByGroup = mergeLegacyWishes(
+        wishCounts.songsByGroup,
+        wishCounts.legacy,
+        (songId) => groupOfSong.get(songId) ?? null,
+      );
+    }
     // Picks and wishes filed under a group that is no longer on this
     // board (roster edit) simply have no column to land in; they stay
     // in the table.

@@ -56,7 +56,8 @@ export type PickFailure =
   | "network";
 
 export type PickOutcome =
-  | { ok: true; kind: "added" | "removed"; groupId: string }
+  /** `groupId` is null only for a legacy wish (it has no group). */
+  | { ok: true; kind: "added" | "removed"; groupId: string | null }
   | { ok: false; reason: PickFailure };
 
 /** One ballot entry, either kind — the pick storage shape, which the
@@ -403,8 +404,9 @@ export function useBoardBallot({
    * Remove a legacy wish (made on the event-wide wishlist before
    * per-group wishes). The server deletes the row by its id without
    * attributing it to anyone; our anon id rides along only because the
-   * board contract accepts one. Not tracked as `board_wish_remove`: it
-   * has no group.
+   * board contract accepts one. Tracked as `board_wish_remove` with
+   * `legacy: true` and no group id — it is a wish removal on a board
+   * event, but there is no group to name.
    */
   const removeLegacyWish = useCallback(
     async (entry: WishEntry): Promise<PickOutcome> => {
@@ -432,7 +434,14 @@ export function useBoardBallot({
           ]);
           return next;
         });
-        return { ok: true, kind: "removed", groupId: "" };
+        if (res.status === 200) {
+          trackEvent("board_wish_remove", {
+            event_id: eventId,
+            song_id: String(entry.songId),
+            legacy: true,
+          });
+        }
+        return { ok: true, kind: "removed", groupId: null };
       } finally {
         setPendingFor(key, false);
       }

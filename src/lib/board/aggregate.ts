@@ -48,6 +48,15 @@ export function rankBoardSongs(
 }
 
 /**
+ * Fold one more batch of submissions of the same song into `into`:
+ * counts add, the earlier first submission wins. Mutates `into`.
+ */
+export function addSongCount(into: BoardSongCount, more: BoardSongCount): void {
+  into.count += more.count;
+  if (more.firstAt.getTime() < into.firstAt.getTime()) into.firstAt = more.firstAt;
+}
+
+/**
  * File legacy wishes (n15-08) under the board's groups.
  *
  * A legacy wish (written before per-group wishes, so no stored group
@@ -77,10 +86,7 @@ export function mergeLegacyWishes(
     const rows = out.get(groupId) ?? [];
     const same = rows.find((r) => r.songId === row.songId);
     if (same) {
-      same.count += row.count;
-      if (row.firstAt.getTime() < same.firstAt.getTime()) {
-        same.firstAt = row.firstAt;
-      }
+      addSongCount(same, row);
     } else {
       rows.push({ ...row });
     }

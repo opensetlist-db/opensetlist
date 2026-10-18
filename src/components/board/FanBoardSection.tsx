@@ -99,6 +99,28 @@ function failureKey(reason: PickFailure) {
   }
 }
 
+/** Everything that differs between the two columns of a group, in one
+ *  place (n15-08): which aggregate column, its heading, its analytics
+ *  name and its feedback copy. */
+const COLUMN = {
+  wish: {
+    field: "wishes",
+    name: "want",
+    heading: "colWant",
+    mineBadge: "mineWishBadge",
+    added: "addedWish",
+    removed: "removedWish",
+  },
+  pick: {
+    field: "expects",
+    name: "expect",
+    heading: "colExpect",
+    mineBadge: "mineBadge",
+    added: "added",
+    removed: "removed",
+  },
+} as const;
+
 const TOAST_MS = 3000;
 const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
 // Stable default so the per-group filter memo doesn't recompute on
@@ -292,8 +314,8 @@ export function FanBoardSection({
     if (outcome.ok) {
       const text =
         outcome.kind === "added"
-          ? t(kind === "wish" ? "addedWish" : "added", { group })
-          : t(kind === "wish" ? "removedWish" : "removed");
+          ? t(COLUMN[kind].added, { group })
+          : t(COLUMN[kind].removed);
       setToast({ text, error: false });
       return;
     }
@@ -494,10 +516,7 @@ export function FanBoardSection({
                   (p) => p.groupId === active.groupId,
                 );
                 return (
-                  <div
-                    key={kind}
-                    data-testid={kind === "wish" ? "board-col-want" : "board-col-expect"}
-                  >
+                  <div key={kind} data-testid={`board-col-${COLUMN[kind].name}`}>
                     <ColumnPanel
                       eventId={eventId}
                       group={active}
@@ -599,22 +618,15 @@ function ColumnPanel({
   /** My entries in this column — highlighted wherever they appear. */
   mySongIds: ReadonlySet<string>;
 }) {
-  // A response cached by the previous release has no want column;
-  // render it as empty rather than crash during the switch-over.
-  const column = (kind === "wish" ? group.wishes : group.expects) ?? {
-    top: [],
-    submissions: 0,
-    participants: 0,
-    label: "operator" as const,
-  };
+  const meta = COLUMN[kind];
+  const column = group[meta.field];
   const label = column.label;
   const showStarters = label === "operator" && group.starters.length > 0;
-  const columnName = kind === "wish" ? "want" : "expect";
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
       : undefined;
-  const mineBadge = kind === "wish" ? t("mineWishBadge") : t("mineBadge");
+  const mineBadge = t(meta.mineBadge);
   // Song links double as a listening guide for a group the fan doesn't
   // know; the click tells us whether anyone uses them that way.
   // `source` keeps crowd rows apart from operator starters.
@@ -623,7 +635,7 @@ function ColumnPanel({
       event_id: eventId,
       group_id: group.groupId,
       song_id: songId,
-      column: columnName,
+      column: meta.name,
       source,
     });
   return (
@@ -632,7 +644,7 @@ function ColumnPanel({
         className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium"
         style={{ color: colors.textSecondary }}
       >
-        {kind === "wish" ? t("colWant") : t("colExpect")}
+        {t(meta.heading)}
         {/* Few participants: a 2-vs-1 must not read like a landslide.
             Plain counts and this label — never shares or bars. */}
         {label === "early" && (
