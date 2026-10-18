@@ -1,0 +1,13 @@
+2026-10-18T20:45:13.848Z login ok
+2026-10-18T20:45:14.131Z baseline GET 200 282ms source=cache rev=1914 items=23
+2026-10-18T20:45:14.261Z channel SUBSCRIBED
+2026-10-18T20:45:14.606Z save1 POST 201 345ms id=3055 rev=1915
+2026-10-18T20:45:14.653Z broadcast {"id":"31e44acd-f1f4-4832-a61f-37f8d7c5fb81","rev":1915,"kind":"setlist"}
+2026-10-18T20:45:14.667Z broadcast1 received rev=1915 +392ms after save start
+2026-10-18T20:45:14.849Z hinted GET 200 182ms source=warm verify=satisfied rev=1915 items=24
+2026-10-18T20:45:15.027Z hinted GET#2 200 178ms source=warm verify=satisfied rev=1915
+2026-10-18T20:45:15.363Z save2 DELETE 200 336ms
+2026-10-18T20:45:15.416Z broadcast {"id":"245f8b42-9ac5-498f-8e97-7d21f9e38506","rev":1916,"kind":"setlist"}
+2026-10-18T20:45:15.433Z broadcast2 received rev=1916 +389ms after delete start
+2026-10-18T20:45:15.603Z final GET 200 source=warm verify=satisfied rev=1916 items=23 (baseline 23)
+2026-10-18T20:45:15.604Z channel CLOSED

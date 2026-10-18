@@ -1,0 +1,31 @@
+
+[A3c board 109] /ja/events/109/lovelive-15th-fes-day1 → 200 4079ms url=/ja/events/109/lovelive-15th-fes-day1
+  page horizontal overflow: false
+  /api requests: ["/api/events/109/board?locale=ja","/api/setlist?eventId=109&locale=ja","/api/setlist?eventId=109&locale=ja&minRev=0"]
+  chips: {"scrollWidth":609,"clientWidth":341,"overflowX":"auto","count":8} → scrolls horizontally: true
+  col want: {"x":31,"y":2951.875,"width":313,"height":104}
+  col expect: {"x":31,"y":3071.875,"width":313,"height":104}
+  columns stacked (one below the other, same x): true
+  board title text: 🎪 ファンボード
+  board requests: /api/events/109/board?locale=ja
+
+[A3d ongoing 111] /ja/events/111 → 200 3449ms url=/ja/events/111/rehearsal-lovelive-fes-2020-day1
+  page horizontal overflow: false
+  /api requests: ["/api/setlist?eventId=111&locale=ja&minRev=1916"]
+  board requests on ongoing page: 0 []
+  board section mounted: 0
+
+[A3d disabled 110] /ja/events/110 → 200 4550ms url=/ja/events/110/lovelive-15th-fes-day2
+  page horizontal overflow: false
+  /api requests: ["/api/setlist?eventId=110&locale=ja","/api/setlist?eventId=110&locale=ja&minRev=0"]
+  board requests on disabled page: 0
+  board section mounted: 0
+  wishlist-related texts: []
+  wish requests: []
+[A3d disabled 110] wishlist heading "この公演で聴きたい曲" visible: false
+  board section mounted: 0
+  /api requests: ["/api/setlist?eventId=110&locale=ja","/api/setlist?eventId=110&locale=ja&minRev=0"]
+[/ja/events/111/rehearsal-lovelive-fes-2020-day1] visible headings: ["セットリスト","一言感想"]
+  wishlist heading visible: false
+  board section mounted: 0
+  /api requests: ["/api/setlist?eventId=111&locale=ja&minRev=1916","/api/impressions?eventId=111"]
