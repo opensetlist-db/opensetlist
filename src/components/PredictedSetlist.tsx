@@ -37,6 +37,8 @@ import {
   type PredictionEntry,
 } from "@/lib/predictionsStorage";
 import type { BoardToBuilderOutcome } from "@/lib/board/toPredictions";
+import type { BoardChip } from "@/lib/board/types";
+import { BoardPublishProposal } from "@/components/board/BoardPublishProposal";
 import { calcPredictScore } from "@/lib/predictScore";
 import { isSongMatched } from "@/lib/songMatch";
 import { trackEvent } from "@/lib/analytics";
@@ -103,6 +105,14 @@ interface Props {
   bridgeOutcome?: BoardToBuilderOutcome | null;
   /** Mode switch back to the board block; absent on non-board events. */
   onBackToBoard?: () => void;
+  /**
+   * The board's groups (n15-09b), present only where the board takes
+   * picks right now. Enables "put on the board": the list → an
+   * editable proposal → published expected songs.
+   */
+  boardGroups?: readonly BoardChip[];
+  /** After a publish, so the parent refreshes the board block. */
+  onBoardPublished?: () => void;
 }
 
 /**
@@ -143,6 +153,8 @@ export function PredictedSetlist({
   unitFilters,
   bridgeOutcome = null,
   onBackToBoard,
+  boardGroups,
+  onBoardPublished,
 }: Props) {
   const t = useTranslations("Predict");
   const mounted = useMounted();
@@ -235,6 +247,9 @@ export function PredictedSetlist({
   // ranked; the builder says so until the fan reorders. Stored with the
   // list, so the label survives a reload.
   const [provisional, setProvisional] = useState(false);
+  // "Put on the board" panel (n15-09b) and the last publish's count.
+  const [proposalOpen, setProposalOpen] = useState(false);
+  const [publishedCount, setPublishedCount] = useState<number | null>(null);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
   if (mounted && hydratedKey !== eventId) {
     setHydratedKey(eventId);
@@ -494,6 +509,14 @@ export function PredictedSetlist({
   // Bridge strip parts (n15-09a), see the strip below.
   const showBridgeNotice = bridgeOutcome !== null && bridgeOutcome.kind !== "none";
   const showProvisional = provisional && predictions.length > 0;
+  // "Put on the board" (n15-09b): only before the lock, with a list to
+  // derive from. An empty list has nothing to propose — clearing the
+  // board is done on the board itself.
+  const canPublish =
+    !isLocked &&
+    boardGroups !== undefined &&
+    boardGroups.length > 0 &&
+    predictions.length > 0;
 
   return (
     <div
@@ -574,7 +597,7 @@ export function PredictedSetlist({
           the board import that opened this tab, the provisional-order
           label, and the switch back to the board. Hidden as a whole
           when none applies, so non-board events render as before. */}
-      {isPreShow && (onBackToBoard || showBridgeNotice || showProvisional) && (
+      {isPreShow && (onBackToBoard || showBridgeNotice || showProvisional || boardGroups) && (
           <div
             className="text-[11px]"
             style={{
@@ -602,18 +625,61 @@ export function PredictedSetlist({
                 {t("provisionalOrder")}
               </p>
             )}
-            {onBackToBoard && (
-              <button
-                type="button"
-                onClick={onBackToBoard}
-                className="mt-0.5 underline"
-                style={{ color: colors.primary }}
-              >
-                🎪 {t("toBoard")}
-              </button>
+            {/* Publish outcome (n15-09b). Unlike the import notice,
+                this region stays mounted while the builder does (a
+                publish doesn't remount it), so it can announce. */}
+            {boardGroups && (
+              <p role="status" data-testid="predict-board-published">
+                {publishedCount !== null
+                  ? t("boardPublished", { count: publishedCount })
+                  : ""}
+              </p>
             )}
+            <div className="mt-0.5 flex flex-wrap gap-x-3">
+              {onBackToBoard && (
+                <button
+                  type="button"
+                  onClick={onBackToBoard}
+                  className="underline"
+                  style={{ color: colors.primary }}
+                >
+                  🎪 {t("toBoard")}
+                </button>
+              )}
+              {canPublish && !proposalOpen && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPublishedCount(null);
+                    setProposalOpen(true);
+                  }}
+                  className="underline"
+                  style={{ color: colors.primary }}
+                >
+                  📌 {t("toBoardPublish")}
+                </button>
+              )}
+            </div>
           </div>
         )}
+
+      {/* The proposal derives from the list as it stands at open and
+          is unmounted on close, so reopening derives afresh. */}
+      {canPublish && proposalOpen && boardGroups && (
+        <BoardPublishProposal
+          eventId={eventId}
+          locale={locale}
+          groups={boardGroups}
+          catalog={availableSongs}
+          draft={predictions}
+          onCancel={() => setProposalOpen(false)}
+          onPublished={(count) => {
+            setProposalOpen(false);
+            setPublishedCount(count);
+            onBoardPublished?.();
+          }}
+        />
+      )}
 
       {/* Predicted rows */}
       <DndContext

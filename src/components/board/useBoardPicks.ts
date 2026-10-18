@@ -17,6 +17,7 @@ import type {
   BoardMineResponse,
   BoardPickCreated,
   BoardPickErrorCode,
+  BoardPublishResponse,
 } from "@/lib/board/types";
 
 /**
@@ -38,6 +39,27 @@ export type PickFailure =
 export type PickOutcome =
   | { ok: true; kind: "added" | "removed"; groupId: string }
   | { ok: false; reason: PickFailure };
+
+/** The `Board` i18n key a failure is shown with — shared by the board
+ *  block's toasts and the publish proposal (n15-09b). */
+export function pickFailureKey(reason: PickFailure) {
+  switch (reason) {
+    case "cap_reached":
+      return "errorCap" as const;
+    case "group_conflict":
+      return "errorGroupConflict" as const;
+    case "board_locked":
+      return "errorLocked" as const;
+    case "board_disabled":
+      return "errorDisabled" as const;
+    case "busy":
+      return "errorBusy" as const;
+    case "invalid_anon_id":
+      return "errorNoStorage" as const;
+    default:
+      return "errorGeneric" as const;
+  }
+}
 
 const WRITE_TIMEOUT_MS = 8000;
 /** "Restore my picks" tries: the first request plus two retries. */
@@ -83,12 +105,17 @@ export function useBoardPicks({
   eventId,
   locale,
   active,
+  revision = 0,
 }: {
   eventId: string;
   locale: string;
   /** False until the board read answered with groups — no "mine"
    *  request is made for a hidden / failed / ongoing board. */
   active: boolean;
+  /** Bumped when the ballot was replaced outside this hook — a publish
+   *  from the Predict tab (n15-09b) writes local storage itself — so
+   *  the hook re-reads it. */
+  revision?: number;
 }) {
   const [picks, setPicks] = useState<StoredBoardPick[]>([]);
   // Song ids with a request in flight — the row/picker disables them so
@@ -105,8 +132,9 @@ export function useBoardPicks({
   // effect — `react-hooks/set-state-in-effect`.
   const mounted = useMounted();
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
-  if (mounted && hydratedKey !== eventId) {
-    setHydratedKey(eventId);
+  const storageKey = `${eventId}:${revision}`;
+  if (mounted && hydratedKey !== storageKey) {
+    setHydratedKey(storageKey);
     setPicks(readBoardPicks(eventId));
   }
 
@@ -272,4 +300,38 @@ export function useBoardPicks({
   );
 
   return { picks, pending, add, remove };
+}
+
+export type PublishOutcome =
+  | { ok: true; picks: BoardPickCreated[] }
+  | { ok: false; reason: PickFailure };
+
+/**
+ * Publish a whole ballot (n15-09b): `PUT /board/picks` with the given
+ * picks, which replace the anon's expected songs atomically. The
+ * caller owns local storage and the feedback — this is only the call
+ * and its typed outcome, on the same timeout and error mapping as the
+ * single add/remove above.
+ */
+export async function publishBallot(
+  eventId: string,
+  picks: ReadonlyArray<{ groupId: string; songId: string }>,
+): Promise<PublishOutcome> {
+  const anonId = getAnonId();
+  if (!anonId) return { ok: false, reason: "invalid_anon_id" };
+  const res = await callJson(`/api/events/${eventId}/board/picks`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      anonId,
+      picks: picks.map((p) => ({ groupId: p.groupId, songId: p.songId })),
+    }),
+  });
+  if (!res) return { ok: false, reason: "network" };
+  if (res.status === 200) {
+    const body = res.body as BoardPublishResponse | null;
+    if (body && Array.isArray(body.picks)) return { ok: true, picks: body.picks };
+    return { ok: false, reason: "network" };
+  }
+  return { ok: false, reason: errorCode(res.body) ?? "network" };
 }

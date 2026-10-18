@@ -137,6 +137,8 @@ export type BoardPickErrorCode =
   | "board_locked"
   | "not_owner"
   | "cap_reached"
+  /** A publish (n15-09b) listed one song twice. */
+  | "duplicate_song"
   | "group_conflict"
   | "busy";
 
@@ -146,4 +148,10 @@ export interface BoardPickCreated {
   groupId: string;
   songId: string;
   createdAt: string;
+}
+
+/** Body of a successful publish (n15-09b): the whole resulting
+ *  ballot, oldest first. */
+export interface BoardPublishResponse {
+  picks: BoardPickCreated[];
 }

@@ -14,6 +14,7 @@ import type {
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import type { BuilderRequest } from "@/lib/board/toPredictions";
+import type { BoardChip } from "@/lib/board/types";
 
 interface Props {
   eventId: string;
@@ -89,6 +90,10 @@ interface Props {
   builderRequest?: BuilderRequest | null;
   /** The builder's "back to board" switch; absent → no switch. */
   onBackToBoard?: () => void;
+  /** Board groups for the builder's "put on the board" (n15-09b);
+   *  absent → no publish. */
+  boardGroups?: readonly BoardChip[];
+  onBoardPublished?: () => void;
 }
 
 /**
@@ -136,6 +141,8 @@ export function SetlistSection({
   eventArtistId,
   builderRequest = null,
   onBackToBoard,
+  boardGroups,
+  onBoardPublished,
 }: Props) {
   const t = useTranslations("Setlist");
   const tPredict = useTranslations("Predict");
@@ -319,6 +326,8 @@ export function SetlistSection({
         unitFilters={unitFilters}
         bridgeOutcome={builderRequest?.outcome ?? null}
         onBackToBoard={onBackToBoard}
+        boardGroups={boardGroups}
+        onBoardPublished={onBoardPublished}
       />
     );
 

@@ -24,7 +24,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 import { BoardMyPicks } from "@/components/board/BoardMyPicks";
 import { pickTitle } from "@/lib/board/pickTitle";
-import { useBoardPicks, type PickFailure } from "@/components/board/useBoardPicks";
+import { pickFailureKey, useBoardPicks } from "@/components/board/useBoardPicks";
 
 /**
  * Fan board block (n15).
@@ -68,25 +68,6 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
 /** Failure code → `Board` message key. Anything unexpected (a 400 the
  *  UI should never produce, a 404 for a just-deleted song) reads as
  *  the generic "couldn't save". */
-function failureKey(reason: PickFailure) {
-  switch (reason) {
-    case "cap_reached":
-      return "errorCap" as const;
-    case "group_conflict":
-      return "errorGroupConflict" as const;
-    case "board_locked":
-      return "errorLocked" as const;
-    case "board_disabled":
-      return "errorDisabled" as const;
-    case "busy":
-      return "errorBusy" as const;
-    case "invalid_anon_id":
-      return "errorNoStorage" as const;
-    default:
-      return "errorGeneric" as const;
-  }
-}
-
 const TOAST_MS = 3000;
 const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
 // Stable default so the per-group filter memo doesn't recompute on
@@ -100,6 +81,7 @@ export function FanBoardSection({
   catalog = NO_CATALOG,
   anchorId,
   onOpenFullSetlist,
+  picksRevision = 0,
 }: {
   eventId: string;
   locale: string;
@@ -116,6 +98,9 @@ export function FanBoardSection({
    *  tab exists (upcoming, inside the D-7 window); without it the
    *  button is not rendered. Called after the import ran. */
   onOpenFullSetlist?: (outcome: BoardToBuilderOutcome) => void;
+  /** Bumped by `<LiveSetlist>` after the Predict tab published a ballot
+   *  (n15-09b), so "my picks" re-read the local copy it wrote. */
+  picksRevision?: number;
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -135,6 +120,7 @@ export function FanBoardSection({
     eventId,
     locale,
     active: state.kind === "ready",
+    revision: picksRevision,
   });
 
   // A tab left open across the start time goes read-only AT the start
@@ -284,7 +270,7 @@ export function FanBoardSection({
     }
     if (outcome.reason === "board_locked") setLockedByServer(true);
     setToast({
-      text: t(failureKey(outcome.reason), { max: BOARD_PICKS_PER_GROUP }),
+      text: t(pickFailureKey(outcome.reason), { max: BOARD_PICKS_PER_GROUP }),
       error: true,
     });
   };

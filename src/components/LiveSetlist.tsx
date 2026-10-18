@@ -208,6 +208,14 @@ export function LiveSetlist({
   // The bridge needs a Predict tab to land in: upcoming and inside the
   // D-7 window — the same gate `<SetlistSection>` uses for the tab.
   const bridgeOpen = board !== null && status === "upcoming" && isWishPredictOpen;
+  // The reverse direction (n15-09b): a publish from the Predict tab
+  // rewrote the local ballot, so the board block re-reads it (the
+  // revision) and comes into view showing the new picks.
+  const [boardPicksRevision, setBoardPicksRevision] = useState(0);
+  const onBoardPublished = useCallback(() => {
+    setBoardPicksRevision((r) => r + 1);
+    requestAnimationFrame(backToBoard);
+  }, [backToBoard]);
 
   // While polling, derive trending from the same reactionCounts that drives
   // per-item counts — single source of truth, no risk of the two views
@@ -306,6 +314,7 @@ export function LiveSetlist({
             catalog={availableSongs}
             anchorId={boardAnchorId}
             onOpenFullSetlist={bridgeOpen ? openFullSetlist : undefined}
+            picksRevision={boardPicksRevision}
           />
         )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
@@ -457,6 +466,8 @@ export function LiveSetlist({
         eventArtistId={eventArtistId}
         builderRequest={builderRequest}
         onBackToBoard={bridgeOpen ? backToBoard : undefined}
+        boardGroups={bridgeOpen && board ? board.chips : undefined}
+        onBoardPublished={bridgeOpen ? onBoardPublished : undefined}
       />
     </section>
     </>
