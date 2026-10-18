@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
-import { Client } from "pg";
+import { devPgClient, utcParam } from "./devPg";
 
 // Fan board pick writes (n15-03) against the DEV database: the things
 // only real rows and a real advisory lock can prove — the cap holds
@@ -40,7 +40,7 @@ import { GET as BOARD } from "@/app/api/events/[id]/board/route";
 import { ANON_TOKEN_HEADER } from "@/lib/anonId";
 
 const TAG = `boardpick-itest-${Date.now()}`;
-const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
+const pg = devPgClient();
 
 let groupId: bigint;
 let otherArtistId: bigint;
@@ -96,17 +96,10 @@ async function rowCount(anonId: string): Promise<number> {
   return Number(r.rows[0].n);
 }
 
-// `Event.startTime` is `timestamp(3)` WITHOUT time zone holding UTC
-// wall time (Prisma's convention). node-pg serializes a JS Date in the
-// machine's LOCAL zone, and Postgres drops the offset for this type —
-// so a raw Date would land hours off on any non-UTC laptop. Send the
-// UTC ISO string: its wall time is UTC, which is what the column holds.
-const utc = (d: Date) => d.toISOString();
-
 async function setStart(startTime: Date) {
   await pg.query(`UPDATE "Event" SET "startTime" = $2 WHERE id = $1`, [
     eventId.toString(),
-    utc(startTime),
+    utcParam(startTime),
   ]);
 }
 
@@ -195,7 +188,7 @@ beforeEach(async () => {
   await pg.query(`DELETE FROM "BoardPick" WHERE "eventId" = $1`, [eventId.toString()]);
   await pg.query(
     `UPDATE "Event" SET "boardEnabled" = true, "startTime" = $2 WHERE id = $1`,
-    [eventId.toString(), utc(new Date(Date.now() + 24 * 60 * 60 * 1000))],
+    [eventId.toString(), utcParam(new Date(Date.now() + 24 * 60 * 60 * 1000))],
   );
   await pg.query(`UPDATE "Song" SET "isDeleted" = false WHERE id = $1`, [
     songIds[0].toString(),

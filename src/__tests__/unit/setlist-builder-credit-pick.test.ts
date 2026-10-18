@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-import { nextCreditOnPick, stageTypeForCredit } from "@/app/admin/events/SetlistBuilder";
+import { nextCreditOnPick, stageTypeForCredit } from "@/app/admin/events/setlistBuilderRules";
 
 const muse = { id: 1, type: "group" };
 const aqours = { id: 2, type: "group" };

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMounted } from "@/hooks/useMounted";
+import { disagreeKey } from "@/lib/localEngagementKeys";
 
 /**
  * Phase 1B/1C client-side hook for the per-viewer "disagree" vote
@@ -28,11 +29,6 @@ import { useMounted } from "@/hooks/useMounted";
  * No anonId / userId — same Phase 1 rule as confirm
  * (`wiki/conflicts.md #9`); operator runbook covers bounded abuse.
  */
-const KEY_PREFIX = "disagree-";
-
-export function disagreeKey(eventId: string): string {
-  return `${KEY_PREFIX}${eventId}`;
-}
 
 function readStored(eventId: string): Set<number> {
   if (typeof window === "undefined") return new Set();

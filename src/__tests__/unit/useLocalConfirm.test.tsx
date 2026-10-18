@@ -21,7 +21,8 @@ vi.mock("@/hooks/useMounted", () => ({
   useMounted: () => true,
 }));
 
-import { confirmKey, useLocalConfirm } from "@/hooks/useLocalConfirm";
+import { useLocalConfirm } from "@/hooks/useLocalConfirm";
+import { confirmKey } from "@/lib/localEngagementKeys";
 
 beforeEach(() => {
   window.localStorage.clear();

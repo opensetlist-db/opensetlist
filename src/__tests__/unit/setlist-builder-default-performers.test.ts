@@ -5,7 +5,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import {
   deriveDefaultPerformerIds,
   performerSourceIds,
-} from "@/app/admin/events/SetlistBuilder";
+} from "@/app/admin/events/setlistBuilderRules";
 import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
 
 // Minimal performer shape: id + the Artist ids the StageIdentity links to.
