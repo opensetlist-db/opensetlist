@@ -16,7 +16,8 @@ import type { StoredBoardPick } from "@/lib/board/pickStorage";
 import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
 import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
-import { BoardMyPicks, pickTitle } from "@/components/board/BoardMyPicks";
+import { BoardMyPicks } from "@/components/board/BoardMyPicks";
+import { pickTitle } from "@/lib/board/pickTitle";
 import { useBoardPicks, type PickFailure } from "@/components/board/useBoardPicks";
 
 /**

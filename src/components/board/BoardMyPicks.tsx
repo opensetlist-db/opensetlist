@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
-import { displayOriginalTitle } from "@/lib/display";
 import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
 import type { StoredBoardPick } from "@/lib/board/pickStorage";
 import type { AvailableSong } from "@/lib/types/predict";
@@ -181,10 +180,4 @@ export function BoardMyPicks({
       )}
     </div>
   );
-}
-
-/** The title a pick stores — the same `main` title the board read
- *  renders, so "my picks" and the columns agree. */
-export function pickTitle(song: AvailableSong, locale: string): string {
-  return displayOriginalTitle(song, song.translations, locale).main;
 }
