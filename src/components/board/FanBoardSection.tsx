@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
+import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { groupIdFromFragment } from "@/lib/board/fragment";
 import type {
   BoardBlockSeed,
@@ -29,8 +30,6 @@ import { colors } from "@/styles/tokens";
  *   - The parent never mounts this while the event is ongoing, so no
  *     board request is made during a show.
  */
-
-export const BOARD_TIMEOUT_MS = 6000;
 
 type State =
   | { kind: "loading" }

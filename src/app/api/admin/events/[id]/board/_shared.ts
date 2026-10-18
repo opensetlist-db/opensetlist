@@ -4,7 +4,10 @@ import { seriesPrimaryArtistOf } from "@/lib/board/boardGroups";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
 import { getAvailableSongsCached } from "@/lib/predict/availableSongs";
 import { displayOriginalTitle } from "@/lib/display";
-import type { StarterInputError } from "@/lib/board/starterPicks";
+import {
+  STARTER_PICKS_PER_GROUP,
+  type StarterInputError,
+} from "@/lib/board/starterPicks";
 import type { AvailableSong } from "@/lib/types/predict";
 
 // Admin is Korean-only (CLAUDE.md "Admin UI exemption"): labels,
@@ -30,10 +33,14 @@ export function parseEventId(id: string): bigint | null {
   }
 }
 
-/** Current (uncached) event row + its board groups. The admin surface
- *  reads the DB directly — the operator must see what they just saved,
- *  not a TTL-old copy. Groups go through the same loader the public
- *  board uses, so the editor offers exactly the groups fans will see. */
+/** Current event row (uncached — the operator must see what they just
+ *  saved, not a TTL-old copy) + its board groups. The groups go
+ *  through the same CACHED loader the public board uses (roster,
+ *  hierarchy, display rows), so the editor offers exactly the groups
+ *  fans see — including the same up-to-one-TTL lag after a roster
+ *  edit. That shared lag is the point: validating against fresher
+ *  groups than the public board shows would accept starters for a
+ *  group fans can't see yet. */
 export async function loadAdminBoardContext(eventId: bigint) {
   const event = await prisma.event.findFirst({
     where: { id: eventId, isDeleted: false },
@@ -80,6 +87,6 @@ export function starterErrorMessage(e: StarterInputError): string {
     case "starter.duplicate":
       return `starterSongIds: 그룹 ${e.groupId}에 같은 곡(${e.songId})이 중복되었습니다.`;
     case "starter.tooMany":
-      return `starterSongIds: 그룹 ${e.groupId}는 최대 3곡까지입니다.`;
+      return `starterSongIds: 그룹 ${e.groupId} — 최대 ${STARTER_PICKS_PER_GROUP}곡까지입니다.`;
   }
 }

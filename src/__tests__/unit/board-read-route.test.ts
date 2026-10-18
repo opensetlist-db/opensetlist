@@ -18,6 +18,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => {
     revalidatePublicData: vi.fn(),
     revalidateEventData: vi.fn(),
     revalidateEventImpressions: vi.fn(),
+    revalidateBoardControl: vi.fn(),
   };
 });
 vi.mock("@/lib/board/loadBoardGroups", () => ({
@@ -95,6 +96,7 @@ function expectNoRevalidate() {
   expect(dataCache.revalidatePublicData).not.toHaveBeenCalled();
   expect(dataCache.revalidateEventData).not.toHaveBeenCalled();
   expect(dataCache.revalidateEventImpressions).not.toHaveBeenCalled();
+  expect(dataCache.revalidateBoardControl).not.toHaveBeenCalled();
 }
 
 describe("GET /api/events/[id]/board", () => {

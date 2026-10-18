@@ -11,8 +11,10 @@
 // "fix" a save that simply hasn't propagated yet.
 
 import { useEffect, useRef, useState } from "react";
+import { STARTER_PICKS_PER_GROUP } from "@/lib/board/starterPicks";
 
-const MAX_PER_GROUP = 3;
+// Same cap the PATCH enforces (pure module — safe in a client bundle).
+const MAX_PER_GROUP = STARTER_PICKS_PER_GROUP;
 
 interface Starter {
   songId: string;

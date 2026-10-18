@@ -908,12 +908,26 @@ export default async function EventPage({ params }: Props) {
     ) {
       return null;
     }
-    const groups = await loadBoardGroups({
-      eventId,
-      primaryArtistId: seriesPrimaryArtist?.id ?? null,
-      locale,
-      roster,
-    });
+    // The chips are the one board read SSR does (cached hierarchy +
+    // group display rows). A failure there must not take the page
+    // down: degrade to "no board" — the page then looks like a
+    // non-board event, exactly as the client block does on a failed
+    // aggregate read.
+    let groups;
+    try {
+      groups = await loadBoardGroups({
+        eventId,
+        primaryArtistId: seriesPrimaryArtist?.id ?? null,
+        locale,
+        roster,
+      });
+    } catch (err) {
+      console.warn(
+        `[eventPage] board chips unavailable event=${eventId} ` +
+          `err=${err instanceof Error ? `${err.name}:${err.message.slice(0, 120)}` : String(err)}`,
+      );
+      return null;
+    }
     if (groups.length === 0) return null;
     return {
       lockAt: new Date(event.startTime).toISOString(),

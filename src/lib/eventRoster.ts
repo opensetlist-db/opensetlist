@@ -69,7 +69,8 @@ export async function fetchEventRoster(
   });
   // serializeBigInt keeps the input's TS types while turning BigInt ids
   // into numbers at runtime; `EventRosterEntry` describes the runtime
-  // (number) shape — same boundary cast as `LiveSetlistItem` below.
+  // (number) shape — the same boundary cast the event page applies to
+  // `LiveSetlistItem`.
   return serializeBigInt(rows) as unknown as EventRosterEntry[];
 }
 

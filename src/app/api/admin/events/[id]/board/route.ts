@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseJsonBody } from "@/lib/admin-input";
+import { revalidateBoardControl } from "@/lib/dataCache";
 import {
   findStarterOutsideCatalog,
   parseStarterInput,
@@ -33,9 +34,12 @@ type Props = { params: Promise<{ id: string }> };
  * the live writer transaction and, after it, expires the global
  * public-data tag and the event tag — which also throws away the live
  * snapshot entries. Board settings change nothing the live path
- * serves, so this endpoint does a plain single-row update and calls no
- * revalidate helper at all: the event page and the board read pick the
- * change up through the event-row TTL (`CACHE_TTL.event`).
+ * serves, so this endpoint does a plain single-row update and expires
+ * only the board's own control entry: the board read (the kill switch
+ * that matters — it also gates every write) sees the change on its
+ * next request; the event page picks the flag up through the event-row
+ * TTL (`CACHE_TTL.event`), and a page still showing a just-disabled
+ * board hides it as soon as its read answers `{ enabled: false }`.
  */
 
 export async function GET(_request: NextRequest, { params }: Props) {
@@ -143,6 +147,10 @@ export async function PATCH(request: NextRequest, { params }: Props) {
     },
     select: { boardEnabled: true, boardStarterSongIds: true },
   });
+  // Board-control entry only (see `revalidateBoardControl`): the next
+  // board read sees the new flag/starters. Not the event tag, not the
+  // global tag — nothing the live path serves is expired.
+  revalidateBoardControl(eventId);
   return NextResponse.json({
     boardEnabled: updated.boardEnabled,
     starterSongIds: readStarterMap(updated.boardStarterSongIds),

@@ -391,3 +391,24 @@ export function revalidateEventData(eventId: bigint | number | string): void {
 export function revalidateEventImpressions(eventId: bigint | number | string): void {
   expireTags([eventImpressionsTag(eventId)]);
 }
+
+/**
+ * Tag of the fan board's CONTROL row (n15: flag + status + start time +
+ * starter picks). Separate from both `eventTag` (which the control
+ * entry also carries, so event writes still refresh status/startTime)
+ * and `eventBoardTag` (the aggregate): expiring it touches no event,
+ * live-snapshot or aggregate entry.
+ */
+export function eventBoardControlTag(eventId: bigint | number | string): string {
+  return `event:${eventId.toString()}:board-control`;
+}
+
+/**
+ * Expire only the board control row — called by the admin board
+ * settings write so the kill switch reaches the next board read
+ * instead of one event TTL later. Never called by fan board writes
+ * (those are TTL-only by design).
+ */
+export function revalidateBoardControl(eventId: bigint | number | string): void {
+  expireTags([eventBoardControlTag(eventId)]);
+}

@@ -18,6 +18,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => {
     revalidatePublicData: vi.fn(),
     revalidateEventData: vi.fn(),
     revalidateEventImpressions: vi.fn(),
+    revalidateBoardControl: vi.fn(),
   };
 });
 vi.mock("@/lib/liveWriterTx", () => ({
@@ -118,7 +119,23 @@ describe("PATCH /api/admin/events/[id]/board", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("flips the flag with a plain update — no live writer, no invalidation", async () => {
+  it("expires ONLY the board-control entry, after the update", async () => {
+    await PATCH(patch({ boardEnabled: false }), params());
+    expect(dataCache.revalidateBoardControl).toHaveBeenCalledTimes(1);
+    expect(dataCache.revalidateBoardControl).toHaveBeenCalledWith(BigInt(107));
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(dataCache.revalidateBoardControl).mock.invocationCallOrder[0],
+    );
+    expectLivePathUntouched();
+  });
+
+  it("the control tag is distinct from the event / aggregate tags", () => {
+    const control = dataCache.eventBoardControlTag(107);
+    expect(control).not.toBe(dataCache.eventTag(107));
+    expect(control).not.toBe(dataCache.eventBoardTag(107));
+  });
+
+  it("flips the flag with a plain update — no live writer, no event/global invalidation", async () => {
     const res = await PATCH(patch({ boardEnabled: true }), params());
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith({
@@ -172,6 +189,7 @@ describe("PATCH /api/admin/events/[id]/board", () => {
     expect(json.code).toBe(code);
     expect(typeof json.error).toBe("string");
     expect(update).not.toHaveBeenCalled();
+    expect(dataCache.revalidateBoardControl).not.toHaveBeenCalled();
   });
 
   it("404 for a missing event", async () => {

@@ -19,7 +19,8 @@ vi.mock("@/components/TrendingSongs", () => ({
   TrendingSongs: () => null,
 }));
 
-import { BOARD_TIMEOUT_MS, FanBoardSection } from "@/components/board/FanBoardSection";
+import { FanBoardSection } from "@/components/board/FanBoardSection";
+import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { LiveSetlist } from "@/components/LiveSetlist";
 import { trackEvent } from "@/lib/analytics";
 import type { BoardBlockSeed, BoardGroupView, BoardReadResponse } from "@/lib/board/types";

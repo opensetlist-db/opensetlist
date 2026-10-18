@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import {
   CACHE_TTL,
   cachedQuery,
+  eventBoardControlTag,
   eventBoardTag,
   eventTag,
 } from "@/lib/dataCache";
@@ -24,10 +25,10 @@ import type {
  * Two cached reads with different jobs:
  *
  *   - `getBoardControlCached` — the board's control metadata (flag,
- *     stored status, start time, series artist, starter picks). Keyed
- *     and tagged like the event row (`event:<id>`, event TTL), so the
- *     kill switch reaches readers on the same schedule as every other
- *     event-row change. This is the ONE board read allowed while a
+ *     stored status, start time, series artist, starter picks). Event
+ *     TTL, tagged with the event tag AND its own control tag, which
+ *     the admin board write expires — so the kill switch reaches the
+ *     next board read. This is the ONE board read allowed while a
  *     show is ongoing.
  *   - `getBoardAggregateCached` — the per-group columns. Own cache name
  *     and own tag (`event:<id>:board`), ~2 min TTL, never invalidated
@@ -55,7 +56,14 @@ export const getBoardControlCached = cachedQuery(
         },
       },
     }),
-  { revalidate: CACHE_TTL.event, tags: (eventId) => [eventTag(eventId)] },
+  {
+    revalidate: CACHE_TTL.event,
+    // `eventTag`: event writes (status, startTime) refresh it like the
+    // event row. `eventBoardControlTag`: the admin board write expires
+    // ONLY this entry, so turning the board off reaches the very next
+    // board read — no event/global invalidation needed for that.
+    tags: (eventId) => [eventTag(eventId), eventBoardControlTag(eventId)],
+  },
 );
 
 type AggregateStatus = "upcoming" | "completed";
