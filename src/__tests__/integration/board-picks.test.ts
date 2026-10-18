@@ -36,6 +36,7 @@ import * as dataCache from "@/lib/dataCache";
 import { POST } from "@/app/api/events/[id]/board/picks/route";
 import { DELETE } from "@/app/api/events/[id]/board/picks/[pickId]/route";
 import { GET as MINE } from "@/app/api/events/[id]/board/mine/route";
+import { GET as BOARD } from "@/app/api/events/[id]/board/route";
 import { ANON_TOKEN_HEADER } from "@/lib/anonId";
 
 const TAG = `boardpick-itest-${Date.now()}`;
@@ -50,6 +51,7 @@ let foreignSongId: bigint;
 
 const ANON_A = `itest-a-${Date.now()}`;
 const ANON_B = `itest-b-${Date.now()}`;
+const ANON_C = `itest-c-${Date.now()}`;
 
 function postPick(anonId: string, songId: bigint, group = groupId) {
   return POST(
@@ -348,5 +350,38 @@ describe("board picks — dev database", () => {
     ]) {
       expect(vi.mocked(f)).not.toHaveBeenCalled();
     }
+  });
+
+  it("board read: crowd TOP3 from real rows — counts, participants, early label, soft-deleted song unlinked", async () => {
+    // A: songs 0, 1, 2 · B: song 1 · C: songs 1, 2
+    // → song1 ×3, song2 ×2, song0 ×1; 6 submissions from 3 participants.
+    for (const i of [0, 1, 2]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
+    expect((await postPick(ANON_B, songIds[1])).status).toBe(201);
+    for (const i of [1, 2]) expect((await postPick(ANON_C, songIds[i])).status).toBe(201);
+    // Moderated after it was picked: keeps its vote and its rank.
+    await pg.query(`UPDATE "Song" SET "isDeleted" = true WHERE id = $1`, [
+      songIds[0].toString(),
+    ]);
+
+    const res = await BOARD(
+      new Request(`http://x/api/events/${eventId}/board?locale=ko`),
+      { params: Promise.resolve({ id: eventId.toString() }) },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = await res.json();
+    expect(body.groups).toHaveLength(1);
+    expect(body.groups[0].groupId).toBe(groupId.toString());
+    expect(body.groups[0].expects).toEqual({
+      top: [
+        { songId: songIds[1].toString(), title: `${TAG} song 1`, count: 3, available: true },
+        { songId: songIds[2].toString(), title: `${TAG} song 2`, count: 2, available: true },
+        { songId: songIds[0].toString(), title: "", count: 1, available: false },
+      ],
+      submissions: 6,
+      participants: 3,
+      label: "early",
+    });
+    expect(JSON.stringify(body)).not.toMatch(/itest-[abc]-/);
   });
 });

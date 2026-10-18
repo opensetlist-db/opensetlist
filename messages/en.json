@@ -581,7 +581,9 @@
     "errorBusy": "We're busy right now. Please try again in a moment.",
     "errorNoStorage": "This browser's storage is unavailable, so picks can't be saved.",
     "errorGeneric": "Couldn't save. Please try again.",
-    "mineBadge": "My pick"
+    "mineBadge": "My pick",
+    "earlySample": "Early sample",
+    "explore": "Explore {group}"
   },
   "Wishlist": {
     "title": "Songs you want to hear at this show",

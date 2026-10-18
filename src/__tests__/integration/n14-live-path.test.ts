@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { createClient } from "@supabase/supabase-js";
+import { DEV_PROJECT_REF } from "./setup";
 import { devPgClient } from "./devPg";
 
 // n14 live path — integration tests against the DEV database.
@@ -182,6 +184,74 @@ async function expectNoSave<T>(run: () => Promise<T>): Promise<T> {
   return out;
 }
 
+/**
+ * Make sure `realtime.messages` has a partition for the current UTC
+ * day, waking the dev project's Realtime tenant if it has none.
+ *
+ * `realtime.messages` is range-partitioned by `inserted_at`, one
+ * partition per UTC day. Postgres never creates those partitions — the
+ * Realtime service does, on tenant start-up and from its janitor (a
+ * few days ahead, pruning old ones). A tenant with no client
+ * connections shuts down, so a dev project nobody has opened a
+ * Realtime socket on for a few days runs out of partitions. From then
+ * on every `realtime.send` hits "no partition of relation messages
+ * found for row", which its inner exception block downgrades to a
+ * WARNING: the save commits, no message row exists, and the writer
+ * matrix fails with `expected [] to have a length of 1` while the
+ * revision bump looks fine.
+ *
+ * One channel subscribe starts the tenant, which creates the missing
+ * partitions within seconds. Doing it here keeps the suite independent
+ * of whether anyone has used dev Realtime recently.
+ */
+async function ensureTodaysMessagesPartition(): Promise<void> {
+  const covered = async () => {
+    const r = await pg.query(
+      `SELECT 1
+         FROM pg_inherits i
+         JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'realtime.messages'::regclass
+          AND c.relname = 'messages_' || to_char(now() AT TIME ZONE 'UTC', 'YYYY_MM_DD')`,
+    );
+    return (r.rowCount ?? 0) > 0;
+  };
+  if (await covered()) return;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  // Same fail-closed rule as setup.ts: only ever open a socket on the
+  // dev project.
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    // falls through to the throw below
+  }
+  if (host !== `${DEV_PROJECT_REF}.supabase.co` || !anonKey) {
+    throw new Error(
+      "[n14] realtime.messages has no partition for today and " +
+        "NEXT_PUBLIC_SUPABASE_URL/ANON_KEY do not point at the dev project, " +
+        "so the Realtime tenant cannot be woken to create it",
+    );
+  }
+  const sb = createClient(url, anonKey);
+  sb.channel("n14-itest:wake").subscribe();
+  try {
+    const deadline = Date.now() + 30_000;
+    while (!(await covered())) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          "[n14] Realtime tenant did not create today's realtime.messages " +
+            "partition within 30 s of a channel subscribe",
+        );
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  } finally {
+    await sb.removeAllChannels();
+  }
+}
+
 /** A controllable barrier. */
 function barrier() {
   let open!: () => void;
@@ -218,6 +288,7 @@ async function createItemViaAdmin(position: number): Promise<bigint> {
 
 beforeAll(async () => {
   await pg.connect();
+  await ensureTodaysMessagesPartition();
   const songs = await pg.query<{ id: string }>(
     `SELECT id::text FROM "Song" WHERE "isDeleted" = false ORDER BY id LIMIT 2`,
   );
