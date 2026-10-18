@@ -353,6 +353,15 @@ describe("GET /api/events/[id]/board", () => {
     expect(body.tally.groups.every((g: { size: number }) => g.size === 0)).toBe(true);
   });
 
+  it("completed with an empty setlist → nothing graded (not 0 of K)", async () => {
+    findFirst.mockResolvedValue(control({ status: "completed" }) as never);
+    pickGroupBy.mockResolvedValue([pickRow(1, 10, 3, "2026-11-10T00:00:00Z")] as never);
+    setlistFindMany.mockResolvedValue([] as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body.groups[0].expects.top).toHaveLength(1);
+    expect(body.tally).toEqual({ played: 0, size: 0, groups: [], playedSongIds: [] });
+  });
+
   it("upcoming → no tally, no setlist read, no pick cutoff", async () => {
     findFirst.mockResolvedValue(control() as never);
     const body = await (await GET(req(), params())).json();

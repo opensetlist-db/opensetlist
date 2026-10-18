@@ -377,8 +377,12 @@ export const getBoardAggregateCached = cachedQuery(
     });
     // Each group's shortlist is its expect column's TOP3 — built above
     // from at-lock picks with the 04 ranking — never the starters.
+    //
+    // An empty setlist (completed, but nobody has entered it yet) is
+    // "nothing to grade", not "0 of K": grading it would show every
+    // shortlist song ✕ until the setlist lands and the TTL expires.
     const tally =
-      setlistSongs === null
+      setlistSongs === null || setlistSongs.length === 0
         ? null
         : tallyBoard(
             views.map((v) => ({ groupId: v.groupId, top: v.expects.top })),
@@ -427,9 +431,9 @@ export async function resolveBoardRead(
       lockAt,
       asOf,
       groups: aggregate.groups,
-      // The completed key always computes a tally; it is null only if
-      // the control row vanished between the two cached reads (event
-      // deleted mid-request). Grade nothing rather than fail the read.
+      // Null when there is nothing to grade: the setlist is still empty,
+      // or the control row vanished between the two cached reads (event
+      // deleted mid-request). An empty tally (size 0) shows no grade UI.
       tally: aggregate.tally ?? {
         played: 0,
         size: 0,
