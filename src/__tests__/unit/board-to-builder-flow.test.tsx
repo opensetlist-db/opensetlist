@@ -175,6 +175,8 @@ describe("board → full setlist mode", () => {
 
     const card = within(setlistCard());
     expect(card.getByTestId("predict-bridge-notice")).toHaveTextContent("bridgeImported(3)");
+    // Announced by the live region that outlives the builder's remount.
+    expect(card.getByTestId("predict-bridge-status")).toHaveTextContent("bridgeImported(3)");
     expect(card.getByTestId("predict-provisional")).toBeTruthy();
     // Rendered rows, top to bottom (the picker sheet is closed, so these
     // are the builder's rows only).
@@ -211,6 +213,7 @@ describe("board → full setlist mode", () => {
 
     const card = within(setlistCard());
     expect(card.getByTestId("predict-bridge-notice")).toHaveTextContent("bridgeKept");
+    expect(card.getByTestId("predict-bridge-status")).toHaveTextContent("bridgeKept");
     expect(card.queryByTestId("predict-provisional")).toBeNull();
     expect(card.getByText("既存の曲")).toBeTruthy();
     expect(card.queryByText("残陽")).toBeNull();

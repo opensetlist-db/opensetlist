@@ -491,6 +491,10 @@ export function PredictedSetlist({
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
   const isDesktopPicker = mounted && isDesktop && showPicker;
 
+  // Bridge strip parts (n15-09a), see the strip below.
+  const showBridgeNotice = bridgeOutcome !== null && bridgeOutcome.kind !== "none";
+  const showProvisional = provisional && predictions.length > 0;
+
   return (
     <div
       style={
@@ -570,10 +574,7 @@ export function PredictedSetlist({
           the board import that opened this tab, the provisional-order
           label, and the switch back to the board. Hidden as a whole
           when none applies, so non-board events render as before. */}
-      {isPreShow &&
-        (onBackToBoard ||
-          (bridgeOutcome && bridgeOutcome.kind !== "none") ||
-          (provisional && predictions.length > 0)) && (
+      {isPreShow && (onBackToBoard || showBridgeNotice || showProvisional) && (
           <div
             className="text-[11px]"
             style={{
@@ -582,14 +583,18 @@ export function PredictedSetlist({
               borderBottom: `0.5px solid ${colors.borderLight}`,
             }}
           >
-            {bridgeOutcome && bridgeOutcome.kind !== "none" && (
-              <p role="status" data-testid="predict-bridge-notice">
+            {/* No role="status" here: this node mounts with its text
+                (the builder remounts per tap), which screen readers
+                often skip. `<SetlistSection>` keeps the announcing live
+                region mounted across the remount. */}
+            {showBridgeNotice && (
+              <p data-testid="predict-bridge-notice">
                 {bridgeOutcome.kind === "imported"
                   ? t("bridgeImported", { count: bridgeOutcome.count })
                   : t("bridgeKept")}
               </p>
             )}
-            {provisional && predictions.length > 0 && (
+            {showProvisional && (
               <p
                 data-testid="predict-provisional"
                 style={{ color: colors.textMuted }}

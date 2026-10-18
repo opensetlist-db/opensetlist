@@ -138,6 +138,7 @@ export function SetlistSection({
   onBackToBoard,
 }: Props) {
   const t = useTranslations("Setlist");
+  const tPredict = useTranslations("Predict");
   const mounted = useMounted();
 
   // Hydrate `hasPredictions` AFTER mount so SSR + first client
@@ -321,8 +322,23 @@ export function SetlistSection({
       />
     );
 
+  // Screen-reader announcement of the board import's outcome. Lives
+  // here, not in the builder, because the builder remounts per request
+  // and a live region created together with its text is often not
+  // announced; this one stays mounted and only its text changes.
+  const bridgeOutcome = builderRequest?.outcome;
+  const bridgeAnnouncement =
+    bridgeOutcome?.kind === "imported"
+      ? tPredict("bridgeImported", { count: bridgeOutcome.count })
+      : bridgeOutcome?.kind === "kept"
+        ? tPredict("bridgeKept")
+        : "";
+
   return (
     <>
+      <p role="status" className="sr-only" data-testid="predict-bridge-status">
+        {bridgeAnnouncement}
+      </p>
       <SetlistTabs
         hasPredictions={hasPredictions}
         hasActual={hasActual}
