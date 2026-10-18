@@ -8,7 +8,9 @@
 #   - the files listed in .worktreeinclude (env files, owner-local notes).
 #     Claude Code applies that list only to worktrees IT creates.
 #   - src/generated/ (the gitignored Prisma client — normally produced by
-#     `npm ci`'s postinstall, which a linked node_modules never runs)
+#     `npm ci`'s postinstall, which a linked node_modules never runs).
+#     It is a snapshot: after merging a schema change into the worktree,
+#     run `npx prisma generate` there (it writes only src/generated/).
 #   - node_modules, LINKED to the main checkout's (a junction on Windows,
 #     a symlink elsewhere). The worktree starts from the same lockfile.
 #     After a dependency change, UNLINK first (`cmd //c rmdir node_modules`
