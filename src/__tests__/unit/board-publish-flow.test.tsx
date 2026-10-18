@@ -60,6 +60,7 @@ function group(id: string, slug: string, name: string): BoardGroupView {
     name,
     color: null,
     expects: { top: [], submissions: 0, participants: 0, label: "operator" },
+    wishes: { top: [], submissions: 0, participants: 0, label: "operator" },
     starters: [],
   };
 }

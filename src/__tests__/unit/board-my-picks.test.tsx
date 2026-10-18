@@ -69,6 +69,7 @@ function readBoard(over: Partial<{ locked: boolean; top: { songId: string; title
         slug: "hasunosora",
         name: "蓮ノ空",
         color: null,
+        wishes: { top: [], submissions: 0, participants: 0, label: "operator" },
         expects: over.top
           ? { top: over.top, submissions: 7, participants: 2, label: "early" }
           : { top: [], submissions: 0, participants: 0, label: "operator" },
@@ -79,6 +80,7 @@ function readBoard(over: Partial<{ locked: boolean; top: { songId: string; title
         slug: "liella",
         name: "Liella!",
         color: null,
+        wishes: { top: [], submissions: 0, participants: 0, label: "operator" },
         expects: { top: [], submissions: 0, participants: 0, label: "operator" },
         starters: [],
       },
@@ -147,7 +149,11 @@ function renderBlock() {
   );
 }
 
-const counter = () => screen.getByTestId("board-pick-counter").textContent;
+// Two columns render a counter each; these tests are about the expect
+// column (want-column behaviour: `board-want-column.test.tsx`).
+const expectCol = () => screen.getByTestId("board-col-expect");
+const counter = () =>
+  within(expectCol()).getByTestId("board-pick-counter").textContent;
 const toast = () => screen.getByTestId("board-toast").textContent;
 
 describe("<FanBoardSection> my picks", () => {
@@ -204,7 +210,7 @@ describe("<FanBoardSection> my picks", () => {
     expect(counter()).toBe("counter(3,3)");
     expect((add as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("capReached(3)")).toBeTruthy();
-    expect(add.getAttribute("aria-describedby")).toBe("board-cap-1");
+    expect(add.getAttribute("aria-describedby")).toBe("board-cap-pick-1");
   });
 
   it("the cap is per group: another group's chip starts at 0/3", async () => {

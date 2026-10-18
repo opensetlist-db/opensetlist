@@ -165,6 +165,30 @@ describe("EventWishSection — my-list cap of 3", () => {
     );
     expect(screen.getByText("add")).toBeTruthy();
   });
+
+  it("per-group board wishes (n15-08) are listed but don't use the 3 slots", () => {
+    // A board event whose flag was turned off: the fan's 4 per-group
+    // wishes stay listed, and the event-wide list still has room.
+    writeWishes("1", [
+      { ...localWish(10, "a"), groupId: "7" },
+      { ...localWish(11, "b"), groupId: "7" },
+      { ...localWish(12, "c"), groupId: "8" },
+      { ...localWish(13, "d"), groupId: "8" },
+      localWish(14, "e"),
+    ]);
+    render(
+      <EventWishSection
+        eventId="1"
+        locale="ko"
+        startTime={FUTURE}
+        status="upcoming"
+        setlistItems={[]}
+        top3Wishes={[]}
+      />,
+    );
+    expect(screen.getByText("song-13")).toBeTruthy();
+    expect(screen.getByText("add")).toBeTruthy();
+  });
 });
 
 describe("EventWishSection — locked-state controls hidden", () => {

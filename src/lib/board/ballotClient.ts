@@ -3,7 +3,7 @@
  * the shared fetch wrapper, the error-code → message-key mapping, the
  * `/board/mine` request and the whole-ballot publish.
  *
- * A plain module, not the `useBoardPicks` hook file: the board block's
+ * A plain module, not the `useBoardBallot` hook file: the board block's
  * hook and the Predict tab's publish proposal both call these, and
  * neither should have to import the other's component module for them.
  * Browser-only at call time (fetch, the anon id in storage), but

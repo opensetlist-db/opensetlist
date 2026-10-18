@@ -7,12 +7,15 @@
 // sources (cache reuse itself is proven on a Preview, not here).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// No `song` model on purpose: the aggregate must take titles from the
-// cached catalog, so any song query would throw here.
+// `song.findMany` exists only for the legacy-wish base fold (n15-08):
+// titles must come from the cached catalog, and the tests assert the
+// song query runs only when legacy wishes exist.
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     event: { findFirst: vi.fn() },
     boardPick: { groupBy: vi.fn() },
+    songWish: { groupBy: vi.fn() },
+    song: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -45,6 +48,20 @@ import type { AvailableSong } from "@/lib/types/predict";
 const findFirst = vi.mocked(prisma.event.findFirst);
 const pickGroupBy = vi.mocked(prisma.boardPick.groupBy);
 const participantsRaw = vi.mocked(prisma.$queryRaw);
+const wishGroupBy = vi.mocked(prisma.songWish.groupBy);
+const songFindMany = vi.mocked(prisma.song.findMany);
+
+// The two participant counts are both `$queryRaw`; answer each by the
+// table its SQL reads, so a test sets picks and wishes independently.
+let pickParticipants: unknown[] = [];
+let wishParticipants: unknown[] = [];
+function routeParticipants() {
+  participantsRaw.mockImplementation(((strings: TemplateStringsArray) =>
+    Promise.resolve(
+      strings.join("").includes('"SongWish"') ? wishParticipants : pickParticipants,
+    )) as never);
+}
+const EMPTY_COLUMN = { top: [], submissions: 0, participants: 0, label: "operator" };
 const groupsMock = vi.mocked(loadBoardGroups);
 const catalogMock = vi.mocked(getAvailableSongsCached);
 
@@ -101,7 +118,11 @@ beforeEach(() => {
   catalogMock.mockResolvedValue([song(10, "残陽"), song(11, "ハナムスビ")]);
   // No fan picks unless a test says otherwise.
   pickGroupBy.mockResolvedValue([] as never);
-  participantsRaw.mockResolvedValue([] as never);
+  wishGroupBy.mockResolvedValue([] as never);
+  songFindMany.mockResolvedValue([] as never);
+  pickParticipants = [];
+  wishParticipants = [];
+  routeParticipants();
 });
 
 /** One `boardPick.groupBy` row as Prisma returns it. */
@@ -122,6 +143,7 @@ function expectNoAggregateWork() {
   expect(groupsMock).not.toHaveBeenCalled();
   expect(catalogMock).not.toHaveBeenCalled();
   expect(pickGroupBy).not.toHaveBeenCalled();
+  expect(wishGroupBy).not.toHaveBeenCalled();
   expect(participantsRaw).not.toHaveBeenCalled();
 }
 
@@ -212,7 +234,8 @@ describe("GET /api/events/[id]/board", () => {
         slug: "hasunosora",
         name: "蓮ノ空",
         color: "#f8b500",
-        expects: { top: [], submissions: 0, participants: 0, label: "operator" },
+        wishes: EMPTY_COLUMN,
+        expects: EMPTY_COLUMN,
         // stored order kept; "999" fell out of the catalog → dropped
         starters: [
           { songId: "11", title: "ハナムスビ" },
@@ -224,7 +247,8 @@ describe("GET /api/events/[id]/board", () => {
         slug: "liella",
         name: "Liella!",
         color: null,
-        expects: { top: [], submissions: 0, participants: 0, label: "operator" },
+        wishes: EMPTY_COLUMN,
+        expects: EMPTY_COLUMN,
         starters: [],
       },
     ]);
@@ -287,11 +311,11 @@ describe("GET /api/events/[id]/board", () => {
       // A group that is no longer on this board: ignored.
       pickRow(7, 10, 9, "2026-10-21T00:00:00.000Z"),
     ] as never);
-    participantsRaw.mockResolvedValue([
+    pickParticipants = [
       { groupArtistId: BigInt(1), participants: 5 },
       { groupArtistId: BigInt(2), participants: 1 },
       { groupArtistId: BigInt(7), participants: 9 },
-    ] as never);
+    ];
 
     const body = await (await GET(req(), params())).json();
     const [g1, g2] = body.groups;
@@ -318,7 +342,9 @@ describe("GET /api/events/[id]/board", () => {
     expect(catalogMock).toHaveBeenCalledTimes(2);
     expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ja");
     expect(catalogMock).toHaveBeenCalledWith(BigInt(2), "ja");
-    // Exactly one grouped count + one distinct-participant count.
+    // Per column: exactly one grouped count + one distinct-participant
+    // count (two columns → two of each); no song query without legacy
+    // wishes.
     expect(pickGroupBy).toHaveBeenCalledTimes(1);
     expect(pickGroupBy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -326,7 +352,9 @@ describe("GET /api/events/[id]/board", () => {
         where: { eventId: BigInt(107) },
       }),
     );
-    expect(participantsRaw).toHaveBeenCalledTimes(1);
+    expect(wishGroupBy).toHaveBeenCalledTimes(1);
+    expect(participantsRaw).toHaveBeenCalledTimes(2);
+    expect(songFindMany).not.toHaveBeenCalled();
     expectNoRevalidate();
   });
 
@@ -336,5 +364,157 @@ describe("GET /api/events/[id]/board", () => {
     findFirst.mockResolvedValue(control() as never);
     const body = await (await GET(req(), params())).json();
     expect(body.asOf).toBe(now.toISOString());
+  });
+});
+
+/** One `songWish.groupBy` row; `group: null` = a legacy wish. */
+function wishRow(
+  group: number | null,
+  songId: number,
+  count: number,
+  firstAt: string,
+) {
+  return {
+    groupArtistId: group === null ? null : BigInt(group),
+    songId: BigInt(songId),
+    _count: { _all: count },
+    _min: { createdAt: new Date(firstAt) },
+  };
+}
+
+describe("GET /api/events/[id]/board — want column (n15-08)", () => {
+  beforeEach(() => {
+    findFirst.mockResolvedValue(control() as never);
+    // Group 1's catalog holds 10, 11; group 2's holds 11 (cross-group)
+    // and 20.
+    catalogMock.mockImplementation((async (groupId: bigint) =>
+      groupId === BigInt(1)
+        ? [song(10, "残陽"), song(11, "ハナムスビ")]
+        : [song(11, "ハナムスビ"), song(20, "未体験HORIZON")]) as never);
+  });
+
+  it("same ranking, counts and labels as the expect column", async () => {
+    wishGroupBy.mockResolvedValue([
+      wishRow(1, 11, 2, "2026-10-20T00:00:00.000Z"),
+      wishRow(1, 10, 2, "2026-10-19T00:00:00.000Z"),
+      wishRow(2, 20, 7, "2026-10-19T00:00:00.000Z"),
+    ] as never);
+    wishParticipants = [
+      { groupArtistId: BigInt(1), participants: 3 },
+      { groupArtistId: BigInt(2), participants: 6 },
+    ];
+    const body = await (await GET(req(), params())).json();
+    const [g1, g2] = body.groups;
+    expect(g1.wishes).toEqual({
+      top: [
+        { songId: "10", title: "残陽", count: 2, available: true },
+        { songId: "11", title: "ハナムスビ", count: 2, available: true },
+      ],
+      submissions: 4,
+      participants: 3,
+      label: "early",
+    });
+    expect(g2.wishes).toEqual({
+      top: [{ songId: "20", title: "未体験HORIZON", count: 7, available: true }],
+      submissions: 7,
+      participants: 6,
+      label: "ok",
+    });
+    // The expect column is untouched by wishes.
+    expect(g1.expects).toEqual(EMPTY_COLUMN);
+    // The wish participant SQL counts only rows that carry an anon id
+    // and a group — legacy rows are submissions, never participants.
+    const wishSql = participantsRaw.mock.calls
+      .map((c) => (c[0] as unknown as TemplateStringsArray).join("?"))
+      .find((q) => q.includes('"SongWish"'));
+    expect(wishSql).toMatch(/"anonId" IS NOT NULL/);
+    expect(wishSql).toMatch(/"groupArtistId" IS NOT NULL/);
+  });
+
+  it("legacy wishes count as submissions under the first roster group that holds the song, never as participants", async () => {
+    wishGroupBy.mockResolvedValue([
+      // 11 is in both groups' catalogs → the FIRST group in roster order.
+      wishRow(null, 11, 2, "2026-10-10T00:00:00.000Z"),
+      // 20 only in group 2's catalog.
+      wishRow(null, 20, 1, "2026-10-11T00:00:00.000Z"),
+    ] as never);
+    songFindMany.mockResolvedValue([
+      { id: BigInt(11), baseVersionId: null },
+      { id: BigInt(20), baseVersionId: null },
+    ] as never);
+    const body = await (await GET(req(), params())).json();
+    const [g1, g2] = body.groups;
+    expect(g1.wishes).toEqual({
+      top: [{ songId: "11", title: "ハナムスビ", count: 2, available: true }],
+      submissions: 2,
+      participants: 0,
+      // legacy-only column: fan data (early), never the operator fallback
+      label: "early",
+    });
+    expect(g2.wishes).toEqual({
+      top: [{ songId: "20", title: "未体験HORIZON", count: 1, available: true }],
+      submissions: 1,
+      participants: 0,
+      label: "early",
+    });
+    // Attribution needs every group's catalog.
+    expect(catalogMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a legacy wish merges with the same song wished under its group; a legacy variant folds onto its base", async () => {
+    wishGroupBy.mockResolvedValue([
+      wishRow(1, 10, 1, "2026-10-20T00:00:00.000Z"),
+      wishRow(null, 10, 1, "2026-10-12T00:00:00.000Z"),
+      // 501 is a variant of 10 (not in any catalog itself).
+      wishRow(null, 501, 2, "2026-10-15T00:00:00.000Z"),
+    ] as never);
+    songFindMany.mockResolvedValue([
+      { id: BigInt(10), baseVersionId: null },
+      { id: BigInt(501), baseVersionId: BigInt(10) },
+    ] as never);
+    wishParticipants = [{ groupArtistId: BigInt(1), participants: 1 }];
+    const body = await (await GET(req(), params())).json();
+    expect(body.groups[0].wishes).toEqual({
+      top: [{ songId: "10", title: "残陽", count: 4, available: true }],
+      submissions: 4,
+      participants: 1,
+      label: "early",
+    });
+    // One bounded song query, for the legacy song ids only.
+    expect(songFindMany).toHaveBeenCalledTimes(1);
+    expect(songFindMany).toHaveBeenCalledWith({
+      where: { id: { in: [BigInt(10), BigInt(501)] } },
+      select: { id: true, baseVersionId: true },
+    });
+  });
+
+  it("a legacy wish whose song resolves to no roster group lands in no column", async () => {
+    wishGroupBy.mockResolvedValue([
+      wishRow(null, 999, 3, "2026-10-12T00:00:00.000Z"),
+    ] as never);
+    songFindMany.mockResolvedValue([
+      { id: BigInt(999), baseVersionId: null },
+    ] as never);
+    const body = await (await GET(req(), params())).json();
+    for (const g of body.groups) {
+      expect(g.wishes).toEqual(EMPTY_COLUMN);
+    }
+  });
+
+  it("zero wish submissions → operator column showing the group's starters", async () => {
+    findFirst.mockResolvedValue(
+      control({ boardStarterSongIds: { "1": ["11"] } }) as never,
+    );
+    const body = await (await GET(req(), params())).json();
+    expect(body.groups[0].wishes.label).toBe("operator");
+    expect(body.groups[0].starters).toEqual([{ songId: "11", title: "ハナムスビ" }]);
+  });
+
+  it("ongoing → locked stub, no wish aggregate work", async () => {
+    findFirst.mockResolvedValue(control({ status: "ongoing" }) as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body).toMatchObject({ enabled: true, status: "ongoing", locked: true });
+    expect(wishGroupBy).not.toHaveBeenCalled();
+    expect(songFindMany).not.toHaveBeenCalled();
   });
 });
