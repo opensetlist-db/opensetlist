@@ -206,6 +206,120 @@ describe("<FanBoardSection>", () => {
   });
 });
 
+describe("<FanBoardSection> crowd TOP3", () => {
+  function crowd(
+    label: "early" | "ok",
+    top: BoardGroupView["expects"]["top"],
+    participants = label === "ok" ? 6 : 2,
+  ): BoardReadResponse {
+    const submissions = top.reduce((n, e) => n + e.count, 0);
+    return {
+      ...READY,
+      groups: [
+        {
+          ...group("1", "hasunosora", "蓮ノ空", [{ songId: "12", title: "スターター" }]),
+          expects: { top, submissions, participants, label },
+        },
+        group("2", "liella", "Liella!"),
+      ],
+    } as BoardReadResponse;
+  }
+  const TOP: BoardGroupView["expects"]["top"] = [
+    { songId: "10", title: "残陽", count: 7, available: true },
+    { songId: "11", title: "ハナムスビ", count: 3, available: true },
+  ];
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("early column: counts as submissions, early-sample label, no starters", async () => {
+    respond(crowd("early", TOP));
+    renderBlock();
+    const entries = await screen.findAllByTestId("board-top-entry");
+    expect(entries.map((e) => e.textContent)).toEqual([
+      expect.stringContaining("submissions(7)"),
+      expect.stringContaining("submissions(3)"),
+    ]);
+    expect(screen.getByTestId("board-early")).toHaveTextContent("earlySample");
+    // Starters are operator copy for empty columns only.
+    expect(screen.queryByTestId("board-starter")).toBeNull();
+    // Plain counts, never shares.
+    expect(screen.getByRole("tabpanel").textContent).not.toMatch(/%/);
+  });
+
+  it("ok column: TOP3 without the early-sample label", async () => {
+    respond(crowd("ok", TOP));
+    renderBlock();
+    await screen.findAllByTestId("board-top-entry");
+    expect(screen.queryByTestId("board-early")).toBeNull();
+  });
+
+  it("operator column: starters, no crowd rows, no early label", async () => {
+    respond(READY);
+    renderBlock();
+    await screen.findAllByTestId("board-starter");
+    expect(screen.queryByTestId("board-top-entry")).toBeNull();
+    expect(screen.queryByTestId("board-early")).toBeNull();
+  });
+
+  it("my own pick is highlighted where it appears in the TOP3", async () => {
+    window.localStorage.setItem(
+      "board-107",
+      JSON.stringify({
+        picks: [{ id: "p1", groupId: "1", songId: "11", title: "ハナムスビ", available: true }],
+      }),
+    );
+    respond(crowd("ok", TOP));
+    renderBlock();
+    const entries = await screen.findAllByTestId("board-top-entry");
+    expect(entries[0]).not.toHaveAttribute("data-mine");
+    expect(entries[1]).toHaveAttribute("data-mine", "true");
+    expect(entries[1]).toHaveTextContent("mineBadge");
+  });
+
+  it("titles link to the bare-id song page; a click is tracked", async () => {
+    respond(crowd("ok", TOP));
+    renderBlock();
+    const link = await screen.findByRole("link", { name: "残陽" });
+    expect(link).toHaveAttribute("href", "/ko/songs/10");
+    fireEvent.click(link);
+    expect(trackEvent).toHaveBeenCalledWith("board_song_click", {
+      event_id: "107",
+      group_id: "1",
+      song_id: "10",
+      column: "expect",
+      source: "crowd",
+    });
+  });
+
+  it("a removed (soft-deleted) song keeps its row and count but has no link", async () => {
+    respond(
+      crowd("ok", [
+        { songId: "99", title: "", count: 5, available: false },
+        ...TOP,
+      ]),
+    );
+    renderBlock();
+    const [removed] = await screen.findAllByTestId("board-top-entry");
+    expect(removed.querySelector("a")).toBeNull();
+    expect(removed).toHaveTextContent("unavailable");
+    expect(removed).toHaveTextContent("submissions(5)");
+  });
+
+  it("explore link opens the group's page and is tracked", async () => {
+    respond(crowd("early", TOP));
+    renderBlock();
+    const link = await screen.findByRole("link", { name: "explore(蓮ノ空)" });
+    expect(link).toHaveAttribute("href", "/ko/artists/1/hasunosora");
+    fireEvent.click(link);
+    expect(trackEvent).toHaveBeenCalledWith("board_explore_click", {
+      event_id: "107",
+      group_id: "1",
+    });
+  });
+});
+
 describe("<LiveSetlist> board guard", () => {
   function renderLiveSetlist(status: ResolvedEventStatus, board: BoardBlockSeed | null = SEED) {
     return render(

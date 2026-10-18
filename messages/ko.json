@@ -581,7 +581,9 @@
     "errorBusy": "접속이 많아요. 잠시 후 다시 시도해 주세요.",
     "errorNoStorage": "이 브라우저에서는 저장소를 쓸 수 없어 참여할 수 없어요.",
     "errorGeneric": "저장하지 못했어요. 다시 시도해 주세요.",
-    "mineBadge": "내 선택"
+    "mineBadge": "내 선택",
+    "earlySample": "초기 집계",
+    "explore": "{group} 둘러보기"
   },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",

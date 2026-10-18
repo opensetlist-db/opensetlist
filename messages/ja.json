@@ -581,7 +581,9 @@
     "errorBusy": "混み合っています。少し待ってからもう一度お試しください。",
     "errorNoStorage": "このブラウザではストレージが使えないため参加できません。",
     "errorGeneric": "保存できませんでした。もう一度お試しください。",
-    "mineBadge": "自分の予想"
+    "mineBadge": "自分の予想",
+    "earlySample": "集計初期",
+    "explore": "{group}をのぞいてみる"
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",

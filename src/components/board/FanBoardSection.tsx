@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
+import { entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { groupIdFromFragment } from "@/lib/board/fragment";
 import type {
@@ -370,6 +371,7 @@ export function FanBoardSection({
         {state.kind === "ready" && active && (
           <>
             <GroupPanel
+              eventId={eventId}
               group={active}
               locale={locale}
               t={t}
@@ -413,32 +415,56 @@ export function FanBoardSection({
 }
 
 function GroupPanel({
+  eventId,
   group,
   locale,
   t,
   mySongIds,
 }: {
+  eventId: string;
   group: BoardGroupView;
   locale: string;
   t: ReturnType<typeof useTranslations<"Board">>;
   /** My picks in this group — highlighted wherever they appear. */
   mySongIds: ReadonlySet<string>;
 }) {
-  const showStarters =
-    group.expects.label === "operator" && group.starters.length > 0;
+  const label = group.expects.label;
+  const showStarters = label === "operator" && group.starters.length > 0;
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
       : undefined;
+  // Song links double as a listening guide for a group the fan doesn't
+  // know; the click tells us whether anyone uses them that way.
+  // `source` keeps crowd rows apart from operator starters.
+  const trackSong = (songId: string, source: "crowd" | "operator") =>
+    trackEvent("board_song_click", {
+      event_id: eventId,
+      group_id: group.groupId,
+      song_id: songId,
+      column: "expect",
+      source,
+    });
   return (
     <div>
       <h3
-        className="mb-1.5 text-[12px] font-medium"
+        className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium"
         style={{ color: colors.textSecondary }}
       >
         {t("colExpect")}
+        {/* Few participants: a 2-vs-1 must not read like a landslide.
+            Plain counts and this label — never shares or bars. */}
+        {label === "early" && (
+          <span
+            data-testid="board-early"
+            className="rounded px-1.5 text-[10px] font-normal"
+            style={{ background: colors.bgSubtle, color: colors.textSubtle }}
+          >
+            {t("earlySample")}
+          </span>
+        )}
       </h3>
-      {group.expects.label !== "operator" && (
+      {label !== "operator" && (
         <ol className="space-y-1">
           {group.expects.top.map((e) => (
             <li
@@ -449,19 +475,31 @@ function GroupPanel({
               style={mineStyle(e.songId)}
             >
               {e.available ? (
+                // Bare-id song URL: catalog rows carry no slug; the
+                // canonical 308 adds it.
                 <Link
                   href={`/${locale}/songs/${e.songId}`}
+                  onClick={() => trackSong(e.songId, "crowd")}
                   className="min-w-0 flex-1 truncate"
                   style={{ color: colors.textPrimary }}
                 >
                   {e.title}
                 </Link>
               ) : (
+                // Soft-deleted after it was picked: the vote and the rank
+                // stay, the song page is gone. The aggregate takes titles
+                // from the live catalog only, so the title may be empty.
                 <span
                   className="min-w-0 flex-1 truncate"
                   style={{ color: colors.textMuted }}
                 >
-                  {e.title} <span className="text-[10px]">({t("unavailable")})</span>
+                  {e.title ? (
+                    <>
+                      {e.title} <span className="text-[10px]">({t("unavailable")})</span>
+                    </>
+                  ) : (
+                    t("unavailable")
+                  )}
                 </span>
               )}
               {mySongIds.has(e.songId) && (
@@ -482,7 +520,7 @@ function GroupPanel({
           ))}
         </ol>
       )}
-      {group.expects.label === "operator" &&
+      {label === "operator" &&
         (showStarters ? (
           <>
             <ol className="space-y-1">
@@ -499,10 +537,9 @@ function GroupPanel({
                       : null),
                   }}
                 >
-                  {/* Bare-id song URL: catalog rows carry no slug; the
-                      canonical 308 adds it. */}
                   <Link
                     href={`/${locale}/songs/${s.songId}`}
+                    onClick={() => trackSong(s.songId, "operator")}
                     className="min-w-0 flex-1 truncate"
                     style={{ color: colors.textPrimary }}
                   >
@@ -529,6 +566,22 @@ function GroupPanel({
             {t("empty")}
           </p>
         ))}
+      {/* "Explore this group" — the private alternative to a public
+          "skipped" stat: a fan who doesn't know the group gets a way in,
+          and nobody else learns they skipped it. */}
+      <Link
+        href={entityPath("artists", locale, group.groupId, group.slug)}
+        onClick={() =>
+          trackEvent("board_explore_click", {
+            event_id: eventId,
+            group_id: group.groupId,
+          })
+        }
+        className="mt-2 inline-block text-[11px] underline"
+        style={{ color: colors.textSecondary }}
+      >
+        {t("explore", { group: group.name })}
+      </Link>
     </div>
   );
 }
