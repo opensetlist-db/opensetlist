@@ -5,7 +5,7 @@
  * expected songs so the two prediction modes feel like one feature.
  * Rules, all from the n15 spec:
  *   - Expected songs only — never wishes. The caller passes the
- *     expected-song picks (`useBoardPicks`); wishes live elsewhere.
+ *     expected-song picks (`useBoardBallot`); wishes live elsewhere.
  *   - Pre-fill ONLY an empty list. A list the fan already built is
  *     never touched, not even merged into: its order is the fan's own
  *     work, and silently appending would push their ranking around.

@@ -14,6 +14,7 @@ import {
   type StoredBoardPick,
 } from "@/lib/board/pickStorage";
 import { readWishes, writeWishes, type WishEntry } from "@/lib/wishStorage";
+import { callJson, errorCode, type PickFailure } from "@/lib/board/ballotClient";
 import type {
   BoardMineResponse,
   BoardMinePick,
@@ -50,10 +51,7 @@ import type {
 
 export type BallotKind = "pick" | "wish";
 
-export type PickFailure =
-  | BoardPickErrorCode
-  /** fetch threw / timed out / non-JSON body */
-  | "network";
+export type { PickFailure };
 
 export type PickOutcome =
   /** `groupId` is null only for a legacy wish (it has no group). */
@@ -64,45 +62,9 @@ export type PickOutcome =
  *  wish storage is mapped onto. */
 export type BallotEntry = StoredBoardPick;
 
-const WRITE_TIMEOUT_MS = 8000;
 /** "Restore my ballot" tries: the first request plus two retries. */
 const MINE_ATTEMPTS = 3;
 const MINE_RETRY_DELAY_MS = 2000;
-
-async function callJson(
-  url: string,
-  init: RequestInit,
-): Promise<{ status: number; body: unknown } | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), WRITE_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    let body: unknown = null;
-    try {
-      body = await res.json();
-    } catch {
-      // A body that isn't JSON (a proxy's HTML 502) is a network-class
-      // failure for the caller unless the status alone says enough.
-    }
-    return { status: res.status, body };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function errorCode(body: unknown): BoardPickErrorCode | null {
-  if (body && typeof body === "object" && "error" in body) {
-    const code = (body as { error: unknown }).error;
-    if (typeof code === "string") return code as BoardPickErrorCode;
-  }
-  return null;
-}
 
 // ── wish storage adapter ───────────────────────────────────────────
 // Board wishes live in `wish-{eventId}` as `WishEntry` rows tagged with
@@ -195,12 +157,17 @@ export function useBoardBallot({
   eventId,
   locale,
   active,
+  revision = 0,
 }: {
   eventId: string;
   locale: string;
   /** False until the board read answered with groups — no "mine"
    *  request is made for a hidden / failed / ongoing board. */
   active: boolean;
+  /** Bumped when the ballot was replaced outside this hook — a publish
+   *  from the Predict tab (n15-09b) writes the local picks itself — so
+   *  the hook re-reads storage. */
+  revision?: number;
 }) {
   const [picks, setPicks] = useState<BallotEntry[]>([]);
   const [wishes, setWishes] = useState<BallotEntry[]>([]);
@@ -220,8 +187,9 @@ export function useBoardBallot({
   // effect — `react-hooks/set-state-in-effect`.
   const mounted = useMounted();
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
-  if (mounted && hydratedKey !== eventId) {
-    setHydratedKey(eventId);
+  const storageKey = `${eventId}:${revision}`;
+  if (mounted && hydratedKey !== storageKey) {
+    setHydratedKey(storageKey);
     setPicks(readBoardPicks(eventId));
     setWishes(readBoardWishes(eventId));
     setLegacyWishes(readWishes(eventId).filter((w) => !w.groupId));
