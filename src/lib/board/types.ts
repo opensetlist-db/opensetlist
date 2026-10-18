@@ -114,6 +114,8 @@ export type BoardPickErrorCode =
   | "invalid_event_id"
   | "invalid_body"
   | "invalid_anon_id"
+  /** `/board/mine` called with the id in the URL (refused, see route). */
+  | "anon_in_query"
   | "invalid_group"
   | "invalid_song"
   | "invalid_pick_id"

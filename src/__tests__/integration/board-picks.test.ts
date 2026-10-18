@@ -36,6 +36,7 @@ import * as dataCache from "@/lib/dataCache";
 import { POST } from "@/app/api/events/[id]/board/picks/route";
 import { DELETE } from "@/app/api/events/[id]/board/picks/[pickId]/route";
 import { GET as MINE } from "@/app/api/events/[id]/board/mine/route";
+import { ANON_TOKEN_HEADER } from "@/lib/anonId";
 
 const TAG = `boardpick-itest-${Date.now()}`;
 const pg = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
@@ -78,9 +79,9 @@ function deletePick(anonId: string, pickId: string) {
 
 function mine(anonId: string) {
   return MINE(
-    new Request(
-      `http://x/api/events/${eventId}/board/mine?anonId=${anonId}&locale=ko`,
-    ),
+    new Request(`http://x/api/events/${eventId}/board/mine?locale=ko`, {
+      headers: { [ANON_TOKEN_HEADER]: anonId },
+    }),
     { params: Promise.resolve({ id: eventId.toString() }) },
   );
 }

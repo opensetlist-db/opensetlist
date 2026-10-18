@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getAnonId, readExistingAnonId } from "@/lib/anonId";
+import {
+  ANON_TOKEN_HEADER,
+  getAnonId,
+  readExistingAnonId,
+} from "@/lib/anonId";
 import { useMounted } from "@/hooks/useMounted";
 import { trackEvent } from "@/lib/analytics";
 import {
@@ -114,10 +118,12 @@ export function useBoardPicks({
     let cancelled = false;
     let settled = false;
     (async () => {
-      const params = new URLSearchParams({ anonId, locale });
+      // The id goes in a header, never the URL (it is a write
+      // credential; URLs reach logs and telemetry).
+      const params = new URLSearchParams({ locale });
       const res = await callJson(
         `/api/events/${eventId}/board/mine?${params}`,
-        { method: "GET" },
+        { method: "GET", headers: { [ANON_TOKEN_HEADER]: anonId } },
       );
       if (cancelled) return;
       settled = true;

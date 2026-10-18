@@ -342,7 +342,9 @@ describe("<FanBoardSection> my picks", () => {
     await screen.findByText("ハナムスビ");
     expect(counter()).toBe("counter(1,3)");
     const mineCall = fetchMock.mock.calls.find((c) => String(c[0]).includes("/board/mine?"))!;
-    expect(String(mineCall[0])).toContain("anonId=anon-1");
+    // The id rides in the header, never the URL.
+    expect(String(mineCall[0])).not.toContain("anon-1");
+    expect(new Headers(mineCall[1].headers).get("OpenSetlist-Anon-Token")).toBe("anon-1");
     expect(JSON.parse(window.localStorage.getItem("board-107")!).picks).toHaveLength(1);
   });
 

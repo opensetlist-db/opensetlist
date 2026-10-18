@@ -50,6 +50,7 @@ vi.mock("@/lib/predict/availableSongs", () => ({
 import { POST } from "@/app/api/events/[id]/board/picks/route";
 import { DELETE } from "@/app/api/events/[id]/board/picks/[pickId]/route";
 import { GET as MINE } from "@/app/api/events/[id]/board/mine/route";
+import { ANON_TOKEN_HEADER } from "@/lib/anonId";
 import { prisma } from "@/lib/prisma";
 import * as dataCache from "@/lib/dataCache";
 import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
@@ -399,12 +400,14 @@ describe("DELETE /board/picks/[pickId]", () => {
 });
 
 describe("GET /board/mine", () => {
-  const mineReq = (qs: string) =>
-    new Request(`http://localhost/api/events/107/board/mine${qs}`);
+  const mineReq = (qs: string, anon?: string) =>
+    new Request(`http://localhost/api/events/107/board/mine${qs}`, {
+      headers: anon === undefined ? {} : { [ANON_TOKEN_HEADER]: anon },
+    });
 
-  it("missing or empty anonId → 400, private no-store", async () => {
-    for (const qs of ["", "?anonId=", "?anonId=a%20b"]) {
-      const res = await MINE(mineReq(qs), params());
+  it("missing, empty or malformed header → 400, private no-store", async () => {
+    for (const anon of [undefined, "", "a b", "x".repeat(65)]) {
+      const res = await MINE(mineReq("?locale=ko", anon), params());
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ error: "invalid_anon_id" });
       expect(res.headers.get("Cache-Control")).toBe("private, no-store");
@@ -412,9 +415,19 @@ describe("GET /board/mine", () => {
     expect(mineFind).not.toHaveBeenCalled();
   });
 
+  it("anonId in the query is refused even with a valid header", async () => {
+    for (const anon of [undefined, ANON]) {
+      const res = await MINE(mineReq(`?anonId=${ANON}`, anon), params());
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "anon_in_query" });
+      expect(res.headers.get("Cache-Control")).toBe("private, no-store");
+    }
+    expect(mineFind).not.toHaveBeenCalled();
+  });
+
   it("missing event → 404", async () => {
     eventFind.mockResolvedValue(null);
-    const res = await MINE(mineReq(`?anonId=${ANON}`), params());
+    const res = await MINE(mineReq("", ANON), params());
     expect(res.status).toBe(404);
   });
 
@@ -434,7 +447,7 @@ describe("GET /board/mine", () => {
         },
       },
     ] as never);
-    const res = await MINE(mineReq(`?anonId=${ANON}&locale=ko`), params());
+    const res = await MINE(mineReq("?locale=ko", ANON), params());
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("private, no-store");
     expect(await res.json()).toEqual({

@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { scrubAnon } from "./src/lib/sentryScrub";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -13,15 +14,23 @@ Sentry.init({
   // event payload before send.
   beforeSend(event) {
     try {
-      return JSON.parse(
-        JSON.stringify(event, (_, v) =>
-          typeof v === "bigint" ? v.toString() : v,
+      return scrubAnon(
+        JSON.parse(
+          JSON.stringify(event, (_, v) =>
+            typeof v === "bigint" ? v.toString() : v,
+          ),
         ),
       );
     } catch {
-      return event;
+      return scrubAnon(event);
     }
   },
+
+  // The browser anon id is a bearer credential (fan board picks,
+  // impression edits): masked on every capture path — errors,
+  // transactions, streamed spans, breadcrumbs. See src/lib/sentryScrub.ts.
+  beforeSendSpan: (span) => scrubAnon(span),
+  beforeBreadcrumb: (breadcrumb) => scrubAnon(breadcrumb),
 
   // Disambiguate Prisma DB-query span descriptions.
   //
@@ -57,7 +66,7 @@ Sentry.init({
   // ordered, so we pre-index by `span_id` and resolve parents in O(1).
   beforeSendTransaction(event) {
     const spans = event.spans;
-    if (!spans?.length) return event;
+    if (!spans?.length) return scrubAnon(event);
 
     const byId = new Map<string, (typeof spans)[number]>();
     for (const s of spans) {
@@ -81,6 +90,6 @@ Sentry.init({
         s.description = `prisma:client:db_query ${opName}`;
       }
     }
-    return event;
+    return scrubAnon(event);
   },
 });

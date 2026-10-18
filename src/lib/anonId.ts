@@ -110,4 +110,18 @@ export function readExistingAnonId(): string {
   }
 }
 
+/**
+ * Request header that carries the anon id on READS that need it (the
+ * fan board's "mine"). Writes keep it in the JSON body; a read has no
+ * body, and the query string is not an option: the id is a bearer
+ * credential (it can add/remove that browser's picks and edit its
+ * impressions), and URLs land in access logs, log drains and telemetry.
+ *
+ * Named "…-Token" rather than "X-Anon-Id": no `X-` prefix (RFC 6648),
+ * and Sentry's default header filter already masks names containing
+ * "token" — a second layer under our own scrubber
+ * (`src/lib/sentryScrub.ts`).
+ */
+export const ANON_TOKEN_HEADER = "OpenSetlist-Anon-Token";
+
 export { KEY as ANON_ID_KEY };

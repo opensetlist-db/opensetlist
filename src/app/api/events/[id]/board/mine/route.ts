@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { defaultLocale, locales, type Locale } from "@/i18n/routing";
-import { parseRequiredAnonId } from "@/lib/anonId";
+import { ANON_TOKEN_HEADER, parseRequiredAnonId } from "@/lib/anonId";
 import { getBoardControlCached } from "@/lib/board/boardRead";
 import { parseDecimalId } from "@/lib/board/ids";
 import { loadMinePicks } from "@/lib/board/picks";
@@ -12,7 +12,8 @@ type RouteProps = { params: Promise<{ id: string }> };
 /**
  * The caller's own expected-song picks for one event (n15-03).
  *
- *   GET /api/events/[id]/board/mine?anonId=<browser id>&locale=ja
+ *   GET /api/events/[id]/board/mine?locale=ja
+ *     header OpenSetlist-Anon-Token: <browser anon id>
  *     → { picks: BoardMinePick[] }
  *
  * The client's fallback when its local copy is empty (storage cleared,
@@ -21,7 +22,14 @@ type RouteProps = { params: Promise<{ id: string }> };
  * `private, no-store`, never enters a shared cache, and is computed
  * per request (the data cache is not used for the rows).
  *
- *   400 malformed event id; missing, empty or malformed anonId
+ * The id travels in a header, never the URL: it is also a WRITE
+ * credential (picks, impressions), and URLs are recorded by access
+ * logs, log drains and telemetry. A request that still puts `anonId`
+ * in the query is refused outright (400 `anon_in_query`) rather than
+ * served, so no client can regress to the leaking shape unnoticed.
+ *
+ *   400 malformed event id; anonId in the query; missing, empty or
+ *       malformed header
  *   404 event missing
  *
  * Served even when the board is disabled or locked: it is a read of
@@ -41,7 +49,15 @@ export async function GET(req: Request, { params }: RouteProps) {
     );
   }
   const search = new URL(req.url).searchParams;
-  const anon = parseRequiredAnonId(search.get("anonId") ?? undefined);
+  if (search.has("anonId")) {
+    return NextResponse.json(
+      { error: "anon_in_query" },
+      { status: 400, headers: PRIVATE_NO_STORE },
+    );
+  }
+  const anon = parseRequiredAnonId(
+    req.headers.get(ANON_TOKEN_HEADER) ?? undefined,
+  );
   if (!anon.ok) {
     return NextResponse.json(
       { error: "invalid_anon_id" },
