@@ -43,8 +43,17 @@ reviews:
       P2025 → 500). Expect one conditional deleteMany/updateMany whose where
       carries the check, with a lookup only when the count is 0 to choose
       404 vs 403
+    - Write helpers that carry prior state over by default (keep a flag or
+      field unless the caller passes a new value): check every transition
+      that should end it — emptying the collection, a reset, a replace.
+      A carried-over flag on an emptied list leaks onto whatever the user
+      builds next
+    - Tests that assert something is absent ("X stays out", "not rendered",
+      "not called") need a positive control: the same test must show X was
+      loaded, rendered, or reachable first. A fixture in the wrong storage
+      shape loads nothing, and the absence check then passes vacuously
 
     Skip:
     - Stylistic preferences already handled by ESLint
-    - Comments about adding more tests (no test suite yet)
+    - Requests for more tests on code the diff doesn't touch
     - Suggestions to add logging
