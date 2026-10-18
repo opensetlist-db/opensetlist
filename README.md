@@ -30,6 +30,32 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.20.0 (2026-10-17)
+- **Impression translation runs on Claude Haiku 5.5 in production (#599).** Minor bump: **no schema change**, one new dependency (`@anthropic-ai/sdk`), one new env var (`ANTHROPIC_API_KEY`), and `TRANSLATION_PROVIDER` accepts `anthropic`. Owner decision on cost after the first measured provider bake-off, which ran the same prompt through all four models on 27 cases (16 dev impressions + 11 committed hard cases). All four parsed 27 of 27.
+
+  | Provider | p95 latency | Cost per call |
+  |---|---|---|
+  | Gemini 3.1 Flash Lite | 1188 ms | — |
+  | GPT-4o-mini (previous prod) | 1944 ms | — |
+  | Claude Haiku 5.5 | 1620 ms | ≈ $0.00007 (cached system prompt) |
+  | Claude Sonnet 5.5 (quality ceiling) | 1877 ms | ≈ $0.0012 |
+
+  - `AnthropicTranslator` call shape: the system prompt carries an explicit `cache_control` (5-minute TTL); thinking is off; `effort: low`; a `{ko, ja, en}` JSON schema is enforced at the API layer; there is no `temperature`, because post-Opus-4.6 models reject it.
+  - `/admin/translation-debug` gains Claude Haiku / Sonnet options.
+  - `scripts/translation-bakeoff/` re-runs the comparison; its output goes to a gitignored `out/`.
+  - `scripts/count-prompt-tokens.ts` also measures prompts on Claude's tokenizer against the 512-token cache minimum.
+  - **Accepted limitation:** for coined fan abbreviations that are not in the glossary, Haiku can leave Hangul in the Japanese row (`긴히메` → `긴ヒメ`). GPT-4o-mini stays one env flip away.
+- **Translation prompt is picked from the event headliner (#600).** Cross-IP units (AiScReam, GKSS) are top-level group Artists, so every Hasunosora live with Ceras and every Nijigasaki live with Ayumu used to read as a joint live and fell back to the generic prompt. On dev that was all 30 impressions. The resolver now uses `Event.artist ?? EventSeries.artist` (walked up to its root), and the performer walk is only the fallback for headliner-less fes events. Multi-IP Love Live! fes events get a new `love-live` franchise prompt (`prompts/lovelive.ts`, 6870 tokens; its glossary was reviewed by the owner). The Nijigasaki prompt gains VA nicknames. **No schema change**, and existing cached translations are not invalidated.
+- **Release order (prod):**
+  1. Set `ANTHROPIC_API_KEY` and `TRANSLATION_PROVIDER=anthropic` in the Vercel Production env **before** merging. Vercel applies env changes only to new deployments, so the merge deployment picks them up, and v0.19.1 keeps serving with OpenAI until then.
+  2. Merge the release PR.
+  3. Tag `v0.20.0`. `migrate-prod` then runs as a no-op.
+- **Rollback:** set `TRANSLATION_PROVIDER=openai` and redeploy. No code change is needed.
+- **Post-deploy (prod):**
+  - Translate a Japanese impression on a Hasunosora event page. It returns ko/en text.
+  - In Sentry, `translator.translate_failed` has no events tagged `provider=anthropic`.
+  - The Anthropic Console shows cache reads on the second and later calls.
+
 ### v0.19.1 (2026-10-13)
 - **`/api/setlist` answers 404 for a missing or soft-deleted event, and open tabs stop on it (#596).** Patch bump: **no schema change**, no env vars, no new deps. Found in n14 step 8: after an event was soft-deleted the page answered 404 but the API kept serving the last snapshot (`status: null`) and an open tab polled it forever.
   - Route: `!snapshot.found || snapshot.isDeleted` → 404 `{ error: "not_found" }` with `Cache-Control: public, max-age=0, must-revalidate`; decided from the cached snapshot (no extra DB read, no rebuild).
