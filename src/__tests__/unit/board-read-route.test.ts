@@ -5,7 +5,7 @@
 // `no-store`, and the read never touches a revalidate helper. The data
 // cache is replaced by a pass-through so each call reaches the mocked
 // sources (cache reuse itself is proven on a Preview, not here).
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: { event: { findFirst: vi.fn() } },
@@ -19,6 +19,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => {
     revalidateEventData: vi.fn(),
     revalidateEventImpressions: vi.fn(),
     revalidateBoardControl: vi.fn(),
+    revalidateBoardAggregate: vi.fn(),
   };
 });
 vi.mock("@/lib/board/loadBoardGroups", () => ({
@@ -79,12 +80,21 @@ function song(id: number, title: string): AvailableSong {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useRealTimers();
+  // Pin "now" a day before START so the stored-`scheduled` fixtures
+  // resolve to upcoming on any wall-clock date (in real time, the
+  // window START … START+12h would turn them ongoing). Tests that need
+  // a boundary instant set their own time on top of this.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(START.getTime() - 24 * 60 * 60 * 1000));
   groupsMock.mockResolvedValue([
     { artistId: 1, slug: "hasunosora", label: "蓮ノ空", color: "#f8b500" },
     { artistId: 2, slug: "liella", label: "Liella!", color: null },
   ]);
   catalogMock.mockResolvedValue([song(10, "残陽"), song(11, "ハナムスビ")]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 function expectNoAggregateWork() {
@@ -97,6 +107,7 @@ function expectNoRevalidate() {
   expect(dataCache.revalidateEventData).not.toHaveBeenCalled();
   expect(dataCache.revalidateEventImpressions).not.toHaveBeenCalled();
   expect(dataCache.revalidateBoardControl).not.toHaveBeenCalled();
+  expect(dataCache.revalidateBoardAggregate).not.toHaveBeenCalled();
 }
 
 describe("GET /api/events/[id]/board", () => {

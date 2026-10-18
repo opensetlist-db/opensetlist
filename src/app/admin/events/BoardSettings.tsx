@@ -257,7 +257,7 @@ function GroupStarterEditor({
             placeholder={`${group.label} 기본곡 검색`}
             className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
           />
-          {searching && <p className="mt-1 text-xs text-zinc-500">검색 중…</p>}
+          {active && searching && <p className="mt-1 text-xs text-zinc-500">검색 중…</p>}
           {visibleHits.length > 0 && (
             <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-zinc-200">
               {visibleHits.map((h) => (

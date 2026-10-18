@@ -19,6 +19,7 @@ vi.mock("@/lib/dataCache", async (importOriginal) => {
     revalidateEventData: vi.fn(),
     revalidateEventImpressions: vi.fn(),
     revalidateBoardControl: vi.fn(),
+    revalidateBoardAggregate: vi.fn(),
   };
 });
 vi.mock("@/lib/liveWriterTx", () => ({
@@ -119,12 +120,24 @@ describe("PATCH /api/admin/events/[id]/board", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("expires ONLY the board-control entry, after the update", async () => {
+  it("flag-only save expires ONLY the board-control entry, after the update", async () => {
     await PATCH(patch({ boardEnabled: false }), params());
     expect(dataCache.revalidateBoardControl).toHaveBeenCalledTimes(1);
     expect(dataCache.revalidateBoardControl).toHaveBeenCalledWith(BigInt(107));
     expect(update.mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(dataCache.revalidateBoardControl).mock.invocationCallOrder[0],
+    );
+    expect(dataCache.revalidateBoardAggregate).not.toHaveBeenCalled();
+    expectLivePathUntouched();
+  });
+
+  it("a starter save also expires the board aggregate (it carries starter titles)", async () => {
+    await PATCH(patch({ starterSongIds: { "1": ["11"] } }), params());
+    expect(dataCache.revalidateBoardControl).toHaveBeenCalledWith(BigInt(107));
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledTimes(1);
+    expect(dataCache.revalidateBoardAggregate).toHaveBeenCalledWith(BigInt(107));
+    expect(update.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(dataCache.revalidateBoardAggregate).mock.invocationCallOrder[0],
     );
     expectLivePathUntouched();
   });
@@ -190,6 +203,7 @@ describe("PATCH /api/admin/events/[id]/board", () => {
     expect(typeof json.error).toBe("string");
     expect(update).not.toHaveBeenCalled();
     expect(dataCache.revalidateBoardControl).not.toHaveBeenCalled();
+    expect(dataCache.revalidateBoardAggregate).not.toHaveBeenCalled();
   });
 
   it("404 for a missing event", async () => {

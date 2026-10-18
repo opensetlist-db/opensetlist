@@ -573,8 +573,10 @@ model Event {
   // (a single-artist event gets a one-group board by flipping it). A DB
   // column rather than an env var because flipping it must not need a
   // redeploy. Written only by the dedicated admin board endpoint
-  // (`/api/admin/events/[id]/board`), which performs no cache
-  // invalidation; readers pick changes up through the event-row TTL.
+  // (`/api/admin/events/[id]/board`), which expires only the board's
+  // own cache entries (never the event or global tags): the board read
+  // sees the change on its next request; the event page's mount
+  // decision follows the event-row TTL.
   boardEnabled        Boolean   @default(false)
   // Operator starter picks shown (labelled) in a board column that has
   // zero fan submissions: `{ "<rootGroupArtistId>": ["<songId>", …] }`,

@@ -3,7 +3,10 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { parseJsonBody } from "@/lib/admin-input";
-import { revalidateBoardControl } from "@/lib/dataCache";
+import {
+  revalidateBoardAggregate,
+  revalidateBoardControl,
+} from "@/lib/dataCache";
 import {
   findStarterOutsideCatalog,
   parseStarterInput,
@@ -35,7 +38,8 @@ type Props = { params: Promise<{ id: string }> };
  * public-data tag and the event tag — which also throws away the live
  * snapshot entries. Board settings change nothing the live path
  * serves, so this endpoint does a plain single-row update and expires
- * only the board's own control entry: the board read (the kill switch
+ * only the board's own entries (control row; aggregate when starters
+ * change): the board read (the kill switch
  * that matters — it also gates every write) sees the change on its
  * next request; the event page picks the flag up through the event-row
  * TTL (`CACHE_TTL.event`), and a page still showing a just-disabled
@@ -147,10 +151,13 @@ export async function PATCH(request: NextRequest, { params }: Props) {
     },
     select: { boardEnabled: true, boardStarterSongIds: true },
   });
-  // Board-control entry only (see `revalidateBoardControl`): the next
-  // board read sees the new flag/starters. Not the event tag, not the
-  // global tag — nothing the live path serves is expired.
+  // Board entries only — never the event tag or the global tag, so
+  // nothing the live path serves is expired. The control row always
+  // (the next board read sees the new flag); the aggregate too when
+  // starters changed, since it carries their resolved titles and would
+  // otherwise serve the old starters for up to one board TTL.
   revalidateBoardControl(eventId);
+  if (hasStarters) revalidateBoardAggregate(eventId);
   return NextResponse.json({
     boardEnabled: updated.boardEnabled,
     starterSongIds: readStarterMap(updated.boardStarterSongIds),

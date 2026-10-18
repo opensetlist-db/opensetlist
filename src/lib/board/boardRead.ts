@@ -32,7 +32,8 @@ import type {
  *     show is ongoing.
  *   - `getBoardAggregateCached` — the per-group columns. Own cache name
  *     and own tag (`event:<id>:board`), ~2 min TTL, never invalidated
- *     by a write. Keyed on event + locale + resolved status so the
+ *     by a fan write (only the admin starter-pick save expires it).
+ *     Keyed on event + locale + resolved status so the
  *     upcoming → completed transition is a fresh miss (the completed
  *     shape will carry the tally).
  *
