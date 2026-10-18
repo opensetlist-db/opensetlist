@@ -168,7 +168,8 @@ afterEach(() => {
 function renderPage({
   status = "upcoming",
   startTime = new Date(LOCK),
-}: { status?: ResolvedEventStatus; startTime?: Date } = {}) {
+  catalog = CATALOG,
+}: { status?: ResolvedEventStatus; startTime?: Date; catalog?: AvailableSong[] } = {}) {
   return render(
     <LiveSetlist
       eventId="107"
@@ -186,7 +187,7 @@ function renderPage({
       seriesName="S"
       eventTitle="E"
       dateLine="d"
-      availableSongs={CATALOG}
+      availableSongs={catalog}
       unitFilters={[{ key: "all", label: "All", color: null, kind: "all", artistId: null }]}
     />,
   );
@@ -377,6 +378,13 @@ describe("full setlist → board proposal → published picks", () => {
 
   it("no publish from an empty list", async () => {
     renderPage();
+    await screen.findByRole("button", { name: "copy" });
+    expect(card().queryByRole("button", { name: /toBoardPublish/ })).toBeNull();
+  });
+
+  it("no publish without a catalog (the proposal could only clear my picks)", async () => {
+    storeList([10]);
+    renderPage({ catalog: [] });
     await screen.findByRole("button", { name: "copy" });
     expect(card().queryByRole("button", { name: /toBoardPublish/ })).toBeNull();
   });

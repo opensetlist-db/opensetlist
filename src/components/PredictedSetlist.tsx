@@ -513,11 +513,15 @@ export function PredictedSetlist({
   // derive from — an empty list has nothing to propose. (A fan who
   // removes every chip in the proposal can still publish the empty set,
   // which clears their picks; the preview lists each removal first.)
+  // Without a catalog the derivation finds no song in any group, so the
+  // proposal would be empty and a confirm would silently clear the
+  // fan's picks — no button then.
   const canPublish =
     !isLocked &&
     boardGroups !== undefined &&
     boardGroups.length > 0 &&
-    predictions.length > 0;
+    predictions.length > 0 &&
+    availableSongs.length > 0;
 
   return (
     <div
