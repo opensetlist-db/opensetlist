@@ -398,6 +398,61 @@ describe("<FanBoardSection> my picks", () => {
     expect(screen.queryByText(/openUntil/)).toBeNull();
   });
 
+  it("a transient /board/mine failure (503 busy, network) is retried a bounded number of times", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      window.localStorage.setItem(ANON_ID_KEY, "anon-1");
+      let mineCalls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.startsWith("/api/events/107/board?")) return json(200, readBoard());
+        if (url.startsWith("/api/events/107/board/mine?")) {
+          mineCalls += 1;
+          if (mineCalls === 1) return json(503, { error: "busy" });
+          if (mineCalls === 2) throw new TypeError("Failed to fetch");
+          return json(200, {
+            picks: [
+              { id: "p9", groupId: "1", songId: "11", title: "ハナムスビ", available: true, createdAt: "2026-11-01T00:00:00.000Z" },
+            ],
+          });
+        }
+        return json(500, {});
+      });
+      renderBlock();
+      await waitFor(() => expect(mineCalls).toBe(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      await screen.findByText("ハナムスビ");
+      expect(mineCalls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up after the retry budget on a persistent busy answer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      window.localStorage.setItem(ANON_ID_KEY, "anon-1");
+      let mineCalls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.startsWith("/api/events/107/board?")) return json(200, readBoard());
+        if (url.startsWith("/api/events/107/board/mine?")) {
+          mineCalls += 1;
+          return json(503, { error: "busy" });
+        }
+        return json(500, {});
+      });
+      renderBlock();
+      await waitFor(() => expect(mineCalls).toBe(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(mineCalls).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not ask /board/mine when picks are stored locally or no anon id exists", async () => {
     renderBlock();
     await screen.findByText("add(蓮ノ空)");

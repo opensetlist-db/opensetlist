@@ -40,6 +40,9 @@ export type PickOutcome =
   | { ok: false; reason: PickFailure };
 
 const WRITE_TIMEOUT_MS = 8000;
+/** "Restore my picks" tries: the first request plus two retries. */
+const MINE_ATTEMPTS = 3;
+const MINE_RETRY_DELAY_MS = 2000;
 
 async function callJson(
   url: string,
@@ -121,11 +124,24 @@ export function useBoardPicks({
       // The id goes in a header, never the URL (it is a write
       // credential; URLs reach logs and telemetry).
       const params = new URLSearchParams({ locale });
-      const res = await callJson(
-        `/api/events/${eventId}/board/mine?${params}`,
-        { method: "GET", headers: { [ANON_TOKEN_HEADER]: anonId } },
-      );
-      if (cancelled) return;
+      // A transient failure (503 busy — the route's retry-safe answer —
+      // a 5xx, or no response at all) is retried a few times, 2 s apart
+      // to match the route's Retry-After. Giving up after ONE failure
+      // would be sticky: the next local add makes storage non-empty, so
+      // later mounts skip the restore and this browser never sees its
+      // older server picks (nor can remove them before the lock).
+      let res: Awaited<ReturnType<typeof callJson>> = null;
+      for (let attempt = 1; attempt <= MINE_ATTEMPTS; attempt++) {
+        res = await callJson(`/api/events/${eventId}/board/mine?${params}`, {
+          method: "GET",
+          headers: { [ANON_TOKEN_HEADER]: anonId },
+        });
+        if (cancelled) return;
+        const transient = !res || res.status >= 500;
+        if (!transient || attempt === MINE_ATTEMPTS) break;
+        await new Promise((r) => setTimeout(r, MINE_RETRY_DELAY_MS));
+        if (cancelled) return;
+      }
       settled = true;
       if (!res || res.status !== 200) return;
       const body = res.body as BoardMineResponse | null;
