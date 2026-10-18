@@ -580,10 +580,10 @@ Never run integration tests against the production database.
 # Unit tests only (fast, no DB needed)
 npx vitest run src/__tests__/unit
 
-# Full unit suite (~2 200 tests, ~1 min) — the default config excludes
-# integration/. Filter the output once rather than rerunning to find
-# the failing file:
-npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "
+# Full unit suite — the default config excludes integration/. Filter
+# the output once rather than rerunning to find the failing file (the
+# echo keeps vitest's exit code visible through the pipe):
+npx vitest run 2>&1 | grep -E "FAIL|×|Test Files|Tests "; echo "exit=${PIPESTATUS[0]}"
 
 # Integration tests (real dev DB; separate config)
 npm run test:integration

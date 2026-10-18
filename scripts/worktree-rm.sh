@@ -1,30 +1,54 @@
 #!/usr/bin/env bash
 # Remove a task worktree made by scripts/worktree-new.sh, and its branch.
 #
-#   scripts/worktree-rm.sh <path>
+#   scripts/worktree-rm.sh [--force] <path>
 #
-# Order matters: the linked node_modules is unlinked FIRST, so nothing
-# below can recurse through it into the main checkout's node_modules.
-# Refuses a worktree with uncommitted changes, and keeps a branch git
-# does not consider merged (`git branch -d` semantics).
+# Safety rules, in the order they are enforced:
+#   - Only a folder directly inside <main checkout>/.claude/worktrees/ is
+#     accepted — never the main checkout, never anything else on disk.
+#   - A real worktree with uncommitted changes is refused.
+#   - The linked node_modules is unlinked FIRST, so nothing below can
+#     recurse through it into the main checkout's node_modules.
+#   - The branch is deleted only if git agrees it is merged
+#     (`git branch -d`); a squash-merged branch is therefore kept.
 #
-# Also accepts a leftover folder that git no longer lists as a worktree
-# (an earlier removal unregistered it but could not delete the folder).
-# A folder still in use — typically by the session that worked in it —
-# cannot be deleted on Windows; run this from a fresh session.
+# A leftover folder git no longer knows as a worktree (an earlier removal
+# unregistered it but could not delete the folder) is deleted only when
+# empty, or with --force after you have looked inside. A folder still in
+# use — typically by the session that worked in it — cannot be deleted
+# on Windows; the script then exits 2 and a fresh session reruns it.
 set -euo pipefail
 
-target="${1:?usage: worktree-rm.sh <path>}"
+force=""
+if [ "${1:-}" = "--force" ]; then force=1; shift; fi
+target="${1:?usage: worktree-rm.sh [--force] <path>}"
 [ -d "$target" ] || { echo "no such folder: $target" >&2; exit 1; }
-path="$(cd "$target" && pwd)"
-# git prints worktree paths in its native form (F:/work/... on Windows,
-# where bash says /f/work/...); compare in that form.
-native="$(cd "$target" && { pwd -W 2> /dev/null || pwd; })"
-main="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
 
+# Physical paths, compared case-insensitively on Windows (drive letters
+# and folder names are case-insensitive there; `pwd` keeps the case the
+# caller typed).
+canon() { (cd "$1" && pwd -P); }
+same_path() {
+  case "${OSTYPE:-}" in
+    msys*) [ "$(printf %s "$1" | tr '[:upper:]' '[:lower:]')" = "$(printf %s "$2" | tr '[:upper:]' '[:lower:]')" ] ;;
+    *) [ "$1" = "$2" ] ;;
+  esac
+}
+
+path="$(canon "$target")"
+main="$(canon "$(git -C "$path" rev-parse --path-format=absolute --git-common-dir 2> /dev/null || git rev-parse --path-format=absolute --git-common-dir)/..")"
+parent="$(canon "$path/..")"
+if ! same_path "$parent" "$main/.claude/worktrees"; then
+  echo "refusing: $path is not a folder inside $main/.claude/worktrees/" >&2
+  exit 1
+fi
+
+# A worktree is a folder that is its own work-tree root. A leftover folder
+# under the main checkout resolves to the MAIN checkout's root instead.
+toplevel="$(git -C "$path" rev-parse --show-toplevel 2> /dev/null || true)"
 registered=""
 branch=""
-if git -C "$main" worktree list --porcelain | grep -qxF "worktree $native"; then
+if [ -n "$toplevel" ] && same_path "$(canon "$toplevel")" "$path"; then
   registered=1
   if [ -n "$(git -C "$path" status --porcelain)" ]; then
     echo "refusing: $path has uncommitted changes" >&2
@@ -40,12 +64,17 @@ fi
 nm="$path/node_modules"
 if [ -L "$nm" ] || [ -e "$nm" ]; then
   case "${OSTYPE:-}" in
-    msys*|cygwin*) cmd //c rmdir "$(cygpath -w "$nm")" 2> /dev/null || true ;;
-    *) [ -L "$nm" ] && rm "$nm" ;;
+    msys*) cmd //c rmdir "$(cygpath -w "$nm")" 2> /dev/null || true ;;
+    *) if [ -L "$nm" ]; then rm "$nm"; fi ;;
   esac
 fi
 if [ -L "$nm" ]; then
   echo "refusing: could not unlink $nm" >&2
+  exit 1
+fi
+
+if [ -z "$registered" ] && [ -z "$force" ] && [ -n "$(ls -A "$path")" ]; then
+  echo "refusing: $path is not a worktree and is not empty — look inside, then rerun with --force" >&2
   exit 1
 fi
 
@@ -65,7 +94,7 @@ if [ -n "$branch" ]; then
 fi
 
 if [ -d "$path" ]; then
-  echo "folder still present (in use?): $path — unregistered; rerun from a fresh session" >&2
+  echo "folder still present (in use?): $path — rerun from a fresh session" >&2
   exit 2
 fi
 echo "removed $path"

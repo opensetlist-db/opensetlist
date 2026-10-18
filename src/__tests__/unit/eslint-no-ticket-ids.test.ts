@@ -45,5 +45,9 @@ tester.run("no-ticket-ids", rule, {
       code: "const x = 1; // until n14-02 lands",
       errors: [{ messageId: "ticketId" }],
     },
+    {
+      code: "// split into N15-09c later",
+      errors: [{ messageId: "ticketId", data: { id: "N15-09c" } }],
+    },
   ],
 });

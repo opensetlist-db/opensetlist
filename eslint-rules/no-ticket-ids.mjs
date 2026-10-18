@@ -10,7 +10,7 @@
  * and identifiers are code, not prose.
  */
 
-const TICKET_ID = /\bn\d{2}-\d{2}[ab]?\b/g;
+const TICKET_ID = /\bn\d{2}-\d{2}[a-z]?\b/gi;
 
 const rule = {
   meta: {
