@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  fetchAdminArtists,
+  UnlistedArtistOption,
+} from "@/components/admin/artistPicker";
 
 type Translation = { locale: string; title: string };
 type ArtistCredit = { artistId: number; role: string; artistName?: string };
@@ -64,12 +68,7 @@ export default function SongForm({ initialData }: SongFormProps) {
   >([]);
 
   useEffect(() => {
-    fetch("/api/admin/artists")
-      .then((r) => r.json())
-      // A DB error comes back as `{ error }`, not an array; keep `[]` so
-      // the credit rows fall back to their own labelled option.
-      .then((data) => setArtists(Array.isArray(data) ? data : []))
-      .catch(() => setArtists([]));
+    fetchAdminArtists<(typeof artists)[number]>().then(setArtists);
   }, []);
 
   function updateTranslation(
@@ -304,19 +303,11 @@ export default function SongForm({ initialData }: SongFormProps) {
                 }
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               >
-                {/*
-                  A <select> whose value matches no option renders the
-                  first option as if it were selected, and touching it
-                  then re-credits the song (PUT replaces every SongArtist
-                  row from this state). So the credited artist always gets
-                  an option of its own, even when the fetched list lacks
-                  it (soft-deleted artist, list still loading or failed).
-                */}
-                {!artists.some((a) => a.id === ac.artistId) && (
-                  <option value={ac.artistId}>
-                    {ac.artistName ?? `ID: ${ac.artistId}`} (목록에 없음)
-                  </option>
-                )}
+                <UnlistedArtistOption
+                  value={ac.artistId}
+                  options={artists}
+                  label={ac.artistName}
+                />
                 {artists.map((a) => {
                   const name =
                     a.translations.find((t) => t.locale === "ko")?.name ??

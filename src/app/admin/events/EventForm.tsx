@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { matchesIdentitySearch } from "@/lib/search";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 import { formatDate } from "@/lib/utils";
+import {
+  fetchAdminArtists,
+  UnlistedArtistOption,
+} from "@/components/admin/artistPicker";
 
 // Korean labels for the BD Album picker's type tag. Admin surface is
 // Korean-only per CLAUDE.md, so we don't route through next-intl here
@@ -193,9 +197,7 @@ export default function EventForm({ initialData }: EventFormProps) {
     fetch("/api/admin/event-series")
       .then((r) => r.json())
       .then(setSeriesList);
-    fetch("/api/admin/artists")
-      .then((r) => r.json())
-      .then(setArtistList);
+    fetchAdminArtists<ArtistOption>().then(setArtistList);
     fetch("/api/admin/albums")
       .then((r) => r.json())
       // The endpoint returns a JSON `{ error }` (not an array) on a DB
@@ -516,6 +518,7 @@ export default function EventForm({ initialData }: EventFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
           >
             <option value="">없음 / 자동 결정</option>
+            <UnlistedArtistOption value={artistId} options={artistList} />
             {artistList.map((a) => {
               const name =
                 a.translations.find((t) => t.locale === "ko")?.name ??
