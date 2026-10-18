@@ -391,4 +391,65 @@ describe("board picks — dev database", () => {
     });
     expect(JSON.stringify(body)).not.toMatch(/itest-[abc]-/);
   });
+
+  it("post-show tally (n15-06): shortlist frozen at the lock, medley hit graded", async () => {
+    // Before the lock — A: songs 0, 1 · B: song 1 → song1 ×2, song0 ×1.
+    for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
+    expect((await postPick(ANON_B, songIds[1])).status).toBe(201);
+    const start = new Date(Date.now() - 60 * 60 * 1000);
+    await setStart(start);
+    // Those picks were made while the board was open, i.e. before the
+    // start that is now an hour ago.
+    await pg.query(`UPDATE "BoardPick" SET "createdAt" = $2 WHERE "eventId" = $1`, [
+      eventId.toString(),
+      utc(new Date(start.getTime() - 60 * 60 * 1000)),
+    ]);
+    await pg.query(`UPDATE "Event" SET status = 'completed' WHERE id = $1`, [
+      eventId.toString(),
+    ]);
+    // Rows dated after the lock (the write path refuses them; inserted
+    // raw to prove the read ignores them): song 3 ×3 would top the
+    // board if the shortlist were built from every row.
+    for (const anon of ["late-1", "late-2", "late-3"]) {
+      await pg.query(
+        `INSERT INTO "BoardPick" (id, "eventId", "groupArtistId", "songId", "anonId", "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`,
+        [eventId.toString(), groupId.toString(), songIds[3].toString(), `itest-${anon}`, utc(new Date())],
+      );
+    }
+    // Final setlist: one medley holding song 0 and song 4.
+    const item = await prisma.setlistItem.create({
+      data: {
+        eventId,
+        position: 1,
+        songs: { create: [{ songId: songIds[0], order: 1 }, { songId: songIds[4], order: 2 }] },
+      },
+      select: { id: true },
+    });
+    try {
+      const res = await BOARD(
+        new Request(`http://x/api/events/${eventId}/board?locale=ko`),
+        { params: Promise.resolve({ id: eventId.toString() }) },
+      );
+      const body = await res.json();
+      expect(body).toMatchObject({ status: "completed", locked: true });
+      expect(body.tally.groups).toEqual([
+        {
+          groupId: groupId.toString(),
+          shortlist: [
+            expect.objectContaining({ songId: songIds[1].toString(), count: 2, played: false }),
+            expect.objectContaining({ songId: songIds[0].toString(), count: 1, played: true }),
+          ],
+          played: 1,
+          size: 2,
+        },
+      ]);
+      expect([body.tally.played, body.tally.size]).toEqual([1, 2]);
+      expect(body.groups[0].expects.participants).toBe(2);
+    } finally {
+      await pg.query(`DELETE FROM "SetlistItemSong" WHERE "setlistItemId" = $1`, [item.id.toString()]);
+      await pg.query(`DELETE FROM "SetlistItem" WHERE id = $1`, [item.id.toString()]);
+      await pg.query(`UPDATE "Event" SET status = 'scheduled' WHERE id = $1`, [eventId.toString()]);
+    }
+  });
 });

@@ -42,6 +42,7 @@ export function BoardMyPicks({
   picks,
   groupSongs,
   locked,
+  playedSongIds = null,
   pending,
   onAdd,
   onRemove,
@@ -57,6 +58,10 @@ export function BoardMyPicks({
    *  completed events, or a festival with no roster). */
   groupSongs: readonly AvailableSong[];
   locked: boolean;
+  /** After the show (n15-06): every song id the final setlist counts
+   *  as played. My picks in it are highlighted — whether or not they
+   *  made the crowd's shortlist. Null/omitted = no result yet. */
+  playedSongIds?: ReadonlySet<string> | null;
   pending: ReadonlySet<string>;
   onAdd: (song: AvailableSong) => void;
   onRemove: (pick: StoredBoardPick) => void;
@@ -112,12 +117,18 @@ export function BoardMyPicks({
             // A song credited to several groups shows where it counts.
             const crossGroup =
               (catalogById.get(p.songId)?.festivalGroupIds.length ?? 0) > 1;
+            const played = playedSongIds?.has(p.songId) ?? false;
             return (
               <li
                 key={p.id}
                 data-testid="board-my-pick"
-                className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px]"
-                style={{ background: colors.bgSubtle }}
+                data-played={played || undefined}
+                className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[13px]"
+                style={
+                  played
+                    ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
+                    : { background: colors.bgSubtle }
+                }
               >
                 <span className="min-w-0 flex-1">
                   {available ? (
@@ -146,6 +157,14 @@ export function BoardMyPicks({
                     </span>
                   )}
                 </span>
+                {played && (
+                  <span
+                    className="flex-shrink-0 rounded px-1.5 text-[10px]"
+                    style={{ color: colors.primary }}
+                  >
+                    ✓ {t("minePlayed")}
+                  </span>
+                )}
                 {!locked && (
                   <button
                     type="button"
