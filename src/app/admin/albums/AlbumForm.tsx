@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { classifyImageSource } from "@/lib/imageSourceBadge";
 import { ADMIN_LOCALES, ADMIN_LANGUAGES } from "@/lib/adminLocales";
 import { ALBUM_TYPES } from "@/lib/albumConstants";
+import { UnlistedArtistOption } from "@/components/admin/artistPicker";
 
 type Translation = { locale: string; title: string };
 
@@ -320,6 +321,7 @@ export default function AlbumForm({ initialData }: AlbumFormProps) {
                 }
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               >
+                <UnlistedArtistOption value={aid} options={artistOptions} />
                 {artistOptions.map((a) => {
                   const name =
                     a.translations.find((t) => t.locale === "ko")?.name ??
