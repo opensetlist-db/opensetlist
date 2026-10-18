@@ -35,6 +35,11 @@ reviews:
     - Missing loading/error states in React components
     - BigInt handling (IDs are BigInt in Prisma schema)
     - Locale handling in i18n (next-intl)
+    - Check-then-write outside a lock or transaction (findFirst/findUnique,
+      then delete/update by id): two concurrent requests both pass the check
+      and the loser's write throws (Prisma P2025 → 500). Expect one
+      conditional deleteMany/updateMany whose where carries the check, with
+      a lookup only when the count is 0 to choose 404 vs 403
 
     Skip:
     - Stylistic preferences already handled by ESLint
