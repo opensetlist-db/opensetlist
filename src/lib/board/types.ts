@@ -55,12 +55,46 @@ export interface BoardGroupView {
   starters: BoardSongRef[];
 }
 
-/** The board read response. Three shapes, discriminated by the
+/** One song of a group's shortlist, graded after the show (n15-06). */
+export interface BoardShortlistEntry extends BoardTopEntry {
+  /** The final setlist holds the song, a variant of it, or a medley
+   *  including it. */
+  played: boolean;
+}
+
+/** One group's graded shortlist: "N of K played", K ≤ 3. */
+export interface BoardGroupTally {
+  groupId: string;
+  /** The group's expect-column TOP3 over the picks that existed at the
+   *  lock — never the operator's starters. Empty when nobody picked. */
+  shortlist: BoardShortlistEntry[];
+  played: number;
+  size: number;
+}
+
+/** The post-show tally (n15-06), sent only once the event is
+ *  completed. */
+export interface BoardTally {
+  /** Over the DISTINCT songs of every shortlist — a song shortlisted
+   *  under two groups counts once. */
+  played: number;
+  size: number;
+  /** Same order as `groups` in the response. */
+  groups: BoardGroupTally[];
+  /** Every song id the final setlist counts as played (each setlist
+   *  song and the base of each variant), so the client can highlight
+   *  the viewer's own picks that were played — "my picks" never
+   *  travel in a board read. */
+  playedSongIds: string[];
+}
+
+/** The board read response. Four shapes, discriminated by the
  *  control state, so a client can never mistake a stub for an empty
  *  board:
  *   - disabled (or the flag was turned off): `{ enabled: false }`
  *   - locked stub (ongoing / cancelled): no aggregate was computed
- *   - open / completed: the aggregate */
+ *   - upcoming: the aggregate
+ *   - completed: the aggregate + the post-show tally */
 export type BoardReadResponse =
   | { enabled: false }
   | {
@@ -71,11 +105,20 @@ export type BoardReadResponse =
     }
   | {
       enabled: true;
-      status: "upcoming" | "completed";
+      status: "upcoming";
       locked: boolean;
       lockAt: string;
       asOf: string;
       groups: BoardGroupView[];
+    }
+  | {
+      enabled: true;
+      status: "completed";
+      locked: true;
+      lockAt: string;
+      asOf: string;
+      groups: BoardGroupView[];
+      tally: BoardTally;
     };
 
 /** What the event page hands the client block: the flag (implicit —
@@ -149,6 +192,8 @@ export type BoardPickErrorCode =
   | "board_locked"
   | "not_owner"
   | "cap_reached"
+  /** A publish (n15-09b) listed one song twice. */
+  | "duplicate_song"
   | "group_conflict"
   | "busy";
 
@@ -159,4 +204,10 @@ export interface BoardPickCreated {
   groupId: string;
   songId: string;
   createdAt: string;
+}
+
+/** Body of a successful publish (n15-09b): the whole resulting
+ *  ballot, oldest first. */
+export interface BoardPublishResponse {
+  picks: BoardPickCreated[];
 }

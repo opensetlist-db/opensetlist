@@ -16,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({
     boardPick: { groupBy: vi.fn() },
     songWish: { groupBy: vi.fn() },
     song: { findMany: vi.fn() },
+    setlistItemSong: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
   },
 }));
@@ -50,6 +51,7 @@ const pickGroupBy = vi.mocked(prisma.boardPick.groupBy);
 const participantsRaw = vi.mocked(prisma.$queryRaw);
 const wishGroupBy = vi.mocked(prisma.songWish.groupBy);
 const songFindMany = vi.mocked(prisma.song.findMany);
+const setlistFindMany = vi.mocked(prisma.setlistItemSong.findMany);
 
 // The two participant counts are both `$queryRaw`; answer each by the
 // table its SQL reads, so a test sets picks and wishes independently.
@@ -120,6 +122,7 @@ beforeEach(() => {
   pickGroupBy.mockResolvedValue([] as never);
   wishGroupBy.mockResolvedValue([] as never);
   songFindMany.mockResolvedValue([] as never);
+  setlistFindMany.mockResolvedValue([] as never);
   pickParticipants = [];
   wishParticipants = [];
   routeParticipants();
@@ -145,6 +148,7 @@ function expectNoAggregateWork() {
   expect(pickGroupBy).not.toHaveBeenCalled();
   expect(wishGroupBy).not.toHaveBeenCalled();
   expect(participantsRaw).not.toHaveBeenCalled();
+  expect(setlistFindMany).not.toHaveBeenCalled();
 }
 
 function expectNoRevalidate() {
@@ -289,6 +293,84 @@ describe("GET /api/events/[id]/board", () => {
     const body = await (await GET(req(), params())).json();
     expect(body).toMatchObject({ enabled: true, status: "completed", locked: true });
     expect(body.groups).toHaveLength(2);
+  });
+
+  // ── Post-show tally (n15-06): the loader branches on resolved status ──
+
+  /** One `setlistItemSong.findMany` row as Prisma returns it. */
+  const setlistRow = (songId: number, baseVersionId: number | null = null) => ({
+    songId: BigInt(songId),
+    song: { baseVersionId: baseVersionId === null ? null : BigInt(baseVersionId) },
+  });
+
+  it("completed → tally graded from at-lock picks against the final setlist", async () => {
+    findFirst.mockResolvedValue(control({ status: "completed" }) as never);
+    pickGroupBy.mockResolvedValue([
+      pickRow(1, 10, 3, "2026-11-10T00:00:00Z"),
+      pickRow(1, 11, 1, "2026-11-11T00:00:00Z"),
+      pickRow(2, 10, 1, "2026-11-12T00:00:00Z"),
+    ] as never);
+    // 10 played as a variant; 11 not played.
+    setlistFindMany.mockResolvedValue([setlistRow(99, 10)] as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body).toMatchObject({ status: "completed", locked: true });
+    expect(body.tally.groups).toEqual([
+      expect.objectContaining({ groupId: "1", played: 1, size: 2 }),
+      expect.objectContaining({ groupId: "2", played: 1, size: 1 }),
+    ]);
+    expect(body.tally.groups[0].shortlist.map((e: { songId: string; played: boolean }) => [e.songId, e.played])).toEqual([
+      ["10", true],
+      ["11", false],
+    ]);
+    // Song 10 is shortlisted under both groups: once overall.
+    expect([body.tally.played, body.tally.size]).toEqual([1, 2]);
+    expect(body.tally.playedSongIds.sort()).toEqual(["10", "99"]);
+    // The shortlist is rebuilt from picks before the lock, never the
+    // last preview: both pick queries are cut off at the start time.
+    expect(pickGroupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { eventId: BigInt(107), createdAt: { lt: START } } }),
+    );
+    const pickSql = participantsRaw.mock.calls
+      .map((c) => (c[0] as unknown as TemplateStringsArray).join("?"))
+      .find((sql) => sql.includes('"BoardPick"'));
+    expect(pickSql).toContain('"createdAt" <');
+    expect(setlistFindMany).toHaveBeenCalledTimes(1);
+    expect(setlistFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { setlistItem: { eventId: BigInt(107), isDeleted: false } },
+      }),
+    );
+  });
+
+  it("completed with no picks → empty shortlists, starters never graded", async () => {
+    findFirst.mockResolvedValue(
+      control({ status: "completed", boardStarterSongIds: { "1": ["10"] } }) as never,
+    );
+    setlistFindMany.mockResolvedValue([setlistRow(10)] as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body.groups[0].starters).toEqual([{ songId: "10", title: "残陽" }]);
+    expect(body.tally).toMatchObject({ played: 0, size: 0 });
+    expect(body.tally.groups.every((g: { size: number }) => g.size === 0)).toBe(true);
+  });
+
+  it("completed with an empty setlist → nothing graded (not 0 of K)", async () => {
+    findFirst.mockResolvedValue(control({ status: "completed" }) as never);
+    pickGroupBy.mockResolvedValue([pickRow(1, 10, 3, "2026-11-10T00:00:00Z")] as never);
+    setlistFindMany.mockResolvedValue([] as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body.groups[0].expects.top).toHaveLength(1);
+    expect(body.tally).toEqual({ played: 0, size: 0, groups: [], playedSongIds: [] });
+  });
+
+  it("upcoming → no tally, no setlist read, no pick cutoff", async () => {
+    findFirst.mockResolvedValue(control() as never);
+    const body = await (await GET(req(), params())).json();
+    expect(body.status).toBe("upcoming");
+    expect(body).not.toHaveProperty("tally");
+    expect(setlistFindMany).not.toHaveBeenCalled();
+    expect(pickGroupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { eventId: BigInt(107) } }),
+    );
   });
 
   it("response carries nothing personal", async () => {

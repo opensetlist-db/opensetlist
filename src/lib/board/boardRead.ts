@@ -18,6 +18,11 @@ import {
   mergeLegacyWishes,
   type BoardSongCount,
 } from "@/lib/board/aggregate";
+import {
+  playedSongIds,
+  tallyBoard,
+  type SetlistSongRow,
+} from "@/lib/board/tally";
 import type {
   BoardGroupView,
   BoardReadResponse,
@@ -40,8 +45,8 @@ import type {
  *     and own tag (`event:<id>:board`), ~2 min TTL, never invalidated
  *     by a fan write (only the admin starter-pick save expires it).
  *     Keyed on event + locale + resolved status so the
- *     upcoming → completed transition is a fresh miss (the completed
- *     shape will carry the tally).
+ *     upcoming → completed transition is a fresh miss: the completed
+ *     shape carries the post-show tally (n15-06).
  *
  * `resolveBoardRead` runs the control check BEFORE touching the
  * aggregate, so a disabled board or an ongoing/cancelled event costs
@@ -119,21 +124,36 @@ function starterRefs(
  * Raw SQL for the second because Prisma's `groupBy` has no
  * `COUNT(DISTINCT …)`; grouping by (group, anon) instead would ship one
  * row per participant just to count them.
+ *
+ * `before` (completed events only, n15-06) keeps just the picks that
+ * existed at the lock, so the expect column — and the shortlist the
+ * tally grades — is the board as it stood when picking closed, rebuilt
+ * from the table rather than from whatever preview was cached last.
+ * Writes are refused from the lock on, so in practice this drops
+ * nothing; it pins the rule down instead of leaning on that.
  */
-async function loadPickCounts(eventId: bigint) {
+async function loadPickCounts(eventId: bigint, before?: Date) {
   const [songRows, participantRows] = await Promise.all([
     prisma.boardPick.groupBy({
       by: ["groupArtistId", "songId"],
-      where: { eventId },
+      where: before ? { eventId, createdAt: { lt: before } } : { eventId },
       _count: { _all: true },
       _min: { createdAt: true },
     }),
-    prisma.$queryRaw<{ groupArtistId: bigint; participants: number }[]>`
-      SELECT "groupArtistId", COUNT(DISTINCT "anonId")::int AS "participants"
-      FROM "BoardPick"
-      WHERE "eventId" = ${eventId} AND "anonId" IS NOT NULL
-      GROUP BY "groupArtistId"
-    `,
+    before
+      ? prisma.$queryRaw<{ groupArtistId: bigint; participants: number }[]>`
+          SELECT "groupArtistId", COUNT(DISTINCT "anonId")::int AS "participants"
+          FROM "BoardPick"
+          WHERE "eventId" = ${eventId} AND "anonId" IS NOT NULL
+            AND "createdAt" < ${before}
+          GROUP BY "groupArtistId"
+        `
+      : prisma.$queryRaw<{ groupArtistId: bigint; participants: number }[]>`
+          SELECT "groupArtistId", COUNT(DISTINCT "anonId")::int AS "participants"
+          FROM "BoardPick"
+          WHERE "eventId" = ${eventId} AND "anonId" IS NOT NULL
+          GROUP BY "groupArtistId"
+        `,
   ]);
   const songsByGroup = new Map<string, BoardSongCount[]>();
   for (const r of songRows) {
@@ -232,23 +252,62 @@ async function loadWishCounts(eventId: bigint) {
   return { songsByGroup, participantsByGroup, legacy: [...legacy.values()] };
 }
 
-// `-v2` since n15-08 added the want column: the data cache outlives a
-// deploy, and an entry written by the previous release (no `wishes`)
-// must not reach the new client. A new name is a clean miss.
+/**
+ * The final setlist's songs, one row per `SetlistItemSong` (a medley is
+ * several rows) — completed events only (n15-06). Same item filter as
+ * the share card's actual setlist: every live (non-deleted) item.
+ * Song soft-deletion is NOT filtered: a shortlisted song moderated away
+ * after the show still counts as played if the setlist names it.
+ */
+async function loadSetlistSongs(eventId: bigint): Promise<SetlistSongRow[]> {
+  const rows = await prisma.setlistItemSong.findMany({
+    where: { setlistItem: { eventId, isDeleted: false } },
+    select: { songId: true, song: { select: { baseVersionId: true } } },
+  });
+  return rows.map((r) => ({
+    songId: String(r.songId),
+    baseVersionId:
+      r.song.baseVersionId === null ? null : String(r.song.baseVersionId),
+  }));
+}
+
+// `-v3` since n15-06 added the tally to the completed shape (`-v2`:
+// n15-08's want column). The data cache outlives a deploy, and an entry
+// written by the previous release must not reach the new client. A new
+// name is a clean miss.
 export const getBoardAggregateCached = cachedQuery(
-  "event-board-v2",
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `_status` is key-only for now (the completed shape gains the tally in n15-06)
-  async (eventId: bigint, locale: string, _status: AggregateStatus) => {
+  "event-board-v3",
+  async (eventId: bigint, locale: string, status: AggregateStatus) => {
     const control = await getBoardControlCached(eventId);
     const primary = seriesPrimaryArtistOf(control?.eventSeries);
-    const [groups, counts, wishCounts] = await Promise.all([
+    // The lock is the start time (the write path refuses picks from
+    // then on). An early wrap-up — stored status flipped to completed
+    // before the start — refused writes from that flip, so every row is
+    // already before the start and the cutoff drops nothing.
+    //
+    // The cutoff reads the CURRENT start time. If an operator moves the
+    // start earlier after the show (a data correction), picks made
+    // between the new and the old start drop out of the shortlist —
+    // accepted: the corrected time is the truth the board is graded
+    // against, and such corrections are rare.
+    //
+    // Freshness: the tally shares this entry's TTL (CACHE_TTL.board),
+    // and setlist writes don't expire the board tag, so a setlist
+    // correction after the show reaches the grade within ~2 minutes.
+    const lockAt =
+      status === "completed" && control ? new Date(control.startTime) : undefined;
+    const [groups, counts, wishCounts, setlistSongs] = await Promise.all([
       loadBoardGroups({
         eventId,
         primaryArtistId: primary?.id ?? null,
         locale,
       }),
-      loadPickCounts(eventId),
+      loadPickCounts(eventId, lockAt),
       loadWishCounts(eventId),
+      // The tally is computed here, inside the cached loader, and only
+      // for a completed event: an upcoming board has nothing to grade,
+      // and an ongoing one never reaches the aggregate at all.
+      lockAt ? loadSetlistSongs(eventId) : Promise.resolve(null),
     ]);
     const starters = readStarterMap(control?.boardStarterSongIds ?? null);
     // Titles come from the group's (already cached) base catalog — the
@@ -316,9 +375,22 @@ export const getBoardAggregateCached = cachedQuery(
         starters: starterRefs(starters[groupId] ?? [], titles),
       };
     });
+    // Each group's shortlist is its expect column's TOP3 — built above
+    // from at-lock picks with the 04 ranking — never the starters.
+    //
+    // An empty setlist (completed, but nobody has entered it yet) is
+    // "nothing to grade", not "0 of K": grading it would show every
+    // shortlist song ✕ until the setlist lands and the TTL expires.
+    const tally =
+      setlistSongs === null || setlistSongs.length === 0
+        ? null
+        : tallyBoard(
+            views.map((v) => ({ groupId: v.groupId, top: v.expects.top })),
+            playedSongIds(setlistSongs),
+          );
     // Computation time, not request time: on a cache hit this is when
     // the counts were taken, which is what "as of" promises the reader.
-    return { asOf: new Date(), groups: views };
+    return { asOf: new Date(), groups: views, tally };
   },
   {
     revalidate: CACHE_TTL.board,
@@ -348,14 +420,34 @@ export async function resolveBoardRead(
   }
 
   const aggregate = await getBoardAggregateCached(eventId, locale, status);
+  const asOf = new Date(aggregate.asOf).toISOString();
+  if (status === "completed") {
+    // Completed is always locked, even when the operator flipped the
+    // stored status before the scheduled start (an early wrap-up).
+    return {
+      enabled: true,
+      status,
+      locked: true,
+      lockAt,
+      asOf,
+      groups: aggregate.groups,
+      // Null when there is nothing to grade: the setlist is still empty,
+      // or the control row vanished between the two cached reads (event
+      // deleted mid-request). An empty tally (size 0) shows no grade UI.
+      tally: aggregate.tally ?? {
+        played: 0,
+        size: 0,
+        groups: [],
+        playedSongIds: [],
+      },
+    };
+  }
   return {
     enabled: true,
     status,
-    // Completed is always locked, even when the operator flipped the
-    // stored status before the scheduled start (an early wrap-up).
-    locked: status === "completed" || now.getTime() >= startTime.getTime(),
+    locked: now.getTime() >= startTime.getTime(),
     lockAt,
-    asOf: new Date(aggregate.asOf).toISOString(),
+    asOf,
     groups: aggregate.groups,
   };
 }

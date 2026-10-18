@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  fetchAdminArtists,
+  UnlistedArtistOption,
+} from "@/components/admin/artistPicker";
 
 type Translation = { locale: string; title: string };
 type ArtistCredit = { artistId: number; role: string; artistName?: string };
@@ -64,9 +68,7 @@ export default function SongForm({ initialData }: SongFormProps) {
   >([]);
 
   useEffect(() => {
-    fetch("/api/admin/artists")
-      .then((r) => r.json())
-      .then(setArtists);
+    fetchAdminArtists<(typeof artists)[number]>().then(setArtists);
   }, []);
 
   function updateTranslation(
@@ -301,6 +303,11 @@ export default function SongForm({ initialData }: SongFormProps) {
                 }
                 className="flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
               >
+                <UnlistedArtistOption
+                  value={ac.artistId}
+                  options={artists}
+                  label={ac.artistName}
+                />
                 {artists.map((a) => {
                   const name =
                     a.translations.find((t) => t.locale === "ko")?.name ??

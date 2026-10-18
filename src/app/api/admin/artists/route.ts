@@ -25,6 +25,8 @@ import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { normalizeArtistQuery } from "@/lib/search";
 
+const SEARCH_LIMIT = 100;
+
 export async function GET(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -57,7 +59,15 @@ export async function GET(request: NextRequest) {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    // Only a search (`?q=`) is capped. The bare list feeds every admin
+    // artist <select> (song credits, album artists, parent artist, event
+    // series, event performers) and must be complete: a select whose
+    // current value isn't among its options *displays* the first option,
+    // so an operator who touches it re-credits the record to the wrong
+    // artist on save (song PUT replaces all SongArtist rows from form
+    // state). With a cap, the oldest artists — e.g. id 1, the Hasunosora
+    // headliner — fell off once the catalog passed 100 rows.
+    ...(term ? { take: SEARCH_LIMIT } : {}),
   });
   return NextResponse.json(serializeBigInt(artists));
 }

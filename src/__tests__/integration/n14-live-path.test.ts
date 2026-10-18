@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import type { Pool } from "pg";
 import { createClient } from "@supabase/supabase-js";
 import { DEV_PROJECT_REF } from "./setup";
 import { devPgClient } from "./devPg";
@@ -153,17 +154,46 @@ async function activeItems(): Promise<{ id: string; position: number }[]> {
   return r.rows;
 }
 
+// Postgres notices raised on the app's Prisma pool (the connections the
+// code under test uses). `realtime.send` catches every error inside its
+// own block and re-raises it as a WARNING, so a broadcast that failed —
+// no partition for today, a permission change, a bad topic — commits
+// the save, writes no message row, and leaves nothing in the test
+// output but an empty array. Collecting the notices lets
+// `expectOneSave` say why the row is missing.
+const appNotices: string[] = [];
+function captureAppNotices(): void {
+  // `src/lib/prisma.ts` keeps its pool on globalThis outside production.
+  const pool = (globalThis as { prismaPool?: Pool }).prismaPool;
+  if (!pool) throw new Error("[n14] app pg.Pool not found on globalThis");
+  // Clients are created lazily (and re-created after the 5 s idle
+  // timeout), so hooking `connect` covers every client the tests use as
+  // long as this runs before the first query.
+  pool.on("connect", (client) => {
+    client.on("notice", (n) => {
+      appNotices.push(`${n.severity ?? "NOTICE"}: ${n.message}`);
+    });
+  });
+}
+
 /**
  * Run one logical save and assert it produced exactly one revision
  * increment and exactly one broadcast row carrying that revision.
  */
 async function expectOneSave<T>(save: () => Promise<T>): Promise<T> {
   const before = await currentRev();
+  const mark = appNotices.length;
   const out = await save();
   const after = await currentRev();
   expect(after).toBe(before + 1);
   const fresh = (await messages()).filter((m) => m.payload.rev > before);
-  expect(fresh).toHaveLength(1);
+  const notices = appNotices.slice(mark);
+  expect(
+    fresh,
+    notices.length
+      ? `Postgres notices during the save:\n${notices.join("\n")}`
+      : "no Postgres notices during the save",
+  ).toHaveLength(1);
   expect(fresh[0]).toMatchObject({
     topic,
     event: "rev",
@@ -287,6 +317,7 @@ async function createItemViaAdmin(position: number): Promise<bigint> {
 }
 
 beforeAll(async () => {
+  captureAppNotices();
   await pg.connect();
   await ensureTodaysMessagesPartition();
   const songs = await pg.query<{ id: string }>(

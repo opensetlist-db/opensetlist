@@ -7,6 +7,10 @@ import {
   ADMIN_UNKNOWN_NAME,
   GROUP_CATEGORY_VALUES,
 } from "@/lib/admin-constants";
+import {
+  fetchAdminArtists,
+  UnlistedArtistOption,
+} from "@/components/admin/artistPicker";
 
 type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
@@ -113,9 +117,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     fetch("/api/admin/groups")
       .then((r) => r.json())
       .then(setGroups);
-    fetch("/api/admin/artists")
-      .then((r) => r.json())
-      .then(setArtists);
+    fetchAdminArtists<(typeof artists)[number]>().then(setArtists);
     if (initialData) {
       fetch("/api/admin/stage-identities")
         .then((r) => r.json())
@@ -439,6 +441,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2"
           >
             <option value="">없음</option>
+            <UnlistedArtistOption value={parentArtistId} options={artists} />
             {artists
               .filter((a) => a.id !== initialData?.id)
               .map((a) => {

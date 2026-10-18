@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import {
+  fetchAdminArtists,
+  UnlistedArtistOption,
+} from "@/components/admin/artistPicker";
 
 type Translation = {
   locale: string;
@@ -81,9 +85,7 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
   >([]);
 
   useEffect(() => {
-    fetch("/api/admin/artists")
-      .then((r) => r.json())
-      .then(setArtists);
+    fetchAdminArtists<(typeof artists)[number]>().then(setArtists);
     fetch("/api/admin/event-series")
       .then((r) => r.json())
       .then(setSeriesList);
@@ -200,6 +202,7 @@ export default function EventSeriesForm({ initialData }: EventSeriesFormProps) {
             className="w-full rounded border border-zinc-300 px-3 py-2"
           >
             <option value="">없음 (페스티벌 등)</option>
+            <UnlistedArtistOption value={artistId} options={artists} />
             {artists.map((a) => {
               const name =
                 a.translations.find((t) => t.locale === "ko")?.name ??

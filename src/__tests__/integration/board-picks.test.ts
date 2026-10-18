@@ -33,7 +33,8 @@ vi.mock("@/lib/dataCache", async (importOriginal) => ({
 
 import { prisma } from "@/lib/prisma";
 import * as dataCache from "@/lib/dataCache";
-import { POST } from "@/app/api/events/[id]/board/picks/route";
+import { POST, PUT } from "@/app/api/events/[id]/board/picks/route";
+import { publishPicks } from "@/lib/board/publish";
 import { DELETE } from "@/app/api/events/[id]/board/picks/[pickId]/route";
 import { GET as MINE } from "@/app/api/events/[id]/board/mine/route";
 import { GET as BOARD } from "@/app/api/events/[id]/board/route";
@@ -66,6 +67,38 @@ function postPick(anonId: string, songId: bigint, group = groupId) {
     }),
     { params: Promise.resolve({ id: eventId.toString() }) },
   );
+}
+
+function publish(anonId: string, picks: Array<{ songId: bigint; group?: bigint }>) {
+  return PUT(
+    new Request(`http://x/api/events/${eventId}/board/picks`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        anonId,
+        picks: picks.map((p) => ({
+          groupId: (p.group ?? groupId).toString(),
+          songId: p.songId.toString(),
+        })),
+      }),
+    }),
+    { params: Promise.resolve({ id: eventId.toString() }) },
+  );
+}
+
+/** The anon's rows straight from the table. `createdAt` is rendered
+ *  as a UTC ISO string in SQL: the column is `timestamp(3)` without
+ *  time zone holding UTC wall time, and node-pg would parse it in the
+ *  machine's LOCAL zone (see `utcParam()` below for the write side). */
+async function ballotRows(anonId: string) {
+  const r = await pg.query<{ id: string; songId: string; createdAt: string }>(
+    `SELECT id, "songId"::text AS "songId",
+            to_char("createdAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt"
+       FROM "BoardPick"
+      WHERE "eventId" = $1 AND "anonId" = $2 ORDER BY "songId"`,
+    [eventId.toString(), anonId],
+  );
+  return r.rows;
 }
 
 function deletePick(anonId: string, pickId: string) {
@@ -383,5 +416,150 @@ describe("board picks — dev database", () => {
       label: "early",
     });
     expect(JSON.stringify(body)).not.toMatch(/itest-[abc]-/);
+  });
+
+  it("post-show tally (n15-06): shortlist frozen at the lock, medley hit graded", async () => {
+    // Before the lock — A: songs 0, 1 · B: song 1 → song1 ×2, song0 ×1.
+    for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
+    expect((await postPick(ANON_B, songIds[1])).status).toBe(201);
+    const start = new Date(Date.now() - 60 * 60 * 1000);
+    await setStart(start);
+    // Those picks were made while the board was open, i.e. before the
+    // start that is now an hour ago.
+    await pg.query(`UPDATE "BoardPick" SET "createdAt" = $2 WHERE "eventId" = $1`, [
+      eventId.toString(),
+      utcParam(new Date(start.getTime() - 60 * 60 * 1000)),
+    ]);
+    await pg.query(`UPDATE "Event" SET status = 'completed' WHERE id = $1`, [
+      eventId.toString(),
+    ]);
+    // Rows dated after the lock (the write path refuses them; inserted
+    // raw to prove the read ignores them): song 3 ×3 would top the
+    // board if the shortlist were built from every row.
+    for (const anon of ["late-1", "late-2", "late-3"]) {
+      await pg.query(
+        `INSERT INTO "BoardPick" (id, "eventId", "groupArtistId", "songId", "anonId", "createdAt")
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)`,
+        [eventId.toString(), groupId.toString(), songIds[3].toString(), `itest-${anon}`, utcParam(new Date())],
+      );
+    }
+    // Final setlist: one medley holding song 0 and song 4.
+    const item = await prisma.setlistItem.create({
+      data: {
+        eventId,
+        position: 1,
+        songs: { create: [{ songId: songIds[0], order: 1 }, { songId: songIds[4], order: 2 }] },
+      },
+      select: { id: true },
+    });
+    try {
+      const res = await BOARD(
+        new Request(`http://x/api/events/${eventId}/board?locale=ko`),
+        { params: Promise.resolve({ id: eventId.toString() }) },
+      );
+      const body = await res.json();
+      expect(body).toMatchObject({ status: "completed", locked: true });
+      expect(body.tally.groups).toEqual([
+        {
+          groupId: groupId.toString(),
+          shortlist: [
+            expect.objectContaining({ songId: songIds[1].toString(), count: 2, played: false }),
+            expect.objectContaining({ songId: songIds[0].toString(), count: 1, played: true }),
+          ],
+          played: 1,
+          size: 2,
+        },
+      ]);
+      expect([body.tally.played, body.tally.size]).toEqual([1, 2]);
+      expect(body.groups[0].expects.participants).toBe(2);
+    } finally {
+      await pg.query(`DELETE FROM "SetlistItemSong" WHERE "setlistItemId" = $1`, [item.id.toString()]);
+      await pg.query(`DELETE FROM "SetlistItem" WHERE id = $1`, [item.id.toString()]);
+      await pg.query(`UPDATE "Event" SET status = 'scheduled' WHERE id = $1`, [eventId.toString()]);
+    }
+  });
+});
+
+// Publish (n15-09b): the whole ballot replaced in one transaction.
+describe("board publish — dev database", () => {
+  it("replaces atomically: retained picks keep id + timestamp, others go, new ones arrive", async () => {
+    for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
+    const before = await ballotRows(ANON_A);
+    const kept = before.find((r) => r.songId === songIds[0].toString())!;
+
+    const res = await publish(ANON_A, [{ songId: songIds[0] }, { songId: songIds[2] }]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { picks: Array<{ id: string; songId: string; createdAt: string }> };
+    expect(body.picks.map((p) => p.songId).sort()).toEqual(
+      [songIds[0], songIds[2]].map(String).sort(),
+    );
+
+    const after = await ballotRows(ANON_A);
+    expect(after.map((r) => r.songId).sort()).toEqual(
+      [songIds[0], songIds[2]].map(String).sort(),
+    );
+    const keptAfter = after.find((r) => r.songId === songIds[0].toString())!;
+    expect(keptAfter.id).toBe(kept.id);
+    expect(keptAfter.createdAt).toBe(kept.createdAt);
+    expect(body.picks.find((p) => p.id === kept.id)?.createdAt).toBe(kept.createdAt);
+  });
+
+  it("an empty array clears the ballot; other anons are untouched", async () => {
+    await postPick(ANON_A, songIds[0]);
+    await postPick(ANON_B, songIds[0]);
+    const res = await publish(ANON_A, []);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ picks: [] });
+    expect(await rowCount(ANON_A)).toBe(0);
+    expect(await rowCount(ANON_B)).toBe(1);
+  });
+
+  it("cap: 4 in one group → 409 and the previous set stands", async () => {
+    await postPick(ANON_A, songIds[4]);
+    const before = await ballotRows(ANON_A);
+    const res = await publish(ANON_A, songIds.slice(0, 4).map((songId) => ({ songId })));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "cap_reached" });
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("a failure inside the transaction rolls the whole publish back", async () => {
+    // Bypass the static validation so the insert itself fails (no such
+    // song → foreign-key violation) AFTER the delete already ran in the
+    // same transaction. The previous set must survive intact.
+    for (const i of [0, 1]) await postPick(ANON_A, songIds[i]);
+    const before = await ballotRows(ANON_A);
+    await expect(
+      publishPicks(eventId, ANON_A, [
+        { groupId, songId: songIds[2] },
+        { groupId, songId: BigInt("999999999999") },
+      ]),
+    ).rejects.toThrow();
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("a song outside the group / a locked board → refused, nothing written", async () => {
+    await postPick(ANON_A, songIds[0]);
+    const before = await ballotRows(ANON_A);
+    const outside = await publish(ANON_A, [{ songId: foreignSongId }]);
+    expect(outside.status).toBe(400);
+    await setStart(new Date(Date.now() - 1000));
+    const locked = await publish(ANON_A, []);
+    expect(locked.status).toBe(403);
+    expect(await ballotRows(ANON_A)).toEqual(before);
+  });
+
+  it("never calls a revalidate helper", async () => {
+    await publish(ANON_A, [{ songId: songIds[0] }]);
+    await publish(ANON_A, []);
+    for (const f of [
+      dataCache.revalidatePublicData,
+      dataCache.revalidateEventData,
+      dataCache.revalidateEventImpressions,
+      dataCache.revalidateBoardControl,
+      dataCache.revalidateBoardAggregate,
+    ]) {
+      expect(vi.mocked(f)).not.toHaveBeenCalled();
+    }
   });
 });

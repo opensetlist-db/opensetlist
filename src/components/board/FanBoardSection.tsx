@@ -15,8 +15,12 @@ import {
 } from "@/lib/board/toPredictions";
 import type {
   BoardBlockSeed,
+  BoardGroupTally,
   BoardGroupView,
   BoardReadResponse,
+  BoardShortlistEntry,
+  BoardTally,
+  BoardTopEntry,
 } from "@/lib/board/types";
 import {
   BOARD_PICKS_PER_GROUP,
@@ -32,9 +36,9 @@ import {
   useBoardBallot,
   type BallotEntry,
   type BallotKind,
-  type PickFailure,
   type PickOutcome,
 } from "@/components/board/useBoardBallot";
+import { pickFailureKey } from "@/lib/board/ballotClient";
 
 /**
  * Fan board block (n15).
@@ -57,6 +61,13 @@ import {
  * entries. On a board event this block replaces the event-wide
  * wishlist before and after the show; during the show the page
  * renders the wishlist instead (and never mounts this).
+ *
+ * After the show (completed, n15-06) the same block is in result mode:
+ * the expect column lists each group's shortlist — its TOP3 at the
+ * lock — graded ✓/✕ against the final setlist with "N of K played",
+ * an overall line sits at the top, and my own picks that were played
+ * are highlighted. A group nobody picked is not graded (its starters,
+ * operator copy, keep their usual ungraded rendering).
  */
 
 type State =
@@ -68,6 +79,8 @@ type State =
       locked: boolean;
       asOf: string;
       groups: BoardGroupView[];
+      /** The post-show tally; null before the show. */
+      tally: BoardTally | null;
     };
 
 const TIME_FORMAT: Intl.DateTimeFormatOptions = {
@@ -80,28 +93,6 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
   // time is ambiguous for a Korean or US reader.
   timeZoneName: "short",
 };
-
-/** Failure code → `Board` message key. Anything unexpected (a 400 the
- *  UI should never produce, a 404 for a just-deleted song) reads as
- *  the generic "couldn't save". */
-function failureKey(reason: PickFailure) {
-  switch (reason) {
-    case "cap_reached":
-      return "errorCap" as const;
-    case "group_conflict":
-      return "errorGroupConflict" as const;
-    case "board_locked":
-      return "errorLocked" as const;
-    case "board_disabled":
-      return "errorDisabled" as const;
-    case "busy":
-      return "errorBusy" as const;
-    case "invalid_anon_id":
-      return "errorNoStorage" as const;
-    default:
-      return "errorGeneric" as const;
-  }
-}
 
 /** Everything that differs between the two columns of a group, in one
  *  place (n15-08): which aggregate column, its heading, its analytics
@@ -138,6 +129,7 @@ export function FanBoardSection({
   catalog = NO_CATALOG,
   anchorId,
   onOpenFullSetlist,
+  picksRevision = 0,
 }: {
   eventId: string;
   locale: string;
@@ -154,6 +146,9 @@ export function FanBoardSection({
    *  tab exists (upcoming, inside the D-7 window); without it the
    *  button is not rendered. Called after the import ran. */
   onOpenFullSetlist?: (outcome: BoardToBuilderOutcome) => void;
+  /** Bumped by `<LiveSetlist>` after the Predict tab published a ballot
+   *  (n15-09b), so "my picks" re-read the local copy it wrote. */
+  picksRevision?: number;
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -173,6 +168,7 @@ export function FanBoardSection({
     eventId,
     locale,
     active: state.kind === "ready",
+    revision: picksRevision,
   });
 
   // A tab left open across the start time goes read-only AT the start
@@ -239,6 +235,7 @@ export function FanBoardSection({
           locked: body.locked,
           asOf: body.asOf,
           groups: body.groups,
+          tally: body.status === "completed" ? body.tally : null,
         });
       } catch {
         // Unmount aborts too; setting state then is a harmless no-op.
@@ -311,6 +308,12 @@ export function FanBoardSection({
   })) : seed.chips;
   const activeChipId = active?.groupId ?? activeId;
   const locked = state.kind === "ready" && (state.locked || lockedByServer);
+  const tally = state.kind === "ready" ? state.tally : null;
+  // A group is graded only when it HAS a shortlist: zero picks at the
+  // lock means nothing to grade, not "0 of 0".
+  const gradedOf = (groupId: string) =>
+    tally?.groups.find((g) => g.groupId === groupId && g.size > 0) ?? null;
+  const playedIds = tally ? new Set(tally.playedSongIds) : null;
 
   const listOf = (kind: BallotKind) =>
     kind === "pick" ? ballot.picks : ballot.wishes;
@@ -335,7 +338,7 @@ export function FanBoardSection({
     }
     if (outcome.reason === "board_locked") setLockedByServer(true);
     setToast({
-      text: t(failureKey(outcome.reason), { max: capOf(kind) }),
+      text: t(pickFailureKey(outcome.reason), { max: capOf(kind) }),
       error: true,
     });
   };
@@ -501,6 +504,15 @@ export function FanBoardSection({
                 })}
           </p>
         )}
+        {tally && tally.size > 0 && (
+          <p
+            data-testid="board-tally-overall"
+            className="mt-1 text-[12px] font-medium"
+            style={{ color: colors.textPrimary }}
+          >
+            {t("tallyOverall", { played: tally.played, size: tally.size })}
+          </p>
+        )}
         <p className="mt-1 text-[11px]" style={{ color: colors.textMuted }}>
           {t("explainer")}
         </p>
@@ -558,6 +570,9 @@ export function FanBoardSection({
                       locale={locale}
                       t={t}
                       mySongIds={new Set(mine.map((p) => p.songId))}
+                      // Only expected songs are graded; wishes are not
+                      // predictions.
+                      graded={kind === "pick" ? gradedOf(active.groupId) : null}
                     />
                     <BoardMyPicks
                       key={kind + "-" + active.groupId}
@@ -568,6 +583,7 @@ export function FanBoardSection({
                       picks={mine}
                       groupSongs={songsOf(active.groupId)}
                       locked={locked}
+                      playedSongIds={kind === "pick" ? playedIds : null}
                       pending={pendingOf(kind)}
                       onAdd={(song) => void handleAdd(kind, active, song)}
                       onRemove={(entry) => void handleRemove(kind, active, entry)}
@@ -661,6 +677,7 @@ function ColumnPanel({
   locale,
   t,
   mySongIds,
+  graded = null,
 }: {
   eventId: string;
   group: BoardGroupView;
@@ -670,11 +687,20 @@ function ColumnPanel({
   t: ReturnType<typeof useTranslations<"Board">>;
   /** My entries in this column — highlighted wherever they appear. */
   mySongIds: ReadonlySet<string>;
+  /** Result mode (n15-06): this group's graded shortlist, which then
+   *  replaces the crowd TOP3. Null = not graded. */
+  graded?: BoardGroupTally | null;
 }) {
   const meta = COLUMN[kind];
   const column = group[meta.field];
   const label = column.label;
-  const showStarters = label === "operator" && group.starters.length > 0;
+  // A graded shortlist exists only when picks existed at the lock, so
+  // the column is never "operator" then; the guard keeps starters from
+  // ever rendering next to a grade.
+  const showStarters =
+    !graded && label === "operator" && group.starters.length > 0;
+  const entries: readonly (BoardTopEntry & Partial<BoardShortlistEntry>)[] =
+    graded ? graded.shortlist : column.top;
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
@@ -710,16 +736,38 @@ function ColumnPanel({
           </span>
         )}
       </h3>
-      {label !== "operator" && (
+      {graded && (
+        <p
+          data-testid="board-tally-group"
+          className="mb-1 text-[11px]"
+          style={{ color: colors.textSecondary }}
+        >
+          {t("tallyGroup", { played: graded.played, size: graded.size })}
+        </p>
+      )}
+      {(graded || label !== "operator") && (
         <ol className="space-y-1">
-          {column.top.map((e) => (
+          {entries.map((e) => (
             <li
               key={e.songId}
               data-testid="board-top-entry"
               data-mine={mySongIds.has(e.songId) || undefined}
+              data-played={e.played === undefined ? undefined : String(e.played)}
               className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[13px]"
               style={mineStyle(e.songId)}
             >
+              {/* Factual result, so neutral marks (not 👍/👎); the
+                  label carries the meaning for screen readers. */}
+              {e.played !== undefined && (
+                <span
+                  role="img"
+                  aria-label={t(e.played ? "tallyPlayed" : "tallyNotPlayed")}
+                  className="w-3 flex-shrink-0 text-center text-[12px]"
+                  style={{ color: e.played ? colors.primary : colors.textMuted }}
+                >
+                  {e.played ? "✓" : "✕"}
+                </span>
+              )}
               {e.available ? (
                 // Bare-id song URL: catalog rows carry no slug; the
                 // canonical 308 adds it.
@@ -766,7 +814,8 @@ function ColumnPanel({
           ))}
         </ol>
       )}
-      {label === "operator" &&
+      {!graded &&
+        label === "operator" &&
         (showStarters ? (
           <>
             <ol className="space-y-1">
