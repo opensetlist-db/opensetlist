@@ -9,6 +9,10 @@ import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
 import { buildBoardCopyText } from "@/lib/board/copyText";
+import {
+  importBoardPicksToPredictions,
+  type BoardToBuilderOutcome,
+} from "@/lib/board/toPredictions";
 import type {
   BoardBlockSeed,
   BoardGroupView,
@@ -132,6 +136,8 @@ export function FanBoardSection({
   locale,
   seed,
   catalog = NO_CATALOG,
+  anchorId,
+  onOpenFullSetlist,
 }: {
   eventId: string;
   locale: string;
@@ -140,6 +146,14 @@ export function FanBoardSection({
    *  carries its `festivalGroupIds`). Empty when the page has none —
    *  then the add control is hidden. */
   catalog?: readonly AvailableSong[];
+  /** Element id for the block, so the Predict tab's "back to board"
+   *  switch can scroll here. Must not start with `board-` (see
+   *  `fragment.ts`: the group fragment matches no element on purpose). */
+  anchorId?: string;
+  /** "Go to full setlist mode" (n15-09a). Passed only while the Predict
+   *  tab exists (upcoming, inside the D-7 window); without it the
+   *  button is not rendered. Called after the import ran. */
+  onOpenFullSetlist?: (outcome: BoardToBuilderOutcome) => void;
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -435,9 +449,29 @@ export function FanBoardSection({
     });
   };
 
+  // "Go to full setlist mode" (n15-09a). The import uses the same
+  // availability-folded picks as the copy text, so a song the fan sees
+  // as unavailable here never lands in the builder. Synchronous
+  // localStorage work, then the parent switches to the Predict tab.
+  const handleOpenFullSetlist = () => {
+    if (state.kind !== "ready" || !onOpenFullSetlist) return;
+    const outcome = importBoardPicksToPredictions({
+      eventId,
+      picks: copyablePicks,
+      groupOrder: state.groups.map((g) => g.groupId),
+      catalog,
+    });
+    trackEvent("board_to_builder", {
+      event_id: eventId,
+      imported_count: outcome.kind === "imported" ? outcome.count : 0,
+    });
+    onOpenFullSetlist(outcome);
+  };
+
   return (
     <section
       ref={sectionRef}
+      id={anchorId}
       aria-labelledby={`board-title-${eventId}`}
       className="mb-2.5 overflow-hidden rounded-[14px]"
       style={{
@@ -568,20 +602,39 @@ export function FanBoardSection({
                 onRemove={(entry) => void handleRemoveLegacy(entry)}
               />
             )}
-            {/* Disabled, not hidden, at zero picks: the button is how a
-                fan learns the post exists. */}
-            <button
-              type="button"
-              onClick={() => void handleCopy()}
-              disabled={!copy}
-              className="mt-2 rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
-              style={{
-                border: `1px solid ${colors.border}`,
-                color: colors.textPrimary,
-              }}
-            >
-              {t("copy")}
-            </button>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {/* Disabled, not hidden, at zero picks: the button is how a
+                  fan learns the post exists. */}
+              <button
+                type="button"
+                onClick={() => void handleCopy()}
+                disabled={!copy}
+                className="rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
+                style={{
+                  border: `1px solid ${colors.border}`,
+                  color: colors.textPrimary,
+                }}
+              >
+                {t("copy")}
+              </button>
+              {/* Enabled at zero picks too: it is also the plain mode
+                  switch into the builder. Hidden once the board locks —
+                  the builder locks at the same instant. Expected songs
+                  only: wishes (the other column) never enter the draft. */}
+              {onOpenFullSetlist && !locked && (
+                <button
+                  type="button"
+                  onClick={handleOpenFullSetlist}
+                  className="rounded-full px-3 py-1 text-[12px]"
+                  style={{
+                    border: `1px solid ${colors.border}`,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  {t("toFullSetlist")}
+                </button>
+              )}
+            </div>
           </>
         )}
         {/* Feedback for adds/removes. Always mounted so screen readers

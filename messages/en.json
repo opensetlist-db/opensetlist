@@ -422,6 +422,10 @@
     "finalScore": "{matched}/{total} hit ({pct}%) 🎯",
     "description": "Add your predictions before the show starts. Your hit rate is scored against the actual setlist. There's no limit on how many songs you predict, but only the top N predictions (where N = the number of songs in the actual setlist) count toward the score.",
     "copyFromPast": "📋 From past show",
+    "toBoard": "Back to board picks",
+    "bridgeImported": "Added {count, plural, one {# song} other {# songs}} from your board picks.",
+    "bridgeKept": "You already have a setlist, so it was left as is.",
+    "provisionalOrder": "The order is provisional. Drag songs to arrange it.",
     "copy": {
       "sheetTitle": "Copy from a past show",
       "loading": "Loading past shows...",
@@ -595,6 +599,7 @@
     "copy": "Copy my picks",
     "copied": "Copied to clipboard",
     "copyUnavailable": "Couldn't copy. Please copy your picks by hand.",
+    "toFullSetlist": "Go to full setlist mode",
     "copyTemplate": "{event} setlist predictions (OpenSetlist)\n{picks}\n{url}",
     "copyLine": "{group}: {songs}",
     "copySongSeparator": " / "

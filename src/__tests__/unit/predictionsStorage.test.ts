@@ -232,3 +232,57 @@ describe("writePredictions resilience", () => {
     expect(() => writePredictions("1", [entry(1)])).not.toThrow();
   });
 });
+
+describe("provisional flag (n15-09a board import)", () => {
+  it("is absent on a list the builder wrote itself", () => {
+    writePredictions("1", [entry(1)]);
+    const raw = JSON.parse(window.localStorage.getItem("predict-1")!);
+    expect("provisional" in raw).toBe(false);
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+  });
+
+  it("survives add/remove writes that don't mention it", () => {
+    writePredictions("1", [entry(1)], { provisional: true });
+    writePredictions("1", [entry(1), entry(2)]);
+    expect(readPredictions("1")?.provisional).toBe(true);
+  });
+
+  it("is cleared when a caller settles the order", () => {
+    writePredictions("1", [entry(1)], { provisional: true });
+    writePredictions("1", [entry(1)], { provisional: false });
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+  });
+
+  it("never survives a write of zero songs", () => {
+    // Emptying a board-imported list, then building one by hand, must
+    // not inherit the label.
+    writePredictions("1", [entry(1)], { provisional: true });
+    writePredictions("1", []);
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+    writePredictions("1", [entry(2)]);
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+    // Even an explicit request can't mark an empty list provisional.
+    writePredictions("1", [], { provisional: true });
+    expect(readPredictions("1")?.provisional).toBeUndefined();
+  });
+
+  it("survives markLocked", () => {
+    writePredictions("1", [entry(1)], { provisional: true });
+    markLocked("1");
+    expect(readPredictions("1")?.provisional).toBe(true);
+  });
+
+  it("rejects a non-boolean value like any other malformed field", () => {
+    window.localStorage.setItem(
+      "predict-1",
+      JSON.stringify({
+        eventId: "1",
+        songs: [],
+        savedAt: new Date().toISOString(),
+        lockedAt: null,
+        provisional: "yes",
+      }),
+    );
+    expect(readPredictions("1")).toBeNull();
+  });
+});
