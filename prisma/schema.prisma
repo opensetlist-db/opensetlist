@@ -296,6 +296,8 @@ model Artist {
   stageLinks   StageIdentityArtist[]
   songCredits  SongArtist[]
   eventSeries  EventSeries[]
+  // Fan board (n15) picks made under this root group.
+  boardPicks   BoardPick[]
   events       Event[]
   albums       AlbumArtist[]
   setlistItems SetlistItemArtist[]
@@ -593,6 +595,7 @@ model Event {
   performers   EventPerformer[]
   impressions  EventImpression[]
   wishes       SongWish[]
+  boardPicks   BoardPick[]
   // Realtime R2: SetlistItemReaction carries a denormalized eventId
   // so Supabase Realtime postgres_changes can filter pushes by event
   // (the channel filter only supports columns on the changed table,
@@ -865,6 +868,7 @@ model Song {
   // composes the title as `{this song's title} ({i18n variantSuffix})`.
   offVocalTracks AlbumTrack[]      @relation("OffVocalParent")
   wishes         SongWish[]
+  boardPicks     BoardPick[]
 
   @@index([baseVersionId])
   @@index([isDeleted])
@@ -1393,6 +1397,42 @@ model SongWish {
   song  Song  @relation(fields: [songId], references: [id])
 
   @@index([eventId, songId])
+}
+
+// ── BOARD PICK (n15 fan board) ────────────────────────
+// "A song I expect this group to play" — one row per (event, anon,
+// song). The fan board's expect column counts these per group.
+//
+//   - groupArtistId is the ROOT group the fan chose in the UI, stored
+//     rather than derived: a cross-group song (a unit credited under
+//     two series) counts only where the fan put it.
+//   - songId is always a base song (the picker offers no variants);
+//     post-show matching is one-way base → variants/medleys.
+//   - anonId is the browser id (opensetlist_anon_id), REQUIRED here —
+//     it is the cap and ownership key. VarChar(64) mirrors
+//     ANON_ID_MAX_LEN.
+//   - The cap (≤ 3 per event+anon+group) is enforced in the write
+//     routes under a transaction-scoped advisory lock on event+anon,
+//     not by a constraint; the unique below makes a duplicate song
+//     impossible even if that lock were bypassed.
+//   - Operator starter picks are NOT rows here (Event.boardStarterSongIds)
+//     so they never enter counts. Soft-deleting a song keeps its picks
+//     (votes and slots survive moderation).
+model BoardPick {
+  id            String   @id @default(uuid())
+  eventId       BigInt
+  groupArtistId BigInt
+  songId        BigInt
+  anonId        String   @db.VarChar(64)
+  createdAt     DateTime @default(now())
+
+  event       Event  @relation(fields: [eventId], references: [id])
+  groupArtist Artist @relation(fields: [groupArtistId], references: [id])
+  song        Song   @relation(fields: [songId], references: [id])
+
+  @@unique([eventId, anonId, songId])
+  @@index([eventId, groupArtistId])
+  @@index([eventId, anonId])
 }
 
 // ── SETLIST ITEM CONFIRM (Phase 1B engagement) ────────

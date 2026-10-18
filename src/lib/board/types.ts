@@ -88,3 +88,50 @@ export interface BoardBlockSeed {
   lockAt: string;
   chips: BoardChip[];
 }
+
+/** One of the viewer's own expected-song picks, as `/board/mine`
+ *  returns it (n15-03). Personal — never part of a board read. */
+export interface BoardMinePick {
+  /** Server row id — what a delete names. */
+  id: string;
+  groupId: string;
+  songId: string;
+  /** Localized display title at read time. */
+  title: string;
+  /** False when the song was soft-deleted after it was picked: shown
+   *  without a link, still removable, still holding its slot. */
+  available: boolean;
+  createdAt: string;
+}
+
+export interface BoardMineResponse {
+  picks: BoardMinePick[];
+}
+
+/** Stable machine codes of the pick write routes' 4xx/503 bodies
+ *  (`{ error: code }`). The client maps each to an i18n key. */
+export type BoardPickErrorCode =
+  | "invalid_event_id"
+  | "invalid_body"
+  | "invalid_anon_id"
+  | "invalid_group"
+  | "invalid_song"
+  | "invalid_pick_id"
+  | "song_outside_group"
+  | "not_found"
+  | "song_not_found"
+  | "pick_not_found"
+  | "board_disabled"
+  | "board_locked"
+  | "not_owner"
+  | "cap_reached"
+  | "group_conflict"
+  | "busy";
+
+/** Body of a successful pick create (201 new / 200 exact retry). */
+export interface BoardPickCreated {
+  id: string;
+  groupId: string;
+  songId: string;
+  createdAt: string;
+}

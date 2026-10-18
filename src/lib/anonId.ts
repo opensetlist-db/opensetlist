@@ -95,4 +95,19 @@ export function getAnonId(): string {
   }
 }
 
+/**
+ * The browser's anonymous id if one was already minted, else ''. Never
+ * creates one: a read-only caller (the fan board's "restore my picks"
+ * fallback) has nothing to ask the server about on a browser that never
+ * wrote anything, and minting an id just to ask would be wasted work.
+ */
+export function readExistingAnonId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export { KEY as ANON_ID_KEY };
