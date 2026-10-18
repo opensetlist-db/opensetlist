@@ -551,6 +551,20 @@
     "createVariantRow": "+ 「{query}」を新しい variant として追加",
     "createDisabledTooltip": "Phase 2 で利用可能"
   },
+  "Board": {
+    "title": "ファンボード",
+    "explainer": "グループごとに「来そうな曲」を3曲まで — 知らないグループは飛ばしてOK",
+    "asOf": "{time} 時点",
+    "openUntil": "開演（{time}）まで参加できます",
+    "closed": "受付終了",
+    "groupsAria": "グループを選択",
+    "colExpect": "来そうな曲",
+    "operatorPick": "運営のおすすめ",
+    "operatorNote": "まだファンの投稿がないため、運営のおすすめを表示しています（集計には含まれません）",
+    "empty": "まだ誰も選んでいません。最初の一曲を選んでみよう！",
+    "loading": "ボードを読み込み中…",
+    "loadError": "ボードを読み込めませんでした"
+  },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
     "lockedTitle": "みんなの希望曲",

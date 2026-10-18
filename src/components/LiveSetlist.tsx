@@ -17,6 +17,8 @@ import type {
   ReactionCountsMap,
 } from "@/lib/types/setlist";
 import { EventWishSection } from "@/components/EventWishSection";
+import { FanBoardSection } from "@/components/board/FanBoardSection";
+import type { BoardBlockSeed } from "@/lib/board/types";
 import { LiveSyncIndicator } from "@/components/LiveSyncIndicator";
 import type { Freshness } from "@/lib/snapshotFreshness";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
@@ -85,6 +87,13 @@ interface Props {
    */
   isWishPredictOpen: boolean;
   /**
+   * Fan board seed (n15) — null/omitted when the board is off. The
+   * block mounts only while `status` is upcoming or completed: the
+   * status here is the client's effective one, so a page that crosses
+   * into the show unmounts the board (no board request while ongoing).
+   */
+  board?: BoardBlockSeed | null;
+  /**
    * Share-card header trio (v0.11.5+). Forwarded through to
    * `<ShareCardPreview>` so the captured PNG identifies the event
    * correctly. The page already runs the i18n cascade for the
@@ -148,6 +157,7 @@ export function LiveSetlist({
   locale,
   status,
   isWishPredictOpen,
+  board = null,
   seriesName,
   eventTitle,
   dateLine,
@@ -242,6 +252,19 @@ export function LiveSetlist({
             status={status}
             setlistItems={items}
             top3Wishes={top3Wishes}
+          />
+        )}
+      {/* Fan board (n15, P1): below the wishlist, which stays as-is on
+          board events until P2 merges wishes into the board. Not gated
+          on the D-7 window — the operator's flag is the switch. Never
+          mounted while ongoing/cancelled (see the `board` prop). */}
+      {board &&
+        (status === "upcoming" || status === "completed") && (
+          <FanBoardSection
+            key={eventId}
+            eventId={eventId}
+            locale={locale}
+            seed={board}
           />
         )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber

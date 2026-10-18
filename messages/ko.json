@@ -551,6 +551,20 @@
     "createVariantRow": "+ \"{query}\"{josa} 새 variant로 추가",
     "createDisabledTooltip": "Phase 2에서 가능"
   },
+  "Board": {
+    "title": "팬 보드",
+    "explainer": "그룹별로 나올 것 같은 곡을 최대 3곡까지 — 모르는 그룹은 건너뛰어도 돼요",
+    "asOf": "{time} 기준",
+    "openUntil": "공연 시작({time})까지 참여 가능",
+    "closed": "참여 마감",
+    "groupsAria": "그룹 선택",
+    "colExpect": "나올 것 같은 곡",
+    "operatorPick": "운영자 추천",
+    "operatorNote": "아직 팬 참여가 없어 운영자 추천곡을 보여드려요 (집계에는 포함되지 않아요)",
+    "empty": "아직 아무도 고르지 않았어요. 첫 번째로 골라 보세요!",
+    "loading": "보드를 불러오는 중…",
+    "loadError": "보드를 불러오지 못했어요"
+  },
   "Wishlist": {
     "title": "이번 공연에서 듣고 싶은 곡",
     "lockedTitle": "모두의 희망곡",

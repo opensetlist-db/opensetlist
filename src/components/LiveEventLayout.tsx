@@ -30,6 +30,7 @@ import type { TrendingSong } from "@/components/TrendingSongs";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import type { VenueStartLabel } from "@/components/LiveSetlist";
+import type { BoardBlockSeed } from "@/lib/board/types";
 
 interface Props {
   // ───── Event-level static (forwarded to children unchanged) ─────
@@ -62,6 +63,12 @@ interface Props {
    * `<SetlistSection>`.
    */
   isWishPredictOpen: boolean;
+  /**
+   * Fan board seed (n15): lock time + group chips, or null when the
+   * board is off or the event isn't upcoming/completed. Forwarded to
+   * `<LiveSetlist>`, which mounts `<FanBoardSection>` from it.
+   */
+  board?: BoardBlockSeed | null;
   statusLabel: string;
   date: Date | string | null;
   startTime: Date | string | null;
@@ -195,6 +202,7 @@ export function LiveEventLayout({
   eventPerformers,
   status,
   isWishPredictOpen,
+  board = null,
   statusLabel,
   date,
   startTime,
@@ -431,6 +439,7 @@ export function LiveEventLayout({
           // ever release.
           snapshotCapturedAt={capturedAt ?? undefined}
           isWishPredictOpen={isWishPredictOpen}
+          board={board}
           // Share-card header pair. v0.11.6 added short-variant
           // preference (operator preference): the captured PNG is
           // space-constrained, and long series names like the
