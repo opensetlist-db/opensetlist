@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
@@ -12,7 +12,13 @@ import type {
   BoardGroupView,
   BoardReadResponse,
 } from "@/lib/board/types";
+import type { StoredBoardPick } from "@/lib/board/pickStorage";
+import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
+import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
+import { BoardMyPicks } from "@/components/board/BoardMyPicks";
+import { pickTitle } from "@/lib/board/pickTitle";
+import { useBoardPicks, type PickFailure } from "@/components/board/useBoardPicks";
 
 /**
  * Fan board block (n15).
@@ -53,14 +59,47 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
   timeZoneName: "short",
 };
 
+/** Failure code → `Board` message key. Anything unexpected (a 400 the
+ *  UI should never produce, a 404 for a just-deleted song) reads as
+ *  the generic "couldn't save". */
+function failureKey(reason: PickFailure) {
+  switch (reason) {
+    case "cap_reached":
+      return "errorCap" as const;
+    case "group_conflict":
+      return "errorGroupConflict" as const;
+    case "board_locked":
+      return "errorLocked" as const;
+    case "board_disabled":
+      return "errorDisabled" as const;
+    case "busy":
+      return "errorBusy" as const;
+    case "invalid_anon_id":
+      return "errorNoStorage" as const;
+    default:
+      return "errorGeneric" as const;
+  }
+}
+
+const TOAST_MS = 3000;
+const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
+// Stable default so the per-group filter memo doesn't recompute on
+// every render when the page passes no catalog.
+const NO_CATALOG: readonly AvailableSong[] = [];
+
 export function FanBoardSection({
   eventId,
   locale,
   seed,
+  catalog = NO_CATALOG,
 }: {
   eventId: string;
   locale: string;
   seed: BoardBlockSeed;
+  /** The page's picker catalog (base songs; on a festival each row
+   *  carries its `festivalGroupIds`). Empty when the page has none —
+   *  then the add control is hidden. */
+  catalog?: readonly AvailableSong[];
 }) {
   const t = useTranslations("Board");
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -70,6 +109,59 @@ export function FanBoardSection({
   const sectionRef = useRef<HTMLElement>(null);
   const viewed = useRef(new Set<string>());
   const scrolledForHash = useRef(false);
+  const [toast, setToast] = useState<{ text: string; error: boolean } | null>(
+    null,
+  );
+  // Set at the lock time (timer below) or by a write refused with
+  // `board_locked`: flips the block to read-only without a reload.
+  const [lockedByServer, setLockedByServer] = useState(false);
+  const ballot = useBoardPicks({
+    eventId,
+    locale,
+    active: state.kind === "ready",
+  });
+
+  // A tab left open across the start time goes read-only AT the start
+  // time, not after its first refused write. setTimeout's delay is a
+  // 32-bit int (~24.8 days; larger values fire immediately), so a lock
+  // further out is reached in hops: each hop waits at most the cap and
+  // re-arms with the time still remaining.
+  useEffect(() => {
+    const lockMs = new Date(seed.lockAt).getTime();
+    if (!Number.isFinite(lockMs)) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const ms = lockMs - Date.now();
+      if (ms <= 0) {
+        setLockedByServer(true);
+        return;
+      }
+      timer = setTimeout(arm, Math.min(ms, MAX_TIMEOUT_MS));
+    };
+    arm();
+    return () => clearTimeout(timer);
+  }, [seed.lockAt]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  // On a festival every catalog row lists the groups it belongs to; on
+  // a single-artist event `festivalGroupIds` is empty everywhere and
+  // the whole catalog is the one group's.
+  const isFestivalCatalog = useMemo(
+    () => catalog.some((s) => s.festivalGroupIds.length > 0),
+    [catalog],
+  );
+  const songsOf = useCallback(
+    (groupId: string) =>
+      isFestivalCatalog
+        ? catalog.filter((s) => s.festivalGroupIds.includes(Number(groupId)))
+        : catalog,
+    [catalog, isFestivalCatalog],
+  );
 
   // Load the aggregate once per mount.
   useEffect(() => {
@@ -164,6 +256,45 @@ export function FanBoardSection({
     color: g.color,
   })) : seed.chips;
   const activeChipId = active?.groupId ?? activeId;
+  const locked = state.kind === "ready" && (state.locked || lockedByServer);
+
+  const report = (outcome: Awaited<ReturnType<typeof ballot.add>>, group: string) => {
+    if (outcome.ok) {
+      setToast({
+        text: outcome.kind === "added" ? t("added", { group }) : t("removed"),
+        error: false,
+      });
+      return;
+    }
+    if (outcome.reason === "board_locked") setLockedByServer(true);
+    setToast({
+      text: t(failureKey(outcome.reason), { max: BOARD_PICKS_PER_GROUP }),
+      error: true,
+    });
+  };
+
+  const handleAdd = async (group: BoardGroupView, song: AvailableSong) => {
+    const songId = String(song.songId);
+    // Two refusals the client can see coming — answered locally with the
+    // same message the server would send, without a request.
+    if (ballot.picks.some((p) => p.songId === songId && p.groupId !== group.groupId)) {
+      report({ ok: false, reason: "group_conflict" }, group.name);
+      return;
+    }
+    if (
+      !ballot.picks.some((p) => p.songId === songId) &&
+      ballot.picks.filter((p) => p.groupId === group.groupId).length >=
+        BOARD_PICKS_PER_GROUP
+    ) {
+      report({ ok: false, reason: "cap_reached" }, group.name);
+      return;
+    }
+    report(await ballot.add(group.groupId, songId, pickTitle(song, locale)), group.name);
+  };
+
+  const handleRemove = async (group: BoardGroupView, pick: StoredBoardPick) => {
+    report(await ballot.remove(pick), group.name);
+  };
 
   return (
     <section
@@ -190,7 +321,7 @@ export function FanBoardSection({
           <p className="mt-0.5 text-[11px]" style={{ color: colors.textSubtle }}>
             {t("asOf", { time: formatDate(state.asOf, locale, TIME_FORMAT) })}
             {" · "}
-            {state.locked
+            {locked
               ? t("closed")
               : t("openUntil", {
                   time: formatDate(seed.lockAt, locale, TIME_FORMAT),
@@ -237,8 +368,45 @@ export function FanBoardSection({
           </p>
         )}
         {state.kind === "ready" && active && (
-          <GroupPanel group={active} locale={locale} t={t} />
+          <>
+            <GroupPanel
+              group={active}
+              locale={locale}
+              t={t}
+              mySongIds={
+                new Set(
+                  ballot.picks
+                    .filter((p) => p.groupId === active.groupId)
+                    .map((p) => p.songId),
+                )
+              }
+            />
+            <BoardMyPicks
+              key={active.groupId}
+              groupId={active.groupId}
+              groupName={active.name}
+              locale={locale}
+              picks={ballot.picks.filter((p) => p.groupId === active.groupId)}
+              groupSongs={songsOf(active.groupId)}
+              locked={locked}
+              pending={ballot.pending}
+              onAdd={(song) => void handleAdd(active, song)}
+              onRemove={(pick) => void handleRemove(active, pick)}
+            />
+          </>
         )}
+        {/* Feedback for adds/removes. Always mounted so screen readers
+            announce the change (a live region added together with its
+            text is often skipped). */}
+        <p
+          role="status"
+          aria-live="polite"
+          data-testid="board-toast"
+          className="mt-2 min-h-[1em] text-[11px]"
+          style={{ color: toast?.error ? colors.error : colors.textSecondary }}
+        >
+          {toast?.text ?? ""}
+        </p>
       </div>
     </section>
   );
@@ -248,13 +416,20 @@ function GroupPanel({
   group,
   locale,
   t,
+  mySongIds,
 }: {
   group: BoardGroupView;
   locale: string;
   t: ReturnType<typeof useTranslations<"Board">>;
+  /** My picks in this group — highlighted wherever they appear. */
+  mySongIds: ReadonlySet<string>;
 }) {
   const showStarters =
     group.expects.label === "operator" && group.starters.length > 0;
+  const mineStyle = (songId: string) =>
+    mySongIds.has(songId)
+      ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
+      : undefined;
   return (
     <div>
       <h3
@@ -263,6 +438,50 @@ function GroupPanel({
       >
         {t("colExpect")}
       </h3>
+      {group.expects.label !== "operator" && (
+        <ol className="space-y-1">
+          {group.expects.top.map((e) => (
+            <li
+              key={e.songId}
+              data-testid="board-top-entry"
+              data-mine={mySongIds.has(e.songId) || undefined}
+              className="flex items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[13px]"
+              style={mineStyle(e.songId)}
+            >
+              {e.available ? (
+                <Link
+                  href={`/${locale}/songs/${e.songId}`}
+                  className="min-w-0 flex-1 truncate"
+                  style={{ color: colors.textPrimary }}
+                >
+                  {e.title}
+                </Link>
+              ) : (
+                <span
+                  className="min-w-0 flex-1 truncate"
+                  style={{ color: colors.textMuted }}
+                >
+                  {e.title} <span className="text-[10px]">({t("unavailable")})</span>
+                </span>
+              )}
+              {mySongIds.has(e.songId) && (
+                <span
+                  className="flex-shrink-0 rounded px-1.5 text-[10px]"
+                  style={{ color: colors.primary }}
+                >
+                  {t("mineBadge")}
+                </span>
+              )}
+              <span
+                className="flex-shrink-0 text-[11px] tabular-nums"
+                style={{ color: colors.textSubtle }}
+              >
+                {t("submissions", { count: e.count })}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
       {group.expects.label === "operator" &&
         (showStarters ? (
           <>
@@ -271,8 +490,14 @@ function GroupPanel({
                 <li
                   key={s.songId}
                   data-testid="board-starter"
+                  data-mine={mySongIds.has(s.songId) || undefined}
                   className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px]"
-                  style={{ border: `1px dashed ${colors.border}` }}
+                  style={{
+                    border: `1px dashed ${colors.border}`,
+                    ...(mySongIds.has(s.songId)
+                      ? { background: colors.primaryBg }
+                      : null),
+                  }}
                 >
                   {/* Bare-id song URL: catalog rows carry no slug; the
                       canonical 308 adds it. */}

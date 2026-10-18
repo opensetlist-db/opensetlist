@@ -95,4 +95,33 @@ export function getAnonId(): string {
   }
 }
 
+/**
+ * The browser's anonymous id if one was already minted, else ''. Never
+ * creates one: a read-only caller (the fan board's "restore my picks"
+ * fallback) has nothing to ask the server about on a browser that never
+ * wrote anything, and minting an id just to ask would be wasted work.
+ */
+export function readExistingAnonId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Request header that carries the anon id on READS that need it (the
+ * fan board's "mine"). Writes keep it in the JSON body; a read has no
+ * body, and the query string is not an option: the id is a bearer
+ * credential (it can add/remove that browser's picks and edit its
+ * impressions), and URLs land in access logs, log drains and telemetry.
+ *
+ * Named "…-Token" rather than "X-Anon-Id": no `X-` prefix (RFC 6648),
+ * and Sentry's default header filter already masks names containing
+ * "token" — a second layer under our own scrubber
+ * (`src/lib/sentryScrub.ts`).
+ */
+export const ANON_TOKEN_HEADER = "OpenSetlist-Anon-Token";
+
 export { KEY as ANON_ID_KEY };

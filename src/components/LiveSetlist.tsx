@@ -265,6 +265,7 @@ export function LiveSetlist({
             eventId={eventId}
             locale={locale}
             seed={board}
+            catalog={availableSongs}
           />
         )}
       {/* Trending sits ABOVE the setlist card as its own surface (amber
