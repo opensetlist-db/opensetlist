@@ -90,7 +90,8 @@ interface Props {
    * Fan board seed (n15) — null/omitted when the board is off. The
    * block mounts only while `status` is upcoming or completed: the
    * status here is the client's effective one, so a page that crosses
-   * into the show unmounts the board (no board request while ongoing).
+   * into the show unmounts the board (no board request while ongoing)
+   * and brings the event-wide wishlist back in its place.
    */
   board?: BoardBlockSeed | null;
   /**
@@ -204,6 +205,14 @@ export function LiveSetlist({
         ? [t("setlistNotRecorded")]
         : [t("noSetlist")];
 
+  // Fan board (n15) and the event-wide wishlist are mutually exclusive
+  // and decided by ONE condition: on a board event the board's "want"
+  // column replaces the wishlist while upcoming or completed (n15);
+  // while ongoing the board is not mounted and today's wishlist renders
+  // instead — its overall TOP3 is part of the live payload, unchanged.
+  const showBoard =
+    board != null && (status === "upcoming" || status === "completed");
+
   return (
     <>
       {/* Wishlist (Phase 1B) sits at the very top of the right column,
@@ -233,7 +242,8 @@ export function LiveSetlist({
           is load-bearing for the non-upcoming branch — and it
           gives TS a narrowing it can use to drop the cast on the
           prop pass-through. */}
-      {startTime != null &&
+      {!showBoard &&
+        startTime != null &&
         (status !== "upcoming" || isWishPredictOpen) && (
           // `key={eventId}` forces a remount when the user navigates
           // from event A to event B in the same browser session.
@@ -254,12 +264,10 @@ export function LiveSetlist({
             top3Wishes={top3Wishes}
           />
         )}
-      {/* Fan board (n15, P1): below the wishlist, which stays as-is on
-          board events until P2 merges wishes into the board. Not gated
-          on the D-7 window — the operator's flag is the switch. Never
-          mounted while ongoing/cancelled (see the `board` prop). */}
-      {board &&
-        (status === "upcoming" || status === "completed") && (
+      {/* Fan board (n15): in the wishlist's place (see `showBoard`). Not
+          gated on the D-7 window — the operator's flag is the switch.
+          Never mounted while ongoing/cancelled (see the `board` prop). */}
+      {showBoard && board && (
           <FanBoardSection
             key={eventId}
             eventId={eventId}

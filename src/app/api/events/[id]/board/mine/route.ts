@@ -4,17 +4,22 @@ import { ANON_TOKEN_HEADER, parseRequiredAnonId } from "@/lib/anonId";
 import { getBoardControlCached } from "@/lib/board/boardRead";
 import { parseDecimalId } from "@/lib/board/ids";
 import { loadMinePicks } from "@/lib/board/picks";
+import { loadMineWishes } from "@/lib/board/wishes";
 import { classifyPreExecutionFailure } from "@/lib/dbErrors";
 import type { BoardMineResponse } from "@/lib/board/types";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
 /**
- * The caller's own expected-song picks for one event (n15).
+ * The caller's own expected-song picks (n15) and per-group wishes
+ * (n15) for one event.
  *
  *   GET /api/events/[id]/board/mine?locale=ja
  *     header OpenSetlist-Anon-Token: <browser anon id>
- *     → { picks: BoardMinePick[] }
+ *     → { picks: BoardMinePick[], wishes: BoardMineWish[] }
+ *
+ * `wishes` holds only rows written with this anon id; legacy wishes
+ * (no anon id) are never returned to anyone.
  *
  * The client's fallback when its local copy is empty (storage cleared,
  * another tab wrote it). The anon id is a bearer capability: whoever
@@ -77,9 +82,11 @@ export async function GET(req: Request, { params }: RouteProps) {
         { status: 404, headers: PRIVATE_NO_STORE },
       );
     }
-    const body: BoardMineResponse = {
-      picks: await loadMinePicks(eventId, anon.value, locale),
-    };
+    const [picks, wishes] = await Promise.all([
+      loadMinePicks(eventId, anon.value, locale),
+      loadMineWishes(eventId, anon.value, locale),
+    ]);
+    const body: BoardMineResponse = { picks, wishes };
     return NextResponse.json(body, { headers: PRIVATE_NO_STORE });
   } catch (err) {
     // Same answer as the write routes when the pool is exhausted: a

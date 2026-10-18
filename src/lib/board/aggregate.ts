@@ -48,7 +48,56 @@ export function rankBoardSongs(
 }
 
 /**
- * One group's "expect" column.
+ * Fold one more batch of submissions of the same song into `into`:
+ * counts add, the earlier first submission wins. Mutates `into`.
+ */
+export function addSongCount(into: BoardSongCount, more: BoardSongCount): void {
+  into.count += more.count;
+  if (more.firstAt.getTime() < into.firstAt.getTime()) into.firstAt = more.firstAt;
+}
+
+/**
+ * File legacy wishes (n15) under the board's groups.
+ *
+ * A legacy wish (written before per-group wishes, so no stored group
+ * and no anon id) still counts — it is a real submission — under the
+ * group its song resolves to. `groupOf` answers that (first board
+ * group in roster order whose catalog holds the song, or null). A
+ * legacy wish that resolves to no group appears in no column; it still
+ * counts in the event's overall wish TOP3, which reads the table
+ * directly and knows nothing of groups.
+ *
+ * A song wished both the legacy way and under a group merges into one
+ * row: counts add, the earlier first submission wins. Inputs are not
+ * mutated; the result is a new map.
+ */
+export function mergeLegacyWishes(
+  byGroup: ReadonlyMap<string, readonly BoardSongCount[]>,
+  legacy: readonly BoardSongCount[],
+  groupOf: (songId: string) => string | null,
+): Map<string, BoardSongCount[]> {
+  const out = new Map<string, BoardSongCount[]>();
+  for (const [groupId, rows] of byGroup) {
+    out.set(groupId, rows.map((r) => ({ ...r })));
+  }
+  for (const row of legacy) {
+    const groupId = groupOf(row.songId);
+    if (groupId === null) continue;
+    const rows = out.get(groupId) ?? [];
+    const same = rows.find((r) => r.songId === row.songId);
+    if (same) {
+      addSongCount(same, row);
+    } else {
+      rows.push({ ...row });
+    }
+    out.set(groupId, rows);
+  }
+  return out;
+}
+
+/**
+ * One group's column — "want" (wishes) or "expect" (picks); both use
+ * the same ranking, counts and labels.
  *
  * `submissions` totals EVERY row of the column, not just the TOP3 —
  * it is what decides "operator" (zero) vs fan data. `participants`
@@ -63,7 +112,7 @@ export function rankBoardSongs(
  * The catalog is the only title source on purpose: the aggregate adds
  * no song query of its own.
  */
-export function buildExpectColumn(
+export function buildBoardColumn(
   rows: readonly BoardSongCount[],
   participants: number,
   titleOf: (songId: string) => string | null,

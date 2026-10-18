@@ -45,9 +45,13 @@ export interface BoardGroupView {
   name: string;
   /** `Artist.color`; null = primary colour. */
   color: string | null;
+  /** "Songs fans want to hear" — per-group wishes (n15). Legacy
+   *  wishes (no anon id, no stored group) are counted under the group
+   *  their song resolves to: submissions, never participants. */
+  wishes: BoardColumn;
   /** "Songs fans expect" — empty until fan picks exist (n15). */
   expects: BoardColumn;
-  /** Operator starter picks, shown only while a column is `operator`. */
+  /** Operator starter picks, shown in whichever column is `operator`. */
   starters: BoardSongRef[];
 }
 
@@ -84,9 +88,19 @@ export interface BoardChip {
   color: string | null;
 }
 
+/** What "copy my picks" (n15) needs from the page: the localized
+ *  event name with its day (series short + event name, the same
+ *  composition as the page title) and the canonical event path from
+ *  `entityPath` — never rebuilt client-side from a display name. */
+export interface BoardShareSeed {
+  eventName: string;
+  path: string;
+}
+
 export interface BoardBlockSeed {
   lockAt: string;
   chips: BoardChip[];
+  share: BoardShareSeed;
 }
 
 /** One of the viewer's own expected-song picks, as `/board/mine`
@@ -104,11 +118,17 @@ export interface BoardMinePick {
   createdAt: string;
 }
 
+/** One of the viewer's own per-group wishes (n15) — same shape as
+ *  a pick. Only rows written with this anon id; legacy wishes are
+ *  never returned (they have no owner on record). */
+export type BoardMineWish = BoardMinePick;
+
 export interface BoardMineResponse {
   picks: BoardMinePick[];
+  wishes: BoardMineWish[];
 }
 
-/** Stable machine codes of the pick write routes' 4xx/503 bodies
+/** Stable machine codes of the pick (and board wish) write routes' 4xx/503 bodies
  *  (`{ error: code }`). The client maps each to an i18n key. */
 export type BoardPickErrorCode =
   | "invalid_event_id"
@@ -119,10 +139,12 @@ export type BoardPickErrorCode =
   | "invalid_group"
   | "invalid_song"
   | "invalid_pick_id"
+  | "invalid_wish_id"
   | "song_outside_group"
   | "not_found"
   | "song_not_found"
   | "pick_not_found"
+  | "wish_not_found"
   | "board_disabled"
   | "board_locked"
   | "not_owner"
@@ -130,7 +152,8 @@ export type BoardPickErrorCode =
   | "group_conflict"
   | "busy";
 
-/** Body of a successful pick create (201 new / 200 exact retry). */
+/** Body of a successful pick create (201 new / 200 exact retry). A
+ *  board wish create (n15) answers with the same shape. */
 export interface BoardPickCreated {
   id: string;
   groupId: string;

@@ -178,6 +178,9 @@ describe("event page × fan board (server render)", () => {
         { groupId: "1", slug: "hasunosora", label: "蓮ノ空", color: "#f8b500" },
         { groupId: "2", slug: "liella", label: "Liella!", color: null },
       ],
+      // Copy-my-picks context: the localized name and the canonical
+      // path (entityPath), never a slugified display name.
+      share: { eventName: "Fes Day.1", path: "/ko/events/107/fes-day1" },
     });
     expectNoAggregation();
   });

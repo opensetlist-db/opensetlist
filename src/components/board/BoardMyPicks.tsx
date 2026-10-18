@@ -4,7 +4,10 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
-import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
+import {
+  BOARD_PICKS_PER_GROUP,
+  BOARD_WISHES_PER_GROUP,
+} from "@/lib/board/config";
 import type { StoredBoardPick } from "@/lib/board/pickStorage";
 import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
@@ -19,9 +22,20 @@ import { colors } from "@/styles/tokens";
  * server validates against. Toggling a selected song off removes the
  * pick. All writes go through `onAdd` / `onRemove` (the parent owns the
  * ballot and the feedback).
+ *
+ * Used for both columns (n15): `kind` picks the copy and the cap —
+ * "my picks" under "expect", "my wishes" under "want". The two caps are
+ * the same number today; each is read from its own constant so they
+ * can't silently couple.
  */
 
+const COPY = {
+  pick: { mine: "mine", add: "add", max: BOARD_PICKS_PER_GROUP },
+  wish: { mine: "mineWish", add: "addWish", max: BOARD_WISHES_PER_GROUP },
+} as const;
+
 export function BoardMyPicks({
+  kind = "pick",
   groupId,
   groupName,
   locale,
@@ -32,10 +46,12 @@ export function BoardMyPicks({
   onAdd,
   onRemove,
 }: {
+  /** Which column this is "mine" for. */
+  kind?: "pick" | "wish";
   groupId: string;
   groupName: string;
   locale: string;
-  /** My picks in THIS group. */
+  /** My picks (or wishes) in THIS group. */
   picks: readonly StoredBoardPick[];
   /** This group's base-song catalog (empty when the page has none —
    *  completed events, or a festival with no roster). */
@@ -47,10 +63,12 @@ export function BoardMyPicks({
 }) {
   const t = useTranslations("Board");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const atCap = picks.length >= BOARD_PICKS_PER_GROUP;
+  const copy = COPY[kind];
+  const max = copy.max;
+  const atCap = picks.length >= max;
   const catalogById = new Map(groupSongs.map((s) => [String(s.songId), s]));
   const canAdd = !locked && groupSongs.length > 0;
-  const capNoteId = `board-cap-${groupId}`;
+  const capNoteId = `board-cap-${kind}-${groupId}`;
 
   const handleToggle = (songId: number) => {
     const id = String(songId);
@@ -65,17 +83,20 @@ export function BoardMyPicks({
   };
 
   return (
-    <div className="mt-3" data-testid="board-my-picks">
+    <div
+      className="mt-3"
+      data-testid={kind === "pick" ? "board-my-picks" : "board-my-wishes"}
+    >
       <div className="mb-1 flex items-center justify-between">
         <h4 className="text-[12px] font-medium" style={{ color: colors.textSecondary }}>
-          {t("mine")}
+          {t(copy.mine)}
         </h4>
         <span
           data-testid="board-pick-counter"
           className="text-[11px] tabular-nums"
           style={{ color: colors.textMuted }}
         >
-          {t("counter", { count: picks.length, max: BOARD_PICKS_PER_GROUP })}
+          {t("counter", { count: picks.length, max })}
         </span>
       </div>
 
@@ -156,7 +177,7 @@ export function BoardMyPicks({
               color: colors.textPrimary,
             }}
           >
-            {t("add", { group: groupName })}
+            {t(copy.add, { group: groupName })}
           </button>
           {atCap && (
             <p
@@ -164,7 +185,7 @@ export function BoardMyPicks({
               className="mt-1 text-[11px]"
               style={{ color: colors.textMuted }}
             >
-              {t("capReached", { max: BOARD_PICKS_PER_GROUP })}
+              {t("capReached", { max })}
             </p>
           )}
           <SongPickerSheet

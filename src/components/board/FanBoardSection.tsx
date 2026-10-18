@@ -5,21 +5,32 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
-import { entityPath } from "@/lib/seo/entityUrl";
+import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
-import { groupIdFromFragment } from "@/lib/board/fragment";
+import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
+import { buildBoardCopyText } from "@/lib/board/copyText";
 import type {
   BoardBlockSeed,
   BoardGroupView,
   BoardReadResponse,
 } from "@/lib/board/types";
-import type { StoredBoardPick } from "@/lib/board/pickStorage";
-import { BOARD_PICKS_PER_GROUP } from "@/lib/board/config";
+import {
+  BOARD_PICKS_PER_GROUP,
+  BOARD_WISHES_PER_GROUP,
+} from "@/lib/board/config";
 import type { AvailableSong } from "@/lib/types/predict";
+import type { WishEntry } from "@/lib/wishStorage";
+import { displayOriginalTitle } from "@/lib/display";
 import { colors } from "@/styles/tokens";
 import { BoardMyPicks } from "@/components/board/BoardMyPicks";
 import { pickTitle } from "@/lib/board/pickTitle";
-import { useBoardPicks, type PickFailure } from "@/components/board/useBoardPicks";
+import {
+  useBoardBallot,
+  type BallotEntry,
+  type BallotKind,
+  type PickFailure,
+  type PickOutcome,
+} from "@/components/board/useBoardBallot";
 
 /**
  * Fan board block (n15).
@@ -36,6 +47,12 @@ import { useBoardPicks, type PickFailure } from "@/components/board/useBoardPick
  *     entirely — the page simply looks like a non-board event.
  *   - The parent never mounts this while the event is ongoing, so no
  *     board request is made during a show.
+ *
+ * Each group shows two columns side by side (n15): "want" (wishes)
+ * and "expect" (picks), each with its crowd TOP3 and the fan's own
+ * entries. On a board event this block replaces the event-wide
+ * wishlist before and after the show; during the show the page
+ * renders the wishlist instead (and never mounts this).
  */
 
 type State =
@@ -82,6 +99,28 @@ function failureKey(reason: PickFailure) {
   }
 }
 
+/** Everything that differs between the two columns of a group, in one
+ *  place (n15): which aggregate column, its heading, its analytics
+ *  name and its feedback copy. */
+const COLUMN = {
+  wish: {
+    field: "wishes",
+    name: "want",
+    heading: "colWant",
+    mineBadge: "mineWishBadge",
+    added: "addedWish",
+    removed: "removedWish",
+  },
+  pick: {
+    field: "expects",
+    name: "expect",
+    heading: "colExpect",
+    mineBadge: "mineBadge",
+    added: "added",
+    removed: "removed",
+  },
+} as const;
+
 const TOAST_MS = 3000;
 const MAX_TIMEOUT_MS = 2147483647; // 2^31 − 1, setTimeout's ceiling
 // Stable default so the per-group filter memo doesn't recompute on
@@ -116,7 +155,7 @@ export function FanBoardSection({
   // Set at the lock time (timer below) or by a write refused with
   // `board_locked`: flips the block to read-only without a reload.
   const [lockedByServer, setLockedByServer] = useState(false);
-  const ballot = useBoardPicks({
+  const ballot = useBoardBallot({
     eventId,
     locale,
     active: state.kind === "ready",
@@ -259,42 +298,141 @@ export function FanBoardSection({
   const activeChipId = active?.groupId ?? activeId;
   const locked = state.kind === "ready" && (state.locked || lockedByServer);
 
-  const report = (outcome: Awaited<ReturnType<typeof ballot.add>>, group: string) => {
+  const listOf = (kind: BallotKind) =>
+    kind === "pick" ? ballot.picks : ballot.wishes;
+  const capOf = (kind: BallotKind) =>
+    kind === "pick" ? BOARD_PICKS_PER_GROUP : BOARD_WISHES_PER_GROUP;
+  // Song ids with a write in flight, per column.
+  const pendingOf = (kind: BallotKind) =>
+    new Set(
+      [...ballot.pending]
+        .filter((k) => k.startsWith(kind + ":"))
+        .map((k) => k.slice(kind.length + 1)),
+    );
+
+  const report = (outcome: PickOutcome, group: string, kind: BallotKind) => {
     if (outcome.ok) {
-      setToast({
-        text: outcome.kind === "added" ? t("added", { group }) : t("removed"),
-        error: false,
-      });
+      const text =
+        outcome.kind === "added"
+          ? t(COLUMN[kind].added, { group })
+          : t(COLUMN[kind].removed);
+      setToast({ text, error: false });
       return;
     }
     if (outcome.reason === "board_locked") setLockedByServer(true);
     setToast({
-      text: t(failureKey(outcome.reason), { max: BOARD_PICKS_PER_GROUP }),
+      text: t(failureKey(outcome.reason), { max: capOf(kind) }),
       error: true,
     });
   };
 
-  const handleAdd = async (group: BoardGroupView, song: AvailableSong) => {
+  const handleAdd = async (
+    kind: BallotKind,
+    group: BoardGroupView,
+    song: AvailableSong,
+  ) => {
     const songId = String(song.songId);
+    const list = listOf(kind);
     // Two refusals the client can see coming — answered locally with the
     // same message the server would send, without a request.
-    if (ballot.picks.some((p) => p.songId === songId && p.groupId !== group.groupId)) {
-      report({ ok: false, reason: "group_conflict" }, group.name);
+    if (list.some((p) => p.songId === songId && p.groupId !== group.groupId)) {
+      report({ ok: false, reason: "group_conflict" }, group.name, kind);
       return;
     }
     if (
-      !ballot.picks.some((p) => p.songId === songId) &&
-      ballot.picks.filter((p) => p.groupId === group.groupId).length >=
-        BOARD_PICKS_PER_GROUP
+      !list.some((p) => p.songId === songId) &&
+      list.filter((p) => p.groupId === group.groupId).length >= capOf(kind)
     ) {
-      report({ ok: false, reason: "cap_reached" }, group.name);
+      report({ ok: false, reason: "cap_reached" }, group.name, kind);
       return;
     }
-    report(await ballot.add(group.groupId, songId, pickTitle(song, locale)), group.name);
+    report(
+      await ballot.add(kind, group.groupId, songId, pickTitle(song, locale)),
+      group.name,
+      kind,
+    );
   };
 
-  const handleRemove = async (group: BoardGroupView, pick: StoredBoardPick) => {
-    report(await ballot.remove(pick), group.name);
+  const handleRemove = async (
+    kind: BallotKind,
+    group: BoardGroupView,
+    entry: BallotEntry,
+  ) => {
+    report(await ballot.remove(kind, entry), group.name, kind);
+  };
+
+  const handleRemoveLegacy = async (entry: WishEntry) => {
+    const outcome = await ballot.removeLegacyWish(entry);
+    if (outcome.ok) {
+      setToast({ text: t("removedWish"), error: false });
+      return;
+    }
+    report(outcome, "", "wish");
+  };
+
+  // "Copy my picks" (n15). Titles are re-localized from the live
+  // catalog where the page has one, so the post matches what the board
+  // shows even when the pick was added in another locale; a song that
+  // dropped out of the catalog (moderated) is left out, mirroring how
+  // "my picks" renders it unavailable (the builder drops unavailable
+  // picks; this only folds the live catalog into the flag). The check
+  // is per group, exactly as `<BoardMyPicks>` gets `songsOf(groupId)`:
+  // on a festival a song can leave one group's catalog while staying
+  // in another's. An empty group catalog (completed events, a festival
+  // with no roster) is "no catalog", so the stored flag stands — `[]`
+  // can't tell "nothing in scope" from "everything deleted". The text
+  // is computed every render so the disabled state and the copied text
+  // can't disagree.
+  const catalogById = new Map(catalog.map((s) => [String(s.songId), s]));
+  const copyablePicks = ballot.picks.map((p) => {
+    const groupSongs = songsOf(p.groupId);
+    return groupSongs.length === 0 ||
+      groupSongs.some((s) => String(s.songId) === p.songId)
+      ? p
+      : { ...p, available: false };
+  });
+  const copyResult =
+    state.kind === "ready" && active
+      ? buildBoardCopyText({
+          t,
+          eventName: seed.share.eventName,
+          // The open group's fragment, so a reader of the post lands on
+          // the group the fan was looking at.
+          url: absoluteUrl(seed.share.path) + boardFragment(active.slug),
+          groups: state.groups,
+          picks: copyablePicks,
+          // null only without a catalog → the stored (add-time) title.
+          titleOf: (p) => {
+            const song = catalogById.get(p.songId);
+            return song ? pickTitle(song, locale) : null;
+          },
+        })
+      : null;
+  const copy =
+    copyResult && active ? { ...copyResult, groupId: active.groupId } : null;
+
+  const handleCopy = async () => {
+    if (!copy) return;
+    // `writeText` is missing outside secure contexts and in some
+    // embedded WebViews, and rejects when the permission is refused —
+    // both read as one "copy it by hand" message; no text is lost
+    // because "my picks" stays on screen.
+    try {
+      if (typeof navigator.clipboard?.writeText !== "function") {
+        throw new Error("clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(copy.text);
+    } catch {
+      setToast({ text: t("copyUnavailable"), error: true });
+      return;
+    }
+    setToast({ text: t("copied"), error: false });
+    trackEvent("board_copy", {
+      event_id: eventId,
+      // The open group = the group the link's fragment opens.
+      group_id: copy.groupId,
+      count: copy.count,
+    });
   };
 
   return (
@@ -370,31 +508,80 @@ export function FanBoardSection({
         )}
         {state.kind === "ready" && active && (
           <>
-            <GroupPanel
-              eventId={eventId}
-              group={active}
-              locale={locale}
-              t={t}
-              mySongIds={
-                new Set(
-                  ballot.picks
-                    .filter((p) => p.groupId === active.groupId)
-                    .map((p) => p.songId),
-                )
+            {/* Two columns side by side; stacked (want above expect) on
+                narrow phones, where two pickers would not fit. */}
+            <div className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 min-[400px]:gap-3">
+              {(["wish", "pick"] as const).map((kind) => {
+                const mine = listOf(kind).filter(
+                  (p) => p.groupId === active.groupId,
+                );
+                return (
+                  <div key={kind} data-testid={`board-col-${COLUMN[kind].name}`}>
+                    <ColumnPanel
+                      eventId={eventId}
+                      group={active}
+                      kind={kind}
+                      locale={locale}
+                      t={t}
+                      mySongIds={new Set(mine.map((p) => p.songId))}
+                    />
+                    <BoardMyPicks
+                      key={kind + "-" + active.groupId}
+                      kind={kind}
+                      groupId={active.groupId}
+                      groupName={active.name}
+                      locale={locale}
+                      picks={mine}
+                      groupSongs={songsOf(active.groupId)}
+                      locked={locked}
+                      pending={pendingOf(kind)}
+                      onAdd={(song) => void handleAdd(kind, active, song)}
+                      onRemove={(entry) => void handleRemove(kind, active, entry)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {/* "Explore this group" — the private alternative to a public
+                "skipped" stat: a fan who doesn't know the group gets a way
+                in, and nobody else learns they skipped it. */}
+            <Link
+              href={entityPath("artists", locale, active.groupId, active.slug)}
+              onClick={() =>
+                trackEvent("board_explore_click", {
+                  event_id: eventId,
+                  group_id: active.groupId,
+                })
               }
-            />
-            <BoardMyPicks
-              key={active.groupId}
-              groupId={active.groupId}
-              groupName={active.name}
-              locale={locale}
-              picks={ballot.picks.filter((p) => p.groupId === active.groupId)}
-              groupSongs={songsOf(active.groupId)}
-              locked={locked}
-              pending={ballot.pending}
-              onAdd={(song) => void handleAdd(active, song)}
-              onRemove={(pick) => void handleRemove(active, pick)}
-            />
+              className="mt-3 block text-[11px] underline"
+              style={{ color: colors.textSecondary }}
+            >
+              {t("explore", { group: active.name })}
+            </Link>
+            {ballot.legacyWishes.length > 0 && (
+              <LegacyWishes
+                entries={ballot.legacyWishes}
+                locale={locale}
+                locked={locked}
+                pending={ballot.pending}
+                t={t}
+                onRemove={(entry) => void handleRemoveLegacy(entry)}
+              />
+            )}
+            {/* Disabled, not hidden, at zero picks: the button is how a
+                fan learns the post exists. */}
+            <button
+              type="button"
+              onClick={() => void handleCopy()}
+              disabled={!copy}
+              className="mt-2 rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
+              style={{
+                border: `1px solid ${colors.border}`,
+                color: colors.textPrimary,
+              }}
+            >
+              {t("copy")}
+            </button>
           </>
         )}
         {/* Feedback for adds/removes. Always mounted so screen readers
@@ -414,26 +601,32 @@ export function FanBoardSection({
   );
 }
 
-function GroupPanel({
+function ColumnPanel({
   eventId,
   group,
+  kind,
   locale,
   t,
   mySongIds,
 }: {
   eventId: string;
   group: BoardGroupView;
+  /** "wish" → the want column; "pick" → the expect column. */
+  kind: BallotKind;
   locale: string;
   t: ReturnType<typeof useTranslations<"Board">>;
-  /** My picks in this group — highlighted wherever they appear. */
+  /** My entries in this column — highlighted wherever they appear. */
   mySongIds: ReadonlySet<string>;
 }) {
-  const label = group.expects.label;
+  const meta = COLUMN[kind];
+  const column = group[meta.field];
+  const label = column.label;
   const showStarters = label === "operator" && group.starters.length > 0;
   const mineStyle = (songId: string) =>
     mySongIds.has(songId)
       ? { background: colors.primaryBg, borderColor: colors.primaryBorder }
       : undefined;
+  const mineBadge = t(meta.mineBadge);
   // Song links double as a listening guide for a group the fan doesn't
   // know; the click tells us whether anyone uses them that way.
   // `source` keeps crowd rows apart from operator starters.
@@ -442,7 +635,7 @@ function GroupPanel({
       event_id: eventId,
       group_id: group.groupId,
       song_id: songId,
-      column: "expect",
+      column: meta.name,
       source,
     });
   return (
@@ -451,7 +644,7 @@ function GroupPanel({
         className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium"
         style={{ color: colors.textSecondary }}
       >
-        {t("colExpect")}
+        {t(meta.heading)}
         {/* Few participants: a 2-vs-1 must not read like a landslide.
             Plain counts and this label — never shares or bars. */}
         {label === "early" && (
@@ -466,7 +659,7 @@ function GroupPanel({
       </h3>
       {label !== "operator" && (
         <ol className="space-y-1">
-          {group.expects.top.map((e) => (
+          {column.top.map((e) => (
             <li
               key={e.songId}
               data-testid="board-top-entry"
@@ -507,7 +700,7 @@ function GroupPanel({
                   className="flex-shrink-0 rounded px-1.5 text-[10px]"
                   style={{ color: colors.primary }}
                 >
-                  {t("mineBadge")}
+                  {mineBadge}
                 </span>
               )}
               <span
@@ -566,22 +759,68 @@ function GroupPanel({
             {t("empty")}
           </p>
         ))}
-      {/* "Explore this group" — the private alternative to a public
-          "skipped" stat: a fan who doesn't know the group gets a way in,
-          and nobody else learns they skipped it. */}
-      <Link
-        href={entityPath("artists", locale, group.groupId, group.slug)}
-        onClick={() =>
-          trackEvent("board_explore_click", {
-            event_id: eventId,
-            group_id: group.groupId,
-          })
-        }
-        className="mt-2 inline-block text-[11px] underline"
-        style={{ color: colors.textSecondary }}
-      >
-        {t("explore", { group: group.name })}
-      </Link>
+    </div>
+  );
+}
+
+/**
+ * Wishes the fan made on the event-wide wishlist before wishes became
+ * per group (n15). They still count — under the group their song
+ * resolves to — but belong to no group's "my wishes" and use no slot,
+ * so they are listed once, apart, and stay removable until the lock.
+ */
+function LegacyWishes({
+  entries,
+  locale,
+  locked,
+  pending,
+  t,
+  onRemove,
+}: {
+  entries: readonly WishEntry[];
+  locale: string;
+  locked: boolean;
+  pending: ReadonlySet<string>;
+  t: ReturnType<typeof useTranslations<"Board">>;
+  onRemove: (entry: WishEntry) => void;
+}) {
+  return (
+    <div className="mt-3" data-testid="board-legacy-wishes">
+      <h4 className="text-[12px] font-medium" style={{ color: colors.textSecondary }}>
+        {t("legacyWishesTitle")}
+      </h4>
+      <p className="mb-1 text-[11px]" style={{ color: colors.textMuted }}>
+        {t("legacyWishesNote")}
+      </p>
+      <ul className="space-y-1">
+        {entries.map((w) => {
+          const title = displayOriginalTitle(w.song, w.song.translations, locale).main;
+          return (
+            <li
+              key={w.dbId}
+              data-testid="board-legacy-wish"
+              className="flex items-center gap-2 rounded-md px-2 py-1 text-[13px]"
+              style={{ background: colors.bgSubtle }}
+            >
+              <span className="min-w-0 flex-1 truncate" style={{ color: colors.textPrimary }}>
+                {title}
+              </span>
+              {!locked && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(w)}
+                  disabled={pending.has("legacy:" + w.dbId)}
+                  aria-label={t("removeAria", { title })}
+                  className="flex-shrink-0 px-1 text-[14px] leading-none disabled:opacity-40"
+                  style={{ color: colors.textMuted }}
+                >
+                  ✕
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

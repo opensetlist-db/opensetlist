@@ -2,7 +2,11 @@
 // same ranking decides the post-show shortlist, so
 // ties are pinned here with literal expectations.
 import { describe, it, expect } from "vitest";
-import { buildExpectColumn, rankBoardSongs } from "@/lib/board/aggregate";
+import {
+  buildBoardColumn,
+  mergeLegacyWishes,
+  rankBoardSongs,
+} from "@/lib/board/aggregate";
 
 const at = (iso: string) => new Date(`2026-10-${iso}Z`);
 
@@ -30,12 +34,12 @@ describe("rankBoardSongs", () => {
 
 });
 
-describe("buildExpectColumn", () => {
+describe("buildBoardColumn", () => {
   const titles: Record<string, string> = { "10": "残陽", "11": "ハナムスビ", "12": "Dream Believers" };
   const titleOf = (id: string) => titles[id] ?? null;
 
   it("zero submissions → operator column, nothing ranked", () => {
-    expect(buildExpectColumn([], 0, titleOf)).toEqual({
+    expect(buildBoardColumn([], 0, titleOf)).toEqual({
       top: [],
       submissions: 0,
       participants: 0,
@@ -44,7 +48,7 @@ describe("buildExpectColumn", () => {
   });
 
   it("1–4 participants → early sample; submissions count every row", () => {
-    const col = buildExpectColumn(
+    const col = buildBoardColumn(
       [
         { songId: "10", count: 3, firstAt: at("20T00:00:00") },
         { songId: "11", count: 1, firstAt: at("20T00:00:00") },
@@ -65,12 +69,12 @@ describe("buildExpectColumn", () => {
 
   it("four participants is still early; five is ok", () => {
     const rows = [{ songId: "10", count: 5, firstAt: at("20T00:00:00") }];
-    expect(buildExpectColumn(rows, 4, titleOf).label).toBe("early");
-    expect(buildExpectColumn(rows, 5, titleOf).label).toBe("ok");
+    expect(buildBoardColumn(rows, 4, titleOf).label).toBe("early");
+    expect(buildBoardColumn(rows, 5, titleOf).label).toBe("ok");
   });
 
   it("legacy-style rows (submissions without participants) are early, not operator", () => {
-    const col = buildExpectColumn(
+    const col = buildBoardColumn(
       [{ songId: "10", count: 2, firstAt: at("20T00:00:00") }],
       0,
       titleOf,
@@ -81,7 +85,7 @@ describe("buildExpectColumn", () => {
   });
 
   it("bounded to three rows; submissions still total all of them", () => {
-    const col = buildExpectColumn(
+    const col = buildBoardColumn(
       [
         { songId: "10", count: 4, firstAt: at("20T00:00:00") },
         { songId: "11", count: 3, firstAt: at("20T00:00:00") },
@@ -97,7 +101,7 @@ describe("buildExpectColumn", () => {
   });
 
   it("a song missing from the catalog (soft-deleted) keeps its vote and slot, unavailable", () => {
-    const col = buildExpectColumn(
+    const col = buildBoardColumn(
       [
         { songId: "99", count: 4, firstAt: at("20T00:00:00") },
         { songId: "10", count: 1, firstAt: at("20T00:00:00") },
@@ -109,5 +113,44 @@ describe("buildExpectColumn", () => {
       { songId: "99", title: "", count: 4, available: false },
       { songId: "10", title: "残陽", count: 1, available: true },
     ]);
+  });
+});
+
+describe("mergeLegacyWishes (n15)", () => {
+  const groupOf = (songId: string) =>
+    ({ "10": "1", "20": "2" })[songId] ?? null;
+
+  it("files a legacy row under its resolved group and merges with the same song there", () => {
+    const byGroup = new Map([
+      ["1", [{ songId: "10", count: 2, firstAt: at("20T00:00:00") }]],
+    ]);
+    const merged = mergeLegacyWishes(
+      byGroup,
+      [
+        { songId: "10", count: 1, firstAt: at("12T00:00:00") },
+        { songId: "20", count: 3, firstAt: at("13T00:00:00") },
+      ],
+      groupOf,
+    );
+    expect(merged.get("1")).toEqual([
+      // counts add; the earlier first submission wins
+      { songId: "10", count: 3, firstAt: at("12T00:00:00") },
+    ]);
+    expect(merged.get("2")).toEqual([
+      { songId: "20", count: 3, firstAt: at("13T00:00:00") },
+    ]);
+    // input untouched
+    expect(byGroup.get("1")).toEqual([
+      { songId: "10", count: 2, firstAt: at("20T00:00:00") },
+    ]);
+  });
+
+  it("a row that resolves to no group is dropped from every column", () => {
+    const merged = mergeLegacyWishes(
+      new Map(),
+      [{ songId: "99", count: 4, firstAt: at("12T00:00:00") }],
+      groupOf,
+    );
+    expect([...merged.values()].flat()).toEqual([]);
   });
 });
