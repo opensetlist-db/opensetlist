@@ -31,10 +31,12 @@ import {
   getAvailableSongsCached,
   getFestivalGroupArtistsCached,
 } from "@/lib/predict/availableSongs";
+import { mergeFestivalCatalog } from "@/lib/predict/festivalCatalog";
 import {
-  mergeFestivalCatalog,
-  resolveFestivalGroups,
-} from "@/lib/predict/festivalCatalog";
+  boardGroupRootIds,
+  boardGroupsFromRows,
+  seriesPrimaryArtistOf,
+} from "@/lib/board/boardGroups";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
@@ -895,10 +897,7 @@ export default async function EventPage({ params }: Props) {
   //     Only an upcoming multi-artist event with NO roster still has
   //     no defensible scope; there the picker hides and the surface
   //     degrades to copy-from-past + share CTA.
-  const seriesPrimaryArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  const seriesPrimaryArtist = seriesPrimaryArtistOf(event.eventSeries);
   let availableSongs: AvailableSong[] = [];
   let unitFilters: UnitFilter[] = [];
   if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
@@ -924,48 +923,36 @@ export default async function EventPage({ params }: Props) {
     );
   } else if (resolvedStatus === "upcoming" && roster.length > 0) {
     const hierarchy = await getArtistHierarchyCached();
-    const groupRefs = resolveFestivalGroups(roster, hierarchy);
-    if (groupRefs.length > 0) {
+    // Same resolver the fan board uses (`primaryArtistId: null` selects
+    // the festival branch), so the picker's chips and the board's
+    // groups come from one ordering.
+    const rootIds = boardGroupRootIds({
+      roster,
+      hierarchy,
+      primaryArtistId: null,
+    });
+    if (rootIds.length > 0) {
       // Sorted id key so the display-row cache entry is independent of
-      // roster order (the chip ORDER still comes from `groupRefs`).
+      // roster order (the chip ORDER still comes from `rootIds`).
       const idKey = joinIdKey(
-        groupRefs.map((g) => g.rootId).sort((a, b) => Number(a) - Number(b)),
+        [...rootIds].sort((a, b) => Number(a) - Number(b)),
       );
       const [groupArtists, perGroup, predictPickerTrans] = await Promise.all([
         getFestivalGroupArtistsCached(idKey, locale),
         Promise.all(
-          groupRefs.map((g) => getAvailableSongsCached(BigInt(g.rootId), locale)),
+          rootIds.map((id) => getAvailableSongsCached(BigInt(id), locale)),
         ),
         getTranslations("Predict.picker"),
       ]);
-      const artistById = new Map(groupArtists.map((a) => [String(a.id), a]));
       // A root that came back missing (soft-deleted between the
       // hierarchy read and this one) or whose id isn't JS-safe drops
-      // out together with its catalog, keeping the two arrays aligned.
-      const groups: Array<{
-        artistId: number;
-        slug: string;
-        label: string;
-        color: string | null;
-      }> = [];
-      const groupCatalogs: AvailableSong[][] = [];
-      groupRefs.forEach((ref, i) => {
-        const artist = artistById.get(ref.rootId);
-        const artistId = artist ? safeBigIntToNumber(artist.id) : null;
-        if (!artist || artistId === null) return;
-        groups.push({
-          artistId,
-          slug: artist.slug,
-          label: displayNameWithFallback(
-            artist,
-            artist.translations,
-            locale,
-            "short",
-          ),
-          color: artist.color,
-        });
-        groupCatalogs.push(perGroup[i]);
-      });
+      // out of `groups`; catalogs are looked up by id so the two
+      // arrays stay aligned.
+      const groups = boardGroupsFromRows(rootIds, groupArtists, locale);
+      const catalogByRoot = new Map(rootIds.map((id, i) => [id, perGroup[i]]));
+      const groupCatalogs = groups.map(
+        (g) => catalogByRoot.get(String(g.artistId)) ?? [],
+      );
       availableSongs = mergeFestivalCatalog(
         groups.map((g) => g.artistId),
         groupCatalogs,
@@ -1030,11 +1017,10 @@ export default async function EventPage({ params }: Props) {
   // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
   // 404 on `/artists/{id}` (the artist page calls notFound()), so
   // linking to them would dead-end. Treat as absent and fall through
-  // to the organizerName branch.
-  const seriesArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  // to the organizerName branch. Same value the picker branch keys on
+  // (`seriesPrimaryArtistOf`), so the header link and the single-artist
+  // picker can never point at different artists.
+  const seriesArtist = seriesPrimaryArtist;
   const headerArtist = seriesArtist
     ? {
         // String() — `Artist.id` is BigInt; `Number(bigint)` truncates

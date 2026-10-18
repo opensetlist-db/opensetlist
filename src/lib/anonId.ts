@@ -33,6 +33,42 @@ export function parseAnonId(value: unknown): ParseAnonIdResult {
   return { ok: true, value: value.length > 0 ? value : null };
 }
 
+export type ParseRequiredAnonIdResult =
+  | { ok: true; value: string }
+  | { ok: false; message: string };
+
+/**
+ * Charset the strict parser admits. `getAnonId` mints
+ * `crypto.randomUUID()` (hex + hyphens); underscore is allowed too so
+ * fixture ids like `anon_1` stay valid. Anything with whitespace,
+ * slashes, dots or non-ASCII is not an id this app ever issued — it is
+ * either a hand-edited localStorage value or a forged body.
+ */
+const REQUIRED_ANON_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Strict sibling of `parseAnonId` for writes where the anonId is the
+ * ownership / cap key (fan board picks, per-group wishes): a missing id
+ * would make every anonymous write share one bucket, so absent is an
+ * error here, not a legacy fallback.
+ *
+ * Rejects undefined, null, "", non-strings, strings over
+ * ANON_ID_MAX_LEN, and strings outside `REQUIRED_ANON_ID_RE`. Same
+ * error message as the lenient parser so routes can surface one 400
+ * body for both.
+ */
+export function parseRequiredAnonId(value: unknown): ParseRequiredAnonIdResult {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > ANON_ID_MAX_LEN ||
+    !REQUIRED_ANON_ID_RE.test(value)
+  ) {
+    return { ok: false, message: "invalid anonId" };
+  }
+  return { ok: true, value };
+}
+
 /**
  * Returns the browser's anonymous identifier, creating it on first call.
  *
