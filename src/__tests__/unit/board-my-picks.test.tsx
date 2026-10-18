@@ -53,6 +53,7 @@ const SEED: BoardBlockSeed = {
     { groupId: "1", slug: "hasunosora", label: "蓮ノ空", color: null },
     { groupId: "2", slug: "liella", label: "Liella!", color: null },
   ],
+  share: { eventName: "Fes Day.1", path: "/ko/events/107/fes-day1" },
 };
 
 function readBoard(over: Partial<{ locked: boolean; top: { songId: string; title: string; count: number; available: boolean }[] }> = {}): BoardReadResponse {

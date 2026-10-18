@@ -583,7 +583,13 @@
     "errorGeneric": "Couldn't save. Please try again.",
     "mineBadge": "My pick",
     "earlySample": "Early sample",
-    "explore": "Explore {group}"
+    "explore": "Explore {group}",
+    "copy": "Copy my picks",
+    "copied": "Copied to clipboard",
+    "copyUnavailable": "Couldn't copy. Please copy your picks by hand.",
+    "copyTemplate": "{event} setlist predictions (OpenSetlist)\n{picks}\n{url}",
+    "copyLine": "{group}: {songs}",
+    "copySongSeparator": " / "
   },
   "Wishlist": {
     "title": "Songs you want to hear at this show",

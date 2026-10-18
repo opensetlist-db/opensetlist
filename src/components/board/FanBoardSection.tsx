@@ -5,9 +5,10 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
-import { entityPath } from "@/lib/seo/entityUrl";
+import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
-import { groupIdFromFragment } from "@/lib/board/fragment";
+import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
+import { buildBoardCopyText } from "@/lib/board/copyText";
 import type {
   BoardBlockSeed,
   BoardGroupView,
@@ -297,6 +298,71 @@ export function FanBoardSection({
     report(await ballot.remove(pick), group.name);
   };
 
+  // "Copy my picks" (n15-05). Titles are re-localized from the live
+  // catalog where the page has one, so the post matches what the board
+  // shows even when the pick was added in another locale; a song that
+  // dropped out of the catalog (moderated) is left out, mirroring how
+  // "my picks" renders it unavailable (the builder drops unavailable
+  // picks; this only folds the live catalog into the flag). The check
+  // is per group, exactly as `<BoardMyPicks>` gets `songsOf(groupId)`:
+  // on a festival a song can leave one group's catalog while staying
+  // in another's. An empty group catalog (completed events, a festival
+  // with no roster) is "no catalog", so the stored flag stands — `[]`
+  // can't tell "nothing in scope" from "everything deleted". The text
+  // is computed every render so the disabled state and the copied text
+  // can't disagree.
+  const catalogById = new Map(catalog.map((s) => [String(s.songId), s]));
+  const copyablePicks = ballot.picks.map((p) => {
+    const groupSongs = songsOf(p.groupId);
+    return groupSongs.length === 0 ||
+      groupSongs.some((s) => String(s.songId) === p.songId)
+      ? p
+      : { ...p, available: false };
+  });
+  const copyResult =
+    state.kind === "ready" && active
+      ? buildBoardCopyText({
+          t,
+          eventName: seed.share.eventName,
+          // The open group's fragment, so a reader of the post lands on
+          // the group the fan was looking at.
+          url: absoluteUrl(seed.share.path) + boardFragment(active.slug),
+          groups: state.groups,
+          picks: copyablePicks,
+          // null only without a catalog → the stored (add-time) title.
+          titleOf: (p) => {
+            const song = catalogById.get(p.songId);
+            return song ? pickTitle(song, locale) : null;
+          },
+        })
+      : null;
+  const copy =
+    copyResult && active ? { ...copyResult, groupId: active.groupId } : null;
+
+  const handleCopy = async () => {
+    if (!copy) return;
+    // `writeText` is missing outside secure contexts and in some
+    // embedded WebViews, and rejects when the permission is refused —
+    // both read as one "copy it by hand" message; no text is lost
+    // because "my picks" stays on screen.
+    try {
+      if (typeof navigator.clipboard?.writeText !== "function") {
+        throw new Error("clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(copy.text);
+    } catch {
+      setToast({ text: t("copyUnavailable"), error: true });
+      return;
+    }
+    setToast({ text: t("copied"), error: false });
+    trackEvent("board_copy", {
+      event_id: eventId,
+      // The open group = the group the link's fragment opens.
+      group_id: copy.groupId,
+      count: copy.count,
+    });
+  };
+
   return (
     <section
       ref={sectionRef}
@@ -395,6 +461,20 @@ export function FanBoardSection({
               onAdd={(song) => void handleAdd(active, song)}
               onRemove={(pick) => void handleRemove(active, pick)}
             />
+            {/* Disabled, not hidden, at zero picks: the button is how a
+                fan learns the post exists. */}
+            <button
+              type="button"
+              onClick={() => void handleCopy()}
+              disabled={!copy}
+              className="mt-2 rounded-full px-3 py-1 text-[12px] disabled:opacity-50"
+              style={{
+                border: `1px solid ${colors.border}`,
+                color: colors.textPrimary,
+              }}
+            >
+              {t("copy")}
+            </button>
           </>
         )}
         {/* Feedback for adds/removes. Always mounted so screen readers

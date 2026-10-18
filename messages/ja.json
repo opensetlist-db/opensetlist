@@ -583,7 +583,13 @@
     "errorGeneric": "保存できませんでした。もう一度お試しください。",
     "mineBadge": "自分の予想",
     "earlySample": "集計初期",
-    "explore": "{group}をのぞいてみる"
+    "explore": "{group}をのぞいてみる",
+    "copy": "自分の予想をコピー",
+    "copied": "クリップボードにコピーしました",
+    "copyUnavailable": "コピーできませんでした。自分の予想を手で書き写してください。",
+    "copyTemplate": "{event} セトリ予想 (OpenSetlist)\n{picks}\n{url}",
+    "copyLine": "{group}: {songs}",
+    "copySongSeparator": " / "
   },
   "Wishlist": {
     "title": "この公演で聴きたい曲",
