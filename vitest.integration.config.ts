@@ -11,6 +11,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/__tests__/integration/**/*.test.ts"],
+    globalSetup: ["./src/__tests__/integration/globalSetup.ts"],
     setupFiles: ["./src/__tests__/integration/setup.ts"],
     // Network round-trips to the Seoul pooler; the suites use explicit
     // barriers, these are only safety nets.
