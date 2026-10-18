@@ -2,7 +2,9 @@
  * `local/use-client-exports` — a module whose first statement is the
  * "use client" directive may export only React components (PascalCase
  * with at least one lowercase letter) and hooks (`useX`). Type-only
- * exports and default exports are allowed.
+ * exports and default exports are allowed. A component-shaped name
+ * bound to a plain value (literal, template, object, array) is still a
+ * value and is reported.
  *
  * Why: a server component that imports from a "use client" module gets
  * a client reference, not the value — an exported constant or helper
@@ -21,6 +23,29 @@ const HOOK = /^use[A-Z0-9]/;
 
 function allowed(name) {
   return COMPONENT.test(name) || HOOK.test(name);
+}
+
+/** An initializer that is plainly a value, never a component or hook:
+ *  a literal (incl. `-1`), template, object or array. The name alone
+ *  can't tell — `export const BoardLimit = 3` is PascalCase. Calls
+ *  (`memo(...)`, `forwardRef(...)`, `createContext(...)`) and functions
+ *  pass: they are how components and hooks are written. */
+function isPlainValue(init) {
+  if (!init) return false;
+  switch (init.type) {
+    case "Literal":
+    case "TemplateLiteral":
+    case "ObjectExpression":
+    case "ArrayExpression":
+      return true;
+    case "UnaryExpression":
+      return isPlainValue(init.argument);
+    case "TSAsExpression":
+    case "TSSatisfiesExpression":
+      return isPlainValue(init.expression);
+    default:
+      return false;
+  }
 }
 
 function isClientModule(program) {
@@ -104,8 +129,9 @@ export default {
               return;
             case "VariableDeclaration":
               for (const d of decl.declarations) {
+                const plain = d.id.type === "Identifier" && isPlainValue(d.init);
                 for (const name of patternNames(d.id)) {
-                  if (!allowed(name)) report(d, name);
+                  if (plain || !allowed(name)) report(d, name);
                 }
               }
               return;

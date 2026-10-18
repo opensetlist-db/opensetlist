@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
-import { devPgClient } from "./devPg";
 import { DEV_PROJECT_REF } from "./setup";
+import { devPgClient } from "./devPg";
 
 // n14 live path — integration tests against the DEV database.
 //
