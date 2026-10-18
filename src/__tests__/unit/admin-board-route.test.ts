@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Admin board settings endpoint (n15-02), mocked contract. The key
+// Admin board settings endpoint (n15), mocked contract. The key
 // property: a board-settings save is a plain single-row update — it
 // never enters the live writer transaction and never calls a cache
 // invalidation helper (the admin event PUT does both, which would

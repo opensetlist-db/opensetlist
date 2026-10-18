@@ -10,7 +10,7 @@ import { deletePick, isPickIdShape } from "@/lib/board/picks";
 type RouteProps = { params: Promise<{ id: string; pickId: string }> };
 
 /**
- * Remove one of the caller's expected-song picks (n15-03).
+ * Remove one of the caller's expected-song picks (n15).
  *
  *   DELETE /api/events/[id]/board/picks/[pickId]
  *     body { anonId }

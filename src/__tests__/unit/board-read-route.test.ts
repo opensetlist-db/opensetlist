@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Board read route contract (n15-02): the control check decides the
+// Board read route contract (n15): the control check decides the
 // response shape BEFORE any aggregate work, every answer is HTTP
 // `no-store`, and the read never touches a revalidate helper. The data
 // cache is replaced by a pass-through so each call reaches the mocked

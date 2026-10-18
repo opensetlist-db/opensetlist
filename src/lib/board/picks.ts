@@ -12,7 +12,7 @@ import {
 import type { BoardMinePick } from "@/lib/board/types";
 
 /**
- * Board pick (expected song) writes and the "mine" read (n15-03).
+ * Board pick (expected song) writes and the "mine" read (n15).
  *
  * The routes in `src/app/api/events/[id]/board/picks/**` and
  * `…/board/mine` stay thin (parse → control check → these); the rules

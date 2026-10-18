@@ -10,7 +10,7 @@ import { createPick, validatePickTarget } from "@/lib/board/picks";
 type RouteProps = { params: Promise<{ id: string }> };
 
 /**
- * Add an expected song to the caller's fan board ballot (n15-03).
+ * Add an expected song to the caller's fan board ballot (n15).
  *
  *   POST /api/events/[id]/board/picks
  *     body { groupId: "<root artist id>", songId: "<base song id>",

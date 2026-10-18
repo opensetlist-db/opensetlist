@@ -1,5 +1,5 @@
 /**
- * localStorage copy of the viewer's own fan board picks (n15-03).
+ * localStorage copy of the viewer's own fan board picks (n15).
  *
  * One key per event: `board-{eventId}` (Day.1 and Day.2 are separate
  * events, so separate ballots). Value shape:

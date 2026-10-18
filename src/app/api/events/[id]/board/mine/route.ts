@@ -10,7 +10,7 @@ import type { BoardMineResponse } from "@/lib/board/types";
 type RouteProps = { params: Promise<{ id: string }> };
 
 /**
- * The caller's own expected-song picks for one event (n15-03).
+ * The caller's own expected-song picks for one event (n15).
  *
  *   GET /api/events/[id]/board/mine?locale=ja
  *     header OpenSetlist-Anon-Token: <browser anon id>

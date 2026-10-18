@@ -149,7 +149,7 @@ async function loadPickCounts(eventId: bigint) {
 
 export const getBoardAggregateCached = cachedQuery(
   "event-board",
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `_status` is key-only for now (the completed shape gains the tally in n15-06)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- `_status` is key-only for now (the completed shape gains the post-show tally)
   async (eventId: bigint, locale: string, _status: AggregateStatus) => {
     const control = await getBoardControlCached(eventId);
     const primary = seriesPrimaryArtistOf(control?.eventSeries);

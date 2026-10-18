@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-// "My picks" on the fan board (n15-03), through the whole block with a
+// "My picks" on the fan board (n15), through the whole block with a
 // mocked board read and mocked pick routes: the N/3 counter, the cap
 // state, success / error feedback, highlight of my picks in the column,
 // unavailable (soft-deleted) songs, the cross-group label, the

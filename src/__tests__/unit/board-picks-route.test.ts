@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Board pick write + "mine" route contracts (n15-03), with Prisma and
+// Board pick write + "mine" route contracts (n15), with Prisma and
 // the board resolvers mocked: the error contract (400/403/404/409/503),
 // the idempotent retry, the order "control check → ballot lock →
 // ballot validation", the lock boundary at the start time (UTC, ±1 s),

@@ -20,7 +20,7 @@ import type {
 } from "@/lib/board/types";
 
 /**
- * The viewer's own ballot on one event's fan board (n15-03): local copy
+ * The viewer's own ballot on one event's fan board (n15): local copy
  * first, `/board/mine` as the fallback, and the add/remove calls with
  * their outcome reported back as a typed result the block turns into a
  * toast.

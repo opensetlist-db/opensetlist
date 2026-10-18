@@ -10,8 +10,8 @@ import {
 import type { EventRosterEntry } from "@/lib/types/setlist";
 
 /**
- * The event's board groups, loaded — the server half of the n15-01
- * resolver, shared by the event page (chips), the board read route and
+ * The event's board groups, loaded — the server half of the board
+ * groups resolver, shared by the event page (chips), the board read route and
  * the admin board endpoint so all three show the same groups in the
  * same order.
  *

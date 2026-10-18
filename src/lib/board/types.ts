@@ -45,7 +45,7 @@ export interface BoardGroupView {
   name: string;
   /** `Artist.color`; null = primary colour. */
   color: string | null;
-  /** "Songs fans expect" — empty until fan picks exist (n15-03/04). */
+  /** "Songs fans expect" — empty until fan picks exist (n15). */
   expects: BoardColumn;
   /** Operator starter picks, shown only while a column is `operator`. */
   starters: BoardSongRef[];
@@ -90,7 +90,7 @@ export interface BoardBlockSeed {
 }
 
 /** One of the viewer's own expected-song picks, as `/board/mine`
- *  returns it (n15-03). Personal — never part of a board read. */
+ *  returns it (n15). Personal — never part of a board read. */
 export interface BoardMinePick {
   /** Server row id — what a delete names. */
   id: string;

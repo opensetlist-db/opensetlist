@@ -10,7 +10,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 
 /**
- * "My picks" for the open group on the fan board (n15-03): the rows I
+ * "My picks" for the open group on the fan board (n15): the rows I
  * added, an "N/3" counter, the add control (disabled with an
  * explanation at the cap) and the group-scoped picker.
  *

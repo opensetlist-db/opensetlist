@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { devPgClient, utcParam } from "./devPg";
 
-// Fan board pick writes (n15-03) against the DEV database: the things
+// Fan board pick writes (n15) against the DEV database: the things
 // only real rows and a real advisory lock can prove — the cap holds
 // under 20 concurrent creates, the unique (event, anon, song) and the
 // idempotent retry, the group-conflict answer, the start-time lock at
