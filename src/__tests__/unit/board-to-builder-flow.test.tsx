@@ -36,6 +36,7 @@ import { LiveSetlist } from "@/components/LiveSetlist";
 import { PredictedSetlist } from "@/components/PredictedSetlist";
 import { trackEvent } from "@/lib/analytics";
 import { readPredictions, writePredictions } from "@/lib/predictionsStorage";
+import { writeWishes } from "@/lib/wishStorage";
 import type { BoardBlockSeed, BoardGroupView, BoardReadResponse } from "@/lib/board/types";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong } from "@/lib/types/predict";
@@ -56,6 +57,7 @@ function group(id: string, slug: string, name: string): BoardGroupView {
     slug,
     name,
     color: null,
+    wishes: { top: [], submissions: 0, participants: 0, label: "operator" },
     expects: { top: [], submissions: 0, participants: 0, label: "operator" },
     starters: [],
   };
@@ -191,6 +193,35 @@ describe("board → full setlist mode", () => {
     });
     expect(scrollIntoView).toHaveBeenCalled();
     expect(scrollIntoView.mock.contexts.at(-1)).toBe(setlistCard());
+  });
+
+  it("wishes (the board's other column) never enter the draft", async () => {
+    storePicks([{ groupId: "1", songId: "10", title: "残陽" }]);
+    // A board wish for 11 under the same group (n15-08 storage).
+    writeWishes("107", [
+      {
+        songId: 11,
+        dbId: "w1",
+        groupId: "1",
+        song: {
+          originalTitle: "ハナムスビ",
+          originalLanguage: "ja",
+          variantLabel: null,
+          baseVersionId: null,
+          translations: [],
+        },
+      },
+    ]);
+    renderPage();
+    const board = within(document.getElementById("fan-board-107")!);
+    fireEvent.click(await screen.findByRole("button", { name: "toFullSetlist" }));
+    // The wish really was loaded — it shows in the board's want column.
+    expect(board.getByText("ハナムスビ")).toBeTruthy();
+    expect(readPredictions("107")?.songs.map((e) => e.songId)).toEqual([10]);
+    expect(trackEvent).toHaveBeenCalledWith("board_to_builder", {
+      event_id: "107",
+      imported_count: 1,
+    });
   });
 
   it("an existing list is left intact and the fan is told so", async () => {

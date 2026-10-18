@@ -159,3 +159,23 @@ describe("writeWishes resilience", () => {
     expect(() => writeWishes("1", [entry(1, "x")])).not.toThrow();
   });
 });
+
+describe("per-group board wishes (n15-08)", () => {
+  it("round-trips groupId / available beside legacy entries", () => {
+    const wishes: WishEntry[] = [
+      entry(1, "legacy-1"),
+      { ...entry(2, "w2"), groupId: "7" },
+      { ...entry(3, "w3"), groupId: "7", available: false },
+    ];
+    writeWishes("42", wishes);
+    expect(readWishes("42")).toEqual(wishes);
+  });
+
+  it("a malformed groupId invalidates the stored shape (same all-or-nothing rule)", () => {
+    window.localStorage.setItem(
+      "wish-42",
+      JSON.stringify({ wishes: [{ ...entry(2, "w2"), groupId: 7 }] }),
+    );
+    expect(readWishes("42")).toEqual([]);
+  });
+});
