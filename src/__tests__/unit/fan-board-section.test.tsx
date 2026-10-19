@@ -432,6 +432,12 @@ copyLine(Aqours,未体験HORIZON),${url})`,
         baseVersionId: null,
         translations: [],
         festivalGroupIds: groups,
+        // Group-direct credit to the first group: the picker derives
+        // its unit chips from these (n15 board picker).
+        unit: { artistId: groups[0] ?? 0, slug: `g${groups[0] ?? 0}`, label: `g${groups[0] ?? 0}`, color: "#888888", isSubUnit: false, isMainUnit: false },
+        isMultiArtist: false,
+        creditedArtistIds: groups.slice(0, 1),
+        releaseDate: null,
       }) as unknown as AvailableSong;
     storePicks([
       { id: "p1", groupId: "1", songId: "10", title: "残陽" },

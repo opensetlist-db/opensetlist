@@ -85,6 +85,13 @@ export interface AvailableSong {
    *  where the `group` / `individual` chips route via
    *  `creditedArtistIds` instead. */
   festivalGroupIds: number[];
+  /** `Song.releaseDate` as a calendar date (`YYYY-MM-DD`, the stored
+   *  `@db.Date` value read in UTC), or null when the operator hasn't
+   *  recorded one. Drives the picker's "by release date" sort only —
+   *  nothing filters on it. A plain string rather than a `Date` so the
+   *  row survives the data cache's JSON round-trip unchanged and the
+   *  sort can compare it lexically. */
+  releaseDate: string | null;
 }
 
 export interface AvailableSongUnit {

@@ -32,6 +32,7 @@ function makeSong(
     // tests in song-picker-content do.
     creditedArtistIds: [unit.artistId],
     festivalGroupIds: [],
+    releaseDate: null,
     ...songOver,
   };
 }

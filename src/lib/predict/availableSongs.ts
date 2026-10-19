@@ -56,6 +56,7 @@ async function fetchAvailableSongRows(scopeIds: bigint[], locale: string) {
       originalLanguage: true,
       variantLabel: true,
       baseVersionId: true,
+      releaseDate: true,
       translations: {
         where: localeFilter,
         select: { locale: true, title: true, variantLabel: true },
@@ -193,9 +194,23 @@ export function mapAvailableSongRows(
       isMultiArtist,
       creditedArtistIds,
       festivalGroupIds: [],
+      releaseDate: toIsoDay(row.releaseDate),
     });
   }
   return out;
+}
+
+/**
+ * `@db.Date` → `YYYY-MM-DD`. Prisma hands a date-only column back as a
+ * `Date` at UTC midnight, so the UTC ISO prefix IS the stored day — a
+ * local-time getter would shift it by a day west of UTC. A cached row
+ * that already went through JSON arrives as a string; an invalid value
+ * reads as "no date" rather than throwing inside the catalog build.
+ */
+function toIsoDay(v: Date | string | null): string | null {
+  if (v === null) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
 export async function getAvailableSongs(
