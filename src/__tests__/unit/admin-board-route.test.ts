@@ -241,6 +241,22 @@ describe("GET /api/admin/events/[id]/board", () => {
     });
     expectLivePathUntouched();
   });
+
+  it("starters stored under a group that is no longer on the board are ignored, not a 500", async () => {
+    // e.g. the group was flagged as a side project after the operator
+    // picked its starters: the board's groups no longer include it.
+    findFirst.mockResolvedValue({
+      id: BigInt(107),
+      boardEnabled: true,
+      boardStarterSongIds: { "1": ["10"], "20": ["999"] },
+      eventSeries: { artist: null },
+    } as never);
+    const res = await GET(new Request("http://localhost") as unknown as NextRequest, params());
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.groups.map((g: { groupId: string }) => g.groupId)).toEqual(["1", "2"]);
+    expect(catalogMock).not.toHaveBeenCalledWith(BigInt(20), expect.anything());
+  });
 });
 
 describe("GET /api/admin/events/[id]/board/songs (group-scoped search)", () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  boardGroupsBySong,
   deriveBoardProposal,
   previewPublish,
 } from "@/lib/board/proposal";
@@ -92,6 +93,34 @@ describe("deriveBoardProposal — festival (per-group catalogs)", () => {
 
   it("an empty list proposes nothing", () => {
     expect(deriveBoardProposal([], GROUPS, CATALOG)).toEqual([]);
+  });
+});
+
+describe("deriveBoardProposal — a side project in the catalog but not on the board", () => {
+  // The picker catalog still carries the side project (root 20): song 6
+  // is credited only to it, 9 to it and to the board group 10. The
+  // board's groups are just ["10"] — `fanBoardRootIds` dropped 20.
+  const CATALOG = [
+    ...[1, 2].map((id) => song(id, [10])),
+    song(6, [20]),
+    song(9, [10, 20]),
+  ];
+  const GROUPS = ["10"];
+
+  it("a song whose only root is the side project maps to no board group", () => {
+    const map = boardGroupsBySong(GROUPS, CATALOG);
+    expect(map.has("6")).toBe(false);
+    // A crossover keeps only the board group as its choice.
+    expect(map.get("9")).toEqual(["10"]);
+  });
+
+  it("the proposal skips it and never offers the excluded group", () => {
+    const proposal = deriveBoardProposal([6, 9, 1].map((id) => entry(id)), GROUPS, CATALOG);
+    expect(proposal).toEqual([
+      { songId: "9", groupId: "10", choices: ["10"] },
+      { songId: "1", groupId: "10", choices: ["10"] },
+    ]);
+    expect(proposal.flatMap((p) => p.choices)).not.toContain("20");
   });
 });
 

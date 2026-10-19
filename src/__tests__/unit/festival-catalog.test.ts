@@ -89,9 +89,9 @@ describe("resolveFestivalGroups", () => {
       member("hasu-3", [artist(1, null), artist(20, null)]),
     ];
     expect(resolveFestivalGroups(roster, H)).toEqual([
-      { rootId: "1", performerCount: 3 },
-      { rootId: "10", performerCount: 1 },
-      { rootId: "20", performerCount: 1 },
+      { rootId: "1", performerCount: 3, sortOrder: null },
+      { rootId: "10", performerCount: 1, sortOrder: null },
+      { rootId: "20", performerCount: 1, sortOrder: null },
     ]);
   });
 
@@ -101,12 +101,78 @@ describe("resolveFestivalGroups", () => {
       member("ghost", [artist(1, null, true)]),
     ];
     expect(resolveFestivalGroups(roster, H)).toEqual([
-      { rootId: "10", performerCount: 1 },
+      { rootId: "10", performerCount: 1, sortOrder: null },
     ]);
   });
 
   it("empty roster → no groups", () => {
     expect(resolveFestivalGroups([], H)).toEqual([]);
+  });
+
+  describe("Artist.sortOrder (operator's series order)", () => {
+    // 1 has the most performers, 10 and 20 one each; 30 two.
+    const roster = [
+      member("a", [artist(1, null)]),
+      member("b", [artist(2, 1)]),
+      member("c", [artist(1, null)]),
+      member("d", [artist(10, null)]),
+      member("e", [artist(30, null)]),
+      member("f", [artist(30, null)]),
+      member("g", [artist(20, null)]),
+    ];
+    const ids = (h: ReturnType<typeof buildArtistHierarchy>) =>
+      resolveFestivalGroups(roster, h).map((g) => g.rootId);
+    const tree = (orders: Record<number, number | null>) =>
+      buildArtistHierarchy(
+        [1, 10, 20, 30]
+          .map((id) => ({
+            id: BigInt(id),
+            parentArtistId: null as bigint | null,
+            sortOrder: orders[id] ?? null,
+          }))
+          .concat([{ id: BigInt(2), parentArtistId: BigInt(1), sortOrder: null }]),
+      );
+
+    it("no sortOrder anywhere → today's order (count desc, first appearance)", () => {
+      expect(ids(tree({}))).toEqual(["1", "30", "10", "20"]);
+    });
+
+    it("sortOrder wins over performer count", () => {
+      // 20 has one performer but the lowest sortOrder → first.
+      expect(ids(tree({ 1: 3, 10: 2, 20: 1, 30: 4 }))).toEqual([
+        "20",
+        "10",
+        "1",
+        "30",
+      ]);
+    });
+
+    it("roots without a sortOrder come after every root that has one", () => {
+      // Only 10 and 20 are ordered; 1 and 30 (more performers) follow
+      // them, between themselves by today's rule.
+      expect(ids(tree({ 10: 5, 20: 9 }))).toEqual(["10", "20", "1", "30"]);
+    });
+
+    it("equal sortOrder falls back to performer count, then first appearance", () => {
+      expect(ids(tree({ 1: 1, 10: 1, 20: 1, 30: 1 }))).toEqual([
+        "1",
+        "30",
+        "10",
+        "20",
+      ]);
+    });
+
+    it("a sub-unit's sortOrder is not the root's — only the root's counts", () => {
+      const h = buildArtistHierarchy([
+        { id: BigInt(1), parentArtistId: null },
+        { id: BigInt(2), parentArtistId: BigInt(1), sortOrder: 0 },
+        { id: BigInt(10), parentArtistId: null, sortOrder: 1 },
+        { id: BigInt(20), parentArtistId: null },
+        { id: BigInt(30), parentArtistId: null },
+      ]);
+      expect(ids(h)[0]).toBe("10");
+      expect(resolveFestivalGroups(roster, h).find((g) => g.rootId === "1")?.sortOrder).toBeNull();
+    });
   });
 });
 

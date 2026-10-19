@@ -4,6 +4,7 @@ import { buildArtistHierarchy } from "@/lib/artistHierarchyTree";
 import {
   boardGroupRootIds,
   boardGroupsFromRows,
+  fanBoardRootIds,
   resolveBoardGroups,
   seriesPrimaryArtistOf,
   type BoardGroupArtistRow,
@@ -110,6 +111,53 @@ describe("boardGroupRootIds", () => {
 
   it("no primary and empty roster → no groups", () => {
     expect(boardGroupRootIds({ roster: [], hierarchy: H, primaryArtistId: null })).toEqual([]);
+  });
+});
+
+// Same tree as H, with the cross-IP collab root (20) flagged as a side
+// project and an operator series order on the rest.
+const H_SIDE = buildArtistHierarchy([
+  { id: BigInt(1), parentArtistId: null, sortOrder: 2 },
+  { id: BigInt(2), parentArtistId: BigInt(1) },
+  { id: BigInt(3), parentArtistId: BigInt(1) },
+  { id: BigInt(10), parentArtistId: null, sortOrder: 3 },
+  { id: BigInt(11), parentArtistId: BigInt(10) },
+  { id: BigInt(20), parentArtistId: null, isSideProject: true },
+  { id: BigInt(30), parentArtistId: null, sortOrder: 1 },
+]);
+
+describe("fanBoardRootIds (side projects off the board)", () => {
+  it("festival: drops a side project, everything else keeps the picker's order", () => {
+    const picker = boardGroupRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null });
+    // The picker keeps the side project (unordered → last) …
+    expect(picker).toEqual(["30", "1", "10", "20"]);
+    // … the board does not, and agrees with the picker on the rest.
+    expect(
+      fanBoardRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: null }),
+    ).toEqual(["30", "1", "10"]);
+  });
+
+  it("festival without side projects: identical to boardGroupRootIds", () => {
+    expect(
+      fanBoardRootIds({ roster: FES_ROSTER, hierarchy: H, primaryArtistId: null }),
+    ).toEqual(boardGroupRootIds({ roster: FES_ROSTER, hierarchy: H, primaryArtistId: null }));
+  });
+
+  it("single-artist: a side project's own show keeps its one group", () => {
+    expect(
+      fanBoardRootIds({ roster: FES_ROSTER, hierarchy: H_SIDE, primaryArtistId: 20 }),
+    ).toEqual(["20"]);
+  });
+
+  it("resolveBoardGroups goes through the same filter", () => {
+    const groups = resolveBoardGroups({
+      roster: FES_ROSTER,
+      hierarchy: H_SIDE,
+      primaryArtist: null,
+      groupArtists: FES_ROWS,
+      locale: "ko",
+    });
+    expect(groups.map((g) => g.artistId)).toEqual([30, 1, 10]);
   });
 });
 

@@ -66,7 +66,12 @@ vi.mock("@/lib/liveSnapshot", () => ({ getLiveSnapshot: vi.fn() }));
 vi.mock("@/lib/wishes/top3", () => ({ fetchEventWishlistTop3: vi.fn(async () => []) }));
 vi.mock("@/lib/eventRoster", () => ({ getEventRoster: vi.fn(async () => []) }));
 vi.mock("@/lib/artistHierarchy", () => ({
-  getArtistHierarchyCached: vi.fn(async () => ({ parentOf: new Map(), childrenOf: new Map() })),
+  getArtistHierarchyCached: vi.fn(async () => ({
+    parentOf: new Map(),
+    childrenOf: new Map(),
+    sortOrderOf: new Map(),
+    sideProjects: new Set(),
+  })),
 }));
 vi.mock("@/lib/predict/availableSongs", () => ({
   getAvailableSongsCached: vi.fn(async () => []),
