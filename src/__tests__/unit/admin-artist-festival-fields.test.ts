@@ -218,18 +218,36 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
     expect(data.isSideProject).toBeUndefined();
   });
 
-  it("create: invalid cells WARN that the new row gets the default", async () => {
+  it("create: an invalid cell skips the row with a WARN per cell", async () => {
     artist.findUnique.mockResolvedValue(null);
     const res = await importCsv(
       ["slug,ja_name,sortOrder,isSideProject", "new-one,ニュー,first,maybe"].join("\n"),
     );
     const body = await res.json();
     const warns = body.log.filter((l: string) => l.startsWith("WARN"));
-    expect(warns).toHaveLength(2);
-    expect(warns.every((l: string) => l.endsWith("new row gets the default"))).toBe(true);
+    expect(warns).toEqual([
+      'WARN: artists.csv sortOrder "first" is not an integer (artist new-one) — row skipped, fix the CSV and re-import',
+      'WARN: artists.csv isSideProject "maybe" is not true/false (artist new-one) — row skipped, fix the CSV and re-import',
+    ]);
+    expect(artist.create).not.toHaveBeenCalled();
+    expect(body.log.some((l: string) => l.startsWith("CREATED"))).toBe(false);
+  });
+
+  it("create: one invalid cell is enough to skip; valid rows still import", async () => {
+    artist.findUnique.mockResolvedValue(null);
+    const res = await importCsv(
+      ["slug,ja_name,sortOrder,isSideProject", "bad-one,バッド,3,treu", "good-one,グッド,4,true"].join("\n"),
+    );
+    const body = await res.json();
+    const warns = body.log.filter((l: string) => l.startsWith("WARN"));
+    expect(warns).toEqual([
+      'WARN: artists.csv isSideProject "treu" is not true/false (artist bad-one) — row skipped, fix the CSV and re-import',
+    ]);
+    expect(artist.create).toHaveBeenCalledTimes(1);
     expect(artist.create.mock.calls[0][0].data).toMatchObject({
-      sortOrder: null,
-      isSideProject: false,
+      slug: "good-one",
+      sortOrder: 4,
+      isSideProject: true,
     });
   });
 

@@ -217,11 +217,14 @@ async function importArtists(rows: Record<string, string>[]) {
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
-    // An invalid cell is never guessed at: WARN and treat it as absent
-    // (undefined). What "absent" means differs by path, and the WARN
-    // says which — an update keeps the stored value, a create falls
-    // back to the column default below (sortOrder null, isSideProject
-    // false).
+    // An invalid cell is never guessed at. On an update it is treated
+    // as absent (undefined) so the stored value survives. On a create
+    // there is no stored value to fall back to, and silently writing
+    // the column default would be a guess too — `treu` landing as
+    // isSideProject=false puts a side project on the fan board — so
+    // the whole row is skipped (below) and the operator fixes the CSV
+    // and re-imports. Every invalid cell gets its own WARN either way.
+    let createBlocked = false;
     const dropInvalidCell = <T>(
       column: string,
       raw: string | undefined,
@@ -229,7 +232,10 @@ async function importArtists(rows: Record<string, string>[]) {
       parsed: T | "invalid"
     ): T | undefined => {
       if (parsed !== "invalid") return parsed;
-      const outcome = existing ? "kept existing value" : "new row gets the default";
+      if (!existing) createBlocked = true;
+      const outcome = existing
+        ? "kept existing value"
+        : "row skipped, fix the CSV and re-import";
       results.push(`WARN: artists.csv ${column} "${raw}" is not ${expected} (artist ${slug}) — ${outcome}`);
       return undefined;
     };
@@ -278,6 +284,11 @@ async function importArtists(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
+      // A new row with an invalid sortOrder / isSideProject cell is not
+      // created (see dropInvalidCell). The later passes look artists up
+      // by slug, so they skip this row on their own — no parent link,
+      // no group links for an artist that does not exist.
+      if (createBlocked) continue;
       const originalName = ensureOriginalName(originals, slug, "Artist", originalLanguage);
       const newType = artistType ?? "group";
       const artist = await prisma.artist.create({
