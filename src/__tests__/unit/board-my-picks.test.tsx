@@ -218,6 +218,24 @@ describe("<FanBoardSection> my picks", () => {
     expect(picker.getAttribute("data-title")).toBe("pickerTitle(蓮ノ空)");
   });
 
+  it("no group-direct song in the group's catalog → no (empty) group chip", async () => {
+    // A sub-unit-run series: the catalog is scoped to the unit, the
+    // board's group is its root — nothing is credited to the root.
+    const catalog = [
+      {
+        ...song(10, "Unit Only", [1]),
+        unit: { artistId: 5, slug: "cerise", label: "cerise", color: "#888888", isSubUnit: true, isMainUnit: true },
+        creditedArtistIds: [5],
+      },
+    ] as AvailableSong[];
+    render(<FanBoardSection eventId="107" locale="ko" seed={SEED} catalog={catalog} />);
+    fireEvent.click(await screen.findByText("add(蓮ノ空)"));
+    expect(JSON.parse(screen.getByTestId("picker").getAttribute("data-filters")!)).toEqual([
+      ["all", "picker.filterAll", null],
+      ["individual", "cerise", 5],
+    ]);
+  });
+
   it("the want column's picker is headed as a wishlist picker", async () => {
     renderBlock();
     fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));

@@ -94,11 +94,21 @@ export function BoardMyPicks({
   const [pickerOpen, setPickerOpen] = useState(false);
   const copy = COPY[kind];
   const unitFilters = useMemo(() => {
-    const primaryId = Number(groupId);
-    if (groupSongs.length === 0 || !Number.isSafeInteger(primaryId)) return [];
+    const groupArtistId = Number(groupId);
+    if (groupSongs.length === 0 || !Number.isSafeInteger(groupArtistId)) {
+      return [];
+    }
+    // The group chip only ever matches group-direct credits. When none
+    // of these songs has one, the chip would open an empty list — e.g.
+    // a single-artist series run by a sub-unit, whose catalog is scoped
+    // to that unit while the board's group is its root. Drop the chip
+    // (null primary) and let the unit chips carry the row instead.
+    const hasGroupDirect = groupSongs.some((s) =>
+      s.creditedArtistIds.includes(groupArtistId),
+    );
     return deriveUnitFilters(
       groupSongs,
-      primaryId,
+      hasGroupDirect ? groupArtistId : null,
       groupName,
       tPredict("picker.filterAll"),
       tPredict("picker.filterOthers"),
