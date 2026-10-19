@@ -91,10 +91,10 @@ describe("<SongPickerSheet>", () => {
         open={true}
         onOpenChange={() => {}}
         onToggle={() => {}}
-        title="Add a wish for Liella!"
+        title="Add to my Liella! wishlist"
       />,
     );
-    expect(screen.getByText("Add a wish for Liella!")).toBeTruthy();
+    expect(screen.getByText("Add to my Liella! wishlist")).toBeTruthy();
     expect(screen.queryByText("picker.sheetTitle")).toBeNull();
   });
 

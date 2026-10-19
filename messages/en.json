@@ -578,9 +578,9 @@
     "add": "+ Add a prediction for {group}",
     "capReached": "Up to {max} songs per group. Remove one to add another.",
     "mineWish": "My wishlist",
-    "addWish": "+ Add a wish for {group}",
+    "addWish": "+ Add to my {group} wishlist",
     "legacyWishesTitle": "Earlier wishlist songs",
-    "legacyWishesNote": "Added before wishes were per group. They count under the group the song belongs to and don't use any group's 3 slots.",
+    "legacyWishesNote": "Added before the wishlist was per group. They count under the group the song belongs to and don't use any group's 3 slots.",
     "removeAria": "Remove {title}",
     "unavailable": "Removed song",
     "countedUnder": "Counted under {group}",
@@ -622,7 +622,7 @@
     "tallyNotPlayed": "Not played",
     "minePlayed": "Played",
     "pickerTitle": "Add a prediction for {group}",
-    "pickerTitleWish": "Add a wish for {group}"
+    "pickerTitleWish": "Add to my {group} wishlist"
   },
   "Wishlist": {
     "title": "Songs you want to hear at this show",

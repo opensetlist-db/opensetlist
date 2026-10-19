@@ -604,7 +604,7 @@
     "copied": "クリップボードにコピーしました",
     "copyUnavailable": "コピーできませんでした。自分の予想曲を手で書き写してください。",
     "toFullSetlist": "セットリスト作成モードへ",
-    "proposalTitle": "このセットリストからのボード予想",
+    "proposalTitle": "このセットリストからのボード予想曲",
     "proposalExplainer": "グループごとに、並び順で最初の{max}曲です。公開する前に編集できます。",
     "proposalSkipped": "曲なし：このグループはスキップされます。",
     "proposalCountUnderAria": "{title}をカウントするグループ",

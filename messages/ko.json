@@ -604,7 +604,7 @@
     "copied": "클립보드에 복사했어요",
     "copyUnavailable": "복사하지 못했어요. 내 예상곡을 직접 옮겨 적어 주세요.",
     "toFullSetlist": "전체 세트리스트 모드로",
-    "proposalTitle": "이 세트리스트로 만든 보드 예상",
+    "proposalTitle": "이 세트리스트로 만든 보드 예상곡",
     "proposalExplainer": "그룹마다 순서상 처음 {max}곡이에요. 공개하기 전에 수정할 수 있어요.",
     "proposalSkipped": "곡 없음: 이 그룹은 건너뛰어요.",
     "proposalCountUnderAria": "{title} — 집계할 그룹 선택",

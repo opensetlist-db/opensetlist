@@ -68,8 +68,11 @@ export function SongPickerContent({
     return unitFilters[0]?.key ?? "all";
   });
   // Name order (the catalog's own, server-side title order) by default;
-  // "by release date" is opt-in per open picker and deliberately not
-  // persisted — it's a browsing aid, not a preference worth storage.
+  // "by release date" is opt-in and lives only in this component's
+  // state — never written to storage, since it's a browsing aid, not a
+  // preference. It lasts as long as this instance stays mounted: the
+  // whole page visit in the desktop side panel, one open in the mobile
+  // sheet (vaul unmounts the content on close).
   const [sort, setSort] = useState<PickerSort>("name");
 
   const activeFilter: UnitFilter | undefined = unitFilters.find(
