@@ -364,6 +364,14 @@ model StageIdentity {
   originalName      String
   originalShortName String?
   originalLanguage  String            @default("ja")
+  // sortOrder: display order of a member within their home group as
+  // the operator sets it, e.g. the official site's member order. Lower
+  // first; null sorts last and falls back to today's order (createdAt,
+  // then id), so members nobody has numbered yet keep their place.
+  // One global number per identity rather than per artist link: a
+  // member's sub-unit lists reuse the same relative order, which is how
+  // official sites list unit members too.
+  sortOrder         Int?
   createdAt         DateTime          @default(now())
 
   translations    StageIdentityTranslation[]
