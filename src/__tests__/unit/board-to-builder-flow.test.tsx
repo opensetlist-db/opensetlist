@@ -265,14 +265,23 @@ describe("board → full setlist mode", () => {
     );
   });
 
-  it.each([
-    ["before the D-7 window", { isWishPredictOpen: false }],
-    ["after the show", { status: "completed" as const, isWishPredictOpen: false }],
-  ])("%s: no bridge either way", async (_label, opts) => {
-    renderPage(opts);
+  it("after the show: no bridge either way", async () => {
+    renderPage({ status: "completed", isWishPredictOpen: false });
     await screen.findByRole("button", { name: "copy" });
     expect(screen.queryByRole("button", { name: "toFullSetlist" })).toBeNull();
     expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
+  });
+
+  it("before the wish/predict window: no board at all (one open date), so no bridge", () => {
+    // Even with a seed handed in, the board waits for the same window
+    // as the wishlist and the Predict tab.
+    renderPage({ isWishPredictOpen: false });
+    expect(document.getElementById("fan-board-107")).toBeNull();
+    expect(screen.queryByRole("button", { name: "copy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/board")),
+    ).toHaveLength(0);
   });
 });
 
