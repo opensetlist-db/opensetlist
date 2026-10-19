@@ -133,6 +133,16 @@ describe("loadBoardGroups — festival", () => {
 });
 
 describe("write validators refuse the side project's group id", () => {
+  // Positive control: the same fixture accepts a real board group, so
+  // the rejections below are about group 20 and not a mock that makes
+  // every group invalid.
+  it("a board group's pick and publish pass", async () => {
+    await expect(validatePickTarget(CTX, BigInt(10), BigInt(105))).resolves.toBeUndefined();
+    await expect(
+      validatePublishTargets(CTX, [{ groupId: BigInt(10), songId: BigInt(105) }]),
+    ).resolves.toBeUndefined();
+  });
+
   it("single pick → 400 invalid_group", async () => {
     await expect(validatePickTarget(CTX, BigInt(20), BigInt(205))).rejects.toMatchObject({
       status: 400,
