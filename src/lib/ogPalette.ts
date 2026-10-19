@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { converter, formatHex, parse } from "culori";
 import { prisma } from "@/lib/prisma";
+import { HEX_COLOR_RE } from "@/lib/admin-constants";
 
 export type OgPaletteSource =
   | "faithful"
@@ -54,7 +55,7 @@ function computeFingerprint(
 }
 
 function isValidHex(value: string | null | undefined): value is string {
-  return !!value && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
+  return !!value && HEX_COLOR_RE.test(value);
 }
 
 function rotateOklchHue(hex: string, degrees: number): string | null {

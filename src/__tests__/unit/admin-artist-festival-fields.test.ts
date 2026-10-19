@@ -210,10 +210,27 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
       ["slug,ja_name,sortOrder,isSideProject", "side,サイド,first,maybe"].join("\n"),
     );
     const body = await res.json();
-    expect(body.log.filter((l: string) => l.startsWith("WARN"))).toHaveLength(2);
+    const warns = body.log.filter((l: string) => l.startsWith("WARN"));
+    expect(warns).toHaveLength(2);
+    expect(warns.every((l: string) => l.endsWith("kept existing value"))).toBe(true);
     const data = artist.update.mock.calls[0][0].data;
     expect(data.sortOrder).toBeUndefined();
     expect(data.isSideProject).toBeUndefined();
+  });
+
+  it("create: invalid cells WARN that the new row gets the default", async () => {
+    artist.findUnique.mockResolvedValue(null);
+    const res = await importCsv(
+      ["slug,ja_name,sortOrder,isSideProject", "new-one,ニュー,first,maybe"].join("\n"),
+    );
+    const body = await res.json();
+    const warns = body.log.filter((l: string) => l.startsWith("WARN"));
+    expect(warns).toHaveLength(2);
+    expect(warns.every((l: string) => l.endsWith("new row gets the default"))).toBe(true);
+    expect(artist.create.mock.calls[0][0].data).toMatchObject({
+      sortOrder: null,
+      isSideProject: false,
+    });
   });
 
   it("create: defaults when the CSV carries nothing", async () => {

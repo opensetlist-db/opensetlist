@@ -372,7 +372,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
     // here so the operator gets the message before a round trip.
     const trimmedColor = color.trim();
     if (trimmedColor && !HEX_COLOR_RE.test(trimmedColor)) {
-      alert("그룹 색은 #rrggbb 형식이어야 합니다 (예: #e91e8c).");
+      alert("그룹 색은 #rgb 또는 #rrggbb 형식이어야 합니다 (예: #e91e8c).");
       return;
     }
     const trimmedSortOrder = sortOrder.trim();
@@ -544,11 +544,11 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1 block text-xs text-zinc-600">
-              그룹 색 (#rrggbb)
+              그룹 색 (#rgb 또는 #rrggbb)
             </label>
             <div className="flex items-center gap-2">
               <input
-                placeholder="#e91e8c"
+                placeholder="#e91e8c 또는 #e1c"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"

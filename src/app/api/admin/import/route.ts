@@ -215,26 +215,44 @@ async function importArtists(rows: Record<string, string>[]) {
     const colorUpdate =
       row.color === undefined ? undefined : row.color || null;
 
+    const existing = await prisma.artist.findUnique({ where: { slug } });
+
+    // An invalid cell is never guessed at: WARN and treat it as absent
+    // (undefined). What "absent" means differs by path, and the WARN
+    // says which — an update keeps the stored value, a create falls
+    // back to the column default below (sortOrder null, isSideProject
+    // false).
+    const dropInvalidCell = <T>(
+      column: string,
+      raw: string | undefined,
+      expected: string,
+      parsed: T | "invalid"
+    ): T | undefined => {
+      if (parsed !== "invalid") return parsed;
+      const outcome = existing ? "kept existing value" : "new row gets the default";
+      results.push(`WARN: artists.csv ${column} "${raw}" is not ${expected} (artist ${slug}) — ${outcome}`);
+      return undefined;
+    };
+
     // `sortOrder` (festival group order) — same preserve-on-missing
     // contract as `color`: header omitted → untouched, blank cell →
-    // cleared, an integer → set. A non-integer cell WARNs and leaves
-    // the stored value alone rather than guess.
-    let sortOrderUpdate = parseCsvNullableIntCell(row.sortOrder);
-    if (sortOrderUpdate === "invalid") {
-      results.push(`WARN: artists.csv sortOrder "${row.sortOrder}" is not an integer (artist ${slug}) — kept existing value`);
-      sortOrderUpdate = undefined;
-    }
+    // cleared, an integer → set. A non-integer cell WARNs (above).
+    const sortOrderUpdate = dropInvalidCell(
+      "sortOrder",
+      row.sortOrder,
+      "an integer",
+      parseCsvNullableIntCell(row.sortOrder)
+    );
     // `isSideProject` (no own fan-board column). Non-null boolean, so
     // there is nothing to clear: header omitted OR blank cell → leave
     // the stored flag alone (an operator re-importing a names-only CSV
-    // must not un-flag a side project); invalid → WARN, keep.
-    let sideProjectUpdate = parseCsvBooleanCell(row.isSideProject);
-    if (sideProjectUpdate === "invalid") {
-      results.push(`WARN: artists.csv isSideProject "${row.isSideProject}" is not true/false (artist ${slug}) — kept existing value`);
-      sideProjectUpdate = undefined;
-    }
-
-    const existing = await prisma.artist.findUnique({ where: { slug } });
+    // must not un-flag a side project); invalid → WARN (above).
+    const sideProjectUpdate = dropInvalidCell(
+      "isSideProject",
+      row.isSideProject,
+      "true/false",
+      parseCsvBooleanCell(row.isSideProject)
+    );
 
     if (existing) {
       const effectiveType = artistType ?? existing.type;

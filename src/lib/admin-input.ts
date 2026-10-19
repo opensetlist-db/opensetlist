@@ -203,7 +203,10 @@ export function nullableInt(
         ? int32OrNull(Number(value))
         : null;
   if (n === null) {
-    return { ok: false, message: `${field} must be an integer` };
+    return {
+      ok: false,
+      message: `${field} must be an integer between -2147483648 and 2147483647`,
+    };
   }
   return { ok: true, value: n };
 }
