@@ -193,9 +193,12 @@ describe("artists.csv import — sortOrder / isSideProject", () => {
   });
 
   it("update: values set; a blank sortOrder clears, a blank isSideProject keeps", async () => {
-    await importCsv(
+    const res = await importCsv(
       ["slug,ja_name,sortOrder,isSideProject", "side,サイド,2,true", "main,メイン,,"].join("\n"),
     );
+    // Blank cells are a valid "keep"/"clear", not an invalid value.
+    const body = await res.json();
+    expect(body.log.filter((l: string) => l.startsWith("WARN"))).toEqual([]);
     expect(artist.update.mock.calls[0][0].data).toMatchObject({
       sortOrder: 2,
       isSideProject: true,

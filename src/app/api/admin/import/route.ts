@@ -247,6 +247,10 @@ async function importArtists(rows: Record<string, string>[]) {
     // there is nothing to clear: header omitted OR blank cell → leave
     // the stored flag alone (an operator re-importing a names-only CSV
     // must not un-flag a side project); invalid → WARN (above).
+    // `parseCsvBooleanCell` itself maps both an absent and a blank cell
+    // to `undefined` (it returns "invalid" only for a non-empty cell that
+    // is not true/false/1/0/yes/no), so a blank cell never reaches the
+    // WARN branch of `dropInvalidCell`.
     const sideProjectUpdate = dropInvalidCell(
       "isSideProject",
       row.isSideProject,
