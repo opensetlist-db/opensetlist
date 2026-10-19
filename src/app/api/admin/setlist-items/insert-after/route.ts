@@ -4,6 +4,7 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { requestWarmFault, type WarmFault } from "@/lib/liveWarm";
@@ -120,7 +121,10 @@ async function insertAfter(request: NextRequest, warmFault: WarmFault | null) {
           include: { song: { include: { translations: true } } },
           orderBy: { order: "asc" },
         },
+        // Official member order, matching the builder's initial
+        // render of the same row (admin event edit page).
         performers: {
+          orderBy: byStageIdentityOrderBy(),
           include: { stageIdentity: { include: { translations: true } } },
         },
         artists: {

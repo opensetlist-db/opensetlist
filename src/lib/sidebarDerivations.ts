@@ -256,8 +256,9 @@ export interface Lineup {
  *     unit with no host member is itself marked guest and sorts last.
  *
  * Order follows the roster's input order (first appearance). The page
- * fetches the roster by stage-identity creation order — seed order —
- * so groups and members read in their canonical sequence.
+ * fetches the roster in the official member order (`sortOrder`, nulls
+ * last, then creation order — see `src/lib/memberOrder.ts`), so groups
+ * and members read in their canonical sequence.
  */
 export function deriveLineupFromRoster(
   roster: EventRosterEntry[],
