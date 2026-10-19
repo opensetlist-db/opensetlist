@@ -46,3 +46,44 @@ export function byStageIdentityOrderBy(): Array<
     { stageIdentityId: "asc" },
   ];
 }
+
+/** What `compareMemberOrder` needs from a member row. */
+export type MemberOrderKey = {
+  id: string;
+  sortOrder: number | null;
+  // A Date on the server, an ISO string once the row crossed a JSON /
+  // RSC boundary (the admin form gets its list through
+  // `serializeBigInt`, which stringifies dates).
+  createdAt: Date | string;
+};
+
+function toMillis(value: Date | string): number {
+  return value instanceof Date ? value.getTime() : Date.parse(value);
+}
+
+/**
+ * The same rule as `stageIdentityOrderBy`, for a list that is re-sorted
+ * in memory after a local edit (the admin artist form re-sorts after a
+ * 정렬 순서 save or a link), so the screen shows exactly the order a
+ * reload would bring back. Falling back to "keep the current order" for
+ * ties / unnumbered members is not enough: clearing a member's number
+ * moves it to its creation slot on the server, not where it happened
+ * to sit.
+ *
+ * This module only imports Prisma *types*, so the client bundle can
+ * import the comparator without pulling the Prisma client in.
+ */
+export function compareMemberOrder(a: MemberOrderKey, b: MemberOrderKey): number {
+  // NULLS LAST: an unnumbered member sorts after every numbered one.
+  if (a.sortOrder !== b.sortOrder) {
+    if (a.sortOrder === null) return 1;
+    if (b.sortOrder === null) return -1;
+    return a.sortOrder - b.sortOrder;
+  }
+  const byCreated = toMillis(a.createdAt) - toMillis(b.createdAt);
+  if (byCreated !== 0) return byCreated;
+  // Code-unit comparison, not localeCompare. The id is a uuid string in
+  // a text column: lowercase hex with hyphens at fixed positions, so
+  // the database's collation and plain string order agree on it.
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}

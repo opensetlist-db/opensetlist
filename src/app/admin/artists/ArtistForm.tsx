@@ -12,6 +12,7 @@ import {
   fetchAdminArtists,
   UnlistedArtistOption,
 } from "@/components/admin/artistPicker";
+import { compareMemberOrder } from "@/lib/memberOrder";
 
 type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
@@ -38,14 +39,25 @@ type ExistingStageIdentity = {
   type: string;
   color: string | null;
   sortOrder: number | null;
+  // ISO string (the edit page passes the row through serializeBigInt);
+  // the second key of the official member order.
+  createdAt: string;
   name: string;
   vaName: string | null;
 };
 
+// One row of `GET /api/admin/stage-identities` (the "기존 멤버 연결"
+// list). Carries the identity's stored fields so linking it adds a row
+// with its real type / color / number — the edit row's 저장 sends all
+// of them back, so a placeholder would overwrite the stored values.
 type AllStageIdentityOption = {
   id: string;
   name: string;
   artistName: string;
+  type: string;
+  color: string | null;
+  sortOrder: number | null;
+  createdAt: string;
 };
 
 type ArtistFormProps = {
@@ -74,15 +86,10 @@ const ARTIST_TYPES = ["solo", "group", "unit"];
 const INT_RE = /^-?\d+$/;
 
 // Same order the server reads members in (`src/lib/memberOrder.ts`):
-// numbered first by sortOrder, the rest after. `Array.prototype.sort`
-// is stable, so ties and unnumbered members keep their current
-// (= server, creation) order.
+// sortOrder (nulls last) → createdAt → id, so after a local edit or a
+// link the list already shows what a reload would.
 function sortExistingMembers(list: ExistingStageIdentity[]): ExistingStageIdentity[] {
-  return [...list].sort(
-    (a, b) =>
-      (a.sortOrder ?? Number.POSITIVE_INFINITY) -
-      (b.sortOrder ?? Number.POSITIVE_INFINITY),
-  );
+  return [...list].sort(compareMemberOrder);
 }
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
@@ -165,6 +172,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 si.artistLinks?.[0]?.artist?.translations?.find(
                   (t: { locale: string }) => t.locale === "ko"
                 )?.name ?? "",
+              type: si.type,
+              color: si.color ?? null,
+              sortOrder: si.sortOrder ?? null,
+              createdAt: si.createdAt,
             }))
           )
         );
@@ -982,10 +993,25 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     if (res.ok) {
                       const linked = allSIOptions.find((s) => s.id === siId);
                       if (linked) {
-                        setExistingSIs((prev) => [
-                          ...prev,
-                          { id: linked.id, type: "character", color: null, sortOrder: null, name: linked.name, vaName: null },
-                        ]);
+                        // The identity's stored type / color / number,
+                        // not placeholders: 편집 → 저장 on this row PUTs
+                        // every field, so a null sortOrder here would
+                        // wipe the member's global number. Re-sorted so
+                        // it lands where the server will list it.
+                        setExistingSIs((prev) =>
+                          sortExistingMembers([
+                            ...prev,
+                            {
+                              id: linked.id,
+                              type: linked.type,
+                              color: linked.color,
+                              sortOrder: linked.sortOrder,
+                              createdAt: linked.createdAt,
+                              name: linked.name,
+                              vaName: null,
+                            },
+                          ])
+                        );
                       }
                       setShowLinkSI(false);
                     } else {

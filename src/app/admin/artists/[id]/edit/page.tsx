@@ -50,6 +50,7 @@ export default async function EditArtistPage({ params }: Props) {
       type: sl.stageIdentity.type as string,
       color: sl.stageIdentity.color as string | null,
       sortOrder: sl.stageIdentity.sortOrder as number | null,
+      createdAt: sl.stageIdentity.createdAt as string,
       name: siTr?.name ?? ADMIN_UNKNOWN_NAME,
       vaName: vaTr ? (vaTr.stageName ?? vaTr.name) : null,
     };

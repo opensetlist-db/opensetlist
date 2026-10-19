@@ -41,7 +41,11 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import type { NextRequest } from "next/server";
-import { byStageIdentityOrderBy, stageIdentityOrderBy } from "@/lib/memberOrder";
+import {
+  byStageIdentityOrderBy,
+  compareMemberOrder,
+  stageIdentityOrderBy,
+} from "@/lib/memberOrder";
 import { fetchEventRoster } from "@/lib/eventRoster";
 import { GET as PERFORMERS_GET } from "@/app/api/events/[id]/performers/route";
 import { GET as ADMIN_SI_GET } from "@/app/api/admin/stage-identities/route";
@@ -92,6 +96,46 @@ describe("memberOrder helpers", () => {
     const a = byStageIdentityOrderBy();
     a.pop();
     expect(byStageIdentityOrderBy()).toHaveLength(3);
+  });
+});
+
+describe("compareMemberOrder (in-memory re-sort, same rule as the orderBy)", () => {
+  const row = (id: string, sortOrder: number | null, createdAt: string | Date) => ({
+    id,
+    sortOrder,
+    createdAt,
+  });
+  const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
+
+  it("numbered first by sortOrder; unnumbered last", () => {
+    const rows = [
+      row("n", null, "2020-01-01T00:00:00.000Z"),
+      row("3", 3, "2024-01-01T00:00:00.000Z"),
+      row("0", 0, "2025-01-01T00:00:00.000Z"),
+      row("-1", -1, "2026-01-01T00:00:00.000Z"),
+    ];
+    expect(ids([...rows].sort(compareMemberOrder))).toEqual(["-1", "0", "3", "n"]);
+  });
+
+  it("equal or missing numbers fall back to createdAt, not the input order", () => {
+    const rows = [
+      row("new-null", null, "2024-05-01T00:00:00.000Z"),
+      row("old-null", null, "2024-01-01T00:00:00.000Z"),
+      row("new-2", 2, "2024-06-01T00:00:00.000Z"),
+      row("old-2", 2, "2024-02-01T00:00:00.000Z"),
+    ];
+    expect(ids([...rows].sort(compareMemberOrder))).toEqual([
+      "old-2",
+      "new-2",
+      "old-null",
+      "new-null",
+    ]);
+  });
+
+  it("same createdAt → id; Date and ISO string compare alike", () => {
+    const at = "2024-01-01T00:00:00.000Z";
+    const rows = [row("b", null, new Date(at)), row("c", null, at), row("a", null, at)];
+    expect(ids([...rows].sort(compareMemberOrder))).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -216,6 +260,55 @@ describe("PUT /api/admin/stage-identities/[id] — sortOrder", () => {
     expect(res.status).toBe(400);
     expect(si.update).not.toHaveBeenCalled();
     expect(txMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
+  const put = (body: unknown) =>
+    ADMIN_SI_PUT(
+      jsonRequest("http://localhost/api/admin/stage-identities/si-1", body, "PUT") as unknown as NextRequest,
+      { params: Promise.resolve({ id: "si-1" }) },
+    );
+  const translations = [{ locale: "ko", name: "M" }];
+
+  beforeEach(() => {
+    si.update.mockResolvedValue({ id: "si-1", translations: [] });
+    (prisma.stageIdentityTranslation.deleteMany as unknown as Mock).mockResolvedValue({ count: 1 });
+  });
+
+  it("missing / malformed translations or an unknown type → 400 with a message, nothing written", async () => {
+    for (const body of [
+      {},
+      { type: "character" },
+      { translations: "M" },
+      { translations: [] },
+      { translations: [{ locale: "ko" }] },
+      { translations: [{ name: "M" }] },
+      { translations: [{ locale: "ko", name: 3 }] },
+      { translations, type: "idol" },
+      { translations, type: 1 },
+      [],
+    ]) {
+      const res = await put(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(typeof (await res.json()).error).toBe("string");
+    }
+    expect(si.update).not.toHaveBeenCalled();
+    expect(txMock).not.toHaveBeenCalled();
+  });
+
+  it("type absent or null keeps the stored one; a valid type is written", async () => {
+    await put({ translations });
+    await put({ translations, type: null });
+    await put({ translations, type: "persona" });
+    expect(si.update.mock.calls.map((c) => c[0].data.type)).toEqual([
+      undefined,
+      undefined,
+      "persona",
+    ]);
+    expect(si.update.mock.calls[2][0].data.translations).toEqual({
+      create: [{ locale: "ko", name: "M" }],
+    });
   });
 });
 
