@@ -1,10 +1,57 @@
 import {
   AdminFieldResult,
+  nullableBoolean,
+  nullableHexColor,
+  nullableInt,
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseTranslationItems,
   requireString,
 } from "@/lib/admin-input";
+
+/** Artist-level display fields the admin form edits. A key absent
+ *  from the result means "leave the stored value alone". */
+export type ArtistDisplayFields = {
+  color?: string | null;
+  sortOrder?: number | null;
+  isSideProject?: boolean;
+};
+
+/**
+ * `color` (hex), `sortOrder` (integer or empty) and `isSideProject`
+ * from an admin artist body.
+ *
+ * Preserve-on-missing, for create AND update: a key the body does not
+ * carry is left out of the result, so the Prisma write leaves that
+ * column alone (update) or takes the schema default (create). The
+ * colours were backfilled by CSV import long before the form could
+ * edit them; a PUT from a client that predates these fields (an old
+ * tab, a script) must not wipe them. A key that IS present is
+ * authoritative: `color: ""` / `null` clears the colour, `sortOrder:
+ * ""` / `null` clears the order, `isSideProject: null` resets the flag
+ * to false (the column is non-null).
+ */
+export function parseArtistDisplayFields(
+  body: Record<string, unknown>
+): AdminFieldResult<ArtistDisplayFields> {
+  const out: ArtistDisplayFields = {};
+  if ("color" in body) {
+    const color = nullableHexColor(body.color, "color");
+    if (!color.ok) return color;
+    out.color = color.value;
+  }
+  if ("sortOrder" in body) {
+    const sortOrder = nullableInt(body.sortOrder, "sortOrder");
+    if (!sortOrder.ok) return sortOrder;
+    out.sortOrder = sortOrder.value;
+  }
+  if ("isSideProject" in body) {
+    const side = nullableBoolean(body.isSideProject, "isSideProject");
+    if (!side.ok) return side;
+    out.isSideProject = side.value ?? false;
+  }
+  return { ok: true, value: out };
+}
 
 export type ArtistTranslationInput = {
   locale: string;

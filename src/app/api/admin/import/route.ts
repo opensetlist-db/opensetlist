@@ -23,7 +23,11 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
-import { parseCsvBooleanCell, parseIsoInstant } from "@/lib/admin-input";
+import {
+  parseCsvBooleanCell,
+  parseCsvNullableIntCell,
+  parseIsoInstant,
+} from "@/lib/admin-input";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -211,6 +215,25 @@ async function importArtists(rows: Record<string, string>[]) {
     const colorUpdate =
       row.color === undefined ? undefined : row.color || null;
 
+    // `sortOrder` (festival group order) — same preserve-on-missing
+    // contract as `color`: header omitted → untouched, blank cell →
+    // cleared, an integer → set. A non-integer cell WARNs and leaves
+    // the stored value alone rather than guess.
+    let sortOrderUpdate = parseCsvNullableIntCell(row.sortOrder);
+    if (sortOrderUpdate === "invalid") {
+      results.push(`WARN: artists.csv sortOrder "${row.sortOrder}" is not an integer (artist ${slug}) — kept existing value`);
+      sortOrderUpdate = undefined;
+    }
+    // `isSideProject` (no own fan-board column). Non-null boolean, so
+    // there is nothing to clear: header omitted OR blank cell → leave
+    // the stored flag alone (an operator re-importing a names-only CSV
+    // must not un-flag a side project); invalid → WARN, keep.
+    let sideProjectUpdate = parseCsvBooleanCell(row.isSideProject);
+    if (sideProjectUpdate === "invalid") {
+      results.push(`WARN: artists.csv isSideProject "${row.isSideProject}" is not true/false (artist ${slug}) — kept existing value`);
+      sideProjectUpdate = undefined;
+    }
+
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
     if (existing) {
@@ -222,6 +245,8 @@ async function importArtists(rows: Record<string, string>[]) {
           category,
           isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
           color: colorUpdate,
+          sortOrder: sortOrderUpdate,
+          isSideProject: sideProjectUpdate,
           ...originals,
         },
       });
@@ -245,6 +270,8 @@ async function importArtists(rows: Record<string, string>[]) {
           category,
           isMainUnit: newType === "unit" ? csvIsMainUnit : false,
           color: row.color || null,
+          sortOrder: sortOrderUpdate ?? null,
+          isSideProject: sideProjectUpdate ?? false,
           ...originals,
           originalName,
           translations: { create: translations },
