@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# managed-by: scripts/install-git-hooks.sh
+# Git post-merge hook: regenerate the Prisma client when a merge (or a
+# `git pull`) changed the schema.
+#
+# Why: `scripts/worktree-new.sh` copies the gitignored `src/generated/`
+# once and links `node_modules`, so `npm ci`'s postinstall
+# (`prisma generate`) never runs in a worktree. Merging a dev that
+# carries a schema change then leaves a stale client, and `tsc` fails
+# with Prisma type errors far from the cause (n15-09a: boardRead.ts
+# after n15-08 added columns).
+#
+# A post-merge hook can't abort the merge, so a failed generate only
+# warns. Installed by scripts/install-git-hooks.sh into the shared hooks
+# directory, so the main checkout and every worktree run it.
+set -u
+
+files=(prisma/schema.prisma prisma.config.ts)
+if [ "${1:-0}" = "1" ]; then
+  # `git merge --squash` ($1 = 1) stages the result without moving HEAD,
+  # so ORIG_HEAD..HEAD is empty: compare HEAD with the working tree.
+  changed="$(git diff --name-only HEAD -- "${files[@]}" 2>/dev/null)"
+else
+  changed="$(git diff --name-only ORIG_HEAD HEAD -- "${files[@]}" 2>/dev/null)"
+fi
+[ -n "$changed" ] || exit 0
+
+# The repo's own CLI, not `npx`: npx falls back to whatever `prisma` is
+# on PATH, and a global CLI of the same name answered "No command
+# registered for generate" when this was tested.
+prisma="node_modules/.bin/prisma"
+if [ ! -x "$prisma" ]; then
+  echo "post-merge: Prisma schema changed but $prisma is missing — run \`npx prisma generate\` after installing" >&2
+  exit 0
+fi
+echo "post-merge: Prisma schema changed — running prisma generate" >&2
+if ! "$prisma" generate >&2; then
+  echo "post-merge: prisma generate failed; run \`npx prisma generate\` by hand" >&2
+fi
+exit 0
