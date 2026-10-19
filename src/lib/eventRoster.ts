@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { serializeBigInt } from "@/lib/utils";
 import { CACHE_TTL, cachedQuery, eventTag } from "@/lib/dataCache";
 import { FALLBACK_LOCALE } from "@/i18n/routing";
@@ -13,11 +14,13 @@ import type { EventRosterEntry } from "@/lib/types/setlist";
 // including the uncached live path. A separate narrow, cached read
 // costs one extra round-trip per TTL instead.
 //
-// Order: stage-identity creation order (= seed order, i.e. canonical
-// member order), id as the deterministic tiebreak. `artistLinks` by
-// artist id so a member's home group (created before later collab
-// groups) is listed first — only a tiebreak; the lineup picks the home
-// group by roster headcount.
+// Order: the official member order (`byStageIdentityOrderBy` —
+// operator `sortOrder`, nulls last, then creation order = seed order,
+// then id). `deriveLineupFromRoster` keeps this input order inside each
+// group, so the pre-show lineup lists members the way the official site
+// does. `artistLinks` by artist id so a member's home group (created
+// before later collab groups) is listed first — only a tiebreak; the
+// lineup picks the home group by roster headcount.
 export async function fetchEventRoster(
   id: bigint,
   locale: string,
@@ -29,10 +32,7 @@ export async function fetchEventRoster(
   } as const;
   const rows = await prisma.eventPerformer.findMany({
     where: { eventId: id },
-    orderBy: [
-      { stageIdentity: { createdAt: "asc" } },
-      { stageIdentityId: "asc" },
-    ],
+    orderBy: byStageIdentityOrderBy(),
     select: {
       isGuest: true,
       stageIdentity: {

@@ -12,11 +12,15 @@ import {
   fetchAdminArtists,
   UnlistedArtistOption,
 } from "@/components/admin/artistPicker";
+import { compareMemberOrder } from "@/lib/memberOrder";
 
 type Translation = { locale: string; name: string; shortName: string; bio: string };
 type StageIdentityInput = {
   type: "character" | "persona";
   color: string;
+  // Official member order as typed ("" = not numbered); the server
+  // parses it with `nullableInt`.
+  sortOrder: string;
   originalName: string;
   originalShortName: string;
   originalLanguage: string;
@@ -34,14 +38,26 @@ type ExistingStageIdentity = {
   id: string;
   type: string;
   color: string | null;
+  sortOrder: number | null;
+  // ISO string (the edit page passes the row through serializeBigInt);
+  // the second key of the official member order.
+  createdAt: string;
   name: string;
   vaName: string | null;
 };
 
+// One row of `GET /api/admin/stage-identities` (the "기존 멤버 연결"
+// list). Carries the identity's stored fields so linking it adds a row
+// with its real type / color / number — the edit row's 저장 sends all
+// of them back, so a placeholder would overwrite the stored values.
 type AllStageIdentityOption = {
   id: string;
   name: string;
   artistName: string;
+  type: string;
+  color: string | null;
+  sortOrder: number | null;
+  createdAt: string;
 };
 
 type ArtistFormProps = {
@@ -66,6 +82,15 @@ type ArtistFormProps = {
 };
 
 const ARTIST_TYPES = ["solo", "group", "unit"];
+
+const INT_RE = /^-?\d+$/;
+
+// Same order the server reads members in (`src/lib/memberOrder.ts`):
+// sortOrder (nulls last) → createdAt → id, so after a local edit or a
+// link the list already shows what a reload would.
+function sortExistingMembers(list: ExistingStageIdentity[]): ExistingStageIdentity[] {
+  return [...list].sort(compareMemberOrder);
+}
 const LOCALES = ["ko", "ja", "en", "zh-CN"];
 const ORIGINAL_LANGUAGES = ["ja", "ko", "en", "zh-CN"];
 
@@ -112,6 +137,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [editSIType, setEditSIType] = useState("character");
   const [editSIColor, setEditSIColor] = useState("");
   const [editSIName, setEditSIName] = useState("");
+  const [editSISortOrder, setEditSISortOrder] = useState("");
   const [showLinkSI, setShowLinkSI] = useState(false);
   const [existingSIs, setExistingSIs] = useState(
     initialData?.existingStageIdentities ?? []
@@ -146,6 +172,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                 si.artistLinks?.[0]?.artist?.translations?.find(
                   (t: { locale: string }) => t.locale === "ko"
                 )?.name ?? "",
+              type: si.type,
+              color: si.color ?? null,
+              sortOrder: si.sortOrder ?? null,
+              createdAt: si.createdAt,
             }))
           )
         );
@@ -185,6 +215,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       {
         type: "character",
         color: "",
+        sortOrder: "",
         originalName: "",
         originalShortName: "",
         originalLanguage: "ja",
@@ -233,7 +264,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
 
   function updateSI(
     index: number,
-    field: "type" | "color",
+    field: "type" | "color" | "sortOrder",
     value: string
   ) {
     setStageIdentities((prev) =>
@@ -366,6 +397,10 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         alert("새 멤버 본명의 원본 이름(originalName)은 필수입니다.");
         return;
       }
+      if (si.sortOrder.trim() && !INT_RE.test(si.sortOrder.trim())) {
+        alert("멤버 정렬 순서는 정수여야 합니다 (비우면 미지정).");
+        return;
+      }
     }
 
     // Same rules as the server (`parseArtistDisplayFields`); checked
@@ -376,7 +411,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       return;
     }
     const trimmedSortOrder = sortOrder.trim();
-    if (trimmedSortOrder && !/^-?\d+$/.test(trimmedSortOrder)) {
+    if (trimmedSortOrder && !INT_RE.test(trimmedSortOrder)) {
       alert("정렬 순서는 정수여야 합니다 (비우면 미지정).");
       return;
     }
@@ -766,7 +801,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
               <div key={si.id}>
                 {editingSI === si.id ? (
                   <div className="rounded border border-blue-200 bg-blue-50 p-3 space-y-2">
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-4 gap-2">
                       <select
                         value={editSIType}
                         onChange={(e) => setEditSIType(e.target.value)}
@@ -787,31 +822,58 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         onChange={(e) => setEditSIName(e.target.value)}
                         className="rounded border border-zinc-300 px-2 py-1 text-sm"
                       />
+                      <input
+                        type="number"
+                        step={1}
+                        aria-label="정렬 순서"
+                        placeholder="정렬 순서 (비우면 미지정)"
+                        value={editSISortOrder}
+                        onChange={(e) => setEditSISortOrder(e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                      />
                     </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={async () => {
+                          const trimmedSIOrder = editSISortOrder.trim();
+                          if (trimmedSIOrder && !INT_RE.test(trimmedSIOrder)) {
+                            alert("멤버 정렬 순서는 정수여야 합니다 (비우면 미지정).");
+                            return;
+                          }
+                          const nextSortOrder = trimmedSIOrder ? Number(trimmedSIOrder) : null;
                           const res = await fetch(`/api/admin/stage-identities/${si.id}`, {
                             method: "PUT",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               type: editSIType,
                               color: editSIColor || null,
+                              sortOrder: nextSortOrder,
                               translations: [{ locale: "ko", name: editSIName }],
                             }),
                           });
                           if (res.ok) {
+                            // Re-sort so the list shows the order the
+                            // public pages will use after this save.
                             setExistingSIs((prev) =>
-                              prev.map((s) =>
-                                s.id === si.id
-                                  ? { ...s, type: editSIType, color: editSIColor || null, name: editSIName }
-                                  : s
+                              sortExistingMembers(
+                                prev.map((s) =>
+                                  s.id === si.id
+                                    ? {
+                                        ...s,
+                                        type: editSIType,
+                                        color: editSIColor || null,
+                                        sortOrder: nextSortOrder,
+                                        name: editSIName,
+                                      }
+                                    : s
+                                )
                               )
                             );
                             setEditingSI(null);
                           } else {
-                            alert("저장에 실패했습니다.");
+                            const body = await res.json().catch(() => null);
+                            alert(body?.error ?? "저장에 실패했습니다.");
                           }
                         }}
                         className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
@@ -835,6 +897,11 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                         style={{ backgroundColor: si.color }}
                       />
                     )}
+                    {si.sortOrder !== null && (
+                      <span className="text-xs tabular-nums text-zinc-500">
+                        #{si.sortOrder}
+                      </span>
+                    )}
                     <span className="font-medium">{si.name}</span>
                     <span className="text-xs text-zinc-400">{si.type}</span>
                     {si.vaName && (
@@ -850,6 +917,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                           setEditSIType(si.type);
                           setEditSIColor(si.color ?? "");
                           setEditSIName(si.name);
+                          setEditSISortOrder(si.sortOrder?.toString() ?? "");
                         }}
                         className="text-sm text-blue-600 hover:underline"
                       >
@@ -925,10 +993,25 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                     if (res.ok) {
                       const linked = allSIOptions.find((s) => s.id === siId);
                       if (linked) {
-                        setExistingSIs((prev) => [
-                          ...prev,
-                          { id: linked.id, type: "character", color: null, name: linked.name, vaName: null },
-                        ]);
+                        // The identity's stored type / color / number,
+                        // not placeholders: 편집 → 저장 on this row PUTs
+                        // every field, so a null sortOrder here would
+                        // wipe the member's global number. Re-sorted so
+                        // it lands where the server will list it.
+                        setExistingSIs((prev) =>
+                          sortExistingMembers([
+                            ...prev,
+                            {
+                              id: linked.id,
+                              type: linked.type,
+                              color: linked.color,
+                              sortOrder: linked.sortOrder,
+                              createdAt: linked.createdAt,
+                              name: linked.name,
+                              vaName: null,
+                            },
+                          ])
+                        );
                       }
                       setShowLinkSI(false);
                     } else {
@@ -982,7 +1065,7 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                   삭제
                 </button>
               </div>
-              <div className="mb-2 grid grid-cols-2 gap-2">
+              <div className="mb-2 grid grid-cols-3 gap-2">
                 <select
                   value={si.type}
                   onChange={(e) => updateSI(i, "type", e.target.value)}
@@ -995,6 +1078,15 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
                   placeholder="컬러 (#FF69B4)"
                   value={si.color}
                   onChange={(e) => updateSI(i, "color", e.target.value)}
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                />
+                <input
+                  type="number"
+                  step={1}
+                  aria-label="정렬 순서"
+                  placeholder="정렬 순서 (비우면 미지정)"
+                  value={si.sortOrder}
+                  onChange={(e) => updateSI(i, "sortOrder", e.target.value)}
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 />
               </div>

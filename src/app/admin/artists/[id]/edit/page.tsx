@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { serializeBigInt } from "@/lib/utils";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import ArtistForm from "../../ArtistForm";
 import { ADMIN_UNKNOWN_NAME } from "@/lib/admin-constants";
 
@@ -13,7 +14,10 @@ export default async function EditArtistPage({ params }: Props) {
     include: {
       translations: true,
       groupLinks: true,
+      // Official member order (`src/lib/memberOrder.ts`) — the form
+      // lists members in this order, next to their 정렬 순서 input.
       stageLinks: {
+        orderBy: byStageIdentityOrderBy(),
         include: {
           stageIdentity: {
             include: {
@@ -45,6 +49,8 @@ export default async function EditArtistPage({ params }: Props) {
       id: sl.stageIdentity.id as string,
       type: sl.stageIdentity.type as string,
       color: sl.stageIdentity.color as string | null,
+      sortOrder: sl.stageIdentity.sortOrder as number | null,
+      createdAt: sl.stageIdentity.createdAt as string,
       name: siTr?.name ?? ADMIN_UNKNOWN_NAME,
       vaName: vaTr ? (vaTr.stageName ?? vaTr.name) : null,
     };

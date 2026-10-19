@@ -197,6 +197,7 @@ export async function POST(request: NextRequest) {
                       slug: siSlug,
                       type: si.type,
                       color: si.color,
+                      sortOrder: si.sortOrder,
                       originalName: si.originalName,
                       originalShortName: si.originalShortName,
                       originalLanguage: si.originalLanguage,

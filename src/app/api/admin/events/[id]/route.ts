@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { EventStatus, EventType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import {
   liveWriterTransaction,
   withAdminLiveWriterBusy,
@@ -50,7 +51,10 @@ export async function GET(_request: NextRequest, { params }: Props) {
     include: {
       translations: true,
       eventSeries: { include: { translations: true } },
+      // Official member order (`src/lib/memberOrder.ts`) for the
+      // event roster and every setlist row's performers below.
       performers: {
+        orderBy: byStageIdentityOrderBy(),
         include: {
           stageIdentity: {
             include: {
@@ -70,6 +74,7 @@ export async function GET(_request: NextRequest, { params }: Props) {
             orderBy: { order: "asc" },
           },
           performers: {
+            orderBy: byStageIdentityOrderBy(),
             include: {
               stageIdentity: { include: { translations: true } },
             },

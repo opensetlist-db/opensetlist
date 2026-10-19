@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { serializeBigInt } from "@/lib/utils";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
@@ -14,7 +15,10 @@ export default async function EditEventPage({ params }: Props) {
     where: { id: BigInt(id), isDeleted: false },
     include: {
       translations: true,
+      // Official member order (`src/lib/memberOrder.ts`) for the
+      // event roster and every setlist row's performers below.
       performers: {
+        orderBy: byStageIdentityOrderBy(),
         include: {
           stageIdentity: {
             include: {
@@ -34,6 +38,7 @@ export default async function EditEventPage({ params }: Props) {
             orderBy: { order: "asc" },
           },
           performers: {
+            orderBy: byStageIdentityOrderBy(),
             include: {
               stageIdentity: { include: { translations: true } },
             },

@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { entityAlternates, enforceCanonicalSlug } from "@/lib/seo/entityUrl";
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import {
   serializeBigInt,
   formatDate,
@@ -120,18 +121,24 @@ async function fetchArtist(id: bigint) {
         where: { isDeleted: false },
         include: {
           translations: true,
+          // Official member order, so a unit card's member names read
+          // like the official unit roster.
           stageLinks: {
             include: {
               stageIdentity: { include: { translations: true } },
             },
+            orderBy: byStageIdentityOrderBy(),
           },
         },
         orderBy: { id: "asc" },
       },
       // Direct stage-identity members (graduated + current). Each
       // links to a sub-unit via the subArtists.stageLinks join above —
-      // resolved client-side after fetch.
+      // resolved client-side after fetch. Official member order
+      // (`src/lib/memberOrder.ts`): the members section renders in
+      // this order as is.
       stageLinks: {
+        orderBy: byStageIdentityOrderBy(),
         include: {
           stageIdentity: {
             include: {

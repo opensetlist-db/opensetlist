@@ -5,6 +5,7 @@ import { serializeBigInt } from "@/lib/utils";
 import { resolveCanonicalSlug } from "@/lib/slug";
 import {
   badRequest,
+  nullableInt,
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseJsonBody,
@@ -60,6 +61,10 @@ export async function POST(request: NextRequest, { params }: Props) {
   const colorValue = nullableString(color, "color");
   if (!colorValue.ok) return badRequest(colorValue.message);
 
+  // Official member order; absent / empty / null = not numbered yet.
+  const sortOrder = nullableInt(body.sortOrder, "sortOrder");
+  if (!sortOrder.ok) return badRequest(sortOrder.message);
+
   const language = parseOriginalLanguage(body.originalLanguage);
   if (!language.ok) return badRequest(language.message);
 
@@ -91,6 +96,7 @@ export async function POST(request: NextRequest, { params }: Props) {
       slug: siSlug,
       type,
       color: colorValue.value,
+      sortOrder: sortOrder.value,
       originalName: name.value,
       originalShortName: shortName.value,
       originalLanguage: language.value,
