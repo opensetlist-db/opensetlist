@@ -645,6 +645,26 @@ async function importMembers(rows: Record<string, string>[]) {
     // Upsert StageIdentity
     const existingSi = await prisma.stageIdentity.findUnique({ where: { slug: charSlug } });
 
+    // `sortOrder` (official member order, `src/lib/memberOrder.ts`) is
+    // preserve-on-missing, unlike this CSV's `color` (which clobbers):
+    // header omitted → leave the stored order alone, so re-importing an
+    // older members.csv without the column does not wipe the order the
+    // operator typed in the admin form; blank cell → clear (unnumbered);
+    // an integer → set. An invalid cell WARNs and is treated as absent:
+    // an update keeps the stored value, a create leaves the member
+    // unnumbered. Unlike artists.csv the row is not skipped on create —
+    // null is exactly the state of a member nobody has numbered yet
+    // (sorts after the numbered ones), not a guess with side effects.
+    const parsedSortOrder = parseCsvNullableIntCell(row.sortOrder);
+    let sortOrderUpdate: number | null | undefined;
+    if (parsedSortOrder === "invalid") {
+      const outcome = existingSi ? "kept existing value" : "new member left unnumbered";
+      results.push(`WARN: members.csv sortOrder "${row.sortOrder}" is not an integer (member ${charSlug}) — ${outcome}`);
+      sortOrderUpdate = undefined;
+    } else {
+      sortOrderUpdate = parsedSortOrder;
+    }
+
     let siId: string;
     if (existingSi) {
       await prisma.stageIdentity.update({
@@ -652,6 +672,7 @@ async function importMembers(rows: Record<string, string>[]) {
         data: {
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          sortOrder: sortOrderUpdate,
           ...siOriginals,
         },
       });
@@ -701,6 +722,7 @@ async function importMembers(rows: Record<string, string>[]) {
           slug: charSlug,
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          sortOrder: sortOrderUpdate ?? null,
           ...siOriginals,
           originalName,
           translations: { create: translations },

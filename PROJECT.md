@@ -195,7 +195,7 @@ Tab 1: Artists
   | category | isMainUnit | color | sortOrder | isSideProject
 
 Tab 2: Members
-  character_slug | character_type | ja_name | ko_name | color
+  character_slug | character_type | ja_name | ko_name | color | sortOrder
   | artist_slugs (space-separated) | va_slug | va_ja_name | va_ko_name
   | startDate | endDate
 

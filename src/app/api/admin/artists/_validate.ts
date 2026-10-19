@@ -82,6 +82,9 @@ export type ParsedRealPerson = {
 export type ParsedStageIdentity = {
   type: "character" | "persona";
   color: string | null;
+  // Official member order (see `src/lib/memberOrder.ts`); null = not
+  // numbered yet, sorts after the numbered members.
+  sortOrder: number | null;
   originalName: string;
   originalShortName: string | null;
   originalLanguage: string;
@@ -211,6 +214,9 @@ export function parseStageIdentity(
   }
   const color = nullableString(si.color, `${prefix}.color`);
   if (!color.ok) return color;
+  // A new member: absent, empty and null all mean "not numbered".
+  const sortOrder = nullableInt(si.sortOrder, `${prefix}.sortOrder`);
+  if (!sortOrder.ok) return sortOrder;
   const name = requireString(si.originalName, `${prefix}.originalName`);
   if (!name.ok) return name;
   const shortName = nullableString(si.originalShortName, `${prefix}.originalShortName`);
@@ -235,6 +241,7 @@ export function parseStageIdentity(
     value: {
       type: si.type,
       color: color.value,
+      sortOrder: sortOrder.value,
       originalName: name.value,
       originalShortName: shortName.value,
       originalLanguage: language.value,
