@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveOriginalLanguage } from "@/lib/csv-parse";
+import { HEX_COLOR_RE } from "@/lib/admin-constants";
 
 export type AdminFieldResult<T> =
   | { ok: true; value: T }
@@ -161,6 +162,53 @@ export function nullableBoolean(
     return { ok: true, value };
   }
   return { ok: false, message: `${field} must be a boolean` };
+}
+
+// Optional hex colour. Empty / null → null (clears the colour).
+export function nullableHexColor(
+  value: unknown,
+  field: string
+): AdminFieldResult<string | null> {
+  const s = nullableString(value, field);
+  if (!s.ok || s.value === null) return s;
+  if (!HEX_COLOR_RE.test(s.value)) {
+    return { ok: false, message: `${field} must be a hex colour like #e91e8c` };
+  }
+  return s;
+}
+
+// Postgres `integer` bounds — a value outside them is a 500 at write time.
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+function int32OrNull(value: number): number | null {
+  return Number.isSafeInteger(value) && value >= INT32_MIN && value <= INT32_MAX
+    ? value
+    : null;
+}
+
+// Optional integer (a JSON number or a digit string, sign allowed).
+// Empty / null → null. Fractions, NaN and out-of-range values are refused.
+export function nullableInt(
+  value: unknown,
+  field: string
+): AdminFieldResult<number | null> {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  const n =
+    typeof value === "number"
+      ? int32OrNull(value)
+      : typeof value === "string" && /^\s*-?\d+\s*$/.test(value)
+        ? int32OrNull(Number(value))
+        : null;
+  if (n === null) {
+    return {
+      ok: false,
+      message: `${field} must be an integer between -2147483648 and 2147483647`,
+    };
+  }
+  return { ok: true, value: n };
 }
 
 // Optional array of strings. Returns [] for undefined/null so callers can
@@ -345,4 +393,22 @@ export function parseCsvBooleanCell(
   if (v === "true" || v === "1" || v === "yes") return true;
   if (v === "false" || v === "0" || v === "no") return false;
   return "invalid";
+}
+
+/**
+ * Optional nullable integer CSV cell with the same preserve-on-missing
+ * contract as the artists CSV `color` column:
+ *   - column absent from the header (`undefined`) → `undefined` =
+ *     leave the stored value alone;
+ *   - column present, cell blank → `null` = clear it;
+ *   - an integer (sign allowed, Postgres int range) → the number;
+ *   - anything else → `"invalid"` so the caller can WARN and keep the
+ *     stored value.
+ */
+export function parseCsvNullableIntCell(
+  raw: string | undefined,
+): number | null | undefined | "invalid" {
+  if (raw === undefined) return undefined;
+  const parsed = nullableInt(raw.trim(), "cell");
+  return parsed.ok ? parsed.value : "invalid";
 }

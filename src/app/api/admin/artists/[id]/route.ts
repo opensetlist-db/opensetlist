@@ -14,7 +14,10 @@ import {
   parseJsonBody,
   requireString,
 } from "@/lib/admin-input";
-import { parseArtistTranslations } from "../_validate";
+import {
+  parseArtistDisplayFields,
+  parseArtistTranslations,
+} from "../_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 
@@ -86,6 +89,11 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const isMainUnitCheck = nullableBoolean(body.isMainUnit, "isMainUnit");
   if (!isMainUnitCheck.ok) return badRequest(isMainUnitCheck.message);
 
+  // Absent keys are left out → those columns stay as stored (see
+  // `parseArtistDisplayFields`).
+  const display = parseArtistDisplayFields(body);
+  if (!display.ok) return badRequest(display.message);
+
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
 
@@ -119,6 +127,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
           typeCheck.value === "unit"
             ? (isMainUnitCheck.value ?? false)
             : false,
+        ...display.value,
         originalName: name.value,
         originalShortName: shortName.value,
         originalBio: bio.value,

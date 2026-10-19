@@ -6,6 +6,7 @@ import { josa } from "es-hangul";
 import {
   ADMIN_UNKNOWN_NAME,
   GROUP_CATEGORY_VALUES,
+  HEX_COLOR_RE,
 } from "@/lib/admin-constants";
 import {
   fetchAdminArtists,
@@ -51,6 +52,9 @@ type ArtistFormProps = {
     hasBoard: boolean;
     category: string | null;
     isMainUnit: boolean;
+    color: string | null;
+    sortOrder: number | null;
+    isSideProject: boolean;
     originalName: string;
     originalShortName: string;
     originalBio: string;
@@ -75,6 +79,15 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
   const [hasBoard, setHasBoard] = useState(initialData?.hasBoard ?? true);
   const [category, setCategory] = useState(initialData?.category ?? "");
   const [isMainUnit, setIsMainUnit] = useState(initialData?.isMainUnit ?? false);
+  const [color, setColor] = useState(initialData?.color ?? "");
+  // Kept as the raw input text so an operator can clear it; parsed on
+  // submit (empty → null).
+  const [sortOrder, setSortOrder] = useState(
+    initialData?.sortOrder?.toString() ?? ""
+  );
+  const [isSideProject, setIsSideProject] = useState(
+    initialData?.isSideProject ?? false
+  );
   const [originalLanguage, setOriginalLanguage] = useState(
     initialData?.originalLanguage ?? "ja"
   );
@@ -355,6 +368,19 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       }
     }
 
+    // Same rules as the server (`parseArtistDisplayFields`); checked
+    // here so the operator gets the message before a round trip.
+    const trimmedColor = color.trim();
+    if (trimmedColor && !HEX_COLOR_RE.test(trimmedColor)) {
+      alert("그룹 색은 #rgb 또는 #rrggbb 형식이어야 합니다 (예: #e91e8c).");
+      return;
+    }
+    const trimmedSortOrder = sortOrder.trim();
+    if (trimmedSortOrder && !/^-?\d+$/.test(trimmedSortOrder)) {
+      alert("정렬 순서는 정수여야 합니다 (비우면 미지정).");
+      return;
+    }
+
     setLoading(true);
 
     const payload = {
@@ -369,6 +395,9 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
       // rule; this is defense in depth so the wire payload matches
       // the persisted shape.
       isMainUnit: type === "unit" ? isMainUnit : false,
+      color: trimmedColor || null,
+      sortOrder: trimmedSortOrder ? Number(trimmedSortOrder) : null,
+      isSideProject,
       originalName: originalName.trim(),
       originalShortName: originalShortName.trim() || null,
       originalBio: originalBio.trim() || null,
@@ -504,6 +533,72 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
           <span className="text-xs text-zinc-400">— type=unit에만 적용</span>
         )}
       </label>
+
+      {/* Festival display fields. Colour is the group/unit badge colour
+         (chips, board columns); sortOrder and isSideProject are read
+         only for top-level artists (no parent) — the festival group
+         chips order by sortOrder, and a side project gets no column
+         on the fan board (it stays in the prediction picker). */}
+      <div className="rounded border border-zinc-200 p-3">
+        <div className="mb-2 text-sm font-medium">페스 표시</div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label
+              htmlFor="artist-festival-color"
+              className="mb-1 block text-xs text-zinc-600"
+            >
+              그룹 색 (#rgb 또는 #rrggbb)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="artist-festival-color"
+                placeholder="#e91e8c 또는 #e1c"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <span
+                aria-hidden
+                className="inline-block h-6 w-6 shrink-0 rounded border border-zinc-300"
+                style={{
+                  backgroundColor: HEX_COLOR_RE.test(color.trim())
+                    ? color.trim()
+                    : "transparent",
+                }}
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="artist-festival-sort-order"
+              className="mb-1 block text-xs text-zinc-600"
+            >
+              정렬 순서
+            </label>
+            <input
+              id="artist-festival-sort-order"
+              type="number"
+              step={1}
+              placeholder="비우면 미지정 (작을수록 앞)"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={isSideProject}
+            onChange={(e) => setIsSideProject(e.target.checked)}
+          />
+          사이드 프로젝트 (페스 보드에서 제외)
+        </label>
+        <p className="mt-1 text-xs text-zinc-400">
+          정렬 순서·사이드 프로젝트는 상위 아티스트가 없는 최상위
+          아티스트에만 적용됩니다.
+        </p>
+      </div>
 
       {/* Groups */}
       {groups.length > 0 && (

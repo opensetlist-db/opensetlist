@@ -20,7 +20,15 @@ const getArtistHierarchyRowsCached = cachedQuery(
   () =>
     prisma.artist.findMany({
       where: { isDeleted: false },
-      select: { id: true, parentArtistId: true },
+      // sortOrder / isSideProject: festival group order and fan-board
+      // exclusion (see `buildArtistHierarchy`). The key carries
+      // BUILD_KEY, so a deploy never reads an entry of the old shape.
+      select: {
+        id: true,
+        parentArtistId: true,
+        sortOrder: true,
+        isSideProject: true,
+      },
     }),
   { revalidate: CACHE_TTL.entity },
 );

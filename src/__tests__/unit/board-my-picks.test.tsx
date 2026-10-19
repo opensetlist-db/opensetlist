@@ -400,9 +400,10 @@ describe("<FanBoardSection> my picks", () => {
       />,
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 2 }).nextElementSibling?.textContent).toContain("closed"),
+      expect(screen.getByRole("heading", { level: 2 }).nextElementSibling?.textContent).toBe("closed"),
     );
     expect(screen.queryByText(/openUntil/)).toBeNull();
+    expect(screen.queryByText(/asOf/)).toBeNull();
   });
 
   it("a transient /board/mine failure (503 busy, network) is retried a bounded number of times", async () => {

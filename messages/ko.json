@@ -560,8 +560,7 @@
   "Board": {
     "title": "팬 보드",
     "explainer": "듣고 싶은 곡 ≠ 나올 것 같은 곡 — 각각 그룹당 최대 3곡, 모르는 그룹은 건너뛰어도 돼요",
-    "asOf": "{time} 기준",
-    "openUntil": "공연 시작({time})까지 참여 가능",
+    "openUntil": "공연 시작까지 참여 가능",
     "closed": "참여 마감",
     "groupsAria": "그룹 선택",
     "colWant": "듣고 싶은 곡",

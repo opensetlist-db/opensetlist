@@ -850,7 +850,9 @@ export default async function EventPage({ params }: Props) {
     const hierarchy = await getArtistHierarchyCached();
     // Same resolver the fan board uses (`primaryArtistId: null` selects
     // the festival branch), so the picker's chips and the board's
-    // groups come from one ordering.
+    // groups come from one ordering (`Artist.sortOrder` first, then
+    // performer count). Deliberately NOT `fanBoardRootIds`: a side
+    // project keeps its picker chip — only the board drops it.
     const rootIds = boardGroupRootIds({
       roster,
       hierarchy,

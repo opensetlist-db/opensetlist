@@ -3,8 +3,8 @@ import { joinIdKey } from "@/lib/dataCache";
 import { getEventRoster } from "@/lib/eventRoster";
 import { getFestivalGroupArtistsCached } from "@/lib/predict/availableSongs";
 import {
-  boardGroupRootIds,
   boardGroupsFromRows,
+  fanBoardRootIds,
   type BoardGroup,
 } from "@/lib/board/boardGroups";
 import type { EventRosterEntry } from "@/lib/types/setlist";
@@ -27,6 +27,11 @@ import type { EventRosterEntry } from "@/lib/types/setlist";
  * `roster` is optional so a caller that already holds it (the page)
  * doesn't pay a second cache lookup; the single-artist branch never
  * needs it.
+ *
+ * Side projects are already gone from the ids (`fanBoardRootIds`), so
+ * the board read, the pick/publish validators, the admin starter
+ * editor and the page's board chips all agree that such a group has
+ * no column. The picker's chips do NOT go through here — they keep it.
  */
 export async function loadBoardGroups({
   eventId,
@@ -47,7 +52,7 @@ export async function loadBoardGroups({
         ? Promise.resolve(roster)
         : getEventRoster(eventId, locale),
   ]);
-  const rootIds = boardGroupRootIds({
+  const rootIds = fanBoardRootIds({
     roster: resolvedRoster,
     hierarchy,
     primaryArtistId,

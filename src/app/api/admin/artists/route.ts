@@ -18,6 +18,7 @@ import {
   requireString,
 } from "@/lib/admin-input";
 import {
+  parseArtistDisplayFields,
   parseArtistTranslations,
   parseStageIdentities,
 } from "./_validate";
@@ -101,6 +102,9 @@ export async function POST(request: NextRequest) {
   const isMainUnitCheck = nullableBoolean(body.isMainUnit, "isMainUnit");
   if (!isMainUnitCheck.ok) return badRequest(isMainUnitCheck.message);
 
+  const display = parseArtistDisplayFields(body);
+  if (!display.ok) return badRequest(display.message);
+
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
 
@@ -171,6 +175,7 @@ export async function POST(request: NextRequest) {
         // schema layer is permissive, so we enforce it here.
         isMainUnit:
           typeCheck.value === "unit" ? (isMainUnitCheck.value ?? false) : false,
+        ...display.value,
         originalName: name.value,
         originalShortName: shortName.value,
         originalBio: bio.value,

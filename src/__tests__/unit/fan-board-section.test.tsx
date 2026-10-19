@@ -132,12 +132,15 @@ describe("<FanBoardSection>", () => {
     expect(screen.getByRole("tab", { name: "蓮ノ空" }).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("as-of and open-until line both render", async () => {
+  it("the header is one short open-until line — no as-of stamp, no clock time", async () => {
     respond(READY);
     renderBlock();
     await screen.findAllByText("残陽");
-    expect(screen.getByText(/asOf\(/)).toBeTruthy();
-    expect(screen.getByText(/openUntil\(/)).toBeTruthy();
+    const line = screen.getByRole("heading", { level: 2 }).nextElementSibling;
+    // The mock renders `key(args)` when a message gets arguments, so an
+    // exact "openUntil" also proves no `{time}` is passed any more.
+    expect(line?.textContent).toBe("openUntil");
+    expect(screen.queryByText(/asOf/)).toBeNull();
   });
 
   it("one group open at a time; a group without starters shows the empty invitation", async () => {

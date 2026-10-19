@@ -560,8 +560,7 @@
   "Board": {
     "title": "ファンボード",
     "explainer": "聴きたい曲 ≠ 来そうな曲 — それぞれ1グループ3曲まで、知らないグループは飛ばしてOK",
-    "asOf": "{time} 時点",
-    "openUntil": "開演（{time}）まで参加できます",
+    "openUntil": "開演まで参加できます",
     "closed": "受付終了",
     "groupsAria": "グループを選択",
     "colWant": "聴きたい曲",

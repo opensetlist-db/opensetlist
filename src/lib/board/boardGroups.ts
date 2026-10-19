@@ -19,6 +19,11 @@
  * says which roots to load, `resolveBoardGroups` turns the loaded rows
  * into board groups. Both are pure — no Prisma / Next imports — so they
  * unit-test in isolation and are safe to import from client code.
+ *
+ * The board itself goes one step further than the picker: side
+ * projects (`Artist.isSideProject`) get no board column —
+ * `fanBoardRootIds` is `boardGroupRootIds` minus those, and it is what
+ * `loadBoardGroups` (every board consumer) resolves.
  */
 
 import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
@@ -81,6 +86,33 @@ export function boardGroupRootIds({
   return resolveFestivalGroups(roster, hierarchy).map((g) => g.rootId);
 }
 
+/**
+ * The fan board's root ids: `boardGroupRootIds` without side projects,
+ * on the festival branch only.
+ *
+ * Why only the board: a cross-IP side unit is a top-level Artist, so
+ * the roster walk makes it a root next to the series it borrows its
+ * members from. In the picker that is right — its songs are
+ * predictable and the chip filters them. On the board it would be a
+ * near-empty extra column next to the series fans actually pick for,
+ * so it is dropped here and nowhere else (catalog, picker chips and
+ * song pages keep it).
+ *
+ * The single-artist branch is left alone: there the series artist IS
+ * the show, so a side project's own concert keeps its one column —
+ * dropping it would leave that board with no group at all.
+ *
+ * Consequence downstream: a song whose only root is a side project is
+ * on no board group's catalog, so the full-setlist bridge
+ * (`boardGroupsBySong`) leaves it out and the write validators answer
+ * `invalid_group` for its group id.
+ */
+export function fanBoardRootIds(input: BoardGroupIdsInput): string[] {
+  const rootIds = boardGroupRootIds(input);
+  if (input.primaryArtistId !== null) return rootIds;
+  return rootIds.filter((id) => !input.hierarchy.sideProjects.has(id));
+}
+
 export interface BoardGroupsInput {
   roster: readonly EventRosterEntry[];
   hierarchy: ArtistHierarchy;
@@ -96,7 +128,7 @@ export interface BoardGroupsInput {
 /**
  * The board's groups, in board order.
  *
- * Composition of `boardGroupRootIds` + `boardGroupsFromRows` for
+ * Composition of `fanBoardRootIds` + `boardGroupsFromRows` for
  * callers that already hold the display rows. A caller that must load
  * the rows first (the event page) computes the ids once, loads, then
  * calls `boardGroupsFromRows` directly instead of resolving twice.
@@ -108,7 +140,7 @@ export function resolveBoardGroups({
   groupArtists,
   locale,
 }: BoardGroupsInput): BoardGroup[] {
-  const rootIds = boardGroupRootIds({
+  const rootIds = fanBoardRootIds({
     roster,
     hierarchy,
     primaryArtistId: primaryArtist?.id ?? null,

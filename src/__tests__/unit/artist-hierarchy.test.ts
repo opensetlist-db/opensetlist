@@ -53,4 +53,18 @@ describe("artistHierarchy", () => {
   it("descendants: root first, includes depth 2", () => {
     expect(descendantsOf(H, BigInt(1))).toEqual(["1", "2", "3", "5"]);
   });
+
+  it("carries sortOrder and isSideProject; absent / null means none", () => {
+    const h = buildArtistHierarchy([
+      { id: BigInt(1), parentArtistId: null, sortOrder: 0, isSideProject: false },
+      { id: BigInt(2), parentArtistId: null, sortOrder: null, isSideProject: true },
+      { id: BigInt(3), parentArtistId: null },
+    ]);
+    // 0 is a real order, not "unset".
+    expect([...h.sortOrderOf]).toEqual([["1", 0]]);
+    expect([...h.sideProjects]).toEqual(["2"]);
+    // A tree built from parents only (the admin builder) has neither.
+    expect(H.sortOrderOf.size).toBe(0);
+    expect(H.sideProjects.size).toBe(0);
+  });
 });
