@@ -92,8 +92,9 @@ interface Props {
    */
   isWishPredictOpen: boolean;
   /**
-   * Fan board seed (n15) — null/omitted when the board is off. The
-   * block mounts only while `status` is upcoming or completed: the
+   * Fan board seed (n15) — null/omitted when the board is off (or,
+   * upcoming, before the wish/predict window opens). The block mounts
+   * only while `status` is upcoming (window open) or completed: the
    * status here is the client's effective one, so a page that crosses
    * into the show unmounts the board (no board request while ongoing)
    * and brings the event-wide wishlist back in its place.
@@ -256,8 +257,15 @@ export function LiveSetlist({
   // column replaces the wishlist while upcoming or completed (n15);
   // while ongoing the board is not mounted and today's wishlist renders
   // instead — its overall TOP3 is part of the live payload, unchanged.
+  //
+  // Upcoming also needs the wish/predict window open — the page already
+  // withholds the seed before it (one open date for all three
+  // surfaces); checking here too keeps this component honest on its
+  // own, so a seed handed in early can't mount a board ahead of the
+  // wishlist and Predict tab it shares a date with.
   const showBoard =
-    board != null && (status === "upcoming" || status === "completed");
+    board != null &&
+    ((status === "upcoming" && isWishPredictOpen) || status === "completed");
 
   return (
     <>
@@ -310,9 +318,10 @@ export function LiveSetlist({
             top3Wishes={top3Wishes}
           />
         )}
-      {/* Fan board (n15): in the wishlist's place (see `showBoard`). Not
-          gated on the D-7 window — the operator's flag is the switch.
-          Never mounted while ongoing/cancelled (see the `board` prop). */}
+      {/* Fan board (n15): in the wishlist's place (see `showBoard`).
+          Upcoming: the operator's flag AND the same open window as the
+          wishlist / Predict tab. Never mounted while ongoing/cancelled
+          (see the `board` prop). */}
       {showBoard && board && (
           <FanBoardSection
             key={eventId}

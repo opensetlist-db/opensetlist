@@ -91,6 +91,7 @@ function song(id: number, title: string, groups: number[]): AvailableSong {
     isMultiArtist: false,
     creditedArtistIds: [],
     festivalGroupIds: groups,
+    releaseDate: null,
   };
 }
 
@@ -264,14 +265,31 @@ describe("board → full setlist mode", () => {
     );
   });
 
-  it.each([
-    ["before the D-7 window", { isWishPredictOpen: false }],
-    ["after the show", { status: "completed" as const, isWishPredictOpen: false }],
-  ])("%s: no bridge either way", async (_label, opts) => {
-    renderPage(opts);
+  it("after the show: no bridge either way", async () => {
+    renderPage({ status: "completed", isWishPredictOpen: false });
     await screen.findByRole("button", { name: "copy" });
     expect(screen.queryByRole("button", { name: "toFullSetlist" })).toBeNull();
     expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
+  });
+
+  it("before the wish/predict window: no board at all (one open date), so no bridge", async () => {
+    // Positive control: the SAME seed mounts the board once the window
+    // is open, so the absence below is the window gate's doing.
+    const open = renderPage();
+    await screen.findByRole("button", { name: "copy" });
+    expect(document.getElementById("fan-board-107")).not.toBeNull();
+    open.unmount();
+    fetchMock.mockClear();
+
+    // Even with a seed handed in, the board waits for the same window
+    // as the wishlist and the Predict tab.
+    renderPage({ isWishPredictOpen: false });
+    expect(document.getElementById("fan-board-107")).toBeNull();
+    expect(screen.queryByRole("button", { name: "copy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => String(url).includes("/board")),
+    ).toHaveLength(0);
   });
 });
 

@@ -102,6 +102,7 @@ function song(id: number, title: string): AvailableSong {
     isMultiArtist: false,
     creditedArtistIds: [1],
     festivalGroupIds: [],
+    releaseDate: null,
   } as AvailableSong;
 }
 

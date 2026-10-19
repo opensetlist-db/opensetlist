@@ -903,10 +903,23 @@ export default async function EventPage({ params }: Props) {
   // wishlist and the board client is not mounted at all (show-night
   // capacity numbers were qualified without it); cancelled events have
   // nothing to show.
+  //
+  // ONE open date for the board, the wishlist and the predictions: an
+  // upcoming board event shows the board only inside the same window
+  // (`wishPredictOpen` — D-7, or the event's `engagementOpensAt`).
+  // Before it the page looks like any pre-window event: no board, no
+  // wishlist, and the "predictions open on …" line (`predictOpensLabel`)
+  // — so fans meet a single "opens on" date, never a board that is open
+  // while the rest still says "later". `boardEnabled` stays the kill
+  // switch. The gate is UI mounting only, like the other two surfaces:
+  // the board APIs keep their own checks (flag, start-time lock, caps).
+  // Post-show (completed) is not gated — the tally view stays, exactly
+  // as the wishlist's locked TOP-3 does.
   const boardChipsSeed: Omit<BoardBlockSeed, "share"> | null = await (async () => {
     if (
       !event.boardEnabled ||
-      (resolvedStatus !== "upcoming" && resolvedStatus !== "completed")
+      (resolvedStatus !== "upcoming" && resolvedStatus !== "completed") ||
+      (resolvedStatus === "upcoming" && !wishPredictOpen)
     ) {
       return null;
     }

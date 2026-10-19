@@ -14,6 +14,10 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onToggle: (songId: number) => void;
+  /** Visible sheet heading. Defaults to the Predicted Setlist copy
+   *  (`Predict.picker.sheetTitle`); the fan board passes its own per
+   *  column, so a wishlist picker isn't headed "add a predicted song". */
+  title?: string;
 }
 
 /**
@@ -41,6 +45,7 @@ export function SongPickerSheet({
   open,
   onOpenChange,
   onToggle,
+  title,
 }: Props) {
   const t = useTranslations("Predict");
 
@@ -124,7 +129,7 @@ export function SongPickerSheet({
                 color: colors.textPrimary,
               }}
             >
-              {t("picker.sheetTitle")}
+              {title ?? t("picker.sheetTitle")}
             </Drawer.Title>
             <button
               type="button"

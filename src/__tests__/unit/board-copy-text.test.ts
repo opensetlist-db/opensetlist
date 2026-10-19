@@ -48,7 +48,7 @@ describe("buildBoardCopyText", () => {
   it("ja: event + day, picks by group in board order, skipped group omitted, link last", () => {
     expect(textOf({ ...BASE, t: tFor("ja") })).toBe(
       [
-        "ラブライブ！フェス Day.1 セトリ予想 (OpenSetlist)",
+        "ラブライブ！フェス Day.1 セットリスト予想 (OpenSetlist)",
         "蓮ノ空: Dream Believers / 残陽",
         "Aqours: 未体験HORIZON",
         "https://opensetlist.com/ja/events/107/lovelive-fes-day1#board-aqours",
@@ -99,7 +99,7 @@ describe("buildBoardCopyText", () => {
     const all = [...PICKS, pick("p4", "2", "20", "始まりは君の空")];
     expect(textOf({ ...BASE, picks: all, t: tFor("ja") })).toBe(
       [
-        "ラブライブ！フェス Day.1 セトリ予想 (OpenSetlist)",
+        "ラブライブ！フェス Day.1 セットリスト予想 (OpenSetlist)",
         "蓮ノ空: Dream Believers / 残陽",
         "Liella!: 始まりは君の空",
         "Aqours: 未体験HORIZON",
@@ -147,7 +147,7 @@ describe("buildBoardCopyText", () => {
     });
     expect(text).toBe(
       [
-        "ラブライブ！フェス Day.1 セトリ予想 (OpenSetlist)",
+        "ラブライブ！フェス Day.1 セットリスト予想 (OpenSetlist)",
         "蓮ノ空: Dream Believers",
         BASE.url,
       ].join("\n"),

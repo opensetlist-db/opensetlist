@@ -4,7 +4,7 @@ import type { StoredBoardPick } from "@/lib/board/pickStorage";
  * "Copy my picks" text of the fan board (n15): an X-ready post in
  * the viewer's locale.
  *
- *   {event} セトリ予想 (OpenSetlist)
+ *   {event} セットリスト予想 (OpenSetlist)
  *   蓮ノ空: Dream Believers / 残陽
  *   Aqours: 未体験HORIZON
  *   https://opensetlist.com/ja/events/107/…#board-aqours

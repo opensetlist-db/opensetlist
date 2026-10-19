@@ -45,11 +45,11 @@ export interface BoardGroupView {
   name: string;
   /** `Artist.color`; null = primary colour. */
   color: string | null;
-  /** "Songs fans want to hear" — per-group wishes (n15). Legacy
+  /** The "wishlist" column (희망곡 / 希望曲) — per-group wishes (n15). Legacy
    *  wishes (no anon id, no stored group) are counted under the group
    *  their song resolves to: submissions, never participants. */
   wishes: BoardColumn;
-  /** "Songs fans expect" — empty until fan picks exist (n15). */
+  /** The "predictions" column (예상곡 / 予想曲) — empty until fan picks exist (n15). */
   expects: BoardColumn;
   /** Operator starter picks, shown in whichever column is `operator`. */
   starters: BoardSongRef[];

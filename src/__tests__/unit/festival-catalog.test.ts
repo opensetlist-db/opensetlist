@@ -76,6 +76,7 @@ function song(songId: number, festivalGroupIds: number[] = []): AvailableSong {
     isMultiArtist: false,
     creditedArtistIds: [1],
     festivalGroupIds,
+    releaseDate: null,
   };
 }
 

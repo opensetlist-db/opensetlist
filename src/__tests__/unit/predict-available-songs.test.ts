@@ -36,6 +36,7 @@ function row(id: bigint, title: string, artists: RowArtist[]): AvailableSongRow 
     originalLanguage: "ja",
     variantLabel: null,
     baseVersionId: null,
+    releaseDate: null,
     translations: [],
     artists: artists.map((a) => ({ artist: a })),
   };
@@ -105,5 +106,22 @@ describe("mapAvailableSongRows — descendant scope", () => {
     expect(
       mapAvailableSongRows([row(BigInt(70), "Other IP", [OUTSIDER])], BigInt(1), [BigInt(1), BigInt(2)], "ja"),
     ).toEqual([]);
+  });
+});
+
+describe("mapAvailableSongRows — release date", () => {
+  it("passes the stored day through as YYYY-MM-DD, null when unset", () => {
+    const dated = {
+      ...row(BigInt(10), "Dream Believers", [HASU]),
+      // `@db.Date` arrives as UTC midnight; the UTC prefix is the day.
+      releaseDate: new Date("2023-04-26T00:00:00.000Z"),
+    };
+    const out = mapAvailableSongRows(
+      [dated, row(BigInt(20), "Aoku Haruka", [CERISE])],
+      1,
+      [BigInt(1), BigInt(2)],
+      "ja",
+    );
+    expect(out.map((s) => s.releaseDate)).toEqual(["2023-04-26", null]);
   });
 });

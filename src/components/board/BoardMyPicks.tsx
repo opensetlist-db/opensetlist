@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { SongPickerSheet } from "@/components/predict/SongPickerSheet";
@@ -9,6 +9,7 @@ import {
   BOARD_WISHES_PER_GROUP,
 } from "@/lib/board/config";
 import type { StoredBoardPick } from "@/lib/board/pickStorage";
+import { deriveUnitFilters } from "@/lib/predict/unitFilters";
 import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 
@@ -23,6 +24,18 @@ import { colors } from "@/styles/tokens";
  * pick. All writes go through `onAdd` / `onRemove` (the parent owns the
  * ballot and the feedback).
  *
+ * Unit chips: the same `deriveUnitFilters` the single-artist Predicted
+ * Setlist uses, with THIS group as the primary artist — so the sheet
+ * offers "all / the group / its main units (+ big solo catalogs) /
+ * others" exactly like the prediction picker on that group's own event.
+ * The festival chip set (`deriveFestivalFilters`) would be wrong here:
+ * the list is already one group, so a per-group chip is a no-op. On a
+ * festival a crossover song's `unit` / `creditedArtistIds` were
+ * computed relative to the FIRST group that listed it
+ * (`mergeFestivalCatalog`), so under a later group it matches none of
+ * that group's unit chips and lands in "others" — still reachable, and
+ * the search box finds it regardless.
+ *
  * Used for both columns (n15): `kind` picks the copy and the cap —
  * "my picks" under "expect", "my wishes" under "want". The two caps are
  * the same number today; each is read from its own constant so they
@@ -30,8 +43,18 @@ import { colors } from "@/styles/tokens";
  */
 
 const COPY = {
-  pick: { mine: "mine", add: "add", max: BOARD_PICKS_PER_GROUP },
-  wish: { mine: "mineWish", add: "addWish", max: BOARD_WISHES_PER_GROUP },
+  pick: {
+    mine: "mine",
+    add: "add",
+    pickerTitle: "pickerTitle",
+    max: BOARD_PICKS_PER_GROUP,
+  },
+  wish: {
+    mine: "mineWish",
+    add: "addWish",
+    pickerTitle: "pickerTitleWish",
+    max: BOARD_WISHES_PER_GROUP,
+  },
 } as const;
 
 export function BoardMyPicks({
@@ -67,8 +90,27 @@ export function BoardMyPicks({
   onRemove: (pick: StoredBoardPick) => void;
 }) {
   const t = useTranslations("Board");
+  const tPredict = useTranslations("Predict");
   const [pickerOpen, setPickerOpen] = useState(false);
   const copy = COPY[kind];
+  const unitFilters = useMemo(() => {
+    const groupArtistId = Number(groupId);
+    if (groupSongs.length === 0 || !Number.isSafeInteger(groupArtistId)) {
+      return [];
+    }
+    // `deriveUnitFilters` drops the group chip when no song is credited
+    // to the group directly — e.g. a single-artist series run by a
+    // sub-unit, whose catalog is scoped to that unit while the board's
+    // group is its root — so the group id is always safe to pass.
+    return deriveUnitFilters(
+      groupSongs,
+      groupArtistId,
+      groupName,
+      tPredict("picker.filterAll"),
+      tPredict("picker.filterOthers"),
+      colors.primary,
+    );
+  }, [groupSongs, groupId, groupName, tPredict]);
   const max = copy.max;
   const atCap = picks.length >= max;
   const catalogById = new Map(groupSongs.map((s) => [String(s.songId), s]));
@@ -211,7 +253,8 @@ export function BoardMyPicks({
             locale={locale}
             songs={groupSongs as AvailableSong[]}
             selectedIds={picks.map((p) => Number(p.songId))}
-            unitFilters={[]}
+            unitFilters={unitFilters}
+            title={t(copy.pickerTitle, { group: groupName })}
             open={pickerOpen}
             onOpenChange={setPickerOpen}
             onToggle={handleToggle}

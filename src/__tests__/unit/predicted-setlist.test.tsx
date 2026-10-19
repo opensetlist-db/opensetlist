@@ -68,6 +68,7 @@ const SAMPLE_AVAILABLE: AvailableSong[] = [
     isMultiArtist: false,
     creditedArtistIds: [1],
     festivalGroupIds: [],
+    releaseDate: null,
   },
 ];
 const SAMPLE_FILTERS: UnitFilter[] = [

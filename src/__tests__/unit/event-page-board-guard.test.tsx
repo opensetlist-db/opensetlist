@@ -118,7 +118,9 @@ function eventRow(overrides: Record<string, unknown> = {}) {
     type: "festival",
     status: "scheduled",
     date: null,
-    startTime: new Date(Date.now() + 10 * DAY).toISOString(),
+    // Inside the default D-7 wish/predict window: the board shares
+    // that window's open date (see the "window closed" cases below).
+    startTime: new Date(Date.now() + 3 * DAY).toISOString(),
     engagementOpensAt: null,
     country: null,
     posterUrl: null,
@@ -187,6 +189,34 @@ describe("event page × fan board (server render)", () => {
       // path (entityPath), never a slugified display name.
       share: { eventName: "Fes Day.1", path: "/ko/events/107/fes-day1" },
     });
+    expectNoAggregation();
+  });
+
+  it("enabled but the wish/predict window is closed → no seed, the opens-on line instead", async () => {
+    // D-10 with no per-event override: the D-7 default hasn't opened.
+    eventFindFirst.mockResolvedValue(
+      eventRow({ startTime: new Date(Date.now() + 10 * DAY).toISOString() }),
+    );
+    const props = await renderPage();
+    expect(props.board).toBeNull();
+    expect(props.isWishPredictOpen).toBe(false);
+    // The same "predictions open on …" line a non-board event shows.
+    expect(props.predictOpensLabel).not.toBeNull();
+    expect(loadBoardGroups).not.toHaveBeenCalled();
+    expectNoAggregation();
+  });
+
+  it("an earlier engagementOpensAt opens the board with the other two surfaces", async () => {
+    eventFindFirst.mockResolvedValue(
+      eventRow({
+        startTime: new Date(Date.now() + 20 * DAY).toISOString(),
+        engagementOpensAt: new Date(Date.now() - DAY).toISOString(),
+      }),
+    );
+    const props = await renderPage();
+    expect(props.isWishPredictOpen).toBe(true);
+    expect(props.board).not.toBeNull();
+    expect(props.predictOpensLabel).toBeNull();
     expectNoAggregation();
   });
 

@@ -16,21 +16,33 @@ vi.mock("next-intl", () => ({
 }));
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 // The real sheet is a vaul drawer; the block only needs its contract
-// (songs in, selected ids in, toggle out).
+// (songs + unit chips + heading in, selected ids in, toggle out). The
+// chip set and the heading are surfaced as attributes so tests can
+// assert what the board hands the shared picker.
 vi.mock("@/components/predict/SongPickerSheet", () => ({
   SongPickerSheet: ({
     open,
     songs,
     selectedIds,
+    unitFilters,
+    title,
     onToggle,
   }: {
     open: boolean;
     songs: { songId: number }[];
     selectedIds: number[];
+    unitFilters: { key: string; kind: string; label: string; artistId: number | null }[];
+    title?: string;
     onToggle: (id: number) => void;
   }) =>
     open ? (
-      <div data-testid="picker">
+      <div
+        data-testid="picker"
+        data-title={title}
+        data-filters={JSON.stringify(
+          unitFilters.map((f) => [f.kind, f.label, f.artistId]),
+        )}
+      >
         {songs.map((s) => (
           <button key={s.songId} type="button" onClick={() => onToggle(s.songId)}>
             {`pick-${s.songId}${selectedIds.includes(s.songId) ? "*" : ""}`}
@@ -97,6 +109,12 @@ function song(id: number, title: string, groups: number[]): AvailableSong {
     baseVersionId: null,
     translations: [],
     festivalGroupIds: groups,
+    // Group-direct credit to the first group: the picker derives
+    // its unit chips from these (n15 board picker).
+    unit: { artistId: groups[0] ?? 0, slug: `g${groups[0] ?? 0}`, label: `g${groups[0] ?? 0}`, color: "#888888", isSubUnit: false, isMainUnit: false },
+    isMultiArtist: false,
+    creditedArtistIds: groups.slice(0, 1),
+    releaseDate: null,
   } as unknown as AvailableSong;
 }
 
@@ -157,6 +175,75 @@ const counter = () =>
 const toast = () => screen.getByTestId("board-toast").textContent;
 
 describe("<FanBoardSection> my picks", () => {
+  it("the group picker gets that group's unit chips and a column heading", async () => {
+    const unit = (artistId: number, slug: string, isMainUnit: boolean) => ({
+      artistId,
+      slug,
+      label: slug,
+      color: "#888888",
+      isSubUnit: true,
+      isMainUnit,
+    });
+    const catalog = [
+      ...CATALOG,
+      // A main unit of 蓮ノ空 → its own chip.
+      {
+        ...song(14, "Unit Song", [1]),
+        unit: unit(5, "cerise", true),
+        creditedArtistIds: [5],
+      },
+      // A one-song solo of 蓮ノ空 → bucketed into "others".
+      {
+        ...song(15, "Solo Song", [1]),
+        unit: unit(6, "kozue", false),
+        creditedArtistIds: [6],
+      },
+      // Liella!'s own unit never reaches 蓮ノ空's chip row.
+      {
+        ...song(31, "Liella Unit", [2]),
+        unit: unit(7, "catchu", true),
+        creditedArtistIds: [7],
+      },
+    ] as AvailableSong[];
+    render(<FanBoardSection eventId="107" locale="ko" seed={SEED} catalog={catalog} />);
+    fireEvent.click(await screen.findByText("add(蓮ノ空)"));
+    const picker = screen.getByTestId("picker");
+    expect(JSON.parse(picker.getAttribute("data-filters")!)).toEqual([
+      ["all", "picker.filterAll", null],
+      ["group", "蓮ノ空", 1],
+      ["individual", "cerise", 5],
+      ["others", "picker.filterOthers", null],
+    ]);
+    // The heading names the column, not the Predicted Setlist default.
+    expect(picker.getAttribute("data-title")).toBe("pickerTitle(蓮ノ空)");
+  });
+
+  it("no group-direct song in the group's catalog → no (empty) group chip", async () => {
+    // A sub-unit-run series: the catalog is scoped to the unit, the
+    // board's group is its root — nothing is credited to the root.
+    const catalog = [
+      {
+        ...song(10, "Unit Only", [1]),
+        unit: { artistId: 5, slug: "cerise", label: "cerise", color: "#888888", isSubUnit: true, isMainUnit: true },
+        creditedArtistIds: [5],
+      },
+    ] as AvailableSong[];
+    render(<FanBoardSection eventId="107" locale="ko" seed={SEED} catalog={catalog} />);
+    fireEvent.click(await screen.findByText("add(蓮ノ空)"));
+    expect(JSON.parse(screen.getByTestId("picker").getAttribute("data-filters")!)).toEqual([
+      ["all", "picker.filterAll", null],
+      ["individual", "cerise", 5],
+    ]);
+  });
+
+  it("the want column's picker is headed as a wishlist picker", async () => {
+    renderBlock();
+    fireEvent.click(await screen.findByText("addWish(蓮ノ空)"));
+    expect(screen.getByTestId("picker").getAttribute("data-title")).toBe(
+      "pickerTitleWish(蓮ノ空)",
+    );
+  });
+
   it("adds a pick: POST with string ids, counter 1/3, success feedback, analytics", async () => {
     handler = (url, init) => {
       if (url.startsWith("/api/events/107/board?")) return { status: 200, body: readBoard() };

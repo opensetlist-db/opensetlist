@@ -54,6 +54,7 @@ const SONGS: AvailableSong[] = [
     isMultiArtist: false,
     creditedArtistIds: [1],
     festivalGroupIds: [],
+    releaseDate: null,
   },
 ];
 
@@ -78,6 +79,23 @@ describe("<SongPickerSheet>", () => {
     );
     expect(screen.getByText("picker.sheetTitle")).toBeTruthy();
     expect(screen.getByText("Dream Believers")).toBeTruthy();
+  });
+
+  it("a caller-supplied title replaces the default heading", () => {
+    render(
+      <SongPickerSheet
+        locale="ko"
+        songs={SONGS}
+        selectedIds={[]}
+        unitFilters={FILTERS}
+        open={true}
+        onOpenChange={() => {}}
+        onToggle={() => {}}
+        title="Add to my Liella! wishlist"
+      />,
+    );
+    expect(screen.getByText("Add to my Liella! wishlist")).toBeTruthy();
+    expect(screen.queryByText("picker.sheetTitle")).toBeNull();
   });
 
   it("renders nothing when open=false (drawer collapsed)", () => {
