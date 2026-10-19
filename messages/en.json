@@ -560,8 +560,7 @@
   "Board": {
     "title": "Fan board",
     "explainer": "Want to hear ≠ expect — up to 3 each per group, skipping is fine",
-    "asOf": "As of {time}",
-    "openUntil": "Open until the show starts ({time})",
+    "openUntil": "Open until the show starts",
     "closed": "Closed",
     "groupsAria": "Choose a group",
     "colWant": "Songs fans want to hear",

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { trackEvent } from "@/lib/analytics";
-import { formatDate } from "@/lib/utils";
 import { absoluteUrl, entityPath } from "@/lib/seo/entityUrl";
 import { BOARD_TIMEOUT_MS } from "@/lib/board/config";
 import { boardFragment, groupIdFromFragment } from "@/lib/board/fragment";
@@ -77,22 +76,10 @@ type State =
   | {
       kind: "ready";
       locked: boolean;
-      asOf: string;
       groups: BoardGroupView[];
       /** The post-show tally; null before the show. */
       tally: BoardTally | null;
     };
-
-const TIME_FORMAT: Intl.DateTimeFormatOptions = {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  // The viewer's own zone, named — a bare "09:00" next to a JST show
-  // time is ambiguous for a Korean or US reader.
-  timeZoneName: "short",
-};
 
 /** Everything that differs between the two columns of a group, in one
  *  place (n15): which aggregate column, its heading, its analytics
@@ -233,7 +220,6 @@ export function FanBoardSection({
         setState({
           kind: "ready",
           locked: body.locked,
-          asOf: body.asOf,
           groups: body.groups,
           tally: body.status === "completed" ? body.tally : null,
         });
@@ -494,14 +480,14 @@ export function FanBoardSection({
           🎪 {t("title")}
         </h2>
         {state.kind === "ready" && (
+          // One short status line: open until the show starts, or
+          // closed. No aggregation timestamp and no clock time — the
+          // board is a light pre-show game, and a "{time} as of" stamp
+          // next to a zoned show time read as noise on a phone header.
+          // The response still carries `asOf` (cache evidence); the
+          // UI just doesn't print it.
           <p className="mt-0.5 text-[11px]" style={{ color: colors.textSubtle }}>
-            {t("asOf", { time: formatDate(state.asOf, locale, TIME_FORMAT) })}
-            {" · "}
-            {locked
-              ? t("closed")
-              : t("openUntil", {
-                  time: formatDate(seed.lockAt, locale, TIME_FORMAT),
-                })}
+            {locked ? t("closed") : t("openUntil")}
           </p>
         )}
         {tally && tally.size > 0 && (
