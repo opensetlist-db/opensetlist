@@ -543,11 +543,15 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
         <div className="mb-2 text-sm font-medium">페스 표시</div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs text-zinc-600">
+            <label
+              htmlFor="artist-festival-color"
+              className="mb-1 block text-xs text-zinc-600"
+            >
               그룹 색 (#rgb 또는 #rrggbb)
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="artist-festival-color"
                 placeholder="#e91e8c 또는 #e1c"
                 value={color}
                 onChange={(e) => setColor(e.target.value)}
@@ -565,10 +569,14 @@ export default function ArtistForm({ initialData }: ArtistFormProps) {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-zinc-600">
+            <label
+              htmlFor="artist-festival-sort-order"
+              className="mb-1 block text-xs text-zinc-600"
+            >
               정렬 순서
             </label>
             <input
+              id="artist-festival-sort-order"
               type="number"
               step={1}
               placeholder="비우면 미지정 (작을수록 앞)"
