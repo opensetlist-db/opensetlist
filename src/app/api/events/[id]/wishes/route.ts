@@ -32,7 +32,7 @@ type RouteProps = { params: Promise<{ id: string }> };
  * The TOP-3 query lives in `src/lib/wishes/top3.ts` so the polled
  * `/api/setlist` channel and this standalone GET stay in lockstep.
  *
- * Board-enabled events (n15-08) — POST changes contract:
+ * Board-enabled events (n15) — POST changes contract:
  *
  *   POST body { groupId: "<root artist id>", songId: "<base song id>",
  *               anonId: "<browser id>" }
@@ -160,7 +160,7 @@ export async function POST(req: NextRequest, { params }: RouteProps) {
 }
 
 /**
- * The per-group wish create on a board-enabled event (n15-08). Same
+ * The per-group wish create on a board-enabled event (n15). Same
  * order as the pick create: cheap parse → fresh control check (flag +
  * lock) → static target validation → ballot lock → cap + insert.
  */

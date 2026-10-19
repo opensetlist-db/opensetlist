@@ -41,7 +41,7 @@ interface StoredShape {
   lockedAt: string | null;
   /**
    * Set when the list was pre-filled from the fan board's picks
-   * (n15-09a): those come grouped, not ranked, so the UI labels the
+   * (n15): those come grouped, not ranked, so the UI labels the
    * order provisional until the fan arranges it. Absent on every list
    * the builder made itself — older payloads read as "not provisional".
    */

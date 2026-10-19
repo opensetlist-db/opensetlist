@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { classifySchemaDiff } from "../../../scripts/schema-diff-additive.mjs";
 
-// The real n15-08 diff (`prisma migrate diff --script`), which `db push`
+// The real per-group wishes diff (`prisma migrate diff --script`), which `db push`
 // refused as "data loss" over the new unique index.
 const N15_08 = `-- AlterTable
 ALTER TABLE "SongWish" ADD COLUMN     "anonId" VARCHAR(64),

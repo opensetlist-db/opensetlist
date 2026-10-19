@@ -4,7 +4,7 @@
 // that starts with "use client" may export components and hooks only.
 // A plain value or helper exported from it can resolve to `undefined`
 // when a server component imports it (the RSC client-reference
-// boundary), which is how `pickTitle` slipped through review in n15-03.
+// boundary), which is how `pickTitle` slipped through review on the fan board.
 import { describe, it } from "vitest";
 import { RuleTester, type Rule } from "eslint";
 import tsParser from "@typescript-eslint/parser";

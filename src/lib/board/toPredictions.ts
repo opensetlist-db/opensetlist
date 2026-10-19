@@ -1,5 +1,5 @@
 /**
- * Bridge: board picks → full setlist draft (n15-09a).
+ * Bridge: board picks → full setlist draft (n15).
  *
  * "Go to full setlist mode" seeds the Predict builder with the fan's
  * expected songs so the two prediction modes feel like one feature.

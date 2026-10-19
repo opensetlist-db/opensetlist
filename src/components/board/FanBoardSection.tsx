@@ -56,13 +56,13 @@ import { pickFailureKey } from "@/lib/board/ballotClient";
  *   - The parent never mounts this while the event is ongoing, so no
  *     board request is made during a show.
  *
- * Each group shows two columns side by side (n15-08): "want" (wishes)
+ * Each group shows two columns side by side (n15): "want" (wishes)
  * and "expect" (picks), each with its crowd TOP3 and the fan's own
  * entries. On a board event this block replaces the event-wide
  * wishlist before and after the show; during the show the page
  * renders the wishlist instead (and never mounts this).
  *
- * After the show (completed, n15-06) the same block is in result mode:
+ * After the show (completed) the same block is in result mode:
  * the expect column lists each group's shortlist — its TOP3 at the
  * lock — graded ✓/✕ against the final setlist with "N of K played",
  * an overall line sits at the top, and my own picks that were played
@@ -95,7 +95,7 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
 };
 
 /** Everything that differs between the two columns of a group, in one
- *  place (n15-08): which aggregate column, its heading, its analytics
+ *  place (n15): which aggregate column, its heading, its analytics
  *  name and its feedback copy. */
 const COLUMN = {
   wish: {
@@ -142,12 +142,12 @@ export function FanBoardSection({
    *  switch can scroll here. Must not start with `board-` (see
    *  `fragment.ts`: the group fragment matches no element on purpose). */
   anchorId?: string;
-  /** "Go to full setlist mode" (n15-09a). Passed only while the Predict
+  /** "Go to full setlist mode" (n15). Passed only while the Predict
    *  tab exists (upcoming, inside the D-7 window); without it the
    *  button is not rendered. Called after the import ran. */
   onOpenFullSetlist?: (outcome: BoardToBuilderOutcome) => void;
   /** Bumped by `<LiveSetlist>` after the Predict tab published a ballot
-   *  (n15-09b), so "my picks" re-read the local copy it wrote. */
+   *  (n15), so "my picks" re-read the local copy it wrote. */
   picksRevision?: number;
 }) {
   const t = useTranslations("Board");
@@ -387,7 +387,7 @@ export function FanBoardSection({
     report(outcome, "", "wish");
   };
 
-  // "Copy my picks" (n15-05). Titles are re-localized from the live
+  // "Copy my picks" (n15). Titles are re-localized from the live
   // catalog where the page has one, so the post matches what the board
   // shows even when the pick was added in another locale; a song that
   // dropped out of the catalog (moderated) is left out, mirroring how
@@ -452,7 +452,7 @@ export function FanBoardSection({
     });
   };
 
-  // "Go to full setlist mode" (n15-09a). The import uses the same
+  // "Go to full setlist mode" (n15). The import uses the same
   // availability-folded picks as the copy text, so a song the fan sees
   // as unavailable here never lands in the builder. Synchronous
   // localStorage work, then the parent switches to the Predict tab.
@@ -687,7 +687,7 @@ function ColumnPanel({
   t: ReturnType<typeof useTranslations<"Board">>;
   /** My entries in this column — highlighted wherever they appear. */
   mySongIds: ReadonlySet<string>;
-  /** Result mode (n15-06): this group's graded shortlist, which then
+  /** Result mode (n15): this group's graded shortlist, which then
    *  replaces the crowd TOP3. Null = not graded. */
   graded?: BoardGroupTally | null;
 }) {
@@ -867,7 +867,7 @@ function ColumnPanel({
 
 /**
  * Wishes the fan made on the event-wide wishlist before wishes became
- * per group (n15-08). They still count — under the group their song
+ * per group (n15). They still count — under the group their song
  * resolves to — but belong to no group's "my wishes" and use no slot,
  * so they are listed once, apart, and stay removable until the lock.
  */

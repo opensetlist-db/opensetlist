@@ -13,7 +13,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 
 /**
- * "My picks" for the open group on the fan board (n15-03): the rows I
+ * "My picks" for the open group on the fan board (n15): the rows I
  * added, an "N/3" counter, the add control (disabled with an
  * explanation at the cap) and the group-scoped picker.
  *
@@ -23,7 +23,7 @@ import { colors } from "@/styles/tokens";
  * pick. All writes go through `onAdd` / `onRemove` (the parent owns the
  * ballot and the feedback).
  *
- * Used for both columns (n15-08): `kind` picks the copy and the cap —
+ * Used for both columns (n15): `kind` picks the copy and the cap —
  * "my picks" under "expect", "my wishes" under "want". The two caps are
  * the same number today; each is read from its own constant so they
  * can't silently couple.
@@ -58,7 +58,7 @@ export function BoardMyPicks({
    *  completed events, or a festival with no roster). */
   groupSongs: readonly AvailableSong[];
   locked: boolean;
-  /** After the show (n15-06): every song id the final setlist counts
+  /** After the show (n15): every song id the final setlist counts
    *  as played. My picks in it are highlighted — whether or not they
    *  made the crowd's shortlist. Null/omitted = no result yet. */
   playedSongIds?: ReadonlySet<string> | null;

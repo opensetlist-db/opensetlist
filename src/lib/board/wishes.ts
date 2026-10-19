@@ -6,7 +6,7 @@ import type { BoardMineWish } from "@/lib/board/types";
 
 /**
  * Per-group wish writes and the "mine" read on board-enabled events
- * (n15-08).
+ * (n15).
  *
  * Wishes keep living in `SongWish` (no second table, no dual write):
  * the board path only adds the anon id and the chosen group to the
@@ -20,7 +20,7 @@ import type { BoardMineWish } from "@/lib/board/types";
  * Target validation (group on this board, song alive, song in the
  * group's base catalog) is shared with picks: `validatePickTarget`.
  *
- * Legacy rows (anonId NULL — written by the pre-n15-08 wishlist) are
+ * Legacy rows (anonId NULL — written by the pre-board wishlist) are
  * never touched here except by an explicit delete of that row's id:
  * they are never adopted into an anon's ballot, never counted toward
  * an anon's cap, and never returned by "mine".
@@ -105,7 +105,7 @@ export function createWish(
  *   - a row WITH an anon id → only that anon may remove it: no anon in
  *     the request, or a different one → 403 `not_owner`
  *   - a LEGACY row (anon id NULL) → removable by whoever holds its id,
- *     exactly as before n15-08 (the id lives in that browser's local
+ *     exactly as before per-group wishes (the id lives in that browser's local
  *     wishlist). It is deleted as-is; nothing is re-attributed to the
  *     caller.
  *

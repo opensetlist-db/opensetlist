@@ -160,7 +160,7 @@ describe("writeWishes resilience", () => {
   });
 });
 
-describe("per-group board wishes (n15-08)", () => {
+describe("per-group board wishes (n15)", () => {
   it("round-trips groupId / available beside legacy entries", () => {
     const wishes: WishEntry[] = [
       entry(1, "legacy-1"),

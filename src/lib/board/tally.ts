@@ -5,11 +5,11 @@ import type {
 } from "@/lib/board/types";
 
 /**
- * Pure rules of the post-show tally (n15-06). The cached loader in
+ * Pure rules of the post-show tally (n15). The cached loader in
  * `boardRead.ts` feeds these; nothing here touches the database.
  *
  * What gets graded: each group's SHORTLIST — the expect column's TOP3
- * computed by the n15-04 ranking over the picks that existed at the
+ * computed by the crowd TOP3 ranking over the picks that existed at the
  * lock. The loader builds that column from at-lock picks only, so the
  * shortlist is that column's `top`, and the grade is of exactly the
  * TOP3 fans saw when picking closed. Operator starters are not picks

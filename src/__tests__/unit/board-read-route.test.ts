@@ -1,13 +1,13 @@
 // @vitest-environment node
 //
-// Board read route contract (n15-02): the control check decides the
+// Board read route contract (n15): the control check decides the
 // response shape BEFORE any aggregate work, every answer is HTTP
 // `no-store`, and the read never touches a revalidate helper. The data
 // cache is replaced by a pass-through so each call reaches the mocked
 // sources (cache reuse itself is proven on a Preview, not here).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `song.findMany` exists only for the legacy-wish base fold (n15-08):
+// `song.findMany` exists only for the legacy-wish base fold (n15):
 // titles must come from the cached catalog, and the tests assert the
 // song query runs only when legacy wishes exist.
 vi.mock("@/lib/prisma", () => ({
@@ -295,7 +295,7 @@ describe("GET /api/events/[id]/board", () => {
     expect(body.groups).toHaveLength(2);
   });
 
-  // ── Post-show tally (n15-06): the loader branches on resolved status ──
+  // ── Post-show tally (n15): the loader branches on resolved status ──
 
   /** One `setlistItemSong.findMany` row as Prisma returns it. */
   const setlistRow = (songId: number, baseVersionId: number | null = null) => ({
@@ -464,7 +464,7 @@ function wishRow(
   };
 }
 
-describe("GET /api/events/[id]/board — want column (n15-08)", () => {
+describe("GET /api/events/[id]/board — want column (n15)", () => {
   beforeEach(() => {
     findFirst.mockResolvedValue(control() as never);
     // Group 1's catalog holds 10, 11; group 2's holds 11 (cross-group)

@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Per-group wish write contract on board-enabled events (n15-08), with
+// Per-group wish write contract on board-enabled events (n15), with
 // Prisma and the cached loaders mocked: the wish routes switch to the
 // board pick contract (strict anon id + group, advisory lock, cap 3 per
 // (event, anon, group), lock at the start time, 400/403/404/409/200)
@@ -173,7 +173,7 @@ afterEach(() => {
 
 describe("POST /wishes on a board event — malformed input → 400", () => {
   it.each([
-    // The pre-n15-08 client's body: no anon, no group, numeric song id.
+    // The pre-board client's body: no anon, no group, numeric song id.
     ["old client body", { songId: 10 }, "invalid_anon_id"],
     ["missing anonId", body({ anonId: undefined }), "invalid_anon_id"],
     ["empty anonId", body({ anonId: "" }), "invalid_anon_id"],

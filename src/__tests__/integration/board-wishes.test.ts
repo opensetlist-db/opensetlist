@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { Client } from "pg";
 
-// Per-group wishes on a board-enabled event (n15-08) against the DEV
+// Per-group wishes on a board-enabled event (n15) against the DEV
 // database: what only real rows, the real advisory lock and the real
 // unique (eventId, anonId, songId) can prove — the cap under 20
 // concurrent creates, the idempotent retry, legacy rows (anonId NULL)
@@ -351,7 +351,7 @@ describe("per-group wishes — dev database", () => {
     await insertLegacy(variantId);
     await postWish(ANON_A, songIds[1]);
     const top3 = await fetchEventWishlistTop3(eventId, "ko");
-    // Same rule as before n15-08: group by the stored song id, no
+    // Same rule as before per-group wishes: group by the stored song id, no
     // grouping, no folding — the variant stays its own entry.
     expect(top3.map((e) => [String(e.song.id), e.count])).toEqual([
       [songIds[0].toString(), 3],

@@ -1,4 +1,4 @@
-// Pure rules of the post-show tally (n15-06): which songs count as
+// Pure rules of the post-show tally (n15): which songs count as
 // played, and how each group's frozen shortlist is graded.
 import { describe, expect, it } from "vitest";
 import { buildBoardColumn, type BoardSongCount } from "@/lib/board/aggregate";

@@ -116,7 +116,7 @@ describe("buildBoardColumn", () => {
   });
 });
 
-describe("mergeLegacyWishes (n15-08)", () => {
+describe("mergeLegacyWishes (n15)", () => {
   const groupOf = (songId: string) =>
     ({ "10": "1", "20": "2" })[songId] ?? null;
 

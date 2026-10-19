@@ -45,17 +45,17 @@ export interface BoardGroupView {
   name: string;
   /** `Artist.color`; null = primary colour. */
   color: string | null;
-  /** "Songs fans want to hear" — per-group wishes (n15-08). Legacy
+  /** "Songs fans want to hear" — per-group wishes (n15). Legacy
    *  wishes (no anon id, no stored group) are counted under the group
    *  their song resolves to: submissions, never participants. */
   wishes: BoardColumn;
-  /** "Songs fans expect" — empty until fan picks exist (n15-03/04). */
+  /** "Songs fans expect" — empty until fan picks exist (n15). */
   expects: BoardColumn;
   /** Operator starter picks, shown in whichever column is `operator`. */
   starters: BoardSongRef[];
 }
 
-/** One song of a group's shortlist, graded after the show (n15-06). */
+/** One song of a group's shortlist, graded after the show (n15). */
 export interface BoardShortlistEntry extends BoardTopEntry {
   /** The final setlist holds the song, a variant of it, or a medley
    *  including it. */
@@ -72,7 +72,7 @@ export interface BoardGroupTally {
   size: number;
 }
 
-/** The post-show tally (n15-06), sent only once the event is
+/** The post-show tally (n15), sent only once the event is
  *  completed. */
 export interface BoardTally {
   /** Over the DISTINCT songs of every shortlist — a song shortlisted
@@ -131,7 +131,7 @@ export interface BoardChip {
   color: string | null;
 }
 
-/** What "copy my picks" (n15-05) needs from the page: the localized
+/** What "copy my picks" (n15) needs from the page: the localized
  *  event name with its day (series short + event name, the same
  *  composition as the page title) and the canonical event path from
  *  `entityPath` — never rebuilt client-side from a display name. */
@@ -147,7 +147,7 @@ export interface BoardBlockSeed {
 }
 
 /** One of the viewer's own expected-song picks, as `/board/mine`
- *  returns it (n15-03). Personal — never part of a board read. */
+ *  returns it (n15). Personal — never part of a board read. */
 export interface BoardMinePick {
   /** Server row id — what a delete names. */
   id: string;
@@ -161,7 +161,7 @@ export interface BoardMinePick {
   createdAt: string;
 }
 
-/** One of the viewer's own per-group wishes (n15-08) — same shape as
+/** One of the viewer's own per-group wishes (n15) — same shape as
  *  a pick. Only rows written with this anon id; legacy wishes are
  *  never returned (they have no owner on record). */
 export type BoardMineWish = BoardMinePick;
@@ -192,13 +192,13 @@ export type BoardPickErrorCode =
   | "board_locked"
   | "not_owner"
   | "cap_reached"
-  /** A publish (n15-09b) listed one song twice. */
+  /** A publish (n15) listed one song twice. */
   | "duplicate_song"
   | "group_conflict"
   | "busy";
 
 /** Body of a successful pick create (201 new / 200 exact retry). A
- *  board wish create (n15-08) answers with the same shape. */
+ *  board wish create (n15) answers with the same shape. */
 export interface BoardPickCreated {
   id: string;
   groupId: string;
@@ -206,7 +206,7 @@ export interface BoardPickCreated {
   createdAt: string;
 }
 
-/** Body of a successful publish (n15-09b): the whole resulting
+/** Body of a successful publish (n15): the whole resulting
  *  ballot, oldest first. */
 export interface BoardPublishResponse {
   picks: BoardPickCreated[];

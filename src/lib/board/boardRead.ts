@@ -41,12 +41,12 @@ import type {
  *     next board read. This is the ONE board read allowed while a
  *     show is ongoing.
  *   - `getBoardAggregateCached` — the per-group columns ("want" from
- *     wishes since n15-08, "expect" from picks). Own cache name
+ *     wishes since per-group wishes, "expect" from picks). Own cache name
  *     and own tag (`event:<id>:board`), ~2 min TTL, never invalidated
  *     by a fan write (only the admin starter-pick save expires it).
  *     Keyed on event + locale + resolved status so the
  *     upcoming → completed transition is a fresh miss: the completed
- *     shape carries the post-show tally (n15-06).
+ *     shape carries the post-show tally (n15).
  *
  * `resolveBoardRead` runs the control check BEFORE touching the
  * aggregate, so a disabled board or an ongoing/cancelled event costs
@@ -125,7 +125,7 @@ function starterRefs(
  * `COUNT(DISTINCT …)`; grouping by (group, anon) instead would ship one
  * row per participant just to count them.
  *
- * `before` (completed events only, n15-06) keeps just the picks that
+ * `before` (completed events only) keeps just the picks that
  * existed at the lock, so the expect column — and the shortlist the
  * tally grades — is the board as it stood when picking closed, rebuilt
  * from the table rather than from whatever preview was cached last.
@@ -174,11 +174,11 @@ async function loadPickCounts(eventId: bigint, before?: Date) {
 }
 
 /**
- * Wishes of one event, grouped (n15-08) — the same two queries as the
+ * Wishes of one event, grouped (n15) — the same two queries as the
  * picks, over `SongWish`, plus the legacy split:
  *
  *   - per (group, song): count + first submission. Rows written on the
- *     board carry their chosen group; LEGACY rows (pre-n15-08, no anon
+ *     board carry their chosen group; LEGACY rows (pre-board, no anon
  *     id, no group) come back under a null group and are returned
  *     separately for read-time attribution.
  *   - per group: distinct non-null anon ids. Legacy rows have none, so
@@ -254,7 +254,7 @@ async function loadWishCounts(eventId: bigint) {
 
 /**
  * The final setlist's songs, one row per `SetlistItemSong` (a medley is
- * several rows) — completed events only (n15-06). Same item filter as
+ * several rows) — completed events only (n15). Same item filter as
  * the share card's actual setlist: every live (non-deleted) item.
  * Song soft-deletion is NOT filtered: a shortlisted song moderated away
  * after the show still counts as played if the setlist names it.
@@ -271,8 +271,8 @@ async function loadSetlistSongs(eventId: bigint): Promise<SetlistSongRow[]> {
   }));
 }
 
-// `-v3` since n15-06 added the tally to the completed shape (`-v2`:
-// n15-08's want column). The data cache outlives a deploy, and an entry
+// `-v3` since the post-show tally joined the completed shape (`-v2`:
+// the want column). The data cache outlives a deploy, and an entry
 // written by the previous release must not reach the new client. A new
 // name is a clean miss.
 export const getBoardAggregateCached = cachedQuery(

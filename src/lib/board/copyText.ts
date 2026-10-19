@@ -1,7 +1,7 @@
 import type { StoredBoardPick } from "@/lib/board/pickStorage";
 
 /**
- * "Copy my picks" text of the fan board (n15-05): an X-ready post in
+ * "Copy my picks" text of the fan board (n15): an X-ready post in
  * the viewer's locale.
  *
  *   {event} セトリ予想 (OpenSetlist)

@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Board publish route contract (n15-09b), Prisma and the board
+// Board publish route contract (n15), Prisma and the board
 // resolvers mocked: the 400/403/404/409/200 contract checked on the
 // whole set BEFORE the transaction opens, the diff the locked section
 // runs (retained rows untouched, stale rows deleted, new rows

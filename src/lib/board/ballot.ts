@@ -25,8 +25,8 @@ import { classifyPreExecutionFailure } from "@/lib/dbErrors";
  * contend. The lock is transaction-scoped: it is released by COMMIT or
  * ROLLBACK, so a crashed request can't leave it held.
  *
- * Deliberately small — the board pick routes (n15-03), per-group wishes
- * (n15-08) and the publish bridge (n15-09b) all call these two, each
+ * Deliberately small — the board pick routes, per-group wishes and the
+ * publish bridge from the full setlist draft all call these two, each
  * with its own validation inside the callback. It is not a generic
  * ballot framework.
  *

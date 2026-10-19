@@ -177,7 +177,7 @@ export function LiveSetlist({
 }: Props) {
   const t = useTranslations("Event");
 
-  // Two-mode bridge (n15-09a). The board block and the setlist card are
+  // Two-mode bridge (n15). The board block and the setlist card are
   // siblings, so the "go to full setlist mode" tap is lifted here: the
   // board runs the import, this bumps a request the setlist section
   // reacts to (switch to Predict, re-read storage, show the outcome),
@@ -209,7 +209,7 @@ export function LiveSetlist({
   // The bridge needs a Predict tab to land in: upcoming and inside the
   // D-7 window — the same gate `<SetlistSection>` uses for the tab.
   const bridgeOpen = board !== null && status === "upcoming" && isWishPredictOpen;
-  // The reverse direction (n15-09b): a publish from the Predict tab
+  // The reverse direction (n15): a publish from the Predict tab
   // rewrote the local ballot, so the board block re-reads it (the
   // revision) and comes into view showing the new picks.
   const [boardPicksRevision, setBoardPicksRevision] = useState(0);
@@ -253,7 +253,7 @@ export function LiveSetlist({
 
   // Fan board (n15) and the event-wide wishlist are mutually exclusive
   // and decided by ONE condition: on a board event the board's "want"
-  // column replaces the wishlist while upcoming or completed (n15-08);
+  // column replaces the wishlist while upcoming or completed (n15);
   // while ongoing the board is not mounted and today's wishlist renders
   // instead — its overall TOP3 is part of the live payload, unchanged.
   const showBoard =

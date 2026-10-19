@@ -22,7 +22,7 @@
  * hydrate after mount, mirroring the `useMounted` + delayed-read
  * pattern in `<ReactionButtons>`.
  *
- * Board-enabled events (n15-08) share this key: per-group wishes are
+ * Board-enabled events (n15) share this key: per-group wishes are
  * stored here too, tagged with `groupId`, so the event-wide wishlist
  * that renders during the show still lists every wish the fan made.
  * On those events the server, not this module, owns the cap.
@@ -59,7 +59,7 @@ export interface WishEntry {
   song: WishSongDisplay;
   /**
    * Root group the wish was made under — set only for wishes added on
-   * a fan board (n15-08, board-enabled events). Absent = a LEGACY wish
+   * a fan board (n15, board-enabled events). Absent = a LEGACY wish
    * (the event-wide wishlist): it never counts toward a per-group cap
    * and is never re-posted under a group. Optional so entries written
    * by the previous release (and the non-board wishlist) stay valid.

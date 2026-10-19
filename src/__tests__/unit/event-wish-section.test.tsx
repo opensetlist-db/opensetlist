@@ -166,7 +166,7 @@ describe("EventWishSection — my-list cap of 3", () => {
     expect(screen.getByText("add")).toBeTruthy();
   });
 
-  it("per-group board wishes (n15-08) are listed but don't use the 3 slots", () => {
+  it("per-group board wishes (n15) are listed but don't use the 3 slots", () => {
     // A board event whose flag was turned off: the fan's 4 per-group
     // wishes stay listed, and the event-wide list still has room.
     writeWishes("1", [

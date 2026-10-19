@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-// The "want" column of the fan board (n15-08), through the whole block
+// The "want" column of the fan board (n15), through the whole block
 // with a mocked board read and mocked wish routes: two columns per
 // group, my wishes (POST/DELETE on the shared wish route with anon +
 // group), the cap per group independent of picks, highlight in the

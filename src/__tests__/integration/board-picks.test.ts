@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { devPgClient, utcParam } from "./devPg";
 
-// Fan board pick writes (n15-03) against the DEV database: the things
+// Fan board pick writes (n15) against the DEV database: the things
 // only real rows and a real advisory lock can prove — the cap holds
 // under 20 concurrent creates, the unique (event, anon, song) and the
 // idempotent retry, the group-conflict answer, the start-time lock at
@@ -418,7 +418,7 @@ describe("board picks — dev database", () => {
     expect(JSON.stringify(body)).not.toMatch(/itest-[abc]-/);
   });
 
-  it("post-show tally (n15-06): shortlist frozen at the lock, medley hit graded", async () => {
+  it("post-show tally (n15): shortlist frozen at the lock, medley hit graded", async () => {
     // Before the lock — A: songs 0, 1 · B: song 1 → song1 ×2, song0 ×1.
     for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);
     expect((await postPick(ANON_B, songIds[1])).status).toBe(201);
@@ -480,7 +480,7 @@ describe("board picks — dev database", () => {
   });
 });
 
-// Publish (n15-09b): the whole ballot replaced in one transaction.
+// Publish (n15): the whole ballot replaced in one transaction.
 describe("board publish — dev database", () => {
   it("replaces atomically: retained picks keep id + timestamp, others go, new ones arrive", async () => {
     for (const i of [0, 1]) expect((await postPick(ANON_A, songIds[i])).status).toBe(201);

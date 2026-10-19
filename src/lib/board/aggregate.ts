@@ -57,7 +57,7 @@ export function addSongCount(into: BoardSongCount, more: BoardSongCount): void {
 }
 
 /**
- * File legacy wishes (n15-08) under the board's groups.
+ * File legacy wishes (n15) under the board's groups.
  *
  * A legacy wish (written before per-group wishes, so no stored group
  * and no anon id) still counts — it is a real submission — under the

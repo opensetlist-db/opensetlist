@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Page guard (n15-02): the event page's server render hands the board
+// Page guard (n15): the event page's server render hands the board
 // block only its seed (lock time + chips) and NEVER runs board
 // aggregation — the aggregate is the client's job, after mount, so a
 // slow or failing board can't slow or 500 the page. Verified through

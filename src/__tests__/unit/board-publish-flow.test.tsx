@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-// "Put on the board" (n15-09b) end to end through the real
+// "Put on the board" (n15) end to end through the real
 // <LiveSetlist> → <SetlistSection> → <PredictedSetlist> →
 // <BoardPublishProposal>, with only the network stubbed: derive the
 // proposal from the list, edit it, preview against my current picks,

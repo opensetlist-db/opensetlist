@@ -151,7 +151,7 @@ export function EventWishSection({
   }
 
   // The 3-wish cap is the event-wide wishlist's own. On a fan board
-  // event (n15-08) the same storage key also holds per-group wishes
+  // event (n15) the same storage key also holds per-group wishes
   // (tagged `groupId`, up to 3 per group, capped by the server) so the
   // wishlist that renders during the show lists them; they must not
   // use this list's slots if the board is later switched off.

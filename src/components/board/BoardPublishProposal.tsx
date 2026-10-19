@@ -29,7 +29,7 @@ import type { AvailableSong } from "@/lib/types/predict";
 import { colors } from "@/styles/tokens";
 
 /**
- * "Put on the board" (n15-09b): the fan's ordered full setlist turned
+ * "Put on the board" (n15): the fan's ordered full setlist turned
  * into an editable proposal of expected songs, with a preview of what
  * publishing does to their current board picks, and the confirm that
  * publishes it.

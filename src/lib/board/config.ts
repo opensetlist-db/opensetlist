@@ -13,7 +13,7 @@ export const BOARD_TIMEOUT_MS = 6000;
  *  the operator's starter picks and the wish cap: one mental model. */
 export const BOARD_PICKS_PER_GROUP = 3;
 
-/** Wishes per (event, anon, group) on a board-enabled event (n15-08)
+/** Wishes per (event, anon, group) on a board-enabled event (n15)
  *  — enforced by the wish write route, mirrored by the "want" column's
  *  "N/3" counter. Same number as the pick cap on purpose: "up to 3
  *  each per group" is one rule for the fan to learn. */

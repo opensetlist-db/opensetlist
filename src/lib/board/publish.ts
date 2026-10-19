@@ -12,7 +12,7 @@ import {
 import type { BoardPickCreated } from "@/lib/board/types";
 
 /**
- * Publish a whole ballot at once (n15-09b) — the write behind "put on
+ * Publish a whole ballot at once (n15) — the write behind "put on
  * the board": the fan's edited proposal REPLACES their expected songs
  * for the event in one transaction.
  *

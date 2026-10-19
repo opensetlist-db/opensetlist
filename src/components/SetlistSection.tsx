@@ -83,14 +83,14 @@ interface Props {
   /** Filter chip set (server-derived). Empty array hides the picker. */
   unitFilters: UnitFilter[];
   /**
-   * Latest "go to full setlist mode" tap from the board (n15-09a), or
+   * Latest "go to full setlist mode" tap from the board (n15), or
    * null. Each new `seq` opens the Predicted tab and remounts the
    * builder so it re-reads the list the board import just wrote.
    */
   builderRequest?: BuilderRequest | null;
   /** The builder's "back to board" switch; absent → no switch. */
   onBackToBoard?: () => void;
-  /** Board groups for the builder's "put on the board" (n15-09b);
+  /** Board groups for the builder's "put on the board" (n15);
    *  absent → no publish. */
   boardGroups?: readonly BoardChip[];
   onBoardPublished?: () => void;

@@ -197,7 +197,7 @@ describe("board → full setlist mode", () => {
 
   it("wishes (the board's other column) never enter the draft", async () => {
     storePicks([{ groupId: "1", songId: "10", title: "残陽" }]);
-    // A board wish for 11 under the same group (n15-08 storage).
+    // A board wish for 11 under the same group (per-group wish storage).
     writeWishes("107", [
       {
         songId: 11,

@@ -7,7 +7,7 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { StoredBoardPick } from "@/lib/board/pickStorage";
 import type { AvailableSong } from "@/lib/types/predict";
 
-// n15-09b — "put on the board": the full ordered list → a proposal of
+// Fan board (n15) — "put on the board": the full ordered list → a proposal of
 // at most 3 expected songs per group. Pure; nothing is written.
 
 function song(id: number, groups: number[] = []): AvailableSong {

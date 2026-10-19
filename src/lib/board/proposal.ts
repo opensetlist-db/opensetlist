@@ -1,5 +1,5 @@
 /**
- * Bridge: full setlist draft → board proposal (n15-09b).
+ * Bridge: full setlist draft → board proposal (n15).
  *
  * "Put on the board" turns the fan's ordered Predict list into the
  * expected songs it implies: per group, the first three songs of that

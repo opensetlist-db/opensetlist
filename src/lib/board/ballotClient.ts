@@ -1,5 +1,5 @@
 /**
- * Browser-side calls to the fan board ballot routes (n15-03, n15-09b):
+ * Browser-side calls to the fan board ballot routes (n15):
  * the shared fetch wrapper, the error-code → message-key mapping, the
  * `/board/mine` request and the whole-ballot publish.
  *
@@ -113,7 +113,7 @@ export type PublishOutcome =
   | { ok: false; reason: PickFailure };
 
 /**
- * Publish a whole ballot (n15-09b): `PUT /board/picks` with the given
+ * Publish a whole ballot (n15): `PUT /board/picks` with the given
  * picks, which replace the anon's expected songs atomically. The caller
  * owns local storage and the feedback — this is only the call and its
  * typed outcome.

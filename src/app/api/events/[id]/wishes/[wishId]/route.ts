@@ -26,7 +26,7 @@ type RouteProps = { params: Promise<{ id: string; wishId: string }> };
  * uuids and not enumerable, but defense-in-depth: the URL already
  * carries the event id, so honoring it costs nothing.
  *
- * Board-enabled events (n15-08) use the board pick contract instead:
+ * Board-enabled events (n15) use the board pick contract instead:
  *
  *   DELETE body { anonId }   (optional — see below)
  *     → 200 { id }
@@ -36,7 +36,7 @@ type RouteProps = { params: Promise<{ id: string; wishId: string }> };
  *           treats it as "already gone")
  *
  * A wish written with an anon id can only be removed by that anon. A
- * LEGACY wish (written before n15-08, no anon id) stays removable by
+ * LEGACY wish (written before per-group wishes, no anon id) stays removable by
  * whoever holds its id — the browser that made it keeps that id in its
  * local wishlist — with or without an anon id in the body, and is
  * deleted as-is: never adopted into the caller's ballot.
@@ -76,7 +76,7 @@ export async function DELETE(req: Request, { params }: RouteProps) {
 }
 
 /**
- * The wish delete on a board-enabled event (n15-08). An absent body,
+ * The wish delete on a board-enabled event (n15). An absent body,
  * or a body without `anonId`, is an anonymous delete — enough for a
  * legacy row, refused (`not_owner`) for a ballot row. A body that HAS
  * an `anonId` must carry a valid one: a malformed id is a client bug,

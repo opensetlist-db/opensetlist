@@ -1,0 +1,6 @@
+# Executable scripts must keep LF. bash treats a CRLF line ending as part
+# of the command, and Vite (vitest) fails to strip a `#!` shebang from a
+# CRLF .mjs it imports — core.autocrlf=true would convert both on a
+# Windows checkout.
+*.sh text eol=lf
+scripts/**/*.mjs text eol=lf

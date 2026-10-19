@@ -10,7 +10,7 @@ import { Client, types } from "pg";
  * MACHINE'S LOCAL zone:
  *   - a JS `Date` passed as a parameter is serialized as local time
  *     with an offset, and Postgres drops the offset for this type — the
- *     row lands hours off on any non-UTC laptop (n15-03's lock-boundary
+ *     row lands hours off on any non-UTC laptop (the board picks lock-boundary
  *     fixture, 2026-10-18);
  *   - a `timestamp` read back is parsed as local time, so a value read
  *     and written back (n14's "restore with the same startTime") moves.

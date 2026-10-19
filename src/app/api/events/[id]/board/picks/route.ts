@@ -16,7 +16,7 @@ import {
 type RouteProps = { params: Promise<{ id: string }> };
 
 /**
- * Add an expected song to the caller's fan board ballot (n15-03).
+ * Add an expected song to the caller's fan board ballot (n15).
  *
  *   POST /api/events/[id]/board/picks
  *     body { groupId: "<root artist id>", songId: "<base song id>",
@@ -80,7 +80,7 @@ export async function POST(req: Request, { params }: RouteProps) {
 }
 
 /**
- * Publish the caller's whole ballot at once (n15-09b, "put on the
+ * Publish the caller's whole ballot at once (n15, "put on the
  * board" from the Predict tab): the given picks REPLACE the anon's
  * expected songs for this event, atomically.
  *

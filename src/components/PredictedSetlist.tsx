@@ -99,14 +99,14 @@ interface Props {
   unitFilters: UnitFilter[];
   /**
    * What the board's "go to full setlist mode" did just before this
-   * mount (n15-09a), or null when the fan came by the tab. Drives the
+   * mount (n15), or null when the fan came by the tab. Drives the
    * one-line notice: songs imported, or the existing list kept.
    */
   bridgeOutcome?: BoardToBuilderOutcome | null;
   /** Mode switch back to the board block; absent on non-board events. */
   onBackToBoard?: () => void;
   /**
-   * The board's groups (n15-09b), present only where the board takes
+   * The board's groups (n15), present only where the board takes
    * picks right now. Enables "put on the board": the list → an
    * editable proposal → published expected songs.
    */
@@ -243,11 +243,11 @@ export function PredictedSetlist({
   // (avoids react-hooks/set-state-in-effect; the canonical project
   // pattern, see useMounted.ts:9-18).
   const [predictions, setPredictions] = useState<PredictionEntry[]>([]);
-  // A list pre-filled from board picks (n15-09a) is grouped, not
+  // A list pre-filled from board picks (n15) is grouped, not
   // ranked; the builder says so until the fan reorders. Stored with the
   // list, so the label survives a reload.
   const [provisional, setProvisional] = useState(false);
-  // "Put on the board" panel (n15-09b) and the last publish's count.
+  // "Put on the board" panel (n15) and the last publish's count.
   const [proposalOpen, setProposalOpen] = useState(false);
   const [publishedCount, setPublishedCount] = useState<number | null>(null);
   const [hydratedKey, setHydratedKey] = useState<string | null>(null);
@@ -509,10 +509,10 @@ export function PredictedSetlist({
     isPreShow && availableSongs.length > 0 && unitFilters.length > 0;
   const isDesktopPicker = mounted && isDesktop && showPicker;
 
-  // Bridge strip parts (n15-09a), see the strip below.
+  // Bridge strip parts (n15), see the strip below.
   const showBridgeNotice = bridgeOutcome !== null && bridgeOutcome.kind !== "none";
   const showProvisional = provisional && predictions.length > 0;
-  // "Put on the board" (n15-09b): only before the lock, with a list to
+  // "Put on the board" (n15): only before the lock, with a list to
   // derive from — an empty list has nothing to propose. (A fan who
   // removes every chip in the proposal can still publish the empty set,
   // which clears their picks; the preview lists each removal first.)
@@ -601,7 +601,7 @@ export function PredictedSetlist({
         </div>
       )}
 
-      {/* Two-mode bridge strip (n15-09a), pre-show only: the outcome of
+      {/* Two-mode bridge strip (n15), pre-show only: the outcome of
           the board import that opened this tab, the provisional-order
           label, and the switch back to the board. Hidden as a whole
           when none applies, so non-board events render as before. */}
@@ -633,7 +633,7 @@ export function PredictedSetlist({
                 {t("provisionalOrder")}
               </p>
             )}
-            {/* Publish outcome (n15-09b). Unlike the import notice,
+            {/* Publish outcome (n15). Unlike the import notice,
                 this region stays mounted while the builder does (a
                 publish doesn't remount it), so it can announce. */}
             {boardGroups && (

@@ -24,7 +24,7 @@ import type {
 
 /**
  * The viewer's own ballot on one event's fan board: expected-song
- * picks (n15-03) and per-group wishes (n15-08). Local copy first,
+ * picks (n15) and per-group wishes (n15). Local copy first,
  * `/board/mine` as the fallback, and the add/remove calls with their
  * outcome reported back as a typed result the block turns into a
  * toast.
@@ -165,7 +165,7 @@ export function useBoardBallot({
    *  request is made for a hidden / failed / ongoing board. */
   active: boolean;
   /** Bumped when the ballot was replaced outside this hook — a publish
-   *  from the Predict tab (n15-09b) writes the local picks itself — so
+   *  from the Predict tab (n15) writes the local picks itself — so
    *  the hook re-reads storage. */
   revision?: number;
 }) {

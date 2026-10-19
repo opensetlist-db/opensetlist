@@ -479,7 +479,7 @@ describe("<LiveSetlist> board guard", () => {
     fetchMock.mock.calls.filter(([url]) => String(url).includes("/board"));
 
   it.each(["upcoming", "completed"] as const)(
-    "%s mounts the block and requests the board; the standalone wishlist is replaced (n15-08)",
+    "%s mounts the block and requests the board; the standalone wishlist is replaced (n15)",
     async (status) => {
       respond(READY);
       renderLiveSetlist(status);
@@ -542,7 +542,7 @@ describe("<LiveSetlist> board guard", () => {
   });
 });
 
-describe("<FanBoardSection> post-show result mode (n15-06)", () => {
+describe("<FanBoardSection> post-show result mode (n15)", () => {
   const SHORTLIST = [
     { songId: "10", title: "残陽", count: 7, available: true, played: true },
     { songId: "11", title: "ハナムスビ", count: 3, available: true, played: false },
