@@ -255,6 +255,9 @@ describe("GET /api/admin/events/[id]/board", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.groups.map((g: { groupId: string }) => g.groupId)).toEqual(["1", "2"]);
+    // Positive control: the catalog IS read for the live group, so the
+    // negative assertion below is not passing just because nothing ran.
+    expect(catalogMock).toHaveBeenCalledWith(BigInt(1), "ko");
     expect(catalogMock).not.toHaveBeenCalledWith(BigInt(20), expect.anything());
   });
 });
