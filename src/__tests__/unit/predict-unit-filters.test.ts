@@ -126,6 +126,8 @@ describe("deriveUnitFilters", () => {
       ),
     ];
     const out = deriveUnitFilters(songs, 1, "Hasunosora", "All", "Others", "#0277BD");
+    // Positive control: the collab still has a home — `others`.
+    expect(out.map((f) => f.kind)).toEqual(["all", "others"]);
     expect(out.find((f) => f.kind === "group")).toBeUndefined();
   });
 
