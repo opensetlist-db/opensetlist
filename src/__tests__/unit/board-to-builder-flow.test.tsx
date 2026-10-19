@@ -272,7 +272,15 @@ describe("board → full setlist mode", () => {
     expect(screen.queryByRole("button", { name: /toBoard/ })).toBeNull();
   });
 
-  it("before the wish/predict window: no board at all (one open date), so no bridge", () => {
+  it("before the wish/predict window: no board at all (one open date), so no bridge", async () => {
+    // Positive control: the SAME seed mounts the board once the window
+    // is open, so the absence below is the window gate's doing.
+    const open = renderPage();
+    await screen.findByRole("button", { name: "copy" });
+    expect(document.getElementById("fan-board-107")).not.toBeNull();
+    open.unmount();
+    fetchMock.mockClear();
+
     // Even with a seed handed in, the board waits for the same window
     // as the wishlist and the Predict tab.
     renderPage({ isWishPredictOpen: false });
