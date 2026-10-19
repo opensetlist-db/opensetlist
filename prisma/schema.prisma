@@ -281,6 +281,20 @@ model Artist {
   // No-op for type=solo|group (the chip filter only runs over
   // sub-artists, which by construction are units).
   isMainUnit        Boolean        @default(false)
+  // sortOrder: display order among top-level groups on festival
+  // surfaces — the group chips on the fan board and on the prediction
+  // picker. Lower first, null last; ties (and nulls) fall back to the
+  // roster rule (performer count desc, first appearance). Set by the
+  // operator, e.g. by series debut, so a festival lists its series in
+  // franchise order instead of by how many members each brings.
+  // Only read for root artists (parentArtistId IS NULL).
+  sortOrder         Int?
+  // isSideProject: a cross-IP side project / collaboration unit — e.g.
+  // a unit whose members come from several series — that is a
+  // top-level Artist like a main group but must not get its own column
+  // on the fan board. It stays in song catalogs and in the prediction
+  // picker's chips; only the board's group list drops it.
+  isSideProject     Boolean        @default(false)
   originalName      String
   originalShortName String?
   originalBio       String?
