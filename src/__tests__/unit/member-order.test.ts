@@ -31,6 +31,7 @@ vi.mock("@/lib/prisma", () => ({
     stageIdentity: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       update: vi.fn(),
       create: vi.fn(),
     },
@@ -239,7 +240,8 @@ describe("PUT /api/admin/stage-identities/[id] — sortOrder", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    (prisma.stageIdentityTranslation.deleteMany as unknown as Mock).mockResolvedValue({ count: 1 });
+    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
   it("a body without the key leaves the stored order alone", async () => {
@@ -273,7 +275,8 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
 
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
-    (prisma.stageIdentityTranslation.deleteMany as unknown as Mock).mockResolvedValue({ count: 1 });
+    si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
   it("missing / malformed translations or an unknown type → 400 with a message, nothing written", async () => {
@@ -306,9 +309,10 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
       undefined,
       "persona",
     ]);
-    expect(si.update.mock.calls[2][0].data.translations).toEqual({
-      create: [{ locale: "ko", name: "M" }],
-    });
+    // Translations go through per-locale upserts, not the scalar update
+    // (see admin-stage-identity-put.test.ts for the full contract).
+    expect(si.update.mock.calls[2][0].data.translations).toBeUndefined();
+    expect(prisma.stageIdentityTranslation.upsert).toHaveBeenCalledTimes(3);
   });
 });
 
