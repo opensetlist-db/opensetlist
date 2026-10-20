@@ -18,9 +18,17 @@
 //   - wraps the query in `BEGIN READ ONLY … ROLLBACK`, so the read-only
 //     mode (and the statement timeout, `SET LOCAL`) ends with the
 //     transaction and nothing is ever committed;
-//   - refuses, before connecting, any statement that writes, changes
-//     session state, or ends the transaction early (`COMMIT; INSERT …`
-//     would run the insert outside the read-only transaction);
+//   - sends the query with the EXTENDED protocol, which Postgres accepts
+//     for exactly one statement. That is the real guarantee: a second
+//     statement could be a `COMMIT` that ends the read-only transaction
+//     and lets a write or a session SET after it persist, and no text
+//     check catches every way to hide one (block comments, `--` inside a
+//     string). One statement inside a read-only transaction that is
+//     rolled back can neither write nor leave a setting behind (SET is
+//     transactional);
+//   - refuses, before connecting, statements that write, change session
+//     state or control the transaction, so the mistake gets a clear
+//     message instead of a Postgres error;
 //   - never prints the connection string, also not inside an error.
 //
 // Env: `.env.local` first, then `.env` (dotenv never overrides a value
@@ -29,22 +37,23 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// The task's minimum (`insert|update|delete|alter|drop|create|truncate|
-// set session`) plus what the same reasoning covers: other writes and
-// DDL, transaction control (would escape BEGIN READ ONLY), and every
-// session-level SET / RESET / DISCARD (only `SET LOCAL` is
-// transaction-scoped). A false refusal costs a rephrased query; a missed
-// write does not, so the list is broad.
+// Writes and DDL, transaction control (would escape BEGIN READ ONLY),
+// and every session-level SET / RESET / DISCARD (only `SET LOCAL` is
+// transaction-scoped). A false refusal costs a rephrased query, so the
+// list is broad; a miss is still caught by the read-only transaction.
 const REFUSED_START =
   /^\s*(insert|update|delete|merge|alter|drop|create|truncate|grant|revoke|copy|comment|vacuum|reindex|cluster|lock|refresh|call|do|prepare|execute|deallocate|listen|notify|unlisten|import|security|begin|start|commit|end|rollback|abort|savepoint|release|reset|discard|set(?!\s+local\b))\b/i;
 // `set_config(name, value, false)` changes the setting for the SESSION
 // from inside a plain SELECT — the same leak as `SET SESSION`.
 const REFUSED_ANYWHERE = /\bset_config\s*\(/i;
 
-/** Statements of a script, `--` comments removed. A `;` inside a string
- *  literal splits wrongly, which can only cause a false refusal. */
+/** Statements of a script, `/* … *\/` and `--` comments removed. Not
+ *  literal-aware: a `;` or `--` inside a string splits or cuts wrongly.
+ *  That only matters for the friendly message — the extended protocol
+ *  still refuses a second statement. */
 function statements(sql) {
   return sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
     .split("\n")
     .map((line) => line.replace(/--.*$/, ""))
     .join("\n")
@@ -61,7 +70,15 @@ function statements(sql) {
 export function refusalReason(sql) {
   const stmts = statements(sql);
   if (stmts.length === 0) return "no SQL statement given";
+  if (stmts.length > 1) {
+    return "one statement per run — a second one could end the read-only transaction";
+  }
   for (const stmt of stmts) {
+    // After comment removal a statement starts with a keyword or `(`;
+    // anything else (an unclosed or nested comment) can't be checked.
+    if (!/^[a-z(]/i.test(stmt)) {
+      return "the statement does not start with a keyword — remove the leading comment";
+    }
     const start = stmt.match(REFUSED_START);
     if (start) {
       return `"${start[1].toUpperCase()}" is a write, a session-level setting or transaction control — this helper only reads`;
@@ -124,16 +141,15 @@ async function main(argv) {
   try {
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL statement_timeout = '60s'");
-    const result = await client.query(sql);
-    // A multi-statement script returns one result per statement.
-    const results = Array.isArray(result) ? result : [result];
-    for (const r of results) {
-      if (r.rows && r.fields?.length) {
-        console.table(r.rows.map(printable));
-        console.log(`(${r.rowCount ?? r.rows.length} row${r.rows.length === 1 ? "" : "s"})`);
-      } else {
-        console.log(`${r.command ?? "OK"}`);
-      }
+    // `queryMode: "extended"` (unnamed statement, so nothing is left on a
+    // pooled backend): Postgres answers "cannot insert multiple commands
+    // into a prepared statement" to a second statement, however hidden.
+    const r = await client.query({ text: sql, queryMode: "extended" });
+    if (r.fields?.length) {
+      console.table(r.rows.map(printable));
+      console.log(`(${r.rows.length} row${r.rows.length === 1 ? "" : "s"})`);
+    } else {
+      console.log(r.command ?? "OK");
     }
   } finally {
     await client.query("ROLLBACK").catch(() => {});

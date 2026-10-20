@@ -11,9 +11,10 @@ import { refusalReason } from "../../../scripts/db-ro.mjs";
 describe("refusalReason", () => {
   it.each([
     ["a plain select", "select 1 as ok"],
-    ["a multi-statement read", "select 1; select count(*) from \"Event\";"],
+    ["a trailing semicolon and comments", "-- count\n/* events */ select count(*) from \"Event\";\n"],
     ["a CTE read", "with e as (select id from \"Event\") select count(*) from e"],
-    ["a transaction-scoped setting", "set local work_mem = '64MB'; select 1"],
+    ["a parenthesised query", "(select 1) union (select 2)"],
+    ["a transaction-scoped setting", "set local work_mem = '64MB'"],
     ["a column named like a keyword", "select \"update\", \"delete\" from t"],
   ])("allows %s", (_name, sql) => {
     expect(refusalReason(sql)).toBeNull();
@@ -30,10 +31,26 @@ describe("refusalReason", () => {
     ["set session", "set session characteristics as transaction read only"],
     ["plain set (session-scoped)", "set statement_timeout = 0"],
     ["set_config inside a select", "select set_config('x.y', '1', false)"],
-    ["a commit that escapes the read-only transaction", "select 1; commit; insert into t values (1)"],
-    ["a write in a later statement", "select 1;\n  update t set a = 1;"],
+    ["set session behind a block comment", "/* x */ set session characteristics as transaction read only"],
+    ["commit behind a block comment", "/**/commit"],
   ])("refuses %s", (_name, sql) => {
     expect(refusalReason(sql)).toMatch(/only reads|session setting/);
+  });
+
+  // A second statement could be a COMMIT that ends BEGIN READ ONLY and
+  // lets what follows persist. The script also sends the query with the
+  // extended protocol, where Postgres itself refuses a second statement;
+  // this is the early, readable refusal.
+  it.each([
+    ["a commit that escapes the read-only transaction", "select 1; commit; insert into t values (1)"],
+    ["a hidden commit", "select 1; /**/ commit; /**/ insert into t values (1)"],
+    ["two reads", "select 1; select 2"],
+  ])("refuses %s (more than one statement)", (_name, sql) => {
+    expect(refusalReason(sql)).toMatch(/one statement per run/);
+  });
+
+  it("refuses a statement left behind an unclosed comment", () => {
+    expect(refusalReason("/* commit")).toMatch(/does not start with a keyword/);
   });
 
   it("refuses an empty script", () => {

@@ -34,10 +34,17 @@ echo "── pending schema diff ──"
 cat "$diff_file"
 echo "─────────────────────────"
 
-if ! node scripts/schema-diff-additive.mjs --drops "$diff_file"; then
+# Exit 4 = drops found; any other non-zero is the checker failing, which
+# must stop the push too but not be reported as a drop.
+drops_status=0
+node scripts/schema-diff-additive.mjs --drops "$diff_file" || drops_status=$?
+if [ "$drops_status" -eq 4 ]; then
   echo "::error::Refusing to push: the schema diff drops the statements above."
   echo "Hint: a branch-only column from an unmerged PR? re-run migrate-dev --ref <that branch> after this; or dispatch with accept_data_loss=true"
   exit 1
+elif [ "$drops_status" -ne 0 ]; then
+  echo "::error::The drop check failed (exit $drops_status); not pushing."
+  exit "$drops_status"
 fi
 
 if node scripts/schema-diff-additive.mjs "$diff_file"; then

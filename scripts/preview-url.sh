@@ -7,9 +7,12 @@
 #   1–6 digits   → a PR number (its head commit, `gh pr view`)
 #   7–40 hex     → a commit (a short one is expanded by `git rev-parse`)
 #   anything else → a branch (`origin/<branch>`, fetched first)
+#   A branch whose name is all hex: pass `origin/<name>`'s sha instead.
 #
-# Prints `<state> <environment> <environment_url>`; exits 1 with "no
-# deployment yet" when Vercel has not reported one for that commit.
+# Prints the commit, the latest status state, the environment and the
+# status's `environment_url` (the per-commit site URL; "-" while the
+# build has none yet). Exits 1 with "no deployment yet" when Vercel has
+# not reported one for that commit.
 #
 # Why: the branch alias (`opensetlist-git-dev-…vercel.app`) can lag the
 # branch head — it moves only when the newest build finishes — so
@@ -43,7 +46,7 @@ if [ -z "$deployment" ]; then
 fi
 read -r id environment <<< "$deployment"
 
-status="$(gh api "repos/$repo/deployments/$id/statuses?per_page=1" --jq '.[0] | select(. != null) | "\(.state) \(.environment_url // .target_url // "-")"')"
+status="$(gh api "repos/$repo/deployments/$id/statuses?per_page=1" --jq '.[0] | select(. != null) | "\(.state) \(.environment_url // "-")"')"
 if [ -z "$status" ]; then
   echo "no deployment yet for $sha (deployment $id has no status)" >&2
   exit 1

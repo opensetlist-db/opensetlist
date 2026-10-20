@@ -8,8 +8,10 @@
 //
 //   node scripts/schema-diff-additive.mjs --drops <diff.sql>
 //     exit 0 → no DROP COLUMN / DROP TABLE / DROP INDEX in the diff
-//     exit 1 → at least one (each is printed): the migrate workflows stop
+//     exit 4 → at least one (each is printed): the migrate workflows stop
 //              here unless the operator dispatched with accept_data_loss
+//              (not 1: an uncaught error exits 1, and must not read as a
+//              drop)
 //
 // Why this exists: `prisma db push` reports ANY new unique constraint as
 // possible data loss and refuses without `--accept-data-loss`, even when
@@ -138,7 +140,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     }
     console.log("schema diff DROPS a column, table or index:");
     for (const stmt of drops) console.log(`  ${stmt};`);
-    process.exit(1);
+    process.exit(4);
   }
   const { additive, offending } = classifySchemaDiff(sql);
   if (additive) {
