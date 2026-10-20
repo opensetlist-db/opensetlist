@@ -24,6 +24,11 @@
  *
  * Mutates in place and returns the same value (Sentry hooks return the
  * event they were given); cycles and non-plain objects are tolerated.
+ * Read-only slots (getter-only accessors, frozen objects/arrays) are
+ * skipped rather than thrown on: Sentry payloads can reference live
+ * objects — span data on a page render carries one with a getter-only
+ * `$` — and a throw inside `beforeSend*` drops the whole event and is
+ * itself reported as an unhandled error, once per sampled request.
  * Pure — no Sentry import — so it is unit-tested without the SDK.
  */
 
@@ -49,6 +54,22 @@ function scrubString(s: string): string {
 
 const MAX_DEPTH = 32;
 
+// Writes only when the value actually changed (the walk mutates nested
+// objects in place, so most slots come back identical and need no
+// write), and never throws: `Reflect.set` answers false for a
+// getter-only or non-writable slot instead of raising a TypeError the
+// way a strict-mode assignment does. The try covers Proxies whose `set`
+// trap throws. A slot we cannot write keeps its value — such slots hold
+// SDK/runtime objects, not the request data the id travels in.
+function assign(target: object, key: PropertyKey, prev: unknown, next: unknown) {
+  if (next === prev) return;
+  try {
+    Reflect.set(target, key, next);
+  } catch {
+    // unwritable — leave as is
+  }
+}
+
 export function scrubAnon<T>(value: T): T {
   const seen = new WeakSet<object>();
   const walk = (v: unknown, depth: number): unknown => {
@@ -58,17 +79,21 @@ export function scrubAnon<T>(value: T): T {
     seen.add(v);
     if (Array.isArray(v)) {
       if (v.length === 2 && typeof v[0] === "string" && SENSITIVE_KEY.test(v[0])) {
-        v[1] = FILTERED;
+        assign(v, 1, v[1], FILTERED);
         return v;
       }
-      for (let i = 0; i < v.length; i++) v[i] = walk(v[i], depth + 1);
+      for (let i = 0; i < v.length; i++) assign(v, i, v[i], walk(v[i], depth + 1));
       return v;
     }
     const rec = v as Record<string, unknown>;
     for (const key of Object.keys(rec)) {
-      rec[key] = SENSITIVE_KEY.test(key)
-        ? FILTERED
-        : walk(rec[key], depth + 1);
+      const prev = rec[key];
+      assign(
+        rec,
+        key,
+        prev,
+        SENSITIVE_KEY.test(key) ? FILTERED : walk(prev, depth + 1),
+      );
     }
     return v;
   };
