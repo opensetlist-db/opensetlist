@@ -63,6 +63,13 @@ export type ArtistTranslationInput = {
 export type StageIdentityTranslationInput = {
   locale: string;
   name: string;
+  // Present only when the body carried the key: `null` = clear the
+  // short name, absent = leave the stored one alone. The per-member
+  // PUT upserts translations per locale (see
+  // `stage-identities/[id]/route.ts`), so a client that only edits the
+  // name (the artist form's member row) must not reset shortName; on
+  // the create paths an absent key simply means "no short name yet".
+  shortName?: string | null;
 };
 
 export type RealPersonTranslationInput = {
@@ -132,7 +139,16 @@ export function parseStageIdentityTranslations(
     if (!locale.ok) return locale;
     const name = requireString(t.name, `${prefix}[${i}].name`);
     if (!name.ok) return name;
-    return { ok: true, value: { locale: locale.value, name: name.value } };
+    const out: StageIdentityTranslationInput = {
+      locale: locale.value,
+      name: name.value,
+    };
+    if ("shortName" in t) {
+      const shortName = nullableString(t.shortName, `${prefix}[${i}].shortName`);
+      if (!shortName.ok) return shortName;
+      out.shortName = shortName.value;
+    }
+    return { ok: true, value: out };
   });
 }
 

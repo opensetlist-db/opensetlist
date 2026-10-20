@@ -7,6 +7,7 @@ import { StageIdentityType } from "@/generated/prisma/enums";
 import {
   badRequest,
   enumValue,
+  nullableHexColor,
   nullableInt,
   parseJsonBody,
 } from "@/lib/admin-input";
@@ -14,6 +15,28 @@ import { parseStageIdentityTranslations } from "@/app/api/admin/artists/_validat
 
 type Props = { params: Promise<{ id: string }> };
 
+/**
+ * Per-member edit. Every field here is "the body owns what it sends,
+ * and only that":
+ *
+ *   - `translations` are upserted per locale, like the members CSV
+ *     import (`import/route.ts`), NOT delete-and-recreate like the
+ *     artist PUT. The artist form owns every ArtistTranslation field
+ *     (it loads and resubmits name / shortName / bio for each locale),
+ *     so recreating from its payload loses nothing. The member row of
+ *     that same form only holds ONE ko name — it never loads ja / en or
+ *     any shortName — so a recreate from its payload wiped every other
+ *     locale and every shortName on each 저장. Upserting means a
+ *     locale absent from the body keeps its row, and `shortName` is
+ *     written only when the item carries the key (`null` / "" clears
+ *     it). Removing a locale is therefore not possible through this
+ *     route; nothing in the admin UI needs it.
+ *   - `type`, `color`, `sortOrder` are preserve-on-missing, matching
+ *     `parseArtistDisplayFields`: a body without the key leaves the
+ *     column alone; a present value is authoritative ("" / null clears
+ *     colour and order). A caller that predates a field (an old tab, a
+ *     script) therefore cannot blank it.
+ */
 export async function PUT(request: NextRequest, { params }: Props) {
   const unauthorized = await verifyAdminAPI();
   if (unauthorized) return unauthorized;
@@ -26,10 +49,10 @@ export async function PUT(request: NextRequest, { params }: Props) {
   const parsedBody = await parseJsonBody(request);
   if (!parsedBody.ok) return parsedBody.response;
   const body = parsedBody.body;
-  const { color } = body;
 
-  // Names are delete-and-recreate (below), so the array is required and
-  // must be non-empty — an empty one would leave the identity nameless.
+  // Required and non-empty even though absent locales are kept: a save
+  // that names nothing is a client bug, not a "touch only scalars"
+  // request, and the create paths share this parser.
   const translations = parseStageIdentityTranslations(body.translations, "translations");
   if (!translations.ok) return badRequest(translations.message);
 
@@ -43,11 +66,17 @@ export async function PUT(request: NextRequest, { params }: Props) {
     type = parsedType.value;
   }
 
-  // `sortOrder` is preserve-on-missing, like the artist display fields
-  // (`parseArtistDisplayFields`): a body without the key leaves the
-  // stored order alone, so a caller that predates the field cannot
-  // wipe the official member order. Present → authoritative; "" / null
-  // clears it.
+  // Hex only (#rgb / #rrggbb): the value is interpolated into inline
+  // styles on the public pages, and a non-string used to be coerced by
+  // `|| null` into whatever Prisma made of it — a 500 for an object, a
+  // silently stored "green" for a bare string.
+  let color: string | null | undefined;
+  if ("color" in body) {
+    const parsed = nullableHexColor(body.color, "color");
+    if (!parsed.ok) return badRequest(parsed.message);
+    color = parsed.value;
+  }
+
   let sortOrder: number | null | undefined;
   if ("sortOrder" in body) {
     const parsed = nullableInt(body.sortOrder, "sortOrder");
@@ -55,29 +84,35 @@ export async function PUT(request: NextRequest, { params }: Props) {
     sortOrder = parsed.value;
   }
 
-  // Delete-and-recreate of translations in one transaction, so a failed
-  // update can't leave the identity without names (and an un-expired
-  // public cache). Matches the DELETE handler below.
-  const [, si] = await prisma.$transaction([
-    prisma.stageIdentityTranslation.deleteMany({
-      where: { stageIdentityId: id },
-    }),
+  // One sequential transaction so a failed upsert cannot leave the
+  // scalars updated with half the names changed (and an un-expired
+  // public cache). The final read returns the identity with ALL its
+  // locales, including the ones the body did not send — the form's
+  // row re-renders from it.
+  const results = await prisma.$transaction([
     prisma.stageIdentity.update({
       where: { id },
-      data: {
-        type,
-        color: (color as string | null | undefined) || null,
-        sortOrder,
-        translations: {
-          create: translations.value.map((t) => ({
-            locale: t.locale,
-            name: t.name,
-          })),
+      data: { type, color, sortOrder },
+    }),
+    ...translations.value.map((t) =>
+      prisma.stageIdentityTranslation.upsert({
+        where: { stageIdentityId_locale: { stageIdentityId: id, locale: t.locale } },
+        create: {
+          stageIdentityId: id,
+          locale: t.locale,
+          name: t.name,
+          shortName: t.shortName ?? null,
         },
-      },
+        // `shortName: undefined` is dropped by Prisma = column untouched.
+        update: { name: t.name, shortName: t.shortName },
+      })
+    ),
+    prisma.stageIdentity.findUniqueOrThrow({
+      where: { id },
       include: { translations: true },
     }),
   ]);
+  const si = results[results.length - 1];
   revalidatePublicData();
   return NextResponse.json(serializeBigInt(si));
 }
