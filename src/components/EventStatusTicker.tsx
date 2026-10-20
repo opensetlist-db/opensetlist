@@ -4,13 +4,6 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { nextEventStatusBoundaryDelay } from "@/lib/eventStatus";
 
-// Re-export for back-compat with `event-status-ticker.test.tsx`,
-// which asserts the boundary-buffer offset against the same constant.
-// The canonical home is now `src/lib/eventStatus.ts` so the realtime
-// hook's boundary scheduler stays in lockstep — both consumers share
-// the helper that paid for the 2s post-boundary buffer.
-export { POST_BOUNDARY_BUFFER_MS } from "@/lib/eventStatus";
-
 type Props = {
   /** Event start time as ISO string. null disables the ticker. */
   startTime: string | null;

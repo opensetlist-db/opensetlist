@@ -281,6 +281,20 @@ model Artist {
   // No-op for type=solo|group (the chip filter only runs over
   // sub-artists, which by construction are units).
   isMainUnit        Boolean        @default(false)
+  // sortOrder: display order among top-level groups on festival
+  // surfaces — the group chips on the fan board and on the prediction
+  // picker. Lower first, null last; ties (and nulls) fall back to the
+  // roster rule (performer count desc, first appearance). Set by the
+  // operator, e.g. by series debut, so a festival lists its series in
+  // franchise order instead of by how many members each brings.
+  // Only read for root artists (parentArtistId IS NULL).
+  sortOrder         Int?
+  // isSideProject: a cross-IP side project / collaboration unit — e.g.
+  // a unit whose members come from several series — that is a
+  // top-level Artist like a main group but must not get its own column
+  // on the fan board. It stays in song catalogs and in the prediction
+  // picker's chips; only the board's group list drops it.
+  isSideProject     Boolean        @default(false)
   originalName      String
   originalShortName String?
   originalBio       String?
@@ -296,6 +310,10 @@ model Artist {
   stageLinks   StageIdentityArtist[]
   songCredits  SongArtist[]
   eventSeries  EventSeries[]
+  // Fan board (n15) picks and per-group wishes (n15-08) filed under
+  // this root group.
+  boardPicks   BoardPick[]
+  songWishes   SongWish[]
   events       Event[]
   albums       AlbumArtist[]
   setlistItems SetlistItemArtist[]
@@ -346,6 +364,14 @@ model StageIdentity {
   originalName      String
   originalShortName String?
   originalLanguage  String            @default("ja")
+  // sortOrder: display order of a member within their home group as
+  // the operator sets it, e.g. the official site's member order. Lower
+  // first; null sorts last and falls back to today's order (createdAt,
+  // then id), so members nobody has numbered yet keep their place.
+  // One global number per identity rather than per artist link: a
+  // member's sub-unit lists reuse the same relative order, which is how
+  // official sites list unit members too.
+  sortOrder         Int?
   createdAt         DateTime          @default(now())
 
   translations    StageIdentityTranslation[]
@@ -567,6 +593,23 @@ model Event {
   // BigInt so the counter can never wrap; serialized to the wire as a
   // JSON number after a safe-integer assertion.
   setlistRevision   BigInt      @default(0)
+  // Fan board (n15). Explicit per-event enablement AND the kill switch:
+  // the flag alone decides whether the event page mounts the board and
+  // whether board reads/writes are served — not festival classification
+  // (a single-artist event gets a one-group board by flipping it). A DB
+  // column rather than an env var because flipping it must not need a
+  // redeploy. Written only by the dedicated admin board endpoint
+  // (`/api/admin/events/[id]/board`), which expires only the board's
+  // own cache entries (never the event or global tags): the board read
+  // sees the change on its next request; the event page's mount
+  // decision follows the event-row TTL.
+  boardEnabled        Boolean   @default(false)
+  // Operator starter picks shown (labelled) in a board column that has
+  // zero fan submissions: `{ "<rootGroupArtistId>": ["<songId>", …] }`,
+  // ≤ 3 base songs per group, ids as decimal strings (JSON has no
+  // BigInt). Never rows in the pick tables, so they cannot leak into
+  // counts or the post-show tally. Null = none configured.
+  boardStarterSongIds Json?
 
   eventSeries  EventSeries?          @relation(fields: [eventSeriesId], references: [id])
   artist       Artist?               @relation(fields: [artistId], references: [id])
@@ -576,6 +619,7 @@ model Event {
   performers   EventPerformer[]
   impressions  EventImpression[]
   wishes       SongWish[]
+  boardPicks   BoardPick[]
   // Realtime R2: SetlistItemReaction carries a denormalized eventId
   // so Supabase Realtime postgres_changes can filter pushes by event
   // (the channel filter only supports columns on the changed table,
@@ -848,6 +892,7 @@ model Song {
   // composes the title as `{this song's title} ({i18n variantSuffix})`.
   offVocalTracks AlbumTrack[]      @relation("OffVocalParent")
   wishes         SongWish[]
+  boardPicks     BoardPick[]
 
   @@index([baseVersionId])
   @@index([isDeleted])
@@ -1360,22 +1405,78 @@ model Report {
   @@index([assignedScope, status])
 }
 
-// ── SONG WISH (Phase 1B engagement) ───────────────────
-// Wishlist rows feeding the per-event TOP-3 aggregate UI.
-// No anonId at 1B/1C — localStorage owns user-side dedup
-// before POST. Server-side dedup arrives at Phase 2 with
-// accounts. The (eventId, songId) index is for aggregation
-// reads, not uniqueness.
+// ── SONG WISH (Phase 1B engagement; per group since n15-08) ──
+// Wishlist rows feeding the per-event TOP-3 aggregate UI (and, on
+// board-enabled events, the fan board's "want" column).
+//
+// Two populations share this table:
+//   - Legacy rows (non-board events, and everything written before
+//     n15-08): anonId and groupArtistId are NULL. localStorage owns the
+//     per-user dedup and the cap of 3; the server accepts duplicates.
+//   - Board rows (events with Event.boardEnabled): anonId and
+//     groupArtistId are REQUIRED by the write route, which enforces
+//     ≤ 3 per (event, anon, group) under the same advisory lock as
+//     BoardPick. groupArtistId is the ROOT group the fan chose, stored
+//     rather than derived (a cross-group song counts only where the
+//     fan put it); the board attributes a legacy row to a group at
+//     read time instead.
+//
+// The unique (eventId, anonId, songId) makes a duplicate board wish
+// impossible even if the lock were bypassed; legacy rows keep NULL
+// anonIds, which never collide in Postgres, so existing duplicates and
+// the pre-n15-08 write path stay valid against this schema.
+// The (eventId, songId) index is for the overall TOP-3 aggregation.
 model SongWish {
-  id        String   @id @default(uuid())
-  eventId   BigInt
-  songId    BigInt
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  eventId       BigInt
+  songId        BigInt
+  anonId        String?  @db.VarChar(64)
+  groupArtistId BigInt?
+  createdAt     DateTime @default(now())
 
-  event Event @relation(fields: [eventId], references: [id])
-  song  Song  @relation(fields: [songId], references: [id])
+  event       Event   @relation(fields: [eventId], references: [id])
+  song        Song    @relation(fields: [songId], references: [id])
+  groupArtist Artist? @relation(fields: [groupArtistId], references: [id])
 
+  @@unique([eventId, anonId, songId])
   @@index([eventId, songId])
+  @@index([eventId, anonId])
+}
+
+// ── BOARD PICK (n15 fan board) ────────────────────────
+// "A song I expect this group to play" — one row per (event, anon,
+// song). The fan board's expect column counts these per group.
+//
+//   - groupArtistId is the ROOT group the fan chose in the UI, stored
+//     rather than derived: a cross-group song (a unit credited under
+//     two series) counts only where the fan put it.
+//   - songId is always a base song (the picker offers no variants);
+//     post-show matching is one-way base → variants/medleys.
+//   - anonId is the browser id (opensetlist_anon_id), REQUIRED here —
+//     it is the cap and ownership key. VarChar(64) mirrors
+//     ANON_ID_MAX_LEN.
+//   - The cap (≤ 3 per event+anon+group) is enforced in the write
+//     routes under a transaction-scoped advisory lock on event+anon,
+//     not by a constraint; the unique below makes a duplicate song
+//     impossible even if that lock were bypassed.
+//   - Operator starter picks are NOT rows here (Event.boardStarterSongIds)
+//     so they never enter counts. Soft-deleting a song keeps its picks
+//     (votes and slots survive moderation).
+model BoardPick {
+  id            String   @id @default(uuid())
+  eventId       BigInt
+  groupArtistId BigInt
+  songId        BigInt
+  anonId        String   @db.VarChar(64)
+  createdAt     DateTime @default(now())
+
+  event       Event  @relation(fields: [eventId], references: [id])
+  groupArtist Artist @relation(fields: [groupArtistId], references: [id])
+  song        Song   @relation(fields: [songId], references: [id])
+
+  @@unique([eventId, anonId, songId])
+  @@index([eventId, groupArtistId])
+  @@index([eventId, anonId])
 }
 
 // ── SETLIST ITEM CONFIRM (Phase 1B engagement) ────────

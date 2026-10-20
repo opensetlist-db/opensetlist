@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchEventWishlistTop3 } from "@/lib/wishes/top3";
+import { parseRequiredAnonId } from "@/lib/anonId";
+import {
+  ballotErrorResponse,
+  ballotJson,
+  checkBoardWritable,
+} from "@/lib/board/ballot";
+import { parseDecimalId } from "@/lib/board/ids";
+import { validatePickTarget } from "@/lib/board/picks";
+import { createWish } from "@/lib/board/wishes";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -22,6 +31,24 @@ type RouteProps = { params: Promise<{ id: string }> };
  *
  * The TOP-3 query lives in `src/lib/wishes/top3.ts` so the polled
  * `/api/setlist` channel and this standalone GET stay in lockstep.
+ *
+ * Board-enabled events (n15) — POST changes contract:
+ *
+ *   POST body { groupId: "<root artist id>", songId: "<base song id>",
+ *               anonId: "<browser id>" }
+ *     → 201 { id, groupId, songId, createdAt }   new wish
+ *     → 200 { …same… }                           exact retry
+ *     → 400 / 403 / 404 / 409 / 503 `{ error: code }` — exactly the
+ *       board pick contract (`board/picks/route.ts`): the anon id and
+ *       group are required, the cap is 3 per (event, anon, group)
+ *       under the ballot advisory lock, writes lock at the start time.
+ *
+ * The table is shared, so the cap can only hold if THIS endpoint
+ * enforces it — a separate board endpoint would leave this one open.
+ * Events without the flag keep the contract above unchanged; the only
+ * difference on that path is the one extra flag read below. Neither
+ * path calls a cache revalidate helper (the board aggregate is
+ * TTL-only, and the overall TOP-3 never was invalidated by a wish).
  */
 
 export async function GET(req: NextRequest, { params }: RouteProps) {
@@ -58,6 +85,16 @@ export async function POST(req: NextRequest, { params }: RouteProps) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  // Board-enabled events take the per-group path. Read fresh (not the
+  // cached control row): the kill switch must move writes back to the
+  // legacy path on the very next request, as it does for picks. A
+  // missing event reads as "not enabled" and gets the legacy 404 below.
+  const control = await prisma.event.findFirst({
+    where: { id: eventId, isDeleted: false },
+    select: { boardEnabled: true },
+  });
+  if (control?.boardEnabled) return postBoardWish(eventId, body);
 
   // Same null-body guard as reactions/route.ts:49 — `body ?? {}` so
   // a literal JSON null returns 400, not 500.
@@ -120,4 +157,33 @@ export async function POST(req: NextRequest, { params }: RouteProps) {
     // cast here is clearer for a single field.
     songId: Number(wish.songId),
   });
+}
+
+/**
+ * The per-group wish create on a board-enabled event (n15). Same
+ * order as the pick create: cheap parse → fresh control check (flag +
+ * lock) → static target validation → ballot lock → cap + insert.
+ */
+async function postBoardWish(eventId: bigint, body: unknown) {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    return ballotJson(400, { error: "invalid_body" });
+  }
+  const { groupId: rawGroup, songId: rawSong, anonId: rawAnon } =
+    body as Record<string, unknown>;
+  const anon = parseRequiredAnonId(rawAnon);
+  if (!anon.ok) return ballotJson(400, { error: "invalid_anon_id" });
+  const groupId = parseDecimalId(rawGroup);
+  if (groupId === null) return ballotJson(400, { error: "invalid_group" });
+  const songId = parseDecimalId(rawSong);
+  if (songId === null) return ballotJson(400, { error: "invalid_song" });
+
+  try {
+    const control = await checkBoardWritable(eventId);
+    if (!control.ok) return ballotJson(control.status, { error: control.code });
+    await validatePickTarget(control.context, groupId, songId);
+    const result = await createWish(eventId, anon.value, groupId, songId);
+    return ballotJson(result.created ? 201 : 200, result.wish);
+  } catch (err) {
+    return ballotErrorResponse(err);
+  }
 }

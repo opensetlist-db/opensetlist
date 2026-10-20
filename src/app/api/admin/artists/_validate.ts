@@ -1,10 +1,57 @@
 import {
   AdminFieldResult,
+  nullableBoolean,
+  nullableHexColor,
+  nullableInt,
   nullableString,
   originalLanguage as parseOriginalLanguage,
   parseTranslationItems,
   requireString,
 } from "@/lib/admin-input";
+
+/** Artist-level display fields the admin form edits. A key absent
+ *  from the result means "leave the stored value alone". */
+export type ArtistDisplayFields = {
+  color?: string | null;
+  sortOrder?: number | null;
+  isSideProject?: boolean;
+};
+
+/**
+ * `color` (hex), `sortOrder` (integer or empty) and `isSideProject`
+ * from an admin artist body.
+ *
+ * Preserve-on-missing, for create AND update: a key the body does not
+ * carry is left out of the result, so the Prisma write leaves that
+ * column alone (update) or takes the schema default (create). The
+ * colours were backfilled by CSV import long before the form could
+ * edit them; a PUT from a client that predates these fields (an old
+ * tab, a script) must not wipe them. A key that IS present is
+ * authoritative: `color: ""` / `null` clears the colour, `sortOrder:
+ * ""` / `null` clears the order, `isSideProject: null` resets the flag
+ * to false (the column is non-null).
+ */
+export function parseArtistDisplayFields(
+  body: Record<string, unknown>
+): AdminFieldResult<ArtistDisplayFields> {
+  const out: ArtistDisplayFields = {};
+  if ("color" in body) {
+    const color = nullableHexColor(body.color, "color");
+    if (!color.ok) return color;
+    out.color = color.value;
+  }
+  if ("sortOrder" in body) {
+    const sortOrder = nullableInt(body.sortOrder, "sortOrder");
+    if (!sortOrder.ok) return sortOrder;
+    out.sortOrder = sortOrder.value;
+  }
+  if ("isSideProject" in body) {
+    const side = nullableBoolean(body.isSideProject, "isSideProject");
+    if (!side.ok) return side;
+    out.isSideProject = side.value ?? false;
+  }
+  return { ok: true, value: out };
+}
 
 export type ArtistTranslationInput = {
   locale: string;
@@ -16,6 +63,13 @@ export type ArtistTranslationInput = {
 export type StageIdentityTranslationInput = {
   locale: string;
   name: string;
+  // Present only when the body carried the key: `null` = clear the
+  // short name, absent = leave the stored one alone. The per-member
+  // PUT upserts translations per locale (see
+  // `stage-identities/[id]/route.ts`), so a client that only edits the
+  // name (the artist form's member row) must not reset shortName; on
+  // the create paths an absent key simply means "no short name yet".
+  shortName?: string | null;
 };
 
 export type RealPersonTranslationInput = {
@@ -35,6 +89,9 @@ export type ParsedRealPerson = {
 export type ParsedStageIdentity = {
   type: "character" | "persona";
   color: string | null;
+  // Official member order (see `src/lib/memberOrder.ts`); null = not
+  // numbered yet, sorts after the numbered members.
+  sortOrder: number | null;
   originalName: string;
   originalShortName: string | null;
   originalLanguage: string;
@@ -82,7 +139,16 @@ export function parseStageIdentityTranslations(
     if (!locale.ok) return locale;
     const name = requireString(t.name, `${prefix}[${i}].name`);
     if (!name.ok) return name;
-    return { ok: true, value: { locale: locale.value, name: name.value } };
+    const out: StageIdentityTranslationInput = {
+      locale: locale.value,
+      name: name.value,
+    };
+    if ("shortName" in t) {
+      const shortName = nullableString(t.shortName, `${prefix}[${i}].shortName`);
+      if (!shortName.ok) return shortName;
+      out.shortName = shortName.value;
+    }
+    return { ok: true, value: out };
   });
 }
 
@@ -164,6 +230,9 @@ export function parseStageIdentity(
   }
   const color = nullableString(si.color, `${prefix}.color`);
   if (!color.ok) return color;
+  // A new member: absent, empty and null all mean "not numbered".
+  const sortOrder = nullableInt(si.sortOrder, `${prefix}.sortOrder`);
+  if (!sortOrder.ok) return sortOrder;
   const name = requireString(si.originalName, `${prefix}.originalName`);
   if (!name.ok) return name;
   const shortName = nullableString(si.originalShortName, `${prefix}.originalShortName`);
@@ -188,6 +257,7 @@ export function parseStageIdentity(
     value: {
       type: si.type,
       color: color.value,
+      sortOrder: sortOrder.value,
       originalName: name.value,
       originalShortName: shortName.value,
       originalLanguage: language.value,

@@ -43,6 +43,16 @@ export default async function EditSongPage({ params }: Props) {
             (sa: any) => ({
               artistId: Number(sa.artistId),
               role: sa.role as string,
+              // Carried so SongForm can label a credited artist that the
+              // picker list doesn't contain (soft-deleted, or the list
+              // hasn't loaded yet) instead of showing a different one.
+              artistName:
+                sa.artist?.translations?.find(
+                  (t: { locale: string }) => t.locale === "ko"
+                )?.name ??
+                sa.artist?.translations?.[0]?.name ??
+                sa.artist?.originalName ??
+                undefined,
             })
           ),
         }}

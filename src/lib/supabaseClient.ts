@@ -1,5 +1,8 @@
-"use client";
-
+// Browser-only module. `client-only` (not "use client") marks that: a
+// server import fails the build, and the getter below isn't a
+// component or hook, which a "use client" module may export
+// (`local/use-client-exports`).
+import "client-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Lazy module-scope singleton. Created on first call, reused for the rest of

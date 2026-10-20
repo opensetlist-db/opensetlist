@@ -13,6 +13,8 @@ import type {
 } from "@/lib/types/setlist";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
+import type { BuilderRequest } from "@/lib/board/toPredictions";
+import type { BoardChip } from "@/lib/board/types";
 
 interface Props {
   eventId: string;
@@ -80,6 +82,18 @@ interface Props {
   availableSongs: AvailableSong[];
   /** Filter chip set (server-derived). Empty array hides the picker. */
   unitFilters: UnitFilter[];
+  /**
+   * Latest "go to full setlist mode" tap from the board (n15), or
+   * null. Each new `seq` opens the Predicted tab and remounts the
+   * builder so it re-reads the list the board import just wrote.
+   */
+  builderRequest?: BuilderRequest | null;
+  /** The builder's "back to board" switch; absent → no switch. */
+  onBackToBoard?: () => void;
+  /** Board groups for the builder's "put on the board" (n15);
+   *  absent → no publish. */
+  boardGroups?: readonly BoardChip[];
+  onBoardPublished?: () => void;
 }
 
 /**
@@ -125,8 +139,13 @@ export function SetlistSection({
   availableSongs,
   unitFilters,
   eventArtistId,
+  builderRequest = null,
+  onBackToBoard,
+  boardGroups,
+  onBoardPublished,
 }: Props) {
   const t = useTranslations("Setlist");
+  const tPredict = useTranslations("Predict");
   const mounted = useMounted();
 
   // Hydrate `hasPredictions` AFTER mount so SSR + first client
@@ -175,6 +194,16 @@ export function SetlistSection({
   // the Predicted tab exists (case 1, pre-show), force the active
   // tab to "predicted" so the body matches the visible tab.
   const [activeTab, setActiveTab] = useState<SetlistTab>("actual");
+  // A board → builder request switches to the Predicted tab once per
+  // tap. Render-time adjustment (same pattern as the hydration above),
+  // not an effect: the tab must already read "predicted" on the commit
+  // the parent scrolls after.
+  const requestSeq = builderRequest?.seq ?? 0;
+  const [seenRequestSeq, setSeenRequestSeq] = useState(requestSeq);
+  if (requestSeq !== seenRequestSeq) {
+    setSeenRequestSeq(requestSeq);
+    if (requestSeq > 0) setActiveTab("predicted");
+  }
   // Compute the rendered active-tab key separately so a state mismatch
   // (e.g. activeTab="actual" but hasActual=false) renders the right
   // body without forcing the user-driven activeTab state to chase
@@ -280,8 +309,11 @@ export function SetlistSection({
       // rationale as the matching `key={eventId}` on
       // `<EventWishSection>` in `<LiveSetlist>`. CR #291 caught
       // both call sites.
+      // The request seq joins the key: the board import writes storage
+      // behind the builder's back, and the builder reads storage only
+      // on mount.
       <PredictedSetlist
-        key={eventId}
+        key={`${eventId}:${requestSeq}`}
         eventId={eventId}
         locale={locale}
         startTime={startTime}
@@ -292,11 +324,30 @@ export function SetlistSection({
         dateLine={dateLine}
         availableSongs={availableSongs}
         unitFilters={unitFilters}
+        bridgeOutcome={builderRequest?.outcome ?? null}
+        onBackToBoard={onBackToBoard}
+        boardGroups={boardGroups}
+        onBoardPublished={onBoardPublished}
       />
     );
 
+  // Screen-reader announcement of the board import's outcome. Lives
+  // here, not in the builder, because the builder remounts per request
+  // and a live region created together with its text is often not
+  // announced; this one stays mounted and only its text changes.
+  const bridgeOutcome = builderRequest?.outcome;
+  const bridgeAnnouncement =
+    bridgeOutcome?.kind === "imported"
+      ? tPredict("bridgeImported", { count: bridgeOutcome.count })
+      : bridgeOutcome?.kind === "kept"
+        ? tPredict("bridgeKept")
+        : "";
+
   return (
     <>
+      <p role="status" className="sr-only" data-testid="predict-bridge-status">
+        {bridgeAnnouncement}
+      </p>
       <SetlistTabs
         hasPredictions={hasPredictions}
         hasActual={hasActual}

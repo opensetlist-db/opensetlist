@@ -189,10 +189,13 @@ Japanese fan's comment on Song page
 Spreadsheet: "OpenSetlist Master Data"
 
 Tab 1: Artists
-  slug | type | parentArtist_slug | ja_name | ja_shortName | ko_name | ko_shortName | imageUrl
+  slug | type | parentArtist_slug | group_slugs (space-separated)
+  | ja_name | ja_shortName | ko_name | ko_shortName | en_name | en_shortName
+  | originalLanguage | originalName | originalShortName | originalBio
+  | category | isMainUnit | color | sortOrder | isSideProject
 
 Tab 2: Members
-  character_slug | character_type | ja_name | ko_name | color
+  character_slug | character_type | ja_name | ko_name | color | sortOrder
   | artist_slugs (space-separated) | va_slug | va_ja_name | va_ko_name
   | startDate | endDate
 

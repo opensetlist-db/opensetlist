@@ -61,6 +61,7 @@ function song(
     // array (e.g. [2, 3, 4] for a Cerise + DOLL + MCP collab).
     creditedArtistIds: creditedArtistIds ?? [unit.artistId],
     festivalGroupIds: [],
+    releaseDate: null,
   };
 }
 
@@ -197,6 +198,7 @@ describe("<SongPickerContent>", () => {
       isMultiArtist: false,
       creditedArtistIds: [99],
       festivalGroupIds: [],
+      releaseDate: null,
     };
     render(
       <SongPickerContent
@@ -785,6 +787,122 @@ describe("SongPickerContent — festival chips", () => {
       target: { value: "Aoku" },
     });
     expect(screen.getByText("Aoku Haruka")).toBeTruthy();
+    expect(screen.queryByText("Dream Believers")).toBeNull();
+  });
+});
+
+// Sort toggle: "by name" (the catalog's own order) is the default;
+// "by release date" is newest first, unknown dates last, equal dates
+// in catalog (title) order — applied inside each section, so the
+// section order itself never moves.
+describe("SongPickerContent — sort toggle", () => {
+  const dated = (s: AvailableSong, releaseDate: string | null): AvailableSong => ({
+    ...s,
+    releaseDate,
+  });
+  // Server order = title ASC within the catalog, as delivered.
+  const CATALOG: AvailableSong[] = [
+    dated(song(10, "Dream Believers", HASUNOSORA), "2023-04-26"),
+    dated(song(11, "Hanamusubi", HASUNOSORA), null),
+    dated(song(12, "Sparkly Spot", HASUNOSORA), "2024-01-01"),
+    dated(song(13, "Tiebreak Song", HASUNOSORA), "2023-04-26"),
+    dated(song(20, "Aoku Haruka", CERISE), "2023-01-01"),
+    dated(song(21, "Cerise Tune", CERISE), "2024-06-01"),
+    dated(song(30, "Dollscape", DOLLCHESTRA), null),
+  ];
+  // Document order of the given titles (each title is unique on the page).
+  const orderOf = (titles: string[]) =>
+    [...titles].sort((a, b) => {
+      const pos = screen.getByText(a).compareDocumentPosition(screen.getByText(b));
+      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    });
+  const renderPicker = (unitFilters: UnitFilter[] = FILTERS) =>
+    render(
+      <SongPickerContent
+        songs={CATALOG}
+        selectedIds={[]}
+        unitFilters={unitFilters}
+        onToggle={() => {}}
+        locale="ko"
+      />,
+    );
+
+  it("defaults to name order, exposed as a pressed toggle in a labelled group", () => {
+    renderPicker();
+    const group = screen.getByRole("group", { name: "picker.sortAria" });
+    expect(group).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "picker.sortByName" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "picker.sortByRelease" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(orderOf(["Dream Believers", "Hanamusubi", "Sparkly Spot", "Tiebreak Song"])).toEqual([
+      "Dream Believers",
+      "Hanamusubi",
+      "Sparkly Spot",
+      "Tiebreak Song",
+    ]);
+  });
+
+  it("by release date sorts within each section; section order is unchanged", () => {
+    renderPicker();
+    fireEvent.click(screen.getByRole("button", { name: "picker.sortByRelease" }));
+    expect(
+      screen.getByRole("button", { name: "picker.sortByRelease" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    // Group section: newest first, the equal dates in title order,
+    // the undated song last.
+    expect(orderOf(["Dream Believers", "Hanamusubi", "Sparkly Spot", "Tiebreak Song"])).toEqual([
+      "Sparkly Spot",
+      "Dream Believers",
+      "Tiebreak Song",
+      "Hanamusubi",
+    ]);
+    expect(orderOf(["Aoku Haruka", "Cerise Tune"])).toEqual(["Cerise Tune", "Aoku Haruka"]);
+    // Sections stay group → Cerise → DOLLCHESTRA even though Cerise
+    // has the newest song overall.
+    expect(orderOf(["Hanamusubi", "Cerise Tune", "Dollscape"])).toEqual([
+      "Hanamusubi",
+      "Cerise Tune",
+      "Dollscape",
+    ]);
+  });
+
+  it("sorts a flat list too (single-unit chip, or no chips at all)", () => {
+    renderPicker([]);
+    fireEvent.click(screen.getByRole("button", { name: "picker.sortByRelease" }));
+    expect(
+      orderOf(["Cerise Tune", "Sparkly Spot", "Dream Believers", "Aoku Haruka", "Hanamusubi", "Dollscape"]),
+    ).toEqual(["Cerise Tune", "Sparkly Spot", "Dream Believers", "Aoku Haruka", "Hanamusubi", "Dollscape"]);
+    // …and back to name order.
+    fireEvent.click(screen.getByRole("button", { name: "picker.sortByName" }));
+    expect(orderOf(["Dream Believers", "Sparkly Spot", "Aoku Haruka"])).toEqual([
+      "Dream Believers",
+      "Sparkly Spot",
+      "Aoku Haruka",
+    ]);
+  });
+
+  it("search and the unit chip still apply under the release sort", () => {
+    renderPicker();
+    fireEvent.click(screen.getByRole("button", { name: "picker.sortByRelease" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hasunosora" }));
+    expect(screen.queryByText("Cerise Tune")).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("picker.searchPlaceholder"), {
+      target: { value: "s" },
+    });
+    // "s" matches Dream Believers, Hanamusubi, Sparkly Spot, Tiebreak Song.
+    expect(orderOf(["Dream Believers", "Hanamusubi", "Sparkly Spot", "Tiebreak Song"])).toEqual([
+      "Sparkly Spot",
+      "Dream Believers",
+      "Tiebreak Song",
+      "Hanamusubi",
+    ]);
+    fireEvent.change(screen.getByPlaceholderText("picker.searchPlaceholder"), {
+      target: { value: "Spot" },
+    });
+    expect(screen.getByText("Sparkly Spot")).toBeTruthy();
     expect(screen.queryByText("Dream Believers")).toBeNull();
   });
 });

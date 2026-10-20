@@ -8,9 +8,14 @@
  * 2026-05-19):
  *
  *   1. `all` — always emitted first.
- *   2. `group` — when `primaryArtistId !== null`. The event's group
+ *   2. `group` — when `primaryArtistId !== null` AND at least one
+ *      song is credited directly to that artist. The event's group
  *      artist (e.g. Hasunosora). Filters to songs credited directly
- *      to the group (not a sub-unit).
+ *      to the group (not a sub-unit). Never emitted empty: a catalog
+ *      with only sub-unit / solo songs (a series run by a sub-unit
+ *      whose catalog is scoped to that unit, or a root with no direct
+ *      credits yet) would otherwise get a chip that opens an empty
+ *      list, so the unit chips carry the row instead.
  *   3. For every OTHER artistId that appears in the catalog
  *      (sub-units + solos):
  *      - If `Artist.isMainUnit === true` → own `individual` chip.
@@ -78,11 +83,22 @@ export function deriveUnitFilters(
     { key: "all", label: filterAllLabel, color: null, kind: "all", artistId: null },
   ];
 
-  if (primaryArtistId !== null) {
-    // Color: prefer the first group-direct song's resolved color so
-    // the group chip matches the section header tint in the picker.
-    // Fall back to the brand primary when no group-direct song
-    // exists yet (e.g. an artist with sub-units only).
+  // Same predicate the picker's `group` chip filters with
+  // (`SongPickerContent`): credited to the artist directly, and not a
+  // multi-solo collab (those route to `others` only). If nothing
+  // passes it, the chip would open an empty list — skip it.
+  const hasGroupDirect =
+    primaryArtistId !== null &&
+    songs.some(
+      (s) => !s.isMultiArtist && s.creditedArtistIds.includes(primaryArtistId),
+    );
+
+  if (primaryArtistId !== null && hasGroupDirect) {
+    // Color: prefer the first song whose canonical unit is the group
+    // itself, so the group chip matches the section header tint in
+    // the picker. Fall back to the brand primary when every
+    // group-credited song's canonical unit is a sub-unit (a song
+    // credited to both the group and a unit).
     const groupSong = songs.find(
       (s) => s.unit.artistId === primaryArtistId && !s.unit.isSubUnit,
     );

@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { serializeBigInt } from "@/lib/utils";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
 import EventForm from "../../EventForm";
 import SetlistBuilder from "../../SetlistBuilder";
+import BoardSettings from "../../BoardSettings";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -13,7 +15,10 @@ export default async function EditEventPage({ params }: Props) {
     where: { id: BigInt(id), isDeleted: false },
     include: {
       translations: true,
+      // Official member order (`src/lib/memberOrder.ts`) for the
+      // event roster and every setlist row's performers below.
       performers: {
+        orderBy: byStageIdentityOrderBy(),
         include: {
           stageIdentity: {
             include: {
@@ -33,6 +38,7 @@ export default async function EditEventPage({ params }: Props) {
             orderBy: { order: "asc" },
           },
           performers: {
+            orderBy: byStageIdentityOrderBy(),
             include: {
               stageIdentity: { include: { translations: true } },
             },
@@ -124,6 +130,13 @@ export default async function EditEventPage({ params }: Props) {
             })),
           }}
         />
+      </div>
+
+      <hr className="border-zinc-200" />
+
+      <div>
+        <h2 className="mb-6 text-2xl font-bold">팬 보드</h2>
+        <BoardSettings eventId={Number(data.id)} />
       </div>
 
       <hr className="border-zinc-200" />

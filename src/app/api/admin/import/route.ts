@@ -23,7 +23,11 @@ import {
   lockEvent,
 } from "@/lib/liveBroadcast";
 import { verifyAdminAPI } from "@/lib/admin-auth";
-import { parseIsoInstant } from "@/lib/admin-input";
+import {
+  parseCsvBooleanCell,
+  parseCsvNullableIntCell,
+  parseIsoInstant,
+} from "@/lib/admin-input";
 
 // Derive the valid sets from the generated enum objects so a future
 // schema change auto-propagates here. The legacy `anime`/`game`
@@ -213,6 +217,53 @@ async function importArtists(rows: Record<string, string>[]) {
 
     const existing = await prisma.artist.findUnique({ where: { slug } });
 
+    // An invalid cell is never guessed at. On an update it is treated
+    // as absent (undefined) so the stored value survives. On a create
+    // there is no stored value to fall back to, and silently writing
+    // the column default would be a guess too — `treu` landing as
+    // isSideProject=false puts a side project on the fan board — so
+    // the whole row is skipped (below) and the operator fixes the CSV
+    // and re-imports. Every invalid cell gets its own WARN either way.
+    let createBlocked = false;
+    const dropInvalidCell = <T>(
+      column: string,
+      raw: string | undefined,
+      expected: string,
+      parsed: T | "invalid"
+    ): T | undefined => {
+      if (parsed !== "invalid") return parsed;
+      if (!existing) createBlocked = true;
+      const outcome = existing
+        ? "kept existing value"
+        : "row skipped, fix the CSV and re-import";
+      results.push(`WARN: artists.csv ${column} "${raw}" is not ${expected} (artist ${slug}) — ${outcome}`);
+      return undefined;
+    };
+
+    // `sortOrder` (festival group order) — same preserve-on-missing
+    // contract as `color`: header omitted → untouched, blank cell →
+    // cleared, an integer → set. A non-integer cell WARNs (above).
+    const sortOrderUpdate = dropInvalidCell(
+      "sortOrder",
+      row.sortOrder,
+      "an integer",
+      parseCsvNullableIntCell(row.sortOrder)
+    );
+    // `isSideProject` (no own fan-board column). Non-null boolean, so
+    // there is nothing to clear: header omitted OR blank cell → leave
+    // the stored flag alone (an operator re-importing a names-only CSV
+    // must not un-flag a side project); invalid → WARN (above).
+    // `parseCsvBooleanCell` itself maps both an absent and a blank cell
+    // to `undefined` (it returns "invalid" only for a non-empty cell that
+    // is not true/false/1/0/yes/no), so a blank cell never reaches the
+    // WARN branch of `dropInvalidCell`.
+    const sideProjectUpdate = dropInvalidCell(
+      "isSideProject",
+      row.isSideProject,
+      "true/false",
+      parseCsvBooleanCell(row.isSideProject)
+    );
+
     if (existing) {
       const effectiveType = artistType ?? existing.type;
       await prisma.artist.update({
@@ -222,6 +273,8 @@ async function importArtists(rows: Record<string, string>[]) {
           category,
           isMainUnit: effectiveType === "unit" ? csvIsMainUnit : false,
           color: colorUpdate,
+          sortOrder: sortOrderUpdate,
+          isSideProject: sideProjectUpdate,
           ...originals,
         },
       });
@@ -235,6 +288,11 @@ async function importArtists(rows: Record<string, string>[]) {
       }
       results.push(`UPDATED: ${slug} → ${existing.id}`);
     } else {
+      // A new row with an invalid sortOrder / isSideProject cell is not
+      // created (see dropInvalidCell). The later passes look artists up
+      // by slug, so they skip this row on their own — no parent link,
+      // no group links for an artist that does not exist.
+      if (createBlocked) continue;
       const originalName = ensureOriginalName(originals, slug, "Artist", originalLanguage);
       const newType = artistType ?? "group";
       const artist = await prisma.artist.create({
@@ -245,6 +303,8 @@ async function importArtists(rows: Record<string, string>[]) {
           category,
           isMainUnit: newType === "unit" ? csvIsMainUnit : false,
           color: row.color || null,
+          sortOrder: sortOrderUpdate ?? null,
+          isSideProject: sideProjectUpdate ?? false,
           ...originals,
           originalName,
           translations: { create: translations },
@@ -585,6 +645,26 @@ async function importMembers(rows: Record<string, string>[]) {
     // Upsert StageIdentity
     const existingSi = await prisma.stageIdentity.findUnique({ where: { slug: charSlug } });
 
+    // `sortOrder` (official member order, `src/lib/memberOrder.ts`) is
+    // preserve-on-missing, unlike this CSV's `color` (which clobbers):
+    // header omitted → leave the stored order alone, so re-importing an
+    // older members.csv without the column does not wipe the order the
+    // operator typed in the admin form; blank cell → clear (unnumbered);
+    // an integer → set. An invalid cell WARNs and is treated as absent:
+    // an update keeps the stored value, a create leaves the member
+    // unnumbered. Unlike artists.csv the row is not skipped on create —
+    // null is exactly the state of a member nobody has numbered yet
+    // (sorts after the numbered ones), not a guess with side effects.
+    const parsedSortOrder = parseCsvNullableIntCell(row.sortOrder);
+    let sortOrderUpdate: number | null | undefined;
+    if (parsedSortOrder === "invalid") {
+      const outcome = existingSi ? "kept existing value" : "new member left unnumbered";
+      results.push(`WARN: members.csv sortOrder "${row.sortOrder}" is not an integer (member ${charSlug}) — ${outcome}`);
+      sortOrderUpdate = undefined;
+    } else {
+      sortOrderUpdate = parsedSortOrder;
+    }
+
     let siId: string;
     if (existingSi) {
       await prisma.stageIdentity.update({
@@ -592,6 +672,7 @@ async function importMembers(rows: Record<string, string>[]) {
         data: {
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          sortOrder: sortOrderUpdate,
           ...siOriginals,
         },
       });
@@ -641,6 +722,7 @@ async function importMembers(rows: Record<string, string>[]) {
           slug: charSlug,
           type: (row.character_type as "character" | "persona") || "character",
           color: row.color || null,
+          sortOrder: sortOrderUpdate ?? null,
           ...siOriginals,
           originalName,
           translations: { create: translations },
@@ -1406,6 +1488,18 @@ async function importEvents(rows: Record<string, string>[]) {
       results.push(`WARN: ${slug} startTime moved to/before the stored engagementOpensAt — override cleared (D-7 default)`);
     }
 
+    // boardEnabled (optional, n15 fan board): conditional update like
+    // engagementOpensAt above — blank keeps the stored flag, an
+    // unparseable value is WARNed and ignored. New events default to
+    // off (the schema default) unless the row says otherwise.
+    const boardEnabledCell = parseCsvBooleanCell(row.boardEnabled);
+    let boardEnabled: boolean | undefined = undefined;
+    if (boardEnabledCell === "invalid") {
+      results.push(`WARN: ${slug} boardEnabled must be true/false (${row.boardEnabled}) — ignored`);
+    } else {
+      boardEnabled = boardEnabledCell;
+    }
+
     if (existing) {
       await prisma.event.update({
         where: { slug },
@@ -1424,6 +1518,7 @@ async function importEvents(rows: Record<string, string>[]) {
           // survive re-imports of stale scrape output.
           ...(bdAlbumIdResolved !== null ? { bdAlbumId: bdAlbumIdResolved } : {}),
           ...(engagementOpensAt !== undefined ? { engagementOpensAt } : {}),
+          ...(boardEnabled !== undefined ? { boardEnabled } : {}),
           ...eventOriginals,
         },
       });
@@ -1457,6 +1552,7 @@ async function importEvents(rows: Record<string, string>[]) {
           date: row.date ? new Date(row.date) : null,
           startTime: new Date(row.startTime),
           engagementOpensAt: engagementOpensAt ?? null,
+          boardEnabled: boardEnabled ?? false,
           country: row.country || null,
           ...eventOriginals,
           originalName,

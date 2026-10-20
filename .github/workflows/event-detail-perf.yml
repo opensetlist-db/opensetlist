@@ -5,7 +5,7 @@ name: perf — event detail TTFB
 # PR head onto current base) AND the base branch tip in parallel
 # checkout dirs, runs `next start` on each in turn against the dev
 # DB, measures warm TTFB for the same 6 (locale × event) combos
-# under identical runner conditions, then comments the delta and
+# under identical runner conditions, then reports the delta (job summary) and
 # sets a commit status named `perf/event-detail-ttfb`.
 #
 # This status check is intentionally NOT added to branch protection's
@@ -61,7 +61,7 @@ on:
 
 # Cancel in-flight runs for the same PR when a new push lands.
 # Without this, a slow earlier run could finish AFTER the fresh one
-# and overwrite the live perf comment / commit status with stale
+# and overwrite the live commit status with stale
 # numbers from the older head SHA.
 concurrency:
   group: perf-event-detail-${{ github.event.pull_request.number }}
@@ -69,7 +69,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
   statuses: write
 
 jobs:
@@ -78,15 +77,14 @@ jobs:
     runs-on: ubuntu-latest
     # 30min covers two prod builds (~3min each), npm ci + prisma
     # generate (~1.5min each), warm-up + measurement loops (~3min
-    # each), plus comment/status calls. Each phase has its own
+    # each), plus the status call. Each phase has its own
     # natural cap (curl --max-time 30, server-readiness loop 30s),
     # so the timeout is the catch-all for genuine wedges.
     timeout-minutes: 30
     env:
       # Job-level env so every step inherits these without
-      # re-declaring. GH_TOKEN authenticates `gh api`/`gh pr`; REPO
-      # is the owner/name pair the API endpoints expect (also used
-      # to bypass `gh pr comment`'s default git-remote inference).
+      # re-declaring. GH_TOKEN authenticates `gh api`; REPO is the
+      # owner/name pair the API endpoints expect.
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       # Dev DB — same pool the runtime queries hit on Vercel previews,
@@ -263,7 +261,7 @@ jobs:
           echo "base_avg=$BASE_AVG" >> "$GITHUB_OUTPUT"
           echo "PR avg: ${PR_AVG}s  |  Base avg: ${BASE_AVG}s"
 
-      - name: Compare, comment, set status
+      - name: Compare, summarize, set status
         env:
           PR_AVG: ${{ steps.measure.outputs.pr_avg }}
           BASE_AVG: ${{ steps.measure.outputs.base_avg }}
@@ -297,17 +295,13 @@ jobs:
           This is a **non-blocking informational check**. Merge despite a failure if the regression is expected (e.g. a new feature legitimately needs more queries). Required CI gates remain enforced separately.
           EOF
           )
-          # --edit-last + --create-if-none: replace the previous perf
-          # comment in place rather than appending a new one on every
-          # push, so an active PR shows one living result instead of a
-          # comment per CI run. Falls back to creating the first time.
-          # --repo is required because this step doesn't run inside
-          # one of the actions/checkout working trees, and `gh pr
-          # comment` defaults to inferring the repo from `git remote
-          # get-url`.
-          gh pr comment --repo "$REPO" "$PR_NUM" \
-            --edit-last --create-if-none \
-            --body "$BODY"
+          # The table goes to the run's job summary, not a PR comment:
+          # a PR comment wakes every PR watcher (the desktop app's
+          # Auto-fix, CodeRabbit threads) for a non-blocking number
+          # nobody has to act on. The commit status below carries the
+          # verdict and the numbers, and its target_url opens this run,
+          # where the summary is the first thing shown.
+          echo "$BODY" >> "$GITHUB_STEP_SUMMARY"
           # target_url makes the perf/event-detail-ttfb badge in the
           # checks panel link to this workflow run, so a reviewer can
           # click through to inspect the per-sample TTFB output without

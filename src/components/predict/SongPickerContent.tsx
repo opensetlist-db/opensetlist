@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { PrimaryButton } from "@/components/ui/Button";
 import { displayOriginalTitle } from "@/lib/display";
+import { sortPickerSongs, type PickerSort } from "@/lib/predict/sortSongs";
 import { colors } from "@/styles/tokens";
 import type {
   AvailableSong,
@@ -66,6 +67,13 @@ export function SongPickerContent({
   const [activeFilterKey, setActiveFilterKey] = useState<string>(() => {
     return unitFilters[0]?.key ?? "all";
   });
+  // Name order (the catalog's own, server-side title order) by default;
+  // "by release date" is opt-in and lives only in this component's
+  // state — never written to storage, since it's a browsing aid, not a
+  // preference. It lasts as long as this instance stays mounted: the
+  // whole page visit in the desktop side panel, one open in the mobile
+  // sheet (vaul unmounts the content on close).
+  const [sort, setSort] = useState<PickerSort>("name");
 
   const activeFilter: UnitFilter | undefined = unitFilters.find(
     (f) => f.key === activeFilterKey,
@@ -192,9 +200,23 @@ export function SongPickerContent({
   // with a muted color (no specific unit owns it). Sentinel key
   // `MULTI_ARTIST_BUCKET_KEY = -1` is safe since artistIds are
   // positive Postgres autoincrement BigInts.
+  //
+  // **Sorting is per section.** Buckets are built from the name-ordered
+  // list, so the section ORDER never changes with the sort mode (the
+  // group first, then its units, as today) — only the songs inside each
+  // section are re-ordered. Sorting before bucketing instead would move
+  // whole sections around ("whichever unit released most recently
+  // first"), which reads as the chip row's order breaking.
   const grouped = useMemo(() => {
     if (!showSectionHeaders) {
-      return [{ unitKey: null as string | null, label: "", color: "", songs: filtered }];
+      return [
+        {
+          unitKey: null as string | null,
+          label: "",
+          color: "",
+          songs: sortPickerSongs(filtered, sort),
+        },
+      ];
     }
     const MULTI_ARTIST_BUCKET_KEY = -1;
     const buckets = new Map<
@@ -223,9 +245,9 @@ export function SongPickerContent({
       unitKey: b.unitKey,
       label: b.label,
       color: b.color,
-      songs: b.songs,
+      songs: sortPickerSongs(b.songs, sort),
     }));
-  }, [filtered, showSectionHeaders, t]);
+  }, [filtered, showSectionHeaders, sort, t]);
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -355,9 +377,16 @@ export function SongPickerContent({
         </div>
       </div>
 
-      {/* Result count line */}
+      {/* Result count line + sort toggle. The toggle is two
+          aria-pressed buttons in a labelled group rather than a
+          <select>: two options, one tap, and the active one is
+          visible at a glance on a phone. */}
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
           padding: "6px 16px",
           fontSize: 10,
           color: colors.textMuted,
@@ -365,10 +394,43 @@ export function SongPickerContent({
           borderBottom: `1px solid ${colors.bgSubtle}`,
         }}
       >
-        {t("picker.resultCount", {
-          count: filtered.length,
-          selected: selectedSet.size,
-        })}
+        <span>
+          {t("picker.resultCount", {
+            count: filtered.length,
+            selected: selectedSet.size,
+          })}
+        </span>
+        <div
+          role="group"
+          aria-label={t("picker.sortAria")}
+          style={{ display: "flex", gap: 4, flexShrink: 0 }}
+        >
+          {(["name", "release"] as const).map((mode) => {
+            const active = sort === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setSort(mode)}
+                aria-pressed={active}
+                style={{
+                  padding: "1px 8px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  border: `1px solid ${active ? colors.primary : colors.border}`,
+                  background: active ? colors.primaryBg : "transparent",
+                  color: active ? colors.primary : colors.textSecondary,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t(mode === "name" ? "picker.sortByName" : "picker.sortByRelease")}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Song list */}

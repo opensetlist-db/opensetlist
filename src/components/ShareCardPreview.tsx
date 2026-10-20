@@ -1,6 +1,7 @@
 "use client";
 
 import { forwardRef } from "react";
+import type { ShareCardMode } from "@/lib/shareCardMode";
 import { useTranslations } from "next-intl";
 import { displayOriginalTitle } from "@/lib/display";
 import { BRAND_NAME, BRAND_URL_DISPLAY } from "@/lib/config";
@@ -25,27 +26,6 @@ import type { PredictionEntry } from "@/lib/predictionsStorage";
 import type { LiveSetlistItem } from "@/lib/types/setlist";
 import { shareCardColors, type ShareCardTheme } from "@/styles/tokens";
 
-/**
- * Render mode for the share card. Drives both `<ShareCardPreview>`'s
- * layout and `<ShareCardButton>`'s label / `<ShareCardModal>`'s share
- * text. The mode is derived from `status + actualSongs` at the
- * button level (see `<ShareCardButton>`):
- *
- *   - `"prediction"` — pre-show (`upcoming`) OR ongoing with no actual
- *     songs entered yet. Shows the viewer's predicted setlist in their
- *     chosen rank order. No score banner (there's nothing to compare
- *     against). Pre-show share is the viral entry point: fans share
- *     their predictions BEFORE the show, friends see them, friends
- *     show up. v0.11.1-and-earlier only enabled share post-show, which
- *     missed this whole funnel.
- *   - `"live"` — ongoing AND actualSongs has at least one row.
- *     Identical layout to `"final"` (score banner + actual setlist
- *     with hit highlighting) but with a red `LIVE` pill in the top-
- *     right corner signaling the result is partial / mid-flight.
- *   - `"final"` — completed. Current post-show layout — final score,
- *     full actual setlist.
- */
-export type ShareCardMode = "prediction" | "live" | "final";
 
 /**
  * "LIVE" badge red — intentionally theme-invariant so the captured

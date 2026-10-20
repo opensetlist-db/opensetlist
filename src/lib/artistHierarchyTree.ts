@@ -26,15 +26,39 @@ export interface ArtistHierarchy {
   parentOf: Map<string, string | null>;
   /** parent id → direct child ids. */
   childrenOf: Map<string, string[]>;
+  /** `Artist.sortOrder`, only for artists that have one. Read for
+   *  roots by the festival group order (`resolveFestivalGroups`). */
+  sortOrderOf: Map<string, number>;
+  /** Ids with `Artist.isSideProject` — dropped from the fan board's
+   *  group list (`fanBoardRootIds`), kept everywhere else. */
+  sideProjects: Set<string>;
 }
 
 type IdLike = bigint | number | string;
 
+/**
+ * The two display columns ride the same whole-table read as the tree
+ * (two more scalars per artist) instead of a second query: every
+ * caller that orders or filters festival roots already holds the
+ * hierarchy, and the order must be known BEFORE the display rows are
+ * loaded (the picker loads one catalog per root, in root order).
+ *
+ * Both are optional on the input so callers that only have the tree
+ * (the admin SetlistBuilder rebuilds it from a parent map) still
+ * type-check; absent means "no order" / "not a side project".
+ */
 export function buildArtistHierarchy(
-  rows: ReadonlyArray<{ id: IdLike; parentArtistId: IdLike | null }>,
+  rows: ReadonlyArray<{
+    id: IdLike;
+    parentArtistId: IdLike | null;
+    sortOrder?: number | null;
+    isSideProject?: boolean;
+  }>,
 ): ArtistHierarchy {
   const parentOf = new Map<string, string | null>();
   const childrenOf = new Map<string, string[]>();
+  const sortOrderOf = new Map<string, number>();
+  const sideProjects = new Set<string>();
   for (const r of rows) {
     const id = String(r.id);
     const parent = r.parentArtistId === null ? null : String(r.parentArtistId);
@@ -44,8 +68,10 @@ export function buildArtistHierarchy(
       if (siblings) siblings.push(id);
       else childrenOf.set(parent, [id]);
     }
+    if (typeof r.sortOrder === "number") sortOrderOf.set(id, r.sortOrder);
+    if (r.isSideProject === true) sideProjects.add(id);
   }
-  return { parentOf, childrenOf };
+  return { parentOf, childrenOf, sortOrderOf, sideProjects };
 }
 
 /**

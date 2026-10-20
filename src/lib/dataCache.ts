@@ -48,6 +48,11 @@ export const CACHE_TTL = {
   // keyed on a 5-minute `now` bucket (see `timeBucket`).
   home: 300,
   sitemap: 3600,
+  // Fan board aggregate (n15). Fan writes never invalidate it (they
+  // must not touch any cache the live path shares), so the TTL alone
+  // bounds staleness — ~2 minutes is the promised "as of" lag, and a
+  // promo spike costs one aggregation per key per window.
+  board: 120,
 } as const;
 
 /**
@@ -83,6 +88,17 @@ export function eventTag(eventId: bigint | number | string): string {
  */
 export function eventImpressionsTag(eventId: bigint | number | string): string {
   return `event:${eventId.toString()}:impressions`;
+}
+
+/**
+ * Own tag for the fan board aggregate (n15). Deliberately NOT
+ * `eventTag(id)`: board entries must not be expired by — or expire —
+ * the event/live entries. Fan board writes never expire it (TTL-only);
+ * the one caller is the admin board write when the operator changes
+ * starter picks (`revalidateBoardAggregate`).
+ */
+export function eventBoardTag(eventId: bigint | number | string): string {
+  return `event:${eventId.toString()}:board`;
 }
 
 // Deployment discriminator for cache keys. The Vercel Data Cache
@@ -374,4 +390,36 @@ export function revalidateEventData(eventId: bigint | number | string): void {
 /** Expire only an event's cached impressions page (see `eventImpressionsTag`). */
 export function revalidateEventImpressions(eventId: bigint | number | string): void {
   expireTags([eventImpressionsTag(eventId)]);
+}
+
+/**
+ * Tag of the fan board's CONTROL row (n15: flag + status + start time +
+ * starter picks). Separate from both `eventTag` (which the control
+ * entry also carries, so event writes still refresh status/startTime)
+ * and `eventBoardTag` (the aggregate): expiring it touches no event,
+ * live-snapshot or aggregate entry.
+ */
+export function eventBoardControlTag(eventId: bigint | number | string): string {
+  return `event:${eventId.toString()}:board-control`;
+}
+
+/**
+ * Expire only the board control row — called by the admin board
+ * settings write so the kill switch reaches the next board read
+ * instead of one event TTL later. Never called by fan board writes
+ * (those are TTL-only by design).
+ */
+export function revalidateBoardControl(eventId: bigint | number | string): void {
+  expireTags([eventBoardControlTag(eventId)]);
+}
+
+/**
+ * Expire only the board aggregate (`eventBoardTag`). Called by the
+ * admin board write when starter picks change — the aggregate carries
+ * their resolved titles, so expiring only the control row would serve
+ * the new control value with the old starters for up to one board TTL.
+ * Never called by fan board writes.
+ */
+export function revalidateBoardAggregate(eventId: bigint | number | string): void {
+  expireTags([eventBoardTag(eventId)]);
 }

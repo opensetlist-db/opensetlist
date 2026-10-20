@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
-import EventStatusTicker, {
+import EventStatusTicker from "@/components/EventStatusTicker";
+import {
+  ONGOING_BUFFER_MS,
   POST_BOUNDARY_BUFFER_MS,
-} from "@/components/EventStatusTicker";
-import { ONGOING_BUFFER_MS } from "@/lib/eventStatus";
+} from "@/lib/eventStatus";
 
 const refreshMock = vi.fn();
 

@@ -12,14 +12,14 @@ const IMPORT_TYPES = [
   {
     value: "artists",
     label: "2. 아티스트 (Artists)",
-    columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit", "color"],
-    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · color: 유닛 배지 색 (예: #e91e8c). 컬럼 자체를 생략하면 기존 색 유지, 빈 셀이면 색 제거 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
+    columns: ["slug*", "type*", "parentArtist_slug", "group_slugs", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "originalLanguage", "originalName", "originalShortName", "originalBio", "category", "isMainUnit", "color", "sortOrder", "isSideProject"],
+    note: "ja/ko/en_name 최소 1개 필수 · group_slugs: 공백 구분 · category: 그룹 미연결 아티스트 fallback (Group 연결 시 무시) · isMainUnit: 유닛 아티스트만 의미 있음 (true/false) · color: 유닛 배지 색 (예: #e91e8c). 컬럼 자체를 생략하면 기존 색 유지, 빈 셀이면 색 제거 · sortOrder: 페스 그룹 칩 정렬 순서 (정수, 작을수록 앞, 최상위 아티스트만). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · isSideProject: 사이드 프로젝트 = 페스 보드에서 제외 (true/false, 최상위 아티스트만). 컬럼 생략·빈 셀이면 기존 값 유지 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용",
   },
   {
     value: "members",
     label: "3. 멤버 (Members)",
-    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
-    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
+    columns: ["character_slug*", "character_type", "ja_name", "ja_shortName", "ko_name", "ko_shortName", "en_name", "en_shortName", "color", "sortOrder", "artist_slugs*", "va_ja_name", "va_ko_name", "va_en_name", "va_ja_shortName", "va_ko_shortName", "va_en_shortName", "startDate", "endDate", "note", "originalLanguage", "originalName", "originalShortName", "va_originalLanguage", "va_originalName", "va_originalShortName", "va_originalStageName"],
+    note: "ja/ko/en_name 최소 1개 필수 · artist_slugs: 공백 구분 · sortOrder: 공식 멤버 순서 (정수, 작을수록 앞, 비어 있는 멤버는 뒤로). 컬럼 생략 시 기존 값 유지, 빈 셀이면 미지정 · startDate/endDate: 유닛 소속 기간 · note: graduated 등 · original* 컬럼이 비어 있으면 originalLanguage 로케일의 번역값을 사용 · VA는 va_* 접두사 · va_*_shortName: 글로서리 추출용 (선택)",
   },
   {
     value: "albums",

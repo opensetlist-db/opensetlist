@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 
 type RouteProps = { params: Promise<{ id: string }> };
 
@@ -35,6 +36,10 @@ type RouteProps = { params: Promise<{ id: string }> };
  * this route from depending on `serializeBigInt`'s walk-everywhere
  * recursion when the payload is otherwise shallow scalars.
  *
+ * Order: the official member order (`src/lib/memberOrder.ts`) —
+ * `<PerformerChecklist>` renders the list as given, so the checklist
+ * reads like the event lineup.
+ *
  * Cached: event performer rosters change only on operator edits
  * (rare during a live show). 60s edge cache + 5min SWR is plenty;
  * the bottom sheet is opened post-show-start by ground-truth users
@@ -54,6 +59,7 @@ export async function GET(_req: NextRequest, { params }: RouteProps) {
       where: { id: eventId, isDeleted: false },
       select: {
         performers: {
+          orderBy: byStageIdentityOrderBy(),
           select: {
             stageIdentityId: true,
             isGuest: true,

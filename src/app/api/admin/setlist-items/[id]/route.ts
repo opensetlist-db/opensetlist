@@ -5,6 +5,7 @@ import {
   withAdminLiveWriterBusy,
 } from "@/lib/liveWriterTx";
 import { serializeBigInt } from "@/lib/utils";
+import { byStageIdentityOrderBy } from "@/lib/memberOrder";
 import { validateEncoreOrder } from "@/lib/validation";
 import { revalidateEventData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
@@ -145,7 +146,10 @@ async function updateItem(
           include: { song: { include: { translations: true } } },
           orderBy: { order: "asc" },
         },
+        // Official member order, matching the builder's initial
+        // render of the same row (admin event edit page).
         performers: {
+          orderBy: byStageIdentityOrderBy(),
           include: {
             stageIdentity: { include: { translations: true } },
           },

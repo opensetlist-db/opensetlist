@@ -18,12 +18,15 @@ import {
   requireString,
 } from "@/lib/admin-input";
 import {
+  parseArtistDisplayFields,
   parseArtistTranslations,
   parseStageIdentities,
 } from "./_validate";
 import { revalidatePublicData } from "@/lib/dataCache";
 import { verifyAdminAPI } from "@/lib/admin-auth";
 import { normalizeArtistQuery } from "@/lib/search";
+
+const SEARCH_LIMIT = 100;
 
 export async function GET(request: NextRequest) {
   const unauthorized = await verifyAdminAPI();
@@ -57,7 +60,15 @@ export async function GET(request: NextRequest) {
       },
     },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    // Only a search (`?q=`) is capped. The bare list feeds every admin
+    // artist <select> (song credits, album artists, parent artist, event
+    // series, event performers) and must be complete: a select whose
+    // current value isn't among its options *displays* the first option,
+    // so an operator who touches it re-credits the record to the wrong
+    // artist on save (song PUT replaces all SongArtist rows from form
+    // state). With a cap, the oldest artists — e.g. id 1, the Hasunosora
+    // headliner — fell off once the catalog passed 100 rows.
+    ...(term ? { take: SEARCH_LIMIT } : {}),
   });
   return NextResponse.json(serializeBigInt(artists));
 }
@@ -90,6 +101,9 @@ export async function POST(request: NextRequest) {
 
   const isMainUnitCheck = nullableBoolean(body.isMainUnit, "isMainUnit");
   if (!isMainUnitCheck.ok) return badRequest(isMainUnitCheck.message);
+
+  const display = parseArtistDisplayFields(body);
+  if (!display.ok) return badRequest(display.message);
 
   const name = requireString(body.originalName, "originalName");
   if (!name.ok) return badRequest(name.message);
@@ -161,6 +175,7 @@ export async function POST(request: NextRequest) {
         // schema layer is permissive, so we enforce it here.
         isMainUnit:
           typeCheck.value === "unit" ? (isMainUnitCheck.value ?? false) : false,
+        ...display.value,
         originalName: name.value,
         originalShortName: shortName.value,
         originalBio: bio.value,
@@ -182,6 +197,7 @@ export async function POST(request: NextRequest) {
                       slug: siSlug,
                       type: si.type,
                       color: si.color,
+                      sortOrder: si.sortOrder,
                       originalName: si.originalName,
                       originalShortName: si.originalShortName,
                       originalLanguage: si.originalLanguage,

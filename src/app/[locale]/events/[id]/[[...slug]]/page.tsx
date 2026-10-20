@@ -31,11 +31,16 @@ import {
   getAvailableSongsCached,
   getFestivalGroupArtistsCached,
 } from "@/lib/predict/availableSongs";
+import { mergeFestivalCatalog } from "@/lib/predict/festivalCatalog";
 import {
-  mergeFestivalCatalog,
-  resolveFestivalGroups,
-} from "@/lib/predict/festivalCatalog";
+  boardGroupRootIds,
+  boardGroupsFromRows,
+  seriesPrimaryArtistOf,
+} from "@/lib/board/boardGroups";
 import { getArtistHierarchyCached } from "@/lib/artistHierarchy";
+import { getEventRoster } from "@/lib/eventRoster";
+import { loadBoardGroups } from "@/lib/board/loadBoardGroups";
+import type { BoardBlockSeed } from "@/lib/board/types";
 import type { AvailableSong, UnitFilter } from "@/lib/types/predict";
 import {
   deriveLineupFromRoster,
@@ -45,7 +50,6 @@ import {
   type EventPerformerSummary,
   type Lineup,
 } from "@/lib/sidebarDerivations";
-import type { EventRosterEntry } from "@/lib/types/setlist";
 import { formatVenueStart } from "@/lib/venueTime";
 import { buildEventJsonLd, serializeJsonLd } from "@/lib/seo/eventJsonLd";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/Breadcrumb";
@@ -396,83 +400,6 @@ const getLiveSeed = cache(
       return null;
     }
   },
-);
-
-// Event roster with each stage identity's artist memberships — the
-// input for the pre-show lineup (`deriveLineupFromRoster`) and the
-// JSON-LD `performer` groups. Kept OUT of the wide `fetchEvent` read on
-// purpose: that query is `relationJoins`-aggregated, so nesting
-// `artistLinks.artist` (+ translations) under every performer there
-// would inline each artist once per member link on every event fetch,
-// including the uncached live path. A separate narrow, cached read
-// costs one extra round-trip per TTL instead.
-//
-// Order: stage-identity creation order (= seed order, i.e. canonical
-// member order), id as the deterministic tiebreak. `artistLinks` by
-// artist id so a member's home group (created before later collab
-// groups) is listed first — only a tiebreak; the lineup picks the home
-// group by roster headcount.
-async function fetchEventRoster(
-  id: bigint,
-  locale: string,
-): Promise<EventRosterEntry[]> {
-  const localeFilter = { locale: { in: [locale, FALLBACK_LOCALE] } };
-  const translationSelect = {
-    where: localeFilter,
-    select: { locale: true, name: true, shortName: true },
-  } as const;
-  const rows = await prisma.eventPerformer.findMany({
-    where: { eventId: id },
-    orderBy: [
-      { stageIdentity: { createdAt: "asc" } },
-      { stageIdentityId: "asc" },
-    ],
-    select: {
-      isGuest: true,
-      stageIdentity: {
-        select: {
-          id: true,
-          slug: true,
-          originalName: true,
-          originalShortName: true,
-          originalLanguage: true,
-          translations: translationSelect,
-          artistLinks: {
-            orderBy: { artistId: "asc" },
-            select: {
-              artist: {
-                select: {
-                  id: true,
-                  slug: true,
-                  type: true,
-                  color: true,
-                  parentArtistId: true,
-                  isMainUnit: true,
-                  isDeleted: true,
-                  originalName: true,
-                  originalShortName: true,
-                  originalLanguage: true,
-                  translations: translationSelect,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-  // serializeBigInt keeps the input's TS types while turning BigInt ids
-  // into numbers at runtime; `EventRosterEntry` describes the runtime
-  // (number) shape — same boundary cast as `LiveSetlistItem` below.
-  return serializeBigInt(rows) as unknown as EventRosterEntry[];
-}
-
-// Operators fill the roster well before a show and don't touch it
-// during one, so even the live path takes the cached copy.
-const getEventRoster = cachedQuery(
-  "event-roster",
-  (id: bigint, locale: string) => fetchEventRoster(id, locale),
-  { revalidate: CACHE_TTL.event, tags: (id) => [eventTag(id)] },
 );
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -895,10 +822,7 @@ export default async function EventPage({ params }: Props) {
   //     Only an upcoming multi-artist event with NO roster still has
   //     no defensible scope; there the picker hides and the surface
   //     degrades to copy-from-past + share CTA.
-  const seriesPrimaryArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  const seriesPrimaryArtist = seriesPrimaryArtistOf(event.eventSeries);
   let availableSongs: AvailableSong[] = [];
   let unitFilters: UnitFilter[] = [];
   if (resolvedStatus === "upcoming" && seriesPrimaryArtist) {
@@ -924,48 +848,38 @@ export default async function EventPage({ params }: Props) {
     );
   } else if (resolvedStatus === "upcoming" && roster.length > 0) {
     const hierarchy = await getArtistHierarchyCached();
-    const groupRefs = resolveFestivalGroups(roster, hierarchy);
-    if (groupRefs.length > 0) {
+    // Same resolver the fan board uses (`primaryArtistId: null` selects
+    // the festival branch), so the picker's chips and the board's
+    // groups come from one ordering (`Artist.sortOrder` first, then
+    // performer count). Deliberately NOT `fanBoardRootIds`: a side
+    // project keeps its picker chip — only the board drops it.
+    const rootIds = boardGroupRootIds({
+      roster,
+      hierarchy,
+      primaryArtistId: null,
+    });
+    if (rootIds.length > 0) {
       // Sorted id key so the display-row cache entry is independent of
-      // roster order (the chip ORDER still comes from `groupRefs`).
+      // roster order (the chip ORDER still comes from `rootIds`).
       const idKey = joinIdKey(
-        groupRefs.map((g) => g.rootId).sort((a, b) => Number(a) - Number(b)),
+        [...rootIds].sort((a, b) => Number(a) - Number(b)),
       );
       const [groupArtists, perGroup, predictPickerTrans] = await Promise.all([
         getFestivalGroupArtistsCached(idKey, locale),
         Promise.all(
-          groupRefs.map((g) => getAvailableSongsCached(BigInt(g.rootId), locale)),
+          rootIds.map((id) => getAvailableSongsCached(BigInt(id), locale)),
         ),
         getTranslations("Predict.picker"),
       ]);
-      const artistById = new Map(groupArtists.map((a) => [String(a.id), a]));
       // A root that came back missing (soft-deleted between the
       // hierarchy read and this one) or whose id isn't JS-safe drops
-      // out together with its catalog, keeping the two arrays aligned.
-      const groups: Array<{
-        artistId: number;
-        slug: string;
-        label: string;
-        color: string | null;
-      }> = [];
-      const groupCatalogs: AvailableSong[][] = [];
-      groupRefs.forEach((ref, i) => {
-        const artist = artistById.get(ref.rootId);
-        const artistId = artist ? safeBigIntToNumber(artist.id) : null;
-        if (!artist || artistId === null) return;
-        groups.push({
-          artistId,
-          slug: artist.slug,
-          label: displayNameWithFallback(
-            artist,
-            artist.translations,
-            locale,
-            "short",
-          ),
-          color: artist.color,
-        });
-        groupCatalogs.push(perGroup[i]);
-      });
+      // out of `groups`; catalogs are looked up by id so the two
+      // arrays stay aligned.
+      const groups = boardGroupsFromRows(rootIds, groupArtists, locale);
+      const catalogByRoot = new Map(rootIds.map((id, i) => [id, perGroup[i]]));
+      const groupCatalogs = groups.map(
+        (g) => catalogByRoot.get(String(g.artistId)) ?? [],
+      );
       availableSongs = mergeFestivalCatalog(
         groups.map((g) => g.artistId),
         groupCatalogs,
@@ -979,6 +893,67 @@ export default async function EventPage({ params }: Props) {
       );
     }
   }
+
+  // Fan board (n15) seed: ONLY the flag (implicit — null when off), the
+  // lock time and the group chips. The aggregate is never read here:
+  // the client block fetches `/api/events/[id]/board` after mount, so a
+  // slow or failing board can't 500 or slow this page, and nothing
+  // board-related enters the batch above. Mounted for upcoming and
+  // completed events only — while ongoing the page keeps today's
+  // wishlist and the board client is not mounted at all (show-night
+  // capacity numbers were qualified without it); cancelled events have
+  // nothing to show.
+  //
+  // ONE open date for the board, the wishlist and the predictions: an
+  // upcoming board event shows the board only inside the same window
+  // (`wishPredictOpen` — D-7, or the event's `engagementOpensAt`).
+  // Before it the page looks like any pre-window event: no board, no
+  // wishlist, and the "predictions open on …" line (`predictOpensLabel`)
+  // — so fans meet a single "opens on" date, never a board that is open
+  // while the rest still says "later". `boardEnabled` stays the kill
+  // switch. The gate is UI mounting only, like the other two surfaces:
+  // the board APIs keep their own checks (flag, start-time lock, caps).
+  // Post-show (completed) is not gated — the tally view stays, exactly
+  // as the wishlist's locked TOP-3 does.
+  const boardChipsSeed: Omit<BoardBlockSeed, "share"> | null = await (async () => {
+    if (
+      !event.boardEnabled ||
+      (resolvedStatus !== "upcoming" && resolvedStatus !== "completed") ||
+      (resolvedStatus === "upcoming" && !wishPredictOpen)
+    ) {
+      return null;
+    }
+    // The chips are the one board read SSR does (cached hierarchy +
+    // group display rows). A failure there must not take the page
+    // down: degrade to "no board" — the page then looks like a
+    // non-board event, exactly as the client block does on a failed
+    // aggregate read.
+    let groups;
+    try {
+      groups = await loadBoardGroups({
+        eventId,
+        primaryArtistId: seriesPrimaryArtist?.id ?? null,
+        locale,
+        roster,
+      });
+    } catch (err) {
+      console.warn(
+        `[eventPage] board chips unavailable event=${eventId} ` +
+          `err=${err instanceof Error ? `${err.name}:${err.message.slice(0, 120)}` : String(err)}`,
+      );
+      return null;
+    }
+    if (groups.length === 0) return null;
+    return {
+      lockAt: new Date(event.startTime).toISOString(),
+      chips: groups.map((g) => ({
+        groupId: String(g.artistId),
+        slug: g.slug,
+        label: g.label,
+        color: g.color,
+      })),
+    };
+  })();
 
   const eventFullName = displayNameWithFallback(
     event,
@@ -1030,11 +1005,10 @@ export default async function EventPage({ params }: Props) {
   // Soft-deleted artists are dropped — `Artist.isDeleted=true` rows
   // 404 on `/artists/{id}` (the artist page calls notFound()), so
   // linking to them would dead-end. Treat as absent and fall through
-  // to the organizerName branch.
-  const seriesArtist =
-    event.eventSeries?.artist && !event.eventSeries.artist.isDeleted
-      ? event.eventSeries.artist
-      : null;
+  // to the organizerName branch. Same value the picker branch keys on
+  // (`seriesPrimaryArtistOf`), so the header link and the single-artist
+  // picker can never point at different artists.
+  const seriesArtist = seriesPrimaryArtist;
   const headerArtist = seriesArtist
     ? {
         // String() — `Artist.id` is BigInt; `Number(bigint)` truncates
@@ -1223,6 +1197,17 @@ export default async function EventPage({ params }: Props) {
     [seriesShortName || seriesFullName, eventFullName]
       .filter(Boolean)
       .join(" ") || headerTitle;
+  // The copy-my-picks text names the event the same way the <title>
+  // and JSON-LD do (series short + event full): a bare "Day.1" in an
+  // X post says nothing. The link is the canonical path; the client
+  // adds the origin and the open group's fragment.
+  const boardSeed: BoardBlockSeed | null = boardChipsSeed && {
+    ...boardChipsSeed,
+    share: {
+      eventName: jsonLdName,
+      path: entityPath("events", locale, id, event.slug),
+    },
+  };
   const rosterHostGroups =
     rosterLineup?.groups.filter((g) => !g.isGuest) ?? [];
   const jsonLdPerformers =
@@ -1353,6 +1338,7 @@ export default async function EventPage({ params }: Props) {
         eventPerformers={eventPerformers}
         status={resolvedStatus}
         isWishPredictOpen={wishPredictOpen}
+        board={boardSeed}
         // Match the rest of the codebase's badge convention: `LIVE`
         // for ongoing events (home, event list, artist/member/series
         // detail all use t("live")), localized status text for

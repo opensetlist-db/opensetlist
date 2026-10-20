@@ -29,7 +29,7 @@
  * Pure — no Prisma / Next imports, so it unit-tests in isolation.
  */
 
-import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchy";
+import { rootOf, type ArtistHierarchy } from "@/lib/artistHierarchyTree";
 import type { AvailableSong } from "@/lib/types/predict";
 import type { EventRosterEntry } from "@/lib/types/setlist";
 
@@ -37,19 +37,32 @@ export interface FestivalGroupRef {
   /** Root artist id (string — hierarchy key space; see
    *  `artistHierarchy.ts` for why ids are strings there). */
   rootId: string;
-  /** Distinct roster performers reaching this root. Ordering key. */
+  /** Distinct roster performers reaching this root. Ordering key
+   *  after `sortOrder`. */
   performerCount: number;
+  /** The root's `Artist.sortOrder`, null when the operator set none. */
+  sortOrder: number | null;
 }
 
 /**
- * Distinct root groups reached from the roster, ordered by performer
- * count desc (the headline groups first), first-appearance order as
- * the tiebreak — the roster arrives in canonical seed order, so ties
- * read in the same sequence as the lineup card.
+ * Distinct root groups reached from the roster, in festival order:
  *
- * A performer linked to two roots (a member of a cross-IP collab group
- * such as AiScReam) counts toward both; that is what puts the collab
- * group's chip on the row at all.
+ *   1. `Artist.sortOrder` ascending — the operator's series order
+ *      (e.g. by debut), so a franchise festival lists its series the
+ *      way fans know them rather than by headcount. Roots without one
+ *      come after every root that has one.
+ *   2. Performer count desc (the headline groups first).
+ *   3. First-appearance order — the roster arrives in canonical seed
+ *      order, so ties read in the same sequence as the lineup card.
+ *
+ * With no sortOrder anywhere (every event before the operator fills
+ * it), 1 is a no-op and the order is exactly the old count rule.
+ * This is the ONE place festival roots are ordered: the fan board's
+ * chips and the prediction picker's chips both come from here.
+ *
+ * A performer linked to two roots (a member of a cross-IP collab
+ * group) counts toward both; that is what puts the collab group's
+ * chip on the row at all.
  */
 export function resolveFestivalGroups(
   roster: readonly EventRosterEntry[],
@@ -65,10 +78,26 @@ export function resolveFestivalGroups(
     for (const root of roots) counts.set(root, (counts.get(root) ?? 0) + 1);
   }
   // Map iteration is insertion order, and `Array.prototype.sort` is
-  // stable, so equal counts keep first-appearance order.
+  // stable, so equal keys keep first-appearance order.
   return [...counts]
-    .map(([rootId, performerCount]) => ({ rootId, performerCount }))
-    .sort((a, b) => b.performerCount - a.performerCount);
+    .map(([rootId, performerCount]) => ({
+      rootId,
+      performerCount,
+      sortOrder: hierarchy.sortOrderOf.get(rootId) ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        compareSortOrder(a.sortOrder, b.sortOrder) ||
+        b.performerCount - a.performerCount,
+    );
+}
+
+/** Ascending, nulls last; 0 for "same tier" so the next key decides. */
+function compareSortOrder(a: number | null, b: number | null): number {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a - b;
 }
 
 /**
