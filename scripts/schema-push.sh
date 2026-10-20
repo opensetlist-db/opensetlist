@@ -5,13 +5,19 @@
 #   scripts/schema-push.sh <accept_data_loss: true|false>
 #
 #   true  → the operator chose `--accept-data-loss` on manual dispatch.
-#   false → diff the database against the schema first. When the
-#           generated SQL is additive only (scripts/schema-diff-additive.mjs)
-#           the push runs with `--accept-data-loss`, because Prisma flags
-#           every new unique constraint as possible data loss even on a
-#           brand-new all-NULL column (v0.20 / n15-08: the dev push failed
-#           on exactly that). Anything else gets the plain push, which
-#           stops on a real data-loss warning as before.
+#   false → diff the database against the schema first.
+#           1. A diff that DROPs a column, a table, or an index of a table
+#              that stays (scripts/schema-diff-additive.mjs --drops) stops
+#              the job with exit 1. `db push` itself warns only when the
+#              dropped object holds rows, so an EMPTY column — a feature
+#              branch's column on the dev DB before that branch merges —
+#              used to vanish silently when another PR's push ran first.
+#           2. When the generated SQL is additive only the push runs with
+#              `--accept-data-loss`, because Prisma flags every new unique
+#              constraint as possible data loss even on a brand-new
+#              all-NULL column (v0.20: the dev push failed on exactly
+#              that). Anything else gets the plain push, which stops on a
+#              real data-loss warning as before.
 set -euo pipefail
 
 if [ "${1:-false}" = "true" ]; then
@@ -21,11 +27,18 @@ if [ "${1:-false}" = "true" ]; then
 fi
 
 diff_file="$(mktemp)"
+trap 'rm -f "$diff_file"' EXIT
 npx prisma migrate diff --from-config-datasource \
   --to-schema prisma/schema.prisma --script --output "$diff_file"
 echo "── pending schema diff ──"
 cat "$diff_file"
 echo "─────────────────────────"
+
+if ! node scripts/schema-diff-additive.mjs --drops "$diff_file"; then
+  echo "::error::Refusing to push: the schema diff drops the statements above."
+  echo "Hint: a branch-only column from an unmerged PR? re-run migrate-dev --ref <that branch> after this; or dispatch with accept_data_loss=true"
+  exit 1
+fi
 
 if node scripts/schema-diff-additive.mjs "$diff_file"; then
   echo "Additive only → db push --accept-data-loss"
