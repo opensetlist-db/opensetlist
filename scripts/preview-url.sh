@@ -11,7 +11,8 @@
 #
 # Prints the commit, the latest status state, the environment and the
 # status's `environment_url` (the per-commit site URL; "-" while the
-# build has none yet). Exits 1 with "no deployment yet" when Vercel has
+# build has none yet — GitHub sends "" rather than null for a pending
+# status). Exits 1 with "no deployment yet" when Vercel has
 # not reported one for that commit.
 #
 # Why: the branch alias (`opensetlist-git-dev-…vercel.app`) can lag the
@@ -46,7 +47,7 @@ if [ -z "$deployment" ]; then
 fi
 read -r id environment <<< "$deployment"
 
-status="$(gh api "repos/$repo/deployments/$id/statuses?per_page=1" --jq '.[0] | select(. != null) | "\(.state) \(.environment_url // "-")"')"
+status="$(gh api "repos/$repo/deployments/$id/statuses?per_page=1" --jq '.[0] | select(. != null) | "\(.state) \(if (.environment_url // "") == "" then "-" else .environment_url end)"')"
 if [ -z "$status" ]; then
   echo "no deployment yet for $sha (deployment $id has no status)" >&2
   exit 1
