@@ -37,6 +37,19 @@ describe("refusalReason", () => {
     expect(refusalReason(sql)).toMatch(/only reads|session setting/);
   });
 
+  // A session advisory lock stays held after ROLLBACK; through the
+  // transaction pooler it would sit on a backend other clients share.
+  it.each([
+    ["pg_advisory_lock", "select pg_advisory_lock(1)"],
+    ["pg_try_advisory_lock_shared", "SELECT PG_TRY_ADVISORY_LOCK_SHARED(1, 2)"],
+  ])("refuses a session advisory lock: %s", (_name, sql) => {
+    expect(refusalReason(sql)).toMatch(/advisory lock outlives/);
+  });
+
+  it("allows a transaction-scoped advisory lock", () => {
+    expect(refusalReason("select pg_advisory_xact_lock(1)")).toBeNull();
+  });
+
   // A second statement could be a COMMIT that ends BEGIN READ ONLY and
   // lets what follows persist. The script also sends the query with the
   // extended protocol, where Postgres itself refuses a second statement;

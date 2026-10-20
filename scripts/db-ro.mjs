@@ -43,9 +43,21 @@ import { fileURLToPath } from "node:url";
 // list is broad; a miss is still caught by the read-only transaction.
 const REFUSED_START =
   /^\s*(insert|update|delete|merge|alter|drop|create|truncate|grant|revoke|copy|comment|vacuum|reindex|cluster|lock|refresh|call|do|prepare|execute|deallocate|listen|notify|unlisten|import|security|begin|start|commit|end|rollback|abort|savepoint|release|reset|discard|set(?!\s+local\b))\b/i;
-// `set_config(name, value, false)` changes the setting for the SESSION
-// from inside a plain SELECT — the same leak as `SET SESSION`.
-const REFUSED_ANYWHERE = /\bset_config\s*\(/i;
+// Session state reachable from inside a plain SELECT, which ROLLBACK does
+// not undo or which outlives it — the same leak as `SET SESSION` through
+// the transaction pooler (the DATABASE_URL fallback):
+//   - `set_config(name, value, false)` sets a session-level setting;
+//   - `pg_advisory_lock(…)` / `pg_try_advisory_lock(…)` and their
+//     `_shared` forms take a SESSION lock that stays held after ROLLBACK
+//     (the `pg_advisory_xact_*` forms end with the transaction and stay
+//     allowed).
+const REFUSED_ANYWHERE = [
+  [/\bset_config\s*\(/i, "set_config() changes a session setting — use SET LOCAL or nothing"],
+  [
+    /\bpg_(?:try_)?advisory_lock(?:_shared)?\s*\(/i,
+    "a session-level advisory lock outlives the transaction — use pg_advisory_xact_lock",
+  ],
+];
 
 /** Statements of a script, `/* … *\/` and `--` comments removed. Not
  *  literal-aware: a `;` or `--` inside a string splits or cuts wrongly.
@@ -83,8 +95,8 @@ export function refusalReason(sql) {
     if (start) {
       return `"${start[1].toUpperCase()}" is a write, a session-level setting or transaction control — this helper only reads`;
     }
-    if (REFUSED_ANYWHERE.test(stmt)) {
-      return "set_config() changes a session setting — use SET LOCAL or nothing";
+    for (const [re, reason] of REFUSED_ANYWHERE) {
+      if (re.test(stmt)) return reason;
     }
   }
   return null;
