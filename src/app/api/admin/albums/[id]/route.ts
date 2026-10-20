@@ -244,6 +244,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       if (!exists) return null;
 
       if (translationsProvided) {
+        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
         await tx.albumTranslation.deleteMany({ where: { albumId } });
       }
       if (artistIdsProvided) {

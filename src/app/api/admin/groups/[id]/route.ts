@@ -59,6 +59,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   // against concurrent edits.
   try {
     const group = await prisma.$transaction(async (tx) => {
+      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
       await tx.groupTranslation.deleteMany({ where: { groupId: id } });
       return tx.group.update({
         where: { id },
@@ -97,6 +98,7 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
   if (unauthorized) return unauthorized;
 
   const { id } = await params;
+  // eslint-disable-next-line no-restricted-syntax -- whole-entity DELETE, not a save: every row goes with the entity
   await prisma.groupTranslation.deleteMany({ where: { groupId: id } });
   await prisma.artistGroup.deleteMany({ where: { groupId: id } });
   await prisma.group.delete({ where: { id } });

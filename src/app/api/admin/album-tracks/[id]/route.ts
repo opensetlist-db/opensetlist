@@ -194,6 +194,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       const shouldWipeTranslations =
         body.pattern !== "direct" || pattern3TranslationsProvided;
       if (shouldWipeTranslations) {
+        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
         await tx.albumTrackTranslation.deleteMany({
           where: { albumTrackId: id },
         });

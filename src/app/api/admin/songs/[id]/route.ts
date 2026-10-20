@@ -30,6 +30,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
   // revalidate below only runs on success. Batch form is fine here (3
   // statements, well inside the client-level timeout).
   const [, , song] = await prisma.$transaction([
+    // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
     prisma.songTranslation.deleteMany({ where: { songId } }),
     prisma.songArtist.deleteMany({ where: { songId } }),
     prisma.song.update({

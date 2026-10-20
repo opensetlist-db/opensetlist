@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 import { beforeAll, describe, it, expect } from "vitest";
 import {
   deriveSlug,
@@ -92,7 +95,27 @@ describe("deriveSlug", () => {
   // suite's parallel load it pushed whichever test hit it first past the
   // 5 s per-test timeout. Warm it here, under its own budget, so each
   // test's timeout covers only its conversion.
+  //
+  // The warm-up also checks that the kuromoji dictionary is installed.
+  // `deriveSlug` swallows a kuroshiro init failure and returns "" (by
+  // design: the admin auto-path falls back to a timestamp slug), so on a
+  // node_modules without kuromoji — app-made worktrees had one — every
+  // transliteration case failed as `"" !== "pereniaru"`, which reads like
+  // a code bug. Fail here instead, once, with the actual cause.
   beforeAll(async () => {
+    const require = createRequire(import.meta.url);
+    let dictInstalled = false;
+    try {
+      const pkg = require.resolve("kuromoji/package.json");
+      dictInstalled = existsSync(path.join(path.dirname(pkg), "dict", "base.dat.gz"));
+    } catch {
+      dictInstalled = false;
+    }
+    if (!dictInstalled) {
+      throw new Error(
+        "kuromoji dictionary not installed (node_modules/kuromoji missing) — run npm ci; slug transliteration tests cannot run",
+      );
+    }
     await deriveSlug("ペ");
   }, 60_000);
 

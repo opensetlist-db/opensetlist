@@ -226,6 +226,7 @@ async function updateEvent(request: NextRequest, { params }: Props) {
         ...(guestIds ?? []),
       ]);
 
+      // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
       await tx.eventTranslation.deleteMany({ where: { eventId } });
 
       const updated = await tx.event.update({

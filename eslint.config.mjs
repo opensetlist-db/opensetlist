@@ -3,6 +3,7 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import useClientExports from "./eslint-rules/use-client-exports.mjs";
 import noTicketIds from "./eslint-rules/no-ticket-ids.mjs";
+import { adminTranslationDeleteRestriction } from "./eslint-rules/admin-translation-writes.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -25,6 +26,16 @@ const eslintConfig = defineConfig([
     rules: {
       "local/use-client-exports": "error",
       "local/no-ticket-ids": "error",
+    },
+  },
+  // Admin routes save translations per locale (upsert), never by
+  // deleting all of an entity's rows and recreating them from the body:
+  // a partial save then wipes the locales and columns it did not send.
+  // See eslint-rules/admin-translation-writes.mjs.
+  {
+    files: ["src/app/api/admin/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": ["error", adminTranslationDeleteRestriction],
     },
   },
   // Override default ignores of eslint-config-next.
