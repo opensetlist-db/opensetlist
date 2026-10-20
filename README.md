@@ -30,6 +30,16 @@ help@opensetlist.com
 
 ## Release Notes
 
+### v0.21.1 (2026-10-20)
+- **Sentry no longer drops song-page transactions (#627).** Patch bump: **no schema change**, no env vars, no new deps. `beforeSendTransaction` ran every transaction through `scrubAnon`, which wrote back to every key. Span data holds a live object with a getter-only `$`, so the strict-mode write threw. The transaction was dropped, and the throw was reported as an unhandled error on each sampled request (OPENSETLIST-11). The scrubber now writes only when a value changed, through `Reflect.set` inside a `try`, and leaves read-only slots alone.
+- **v0.21.0 retro guardrails (#628).** These are repository tooling changes. App behaviour is unchanged, apart from comment lines in admin routes.
+  - **Schema drop guard:** `scripts/schema-push.sh` now stops the migrate workflows when the pending diff drops a column, a table, or an index of a table that stays. It prints the statements and a hint, and only a dispatch with `accept_data_loss=true` gets past it. `db push` drops an EMPTY column without a warning, which is how a feature branch's column vanished from the dev DB. Every Prisma `DROP INDEX` counts, including an index that is dropped and recreated.
+  - **Lint:** `src/app/api/admin/**` forbids `<x>Translation.deleteMany(`, because delete-and-recreate wipes the locales and columns a partial save did not send. The 12 existing call sites carry a disable comment with their reason.
+  - **`scripts/db-ro.mjs`:** read-only SQL on the session pooler. It runs one statement inside `BEGIN READ ONLY … ROLLBACK` and refuses writes and session state.
+  - **`scripts/preview-url.sh`:** prints a commit's deployment state and its immutable Vercel URL. The branch alias can lag the branch head.
+  - **Slug tests:** they fail with the actual cause when the kuromoji dictionary is not installed.
+- **Release order (prod):** merge the release PR, then tag `v0.21.1`. `migrate-prod` runs as a no-op, now through the drop guard.
+
 ### v0.20.0 (2026-10-17)
 - **Impression translation runs on Claude Haiku 5.5 in production (#599).** Minor bump: **no schema change**, one new dependency (`@anthropic-ai/sdk`), one new env var (`ANTHROPIC_API_KEY`), and `TRANSLATION_PROVIDER` accepts `anthropic`. Owner decision on cost after the first measured provider bake-off, which ran the same prompt through all four models on 27 cases (16 dev impressions + 11 committed hard cases). All four parsed 27 of 27.
 

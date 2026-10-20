@@ -983,6 +983,7 @@ async function importSongs(rows: Record<string, string>[]) {
 
     // Delete translations for locales no longer in CSV
     if (removedLocales.length > 0) {
+      // eslint-disable-next-line no-restricted-syntax -- removes only the locales dropped from the CSV; the rest are upserted below
       await prisma.songTranslation.deleteMany({
         where: { songId: song.id, locale: { in: removedLocales } },
       });

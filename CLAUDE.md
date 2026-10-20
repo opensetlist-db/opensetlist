@@ -40,6 +40,7 @@ Similar to setlist.fm but focused on East Asian content — Korean, Japanese, En
 - `prisma.config.ts` — DB connection lives here, not in schema.prisma
 - `src/lib/prisma.ts` — singleton client with PrismaPg adapter
 - Key: use session pooler (port 5432) for migrations, transaction pooler (port 6543) for runtime
+- 읽기 전용 DB 조회는 `scripts/db-ro.mjs` (세션 풀러, BEGIN READ ONLY)
 - See `memory/prisma_config.md` for full code patterns and commands
 
 ---

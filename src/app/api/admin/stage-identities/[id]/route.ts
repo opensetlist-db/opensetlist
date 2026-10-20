@@ -125,6 +125,7 @@ export async function DELETE(_request: NextRequest, { params }: Props) {
 
   await prisma.$transaction([
     prisma.realPersonStageIdentity.deleteMany({ where: { stageIdentityId: id } }),
+    // eslint-disable-next-line no-restricted-syntax -- whole-entity DELETE, not a save: every row goes with the entity
     prisma.stageIdentityTranslation.deleteMany({ where: { stageIdentityId: id } }),
     prisma.stageIdentityArtist.deleteMany({ where: { stageIdentityId: id } }),
     prisma.setlistItemMember.deleteMany({ where: { stageIdentityId: id } }),

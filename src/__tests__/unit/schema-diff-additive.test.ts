@@ -3,7 +3,10 @@
 // change through unattended, so the destructive cases are the ones
 // pinned hardest here.
 import { describe, it, expect } from "vitest";
-import { classifySchemaDiff } from "../../../scripts/schema-diff-additive.mjs";
+import {
+  classifySchemaDiff,
+  findDropStatements,
+} from "../../../scripts/schema-diff-additive.mjs";
 
 // The real per-group wishes diff (`prisma migrate diff --script`), which `db push`
 // refused as "data loss" over the new unique index.
@@ -59,5 +62,54 @@ CREATE TABLE "BoardPick" ("id" TEXT NOT NULL, CONSTRAINT "BoardPick_pkey" PRIMAR
     const result = classifySchemaDiff(N15_08 + "\n" + sql);
     expect(result.additive).toBe(false);
     expect(result.offending).toBeTruthy();
+  });
+});
+
+// The migrate workflows stop on any statement this returns, unless the
+// operator dispatched with accept_data_loss. `db push` drops an EMPTY
+// column without a warning, and on the dev DB an empty column is usually
+// an unmerged branch's — so a missed DROP here is the silent case, and a
+// false DROP only costs a manual dispatch.
+describe("findDropStatements", () => {
+  it("additive diff → nothing to refuse", () => {
+    expect(findDropStatements(N15_08)).toEqual([]);
+  });
+
+  it("empty diff → nothing to refuse", () => {
+    expect(findDropStatements("-- This is an empty migration.\n")).toEqual([]);
+  });
+
+  it("a branch-only column being reverted → refused, statement reported", () => {
+    const sql = `-- AlterTable
+ALTER TABLE "StageIdentity" DROP COLUMN "sortOrder";`;
+    expect(findDropStatements(sql)).toEqual([
+      'ALTER TABLE "StageIdentity" DROP COLUMN "sortOrder"',
+    ]);
+  });
+
+  it.each([
+    ["add + drop in one ALTER", `ALTER TABLE "Event" ADD COLUMN "a" INT,
+DROP COLUMN "b";`],
+    ["short form without COLUMN", `ALTER TABLE "Event" DROP "b";`],
+    ["IF EXISTS", `ALTER TABLE "Event" DROP COLUMN IF EXISTS "b";`],
+    ["drop table", `DROP TABLE "BoardPick";`],
+    ["drop index of a kept table", `DROP INDEX "Event_slug_key";`],
+  ])("%s → refused", (_name, sql) => {
+    expect(findDropStatements(N15_08 + "\n" + sql)).toHaveLength(1);
+  });
+
+  it("a dropped table's own indexes are not reported twice", () => {
+    const sql = `DROP INDEX "BoardPick_eventId_idx";
+DROP TABLE "BoardPick";`;
+    expect(findDropStatements(sql)).toEqual(['DROP TABLE "BoardPick"']);
+  });
+
+  it.each([
+    ["drop a constraint", `ALTER TABLE "SongWish" DROP CONSTRAINT "SongWish_groupArtistId_fkey";`],
+    ["drop a default", `ALTER TABLE "Event" ALTER COLUMN "x" DROP DEFAULT;`],
+    ["drop not null", `ALTER TABLE "Event" ALTER COLUMN "x" DROP NOT NULL;`],
+    ["FK with ON DELETE", `ALTER TABLE "A" ADD CONSTRAINT "f" FOREIGN KEY ("b") REFERENCES "B"("id") ON DELETE CASCADE;`],
+  ])("%s → no column lost, not refused here", (_name, sql) => {
+    expect(findDropStatements(sql)).toEqual([]);
   });
 });

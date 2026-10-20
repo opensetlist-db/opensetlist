@@ -111,6 +111,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
 
   // Atomic delete-then-update: a failure on the update would otherwise leave the artist with no translations/group links.
   const artist = await prisma.$transaction(async (tx) => {
+    // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
     await tx.artistTranslation.deleteMany({ where: { artistId } });
     await tx.artistGroup.deleteMany({ where: { artistId } });
     return tx.artist.update({

@@ -25,7 +25,13 @@ jobs:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL_UNPOOLED }}
           ACCEPT_DATA_LOSS: ${{ inputs.accept_data_loss }}
         # Additive-only diffs pass --accept-data-loss automatically (a new
-        # unique index is always flagged); see scripts/schema-push.sh.
+        # unique index is always flagged). A diff that drops a column, a
+        # table, or an index of a kept table FAILS the job instead, with
+        # the statements printed: db push drops an EMPTY column silently,
+        # and on dev that column is usually an unmerged branch's (re-run
+        # this workflow with --ref <that branch> afterwards). An intended
+        # drop needs a manual dispatch with accept_data_loss=true. See
+        # scripts/schema-push.sh.
         run: bash scripts/schema-push.sh "${ACCEPT_DATA_LOSS:-false}"
       - name: Apply post-deploy SQL (idempotent partial indexes etc.)
         env:

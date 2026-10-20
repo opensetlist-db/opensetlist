@@ -102,6 +102,7 @@ export async function PATCH(request: NextRequest, { params }: RouteProps) {
       if (!existing) return null;
 
       if (translationsProvided) {
+        // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
         await tx.albumStoreListingTranslation.deleteMany({
           where: { listingId: id },
         });

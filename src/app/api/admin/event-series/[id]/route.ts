@@ -59,6 +59,7 @@ export async function PUT(request: NextRequest, { params }: Props) {
 
   // Atomic delete-then-update: a failed update would otherwise leave the series with no translation rows.
   const series = await prisma.$transaction(async (tx) => {
+    // eslint-disable-next-line no-restricted-syntax -- legacy delete+create; migrate to per-locale upsert (retro n15)
     await tx.eventSeriesTranslation.deleteMany({ where: { eventSeriesId: seriesId } });
     return tx.eventSeries.update({
       where: { id: seriesId },
