@@ -98,4 +98,20 @@ describe("scrubAnon", () => {
     expect(scrubAnon(null)).toBeNull();
     expect(scrubAnon("plain")).toBe("plain");
   });
+
+  it("skips getter-only and frozen slots instead of throwing", () => {
+    // The production shape: span data referencing an object whose `$`
+    // is an accessor without a setter. A throw here drops the whole
+    // transaction and surfaces as an unhandled TypeError.
+    const live = {};
+    Object.defineProperty(live, "$", { get: () => "x", enumerable: true });
+    const frozen = Object.freeze({ url: `/api?anonId=${ID}` });
+    const event = {
+      spans: [{ data: { live, frozen, anonId: ID } }],
+      tuple: Object.freeze(["anonId", ID]),
+    };
+    expect(() => scrubAnon(event)).not.toThrow();
+    expect(event.spans[0].data.anonId).toBe(FILTERED);
+    expect((live as { $: string }).$).toBe("x");
+  });
 });
