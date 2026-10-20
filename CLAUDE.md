@@ -286,6 +286,8 @@ Branches:
              Redesign app task branches start from it and PR back into it;
              it reaches dev only through one final PR. Schema prerequisites
              still go feature/* → dev first, then get merged into it.
+             Remove this entry and the feature/redesign filters in
+             .github/workflows/ and .coderabbit.yaml once that final PR merges.
 
 Release flow:
   feature/* → PR → dev → test on Preview → PR → main (Vercel deploys production on this merge) → git tag v*.*.* (triggers migrate-prod + release record)
