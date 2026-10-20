@@ -241,6 +241,7 @@ describe("PUT /api/admin/stage-identities/[id] — sortOrder", () => {
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
     si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
   it("a body without the key leaves the stored order alone", async () => {
@@ -275,6 +276,7 @@ describe("PUT /api/admin/stage-identities/[id] — body validation", () => {
   beforeEach(() => {
     si.update.mockResolvedValue({ id: "si-1", translations: [] });
     si.findUniqueOrThrow.mockReturnValue({ id: "si-1", translations: [] });
+    (prisma.stageIdentityTranslation.upsert as unknown as Mock).mockReturnValue({});
   });
 
   it("missing / malformed translations or an unknown type → 400 with a message, nothing written", async () => {
