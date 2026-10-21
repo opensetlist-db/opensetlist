@@ -60,7 +60,7 @@ describe("refusalReason", () => {
     ["a hidden commit", "select 1; /**/ commit; /**/ insert into t values (1)"],
     ["two reads", "select 1; select 2"],
   ])("refuses %s (more than one statement)", (_name, sql) => {
-    expect(refusalReason(sql)).toMatch(/one statement per run/);
+    expect(refusalReason(sql)).toMatch(/one statement per argument/);
   });
 
   it("refuses a statement left behind an unclosed comment", () => {
@@ -87,10 +87,15 @@ describe("parseArgs", () => {
     expect(parseArgs(["select 1"], readFile).json).toBe(false);
   });
 
+  it("keeps SQL that starts with a -- comment as a statement", () => {
+    expect(parseArgs(["-- count\nselect 1"], readFile).sqls).toEqual(["-- count\nselect 1"]);
+  });
+
   it.each([
     ["no statement", []],
     ["only --json", ["--json"]],
     ["--file without a path", ["--file"]],
+    ["--file followed by a flag", ["--file", "--json"]],
     ["an unknown option", ["--force", "select 1"]],
   ])("refuses %s", (_name, argv) => {
     expect(() => parseArgs(argv, readFile)).toThrow();

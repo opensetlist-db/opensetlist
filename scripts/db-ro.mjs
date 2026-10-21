@@ -46,7 +46,7 @@
 // already set, so `.env.local` wins), both quiet, both from the repo
 // root. A variable already in the environment wins over both.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pointsAtDevProject } from "./dev-db-guard.mjs";
@@ -99,7 +99,7 @@ export function refusalReason(sql) {
   const stmts = statements(sql);
   if (stmts.length === 0) return "no SQL statement given";
   if (stmts.length > 1) {
-    return "one statement per run — a second one could end the read-only transaction";
+    return "one statement per argument / --file — a second one could end the read-only transaction";
   }
   for (const stmt of stmts) {
     // After comment removal a statement starts with a keyword or `(`;
@@ -141,9 +141,12 @@ export function parseArgs(argv, readFile = (p) => readFileSync(p, "utf8")) {
       json = true;
     } else if (arg === "--file") {
       const path = argv[++i];
-      if (!path) throw new UsageError("--file needs a path");
+      if (!path || path.startsWith("--")) throw new UsageError("--file needs a path");
       sqls.push(readFile(path));
-    } else if (arg.startsWith("--")) {
+    } else if (/^--[a-z][a-z-]*$/i.test(arg)) {
+      // A single `--word` token. SQL that merely starts with a `--`
+      // comment ("-- count\nselect 1") has a space or newline after it
+      // and stays a statement.
       throw new UsageError(`unknown option ${arg}`);
     } else {
       sqls.push(arg);
@@ -162,9 +165,12 @@ export function parseArgs(argv, readFile = (p) => readFileSync(p, "utf8")) {
 // it in the machine's local zone and print it hours off on a non-UTC
 // laptop. Parse it as UTC (as src/__tests__/integration/devPg.ts does).
 // `date` would likewise become LOCAL midnight — keep it as the plain
-// 'YYYY-MM-DD' string. 'infinity' and friends stay strings too.
+// 'YYYY-MM-DD' string. 'infinity' and friends stay strings too. Their
+// array types (`array_agg(ts)`) stay Postgres' array text, which holds
+// the stored wall time, rather than going through the local-zone parser.
 const TIMESTAMP_OID = 1114;
 const DATE_OID = 1082;
+const RAW_TEXT_OIDS = new Set([DATE_OID, 1115 /* timestamp[] */, 1182 /* date[] */]);
 function utcTypeParser(types) {
   return (oid, format) => {
     if (oid === TIMESTAMP_OID) {
@@ -173,7 +179,7 @@ function utcTypeParser(types) {
         return Number.isNaN(d.getTime()) ? v : d;
       };
     }
-    if (oid === DATE_OID) return (v) => v;
+    if (RAW_TEXT_OIDS.has(oid)) return (v) => v;
     return types.getTypeParser(oid, format);
   };
 }
@@ -248,7 +254,7 @@ async function main(argv) {
         results.push({ sql: sql.trim(), command: r.command, rowCount: r.rowCount, rows });
         continue;
       }
-      if (sqls.length > 1) console.log(`\n-- ${sql.trim()}`);
+      console.log(`\n-- ${sql.trim()}`);
       if (rows) {
         console.table(rows);
         console.log(`(${rows.length} row${rows.length === 1 ? "" : "s"})`);
@@ -266,7 +272,18 @@ async function main(argv) {
 
 class UsageError extends Error {}
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Run only when executed, not when imported by the unit test. Compared
+// by real path: on Windows a junction/symlink path or a different
+// drive-letter case would otherwise fail the check and exit 0 silently.
+function isEntryPoint() {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (e) => {
