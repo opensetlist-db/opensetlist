@@ -35,9 +35,9 @@ remembered App Router APIs.
 | Database | PostgreSQL (Supabase Seoul) | Free tier → Pro at Phase 2 |
 | Search | pg_tsvector → Meilisearch Cloud → self-hosted | Phased progression |
 | Cache | Redis (Upstash Seoul) | Phase 2 |
-| Images | Cloudflare R2 | Phase 2 — no self-hosted images in MVP |
+| Images | Cloudflare R2 | Provisioned: prod bucket on img.opensetlist.com, dev bucket for Preview/local; upload code (`src/lib/imageUpload/`) on feature/redesign only |
 | Hosting | Vercel (frontend) | Free tier |
-| CDN | Cloudflare | Free |
+| DNS / CDN | Cloudflare | DNS since 2026-10-21; Vercel records DNS-only (not proxied, so no Cloudflare CDN); help@ via Email Routing |
 
 ---
 

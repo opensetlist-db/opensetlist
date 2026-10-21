@@ -783,7 +783,7 @@ async function warmOneLocale(
     );
   } catch (err) {
     ok = false;
-    console.error(`[liveWarm] set-error ${head} err=${describeError(err)}`);
+    console.error("[liveWarm] set-error %s err=%s", head, describeError(err));
   }
   // The `set` settled (publication time, if ok) — taken before anything
   // else so the field means exactly that.
@@ -1060,7 +1060,7 @@ async function readAndDecode(
     // `await` turns that into the same path as a rejected `get`.
     value = await faultyGet(warmKey(eventId, locale, minRev), fault);
   } catch (error) {
-    console.error(`[liveWarm] lookup-error err=${describeError(error)}`);
+    console.error("[liveWarm] lookup-error err=%s", describeError(error));
     return { result: "error" };
   }
   if (value === null || value === undefined) return { result: "miss" };

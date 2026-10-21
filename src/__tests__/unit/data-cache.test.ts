@@ -1,3 +1,4 @@
+import { format } from "node:util";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `unstable_cache` needs Next's incremental cache, which only exists
@@ -197,8 +198,10 @@ describe("warm Runtime Cache entries", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     revalidatePublicData();
     await new Promise((r) => setTimeout(r, 0));
+    // The lines are logged as a constant format plus values; render them
+    // the way the console does to check the printed line.
     const out = log.mock.calls
-      .map((c) => String(c[0]))
+      .map((c) => format(...c))
       .filter((l) => l.startsWith("[dataCache] expire-warm "));
     expect(out).toEqual([
       expect.stringMatching(/^\[dataCache\] expire-warm phase=start at=\d+ instance=[0-9a-f]{8}$/),
