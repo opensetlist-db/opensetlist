@@ -27,6 +27,10 @@
 //
 // The `h` object `run` and `fixture.run` receive:
 //   check(name, ok, detail)    record PASS/FAIL (printed and logged at once)
+//   skip(name, detail)         record SKIP: the check's subject is absent on
+//                              this build or this data (a page not yet
+//                              redesigned, no show on today). Never fails the
+//                              run; counted apart from PASS
 //   section(name, fn, {ms})    run fn as one unit: a throw or a timeout is a
 //                              FAIL "<name> (threw|timeout)" and the run moves
 //                              on; contexts opened inside are closed after.
@@ -34,9 +38,22 @@
 //   open(path, opts)           new context + page, goto base+path; returns
 //                              { ctx, page, resp, errors } (opts below)
 //   layoutMatrix(opts)         locales × widths; the generic checks per cell
-//                              plus the scenario's own `cell` callback
+//                              plus the scenario's own `cell` callback;
+//                              `basics: true` adds one <h1> in <main> and no
+//                              control under 24×24px, `capture: true` a
+//                              full-page PNG per cell taken BEFORE `cell` (so
+//                              no focus ring or skip link is in it)
 //   reducedMotion(opts)        transitions/animations off under reduce, and
-//                              present without it (positive control)
+//                              present without it (positive control);
+//                              `rest: { opacity: "1" }` computed styles the
+//                              elements must settle on under reduce,
+//                              `optional: true` SKIP when a selector is absent
+//   focusRing(page, name, selector, ring)  keyboard-style focus, outline
+//                              matched against the RegExp `ring`
+//   scrollRegion(page, opts)   horizontal scroller: scrolls only below a
+//                              width, last link reachable, ArrowRight scrolls
+//   contrast(page, pairs, name)  text contrast ≥ 4.5:1 by exact CSS-module
+//                              class suffix; returns the pair names found
 //   expectStatus(name, path, { status, location })   request API, no redirect
 //                              following; `location` a RegExp on the header
 //   getText(path)              response body through the request API
@@ -52,8 +69,11 @@
 // hydration of the `hydrate` selector (null skips it) — never
 // `networkidle`, which never settles on a page with a long-lived request
 // and is how a WebKit run can sit silent for hours. `errors` collects page
-// errors and console errors as they arrive, minus the Vercel Speed Insights
-// script's 404 (it is served only on Vercel, never by a local `next start`).
+// errors, console errors and responses ≥400 as they arrive, minus the Vercel
+// Speed Insights script's 404 (it is served only on Vercel, never by a local
+// `next start`). Responses are judged by their URL and status: the console
+// line for a failed resource carries no URL in Chromium, so those lines are
+// left to the response listener.
 //
 // Timeouts. Every Playwright action and navigation is capped at --timeout
 // (seconds, default 60). Every section is also raced against its own limit
@@ -87,6 +107,108 @@ export const QUICK = { locales: ["ko"], widths: [390, 1100, 1440] };
 // as well as the text (Chromium's console text for a failed resource omits
 // the URL).
 const KNOWN_NOISE = /\/_vercel\/speed-insights\//;
+
+// Response that may fail locally: exactly the Speed Insights script's 404 on
+// the server under test (any other status or host counts).
+const knownNoiseResponse = (r, base) =>
+  r.status() === 404 && r.url().startsWith(`${base}/_vercel/speed-insights/`);
+
+// In-page (serialised into page.evaluate): layoutMatrix `basics`. Targets
+// are visible a/button/input/select/textarea in <main> under 24×24 CSS px
+// (WCAG 2.2 target size, minimum); sr-only controls (1px, clipped) are not
+// pointer targets.
+function basicsInPage() {
+  const main = document.querySelector("main");
+  const small = [...(main?.querySelectorAll("a, button, input, select, textarea") ?? [])].filter((el) => {
+    if (el.type === "hidden") return false;
+    const r = el.getBoundingClientRect();
+    if (getComputedStyle(el).visibility === "hidden" || r.width <= 1 || r.height <= 1) return false;
+    return r.width < 24 || r.height < 24;
+  });
+  return {
+    h1: main ? main.querySelectorAll("h1").length : 0,
+    small: small.slice(0, 3).map((el) => {
+      const r = el.getBoundingClientRect();
+      const text = (el.textContent || el.getAttribute("aria-label") || "").trim().replace(/\s+/g, " ").slice(0, 25);
+      return `${el.tagName.toLowerCase()} "${text}" ${Math.round(r.width)}×${Math.round(r.height)}`;
+    }),
+    smallCount: small.length,
+  };
+}
+
+// In-page: contrast(). Per pair, one entry per visible element whose class
+// ends in `__<name>`: its text colour and the background colours from it
+// (or its `__<bg>` ancestor) up to the first opaque one; `image` marks a
+// background-image on the way, which this check cannot see through.
+function readContrastInPage(pairs) {
+  const root = document.querySelector("main") ?? document.body;
+  const hasSuffix = (e, n) => [...e.classList].some((c) => c.endsWith("__" + n));
+  const alpha = (c) => {
+    if (c === "transparent") return 0;
+    const n = c.match(/[\d.]+%?/g) ?? [];
+    if (n.length < 4) return 1;
+    return n[3].endsWith("%") ? parseFloat(n[3]) / 100 : parseFloat(n[3]);
+  };
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return getComputedStyle(el).visibility !== "hidden" && r.width > 0 && r.height > 0;
+  };
+  return pairs.map(({ name, bg }) => {
+    const els = [...root.querySelectorAll("*")].filter((e) => hasSuffix(e, name) && visible(e));
+    return {
+      name,
+      items: els.map((el) => {
+        let start = el;
+        if (bg) while (start && !hasSuffix(start, bg)) start = start.parentElement;
+        if (!start) return { missingBg: true };
+        const layers = [];
+        let image = false;
+        let from = "page white";
+        for (let a = start; a; a = a.parentElement) {
+          const cs = getComputedStyle(a);
+          if (cs.backgroundImage !== "none") image = true;
+          layers.push(cs.backgroundColor);
+          if (alpha(cs.backgroundColor) >= 1) {
+            from = a === el ? "self" : ([...a.classList].find((c) => c.includes("__")) ?? a.tagName.toLowerCase());
+            break;
+          }
+        }
+        return { fg: getComputedStyle(el).color, layers, image, from };
+      }),
+    };
+  });
+}
+
+function parseRgb(c) {
+  if (c === "transparent") return { rgb: [0, 0, 0], a: 0 };
+  const m = /^rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/.exec(c ?? "");
+  if (!m) return null;
+  const a = m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+  return { rgb: [m[1], m[2], m[3]].map(Number), a };
+}
+// Source-over: a colour with alpha onto an opaque one.
+const over = (top, under) => top.rgb.map((v, i) => v * top.a + under[i] * (1 - top.a));
+// Background layers innermost first, ending at the first opaque one (or the
+// page's white canvas when none is) → the opaque colour the text sits on.
+function compositeLayers(layers) {
+  const parsed = layers.map(parseRgb);
+  if (parsed.some((x) => !x)) return null;
+  let under = [255, 255, 255];
+  for (const x of parsed.reverse()) under = over(x, under);
+  return under;
+}
+// WCAG 2 contrast ratio of two opaque sRGB colours.
+function contrastRatio(a, b) {
+  const lum = (rgb) => {
+    const [r, g, bl] = rgb.map((v) => {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+  return (x + 0.05) / (y + 0.05);
+}
 
 class SectionTimeout extends Error {}
 function withTimeout(promise, ms) {
@@ -158,10 +280,17 @@ export async function runScenario({
     results.push({ name, ok: !!ok, detail: d });
     log(`${ok ? "PASS" : "FAIL"} ${name}${d ? " — " + d : ""}`);
   };
+  const skip = (name, detail = "") => {
+    if (late()) return;
+    const d = String(detail ?? "");
+    results.push({ name, ok: true, skipped: true, detail: d });
+    log(`SKIP ${name}${d ? " — " + d : ""}`);
+  };
 
   let finished = false;
   const summarize = (extra = {}) => {
     const failed = results.filter((r) => !r.ok);
+    const skipped = results.filter((r) => r.skipped).length;
     const summary = {
       scenario: scenario.name,
       browser: browserName,
@@ -170,7 +299,8 @@ export async function runScenario({
       base,
       at: new Date(started).toISOString(),
       seconds: Math.round((Date.now() - started) / 1000),
-      passed: results.length - failed.length,
+      passed: results.length - failed.length - skipped,
+      skipped,
       failed: failed.length,
       total: results.length,
       results,
@@ -179,7 +309,7 @@ export async function runScenario({
     fs.writeFileSync(jsonFile, JSON.stringify(summary, null, 2));
     log("");
     for (const f of failed) log(`FAIL ${f.name} — ${f.detail}`);
-    log(`${summary.passed}/${summary.total} PASS (${scenario.name}, ${browserName}${quick ? ", quick" : ""}) in ${summary.seconds}s → ${jsonFile}`);
+    log(`${summary.passed}/${summary.total} PASS${skipped ? `, ${skipped} SKIP` : ""} (${scenario.name}, ${browserName}${quick ? ", quick" : ""}) in ${summary.seconds}s → ${jsonFile}`);
     return summary;
   };
 
@@ -224,6 +354,7 @@ export async function runScenario({
 
   const h = {
     check,
+    skip,
     log,
     base,
     outDir,
@@ -266,7 +397,12 @@ export async function runScenario({
         if (m.type() !== "error") return;
         const where = m.location()?.url ?? "";
         if (KNOWN_NOISE.test(where) || KNOWN_NOISE.test(m.text())) return;
+        // An HTTP error status: reported, with its URL, by the listener below.
+        if (/^Failed to load resource: the server responded with a status of/.test(m.text())) return;
         errors.push(`${m.text().slice(0, 200)}${where ? ` @ ${where}` : ""}`);
+      });
+      page.on("response", (r) => {
+        if (r.status() >= 400 && !knownNoiseResponse(r, base)) errors.push(`${r.status()} ${r.url().slice(0, 200)}`);
       });
       const resp = await page.goto(base + p, { waitUntil: "load" });
       if (resp?.ok()) await page.locator("main > *").first().waitFor({ state: "attached" });
@@ -319,7 +455,21 @@ export async function runScenario({
     //                                               console error
     // and `cell({ page, loc, width, name, check, errors })` for the
     // scenario's own checks, `name(suffix)` giving "<prefix> <loc> <w>: …".
-    async layoutMatrix({ path: pathFor, locales = h.LOCALES, widths = h.WIDTHS, prefix = "layout", height = 900, cell }) {
+    // Opt-in, between the generic checks and `cell`:
+    //   basics   "one h1" (in <main>) and "no target under 24px"
+    //   capture  h.shot(page, "<prefix>-<loc>-<w>") — before `cell`, so a
+    //            focus ring or the skip link from the cell's keyboard steps
+    //            never lands in a comparison capture
+    async layoutMatrix({
+      path: pathFor,
+      locales = h.LOCALES,
+      widths = h.WIDTHS,
+      prefix = "layout",
+      height = 900,
+      basics = false,
+      capture = false,
+      cell,
+    }) {
       for (const loc of locales) {
         for (const width of widths) {
           const name = (s) => `${prefix} ${loc} ${width}: ${s}`;
@@ -348,6 +498,12 @@ export async function runScenario({
               );
               check(name("no page overflow"), g.scrollW <= g.innerW, `${g.scrollW}/${g.innerW}`);
               check(name("html lang"), g.lang === loc, g.lang);
+              if (basics) {
+                const b = await page.evaluate(basicsInPage);
+                check(name("one h1"), b.h1 === 1, String(b.h1));
+                check(name("no target under 24px"), b.smallCount === 0, b.smallCount ? `${b.smallCount}: ${b.small.join(", ")}` : "0");
+              }
+              if (capture) await h.shot(page, `${prefix}-${loc}-${width}`);
               if (cell) await cell({ page, loc, width, name, check, errors });
               // Last, so errors raised by the cell's own interactions count.
               check(name("no raw keys / errors"), g.rawKeys.length === 0 && errors.length === 0, [...g.rawKeys, ...errors].join(" | "));
@@ -365,23 +521,173 @@ export async function runScenario({
     // reduce) — without the control, a selector that never animated would
     // pass the first check for the wrong reason, so the control covers each
     // selector, not just one of them.
-    async reducedMotion({ path: p, selectors, width = 390, label = "reduced motion" }) {
+    //
+    // `rest` (computed property → value) is also required of every selector
+    // under reduce: an animation removed mid-cycle can leave an element at a
+    // keyframe's value (a pulsing dot frozen half-transparent). `optional`
+    // turns a selector missing from either load into one SKIP for both
+    // checks — for elements that exist only on some data (a LIVE badge).
+    async reducedMotion({ path: p, selectors, width = 390, label = "reduced motion", rest = null, optional = false }) {
       const read = (page) =>
-        page.evaluate((sels) => {
-          const positive = (v) => v.split(",").some((x) => parseFloat(x) > 0);
-          return sels.map((sel) => {
-            const el = document.querySelector(sel);
-            if (!el) return { sel, missing: true };
-            const s = getComputedStyle(el);
-            const moving = positive(s.transitionDuration) || (s.animationName !== "none" && positive(s.animationDuration));
-            return { sel, moving, t: s.transitionDuration, a: s.animationName };
-          });
-        }, selectors);
-      const show = (rs) => rs.map((r) => (r.missing ? `${r.sel} missing` : `${r.t}/${r.a}`)).join(" ");
+        page.evaluate(
+          ({ sels, props }) => {
+            const positive = (v) => v.split(",").some((x) => parseFloat(x) > 0);
+            return sels.map((sel) => {
+              const el = document.querySelector(sel);
+              if (!el) return { sel, missing: true };
+              const s = getComputedStyle(el);
+              const moving = positive(s.transitionDuration) || (s.animationName !== "none" && positive(s.animationDuration));
+              const rest = Object.fromEntries(props.map((k) => [k, s.getPropertyValue(k)]));
+              return { sel, moving, t: s.transitionDuration, a: s.animationName, rest };
+            });
+          },
+          { sels: selectors, props: Object.keys(rest ?? {}) },
+        );
+      const show = (rs) =>
+        rs
+          .map((r) => (r.missing ? `${r.sel} missing` : `${r.t}/${r.a}${rest ? " " + JSON.stringify(r.rest) : ""}`))
+          .join(" ");
       const reduced = await read((await h.open(p, { width, reducedMotion: "reduce", hydrate: null })).page);
-      check(`${label}: transitions off`, reduced.every((r) => !r.missing && !r.moving), show(reduced));
       const normal = await read((await h.open(p, { width, hydrate: null })).page);
+      if (optional && [...reduced, ...normal].some((r) => r.missing)) {
+        skip(`${label}`, `not on this page/data: ${show(normal)}`);
+        return;
+      }
+      const atRest = (r) => Object.entries(rest ?? {}).every(([k, v]) => r.rest[k] === v);
+      check(`${label}: transitions off`, reduced.every((r) => !r.missing && !r.moving && atRest(r)), show(reduced));
       check(`${label}: positive control (transition present otherwise)`, normal.every((r) => !r.missing && r.moving), show(normal));
+    },
+
+    // Focus `selector` as a keyboard user would reach it — Shift first, so
+    // :focus-visible matches a programmatic focus (links included) — and
+    // match "<style> <width> <color> <offset>" of the focused element's
+    // outline against the RegExp `ring`. SKIP when nothing matches.
+    async focusRing(page, name, selector, ring) {
+      const target = page.locator(selector).first();
+      if (!(await target.count())) return skip(name, `${selector} absent`);
+      await page.keyboard.press("Shift");
+      await target.focus();
+      const r = await page.evaluate(() => {
+        const a = document.activeElement;
+        const s = getComputedStyle(a);
+        return {
+          ring: `${s.outlineStyle} ${s.outlineWidth} ${s.outlineColor} ${s.outlineOffset}`,
+          el: `${a.tagName.toLowerCase()}${a.id ? "#" + a.id : ""}`,
+        };
+      });
+      check(name, ring.test(r.ring), `${r.el}: ${r.ring}`);
+    },
+
+    // A horizontal scroller (a card rail) on `page`, which was opened at
+    // `width` from `path`:
+    //   "<name> scrolls below <scrollBelow>px" / "… static from …"  it
+    //       overflows below the width; from there up it neither overflows
+    //       nor has overflow-x auto/scroll
+    //   "<name> last link in view on focus"  focusing its last link brings
+    //       it into the region's box (polled for 2 s: WebKit scrolls a
+    //       moment after focus())
+    //   "<name> ArrowRight scrolls"  below the width only. On a FRESH page
+    //       (h.open(path) at the same width): WebKit ignores arrow keys
+    //       right after a programmatic scrollLeft reset, and reloading
+    //       `page` itself would cancel its in-flight RSC prefetches, which
+    //       WebKit logs as console errors that the cell's error check counts
+    // With fewer than two links there is nothing to scroll to: SKIP.
+    async scrollRegion(page, { name, selector, scrollBelow, width, path: p }) {
+      const region = page.locator(selector).first();
+      if (!(await region.count())) return skip(`${name} scroll`, `${selector} absent`);
+      const s = await region.evaluate((el) => ({
+        scrollable: el.scrollWidth > el.clientWidth + 1,
+        overflowX: getComputedStyle(el).overflowX,
+        links: el.querySelectorAll("a").length,
+      }));
+      if (s.links < 2) return skip(`${name} scroll`, `${s.links} link(s) in the region on this data`);
+      const narrow = width < scrollBelow;
+      if (narrow) check(`${name} scrolls below ${scrollBelow}px`, s.scrollable, `${s.links} links, scrollable ${s.scrollable}`);
+      else
+        check(
+          `${name} static from ${scrollBelow}px`,
+          !s.scrollable && !/auto|scroll/.test(s.overflowX),
+          `${s.links} links, scrollable ${s.scrollable}, overflow-x ${s.overflowX}`,
+        );
+      await page.keyboard.press("Shift");
+      await region.locator("a").last().focus();
+      const inView = await page
+        .waitForFunction(
+          (sel) => {
+            const el = document.activeElement;
+            const box = el?.closest(sel);
+            if (!box) return false;
+            const a = el.getBoundingClientRect();
+            const b = box.getBoundingClientRect();
+            return a.left >= b.left - 1 && a.right <= b.right + 1;
+          },
+          selector,
+          { timeout: 2000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+      check(`${name} last link in view on focus`, inView);
+      if (!narrow) return;
+      const fresh = (await h.open(p, { width })).page;
+      const r2 = fresh.locator(selector).first();
+      await r2.focus();
+      const before = await r2.evaluate((el) => el.scrollLeft);
+      await fresh.keyboard.press("ArrowRight");
+      await fresh.waitForTimeout(1200);
+      const after = await r2.evaluate((el) => el.scrollLeft);
+      check(`${name} ArrowRight scrolls`, after > before, `${before}→${after}`);
+    },
+
+    // Text contrast ≥ 4.5:1 for each of `pairs` ("badge" or { name, bg }),
+    // checked as "<name> <pair>" (pass e.g. "… contrast"). Elements are found by CSS-module
+    // class SUFFIX, matched exactly: "badge" is a class ending in `__badge`
+    // (`[class*=badge]` also matches a transparent `.badges` wrapper and
+    // measures nothing). Every visible match is measured and the worst
+    // reported. The background is the element's own — with `bg`, its
+    // nearest `__<bg>` ancestor's — composited over the layers behind it up
+    // to the first opaque one, so a translucent fill counts as it looks.
+    // SKIP when no element matches, or when text sits over a background
+    // image (no single colour to compare; judge it from the capture).
+    // Returns the pair names found, so a scenario can FAIL a pair that is
+    // found nowhere in a whole run (a typo, a renamed class).
+    async contrast(page, pairs, name) {
+      const list = pairs.map((x) => (typeof x === "string" ? { name: x } : x));
+      const found = [];
+      for (const pr of await page.evaluate(readContrastInPage, list)) {
+        const n = `${name} ${pr.name}`;
+        if (!pr.items.length) {
+          skip(n, `no visible .*__${pr.name}`);
+          continue;
+        }
+        found.push(pr.name);
+        let worst = null;
+        const unmeasured = [];
+        for (const it of pr.items) {
+          const bg = it.missingBg ? null : compositeLayers(it.layers);
+          const fg = it.missingBg ? null : parseRgb(it.fg);
+          if (it.missingBg || it.image || !bg || !fg) {
+            unmeasured.push(
+              it.missingBg ? "no bg ancestor" : it.image ? `background image (${it.from})` : `unparsed ${it.fg} / ${it.layers.join(" > ")}`,
+            );
+            continue;
+          }
+          const v = contrastRatio(fg.a < 1 ? over(fg, bg) : fg.rgb, bg);
+          if (!worst || v < worst.v) worst = { v, fg: it.fg, bg: `rgb(${bg.map(Math.round).join(", ")})`, from: it.from };
+        }
+        if (!worst) {
+          skip(n, `cannot measure: ${unmeasured[0]}`);
+          continue;
+        }
+        check(
+          n,
+          worst.v >= 4.5,
+          `${worst.v.toFixed(2)}, worst of ${pr.items.length} (${worst.fg} on ${worst.bg}, bg ${worst.from})` +
+            (unmeasured.length ? `; ${unmeasured.length} not measured` : ""),
+        );
+      }
+      return found;
     },
   };
 

@@ -199,7 +199,14 @@ through the request API, with a per-action `--timeout` and a whole-run
 to the DB; fixture rows come in through `--fixture <json>`. A page ticket
 adds a scenario under `scripts/page-qa/scenarios/` (copy `artist-detail`)
 instead of its own QA script: chromium in full, `--browser webkit --quick`
-for Safari.
+for Safari. `layoutMatrix({ basics, capture })` adds one h1 and 24px
+targets per cell and a capture taken before any focus step;
+`h.contrast` (exact CSS-module suffix `__<name>`, translucent backgrounds
+composited), `h.focusRing`, `h.scrollRegion` (fresh-load ArrowRight) and
+`reducedMotion({ rest, optional })` cover the rest of a page ticket's
+checklist — `home` uses them all. Responses ≥400 count as errors except
+the local `_vercel/speed-insights` 404; a check whose subject is absent
+on the build or data prints SKIP, which never fails a run.
 
 ---
 
