@@ -60,6 +60,8 @@ WHERE n.nspname = 'public'
 GROUP BY c.relname, c.relkind, c.relrowsecurity
 ORDER BY c.relname`;
 
+const RELKIND = { r: "table", p: "partitioned table", v: "view", m: "materialized view", f: "foreign table" };
+
 const ROLES_SQL = `SELECT count(*)::int AS n FROM pg_roles WHERE rolname IN ('anon', 'authenticated')`;
 
 const FIX_HINT = `Fix: lock each table down in prisma/post-deploy.sql, like the ImageAsset block:
@@ -85,7 +87,7 @@ export function parseAllowlist(text) {
  * @param {{name: string}[]} exposed
  * @param {Set<string>} allowed
  */
-export function compare(exposed, allowed) {
+export function diffAllowlist(exposed, allowed) {
   const exposedNames = new Set(exposed.map((e) => e.name));
   return {
     offending: exposed.filter((e) => !allowed.has(e.name)),
@@ -142,7 +144,7 @@ async function main(argv) {
   }
 
   const allowed = parseAllowlist(readFileSync(allowlistPath, "utf8"));
-  const { offending, stale } = compare(exposed, allowed);
+  const { offending, stale } = diffAllowlist(exposed, allowed);
 
   console.log(
     `check-anon-exposure: ${exposed.length} public relation(s) reachable by anon/authenticated, ${allowed.size} allowlisted.`,
@@ -157,7 +159,7 @@ async function main(argv) {
 
   console.error(`\nFAIL: ${offending.length} relation(s) reachable by anon/authenticated and not allowlisted:`);
   for (const e of offending) {
-    console.error(`  - "${e.name}" (kind ${e.kind}, RLS ${e.rls ? "on" : "off"}, roles: ${e.roles.join(", ")})`);
+    console.error(`  - "${e.name}" (${RELKIND[e.kind] ?? e.kind}, RLS ${e.rls ? "on" : "off"}, roles: ${e.roles.join(", ")})`);
   }
   console.error(`\n${FIX_HINT}`);
   return 1;

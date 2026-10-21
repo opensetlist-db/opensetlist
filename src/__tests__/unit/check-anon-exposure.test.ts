@@ -7,7 +7,7 @@
 // existing tables later never breaks the job). No database.
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { compare, parseAllowlist } from "../../../scripts/check-anon-exposure.mjs";
+import { diffAllowlist, parseAllowlist } from "../../../scripts/check-anon-exposure.mjs";
 
 describe("parseAllowlist", () => {
   it("drops comments, blank lines and surrounding whitespace", () => {
@@ -22,17 +22,17 @@ describe("parseAllowlist", () => {
   });
 });
 
-describe("compare", () => {
+describe("diffAllowlist", () => {
   const allowed = new Set(["Song", "Event", "Dropped"]);
 
   it("passes when every exposed table is allowlisted, noting stale entries", () => {
-    const r = compare([{ name: "Song" }, { name: "Event" }], allowed);
+    const r = diffAllowlist([{ name: "Song" }, { name: "Event" }], allowed);
     expect(r.offending).toEqual([]);
     expect(r.stale).toEqual(["Dropped"]);
   });
 
   it("reports an exposed table missing from the allowlist", () => {
-    const r = compare([{ name: "Song" }, { name: "ImageAsset" }], allowed);
+    const r = diffAllowlist([{ name: "Song" }, { name: "ImageAsset" }], allowed);
     expect(r.offending).toEqual([{ name: "ImageAsset" }]);
   });
 });
