@@ -24,15 +24,18 @@
 //                      ellipsis or -webkit-line-clamp on it or inside it, or
 //                      its content wider than its box
 //            art       every [data-testid=event-art] lies left of its card's
-//                      first heading when the two share a row (same link /
-//                      li / article, overlapping vertically) — CSS grid
+//                      first heading when the two share a row (the card is
+//                      the art's nearest ancestor holding a heading; a row
+//                      means they overlap vertically) — CSS grid
 //                      auto-placement can push the art into the last column
-//            year      every <time> in <main> whose datetime is a full date
-//                      (YYYY-MM-DD…) shows a 4-digit year in its text
+//            year      every visible <time> in <main> whose datetime is a full
+//                      date (YYYY-MM-DD…) shows a 4-digit year in its text,
+//                      unless the text is a clock time alone ("18:00")
 //            A page with no matching elements reports N/A, not PASS.
 //   selector the banner-scoped menu-toggle selector finds exactly one toggle
-//            on a page with in-page <header> toggles injected (positive
-//            control: the unscoped selector must find more than one there)
+//            on a page with in-page <header> toggles injected, one per
+//            excluded context (positive control: the unscoped selector must
+//            find the banner toggle plus every injected one)
 //   keyboard skip link → page <main>; menu opens by keyboard, Tab enters its
 //            links, Escape closes and returns focus to the toggle, outside
 //            click closes, widening past the nav breakpoint clears it, a
@@ -60,9 +63,10 @@
 // (fonts for geometry, React hydration before driving the menu) — never
 // `networkidle`, which never settled in one WebKit run and hung it for 30
 // minutes. Every Playwright action and navigation is capped at --timeout;
-// each check (one layout page, or one multi-step section, which gets 3×) is
-// also raced against it, so a check that hangs outside Playwright's own
-// timeouts records "<name> (timeout)" as a FAIL and the run moves on. If the
+// each check is also raced against a multiple of it (one layout page 2×, a
+// multi-step section 4×), so a check that hangs outside Playwright's own
+// timeouts records "<name> (timeout)" as a FAIL, its contexts are closed and
+// its late results dropped, and the run moves on. If the
 // whole run exceeds --run-timeout, it records "run (timeout)", writes what it
 // has, and exits 1.
 //
@@ -75,6 +79,7 @@
 // therefore focus links directly in WebKit instead of tabbing to them, and
 // press a key first so :focus-visible still matches as it would for a
 // keyboard user who enabled "Press Tab to highlight each item".
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -105,9 +110,13 @@ if (!args.out) {
   process.exit(1);
 }
 const CHECK_MS = Number(args.timeout) * 1000;
+// A single-page check gets twice the navigation timeout, so a page that loads
+// just under it still has time for fonts and the in-page measurements.
+const SECTION_MS = CHECK_MS * 2;
 const RUN_MS = Number(args["run-timeout"]) * 60_000;
-if (!(CHECK_MS > 0) || !(RUN_MS > 0)) {
-  console.error("--timeout and --run-timeout must be positive numbers");
+// setTimeout fires at once above 2^31 ms (~24.8 days); a day is plenty.
+if (!(CHECK_MS > 0) || !(RUN_MS > 0) || CHECK_MS > 86_400_000 || RUN_MS > 86_400_000) {
+  console.error("--timeout and --run-timeout must be positive numbers, at most one day");
   process.exit(1);
 }
 const WEBKIT = args.browser === "webkit";
@@ -168,7 +177,13 @@ const PAGES = PATHS.length
     : ["", "/events", "/artists/1/hasunosora", "/albums/459/s-memorial-cd-box-complete-best-box", "/privacy"];
 
 const results = [];
+// The section a check() call runs in (see section()). A timed-out section's
+// body is not cancellable and may still settle later; its late results are
+// dropped so they do not land among the next section's.
+const sectionScope = new AsyncLocalStorage();
+const late = () => sectionScope.getStore()?.abandoned === true;
 function check(name, ok, detail = "") {
+  if (late()) return;
   results.push({ name, ok: !!ok, detail });
   console.log("%s %s%s", ok ? "PASS" : "FAIL", name, detail ? ` — ${detail}` : "");
 }
@@ -176,6 +191,7 @@ function check(name, ok, detail = "") {
 // Counted as not failing, but kept apart from PASS so a page that renders
 // nothing is not mistaken for one that renders correctly.
 function notApplicable(name, detail) {
+  if (late()) return;
   results.push({ name, ok: true, na: true, detail });
   console.log("N/A  %s — %s", name, detail);
 }
@@ -192,24 +208,35 @@ function withTimeout(promise, ms) {
 }
 
 // One section throwing (a selector that no longer exists, a timeout) is a
-// FAIL for that section, not the end of the run. Returns false when the
-// section timed out, so a caller reusing a page can replace it — the hung
-// work keeps running in the background and may still hold that page.
-async function section(name, fn, ms = CHECK_MS) {
+// FAIL for that section, not the end of the run. On a timeout the section is
+// abandoned: its later check() calls are dropped and the contexts it opened
+// are closed, which also makes its hung Playwright calls throw and stop.
+// Returns false then, so a caller that lent the section a page replaces it.
+async function section(name, fn, ms = SECTION_MS) {
+  const scope = { abandoned: false, contexts: new Set() };
   try {
-    await withTimeout(fn(), ms);
+    await withTimeout(sectionScope.run(scope, fn), ms);
   } catch (e) {
     const timedOut = e instanceof CheckTimeout;
     check(`${name} (${timedOut ? "timeout" : "threw"})`, false, String(e.message ?? e).split("\n")[0].slice(0, 300));
-    return !timedOut;
+    if (timedOut) {
+      scope.abandoned = true;
+      for (const ctx of scope.contexts) await withTimeout(ctx.close(), 5000).catch(() => {});
+      return false;
+    }
   }
   return true;
 }
 
 // Navigate and wait for what the geometry checks read: the `load` event (the
-// stylesheets) and web fonts, whose swap changes text widths.
+// stylesheets), the page's <main> with content in it, and web fonts, whose
+// swap changes text widths. Every page here renders its content on the
+// server, so <main> is complete at `load`; content a page fetched on the
+// client afterwards would not be waited for, and its checks would show N/A.
 async function open(page, url) {
   const resp = await page.goto(url, { waitUntil: "load" });
+  // Error pages may have no <main>; their status is reported by the caller.
+  if (resp?.ok()) await page.locator("main > *").first().waitFor({ state: "attached" });
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   return resp;
 }
@@ -229,6 +256,7 @@ async function openHydrated(page, url) {
 }
 async function newContext(opts) {
   const ctx = await browser.newContext(opts);
+  sectionScope.getStore()?.contexts.add(ctx);
   ctx.setDefaultTimeout(CHECK_MS);
   ctx.setDefaultNavigationTimeout(CHECK_MS);
   return ctx;
@@ -335,28 +363,40 @@ function pageInvariants() {
   );
   // A heading styled to truncate counts even when its text happens to fit
   // at this width: a longer name (or another locale) will be cut. `cut`
-  // counts the ones whose text is cut right now.
+  // counts the ones whose text is cut right now, horizontally (ellipsis,
+  // nowrap) or vertically (line clamp).
+  const withDescendants = (h) => [h, ...h.querySelectorAll("*")];
   const isCut = (h) =>
-    [h, ...h.querySelectorAll("*")].some((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1);
-  const clamped = headings.filter((h) => {
-    for (const el of [h, ...h.querySelectorAll("*")]) {
-      const s = getComputedStyle(el);
-      if (s.textOverflow === "ellipsis" && s.overflowX !== "visible") return true;
-      const lc = s.webkitLineClamp ?? s.getPropertyValue("-webkit-line-clamp");
-      if (lc && lc !== "none") return true;
-    }
-    return h.clientWidth > 0 && h.scrollWidth > h.clientWidth + 1;
-  });
+    withDescendants(h).some(
+      (el) =>
+        (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) ||
+        (el.clientHeight > 0 && el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== "visible"),
+    );
+  const clamped = headings.filter(
+    (h) =>
+      isCut(h) ||
+      withDescendants(h).some((el) => {
+        const s = getComputedStyle(el);
+        const lc = s.webkitLineClamp ?? s.getPropertyValue("-webkit-line-clamp");
+        return (s.textOverflow === "ellipsis" && s.overflowX !== "visible") || (lc && lc !== "none");
+      }),
+  );
 
   // art
+  // The card is the nearest ancestor (below <main>) that holds a heading,
+  // so art in its own link next to a title link still pairs with the title.
   let artInRow = 0;
   let artStacked = 0;
+  let artUnpaired = 0;
   const artWrong = [];
   for (const art of main.querySelectorAll('[data-testid="event-art"]')) {
     if (!visible(art)) continue;
-    const card = art.closest("a, li, article");
-    const h = card?.querySelector(HEADINGS);
-    if (!h || !visible(h)) continue;
+    let h = null;
+    for (let a = art.parentElement; a && a !== main && !h; a = a.parentElement) h = a.querySelector(HEADINGS);
+    if (!h || !visible(h)) {
+      artUnpaired++;
+      continue;
+    }
     const ar = art.getBoundingClientRect();
     const hr = h.getBoundingClientRect();
     if (ar.top < hr.bottom && hr.top < ar.bottom) {
@@ -366,8 +406,13 @@ function pageInvariants() {
   }
 
   // year
-  const times = [...main.querySelectorAll("time[datetime]")].filter((t) =>
-    /^\d{4}-\d{2}-\d{2}/.test(t.getAttribute("datetime")),
+  // Visible ones only (a responsive pair hides one form per width), and not
+  // those showing only a clock time ("18:00") for a full datetime.
+  const times = [...main.querySelectorAll("time[datetime]")].filter(
+    (t) =>
+      visible(t) &&
+      /^\d{4}-\d{2}-\d{2}/.test(t.getAttribute("datetime")) &&
+      !/^\s*\d{1,2}:\d{2}(:\d{2})?\s*$/.test(t.textContent ?? ""),
   );
   const noYear = times.filter((t) => !/\d{4}/.test(t.textContent ?? ""));
 
@@ -387,7 +432,7 @@ function pageInvariants() {
     art: {
       applicable: artInRow > 0,
       problems: artWrong.length ? [`${artWrong.length}/${artInRow} art right of heading: ${list(artWrong)}`] : [],
-      detail: `${artInRow} art beside a heading, ${artStacked} stacked`,
+      detail: `${artInRow} art beside a heading, ${artStacked} stacked, ${artUnpaired} without a heading`,
     },
     year: {
       applicable: times.length > 0,
@@ -402,8 +447,18 @@ function pageInvariants() {
 // ---------------------------------------------------------------------------
 for (const locale of LOCALES) {
   for (const w of WIDTHS) {
-    const ctx = await newContext({ viewport: { width: w, height: 900 } });
-    let page = await ctx.newPage();
+    // Context setup sits outside any section; a throw or hang here would
+    // otherwise end the run without the summary.
+    let ctx;
+    let page;
+    try {
+      ctx = await withTimeout(newContext({ viewport: { width: w, height: 900 } }), CHECK_MS);
+      page = await withTimeout(ctx.newPage(), CHECK_MS);
+    } catch (e) {
+      check(`layout ${locale}@${w} (setup)`, false, String(e.message ?? e).split("\n")[0].slice(0, 300));
+      if (ctx) await withTimeout(ctx.close(), 5000).catch(() => {});
+      continue;
+    }
     for (const p of PAGES) {
       const key = `${locale}${p || "/"}@${w}`;
       const finished = await section(`layout ${key}`, async () => {
@@ -475,7 +530,11 @@ for (const locale of LOCALES) {
       if (!finished) {
         // The hung check may still hold the page; continue on a fresh one.
         await withTimeout(page.close(), 5000).catch(() => {});
-        page = await ctx.newPage();
+        page = await withTimeout(ctx.newPage(), CHECK_MS).catch(() => null);
+        if (!page) {
+          check(`layout ${locale}@${w} (setup)`, false, "no new page after a timeout; rest of this width skipped");
+          break;
+        }
       }
     }
     await withTimeout(ctx.close(), 10000).catch(() => {});
@@ -483,37 +542,40 @@ for (const locale of LOCALES) {
 }
 
 // ---------------------------------------------------------------------------
-// Toggle selector fixture: in-page <header> toggles inside <main> must not
-// reach the banner-scoped selector. The unscoped selector is the positive
-// control — if it does not find the injected toggles, the fixture did not
-// take and the scoped count proves nothing.
+// Toggle selector fixture: in-page <header> toggles must not reach the
+// banner-scoped selector — one per arm of BANNER's :not() list (a bare
+// header in <main>; a section/article/aside/nav header outside <main>). The
+// unscoped selector is the positive control: it must find the banner toggle
+// plus every injected one, or the fixture did not take and the scoped count
+// proves nothing.
 // ---------------------------------------------------------------------------
 await section("toggle selector fixture", async () => {
   const ctx = await newContext({ viewport: { width: 390, height: 844 } });
   try {
     const page = await ctx.newPage();
     await open(page, `${BASE}/ja/events`);
-    await page.evaluate(() => {
+    const injected = await page.evaluate(() => {
+      const toggle = (i) =>
+        `<header><h2>fixture ${i}</h2><button aria-controls="qa-fixture-${i}">toggle</button></header>` +
+        `<div id="qa-fixture-${i}"></div>`;
       const main = document.querySelector("main");
+      main.insertAdjacentHTML("afterbegin", toggle(0));
+      const outside = ["section", "article", "aside", "nav"];
       main.insertAdjacentHTML(
-        "afterbegin",
-        ["section", "article", "section"]
-          .map(
-            (tag, i) =>
-              `<${tag}><header><h2>fixture ${i}</h2><button aria-controls="qa-fixture-${i}">toggle</button></header>` +
-              `<div id="qa-fixture-${i}"></div></${tag}>`,
-          )
-          .join(""),
+        "afterend",
+        outside.map((tag, i) => `<${tag}>${toggle(i + 1)}</${tag}>`).join(""),
       );
+      return 1 + outside.length;
     });
     const unscoped = await page.locator("header button[aria-controls]").count();
     const scoped = page.locator(TOGGLE);
     const scopedCount = await scoped.count();
-    const scopedInMain = scopedCount === 1 && (await scoped.evaluate((b) => !!b.closest("main")));
+    const scopedIsFixture =
+      scopedCount === 1 && (await scoped.evaluate((b) => b.getAttribute("aria-controls").startsWith("qa-fixture-")));
     check(
       "banner toggle selector ignores in-page <header> toggles",
-      unscoped > 1 && scopedCount === 1 && !scopedInMain,
-      `unscoped matches ${unscoped}, scoped matches ${scopedCount}${scopedInMain ? " (inside <main>)" : ""}`,
+      unscoped === injected + 1 && scopedCount === 1 && !scopedIsFixture,
+      `${injected} injected; unscoped matches ${unscoped}, scoped matches ${scopedCount}${scopedIsFixture ? " (a fixture toggle)" : ""}`,
     );
   } finally {
     await ctx.close();
@@ -611,7 +673,7 @@ await section(
       await ctx.close();
     }
   },
-  CHECK_MS * 3,
+  CHECK_MS * 4,
 );
 
 // ---------------------------------------------------------------------------
@@ -651,7 +713,7 @@ await section(
       await ctx.close();
     }
   },
-  CHECK_MS * 3,
+  CHECK_MS * 4,
 );
 
 // ---------------------------------------------------------------------------
@@ -687,7 +749,7 @@ await section(
       `animated elements: ${normal.animated} normally → ${reduced.animated} reduced (HTTP ${reduced.status})`,
     );
   },
-  CHECK_MS * 2,
+  CHECK_MS * 4,
 );
 
 await finish();
