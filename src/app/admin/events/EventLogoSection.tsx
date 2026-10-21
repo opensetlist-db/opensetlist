@@ -28,7 +28,8 @@ import { eventResolutionText, type LogoCardState } from "@/lib/adminLogoCard";
  */
 
 type Props = {
-  eventId: number;
+  /** Decimal string of the BigInt id (no Number round-trip). */
+  eventId: string;
   initialState: LogoCardState;
   /** Saved values only: the preview shows what public pages render. */
   typography: { eyebrow: string | null; title: string; caption: string | null };

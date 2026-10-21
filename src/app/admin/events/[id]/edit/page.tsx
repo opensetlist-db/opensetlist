@@ -167,7 +167,7 @@ export default async function EditEventPage({ params }: Props) {
       <hr className="border-zinc-200" />
 
       <EventLogoSection
-        eventId={Number(data.id)}
+        eventId={logoState.eventId}
         initialState={{
           assignment: logoState.assignment,
           asset: logoState.asset,
