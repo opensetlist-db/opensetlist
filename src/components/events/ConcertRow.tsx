@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { EventArt } from "@/components/shared/EventArt";
+import { ChevronIcon } from "@/components/events/ChevronIcon";
 import { ConcertStatusPill } from "@/components/events/ConcertStatusPill";
 import type { ResolvedEventStatus } from "@/lib/eventStatus";
 import { colors } from "@/styles/tokens";
@@ -109,7 +110,7 @@ export function ConcertRow({
         className="col-start-3 row-start-1 self-center min-[700px]:row-span-2 min-[1100px]:col-start-4 min-[1100px]:row-span-1"
         style={{ color: colors.primary }}
       >
-        <ChevronIcon />
+        <ChevronIcon className="h-[14px] w-[14px] min-[700px]:h-6 min-[700px]:w-6" />
       </span>
     </Link>
   );
@@ -129,23 +130,6 @@ function PinIcon() {
     >
       <path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" />
       <circle cx="12" cy="10" r="2" />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className="h-[14px] w-[14px] min-[700px]:h-6 min-[700px]:w-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m9 5 7 7-7 7" />
     </svg>
   );
 }

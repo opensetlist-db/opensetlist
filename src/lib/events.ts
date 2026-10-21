@@ -236,7 +236,6 @@ export async function getEventsListGrouped(
       select: {
         id: true,
         slug: true,
-        // eventSeriesId comes with LOGO_EVENT_SELECT below.
         artistId: true,
         organizerName: true,
         status: true,
@@ -266,6 +265,9 @@ export async function getEventsListGrouped(
         // artist's colour). Resolved below while ids are still bigint,
         // then dropped — only the public projection leaves this module.
         ...LOGO_EVENT_SELECT,
+        // Also in LOGO_EVENT_SELECT; named here because grouping and the
+        // art text read it too, independent of the resolver's needs.
+        eventSeriesId: true,
       },
       orderBy: { startTime: "asc" },
     }),

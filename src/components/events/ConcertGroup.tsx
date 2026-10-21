@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+import { ChevronIcon } from "@/components/events/ChevronIcon";
 import { ConcertStatusPill } from "@/components/events/ConcertStatusPill";
 import { colors, radius, shadows } from "@/styles/tokens";
 
@@ -112,18 +113,9 @@ export function ConcertGroup({
               color: colors.textPrimary,
             }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
+            <ChevronIcon
               className={`h-6 w-6 transition-transform motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m9 5 7 7-7 7" />
-            </svg>
+            />
           </button>
         )}
       </header>

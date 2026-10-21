@@ -43,8 +43,7 @@
  * overall, which the operator already preferred ("mobile view column
  * size looks good").
  *
- * The trailing 28px is the chevron column (the pre-redesign event
- * list used the same right-edge width).
+ * The trailing 28px is the chevron column.
  */
 export const PERFORMANCE_ROW_GRID =
   "80px 100px minmax(0, 1fr) 100px 28px";

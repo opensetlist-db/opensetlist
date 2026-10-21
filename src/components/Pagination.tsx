@@ -50,8 +50,10 @@ export function Pagination({
   const end = Math.min(totalPages, currentPage + delta);
   const pages = Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
-  const link = (page: number, label: string | number) => {
-    const current = page === currentPage && typeof label === "number";
+  // `isPageNumber` false = Previous/Next: they point at a page but are
+  // never the current-page marker.
+  const link = (page: number, label: string | number, isPageNumber = true) => {
+    const current = isPageNumber && page === currentPage;
     return (
       <Link
         key={`${page}-${label}`}
@@ -85,13 +87,13 @@ export function Pagination({
         aria-label={labels.nav}
         className="mt-7 flex flex-wrap items-center justify-center gap-2"
       >
-        {currentPage > 1 && link(currentPage - 1, labels.prev)}
+        {currentPage > 1 && link(currentPage - 1, labels.prev, false)}
         {start > 1 && link(1, 1)}
         {start > 2 && gap("gap-start")}
         {pages.map((page) => link(page, page))}
         {end < totalPages - 1 && gap("gap-end")}
         {end < totalPages && link(totalPages, totalPages)}
-        {currentPage < totalPages && link(currentPage + 1, labels.next)}
+        {currentPage < totalPages && link(currentPage + 1, labels.next, false)}
       </nav>
       <p
         className="mt-3 text-center text-[13px]"

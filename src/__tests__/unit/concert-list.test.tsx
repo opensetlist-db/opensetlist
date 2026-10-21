@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 /*
- * Concert list (redesign ticket 17): the list data's new display fields
+ * Concert list: the list data's display fields
  * (root series type, typography-art text, 07 logo projection) and the
  * approved list controls — filter links, group collapse, past
  * pagination. Grouping/ordering/active-vs-past rules are unchanged and
@@ -176,6 +176,12 @@ describe("getEventsListGrouped — display fields", () => {
     ]);
 
     const { activeGroups } = await getEventsListGrouped("ja", NOW);
+    // Positive control: the query really selects the resolver inputs.
+    expect(mocked.event.findMany.mock.calls[0][0].select).toMatchObject({
+      logoMode: true,
+      logoAsset: expect.anything(),
+      artist: expect.anything(),
+    });
     const ev = activeGroups[0].events[0];
     expect(ev.logo).toEqual({
       image: { url: "https://img.test/logo.webp", width: 400, height: 200 },
@@ -194,12 +200,17 @@ describe("getEventsListGrouped — display fields", () => {
         logoAsset: { publicUrl: "https://img.test/logo.webp", width: 400, height: 200 },
       }),
     ];
+    // Same series, one inheriting sibling (positive control) and one
+    // typography override.
     mocked.event.findMany.mockResolvedValue([
-      event(1, { eventSeriesId: BigInt(1), logoMode: "typography" }),
+      event(1, { eventSeriesId: BigInt(1) }),
+      event(2, { eventSeriesId: BigInt(1), logoMode: "typography" }),
     ]);
 
     const { activeGroups } = await getEventsListGrouped("ja", NOW);
-    expect(activeGroups[0].events[0].logo.image).toBeNull();
+    const [inherits, overrides] = activeGroups[0].events;
+    expect(inherits.logo.image?.url).toBe("https://img.test/logo.webp");
+    expect(overrides.logo.image).toBeNull();
   });
 });
 
@@ -257,7 +268,14 @@ describe("<ConcertGroup />", () => {
   });
 
   it("cannot collapse a LIVE group", () => {
-    render(
+    const { rerender } = render(
+      <ConcertGroup {...props} live={false}>
+        <span>Day.1</span>
+      </ConcertGroup>,
+    );
+    // Positive control: the same group without LIVE has the toggle.
+    expect(screen.getByRole("button", { name: "Collapse Tour" })).toBeInTheDocument();
+    rerender(
       <ConcertGroup {...props} live>
         <span>Day.1</span>
       </ConcertGroup>,
@@ -308,8 +326,27 @@ describe("<Pagination /> (past groups)", () => {
     expect(screen.getByText("1 / 3")).toBeInTheDocument();
   });
 
+  it("shows Previous past the first page and omits Next on the last", () => {
+    render(
+      <Pagination currentPage={3} totalPages={3} pageParamKey="pastPage" labels={labels} />,
+    );
+    const nav = screen.getByRole("navigation", { name: "Past concerts" });
+    expect(within(nav).getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "?pastPage=2",
+    );
+    expect(within(nav).getByRole("link", { name: "Previous" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "3" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).queryByRole("link", { name: "Next" })).toBeNull();
+  });
+
   it("renders nothing for a single page", () => {
-    const { container } = render(
+    const { container, rerender } = render(
+      <Pagination currentPage={1} totalPages={2} pageParamKey="pastPage" labels={labels} />,
+    );
+    // Positive control: two pages render.
+    expect(container).not.toBeEmptyDOMElement();
+    rerender(
       <Pagination currentPage={1} totalPages={1} pageParamKey="pastPage" labels={labels} />,
     );
     expect(container).toBeEmptyDOMElement();
